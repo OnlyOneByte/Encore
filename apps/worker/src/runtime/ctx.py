@@ -50,7 +50,7 @@ class AudioCtx:
     #: The retained original. Written by AcquireAudio.
     path: str | None = None
     #: The isolated vocals stem, when a stems job already produced one. ASR wants this; a full mix
-    #: transcribes badly. Absent for a song whose stems have not been cooked.
+    #: transcribes badly. Absent for a song whose stems have not been processed.
     vocals_path: str | None = None
     #: DECLARED by the core, never inferred from the URI's shape. A local source performs no fetch at
     #: all, which is why several steps declare `applies()` against it rather than testing it inline.
@@ -95,9 +95,9 @@ class StemsCtx:
     #: Did the vocals stem measure as digital silence? Separation can SUCCEED and write silence, and a
     #: silent guiding track is worse than a missing one because it looks like it works. Recorded rather
     #: than acted on immediately: the profile analysis still reads the raw vocals WAV, so a silent-vocals
-    #: song gets a present-but-empty profile and reads as cooked rather than stuck.
+    #: song gets a present-but-empty profile and reads as processed rather than stuck.
     vocals_silent: bool = False
-    #: Key + vocal range, or the null profile. Always written, so the cook gate can require presence.
+    #: Key + vocal range, or the null profile. Always written, so the process gate can require presence.
     song_profile: dict[str, Any] | None = None
 
 

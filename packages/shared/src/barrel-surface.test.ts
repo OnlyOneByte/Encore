@@ -1,4 +1,4 @@
-// #776 — packages/shared/src is grouped into domain subdirectories (core/, queue/, lyrics/, cook/,
+// #776 — packages/shared/src is grouped into domain subdirectories (core/, queue/, lyrics/, process/,
 // presentation/), and `index.ts` re-exports each so `@encore/shared` import paths never move. THIS TEST
 // IS THE CONTRACT that the move preserved: the barrel's exported-name set is frozen here. A future move
 // that drops a re-export line, points it at the wrong subdir, or renames a symbol changes this set and
@@ -37,7 +37,7 @@ const EXPECTED = [
 	'getLyricsHighlight', 'getQueueOrder', 'getSyncMode', 'getTvBackgroundStyle', 'getTvProgressStyle',
 	'getTvVisualizer', 'graceMsOf', 'guideOffsetSec', 'hasGuidingTrack', 'hasKey', 'hasNewerCandidateThanOverride', 'hasUsableTiming',
 	'hasVocalRange', 'hueOfColor', 'hueToHex', 'insertEntry', 'insertIndexFor', 'isAuthoritativeText',
-	'isCookableSource', 'isCooking', 'isLegibleSingerColor', 'isLikelyWrongSong', 'isLiveSelectable',
+	'isProcessableSource', 'isProcessing', 'isLegibleSingerColor', 'isLikelyWrongSong', 'isLiveSelectable',
 	'isPlayable', 'isQualityUpgrade', 'isQueueOrder', 'isRoomCodeChar', 'isTerminal', 'isTerminalJob', 'isTvBackgroundStyle',
 	'isTvProgressStyle', 'isTvVisualizer', 'isValidAsrModel', 'isValidFetcher', 'isValidLyricsBall',
 	'isValidLyricsCase', 'isValidLyricsFont', 'isValidLyricsHighlight', 'isValidSeparator',
@@ -46,10 +46,10 @@ const EXPECTED = [
 	'memberState', 'mergeLyricsCandidate', 'midiToNoteName', 'moveToIndex', 'nearestSingerHue', 'needsFetch',
 	'nextSwatchIndex', 'normalizeGlobalSettings', 'normalizeJoinOrigin', 'normalizeRoomCodeInput', 'normalizeRoomSettings',
 	'normalizeSingerColor', 'normalizeSongProfile', 'normalizeStageColor', 'normalizeStageDim',
-	'oklchToRgb', 'originalKeyLabel', 'overallCookPct', 'parseHex', 'pendingGates', 'pickBestLyrics',
+	'oklchToRgb', 'originalKeyLabel', 'overallProcessPct', 'parseHex', 'pendingGates', 'pickBestLyrics',
 	'playbackRef', 'presetTabStopIndex', 'qualityRank', 'queueOrderLabel', 'rangeBarFractions',
 	'rangeLabel', 'rangeOctaves', 'readyToSing', 'realtimeFactor', 'reorderWithinSinger',
-	'resolveCookSeparator', 'resolveLyricsPresentation', 'resolveLyricsRef', 'roomTopic', 'separatorCost', 'shouldClearClock',
+	'resolveProcessSeparator', 'resolveLyricsPresentation', 'resolveLyricsRef', 'roomTopic', 'separatorCost', 'shouldClearClock',
 	'shouldStartClock', 'singHistoryFrom', 'songDisplay', 'soundingKeyLabel', 'sourceUriFor',
 	'stageHueToHex', 'stageLightnessForHue', 'storedOrder', 'transposePitchClass', 'ulid', 'voiceBandFor',
 	'voiceBandSentence', 'voiceBandZones'

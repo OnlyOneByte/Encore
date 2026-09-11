@@ -4,7 +4,7 @@
 import type { Media, QueueEntry, Singer, PlaybackState, JobType, SelectionRecord } from './types';
 import type { ServerPatch, ClientCommand } from './ops';
 import type { LyricsCandidate } from '../lyrics/lyrics';
-import type { SongProfile } from '../cook/song-profile';
+import type { SongProfile } from '../process/song-profile';
 import type { EffectiveSettings, TvBackgroundStyle } from './settings';
 
 // The Bun.serve pub/sub TOPIC a room's realtime events ride (#657). Room isolation: every event for
@@ -24,18 +24,18 @@ export type MediaStatus =
 	| 'aligning'
 	| 'ready'
 	| 'failed'
-	// A cook that STOPPED because someone removed the song, not because anything went wrong. It exists
+	// A process that STOPPED because someone removed the song, not because anything went wrong. It exists
 	// because 'failed' is the only other status a client settles as terminal, and reusing it made the
 	// phone tell a guest who deliberately removed a song "Couldn't make karaoke" — a lie about their own
 	// action. Every other value reads as mid-flight and would re-strand the row we just freed.
 	| 'canceled';
 
 /**
- * The five stops of a cook, IN ORDER — the axis the phone renders (the chip strip in
+ * The five stops of a process, IN ORDER — the axis the phone renders (the chip strip in
  * ProcessingCard) and the one every producer of a `media:status` positions itself on.
  *
  * Declared here, beside `MediaStatus`, because it is part of the wire vocabulary rather than either
- * side's private view: the server needs it to guarantee a cook never reports a stop it has already
+ * side's private view: the server needs it to guarantee a process never reports a stop it has already
  * passed (see the core's jobs/media-status.ts), and the phone needs it to decide which chips are
  * done. The chip strip kept two hand-written copies of this list; the server had none, and gained the
  * ordering it never had by reading this one.
@@ -76,7 +76,7 @@ export type ServerEvent =
 	// `unservable` marks a job that is queued but that NO connected worker advertises the capability
 	// for — it will never start, as distinct from waiting its turn. Optional and currently
 	// informational: the phone does not render it yet, but the distinction has to exist on the wire
-	// before any surface can show it, and it is what separates "cooking soon" from "stuck forever".
+	// before any surface can show it, and it is what separates "processing soon" from "stuck forever".
 	| { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }
 	| { type: 'singer:joined'; singer: PublicSinger }
 	| { type: 'singer:updated'; singer: PublicSinger }
@@ -96,7 +96,7 @@ export type PlayerCommand =
 	| { cmd: 'skip' }
 	| { cmd: 'restart' }
 	| { cmd: 'seek'; positionSec: number }
-	// ± key on a make-karaoke (file) song. `semitones` is the ABSOLUTE target (not a delta), clamped
+	// ± key on a process (file) song. `semitones` is the ABSOLUTE target (not a delta), clamped
 	// server-side to ±MAX_KEY_SHIFT; the server picks the matching pre-rendered instrumental.
 	| { cmd: 'key'; semitones: number }
 	// Per-song override of the room's TV background. `style: null` hands the song back to the room
@@ -227,7 +227,7 @@ export interface JobParams {
 	/**
 	 * How the worker should obtain `sourceUri` — DECLARED, never inferred from the URI's shape.
 	 * `ytdlp` means download it; `local` means it is already a path under the media volume. Set on every
-	 * job that touches source audio, so a worker never has to guess (see packages/shared/src/cook/fetchers.ts).
+	 * job that touches source audio, so a worker never has to guess (see packages/shared/src/process/fetchers.ts).
 	 */
 	fetcher?: string;
 	model?: string; // separation model/checkpoint token (stems) — resolved by the worker engine
@@ -260,13 +260,13 @@ export interface JobParams {
 	 *
 	 * When present the worker SHORT-CIRCUITS `GradeAndSelect` to this candidate's stored text and times
 	 * that — re-timing the words a human chose from the RETAINED vocals stem, no re-download, no re-pick.
-	 * Absent on every normal cook, where the worker selects comparatively as before.
+	 * Absent on every normal process, where the worker selects comparatively as before.
 	 */
 	pinnedRef?: string;
 	/**
 	 * PASTED lyrics text for a `manual`-source re-pick (#640): the user supplied words no provider had.
 	 * When present the worker times THIS text (source `manual`) rather than any stored candidate, and
-	 * `pinnedRef` is the ref it will be written under. Absent on every normal cook and on a re-pick of an
+	 * `pinnedRef` is the ref it will be written under. Absent on every normal process and on a re-pick of an
 	 * already-stored candidate.
 	 */
 	pinnedText?: string;
@@ -278,7 +278,7 @@ export type WorkerCommand =
 	| {
 			type: 'job:assign';
 			jobId: string;
-			cookId: string;
+			processingId: string;
 			mediaId: string;
 			jobType: JobType;
 			sourceUri: string;
@@ -296,8 +296,8 @@ export interface JobArtifacts {
 	 *
 	 * That placement is declared here deliberately. It was previously undeclared and the core read it
 	 * structurally as `artifacts.stems.songProfile` while the worker published it as
-	 * `artifacts.songProfile` — so it silently arrived `undefined` on every cook. Both sides' unit tests
-	 * passed, because each mocked its own shape; and because the `stems` cook gate requires the profile
+	 * `artifacts.songProfile` — so it silently arrived `undefined` on every process. Both sides' unit tests
+	 * passed, because each mocked its own shape; and because the `stems` process gate requires the profile
 	 * to be PRESENT, the effect was that every separated song sat at "Separating vocals" forever with no
 	 * way out. Declaring the field is what makes that class of drift a type error instead of a
 	 * production stall.
@@ -347,7 +347,7 @@ export interface JobArtifacts {
 	 * What a `fetch` job retained as the ORIGINAL audio — the one storage class that cannot be
 	 * regenerated (see steps/metadata.py PublishOriginal). The core consumes the fetch result through
 	 * `media_uri`, not this key, so nothing reads it today; it is declared here so it is not the last
-	 * UNDECLARED key riding this frame. An undeclared key is exactly what stalled every cook while
+	 * UNDECLARED key riding this frame. An undeclared key is exactly what stalled every process while
 	 * `songProfile` shipped one level too deep — declaring `source` makes any future reader a typed one
 	 * and the parity guard below asserts every worker-written key is a member of this interface (#459).
 	 */

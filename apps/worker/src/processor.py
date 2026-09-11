@@ -66,11 +66,11 @@ class JobSpec:
     params: dict
     # where the worker writes outputs (the shared /media volume in single-box mode)
     media_dir: str
-    # The cook this job belongs to: the trace id the core mints (repository.ts) and threads through a
-    # chained run, so the worker can correlate its own logs to the cook the operator sees on
+    # The process this job belongs to: the trace id the core mints (repository.ts) and threads through a
+    # chained run, so the worker can correlate its own logs to the process the operator sees on
     # /metrics/<mediaId> (#472). Empty for a core that predates carrying it on the assign frame; a
     # trailing default so it does not disturb the positional constructors in the test suite.
-    cook_id: str = ""
+    processing_id: str = ""
 
 
 class Processor(Protocol):
@@ -128,12 +128,12 @@ def source_audio_path(media_dir: str, media_id: str, ext: str = "wav") -> str:
 def vocals_path(media_dir: str, media_id: str) -> str:
     """Deterministic MediaStore key for a media's ISOLATED VOCALS stem. Feeds pitch
     extraction and the vocal-guide mix (docs/ARCHITECTURE.md §7). Parallels the core's
-    make-karaoke `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
+    process `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
     return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.{VOCALS_EXT}")
 
 
 def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt") -> str:
-    """Deterministic key for a media's RAW caption track, retained for post-cook diagnosis (#670).
+    """Deterministic key for a media's RAW caption track, retained for post-process diagnosis (#670).
 
     Under the `derived/` storage class so it is "safe to delete, regenerable, first to evict" -- a
     `.vtt` is tens of kilobytes of text, unlike the hundreds of megabytes of decoded audio that made

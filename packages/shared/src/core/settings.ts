@@ -21,7 +21,7 @@ import {
 } from '../lyrics/separators';
 import { makeRegistry } from './registry';
 import { DEFAULT_QUEUE_ORDER, isQueueOrder, type QueueOrderId } from '../queue/queue-order';
-import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from '../cook/fetchers';
+import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from '../process/fetchers';
 import { DEFAULT_STAGE_COLOR, DEFAULT_STAGE_DIM, normalizeStageColor, normalizeStageDim } from '../presentation/colors';
 import { DEFAULT_PRESENCE_GRACE_MINUTES, MAX_PRESENCE_GRACE_MINUTES, MIN_PRESENCE_GRACE_MINUTES } from '../queue/membership';
 import {
@@ -70,23 +70,23 @@ import type { LyricsTiming } from '../lyrics/lyrics';
 //     would model a distinction that isn't real.
 //
 //   ROOM — a property of one party. Pacing and per-room policy: two rooms genuinely can want
-//     different song-intro timing, and a busy room may want to cap cook quality to keep its queue
+//     different song-intro timing, and a busy room may want to cap process quality to keep its queue
 //     moving while the deployment default stays high.
 //
 // Both are authoritative SERVER state broadcast to clients (like presence), never phone-local
 // preferences two devices could disagree about.
 
 /**
- * Deployment-wide separator and cook policy. Writable by ANY joined singer via `PUT /api/settings`
+ * Deployment-wide separator and process policy. Writable by ANY joined singer via `PUT /api/settings`
  * (`settings:write-global`, which `can()` grants to every joined singer) — NOT operator-owned. This is
  * the owner's confirmed ruling (Q3, 2026-09-09, issue #828): deployment-scoped settings stay open,
  * accepted. Published policy: docs/ux/05-concurrency.md § "Owner rulings".
  */
 export interface GlobalSettings {
-	/** Engine+model every new cook uses. Must be a `liveSelectable` pairing. */
+	/** Engine+model every new process uses. Must be a `liveSelectable` pairing. */
 	defaultEngine: SeparatorEngineId;
 	defaultModel: string;
-	/** When true, a completed cook enqueues a `stems-upgrade` re-separation from the retained raw
+	/** When true, a completed process enqueues a `stems-upgrade` re-separation from the retained raw
 	 *  audio, swapping in a better instrumental without a re-download. */
 	enqueueUpgrade: boolean;
 	/** Engine+model the upgrade targets. May be an upgrade-only engine (e.g. ensemble). */
@@ -362,7 +362,7 @@ export interface RoomSettings {
 	 */
 	songIntroMs: number;
 	/**
-	 * Optional per-room ceiling on cook quality, as a `qualityRank`. A busy room can cap cooks to keep
+	 * Optional per-room ceiling on process quality, as a `qualityRank`. A busy room can cap processes to keep
 	 * its queue moving while the deployment default stays high. `null` = no ceiling, use the global
 	 * default. A ceiling can only ever LOWER quality: the global setting is already bounded by what the
 	 * worker fleet can run, so a room must not be able to request an engine no worker advertises.
@@ -600,11 +600,11 @@ export const DEFAULT_EFFECTIVE_SETTINGS: EffectiveSettings = {
 };
 
 /**
- * The engine+model a cook in this room should actually use. The global default wins unless the room
+ * The engine+model a process in this room should actually use. The global default wins unless the room
  * set a lower ceiling, in which case the best live-selectable pairing at or under that ceiling is
  * chosen. The cap is downward-only (see `RoomSettings.maxQualityRank`).
  */
-export function resolveCookSeparator(settings: EffectiveSettings): { engine: SeparatorEngineId; model: string } {
+export function resolveProcessSeparator(settings: EffectiveSettings): { engine: SeparatorEngineId; model: string } {
 	const { defaultEngine, defaultModel } = settings.global;
 	const cap = settings.room.maxQualityRank;
 	if (cap === null || qualityRank(defaultEngine, defaultModel) <= cap) {
@@ -643,8 +643,8 @@ export interface LyricsPresentation {
 /**
  * Resolve the room's lyrics presentation against what can actually be drawn.
  *
- * The clamp is DOWNWARD-ONLY, the same shape as `resolveCookSeparator`'s quality ceiling and for the
- * same kind of reason: a room must not be able to request something no cook produced. Here the bound
+ * The clamp is DOWNWARD-ONLY, the same shape as `resolveProcessSeparator`'s quality ceiling and for the
+ * same kind of reason: a room must not be able to request something no process produced. Here the bound
  * is timing granularity — with no per-word timestamps a word-level highlight has nothing to light and
  * a marker has no word to sit on.
  *

@@ -73,19 +73,19 @@ export interface HubDeps {
 	hasOp?: (clientOpId: string) => boolean;
 	/**
 	 * Optional: called AFTER a `remove` op is applied, with the removed entry's mediaId and the
-	 * post-remove queue. This is the seam that lets an explicit remove cancel a cook still in flight
+	 * post-remove queue. This is the seam that lets an explicit remove cancel a process still in flight
 	 * (jobs/cancel.ts): the queue op alone never touched the job ledger, so the phone's remove button
-	 * on a cooking row removed the row while the worker kept cooking. server.ts wires this to
+	 * on a processing row removed the row while the worker kept processing. server.ts wires this to
 	 * cancelJobsForMedia; unset in the pure hub tests, which only assert queue mutation.
 	 */
 	onEntryRemoved?: (mediaId: string, remainingEntries: QueueEntry[]) => void;
 	/**
 	 * Optional: called AFTER an `add` op is applied, with the added entry's mediaId and the post-add
 	 * queue. The add-side mirror of onEntryRemoved. It exists for the reconnect-starvation case
-	 * (#135): a make-karaoke POST can be filed while the singer's queue add is still in flight over a
-	 * reconnecting socket, so the cook lands at NO_QUEUE_PRIORITY and sorts behind the lyrics backfill
-	 * forever even once the turn arrives. server.ts wires this to reprioritizeCookForMedia, which
-	 * lowers the outstanding cook to the soonest waiting turn and kicks dispatch; unset in the pure
+	 * (#135): a process POST can be filed while the singer's queue add is still in flight over a
+	 * reconnecting socket, so the process lands at NO_QUEUE_PRIORITY and sorts behind the lyrics backfill
+	 * forever even once the turn arrives. server.ts wires this to reprioritizeProcessForMedia, which
+	 * lowers the outstanding process to the soonest waiting turn and kicks dispatch; unset in the pure
 	 * hub tests, which only assert queue mutation.
 	 */
 	onEntryAdded?: (mediaId: string, entries: QueueEntry[]) => void;
@@ -131,11 +131,11 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// row, so it is not itself the bug), and this arm never asked whether the id was free. So a
 			// joined phone could send an add carrying another live entry's id and (a) destroy that
 			// singer's turn — the record is rewritten whole, singerId/mediaId/addedAt and all — and
-			// (b) orphan the displaced media's cook: the hub fires onEntryRemoved only on a literal
-			// `remove`, so cancelJobsForMedia never runs and a worker keeps cooking a song nobody is
+			// (b) orphan the displaced media's process: the hub fires onEntryRemoved only on a literal
+			// `remove`, so cancelJobsForMedia never runs and a worker keeps processing a song nobody is
 			// queued on. Reject at the seam, same class as the shape guards below. Compare the WHOLE
 			// identity, not singerId alone: a same-singer re-point to a different mediaId still orphans
-			// the old cook. The identical-identity re-add over a still-QUEUED row is left to pass on
+			// the old process. The identical-identity re-add over a still-QUEUED row is left to pass on
 			// purpose — applyOp's in-place arm and an evicted-clientOpId re-delivery (seenOps is a
 			// bounded FIFO) both need it. But applyOp's add branch rewrites the matched row WHOLE
 			// (entries.map((e) => e.id === op.entry.id ? op.entry : e)), so an identical-identity re-add
@@ -249,7 +249,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// has no honest caller to serve, and admitting it let one joined phone (a) forge a second
 			// 'playing' entry that is never playable, never terminal, not removable on leave and durable
 			// across restarts, (b) write an off-enum string that reaches the NOT NULL enum column, and
-			// (c) retire a song with a terminal status while its cook keeps running (only `remove` fires
+			// (c) retire a song with a terminal status while its process keeps running (only `remove` fires
 			// onEntryRemoved). Rejecting it closes all three at the seam and is behaviour-preserving for
 			// every real client. Same class as the add-arm shape guards above: validate at the frame.
 			return 'status is server-owned';
@@ -338,15 +338,15 @@ export function handleQueueCommand(
 
 	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(op);
 
-	// An explicit remove of a cooking song must stop the cook, not just hide the row. The hook decides
+	// An explicit remove of a processing song must stop the process, not just hide the row. The hook decides
 	// whether to actually cancel (it does not when another entry still needs the media — a shared
-	// cook). Fired AFTER the op is applied so it sees the post-remove queue.
+	// process). Fired AFTER the op is applied so it sees the post-remove queue.
 	if (removedMediaId) deps.onEntryRemoved?.(removedMediaId, entries);
 
-	// The add-side mirror. A song can have a cook already in flight (filed at NO_QUEUE_PRIORITY when
+	// The add-side mirror. A song can have a process already in flight (filed at NO_QUEUE_PRIORITY when
 	// this add was still crossing a reconnecting socket) that this newly-landed turn should pull to
 	// the front of the queue. Fired AFTER the op is applied so `entries` carries the added entry, and
-	// gated to `add` so a remove/move/status never re-prioritises. See jobs/reprioritize-cook.ts.
+	// gated to `add` so a remove/move/status never re-prioritises. See jobs/reprioritize-process.ts.
 	if (cmd.op.op === 'add') deps.onEntryAdded?.(cmd.op.entry.mediaId, entries);
 
 	// ONE broadcast (Finding #3): the patch carries the authoritative (pruned, reseq'd) entries +

@@ -30,35 +30,35 @@ export interface AuditAttempt {
 	selection: SelectionRecord | null;
 }
 
-export function groupCooks(attempts: JobAttempt[]) {
-	const byCook = new Map<string, JobAttempt[]>();
+export function groupProcesses(attempts: JobAttempt[]) {
+	const byProcess = new Map<string, JobAttempt[]>();
 	for (const a of attempts) {
-		const key = a.cookId || '(pre-ledger)';
-		const list = byCook.get(key) ?? [];
+		const key = a.processingId || '(pre-ledger)';
+		const list = byProcess.get(key) ?? [];
 		list.push(a);
-		byCook.set(key, list);
+		byProcess.set(key, list);
 	}
-	return [...byCook.entries()]
-		.map(([cookId, list]) => {
+	return [...byProcess.entries()]
+		.map(([processingId, list]) => {
 			const sealed = list.filter((a) => a.finishedAt !== null);
 			const startedAt = Math.min(...list.map((a) => a.enqueuedAt));
 			const endedAt = sealed.length ? Math.max(...sealed.map((a) => a.finishedAt!)) : null;
 			return {
-				cookId,
+				processingId,
 				startedAt,
 				endedAt,
 				// Null while anything is still in flight, rather than measured against `now` — a duration
 				// that shrinks as you watch it is worse than no duration.
 				totalMs: endedAt !== null && sealed.length === list.length ? endedAt - startedAt : null,
-				outcome: cookOutcome(list),
+				outcome: processOutcome(list),
 				attempts: list.map(toAudit)
 			};
 		})
 		.sort((a, b) => a.startedAt - b.startedAt);
 }
 
-/** One word for how a cook went, chosen so a partial failure never reads as success. */
-export function cookOutcome(list: JobAttempt[]): 'running' | 'ready' | 'failed' | 'canceled' {
+/** One word for how a process went, chosen so a partial failure never reads as success. */
+export function processOutcome(list: JobAttempt[]): 'running' | 'ready' | 'failed' | 'canceled' {
 	if (list.some((a) => a.outcome === null)) return 'running';
 	if (list.some((a) => a.outcome === 'failed')) return 'failed';
 	if (list.some((a) => a.outcome === 'canceled')) return 'canceled';

@@ -1,4 +1,4 @@
-// Guard for issue #253: the cooking-status UI had redundant elements the owner asked to remove. Each
+// Guard for issue #253: the processing-status UI had redundant elements the owner asked to remove. Each
 // was a pure-markup deletion, so nothing BEHAVIOURAL reds if it comes
 // back - this source-scan guard is the load-bearing regression trap. It reads each component source,
 // strips comments (so the explanatory prose that NAMES the removed elements can neither satisfy nor
@@ -42,7 +42,7 @@ test('#253: GuidingTrack drops the out-of-place "No isolated vocals" line, keeps
 	expect(code).toContain('variant="guiding"');
 	expect(code).toContain('disabled={!available}');
 	expect(code).not.toMatch(/no isolated vocals/i);
-	expect(code).not.toMatch(/re-?cook it to get a guiding track/i);
+	expect(code).not.toMatch(/re-?process it to get a guiding track/i);
 	const derived = code.match(/const hint\s*=\s*\$derived\(([\s\S]*?)\);/);
 	expect(derived).not.toBeNull();
 	const body = derived![1].replace(/\s+/g, ' ').trim();
@@ -64,5 +64,5 @@ test('#253: ProcessingCard drops the per-stage status pills, keeps bar + stage l
 	expect(code).not.toMatch(/\{#each\b/);
 	expect(code).not.toContain('MEDIA_STAGES');
 	expect(code).not.toContain('mediaStagePosition');
-	expect(code).not.toContain('cookStageChipLabel');
+	expect(code).not.toContain('processStageChipLabel');
 });

@@ -259,7 +259,7 @@ def test_the_hot_loop_does_not_regress_to_the_O_n2_form():
 
 # ── summarize_wav: the ONLY production path (song_profile.py:76), and it had zero coverage ──
 #
-# summarize_wav is what actually runs in a cook: read the vocals WAV, track pitch, summarize. Every
+# summarize_wav is what actually runs in a process: read the vocals WAV, track pitch, summarize. Every
 # existing summary test injects hop_sec EXPLICITLY (summarize_range(..., hop_sec=...)), which is the
 # one thing production does NOT do — summarize_wav must derive hop_sec itself and keep it in step with
 # the hop extract_pitch_track actually advanced by. So a change to extract_pitch_track's default hop
@@ -268,7 +268,7 @@ def test_the_hot_loop_does_not_regress_to_the_O_n2_form():
 
 
 def _write_pcm16_wav(path, samples, sr):
-    """Minimal 16-bit mono PCM WAV writer — the exact shape read_wav_mono reads and the cook produces."""
+    """Minimal 16-bit mono PCM WAV writer — the exact shape read_wav_mono reads and the process produces."""
     import wave
 
     pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2")

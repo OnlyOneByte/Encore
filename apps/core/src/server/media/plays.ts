@@ -6,9 +6,9 @@
 //
 // Design — DEDUPE on ENTRY id, not media id:
 //   - `emitNowPlaying` is the single choke point every playback transition funnels through (the right
-//     hook), but it is also re-emitted without a change (a finished cook re-broadcasts nowplaying so
+//     hook), but it is also re-emitted without a change (a finished process re-broadcasts nowplaying so
 //     the TV preloads the now-ready song). Counting every emit would inflate play count whenever an
-//     unrelated song finished cooking.
+//     unrelated song finished processing.
 //   - Entry id, not media id: the same song queued twice in one night is two entries and genuinely two
 //     plays, while one entry re-emitted five times is one.
 //

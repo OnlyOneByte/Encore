@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tvScreen, lobbyRoster, lyricsAdvancing, cookStep, COOK_STEPS } from './screen';
+import { tvScreen, lobbyRoster, lyricsAdvancing, processStep, PROCESS_STEPS } from './screen';
 import type { QueueEntry } from '@encore/shared';
 
 const entry = (id: string, singerId = 's1'): QueueEntry =>
@@ -31,7 +31,7 @@ describe('tvScreen', () => {
 		);
 	});
 
-	it('waiting (stems still cooking) beats the lobby — it is a more specific answer', () => {
+	it('waiting (stems still processing) beats the lobby — it is a more specific answer', () => {
 		expect(tvScreen({ playerState: 'waiting', current: entry('e1'), entries: [entry('e1')], inRoomCount: 3 })).toBe(
 			'waiting'
 		);
@@ -92,7 +92,7 @@ describe('lyricsAdvancing', () => {
 	});
 
 	it('freezes when the current entry is not playable / its src has not landed (#393 trigger 2)', () => {
-		// transportFor returns `idle` for a not-yet-cooked or src-less entry while tvScreen still returns
+		// transportFor returns `idle` for a not-yet-processed or src-less entry while tvScreen still returns
 		// `playing` for any current entry. Same idle element, same frozen reel.
 		expect(lyricsAdvancing('playing', 'playing', true, false)).toBe(false);
 	});
@@ -197,37 +197,37 @@ describe('#393 the element-advancing signal is wired from the master element to 
 	});
 });
 
-describe('cookStep (issue #826, XR-TV-15)', () => {
-	// The still-cooking takeover shows THREE steps while the media model has FIVE stages, so the
+describe('processStep (issue #826, XR-TV-15)', () => {
+	// The still-processing takeover shows THREE steps while the media model has FIVE stages, so the
 	// collapse is a real mapping. It must be TOTAL over MediaStatus so the takeover never renders with
 	// no step marked, and the labels are guest words shared in shape with the phone.
 	it('has exactly three guest-facing step labels', () => {
-		expect([...COOK_STEPS]).toEqual(['Downloaded', 'Removing vocals', 'Timing the lyrics']);
+		expect([...PROCESS_STEPS]).toEqual(['Downloaded', 'Removing vocals', 'Timing the lyrics']);
 	});
 
 	it('is total over every MediaStatus — exactly one step is current for any value', () => {
 		const all = ['queued', 'downloading', 'separating', 'aligning', 'ready', 'failed', 'canceled'] as const;
 		for (const s of all) {
-			const step = cookStep(s);
+			const step = processStep(s);
 			expect(step.index, `${s} maps to a valid step index`).toBeGreaterThanOrEqual(0);
-			expect(step.index, `${s} maps to a valid step index`).toBeLessThan(COOK_STEPS.length);
+			expect(step.index, `${s} maps to a valid step index`).toBeLessThan(PROCESS_STEPS.length);
 			// the fraction is a CSS percentage the bar can consume
 			expect(step.fraction).toMatch(/^\d+%$/);
 		}
 	});
 
-	it('advances the step as the cook progresses down MEDIA_STAGES', () => {
+	it('advances the step as the process progresses down MEDIA_STAGES', () => {
 		// getting-audio -> removing-vocals -> timing-lyrics: monotonic non-decreasing across the line.
-		expect(cookStep('queued').index).toBe(0);
-		expect(cookStep('downloading').index).toBe(0);
-		expect(cookStep('separating').index).toBe(1);
-		expect(cookStep('aligning').index).toBe(2);
-		expect(cookStep('ready').index).toBe(2);
+		expect(processStep('queued').index).toBe(0);
+		expect(processStep('downloading').index).toBe(0);
+		expect(processStep('separating').index).toBe(1);
+		expect(processStep('aligning').index).toBe(2);
+		expect(processStep('ready').index).toBe(2);
 	});
 
 	it('floors an off-the-line status (failed/canceled/undefined) at the first step, never out of range', () => {
 		for (const s of ['failed', 'canceled', undefined] as const) {
-			expect(cookStep(s).index).toBe(0);
+			expect(processStep(s).index).toBe(0);
 		}
 	});
 });

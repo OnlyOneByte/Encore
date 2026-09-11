@@ -136,7 +136,7 @@ def test_every_advertised_stems_capability_resolves_to_a_real_engine(monkeypatch
 def test_audiosep_is_advertised_only_when_its_dep_is_present(monkeypatch, tmp_path):
     # #483: the mel-band RoFormer engine (python-audio-separator). Advertised only when the dep is
     # present — the same honesty contract as every other token. A box with demucs but no audio-separator
-    # must NOT claim stems:audiosep, or the core would route a mel-band cook that dies at plan selection.
+    # must NOT claim stems:audiosep, or the core would route a mel-band process that dies at plan selection.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "demucs")  # separator present, but NOT audio-separator
     monkeypatch.setattr(capabilities, "_module_available", lambda _name: False)
@@ -169,7 +169,7 @@ def test_a_cli_on_PATH_counts_even_when_the_module_is_invisible(monkeypatch, tmp
 # ── the JS runtime trap ─────────────────────────────────────────────────────────────
 def test_missing_js_runtime_warns_but_does_not_remove_the_fetch_capability(monkeypatch, tmp_path):
     # YouTube's player challenge cannot be solved without a JS runtime, and the degradation is silent
-    # and total — every cook dies at download with "Requested format is not available", which reads as
+    # and total — every process dies at download with "Requested format is not available", which reads as
     # a broken worker. But vetoing fetch would strip the capability from a deployment that is currently
     # limping along, so the honest signal is a loud warning.
     _with_path(monkeypatch, tmp_path)
@@ -222,10 +222,10 @@ def test_advertised_order_is_stable_across_restarts(monkeypatch, tmp_path):
 def test_stems_survives_on_an_mlx_box(monkeypatch):
     """Issue #606 established that `stems` is dropped when the resolved backend has no demucs engine.
     #595 IMPLEMENTED the MLX engine, so an Apple-Silicon box that auto-resolves its backend to `mlx`
-    now HAS a demucs engine and must KEEP advertising `stems` — the box can genuinely run the cook
+    now HAS a demucs engine and must KEEP advertising `stems` — the box can genuinely run the process
     (demucs-mlx CLI + mix-minus derivation), so dropping it would refuse work it can do.
 
-    This is the inverse of the pre-#595 pin: before, an mlx box dropped `stems` (advertise -> cook ->
+    This is the inverse of the pre-#595 pin: before, an mlx box dropped `stems` (advertise -> process ->
     die at the unimplemented engine); now it keeps it and no drop warning fires.
 
     Simulates the box exactly as test_backends.py does: patch platform to Darwin/arm64 and make the
@@ -299,7 +299,7 @@ def test_narrow_for_backend_keys_on_a_real_engine_impl():
     assert demucs_engine_backed_by("nonsense") is False
 
     # `engine_for` builds an engine for every backed backend and the built engine reports that backend,
-    # so the predicate the capability site reads cannot drift from the engine the cook actually builds.
+    # so the predicate the capability site reads cannot drift from the engine the process actually builds.
     assert engine_for("demucs", backend="torch").backend == "torch"
     assert isinstance(engine_for("demucs", backend="mlx"), MlxDemucsEngine)
     assert engine_for("demucs", backend="mlx").backend == "mlx"

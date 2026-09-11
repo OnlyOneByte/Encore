@@ -12,8 +12,8 @@ export type OnReaped = () => void;
 
 /**
  * Called once per job the reaper moves to terminal `failed` (attempts exhausted — the worker box
- * died mid-cook and never reported). Lets the app settle that song's readiness gate, exactly as the
- * worker-reported and TTL fail paths do; without it a reaper-killed cook leaves its gate mid-flight
+ * died mid-process and never reported). Lets the app settle that song's readiness gate, exactly as the
+ * worker-reported and TTL fail paths do; without it a reaper-killed process leaves its gate mid-flight
  * forever and rotation holds the queue entry (issue #90). The reaper itself has no catalog access,
  * so it hands the failed job up and the app supplies the gate-settling.
  */

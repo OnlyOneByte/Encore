@@ -64,9 +64,9 @@ from ..vocabulary import Stage, SyncMode, TextSource
 AUTHORED = "captions"
 MACHINE = "auto-captions"
 
-#: Whether to retain the RAW caption track for post-cook diagnosis (#670). The raw `.vtt`/`.srt` is
+#: Whether to retain the RAW caption track for post-process diagnosis (#670). The raw `.vtt`/`.srt` is
 #: otherwise written into per-job scratch (`ctx.work`) and destroyed with it, so a caption-parsing
-#: defect (#539/#542-class) can never be re-examined from the source bytes after a cook, and
+#: defect (#539/#542-class) can never be re-examined from the source bytes after a process, and
 #: re-fetching needs the network and a still-live upload. When on, the winning raw track is copied to
 #: `derived/captions/<kind>/` before teardown -- the same storage class as the other retained
 #: artifacts, with the authored/machine split kept structural by directory.
@@ -144,7 +144,7 @@ class FetchCaptions(Step):
         """Copy the RAW caption track out of scratch into the durable `derived/` store (#670).
 
         Copies the SAME file the parser chose (`find_caption_file`), so the retained bytes are
-        exactly what produced this cook's cues — the point is to diagnose the parser, so any other
+        exactly what produced this process's cues — the point is to diagnose the parser, so any other
         candidate in the directory would be the wrong evidence. `self.kind` is the storage tier, so
         the authored/machine split stays structural (a directory), never a filename heuristic.
 
@@ -174,7 +174,7 @@ class AcquireTexts(Step):
     This is the one step that can STOP the plan. "This song has no words" is a RESULT — a genuine
     instrumental has none by nature — and it used to be an early `return` inside the god-method. Raising
     would be worse than wrong: readiness waits on align, so a raise would leave an instrumental stuck
-    cooking forever on a step that is working correctly.
+    processing forever on a step that is working correctly.
     """
 
     name = "acquire-texts"
@@ -346,7 +346,7 @@ class GradeAndSelect(Step):
         duration_sec = ctx.audio.duration_sec
         sel = select_by_baselines(ctx.lyrics.texts, duration_sec)
         # Report overshoot in the same operator log that already carries timing defects (#667 piece 2),
-        # so a candidate timed past audio-end is visible in the cook log rather than only on the TV.
+        # so a candidate timed past audio-end is visible in the process log rather than only on the TV.
         #
         # #731: report from the candidates as they were BEFORE selection, not from `sel.publish`. A
         # candidate DEMOTED for overshoot (chain.py overshoot_penalized) is not among the survivors, so
@@ -395,7 +395,7 @@ class GradeAndSelect(Step):
                     # but #739 F2: say WHOSE. This is the only arm that can fire for a candidate the
                     # operator has no other way to place — `sel.choices` names a winner only when one
                     # source offered several versions — so worded bare it read as an overshoot on the
-                    # SHIPPED lyrics when it was on a rejected rival, a false alarm about a cook whose
+                    # SHIPPED lyrics when it was on a rejected rival, a false alarm about a process whose
                     # published text does not run past the audio at all. `is_published` is already in
                     # scope and both sibling arms state it; state it here too.
                     verdict = (
@@ -411,7 +411,7 @@ class GradeAndSelect(Step):
                     # FRACTION from the composite score — a COMPARATIVE penalty — so an overshooter
                     # leading a fitting rival by more than that fraction publishes with the fitting
                     # rival in the pool the whole time. Claiming "no candidate that fits the audio"
-                    # from `is_published` was false on every such cook, and false in the direction that
+                    # from `is_published` was false on every such process, and false in the direction that
                     # ends the investigation: told nothing fit, the operator hunts a new lyrics source
                     # instead of inspecting the text that was fetched, graded, and narrowly lost.
                     verdict = "past the OVERSHOOT limit — PUBLISHED anyway"
@@ -508,7 +508,7 @@ class TimeTexts(Step):
         if ctx.audio.vocals_path is None:
             ctx.note(
                 "no vocals stem — aligning against the MIX, which is materially less accurate. "
-                "Re-cook to get a stem."
+                "Re-process to get a stem."
             )
 
         sel = ctx.lyrics.selection
@@ -696,7 +696,7 @@ class TimeTexts(Step):
             raise RuntimeError("text was acquired but nothing could be timed (no word or line sync)")
         ctx.out.artifacts["lyrics"] = {"candidates": candidates}
         # Persist WHY this lyric won, not just which one. `sel.choices` already carries every rejected
-        # label with its score, `decided_by` and the baseline vote count; those reach the cook log via
+        # label with its score, `decided_by` and the baseline vote count; those reach the process log via
         # summary() above but the log rotates and is per-container. Crossing them to durable state here
         # is the whole of #669 — the audit trail can then say which of #542's arms fired for a mis-pick.
         if sel is not None:
@@ -761,7 +761,7 @@ def _pinned_ref(ctx: Ctx) -> str | None:
     with `ctx.job.media_dir` to both READ a stored doc and WRITE the re-timed one, so an escaping key
     would point the align step at a file outside the store. The core's own `safeMediaPath` rejects the
     same shapes; the worker does not take that on trust, because the worker is the side holding the file
-    handle. A refused key is never silently downgraded to a normal cook — AcquireTexts STOPs and says so.
+    handle. A refused key is never silently downgraded to a normal process — AcquireTexts STOPs and says so.
     """
     ref = str(ctx.params.get("pinnedRef") or "").strip()
     if not ref or os.path.isabs(ref) or ".." in ref.replace("\\", "/").split("/"):
@@ -873,7 +873,7 @@ def _time_one(
          discarding them would be strictly worse output for no saving, since no alignment pass is
          involved either way.
       2. `lines` mode then skips forced alignment entirely rather than failing it: one fewer ML pass per
-         cook, at the cost of the bouncing ball. It takes the SAME path the aligner's failure fallback
+         process, at the cost of the bouncing ball. It takes the SAME path the aligner's failure fallback
          takes, so there is one line-sync implementation rather than two that can drift.
       3. Otherwise force-align, and on ANY aligner failure fall back to the source's own line timings.
 

@@ -176,8 +176,8 @@ test('every result surface is gated on searchActive — an empty box shows the q
 	// Every result block that renders a SongRow inside <main> is inside a `{#if searchActive…}`. Counted
 	// rather than named, so a block added tomorrow is covered without editing this list.
 	const gated = main.match(/\{#if searchActive\b/g) ?? [];
-	expect(gated.length).toBeGreaterThanOrEqual(3); // back control, raw results, cooking, ready
-	for (const gate of ['{#if searchActive && cookingRows.length}']) expect(main).toContain(gate);
+	expect(gated.length).toBeGreaterThanOrEqual(3); // back control, raw results, processing, ready
+	for (const gate of ['{#if searchActive && processingRows.length}']) expect(main).toContain(gate);
 
 	// The retired mode must not linger anywhere in <main>.
 	expect(main).not.toContain('{#if browsing');

@@ -60,7 +60,7 @@ def probe_all(
     roformer_bin: str = "bs-roformer-infer",
     audiosep_bin: str = "audio-separator",
 ) -> list[Probe]:
-    """Probe every capability this worker could advertise. Order is the cook order, so the startup
+    """Probe every capability this worker could advertise. Order is the process order, so the startup
     log reads as the pipeline it describes."""
     probes: list[Probe] = []
 
@@ -133,7 +133,7 @@ def missing_js_runtime(*, ytdlp_bin: str = "yt-dlp") -> str | None:
 
     YouTube's player challenge (the signature and `n` parameters) cannot be solved without a JS
     runtime, and the degradation is silent and total: extraction narrows until no audio-only format
-    resolves at all, so every cook dies at download with "Requested format is not available" — which
+    resolves at all, so every process dies at download with "Requested format is not available" — which
     reads as a broken worker rather than a missing dependency.
 
     Deliberately a WARNING, not a veto on `fetch:ytdlp`. Making it fatal would strip the capability
@@ -219,8 +219,8 @@ def narrow_for_backend(
     module or CLI is present — but #119 made the resolved backend DRIVE which demucs engine runs, and
     only `torch` has an implementation. So an Apple-Silicon box with `demucs` importable AND
     `demucs-mlx` importable proves `stems`, AUTO-resolves the backend to `mlx`, and advertises `stems`
-    anyway — then kills every cook it is handed when `engine_for("demucs", backend="mlx")` raises at
-    plan selection (the advertise→cook→die failure this module exists to remove). Narrowing here makes
+    anyway — then kills every process it is handed when `engine_for("demucs", backend="mlx")` raises at
+    plan selection (the advertise→process→die failure this module exists to remove). Narrowing here makes
     the box refuse the work at boot instead: honest, and diagnosable from the startup log.
 
     Only `stems` is backend-driven. `stems:roformer` runs through its own CLI regardless of the demucs
@@ -237,7 +237,7 @@ def narrow_for_backend(
     narrowed = tuple(c for c in capabilities if c != "stems")
     warning = (
         f"dropping capability 'stems': the resolved separator backend {backend!r} has no demucs "
-        "engine implementation, so this box would accept stems cooks and then fail every one of them "
+        "engine implementation, so this box would accept stems processes and then fail every one of them "
         "non-retryably at plan selection. Set ENCORE_SEPARATOR_BACKEND=torch to run the portable "
         "engine, or leave it unset to auto-select an available backend."
     )

@@ -78,7 +78,7 @@ def test_no_vocals_stem_is_reported_rather_than_silent():
 
 
 def test_a_request_that_satisfies_everything_reports_nothing():
-    """No noise on the happy path — a log line per source every cook would train the operator to skim."""
+    """No noise on the happy path — a log line per source every process would train the operator to skim."""
     sources, notes = build(full_request())
     assert notes == []
     assert len(sources) == len(SPECS)

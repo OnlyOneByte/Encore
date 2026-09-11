@@ -13,7 +13,7 @@ frames were retired; the archive docs that cited them carry a note saying so.
 
 The frames are **generated, not hand-taken**: each one is the real app driven into that state through
 its real controls by `apps/core/e2e/capture.mjs`. That matters because the states worth looking at are
-the ones a guest actually hits — a song cooking in the rotation, the sheet pulled up, the ball sitting
+the ones a guest actually hits — a song processing in the rotation, the sheet pulled up, the ball sitting
 on the word being sung — and none of them are reachable by opening a URL.
 
 `phone-ui-mock.html` stays: it is the original hand-drawn token source `app.css` was ported from, not a
@@ -34,12 +34,12 @@ prefix; leave it alone unless you are deliberately producing a set that is *not*
 
 **Two things decide whether the interesting half of the set is real, and both fail quietly.**
 
-1. **A media volume with genuinely cooked songs** — stems, lyrics, and a `songProfile`. `bun run
+1. **A media volume with genuinely processed songs** — stems, lyrics, and a `songProfile`. `bun run
    e2e:seed` writes *undecodable placeholders*: enough for search, queueing and rotation, but the song
    cannot play, so every playing/lyrics/stage-look frame degrades to a lobby or a cannot-play screen.
    The capture says which frames it skipped and why, so check that summary rather than the file count.
-   Songs cooked before the song-profile feature landed have no profile and therefore never leave
-   `cooking`, which looks identical to having no worker.
+   Songs processed before the song-profile feature landed have no profile and therefore never leave
+   `processing`, which looks identical to having no worker.
 2. **Playback actually advancing.** Headless Chromium will not start an unmuted media element without
    a user gesture, so `--autoplay-policy=no-user-gesture-required` is necessary — and *not sufficient*.
    The capture starts the element by hand and then **verifies the position moved** before it trusts any

@@ -136,9 +136,9 @@ export const SEL = {
 	queueRow: '.qrow',
 	queueTitle: '.qrow .t',
 	/*
-	 * A song cooking in the rotation. ProcessingCard renders `class="qrow proc ..."`, so `.proc` is a
+	 * A song processing in the rotation. ProcessingCard renders `class="qrow proc ..."`, so `.proc` is a
 	 * SUBSET of `.qrow`, not a sibling of it — the flow's `queued + processing > 0` therefore
-	 * double-counts a cooking card. Harmless for an existence check, and named here so nobody later
+	 * double-counts a processing card. Harmless for an existence check, and named here so nobody later
 	 * reads an exact total off the pair.
 	 */
 	processing: '.proc',
@@ -532,7 +532,7 @@ export const HOOKS: Hook[] = [
 		id: 'sing',
 		file: 'src/lib/components/SongRow.svelte',
 		anchor: 'class="sing"',
-		why: 'a raw song has ONE action that both queues and starts the cook'
+		why: 'a raw song has ONE action that both queues and starts the process'
 	},
 	{
 		id: 'queueRow',
@@ -544,7 +544,7 @@ export const HOOKS: Hook[] = [
 		id: 'processing',
 		file: 'src/lib/components/ProcessingCard.svelte',
 		anchor: '.proc',
-		why: 'a cooking song holds its rotation slot; .proc is a subset of .qrow, so either class proves it'
+		why: 'a processing song holds its rotation slot; .proc is a subset of .qrow, so either class proves it'
 	},
 	// transport — on the now-playing HERO since #832 (direction A). The SELECTORS are unchanged (same
 	// aria-labels), so the driven flow is untouched; only which file to look in moved.

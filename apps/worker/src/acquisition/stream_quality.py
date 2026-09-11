@@ -1,6 +1,6 @@
 """Source-audio stream quality policy. PURE -- no network, no subprocess, no yt-dlp import.
 
-WHY THIS EXISTS. This module decides which audio the whole cook pipeline consumes, and that decision
+WHY THIS EXISTS. This module decides which audio the whole process pipeline consumes, and that decision
 is unrecoverable: the separator, the lossless FLAC instrumental, and the ASR lyrics tier all inherit
 whatever arrives here. Encoding the instrumental as FLAC cannot restore fidelity that was discarded at
 download time, so this is the upstream-most quality lever Encore has.
@@ -23,7 +23,7 @@ from __future__ import annotations
 #: The final branch is a bare `best`, NOT a bare `bestaudio`. Every `bestaudio*` branch requires an
 #: audio-only (adaptive/DASH) stream to exist, and there are real videos where none does -- when
 #: YouTube refuses the player API, the only surviving format can be the legacy MUXED `18`
-#: (360p mp4, AAC 128k). Against such a video every `bestaudio` branch misses and the cook dies at
+#: (360p mp4, AAC 128k). Against such a video every `bestaudio` branch misses and the process dies at
 #: download with "Requested format is not available", which is strictly WORSE than yt-dlp's own
 #: default (it would have fallen back to `best`). `best` restores the guarantee this selector is
 #: supposed to make: it can only ever REORDER what yt-dlp would have taken, never reduce what is

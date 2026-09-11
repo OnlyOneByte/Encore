@@ -1,12 +1,12 @@
 <!--
   ── ENCORE DEVIATIONS (#913 S6) ───────────────────────────────────────────────────────────────────
-  Encore's cook bar, replacing the registry's flat `bg-muted` / `bg-primary` pair. Both call sites —
+  Encore's process bar, replacing the registry's flat `bg-muted` / `bg-primary` pair. Both call sites —
   ProcessingCard and SongRow — carried the SAME hand-rolled idiom (`.bar` + an `<i>` scaled from the
   left edge), differing only in height, so this consolidates a duplicate rather than restyling one.
 
   1. What the registry does NOT give these sites, and why the swap is worth making at all:
      `role="progressbar"` with `aria-valuenow`/`min`/`max`. Neither hand-rolled bar had any of it, so
-     a cook's progress was invisible to assistive tech. Bits UI supplies it.
+     a process's progress was invisible to assistive tech. Bits UI supplies it.
 
   2. The fill is `var(--grad)`, Encore's gradient, not a flat `bg-primary`.
 

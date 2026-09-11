@@ -1,4 +1,4 @@
-// The guiding-track backfill: which cooked songs need a vocals ref, and the existence-then-loudness
+// The guiding-track backfill: which processed songs need a vocals ref, and the existence-then-loudness
 // scan that links them. Fully injected IO — no disk, no ffmpeg.
 import { describe, it, expect } from 'bun:test';
 import { needsVocalsBackfill, candidateVocalsRefs, backfillVocalsRefs, type VocalsBackfillIO } from './vocals-backfill';
@@ -16,7 +16,7 @@ const m = (id: string, over: Partial<Media> = {}): Media => ({
 });
 
 describe('needsVocalsBackfill', () => {
-	it('selects cooked songs with no vocals ref', () => {
+	it('selects processed songs with no vocals ref', () => {
 		expect(needsVocalsBackfill([m('a'), m('b')])).toEqual(['a', 'b']);
 	});
 
@@ -24,7 +24,7 @@ describe('needsVocalsBackfill', () => {
 		expect(needsVocalsBackfill([m('a', { vocalsRef: 'derived/stems/a-vocals.m4a' })])).toEqual([]);
 	});
 
-	it('skips uncooked songs — they get a ref through the normal cook', () => {
+	it('skips unprocessed songs — they get a ref through the normal process', () => {
 		expect(needsVocalsBackfill([m('a', { stemStatus: 'none', instrumentalRef: undefined })])).toEqual([]);
 		expect(needsVocalsBackfill([m('a', { stemStatus: 'queued', instrumentalRef: undefined })])).toEqual([]);
 	});
@@ -40,7 +40,7 @@ describe('candidateVocalsRefs', () => {
 	});
 
 	it('also offers the LEGACY sibling of an older instrumental ref', () => {
-		// songs cooked under the older layout keep their own extension; deriving only the modern key
+		// songs processed under the older layout keep their own extension; deriving only the modern key
 		// would silently miss them
 		const legacy = m('a', { instrumentalRef: 'derived/stems/a-instrumental.wav' });
 		expect(candidateVocalsRefs(legacy)).toContain('derived/stems/a-vocals.wav');
@@ -51,16 +51,16 @@ describe('candidateVocalsRefs', () => {
 		expect(new Set(refs).size).toBe(refs.length);
 	});
 
-	// #480 CRUX: flipping VOCALS_EXT to FLAC changes only what NEW cooks resolve. A stored legacy .m4a
+	// #480 CRUX: flipping VOCALS_EXT to FLAC changes only what NEW processes resolve. A stored legacy .m4a
 	// vocals ref must keep resolving as-is (it is never re-derived, only new output uses the constant),
-	// and a legacy .m4a-instrumental cook must still surface its .m4a vocals sibling. Existing m4a files
+	// and a legacy .m4a-instrumental process must still surface its .m4a vocals sibling. Existing m4a files
 	// are never recompressed (retention.ts isLegacyStemRef is WAV-only); only new stems land as .flac.
-	it('#480: a legacy m4a-instrumental cook still surfaces its .m4a vocals sibling (never re-derived)', () => {
+	it('#480: a legacy m4a-instrumental process still surfaces its .m4a vocals sibling (never re-derived)', () => {
 		const legacyM4a = m('a', { instrumentalRef: 'derived/stems/a-instrumental.m4a' });
 		expect(candidateVocalsRefs(legacyM4a)).toContain('derived/stems/a-vocals.m4a');
 	});
 
-	it('#496 G4: a FLAC-instrumental interim cook still surfaces its .m4a vocals sibling', () => {
+	it('#496 G4: a FLAC-instrumental interim process still surfaces its .m4a vocals sibling', () => {
 		// The finding #488 re-measured: once VOCALS_EXT is .flac, an ext-blind swap on a .flac
 		// instrumental names only -vocals.flac, so a row that never stored a ref and left an interim
 		// .m4a vocals stem on disk becomes unfindable. The fallback must offer EVERY known vocals

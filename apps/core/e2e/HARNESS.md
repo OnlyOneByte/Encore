@@ -14,7 +14,7 @@ Two files close that:
 | File | What it does |
 |---|---|
 | `wav.mjs` | Emits real 16-bit PCM WAV by hand — `tone()` for audible audio, `silence()` for the digital-silence floor a guard must refuse. No encoder needed. |
-| `fake-stems-worker.mjs` | Dials home like the Python worker, claims real `fetch`/`stems`/`align` jobs, and publishes real audio. Runs the whole core-side cook path. |
+| `fake-stems-worker.mjs` | Dials home like the Python worker, claims real `fetch`/`stems`/`align` jobs, and publishes real audio. Runs the whole core-side process path. |
 
 **Why emit instead of encode.** Both ffmpeg builds on this host are decode-only — no muxers, no
 encoders, no `lavfi`, not even the `volumedetect` filter the loudness probe shells out to — and there
@@ -98,7 +98,7 @@ EPORT=$PORT MEDIA_DIR="$SCRATCH/media" nohup bun e2e/fake-stems-worker.mjs > "$S
 
 `bun run build` must have run once for the UI to exist; the server warns loudly if it has not.
 
-## Cook a song so there is something to sing
+## Process a song so there is something to sing
 
 ```bash
 curl -s -c "$SCRATCH/jar" -X POST "http://127.0.0.1:$PORT/api/join" \
@@ -108,7 +108,7 @@ MID=$(curl -s "http://127.0.0.1:$PORT/api/search?q=caroline" \
   | bun -e 'const d=await Bun.stdin.json();
             console.log([...d.ready,...d.results].find(x=>x.source==="local").id)')
 
-curl -s -b "$SCRATCH/jar" -X POST "http://127.0.0.1:$PORT/api/make-karaoke" \
+curl -s -b "$SCRATCH/jar" -X POST "http://127.0.0.1:$PORT/api/process" \
   -H 'content-type: application/json' -d "{\"mediaId\":\"$MID\"}"
 ```
 
@@ -125,11 +125,11 @@ The interesting defects are all in the unhappy paths. Set these on `fake-stems-w
 | Env | Injects |
 |---|---|
 | `FAKE_SILENT_INSTRUMENTAL=1` | floor-level instrumental — the guard must refuse to publish it |
-| `FAKE_SILENT_VOCALS=1` | floor-level vocals — must **not** fail the cook, the guide track is optional |
+| `FAKE_SILENT_VOCALS=1` | floor-level vocals — must **not** fail the process, the guide track is optional |
 | `FAKE_SKIP_WRITE=1` | a ref reported for a file never written — the unservable path |
 | `FAKE_NO_PROFILE=1` | completion with no `songProfile` — the gate must not deadlock |
 | `FAKE_FAIL=stems` | fail that job type instead of completing |
-| `FAKE_SLOW_MS=1500` | dwell between progress frames, to watch the cooking UI |
+| `FAKE_SLOW_MS=1500` | dwell between progress frames, to watch the processing UI |
 
 ## Asserting on audio
 
@@ -143,7 +143,7 @@ decoded bytes, silent room.
 
 **Autoplay is the trap this harness fell into, so read this before copying a launch flag.** Granting
 `--autoplay-policy=no-user-gesture-required` proves playback in an environment **no television is
-ever in**. Measured side by side on a real cooked song:
+ever in**. Measured side by side on a real processed song:
 
 | Launch | paused | currentTime | decoded bytes |
 |---|---|---|---|

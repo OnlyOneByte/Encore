@@ -270,11 +270,11 @@ try {
 		check('the unified search box returns rows', true, `${rows} rows`);
 
 		/*
-		 * A fresh install has NO ready songs — nothing has been cooked yet — so results are raw and carry
+		 * A fresh install has NO ready songs — nothing has been processed yet — so results are raw and carry
 		 * `.sing` rather than `.add`. Both are queueing actions and the flow takes whichever is offered,
 		 * because insisting on `.add` would make this assertion pass only on a machine that had already
-		 * been used. The raw path is also the more interesting one: `.sing` queues AND starts a cook, and
-		 * rotation is supposed to HOLD the slot while it cooks.
+		 * been used. The raw path is also the more interesting one: `.sing` queues AND starts a process, and
+		 * rotation is supposed to HOLD the slot while it processes.
 		 */
 		const readyCount = await maya.count(SEL.addTurn);
 		const rawCount = await maya.count(SEL.sing);
@@ -305,7 +305,7 @@ try {
 		 * The song can be in the rotation in THREE shapes, and the first song of the night is the one
 		 * that is not a row: an idle room auto-starts the add, the entry's status becomes 'playing', and
 		 * `queued` filters a playing entry out — so it renders on the HERO instead (#832). It reads as a
-		 * `.qrow` when someone else is already singing, and as `.proc` while it cooks. The invariant is
+		 * `.qrow` when someone else is already singing, and as `.proc` while it processes. The invariant is
 		 * "the singer is in the rotation", so all three count; asserting only `.qrow` would report an
 		 * empty rotation for a room whose first song is playing perfectly.
 		 */
@@ -313,7 +313,7 @@ try {
 		check(
 			'queueing puts the singer in the rotation',
 			queued + processing + heroSong.length > 0,
-			`${queued} ${SEL.queueRow} (of which ${processing} cooking — ProcessingCard carries both classes), hero=${JSON.stringify(heroSong)} — a cooking song HOLDS its slot and a PLAYING one is the hero, which is why all three count`
+			`${queued} ${SEL.queueRow} (of which ${processing} processing — ProcessingCard carries both classes), hero=${JSON.stringify(heroSong)} — a processing song HOLDS its slot and a PLAYING one is the hero, which is why all three count`
 		);
 
 		// ── cross-client sync ───────────────────────────────────────────────
@@ -366,14 +366,14 @@ try {
 			);
 		} else {
 			/*
-			 * Nothing playable, which is CORRECT here: the queued song is still cooking and this
+			 * Nothing playable, which is CORRECT here: the queued song is still processing and this
 			 * environment has no worker to finish it. So assert the OBSERVABLE requirement rather than an
 			 * internal state — the TV must not sit on a blank stage or a stale lower-third; it has to say
 			 * something about why nothing is playing.
 			 *
 			 * Deliberately NOT asserting `.state-waiting` here. screen.ts documents `waiting` as "something
-			 * is queued but its stems are still cooking", but reaching it requires the PLAYER to be
-			 * actively holding, so a queued-but-never-started cook falls through to the lobby copy
+			 * is queued but its stems are still processing", but reaching it requires the PLAYER to be
+			 * actively holding, so a queued-but-never-started process falls through to the lobby copy
 			 * ("Waiting for someone to pick a song…") even though someone has picked one. That is
 			 * pre-existing behaviour, not something this branch changed, and pinning a test to the current
 			 * outcome would freeze a wording bug in place. Flagged instead of encoded.

@@ -156,7 +156,7 @@
 	 */
 	--on-accent: #ffffff;
 
-	/* Surfaces tinted toward the accent, for a row that is cooking or is yours. Tokens because the
+	/* Surfaces tinted toward the accent, for a row that is processing or is yours. Tokens because the
 	   codebase kept re-inventing them as one-off hexes, which is what breaks a theme swap. */
 	--card-tint: #201a2e;
 	--card-tint2: #2a2440;
@@ -628,12 +628,12 @@
 	--tv-attract-right: min(600px, 32vw);
 	/* The attract panel's own QR (not the --tv-qr hero): 230px in the mockup, in vmin so it grows. */
 	--tv-attract-qr: clamp(190px, 16vmin, 300px);
-	/* The full-screen takeover's family-coloured left border (Next-up / Still-cooking / Skipping). One
+	/* The full-screen takeover's family-coloured left border (Next-up / Still-processing / Skipping). One
 	   token so all three states share the exact stripe width; the COLOUR is per-state. */
 	--tv-takeover-border: 14px;
-	/* The still-cooking progress bar geometry (bounded 3-step). */
-	--tv-cook-bar-w: min(760px, 42vw);
-	--tv-cook-bar-h: 14px;
+	/* The still-processing progress bar geometry (bounded 3-step). */
+	--tv-process-bar-w: min(760px, 42vw);
+	--tv-process-bar-h: 14px;
 	/* Horizontal clearance the lobby roster strip must keep from the bottom-right corner controls
 	   (.fs-btn / the join corner badge, both position:absolute at right:var(--tv-safe-x), above the
 	   strip in the paint order). = the control's 88px cap + the safe inset + a gap, applied to BOTH
@@ -1030,11 +1030,11 @@ body {
  */
 
 /*
- * A ROW in one of the phone's three lists (a search result, a rotation entry, a cook in progress).
+ * A ROW in one of the phone's three lists (a search result, a rotation entry, a process in progress).
  *
  * These had drifted by a pixel each: the search row was gap 11 / padding 10, the two queue rows gap
  * 12 / padding 11px 12px. Nobody chose that -- it is what three files editing the same shape
- * separately produces -- and it shows when a cooking card sits directly above a ready row. Compose it
+ * separately produces -- and it shows when a processing card sits directly above a ready row. Compose it
  * as `class="card list-row"`; a row that genuinely needs to differ overrides in its own scoped style,
  * which outranks this by specificity.
  */

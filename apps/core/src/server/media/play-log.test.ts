@@ -92,7 +92,7 @@ describe('play log — wired to the tracker that already dedupes emits', () => {
 		const tracker = new PlayTracker((mediaId, entryId) => l.record(mediaId, entryId, now));
 
 		tracker.onNowPlaying({ id: 'e1', mediaId: 'm1' });
-		tracker.onNowPlaying({ id: 'e1', mediaId: 'm1' }); // a finished cook re-broadcast nowplaying
+		tracker.onNowPlaying({ id: 'e1', mediaId: 'm1' }); // a finished process re-broadcast nowplaying
 		tracker.onNowPlaying({ id: 'e1', mediaId: 'm1' });
 		now = T0 + 60_000;
 		tracker.onNowPlaying({ id: 'e2', mediaId: 'm2' });

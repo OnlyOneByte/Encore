@@ -269,7 +269,7 @@ def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
     argv = fetch_mod.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
     # Assert the POLICY (a codec-ranked selector whose final fallback can always download something)
     # rather than one literal token. The last branch is `best`, not `bestaudio`: a `bestaudio` branch
-    # needs an audio-only stream to exist, and a muxed-only video would otherwise fail the cook.
+    # needs an audio-only stream to exist, and a muxed-only video would otherwise fail the process.
     assert "-f" in argv
     selector = argv[argv.index("-f") + 1]
     assert selector.split("/")[-1] == "best", selector
@@ -456,7 +456,7 @@ async def test_subprocess_runner_kills_and_reaps_the_child_when_the_generator_is
         await _asyncio.sleep(0.05)
     assert not _alive(child_pid), (
         f"grandchild {child_pid} survived cancellation — the cancel-path unwind did not kill+reap "
-        "the process tree, so a cancelled cook would leak its demucs -j workers"
+        "the process tree, so a cancelled process would leak its demucs -j workers"
     )
 
 
@@ -528,9 +528,9 @@ def test_resolve_demucs_model_unknown_is_structurally_non_retryable():
 # Before this fix, backends.resolve_backend picked a backend (mlx on an Apple-Silicon box) that
 # reached nothing but a startup print: stems_runner had no backend parameter, engine_for always built
 # the torch DemucsEngine, and facts.backend was the hardcoded class attribute "torch". So a Mac
-# announced "separator backend: mlx" at startup and then recorded "torch" for every cook — the log
+# announced "separator backend: mlx" at startup and then recorded "torch" for every process — the log
 # lied. These pin the two halves of the wire: torch is recorded because it RAN, and an mlx resolution
-# builds the (unimplemented) MLX engine that refuses loudly rather than a torch cook wearing an mlx label.
+# builds the (unimplemented) MLX engine that refuses loudly rather than a torch process wearing an mlx label.
 def test_demucs_engine_backend_is_the_resolved_value_not_a_hardcoded_constant():
     """The engine reports the backend it was CONSTRUCTED with, so facts.backend follows the resolution.
 
@@ -550,7 +550,7 @@ def test_engine_for_mlx_backend_builds_the_mlx_engine_not_torch():
     torch DemucsEngine under an mlx label.
 
     This is the machine-checkable form of the log-lies-to-you bug (#119): an mlx resolution must not
-    silently produce a torch cook. #595 implemented the MLX engine, so it now builds and runs rather than
+    silently produce a torch process. #595 implemented the MLX engine, so it now builds and runs rather than
     refusing — but it is still a distinct engine reporting backend 'mlx', never the torch DemucsEngine.
     """
     from src.separation.engines import DemucsEngine, MlxDemucsEngine, engine_for
@@ -565,8 +565,8 @@ def test_engine_for_mlx_backend_builds_the_mlx_engine_not_torch():
 
 
 @pytest.mark.asyncio
-async def test_a_torch_stems_cook_records_torch_because_torch_ran(tmp_path):
-    """End-to-end: a stems cook resolved to the torch backend records `facts.backend == 'torch'`, and
+async def test_a_torch_stems_process_records_torch_because_torch_ran(tmp_path):
+    """End-to-end: a stems process resolved to the torch backend records `facts.backend == 'torch'`, and
     the value came from the backend threaded through stems_runner, not a constant."""
     runner = fake_runner({"yt-dlp": ["[download] 100% of 4MiB"], "demucs": ["100%|██| 2/2"]})
     proc = plans.stems_runner(runner=runner, backend="torch")
@@ -578,14 +578,14 @@ async def test_a_torch_stems_cook_records_torch_because_torch_ran(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_an_mlx_resolved_stems_cook_runs_demucs_mlx_and_derives_the_instrumental(tmp_path):
+async def test_an_mlx_resolved_stems_process_runs_demucs_mlx_and_derives_the_instrumental(tmp_path):
     """The wire, end-to-end (#595): stems_runner(backend='mlx') runs the `demucs-mlx` CLI (never the
     torch `demucs` CLI), derives the instrumental with an ffmpeg mix-minus pass over the non-vocal
     stems, publishes it, and records facts.backend == 'mlx' because MLX actually RAN.
 
-    Before #595 this cook failed loudly at construction ('demucs-mlx engine is not implemented'); the
+    Before #595 this process failed loudly at construction ('demucs-mlx engine is not implemented'); the
     MLX runtime is now implemented, so it completes. The torch demucs CLI must still never run for an
-    mlx cook — that is the #119 honesty contract preserved.
+    mlx process — that is the #119 honesty contract preserved.
     """
     ran: list[str] = []
 
@@ -618,7 +618,7 @@ async def test_an_mlx_resolved_stems_cook_runs_demucs_mlx_and_derives_the_instru
     assert completes[0].facts["engine"] == "demucs"
     # demucs-mlx ran; the torch demucs CLI never did.
     assert "demucs-mlx" in ran
-    assert "demucs" not in ran, "the torch demucs CLI must never run for an mlx-resolved cook"
+    assert "demucs" not in ran, "the torch demucs CLI must never run for an mlx-resolved process"
     # the mix-minus ffmpeg pass ran (an ffmpeg invocation whose non-vocal inputs feed amix normalize=0)
     ffmpeg_calls = [a for a in ran if a == "ffmpeg"]
-    assert ffmpeg_calls, "the mix-minus ffmpeg derivation must run for an mlx cook"
+    assert ffmpeg_calls, "the mix-minus ffmpeg derivation must run for an mlx process"

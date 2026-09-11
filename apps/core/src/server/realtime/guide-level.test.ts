@@ -31,7 +31,7 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-const COOKED = {
+const PROCESSED = {
 	stemStatus: 'ready' as const,
 	lyricsStatus: 'ready' as const,
 	instrumentalRef: 'derived/stems/m-instrumental.flac',
@@ -45,11 +45,11 @@ function harness() {
 		state,
 		publish: (e) => published.push(e),
 		mediaById: new Map<string, Media>([
-			// a full cook: instrumental AND vocals → can offer a guiding track
-			['m-guide', media('m-guide', { ...COOKED, vocalsRef: 'derived/stems/m-guide-vocals.m4a' })],
-			// cooked but no vocals ref (separated before the ref was persisted, or the stem was silent)
-			['m-novocals', media('m-novocals', COOKED)],
-			// not cooked at all
+			// a full process: instrumental AND vocals → can offer a guiding track
+			['m-guide', media('m-guide', { ...PROCESSED, vocalsRef: 'derived/stems/m-guide-vocals.m4a' })],
+			// processed but no vocals ref (separated before the ref was persisted, or the stem was silent)
+			['m-novocals', media('m-novocals', PROCESSED)],
+			// not processed at all
 			['m-raw', media('m-raw')]
 		])
 	};
@@ -96,7 +96,7 @@ test('level 0 is an explicit OFF, distinct from null (inherit the room default)'
 	expect(state.playback.guideLevel).toBeNull(); // back to inheriting
 });
 
-test('guide is a no-op on a cooked song with no vocals stem', () => {
+test('guide is a no-op on a processed song with no vocals stem', () => {
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm-novocals') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
@@ -149,7 +149,7 @@ test('guideLevel resets on the play-from-idle song start', () => {
 });
 
 test('guideLevel and keyShift both reset at the ready-reconcile song start', () => {
-	// This site previously reset NEITHER field, so a song that started because its cook finished
+	// This site previously reset NEITHER field, so a song that started because its process finished
 	// while the room idled inherited the previous singer's transpose.
 	const { state, deps } = harness();
 	state.setPlayback({ keyShift: 4, guideLevel: 0.9 });

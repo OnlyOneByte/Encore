@@ -1,8 +1,8 @@
-// guard (issue #194): the cooking sparkle must be a SIBLING of the title text, not a child of it.
+// guard (issue #194): the processing sparkle must be a SIBLING of the title text, not a child of it.
 //
 // SongRow's `.t` is a two-line clamp: `display: -webkit-box; -webkit-line-clamp: 2; overflow: hidden`.
 // A mark rendered INSIDE `.t` is laid out on the discarded third line of a two-line-clamped title, so
-// on a phone (where a real YouTube title routinely needs both lines) the cooking mark never paints —
+// on a phone (where a real YouTube title routinely needs both lines) the processing mark never paints —
 // it renders correctly only when the title is short or the column is wide (>=820px). The fix wraps the
 // title text and the mark in a `.title-line` flex row so `.sparkle` is a `flex: 0 0 auto` sibling of
 // the clamped `.t` and always paints. This guard pins that structure so a future edit cannot re-nest
@@ -61,7 +61,7 @@ function flexOf(body: string): { grow: string | null; shrink: string | null; dec
 	return { grow, shrink, declares };
 }
 
-test('the cooking sparkle is a sibling of .t inside .title-line, never nested in the clamped .t', () => {
+test('the processing sparkle is a sibling of .t inside .title-line, never nested in the clamped .t', () => {
 	// not-vacuous: the elements the invariant is about must actually exist.
 	const titleLineOpen = src.indexOf('class="title-line"');
 	expect(titleLineOpen).toBeGreaterThanOrEqual(0);
@@ -169,7 +169,7 @@ test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item,
 test('.t does not grow and always shrinks — the clamp box hugs its text so the mark stays adjacent, on EVERY .t rule (issue #334)', () => {
 	// With flex-grow:1 (flex: 1) the two-line clamp box grew to fill the whole .title-line, pushing the
 	// flex:0 0 auto mark to the metadata column's right edge — up to 116px from a short title (#334).
-	// The mark's meaning is "this title is cooking", so it must sit beside the title, not float in the
+	// The mark's meaning is "this title is processing", so it must sit beside the title, not float in the
 	// empty tail. .t must be flex: 0 1 auto — grow 0 AND shrink 1: grow 0 stops the clamp box filling the
 	// row and floating the mark out to the column's right edge, and shrink > 0 lets the box shrink to hug
 	// its (clamped) text so the mark still sits adjacent. Pinning grow alone (#389) left a hole: setting

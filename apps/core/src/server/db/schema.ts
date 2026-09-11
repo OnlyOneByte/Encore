@@ -64,11 +64,11 @@ export const media = sqliteTable('media', {
 	durationSec: integer('duration_sec').notNull(),
 	thumbnail: text('thumbnail'),
 	// Views the source reported when this song was last seen in a search. DISPLAY ONLY — a tiebreaker
-	// between two uploads of one track, never an input to ranking, dedupe or any cook gate. Persisted
+	// between two uploads of one track, never an input to ranking, dedupe or any process gate. Persisted
 	// rather than left on the search response so a song already in the library carries it too; NULL
 	// means "never learned one", which the row renders as no chip rather than as "0 views".
 	viewCount: integer('view_count'),
-	// The lyrics half of the cook gate (see packages/shared/src/queue/gates.ts). NULL on rows written before
+	// The lyrics half of the process gate (see packages/shared/src/queue/gates.ts). NULL on rows written before
 	// the gate existed, which the gate reads as "done if a lyrics artifact is already present" so an
 	// existing library does not become unsingable on upgrade.
 	lyricsStatus: text('lyrics_status', { enum: ['none', 'queued', 'ready'] }),
@@ -83,23 +83,23 @@ export const media = sqliteTable('media', {
 	// feature survive a restart instead of silently vanishing from a library song. Nullable: absent
 	// means no guide is offered (never separated, or the stem came back silent).
 	vocalsRef: text('vocals_ref'),
-	// Signed millisecond offset of the vocals stem against the instrumental, measured at cook time (#766).
+	// Signed millisecond offset of the vocals stem against the instrumental, measured at process time (#766).
 	// INTEGER (whole ms is all the alignment ever needs — the client divides by 1000), and NULLABLE with a
 	// meaningful null: null ⇔ "never measured / row predates the feature", which guideOffsetSec() maps to 0
 	// so the song is held exactly as today. It is deliberately NOT `.notNull().default(0)` — a stored 0 and
 	// an absent value are the same behaviour, and keeping null distinct lets the operator surface tell
 	// "measured, and it was 0" apart from "we never measured this one".
 	guideOffsetMs: integer('guide_offset_ms'),
-	// The stems job's THIRD artifact: what the cook learned about the song's music — its key and the
-	// sung range — as one JSON blob (see packages/shared/src/cook/song-profile.ts, SongProfile). Stored the
+	// The stems job's THIRD artifact: what the process learned about the song's music — its key and the
+	// sung range — as one JSON blob (see packages/shared/src/process/song-profile.ts, SongProfile). Stored the
 	// same way as lyrics_candidates: nothing queries INSIDE it (transposition and range math all happen
 	// in the client from the whole record), so one JSON column beats a key_range table with no query to
 	// justify it. NULLABLE, and the null carries meaning: null ⇔ "the stems job has not run / this row
-	// predates the feature" and the stems cook gate reads that as still-cooking, whereas an all-nulls
+	// predates the feature" and the stems process gate reads that as still-processing, whereas an all-nulls
 	// profile INSIDE the JSON ⇔ "analysis ran, found nothing" and is a FINISHED song. Losing that
 	// distinction is what would strand a silent-vocal song forever — see the gate comment.
 	songProfile: text('song_profile'),
-	// Worker artifact keys. A cooked song is only fully restored if its derived artifacts come
+	// Worker artifact keys. A processed song is only fully restored if its derived artifacts come
 	// back with it: without these, a library song would replay with stems but silently lose its
 	// word-timed lyrics overlay and its scoring reference track after a restart.
 	lyricsRef: text('lyrics_ref'),
@@ -217,7 +217,7 @@ export const playbackState = sqliteTable('playback_state', {
 });
 
 // Room-level separator settings. A single-row ('singleton') table: these govern
-// cooks EVERYONE shares, so they are authoritative room state, not a per-phone preference. Read
+// processes EVERYONE shares, so they are authoritative room state, not a per-phone preference. Read
 // whole / written whole; the shared @encore/shared RoomSettings type is the source of truth for the
 // field set, and normalizeRoomSettings() gates writes so a bad payload can never persist.
 export const globalSettings = sqliteTable('global_settings', {
@@ -231,11 +231,11 @@ export const globalSettings = sqliteTable('global_settings', {
 	// fetcher its workers cannot run. `local` is never stored here — that describes one media's bytes,
 	// not a deployment default — and normalizeGlobalSettings refuses it on both read and write.
 	defaultFetcher: text('default_fetcher').notNull().default('ytdlp'),
-	// The lyrics half of a cook: which Whisper checkpoint reads the words, and how those words get
+	// The lyrics half of a process: which Whisper checkpoint reads the words, and how those words get
 	// timestamps. Global for the same reason as the fetcher — both are properties of the worker fleet
 	// (weights it must download and hold, an align model it must be able to load), not of one party.
 	// Defaults match the values the worker hardcoded before these were settings, so an existing
-	// deployment cooks identically until someone changes them.
+	// deployment processes identically until someone changes them.
 	asrModel: text('asr_model').notNull().default('base'),
 	syncMode: text('sync_mode').notNull().default('forced'),
 	// Address the TV's join QR advertises. '' = not declared, fall back to ENCORE_PUBLIC_ORIGIN and
@@ -246,7 +246,7 @@ export const globalSettings = sqliteTable('global_settings', {
 });
 
 // One party's own policy, keyed by room so multi-room is a row per room rather than a migration.
-// `max_quality_rank` is a downward-only ceiling on cook quality; NULL defers to the global default.
+// `max_quality_rank` is a downward-only ceiling on process quality; NULL defers to the global default.
 // A setting belongs here only when two rooms on one core could genuinely want different values.
 export const roomSettings = sqliteTable('room_settings', {
 	roomId: text('room_id').primaryKey(),
@@ -328,15 +328,15 @@ export const jobs = sqliteTable(
 	{
 		id: text('id').primaryKey(),
 		mediaId: text('media_id').notNull(),
-		// The cook this job belongs to — see Job.cookId in @encore/shared for why media_id cannot serve
+		// The process this job belongs to — see Job.processingId in @encore/shared for why media_id cannot serve
 		// as the grouping key. Defaulted to '' rather than left nullable so rows written before the
-		// column existed read as "no cook recorded" instead of null-checking at every call site; those
+		// column existed read as "no process recorded" instead of null-checking at every call site; those
 		// rows predate the attempt ledger and have no timings to group anyway.
-		cookId: text('cook_id').notNull().default(''),
-		// The singer who requested this cook — the authoritative attribution for the per-singer
-		// concurrent-cook cap. NULLABLE: internal callers (lyrics backfill, chained follow-up steps)
-		// impose no cap and record no singer. The cap counts a singer's live cook JOBS here rather than
-		// their queue ENTRIES, because entry (WS) and cook (HTTP) ride different transports and only the
+		processingId: text('processing_id').notNull().default(''),
+		// The singer who requested this process — the authoritative attribution for the per-singer
+		// concurrent-process cap. NULLABLE: internal callers (lyrics backfill, chained follow-up steps)
+		// impose no cap and record no singer. The cap counts a singer's live process JOBS here rather than
+		// their queue ENTRIES, because entry (WS) and process (HTTP) ride different transports and only the
 		// entry is droppable; an entry-derived cap counts zero and admits every tap while the socket is
 		// reconnecting.
 		singerId: text('singer_id'),
@@ -387,7 +387,7 @@ export const jobAttempts = sqliteTable(
 		id: text('id').primaryKey(),
 		jobId: text('job_id').notNull(),
 		mediaId: text('media_id').notNull(),
-		cookId: text('cook_id').notNull(),
+		processingId: text('processing_id').notNull(),
 		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'stems-upgrade'] }).notNull(),
 		attempt: integer('attempt').notNull().default(1),
 		workerId: text('worker_id'),
@@ -425,8 +425,8 @@ export const jobAttempts = sqliteTable(
 	(t) => ({
 		// the per-song audit page: every attempt for one song, newest last
 		byMedia: index('job_attempts_media_idx').on(t.mediaId, t.enqueuedAt),
-		// end-to-end per cook, and finding the sibling steps of one run
-		byCook: index('job_attempts_cook_idx').on(t.cookId),
+		// end-to-end per process, and finding the sibling steps of one run
+		byProcess: index('job_attempts_processing_idx').on(t.processingId),
 		// closing the in-flight attempt on a lifecycle event — the hot write path
 		byJob: index('job_attempts_job_idx').on(t.jobId),
 		// the metrics rollup: "average stems time over the last N days", grouped by step
@@ -453,7 +453,7 @@ export const plays = sqliteTable(
 		id: text('id').primaryKey(),
 		mediaId: text('media_id').notNull(),
 		// The queue entry this play came from. Carried so the same performance cannot be counted twice
-		// when a cook-completion re-emits now-playing for a song that is already on screen.
+		// when a process-completion re-emits now-playing for a song that is already on screen.
 		entryId: text('entry_id').notNull(),
 		at: integer('at').notNull()
 	},

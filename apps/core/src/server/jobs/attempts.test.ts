@@ -2,14 +2,14 @@
 // four things that were IMPOSSIBLE before it existed, because each was destroyed by in-place mutation:
 //   1. processing time separable from queue wait
 //   2. a previous attempt still readable after a retry
-//   3. which model actually ran a given cook
-//   4. one cook's steps grouped without blending in a re-cook or an upgrade
+//   3. which model actually ran a given process
+//   4. one process's steps grouped without blending in a re-process or an upgrade
 
 import { describe, expect, it } from 'bun:test';
 import { realtimeFactor, attemptSelection } from '@encore/shared';
 import { AttemptLedger } from './attempts';
 import { JobRepository } from './repository';
-import { inheritsCook } from './dispatch';
+import { inheritsProcess } from './dispatch';
 import type { DB } from '../db/index';
 import { migratedDb } from '../db/test-db';
 import { readFileSync } from 'node:fs';
@@ -203,60 +203,60 @@ describe('attempt ledger — model attribution', () => {
 	});
 });
 
-describe('cook grouping', () => {
-	it('threads one cook id through a chained run', () => {
+describe('process grouping', () => {
+	it('threads one process id through a chained run', () => {
 		const { jobs, ledger } = wired();
 		const fetch = jobs.enqueue('m1', 'fetch', 0, T0);
-		const stems = jobs.enqueue('m1', 'stems', 0, T0 + 1, fetch.cookId);
-		const align = jobs.enqueue('m1', 'align', 0, T0 + 2, stems.cookId);
+		const stems = jobs.enqueue('m1', 'stems', 0, T0 + 1, fetch.processingId);
+		const align = jobs.enqueue('m1', 'align', 0, T0 + 2, stems.processingId);
 
-		expect(stems.cookId).toBe(fetch.cookId);
-		expect(align.cookId).toBe(fetch.cookId);
-		expect(ledger.byCook(fetch.cookId).map((a) => a.jobType)).toEqual(['fetch', 'stems', 'align']);
+		expect(stems.processingId).toBe(fetch.processingId);
+		expect(align.processingId).toBe(fetch.processingId);
+		expect(ledger.byProcess(fetch.processingId).map((a) => a.jobType)).toEqual(['fetch', 'stems', 'align']);
 	});
 
-	it('gives an unchained job its own cook', () => {
+	it('gives an unchained job its own process', () => {
 		const { jobs } = wired();
 		const a = jobs.enqueue('m1', 'stems', 0, T0);
 		const b = jobs.enqueue('m2', 'stems', 0, T0 + 1);
-		expect(a.cookId).not.toBe(b.cookId);
+		expect(a.processingId).not.toBe(b.processingId);
 	});
 
-	it('excludes stems-upgrade from the cook that triggered it', () => {
-		// The rule that keeps a 43-minute background upgrade out of a 90-second cook's end-to-end.
-		expect(inheritsCook('stems')).toBe(true);
-		expect(inheritsCook('align')).toBe(true);
-		expect(inheritsCook('stems-upgrade')).toBe(false);
+	it('excludes stems-upgrade from the process that triggered it', () => {
+		// The rule that keeps a 43-minute background upgrade out of a 90-second process's end-to-end.
+		expect(inheritsProcess('stems')).toBe(true);
+		expect(inheritsProcess('align')).toBe(true);
+		expect(inheritsProcess('stems-upgrade')).toBe(false);
 	});
 
-	it('computes end-to-end for one cook without blending in a re-cook of the same song', () => {
+	it('computes end-to-end for one process without blending in a re-process of the same song', () => {
 		const { jobs, ledger } = wired();
-		// cook 1: fetch → stems, both complete
+		// process 1: fetch → stems, both complete
 		const f1 = jobs.enqueue('m1', 'fetch', 0, T0);
 		jobs.assign(f1.id, 'w1', null, T0);
 		jobs.accept(f1.id, null, T0);
 		jobs.complete(f1.id, T0 + 10_000);
-		const s1 = jobs.enqueue('m1', 'stems', 0, T0 + 10_000, f1.cookId);
+		const s1 = jobs.enqueue('m1', 'stems', 0, T0 + 10_000, f1.processingId);
 		jobs.assign(s1.id, 'w1', null, T0 + 10_000);
 		jobs.accept(s1.id, null, T0 + 10_000);
 		jobs.complete(s1.id, T0 + 100_000);
 
-		// A LATER, separate upgrade on the same song — same mediaId, different cook.
+		// A LATER, separate upgrade on the same song — same mediaId, different process.
 		const up = jobs.enqueue('m1', 'stems-upgrade', 0, T0 + 500_000);
 		jobs.assign(up.id, 'w1', null, T0 + 500_000);
 		jobs.accept(up.id, null, T0 + 500_000);
 		jobs.complete(up.id, T0 + 3_000_000);
 
-		const cook = ledger.byCook(f1.cookId);
-		const e2e = Math.max(...cook.map((a) => a.finishedAt!)) - Math.min(...cook.map((a) => a.enqueuedAt));
+		const process = ledger.byProcess(f1.processingId);
+		const e2e = Math.max(...process.map((a) => a.finishedAt!)) - Math.min(...process.map((a) => a.enqueuedAt));
 		expect(e2e).toBe(100_000); // 100s — the honest answer
 
 		// Grouping by mediaId instead would have reported ~50 minutes for a song that was singable in
-		// 100 seconds. This is exactly the distortion cookId exists to prevent.
+		// 100 seconds. This is exactly the distortion processingId exists to prevent.
 		const byMedia = ledger.byMedia('m1');
 		const wrong = Math.max(...byMedia.map((a) => a.finishedAt!)) - Math.min(...byMedia.map((a) => a.enqueuedAt));
 		expect(wrong).toBe(3_000_000);
-		expect(up.cookId).not.toBe(f1.cookId);
+		expect(up.processingId).not.toBe(f1.processingId);
 	});
 });
 
@@ -283,7 +283,7 @@ describe('the ledger is observability, never a failure mode', () => {
 
 // `AttemptLedger.allFinished` was removed in #556: it had zero callers since #472 replaced its
 // bare-row-count window with the time window `finishedSince` + `countFinished`, and the semantics it
-// still offered are the ones #472 measured as wrong (a straddling cook reports complete with an
+// still offered are the ones #472 measured as wrong (a straddling process reports complete with an
 // understated span). A public method on an exported class is invisible to the unused-EXPORT sweep
 // (#554), so nothing else in the repo would catch its reintroduction. This source scan does: it reds
 // on base, where `allFinished(` still exists at attempts.ts:142. Comments are blanked so the two
@@ -306,7 +306,7 @@ describe('the removed row-count window stays removed (#556)', () => {
 	});
 });
 
-// #669 — the variant-pick provenance must reach DURABLE state, not just the cook log. This bites the
+// #669 — the variant-pick provenance must reach DURABLE state, not just the process log. This bites the
 // whole worker→core persist mapping at the ledger seam: AttemptFacts.selection, pickFacts carrying it,
 // the open() null default, and the new job_attempts.selection column (regenerated baseline). RED on
 // base: no such field on AttemptFacts, no column — reportFacts drops it and the read comes back null.

@@ -124,7 +124,7 @@ test('FULL LIFECYCLE: hello → assign → accept → progress → complete driv
 	expect(done.status).toBe('ready'); // ← drove to ready
 	expect(done.progressPct).toBe(100);
 	// Media flips to the playable instrumental (instrumentalRef→stems key).
-	// sourceRef stays the ORIGIN so search still recognises the song as already cooked.
+	// sourceRef stays the ORIGIN so search still recognises the song as already processed.
 	const m = mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready');
 	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
@@ -464,7 +464,7 @@ test('a job that finds a worker before the TTL is unaffected (no spurious fail)'
 // These assert the full journey a duration takes: dispatch writes what was ASKED, the worker's
 // job:complete overwrites it with what actually RAN, and the row is sealed with its timings.
 
-test('a full cook records its timings, models and stage split on the attempt', () => {
+test('a full process records its timings, models and stage split on the attempt', () => {
 	const { hub, jobs, attempts, setClock } = harness();
 	jobs.enqueue('m1', 'stems', 0, T0);
 	setClock(T0 + 5_000); // 5s of queue wait
@@ -547,13 +547,13 @@ test('an older worker that reports no facts still gets a sealed, timed attempt',
 	expect(a.model).toBe('htdemucs'); // what dispatch asked for still stands
 });
 
-test('a terminally failed stems job settles the media back to un-cooked and says so', () => {
-	// The phantom cook: #onFailed used to leave stemStatus mid-flight, so isCooking stayed true, the
-	// phone row read "Making karaoke… 0%" forever and cookState refused a retry. One worker OOM made
+test('a terminally failed stems job settles the media back to un-processed and says so', () => {
+	// The phantom process: #onFailed used to leave stemStatus mid-flight, so isProcessing stayed true, the
+	// phone row read "Making karaoke… 0%" forever and processState refused a retry. One worker OOM made
 	// the song permanently unsingable with no way out but a DB edit.
 	const { hub, jobs, mediaById, broadcasts } = harness();
-	// enqueue alone does not touch the media; requestMakeKaraoke is what marks it in flight, so set the
-	// state that a real cook would have left behind.
+	// enqueue alone does not touch the media; requestProcess is what marks it in flight, so set the
+	// state that a real process would have left behind.
 	mediaById.set('m1', media('m1', { stemStatus: 'queued' }));
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
@@ -583,7 +583,7 @@ test('a failed ALIGN leaves a separated song singable — it does not settle the
 });
 
 test('a terminally failed FETCH also settles the media — the common stranding case', () => {
-	// requestMakeKaraoke marks the media cooking BEFORE the download, so a dead fetch stranded it
+	// requestProcess marks the media processing BEFORE the download, so a dead fetch stranded it
 	// exactly like a dead separation. This was the more likely of the two in practice: a missing deno
 	// or a broken yt-dlp fails every fetch on the box.
 	const { hub, jobs, mediaById } = harness();
@@ -609,7 +609,7 @@ test('a terminally failed FETCH also settles the media — the common stranding 
 // and vocal range off a song that already had them. The fix guards both setters on the accept.
 test('a refused stems-upgrade leaves the key, range, vocals and instrumental untouched', () => {
 	const { hub, jobs, mediaById } = harness();
-	// A song already cooked at the TOP of the quality ladder (ensemble, rank 45), with a real key +
+	// A song already processed at the TOP of the quality ladder (ensemble, rank 45), with a real key +
 	// range profile and a guiding-vocals ref.
 	const profile = {
 		keyTonic: 3,
@@ -689,9 +689,9 @@ test('an ACCEPTED stems-upgrade DOES swap the artifacts (the guard is not over-e
 });
 
 // ── FIX 4: the room's downward-only quality ceiling must reach dispatch ───────────────────────────
-// resolveCookSeparator was complete, tested, and had ZERO non-test callers: dispatch read
+// resolveProcessSeparator was complete, tested, and had ZERO non-test callers: dispatch read
 // global.defaultEngine/defaultModel directly, so a room set to a lower quality was ignored. The hub
-// now folds resolveCookSeparator over the effective settings before handing them to dispatch, which
+// now folds resolveProcessSeparator over the effective settings before handing them to dispatch, which
 // must lower BOTH the assigned engine/model AND the capability the stems job is routed by.
 
 function hubWithSettings(getSettings: () => EffectiveSettings) {
@@ -719,14 +719,14 @@ const assignOf = (sent: { cmd: WorkerCommand }[]) =>
 	>;
 
 test('a room quality ceiling LOWERS the stems engine, model, and routing capability', () => {
-	// Global default is a high-tier roformer cook; the room caps quality down to the demucs tier.
+	// Global default is a high-tier roformer process; the room caps quality down to the demucs tier.
 	const effective: EffectiveSettings = {
 		global: { ...DEFAULT_EFFECTIVE_SETTINGS.global, defaultEngine: 'roformer', defaultModel: 'bs-roformer-1297' }, // rank 35
 		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, maxQualityRank: 10 } // cap at the demucs:htdemucs tier
 	};
 	const { hub, jobs, sent } = hubWithSettings(() => effective);
 	jobs.enqueue('m1', 'stems', 0, T0);
-	// A demucs-only worker: it could NOT serve a roformer cook, so the fact it gets the job proves the
+	// A demucs-only worker: it could NOT serve a roformer process, so the fact it gets the job proves the
 	// capability was lowered to 'stems' (demucs), not left at 'stems:roformer'.
 	hub.handle({ type: 'worker:hello', workerId: 'w-demucs', capabilities: ['stems'], concurrency: 1, version: '1' });
 
@@ -743,7 +743,7 @@ test('with NO room cap, dispatch uses the global default unchanged (ceiling is d
 	};
 	const { hub, jobs, sent } = hubWithSettings(() => effective);
 	jobs.enqueue('m1', 'stems', 0, T0);
-	// The roformer worker is required now: an uncapped high-tier cook must route to 'stems:roformer'.
+	// The roformer worker is required now: an uncapped high-tier process must route to 'stems:roformer'.
 	hub.handle({
 		type: 'worker:hello',
 		workerId: 'w-rof',
@@ -758,13 +758,13 @@ test('with NO room cap, dispatch uses the global default unchanged (ceiling is d
 	expect(assign.params.model).toBe('bs-roformer-1297');
 });
 
-// ── #90: an unservable cook TTL-killed by dispatch() must settle its readiness gate ──
+// ── #90: an unservable process TTL-killed by dispatch() must settle its readiness gate ──
 // The TTL branch in dispatch() moves a permanently-unservable job to terminal `failed`, but before
 // #90 it left the media's gate mid-flight forever: readyToSing never flips, rotation holds the queue
 // entry on every pass, and the song never plays even with its instrumental on disk. The existing
 // 'unservable job past the TTL is failed' test asserts only job.status + broadcast — never the media.
 // These assert the MEDIA state the issue names as the missing coverage.
-test('#90 TTL: a dead stems cook settles the STEMS gate back to un-cooked', () => {
+test('#90 TTL: a dead stems process settles the STEMS gate back to un-processed', () => {
 	const { hub, jobs, mediaById, setClock } = harness();
 	mediaById.set('m1', media('m1', { stemStatus: 'queued' })); // separation in flight
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
@@ -780,7 +780,7 @@ test('#90 TTL: a dead stems cook settles the STEMS gate back to un-cooked', () =
 	expect(mediaById.get('m1')!.stemStatus).toBe('none');
 });
 
-test('#90 TTL: a dead align cook settles the LYRICS gate on an already-playable song', () => {
+test('#90 TTL: a dead align process settles the LYRICS gate on an already-playable song', () => {
 	const { hub, jobs, mediaById, setClock } = harness();
 	// Instrumental on disk, song plays; only the align follow-up is unservable.
 	mediaById.set(
@@ -865,7 +865,7 @@ test('#524: a terminal job:failed frees EXACTLY one slot on a two-slot worker (n
 	expect(registry.get('w1')!.slotsFree).toBe(1); // EXACTLY one freed
 });
 
-// #669 — a lyrics mis-pick must be diagnosable from durable state, not just the cook log. The worker
+// #669 — a lyrics mis-pick must be diagnosable from durable state, not just the process log. The worker
 // carries the VariantChoice provenance on job:complete; the hub must persist it on the align attempt so
 // /metrics/<mediaId> can later say WHICH candidate lost and whether a baseline even voted. On base the
 // wire field is dropped end-to-end (no AttemptFacts.selection, no column, no attemptSelection), so the
@@ -900,7 +900,7 @@ test('persists the variant-pick provenance from job:complete so a mis-pick is di
 
 	hub.handle({ type: 'job:complete', workerId: 'w1', jobId: job.id, mediaUri: 'derived/lyrics/m1.json', selection });
 
-	// Retrievable from DURABLE state after the cook — the whole point of #669.
+	// Retrievable from DURABLE state after the process — the whole point of #669.
 	const [a] = attempts.byMedia('m1');
 	const got = attemptSelection(a);
 	expect(got).not.toBeNull();

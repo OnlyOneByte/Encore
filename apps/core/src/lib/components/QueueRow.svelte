@@ -193,7 +193,7 @@
 	 * descendants do: the subtitle line holds a singer identity dot whose rule two contrast guards read
 	 * directly, and a descendant rule cannot follow its ancestor into a component with no `child` snippet.
 	 */
-	/* Geometry comes from .list-row in app.css, shared with the search row and the cooking card.
+	/* Geometry comes from .list-row in app.css, shared with the search row and the processing card.
 	   The entry animation is app.css's .pop-in helper (added to the root class list above), which
 	   is wrapped in @media (prefers-reduced-motion: no-preference) so it honours Reduce Motion.
 	   Do NOT re-declare a local @keyframes pop here: that copy was unguarded (issue #148). */

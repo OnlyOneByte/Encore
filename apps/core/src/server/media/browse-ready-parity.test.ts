@@ -97,7 +97,7 @@ const lyricsNeverRan = (id: string): Media => ({
 });
 
 /**
- * A LEGACY row: cooked before `lyricsStatus` existed, so it carries no status but does carry a lyrics
+ * A LEGACY row: processed before `lyricsStatus` existed, so it carries no status but does carry a lyrics
  * artifact. `gates.ts` treats that as done deliberately — narrowing the lyrics gate to
  * `lyricsStatus === 'ready'` would make every pre-upgrade song unsingable forever. So this row IS
  * ready, and it is the only row besides `finished` that any reader may return.

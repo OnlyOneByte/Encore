@@ -64,9 +64,9 @@ const seenOps = new Set<string>();
 // MVP/harness media catalog. Real media is resolved via /api/search + persisted on demand.
 // Seed a few youtube demos so the dev harness can add songs that validate even without yt-dlp.
 // IMPORTANT: seed only what is MISSING. getApp() has already hydrated the durable catalog, so
-// an unconditional set would overwrite a demo song that was cooked on a previous night with this
+// an unconditional set would overwrite a demo song that was processed on a previous night with this
 // pristine iframe stub — the DB would still say "stems ready" while the runtime said "plain iframe",
-// which re-cooks the song and plays the vocal YouTube embed instead of the instrumental.
+// which re-processes the song and plays the vocal YouTube embed instead of the instrumental.
 const mediaById = app.mediaById;
 for (const m of [
 	{
@@ -106,8 +106,8 @@ for (const m of [
 // Only index what is REALLY THERE (checked against the same path resolution the /media route uses).
 // These four are aspirational placeholders — drop an actual file at MEDIA_DIR/library/<name>.mp4 and
 // it appears in the Library tab. Without the filter they were searchable, queueable songs that could
-// never play: cooking one burned three attempts on `ffmpeg exited 254: No such file or directory` and
-// then left the song stuck in the phone's "cooking" list for the rest of the night.
+// never play: processing one burned three attempts on `ffmpeg exited 254: No such file or directory` and
+// then left the song stuck in the phone's "processing" list for the rest of the night.
 const seededLibrary: LocalTrack[] = [
 	{ sourceRef: 'library/dont-stop-believin.mp4', title: "Don't Stop Believin'", artist: 'Journey', durationSec: 250 },
 	{ sourceRef: 'library/sweet-caroline.mp4', title: 'Sweet Caroline', artist: 'Neil Diamond', durationSec: 201 },
@@ -288,7 +288,7 @@ const server = Bun.serve<SocketData>({
 			}
 			// The hub bag is assembled by app.ts's buildHubDeps factory: every app-derived hook
 			// (listSingers, getSettings, onNowPlaying, onSang, recordAdd, onEntryRemoved -> cancelJobsForMedia,
-			// onEntryAdded -> reprioritizeCookForMedia) is wired there in ONE place. Only what genuinely
+			// onEntryAdded -> reprioritizeProcessForMedia) is wired there in ONE place. Only what genuinely
 			// varies per socket/frame is passed here — the broadcast sink, the authenticated singer on this
 			// socket, the live membership snapshot, and the idempotency ledger (#460 §3).
 			const deps: HubDeps = buildHubDeps(app, {
@@ -343,7 +343,7 @@ const server = Bun.serve<SocketData>({
 					//
 					// What it does, per case:
 					//  • Room IDLE and a song was just queued → auto-start it. Without this a plain
-					//    (non-make-karaoke) add never triggers play: the TV sits on the attract screen
+					//    (non-process) add never triggers play: the TV sits on the attract screen
 					//    forever and the phone shows no play control (no "current" entry to hang one on).
 					//  • currentEntryId DANGLING → recover. A client `remove`/`status` on the PLAYING
 					//    entry prunes it here and leaves the id pointing at nothing (issue #128), which
@@ -358,7 +358,7 @@ const server = Bun.serve<SocketData>({
 					//    reordering pushed behind another singer, with `syncSlots` pre-warming the gapless
 					//    slot from that same stale entry (routes/tv/+page.svelte). reconcileOnReady's
 					//    recovery block is skipped and its tail emitNowPlaying re-derives both values
-					//    (`upNextAfter` applies the held-slot rule, so a still-cooking entry is never
+					//    (`upNextAfter` applies the held-slot rule, so a still-processing entry is never
 					//    advertised).
 					//
 					// EXACTLY ONE nowplaying:changed per command, on all three paths: the single
@@ -403,7 +403,7 @@ const server = Bun.serve<SocketData>({
 // The room broadcast sink: publish one ServerEvent to every subscribed socket over Bun's native
 // pub/sub. Defined ONCE here (server is in scope) and wired into the shared app a single time at
 // boot, rather than reassigned inside websocket.open on every connect. handleQueueCommand and the
-// cook-cancel path reuse this same reference through `deps`.
+// process-cancel path reuse this same reference through `deps`.
 // #657: publish a served-room event ONLY to that room's topic, which only that room's sockets
 // subscribed to (see websocket.open) — the delivery half of isolation. The single AuthoritativeState
 // this core holds is bound to app.activeRoomId (#655/#656), so that is the room every broadcast names.

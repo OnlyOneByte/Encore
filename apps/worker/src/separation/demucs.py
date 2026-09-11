@@ -117,7 +117,7 @@ def demucs_argv(
 
     Every performance flag is OPTIONAL and omitted when unset, so demucs' own defaults keep applying --
     including its cuda-if-available device pick, which is why forcing a device is opt-in rather than
-    the default. These are the knobs that decide how long a cook takes:
+    the default. These are the knobs that decide how long a process takes:
 
       - `jobs`    parallel chunk jobs; each holds its own model copy, trading memory for wall time.
       - `overlap` demucs defaults to 0.25; lower is faster with a small quality cost at chunk seams.
@@ -196,7 +196,7 @@ class ProcessError(RuntimeError):
 
 # An IDLE-OUTPUT timeout, NOT a wall-clock cap: a legitimate CPU separation can run 45+ minutes while
 # still printing a tqdm progress line, and a wall-clock bound short enough to catch a wedged child
-# would also kill a slow-but-healthy cook. So the clock is reset on EVERY line the child emits, and
+# would also kill a slow-but-healthy process. So the clock is reset on EVERY line the child emits, and
 # only fires when the child has gone completely silent for this long — the signature of a wedged
 # process, not a slow one. yt-dlp and demucs both emit progress far more often than this.
 SUBPROCESS_IDLE_TIMEOUT_SEC = 600.0
@@ -241,13 +241,13 @@ async def _terminate(proc: asyncio.subprocess.Process) -> None:
     The kill goes to the whole PROCESS GROUP, which is why the spawn sets start_new_session. `proc.kill()`
     alone signals only the CLI we launched — and demucs with `-j N` forks N worker processes holding a
     model each (~2 GiB). Killing just the parent left every one of them alive and unreachable, so a
-    cancelled cook kept its memory forever and a box running ENCORE_WORKER_CONCURRENCY>1 OOMed after a
+    cancelled process kept its memory forever and a box running ENCORE_WORKER_CONCURRENCY>1 OOMed after a
     few cancels.
 
     The pgid comparison is load-bearing, not defensive noise: if the child ever shares OUR group (the
     spawn flag removed, or a platform without process groups) then `killpg` would SIGKILL this worker
     process too. So we only ever signal a group we know we created, and otherwise fall back to killing
-    the direct child — a leaked grandchild is bad, killing the worker mid-cook is worse.
+    the direct child — a leaked grandchild is bad, killing the worker mid-process is worse.
     """
     if proc.returncode is None:
         killed = False

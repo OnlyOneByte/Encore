@@ -231,7 +231,7 @@ export function applyMigration(
  * SHARED-WRITE MODE. Core and worker are separate containers running as DIFFERENT uids on the same
  * mounted volume (compose mounts `${ENCORE_MEDIA_VOLUME}:/app/media` into both). Whichever process
  * creates a dir owns it, and a 0755 dir created by the core is unwritable by the worker — exactly how
- * the layout migration first broke every cook (worker got `Permission denied: /app/media/work/<jobId>`
+ * the layout migration first broke every process (worker got `Permission denied: /app/media/work/<jobId>`
  * on dirs the core had just made). The old layout only worked because its dirs were chmod'd by hand.
  *
  * So worker-written dirs are created world-writable. `mkdirSync`'s mode is masked by umask, hence the

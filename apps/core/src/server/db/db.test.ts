@@ -163,7 +163,7 @@ test('job_attempts.selection is added by migration and round-trips (#669)', () =
 			id: 'a1',
 			jobId: 'j1',
 			mediaId: 'm1',
-			cookId: 'c1',
+			processingId: 'c1',
 			jobType: 'align',
 			attempt: 1,
 			enqueuedAt: now,
@@ -178,7 +178,7 @@ test('job_attempts.selection is added by migration and round-trips (#669)', () =
 			id: 'a2',
 			jobId: 'j2',
 			mediaId: 'm1',
-			cookId: 'c1',
+			processingId: 'c1',
 			jobType: 'stems',
 			attempt: 1,
 			enqueuedAt: now

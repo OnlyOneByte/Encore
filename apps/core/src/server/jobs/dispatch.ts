@@ -20,7 +20,7 @@ import type { WorkerSession } from './registry';
 import { parseTrackTitle } from '../media/track-title';
 
 /**
- * The jobs a just-COMPLETED job should enqueue next — the cook pipeline. PURE.
+ * The jobs a just-COMPLETED job should enqueue next — the process pipeline. PURE.
  *
  * `stems` chains to `align` rather than enqueueing both up front because align reads the VOCALS
  * STEM, which does not exist until stems finishes — enqueueing at once would race the separation
@@ -34,13 +34,13 @@ export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[
 	// before its input exists — the same reason align chains after stems.
 	if (jobType === 'fetch') return ['stems'];
 	if (jobType !== 'stems') return [];
-	// The COOK is fetch → stems → align, and nothing else. A song is not finished until its words are
+	// The PROCESS is fetch → stems → align, and nothing else. A song is not finished until its words are
 	// timed, so `align` is the last step of the pipeline rather than an optional garnish.
 	const next: JobType[] = ['align'];
-	// A completed cook optionally chains a re-separation at higher quality. It runs from the RETAINED
+	// A completed process optionally chains a re-separation at higher quality. It runs from the RETAINED
 	// raw audio, so it costs CPU but no re-download, and `markMediaReady` refuses to publish its
 	// result unless it actually outranks what is already there. Off unless a setting asks for it, so
-	// it is background work on a finished song rather than part of the cook.
+	// it is background work on a finished song rather than part of the process.
 	if (
 		settings?.enqueueUpgrade &&
 		isQualityUpgrade(
@@ -103,7 +103,7 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 		...lookupKeys(media),
 		// A HUMAN re-pick (#640): when the song carries a lyrics override, an align job must RE-TIME that
 		// exact candidate rather than run its own comparative selection — otherwise the re-time would
-		// re-pick and could discard the very candidate the user chose. Absent on every normal cook, where
+		// re-pick and could discard the very candidate the user chose. Absent on every normal process, where
 		// no override is set and the worker selects comparatively as before.
 		...(media?.lyricsOverrideRef ? { pinnedRef: media.lyricsOverrideRef } : {})
 	};
@@ -182,19 +182,19 @@ export function publishesInstrumental(jobType: JobType): boolean {
 }
 
 /**
- * Does a follow-up step belong to the SAME cook as the job that triggered it?
+ * Does a follow-up step belong to the SAME process as the job that triggered it?
  *
  * `fetch → stems → align` is one run: the song is not finished until its words are timed, so an
- * end-to-end duration should span all three under one cook id.
+ * end-to-end duration should span all three under one process id.
  *
  * `stems-upgrade` is NOT, and this is the one case worth stating plainly. It is background work on an
- * ALREADY-FINISHED song, chained off the cook only because completion is when the decision can be
+ * ALREADY-FINISHED song, chained off the process only because completion is when the decision can be
  * made. Letting it inherit would corrupt the headline number the internal dashboard exists to report:
- * a 43-minute upgrade would be folded into a cook that actually delivered a singable song in 90
- * seconds, making every end-to-end average a fiction. Its own cook id keeps its cost attributed to
+ * a 43-minute upgrade would be folded into a process that actually delivered a singable song in 90
+ * seconds, making every end-to-end average a fiction. Its own process id keeps its cost attributed to
  * itself, which is also what makes an upgrade comparable model against model.
  */
-export function inheritsCook(next: JobType): boolean {
+export function inheritsProcess(next: JobType): boolean {
 	return next !== 'stems-upgrade';
 }
 
@@ -225,7 +225,7 @@ export interface Assignment {
 }
 
 /**
- * The worker CAPABILITY a job requires. For a separation job it is engine-derived — a roformer cook
+ * The worker CAPABILITY a job requires. For a separation job it is engine-derived — a roformer process
  * needs `stems:roformer` and must NOT go to a demucs-only worker; everything else requires a
  * capability named after its job type. PURE. With no `settings` a separation job falls back to the
  * default engine's capability (plain `'stems'` for demucs), so existing single-capability workers

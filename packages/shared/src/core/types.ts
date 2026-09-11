@@ -2,7 +2,7 @@
 // See docs/ARCHITECTURE.md (Data model).
 
 import { pickBestLyrics, type LyricsCandidate } from '../lyrics/lyrics';
-import type { SongProfile } from '../cook/song-profile';
+import type { SongProfile } from '../process/song-profile';
 import type { TvBackgroundStyle } from '../presentation/tv-background';
 
 /**
@@ -12,8 +12,8 @@ import type { TvBackgroundStyle } from '../presentation/tv-background';
  * fetchers.ts). `spotify` is a SEARCH / metadata source ONLY: Spotify gives clean canonical
  * artist/title/duration where a YouTube upload title has to be reverse-engineered, but its bytes
  * are never fetched from Spotify. The audio is still acquired from YouTube (the annotator pattern,
- * docs/DECISIONS.md), so a spotify-sourced media is not cookable - `isCookableSource` in fetchers.ts
- * is the one authority that says so, and every layer that decides whether a cook is possible asks it.
+ * docs/DECISIONS.md), so a spotify-sourced media is not processable - `isProcessableSource` in fetchers.ts
+ * is the one authority that says so, and every layer that decides whether a process is possible asks it.
  * (`fetcherFor` does NOT refuse a spotify source; it returns the default downloader as a floor.)
  * This needs no DB migration (the column is plain text, no CHECK) and no fetch:spotify capability.
  */
@@ -21,8 +21,8 @@ export type MediaSource = 'youtube' | 'local' | 'spotify';
 export type StemStatus = 'none' | 'queued' | 'ready';
 
 /**
- * Where one processing step of the cook has got to. Same shape as `StemStatus`, named for the general
- * case because the cook now has more than one gated step (see gates.ts).
+ * Where one processing step of the process has got to. Same shape as `StemStatus`, named for the general
+ * case because the process now has more than one gated step (see gates.ts).
  */
 export type StepStatus = 'none' | 'queued' | 'ready';
 
@@ -32,7 +32,7 @@ export interface Media {
 	/**
 	 * The song's ORIGIN identity: youtube video id, or local file key. IMMUTABLE for the life of the
 	 * media — it is what search dedupes on (`source` + `sourceRef`), so overwriting it forks one song
-	 * into two rows: the cooked one in the library and a fresh uncooked one on the next search.
+	 * into two rows: the processed one in the library and a fresh unprocessed one on the next search.
 	 * The separated instrumental lives in `instrumentalRef`, never here.
 	 */
 	sourceRef: string;
@@ -101,7 +101,7 @@ export interface Media {
 	/**
 	 * Which separator produced the CURRENT `instrumentalRef`. The upgrade path compares a candidate's
 	 * quality rank against this before swapping, so an upgrade can never replace a better instrumental
-	 * with a worse one. Absent on media cooked before separator selection existed, which
+	 * with a worse one. Absent on media processed before separator selection existed, which
 	 * `isQualityUpgrade` treats as "anything ranked is an improvement".
 	 */
 	separator?: { engine: string; model: string };
@@ -117,7 +117,7 @@ export interface Media {
 	 */
 	vocalsRef?: string;
 	/**
-	 * Signed millisecond offset of the guiding track against the instrumental, MEASURED at cook time —
+	 * Signed millisecond offset of the guiding track against the instrumental, MEASURED at process time —
 	 * the guide-alignment half of the guide feature made observable instead of assumed (#766).
 	 *
 	 * `guide-sync.ts` is blind by construction to any offset baked into the DECODED audio: it only ever
@@ -132,8 +132,8 @@ export interface Media {
 	 * ZERO POINT `guideCorrection` measures drift against — so the offset arrives as an INPUT and
 	 * `guide-sync.ts` stays a pure policy function with no new branch (read `guideOffsetSec` there).
 	 *
-	 * ABSENT OR 0 IS TODAY'S BEHAVIOUR, EXACTLY. Every song cooked before this field existed carries no
-	 * value, and a freshly-cooked song whose two stems are the same FLAC codec (#480) decodes to a
+	 * ABSENT OR 0 IS TODAY'S BEHAVIOUR, EXACTLY. Every song processed before this field existed carries no
+	 * value, and a freshly-processed song whose two stems are the same FLAC codec (#480) decodes to a
 	 * sample-exact common start and measures ~0 — so the field is 0 for essentially the whole library on
 	 * the day it lands, and `guideOffsetSec` maps absent → 0. The non-zero case is a legacy pre-#480
 	 * `.m4a` vocals stem (the ~21 ms AAC priming asymmetry) or a deliberately shifted stem.
@@ -159,28 +159,28 @@ export interface Media {
 	 *
 	 * This is the one thing that can make the shown candidate WORSE by rank, so it is a SEPARATE field
 	 * the resolver consults, never a change to `pickBestLyrics`: the never-regress guarantee
-	 * (`mergeLyricsCandidate`) stays intact, and a later re-cook that produces a better candidate is
+	 * (`mergeLyricsCandidate`) stays intact, and a later re-process that produces a better candidate is
 	 * still KEPT beside the pick — which is what lets the phone say "a better version exists" (#640,
 	 * owner ruling Q2=C: sticky, plus surface the newer candidate) instead of silently losing it.
 	 */
 	lyricsOverrideRef?: string;
 	/**
-	 * How far the `align` step has got — the lyrics half of the cook gate (see gates.ts).
+	 * How far the `align` step has got — the lyrics half of the process gate (see gates.ts).
 	 *
 	 * `ready` means alignment RAN, not that it found words: a genuine instrumental completes with no
-	 * `lyricsRef`, and it is still a finished song. Absent on media cooked before this field existed,
+	 * `lyricsRef`, and it is still a finished song. Absent on media processed before this field existed,
 	 * which the gate treats as done when a lyrics artifact is already present.
 	 */
 	lyricsStatus?: StepStatus;
 	/**
-	 * What the cook LEARNED about the music: detected key, and the range the original singer sang.
+	 * What the process LEARNED about the music: detected key, and the range the original singer sang.
 	 *
 	 * Produced by the same `stems` job as the two audio stems, so it is the third artifact of one step
 	 * rather than a separate pipeline stage — and it is the reason the `stems` gate checks for it (see
 	 * gates.ts). Present means analysis RAN; the fields inside are individually nullable because a song
 	 * can legitimately have no detectable key, no voiced vocal, or neither.
 	 *
-	 * Absent means not analysed yet, which for a song cooked before this field existed is also true —
+	 * Absent means not analysed yet, which for a song processed before this field existed is also true —
 	 * and is why the gate's predicate tolerates it via `stemStatus`, rather than making an existing
 	 * library unsingable on upgrade.
 	 */
@@ -191,7 +191,7 @@ export interface Media {
  * The MediaStore key the player should load, or `''` when this song has nothing playable yet.
  *
  * Nothing plays unprocessed: the only thing the TV ever loads is a separated instrumental. There is
- * no embed path and no raw-source path, so a song that has not been cooked is simply not playable —
+ * no embed path and no raw-source path, so a song that has not been processed is simply not playable —
  * which is what `isPlayable` reports and what rotation gates on.
  *
  * Keeping this in one pure helper is what lets `sourceRef` stay immutable: the player asks "what do I
@@ -202,7 +202,7 @@ export function playbackRef(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): s
 }
 
 /**
- * Can this song be played at all? True only for a cooked song with an instrumental on disk.
+ * Can this song be played at all? True only for a processed song with an instrumental on disk.
  *
  * `stemStatus === 'ready'` alone is not enough: the status and the artifact key are written by
  * separate steps, and a status without a ref would hand the player an empty source.
@@ -216,7 +216,7 @@ export function isPlayable(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): bo
  * nothing measured (#766).
  *
  * The wire and the schema carry `guideOffsetMs` (a signed integer, or absent). The client aligns in
- * seconds, so this converts once and, crucially, DEFAULTS ABSENT/NON-FINITE TO 0: a song cooked before
+ * seconds, so this converts once and, crucially, DEFAULTS ABSENT/NON-FINITE TO 0: a song processed before
  * the field existed, or one whose measurement was declined, is held exactly as today. Keeping the
  * default here — not at each call site — is what lets `guide-sync.ts` receive `masterSec + guideOffsetSec`
  * without ever branching on whether an offset was measured.
@@ -307,7 +307,7 @@ export function clampKeyShift(semitones: number): number {
  * nothing ever produced — `apps/worker/src/pitch.py` existed as tested pure logic that `processor.py`
  * never called — so the TV had to ignore `keyShift` entirely or hand the gapless controller a 404
  * mid-song. Transposition now happens in the browser (see `apps/core/src/lib/tv/pitch-shift.ts`),
- * which needs no files, works on every already-cooked song, and can shift the guiding-track stem by
+ * which needs no files, works on every already-processed song, and can shift the guiding-track stem by
  * the same amount instead of muting it. Both the ref helper and the worker renderer are gone.
  */
 export type JobType = 'fetch' | 'stems' | 'align' | 'stems-upgrade';
@@ -350,23 +350,23 @@ export interface Job {
 	mediaId: string;
 	jobType: JobType;
 	/**
-	 * The COOK this job belongs to — one id shared by every step of one run (fetch → stems → align).
+	 * The PROCESS this job belongs to — one id shared by every step of one run (fetch → stems → align).
 	 *
-	 * `mediaId` cannot do this job. A song can be cooked more than once: a failure frees the dedup slot
-	 * so it can be re-cooked, and `stems-upgrade` re-separates a finished song. Grouping attempt
+	 * `mediaId` cannot do this job. A song can be processed more than once: a failure frees the dedup slot
+	 * so it can be re-processed, and `stems-upgrade` re-separates a finished song. Grouping attempt
 	 * records by `mediaId` alone therefore blends distinct runs together, which makes an end-to-end
-	 * duration meaningless (it would span from the first cook's enqueue to the last upgrade's finish).
-	 * A `stems-upgrade` deliberately starts a NEW cook rather than inheriting: it is background work on
+	 * duration meaningless (it would span from the first process's enqueue to the last upgrade's finish).
+	 * A `stems-upgrade` deliberately starts a NEW process rather than inheriting: it is background work on
 	 * an already-finished song, and its cost belongs to itself.
 	 */
-	cookId: string;
+	processingId: string;
 	/**
-	 * The singer who REQUESTED this cook, or `null` for internal callers that impose no per-singer
+	 * The singer who REQUESTED this process, or `null` for internal callers that impose no per-singer
 	 * cap (lyrics backfill, chained follow-up steps that inherit their parent's attribution). This is
-	 * the authoritative attribution for the per-singer concurrent-cook cap: the cap counts a singer's
-	 * live cook JOBS, not their queue entries, because the entry (WebSocket) and the cook (HTTP) ride
+	 * the authoritative attribution for the per-singer concurrent-process cap: the cap counts a singer's
+	 * live process JOBS, not their queue entries, because the entry (WebSocket) and the process (HTTP) ride
 	 * different transports and only the entry is droppable — a phone that taps Sing while its socket is
-	 * reconnecting files the cook with no entry to count, and an entry-derived cap admits every tap.
+	 * reconnecting files the process with no entry to count, and an entry-derived cap admits every tap.
 	 */
 	singerId: string | null;
 	status: JobStatus;
@@ -406,7 +406,7 @@ export interface JobAttempt {
 	id: string;
 	jobId: string;
 	mediaId: string;
-	cookId: string;
+	processingId: string;
 	jobType: JobType;
 	/** 1-based. Attempt 2 exists only because attempt 1 was abandoned or failed retryably. */
 	attempt: number;
@@ -420,7 +420,7 @@ export interface JobAttempt {
 	 *   assignedAt − enqueuedAt  → queue wait (was the fleet busy?)
 	 *   startedAt  − assignedAt  → ack latency (did the worker pick it up promptly?)
 	 *   finishedAt − startedAt   → PROCESSING TIME — the number the internal dashboard is for
-	 *   finishedAt − enqueuedAt, grouped by cookId → end-to-end for the whole song
+	 *   finishedAt − enqueuedAt, grouped by processingId → end-to-end for the whole song
 	 */
 	enqueuedAt: number;
 	assignedAt: number | null;
@@ -432,7 +432,7 @@ export interface JobAttempt {
 
 	/**
 	 * WHAT ACTUALLY RAN. Recorded per attempt because these are resolved from GLOBAL SETTINGS at
-	 * dispatch time and settings are operator-editable: re-deriving a past cook's model from today's
+	 * dispatch time and settings are operator-editable: re-deriving a past process's model from today's
 	 * settings gives a confidently wrong answer. Written at assign time from the dispatched params
 	 * (what was asked for); a worker that reports its own resolution overwrites them with the truth,
 	 * since a worker can legitimately resolve something different from what it was asked.
@@ -486,7 +486,7 @@ export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; m
 /**
  * WHY one lyric candidate won over the others, as durable data (#669).
  *
- * The worker's `VariantChoice.summary()` already renders exactly these facts, but only to the cook
+ * The worker's `VariantChoice.summary()` already renders exactly these facts, but only to the process
  * log, which rotates and is per-container and is long gone by the time someone notices wrong lyrics on
  * the TV weeks later. This is that same explanation crossed to the `/metrics/<mediaId>` audit trail so
  * a mis-pick is answerable from persisted state. Deliberately NOT the rejected lyric BODIES: label +
@@ -599,7 +599,7 @@ export function resolveLyricsRef(
 
 /**
  * Under a sticky human override (Q2=C), would the RANKER now prefer a different candidate — i.e. has a
- * later re-cook produced something the ranking rates above the pinned pick? Drives the phone's "a
+ * later re-process produced something the ranking rates above the pinned pick? Drives the phone's "a
  * better version exists" hint. `false` when there is no override, when the ranker agrees with the pick,
  * or when the pinned ref is no longer present (a stale override is not "beaten", it is gone).
  */

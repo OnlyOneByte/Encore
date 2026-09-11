@@ -8,7 +8,7 @@
  *
  * WHY A FUZZER AND NOT MORE PROBES. Every probe in e2e/probes drives a curated sequence, and the
  * curated sequences and the live-party reports found almost disjoint defect sets: the bugs were in the
- * ADJACENCY — restart arriving while a cook was in flight, skip landing on the last entry, a transport
+ * ADJACENCY — restart arriving while a process was in flight, skip landing on the last entry, a transport
  * tap landing while an entry was changing state. A curated list cannot cover the adjacency space of
  * ten inputs across two phones, and a human cannot hand-write the interleavings. A seeded PRNG can,
  * and the seed makes any finding replayable by hand.
@@ -35,7 +35,7 @@
  *
  * GESTURELESS BY DEFAULT, AND WHY THAT MATTERS. Chromium launches here WITHOUT
  * --autoplay-policy=no-user-gesture-required, because that flag grants a permission a real television
- * does not have. Measured side by side on one real cooked song:
+ * does not have. Measured side by side on one real processed song:
  *
  *     launch                    paused   currentTime   decoded bytes
  *     gestureless (a real TV)   true     0.00          24576  — the preload burst, and nothing more
@@ -104,10 +104,10 @@ import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
  * @typedef {{ rev?: number, entries?: any[], media?: any[], settings?: any, playback?: any }} ServerSnapshot
  *
  * The reduced world the weighting/seam functions read.
- * @typedef {{ current: any, waiting: number, cooking: number }} WorldLite
+ * @typedef {{ current: any, waiting: number, processing: number }} WorldLite
  *
  * The full world one readWorld() call produces.
- * @typedef {{ srv: ServerSnapshot, tv: any, cat: { ready: any[], cooking: any[], raw: any[] }, mediaById: Map<any, any>, current: any, curMedia: any, master: MediaRow | null, masterHow: string, waiting: number, playing: any[], cooking: number }} World
+ * @typedef {{ srv: ServerSnapshot, tv: any, cat: { ready: any[], processing: any[], raw: any[] }, mediaById: Map<any, any>, current: any, curMedia: any, master: MediaRow | null, masterHow: string, waiting: number, playing: any[], processing: number }} World
  */
 
 // ── seed and policy: the FIRST line of output, before anything can fail ───────────────────────────
@@ -345,20 +345,20 @@ const PORT = room.port;
 const base = `http://127.0.0.1:${PORT}`;
 const wsBase = `ws://127.0.0.1:${PORT}`;
 
-// ── cook enough songs that a rotation exists, and leave some raw ──────────────────────────────────
+// ── process enough songs that a rotation exists, and leave some raw ──────────────────────────────────
 /**
  * The catalog, split the three ways this fuzzer cares about.
  *
- * `/api/library` is the honest source for READY and COOKING, and its `cooking` list is the SERVER's own
- * `readinessOf(m) === 'cooking'` verdict rather than a guess at what a `stemStatus` string means — which
- * matters, because a song mid-align has ready stems and queued lyrics and still counts as cooking.
+ * `/api/library` is the honest source for READY and PROCESSING, and its `processing` list is the SERVER's own
+ * `readinessOf(m) === 'processing'` verdict rather than a guess at what a `stemStatus` string means — which
+ * matters, because a song mid-align has ready stems and queued lyrics and still counts as processing.
  *
  * RAW songs are the awkward case: `/api/library` deliberately lists only ready rows ("the catalog holds
  * every search result ever materialised … browsing the whole table would bury the library in things you
  * cannot sing yet"), and a search with an EMPTY query returns nothing at all. So the raw local rows are
  * discovered once, up front, with a handful of short queries pinned to `source=local` — which keeps the
- * probe offline and off YouTube. They matter because `sing` on a raw song is the ONLY way to put a cook
- * in flight, and therefore the only way the RESTART-DURING-COOK seam becomes reachable.
+ * probe offline and off YouTube. They matter because `sing` on a raw song is the ONLY way to put a process
+ * in flight, and therefore the only way the RESTART-DURING-PROCESS seam becomes reachable.
  */
 const RAW_PROBE_TERMS = ['a', 'e', 'i', 'o', 'u', 's', 'b', 'd', 'l', 'm', 'n', 'r', 't', 'w'];
 /** @type {Map<string, any> | null} */
@@ -367,10 +367,10 @@ let rawSeen = null;
 async function catalog() {
 	const lib = await fetch(`${base}/api/library`).then((x) => x.json());
 	const ready = (lib.library ?? []).filter((/** @type {any} */ m) => m.source === 'local');
-	const cooking = (lib.cooking ?? [])
+	const processing = (lib.processing ?? [])
 		.map((/** @type {any} */ c) => c.media)
 		.filter((/** @type {any} */ m) => m && m.source === 'local');
-	const known = new Set([...ready, ...cooking].map((m) => m.id));
+	const known = new Set([...ready, ...processing].map((m) => m.id));
 
 	if (rawSeen === null) {
 		rawSeen = new Map();
@@ -384,7 +384,7 @@ async function catalog() {
 		}
 	}
 	const raw = [...rawSeen.values()].filter((m) => !known.has(m.id));
-	return { ready, cooking, raw };
+	return { ready, processing, raw };
 }
 
 /**
@@ -398,38 +398,38 @@ async function catalog() {
 const NONCE = Date.now().toString(36).toUpperCase().slice(-5);
 
 /**
- * Two cooked songs give a rotation, so `skip` has somewhere to land and I3 has something to disagree
+ * Two processed songs give a rotation, so `skip` has somewhere to land and I3 has something to disagree
  * about. Fewer than one and no playback invariant means anything, which is an exit-2 environment
  * problem rather than a green run.
  */
 /** @param {number} want */
-async function cookSongs(want) {
+async function processSongs(want) {
 	const c0 = await catalog();
 	if (c0.ready.filter((/** @type {any} */ r) => r.lyricsRef).length >= want) return c0.ready;
 
 	const joinRes = await fetch(`${base}/api/join`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ displayName: `Cook${NONCE}`, color: '#ff5cae' })
+		body: JSON.stringify({ displayName: `Process${NONCE}`, color: '#ff5cae' })
 	});
-	if (!joinRes.ok) bail(`could not join to cook a song (${joinRes.status})`);
+	if (!joinRes.ok) bail(`could not join to process a song (${joinRes.status})`);
 	const cookie = joinRes.headers.get('set-cookie')?.split(';')[0] ?? '';
 
-	let cooked = c0.ready.length;
+	let processed = c0.ready.length;
 	const attempts = [];
 	for (const row of c0.raw) {
-		if (cooked >= want) break;
-		const res = await fetch(`${base}/api/make-karaoke`, {
+		if (processed >= want) break;
+		const res = await fetch(`${base}/api/process`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json', cookie },
 			body: JSON.stringify({ mediaId: row.id })
 		});
 		const body = await res.text().catch(() => '');
 		attempts.push(`${row.title}→${res.status}${res.ok ? '' : ` ${body.slice(0, 80)}`}`);
-		if (res.ok) cooked++;
+		if (res.ok) processed++;
 	}
 	console.log(
-		`cook: discovered ${c0.raw.length} raw local row(s); requested ${attempts.length} — ${attempts.join('; ')}`
+		`process: discovered ${c0.raw.length} raw local row(s); requested ${attempts.length} — ${attempts.join('; ')}`
 	);
 	// The stems job chains an align job, so readiness arrives a few seconds later.
 	for (let i = 0; i < 60; i++) {
@@ -440,15 +440,15 @@ async function cookSongs(want) {
 	return (await catalog()).ready.filter((/** @type {any} */ r) => r.lyricsRef);
 }
 
-const cookedRows = await cookSongs(3);
-if (cookedRows.length === 0) {
-	bail('no song could be cooked — nothing to sing, so no playback invariant means anything.');
+const processedRows = await processSongs(3);
+if (processedRows.length === 0) {
+	bail('no song could be processed — nothing to sing, so no playback invariant means anything.');
 }
 {
 	const c = await catalog();
 	console.log(
-		`fixture: ${cookedRows.length} cooked (${cookedRows.map((/** @type {any} */ r) => r.title).join(', ')}), ` +
-			`${c.raw.length} raw left for the cook seam${c.raw.length === 0 ? ' — RESTART-DURING-COOK will NOT be reachable this run' : ` (${c.raw.map((/** @type {any} */ r) => r.title).join(', ')})`}`
+		`fixture: ${processedRows.length} processed (${processedRows.map((/** @type {any} */ r) => r.title).join(', ')}), ` +
+			`${c.raw.length} raw left for the process seam${c.raw.length === 0 ? ' — RESTART-DURING-PROCESS will NOT be reachable this run' : ` (${c.raw.map((/** @type {any} */ r) => r.title).join(', ')})`}`
 	);
 }
 
@@ -705,7 +705,7 @@ const BASE_WEIGHT = {
  * draw is conditioned on what just happened and on what the room is currently doing:
  *
  *   • back-to-back transport is tripled, because that is the seam class as a whole.
- *   • RESTART-DURING-COOK — a cook in flight makes `restart` (and `queue-remove`, which cancels one)
+ *   • RESTART-DURING-PROCESS — a process in flight makes `restart` (and `queue-remove`, which cancels one)
  *     far more likely.
  *   • SKIP-AT-LAST-ENTRY — nothing waiting behind the current song makes `skip` far more likely.
  *   • RESTART-THEN-PAUSE — the reachable stand-in for the specified back-then-pause seam.
@@ -718,7 +718,7 @@ const BASE_WEIGHT = {
 function weightsFor(prev, world) {
 	const w = { ...BASE_WEIGHT };
 	if (prev && TRANSPORT.has(prev)) for (const k of TRANSPORT) w[k] *= 3;
-	if (world.cooking > 0) {
+	if (world.processing > 0) {
 		w.restart *= 6;
 		w['queue-remove'] *= 3;
 	}
@@ -756,7 +756,7 @@ function drawInput(prev, world) {
  * @returns {string | null}
  */
 function seamLabel(input, prev, world) {
-	if (input === 'restart' && world.cooking > 0) return 'RESTART-DURING-COOK';
+	if (input === 'restart' && world.processing > 0) return 'RESTART-DURING-PROCESS';
 	if (input === 'skip' && world.current && world.waiting === 0) return 'SKIP-AT-LAST-ENTRY';
 	if (input === 'pause' && prev === 'restart')
 		return 'RESTART-THEN-PAUSE (stands in for back-then-pause; `back` does not exist)';
@@ -799,8 +799,8 @@ async function readWorld() {
 		masterHow: how,
 		waiting: (srv.entries ?? []).filter((/** @type {any} */ e) => e.status === 'queued').length,
 		playing: (srv.entries ?? []).filter((/** @type {any} */ e) => e.status === 'playing'),
-		// The SERVER's own cooking verdict, not a guess at what a stemStatus string means.
-		cooking: cat.cooking.length
+		// The SERVER's own processing verdict, not a guess at what a stemStatus string means.
+		processing: cat.processing.length
 	};
 }
 
@@ -1216,8 +1216,8 @@ async function driveInput(input, world) {
 		case 'queue-add': {
 			const { ready, raw } = world.cat;
 			if (ready.length === 0 && raw.length === 0) return { who, input, detail: 'no-op (empty library)', noop: true };
-			// 30% of adds deliberately target a RAW song, which starts a cook and is the only way the
-			// RESTART-DURING-COOK seam becomes reachable at all.
+			// 30% of adds deliberately target a RAW song, which starts a process and is the only way the
+			// RESTART-DURING-PROCESS seam becomes reachable at all.
 			const wantRaw = raw.length > 0 && (ready.length === 0 || rnd() < 0.3);
 			const row = pick(wantRaw ? raw : ready);
 			const term = String(row.title).split(/\s+/)[0].toLowerCase();
@@ -1232,7 +1232,7 @@ async function driveInput(input, world) {
 			const nSing = await page.count(SEL.sing);
 			if (wantRaw && nSing > 0) {
 				await page.click(SEL.sing);
-				detail = `search "${term}" → clicked ${SEL.sing} (queues AND starts a cook)`;
+				detail = `search "${term}" → clicked ${SEL.sing} (queues AND starts a process)`;
 			} else if (nAdd > 0) {
 				await page.click(SEL.addTurn);
 				detail = `search "${term}" → clicked ${SEL.addTurn}`;
@@ -1433,7 +1433,7 @@ try {
 		const w = {
 			current: world.current,
 			waiting: world.waiting,
-			cooking: world.cooking
+			processing: world.processing
 		};
 		// The one real tap lands as soon as the room is playing a mounted master (#591 B). Faithful to a
 		// living-room TV, and what makes I4/I6 measurable at all under the gestureless default.

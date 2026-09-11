@@ -1,9 +1,9 @@
 // GET /api/library — the durable catalog's two interesting states for a just-loaded client that
 // has received no broadcasts yet:
-//   library — stems already on disk. Re-queueing skips the worker (no 1–2 min cook), the whole
+//   library — stems already on disk. Re-queueing skips the worker (no 1–2 min process), the whole
 //             point of persisting the catalog.
-//   cooking — songs separating RIGHT NOW, with live progress. Without this, reloading the phone
-//             mid-cook lost the progress bar until the next broadcast fired.
+//   processing — songs separating RIGHT NOW, with live progress. Without this, reloading the phone
+//             mid-process lost the progress bar until the next broadcast fired.
 // Read-only and unauthenticated, like /api/search — queueing still requires a joined singer.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
@@ -17,7 +17,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const app = getApp();
 
 	// Browse: an optional facet filter. Only READY songs are browsable — the catalog holds
-	// every search result ever materialised (271 rows for 7 cooked songs on the live box), so browsing
+	// every search result ever materialised (271 rows for 7 processed songs on the live box), so browsing
 	// the whole table would bury the library in things you cannot sing yet.
 	// One active browse facet at a time (the phone UI enforces this too): an artist filter, a tag
 	// filter, or neither. `?tag=` reuses the media_tags byKindValue index via byTag — NOT a client-side
@@ -47,9 +47,9 @@ export const GET: RequestHandler = async ({ url }) => {
 		if (t.length) tags[m.id] = t;
 	}
 
-	// Cooking state is runtime, not durable — read it from the live catalog + job ledger.
-	const cooking = [...app.mediaById.values()]
-		.filter((m) => readinessOf(m) === 'cooking')
+	// Processing state is runtime, not durable — read it from the live catalog + job ledger.
+	const processing = [...app.mediaById.values()]
+		.filter((m) => readinessOf(m) === 'processing')
 		.map((media) => {
 			// The OUTSTANDING step, whatever its type. This asked for a live `stems` job and nothing else,
 			// so a song mid-fetch or mid-align matched none and fell through to the hardcoded 'queued'
@@ -66,7 +66,7 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	return json({
 		library,
-		cooking,
+		processing,
 		// mediaId → its 'tag'-kind values, for the library row's tag chips (#689). Additive: a client
 		// that does not read it is unaffected, and #690's tag filter reads this same map.
 		tags,

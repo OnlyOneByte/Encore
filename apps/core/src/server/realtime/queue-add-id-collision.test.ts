@@ -5,9 +5,9 @@
 //   (a) destroyed that singer's turn: the record is rewritten WHOLE (singerId/mediaId/addedAt), so a
 //       guest waiting for their song silently loses it, and persist() rewrites the table so it is
 //       gone from disk too; and
-//   (b) bypassed the cook-cancel seam: the hub fires onEntryRemoved only on a literal `remove`, so
+//   (b) bypassed the process-cancel seam: the hub fires onEntryRemoved only on a literal `remove`, so
 //       the displaced media lost its last queue claim with NO onEntryRemoved — cancelJobsForMedia
-//       never ran and a worker kept cooking a song nobody is queued on.
+//       never ran and a worker kept processing a song nobody is queued on.
 // The fix rejects an id already taken by a different IDENTITY (singerId or mediaId differ). The
 // identical-identity re-add is deliberately still allowed (applyOp's in-place arm exists for the
 // originator's own optimistic row, and an evicted clientOpId — seenOps is a bounded FIFO — can
@@ -77,9 +77,9 @@ test('validateCommand rejects an add whose id is held by a different singer (tur
 	expect(validateCommand(overwriteQ1(), deps)).toBe('entry id already taken: q1');
 });
 
-test('validateCommand rejects a same-singer re-point to a different mediaId (orphans the old cook)', () => {
+test('validateCommand rejects a same-singer re-point to a different mediaId (orphans the old process)', () => {
 	// Consequence (c): same entry id, same singerId as the existing row, but a DIFFERENT mediaId.
-	// This steals nothing but orphans m1's cook — which is why the guard must compare the WHOLE
+	// This steals nothing but orphans m1's process — which is why the guard must compare the WHOLE
 	// identity, not singerId alone. Actor is s1 here (the owner of q1) so the singerId matches.
 	const { deps } = harness('s1');
 	const selfRepoint: ClientCommand = {
@@ -118,7 +118,7 @@ test('a first-time add of a genuinely free id still validates (guard is not over
 	expect(validateCommand(freshAdd, deps)).toBeNull();
 });
 
-test('END-TO-END: the overwrite add is NOT applied, NOT broadcast, yields op:reject, and the displaced turn + its cook seam are untouched', () => {
+test('END-TO-END: the overwrite add is NOT applied, NOT broadcast, yields op:reject, and the displaced turn + its process seam are untouched', () => {
 	const { published, removedCalls, addedCalls, state, deps } = harness();
 	const sent: unknown[] = [];
 	const patch = handleQueueCommand(overwriteQ1(), deps, (e) => sent.push(e));
@@ -137,14 +137,14 @@ test('END-TO-END: the overwrite add is NOT applied, NOT broadcast, yields op:rej
 	expect(q1!.mediaId).toBe('m1');
 	expect(state.entries.map((e) => e.id).sort()).toEqual(['q1', 'q2']);
 
-	// (b) m1 still has a queue claim, so its cook is never orphaned — and because nothing was applied,
+	// (b) m1 still has a queue claim, so its process is never orphaned — and because nothing was applied,
 	// neither seam hook fired for this rejected frame.
 	expect(state.entries.some((e) => e.mediaId === 'm1')).toBe(true);
 	expect(removedCalls).toHaveLength(0);
 	expect(addedCalls).toHaveLength(0);
 });
 
-test('CONTROL: a legitimate remove of q1 still fires onEntryRemoved (the cook-cancel seam works — the add path simply was not on it)', () => {
+test('CONTROL: a legitimate remove of q1 still fires onEntryRemoved (the process-cancel seam works — the add path simply was not on it)', () => {
 	// Proves the seam the overwrite bypasses is real and reachable, so the defect was the add arm
 	// silently deleting q1 off that seam, not the seam being broken.
 	const { removedCalls, deps } = harness('s1');
@@ -160,7 +160,7 @@ test('CONTROL: a legitimate remove of q1 still fires onEntryRemoved (the cook-ca
 // mediaId disjunct alone decides them. The one case only the singerId half rejects is a SAME-MEDIA,
 // DIFFERENT-SINGER collision on a still-'queued' entry: a second guest names the victim's public
 // mediaId and re-adds it under their OWN singerId, stealing the turn while m1 keeps a queue claim
-// (so, unlike a media-differing overwrite, no cook is even orphaned to notice later). overwriteQ1
+// (so, unlike a media-differing overwrite, no process is even orphaned to notice later). overwriteQ1
 // already parameterizes mediaId, so overwriteQ1('m1') is the whole payload change: existing q1=s1/m1
 // (queued) vs incoming s2/m1 (queued) — equal media, equal status, so ONLY the singerId disjunct can
 // reject it. Deleting that disjunct leaves the shipped six tests green and REDS exactly these two.

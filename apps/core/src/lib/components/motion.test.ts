@@ -737,7 +737,7 @@ function classTokens(value: string): string[] {
 		for (const l of lits) out.push(...l.split(/\s+/).filter(Boolean));
 		// A CALL or a CONCATENATION is the composition shape a utility list is built with, so it must be
 		// readable or reported. A bare identifier / member access / ternary of literals (`{kind}`,
-		// `{z.id}`, `{cook.outcome}`) is a value from the component's own closed, class-named domain — it
+		// `{z.id}`, `{process.outcome}`) is a value from the component's own closed, class-named domain — it
 		// is exempted here BY NAME, and the whole-source net below is what keeps that exemption honest:
 		// were such a variable ever assigned a utility list, the literal would be in the source and the
 		// net would catch it.

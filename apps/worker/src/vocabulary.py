@@ -1,7 +1,7 @@
 """Enumerated worker vocabulary: what a job asks for, how it progresses, and what runs it.
 
 These were bare strings compared at call sites, so a typo or a value the core invented was only
-discoverable at runtime — usually as a job that failed mid-cook or, worse, silently took a default.
+discoverable at runtime — usually as a job that failed mid-process or, worse, silently took a default.
 Naming them once here gives three properties the strings did not have:
 
   * `parse_*` turns an untrusted wire value into a member or raises at the BOUNDARY, so an unknown
@@ -62,7 +62,7 @@ class Fetcher(_StrEnum):
     parsed at the boundary fails immediately and names the cause.
 
     LOCAL is not a downloader: it means the bytes are already under MEDIA_DIR and `source_uri` is a
-    path to read. Mirrors FetcherId in packages/shared/src/cook/fetchers.ts.
+    path to read. Mirrors FetcherId in packages/shared/src/process/fetchers.ts.
     """
 
     YTDLP = "ytdlp"
@@ -87,7 +87,7 @@ class AsrModel(_StrEnum):
 
     Enumerated rather than passed through as a free string for a specific reason: an unrecognised token
     reaches `whisperx.load_model()`, which tries to resolve it as a HuggingFace repo, fails, and is
-    swallowed by AsrSource's `except` — so the tier quietly DECLINES and the song finishes cooking with
+    swallowed by AsrSource's `except` — so the tier quietly DECLINES and the song finishes processing with
     no words and nothing in the log naming why. Parsing at the boundary turns that into an immediate,
     named failure.
     """
@@ -104,7 +104,7 @@ class SyncMode(_StrEnum):
 
     FORCED runs wav2vec2 forced alignment against the isolated vocals stem and yields per-word
     timings — the bouncing ball. LINES skips alignment entirely and keeps each source's own line
-    timings, which costs one fewer ML pass per cook but cannot highlight individual words.
+    timings, which costs one fewer ML pass per process but cannot highlight individual words.
 
     Both were always code paths; LINES was only ever reachable as the landing spot of an `except` in
     whisperx.py's `_time_one`. Naming it makes it a choice instead of a consolation prize.

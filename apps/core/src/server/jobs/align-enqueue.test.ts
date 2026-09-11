@@ -18,9 +18,9 @@ const media = (over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-// ── the cook pipeline ─────────────────────────────────────────────────────────
-test('the cook is fetch -> stems -> align, and ends there', () => {
-	// align is the LAST step of the cook, not an optional garnish: a song is not finished until its
+// ── the process pipeline ─────────────────────────────────────────────────────────
+test('the process is fetch -> stems -> align, and ends there', () => {
+	// align is the LAST step of the process, not an optional garnish: a song is not finished until its
 	// words are timed.
 	expect(followUps('fetch')).toEqual(['stems']);
 	expect(followUps('stems')).toEqual(['align']);

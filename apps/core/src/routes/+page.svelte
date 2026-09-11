@@ -35,22 +35,22 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
-	import { cookAndQueue } from '$lib/cook-and-queue';
+	import { processAndQueue } from '$lib/process-and-queue';
 	import { gripVisible, ownSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
 	import {
 		displayReadiness,
-		canCook,
+		canProcess,
 		readyEmptyState,
 		nextPlayableEntryId,
 		entryPlayable,
-		cookingGroupIds,
+		processingGroupIds,
 		queueCardKind,
 		type Readiness
 	} from '$lib/readiness';
-	import { activeScars, recordScar, clearScar } from '$lib/stores/cook-scars';
+	import { activeScars, recordScar, clearScar } from '$lib/stores/process-scars';
 	import { positionWords } from '$lib/position-sentence';
 	import type { MediaStatus } from '@encore/shared';
-	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '@encore/shared';
+	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isProcessableSource } from '@encore/shared';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import * as Collapsible from '$lib/components/ui/collapsible';
@@ -84,10 +84,10 @@
 		background: null,
 		guideLevel: null
 	});
-	// live make-karaoke progress per mediaId — driven by media:status broadcasts AND seeded
-	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
+	// live process progress per mediaId — driven by media:status broadcasts AND seeded
+	// from /api/library on load, so a reload mid-process doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
-	// Failed-cook scars (#68) captured once on mount from localStorage. Held so they can be re-merged
+	// Failed-process scars (#68) captured once on mount from localStorage. Held so they can be re-merged
 	// into the catalog after a queue:sync REPLACES it — otherwise the room's first sync wipes the
 	// scarred (failed, so server-unknown) media and its row vanishes again on the very reload the
 	// scar exists to survive.
@@ -177,14 +177,14 @@
 	}
 	/** Merge media into the client catalog. The catalog is otherwise fed ONLY by queue:sync/patch, so
 	 *  a song that came from search or the library — and is not (yet) in anyone's queue — has no
-	 *  resolvable title: a cooking card would render a raw ULID. */
+	 *  resolvable title: a processing card would render a raw ULID. */
 	function mergeMedia(list: Media[]) {
 		if (!list.length) return;
 		const next = new Map(mediaCatalog);
 		for (const m of list) next.set(m.id, m);
 		mediaCatalog = next;
 	}
-	/** Merge media but only for ids the catalog does NOT already hold — used to re-apply failed-cook
+	/** Merge media but only for ids the catalog does NOT already hold — used to re-apply failed-process
 	 *  scars after a queue:sync without clobbering a fresher server copy of the same song. */
 	function mergeMissingMedia(list: Media[]) {
 		if (!list.length) return;
@@ -233,8 +233,8 @@
 						if (e.settings) settings = e.settings;
 						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 						if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
-						// Re-apply failed-cook scars: a queue:sync REPLACES the catalog, and a failed song is
-						// not in the room's media (it settled to un-cooked server-side), so without this the
+						// Re-apply failed-process scars: a queue:sync REPLACES the catalog, and a failed song is
+						// not in the room's media (it settled to un-processed server-side), so without this the
 						// scarred row is wiped by the very first sync. A real entry for the id (already added
 						// above) wins; this only fills a gap. (#68)
 						if (scarredMedia.length) mergeMissingMedia(scarredMedia);
@@ -274,29 +274,29 @@
 						next.set(e.mediaId, { status: e.status, pct: e.pct, etaSec: e.etaSec });
 						mediaStatus = next;
 						// reflect the flip on the catalog copy so readiness agrees without a full sync.
-						// A `failed` cook must NOT be written back as 'queued' — that pins the row in the
-						// Cooking group at 0% forever with no failure signal (the singer never learns the
-						// cook died). Preserve the existing stemStatus on failure, matching the TV route.
+						// A `failed` process must NOT be written back as 'queued' — that pins the row in the
+						// Processing group at 0% forever with no failure signal (the singer never learns the
+						// process died). Preserve the existing stemStatus on failure, matching the TV route.
 						const m = mediaCatalog.get(e.mediaId);
 						if (m) {
 							const nm = new Map(mediaCatalog);
 							nm.set(e.mediaId, {
 								...m,
 								stemStatus:
-									// A failed OR canceled cook settles back to un-cooked server-side (settleStemsGate),
+									// A failed OR canceled process settles back to un-processed server-side (settleStemsGate),
 									// so the optimistic copy follows it. This used to preserve the mid-flight status,
-									// which is what kept the row reading as cooking after the job had already died.
+									// which is what kept the row reading as processing after the job had already died.
 									e.status === 'ready' ? 'ready' : e.status === 'failed' || e.status === 'canceled' ? 'none' : 'queued'
 							});
 							mediaCatalog = nm;
 						}
-						// a song that just finished cooking belongs in the saved library now, and a successful
-						// re-cook clears any failed-cook scar so the row never lingers as failed while it is ready.
+						// a song that just finished processing belongs in the saved library now, and a successful
+						// re-process clears any failed-process scar so the row never lingers as failed while it is ready.
 						if (e.status === 'ready') {
 							clearScar(e.mediaId);
 							loadLibrary();
 						}
-						// Surface a died cook to the singer instead of leaving the row silently stuck, and
+						// Surface a died process to the singer instead of leaving the row silently stuck, and
 						// persist a per-device scar so the failure survives a reload (the live map does not).
 						if (e.status === 'failed') {
 							const failedMedia = mediaCatalog.get(e.mediaId);
@@ -307,14 +307,14 @@
 					store.onServerEvent(e);
 				}
 			});
-			// Re-surface failed cooks that a reload would otherwise have erased: the live `mediaStatus`
+			// Re-surface failed processes that a reload would otherwise have erased: the live `mediaStatus`
 			// map is in-memory only, so a persisted scar (Encore #68) is seeded back as a synthetic
-			// `failed` live status. This flows through liveOf -> displayReadiness -> cookingRows to the
+			// `failed` live status. This flows through liveOf -> displayReadiness -> processingRows to the
 			// same red-chip + Sing row a live failure renders, with no extra UI. A fresher live broadcast
 			// always wins (checked below), and any scar cleared by a later `ready` is already gone.
 			scarredMedia = activeScars();
 			if (scarredMedia.length) {
-				// GET /api/library returns only ready + cooking media, so a failed song is not in the
+				// GET /api/library returns only ready + processing media, so a failed song is not in the
 				// catalog — merge the scar's snapshot in so its row can render, then mark it failed. The
 				// captured list is re-applied on every queue:sync (which replaces the catalog), so the
 				// row survives the room's first sync.
@@ -340,34 +340,34 @@
 	}
 
 	/**
-	 * "✨ Sing" — the raw row's ONE action: take the turn, then start the cook.
+	 * "✨ Sing" — the raw row's ONE action: take the turn, then start the process.
 	 *
-	 * Order is load-bearing, not stylistic: the core derives the cook's job priority from the rotation
-	 * position of the turns pointing at that media, so cooking first files the job at
+	 * Order is load-bearing, not stylistic: the core derives the process's job priority from the rotation
+	 * position of the turns pointing at that media, so processing first files the job at
 	 * NO_QUEUE_PRIORITY — behind the lyrics backfill — while a singer stands there waiting. See
-	 * $lib/cook-and-queue.ts for the full reasoning and its test.
+	 * $lib/process-and-queue.ts for the full reasoning and its test.
 	 *
-	 * `hasQueuedTurn` is the RETRY case (#741) and it is not an optimisation: a dead cook keeps
+	 * `hasQueuedTurn` is the RETRY case (#741) and it is not an optimisation: a dead process keeps
 	 * offering Sing (the group header literally says "tap Sing to try again"), so without it the second
 	 * tap booked the singer a second turn of the same song and the room played it twice in a row. The
-	 * cook step still runs — the retry must stay reachable, per readiness.ts's `canCook('failed')`.
+	 * process step still runs — the retry must stay reachable, per readiness.ts's `canProcess('failed')`.
 	 */
 	function singThis(mediaId: string) {
-		cookAndQueue({
+		processAndQueue({
 			queue: () => addSong(mediaId),
-			cook: () => void makeKaraoke(mediaId),
+			process: () => void processMedia(mediaId),
 			hasQueuedTurn: inMyQueue(mediaId)
 		});
 	}
 
-	/** Request stem-separation ("make karaoke") — flips the song to a cooking file server-side; the
+	/** Request stem-separation ("make karaoke") — flips the song to a processing file server-side; the
 	 *  live media:status broadcasts then drive the row's progress bar. */
-	async function makeKaraoke(mediaId: string) {
+	async function processMedia(mediaId: string) {
 		if (navigator.vibrate) navigator.vibrate(12);
-		// optimistic: the row reads as cooking immediately, before the request lands
+		// optimistic: the row reads as processing immediately, before the request lands
 		mediaStatus = new Map(mediaStatus).set(mediaId, { status: 'queued', pct: 0 });
 		try {
-			const res = await fetch('/api/make-karaoke', {
+			const res = await fetch('/api/process', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ mediaId })
@@ -375,20 +375,20 @@
 			const body = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
-				showError(body.error ?? 'Could not start make-karaoke');
+				showError(body.error ?? 'Could not start process');
 				return;
 			}
-			// the stems were already on disk (cooked on an earlier night) — nothing to wait for
+			// the stems were already on disk (processed on an earlier night) — nothing to wait for
 			if (body.alreadyReady) loadLibrary();
 		} catch {
 			mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
-			showError('Could not start make-karaoke — check your connection');
+			showError('Could not start process — check your connection');
 		}
 	}
 
 	/** Re-pick a song's lyrics (#640): pick a stored candidate by ref, or paste new words. Either way
 	 *  the server pins the choice and re-times it; the live media:status broadcasts drive the row. Like
-	 *  makeKaraoke, the network call lives here and the LyricsReselect control just reports the choice. */
+	 *  process, the network call lives here and the LyricsReselect control just reports the choice. */
 	async function reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }) {
 		if (navigator.vibrate) navigator.vibrate(12);
 		try {
@@ -407,13 +407,13 @@
 	}
 
 	// ── readiness ────────────────────────────────────────────────────────────
-	// One axis, three states: ready (stems on disk, sing now), cooking (stems in flight, still
+	// One axis, three states: ready (stems on disk, sing now), processing (stems in flight, still
 	// queueable because rotation holds its slot), raw (plays with the original vocals).
 	//
 	// It is no longer a FILTER. Direction B (issue #833) deleted the four concurrent ways to narrow
 	// one list — the three readiness chips, the artist rail, the genre rail, and the group headings
 	// that re-announced this axis in prose — leaving typing in the docked search box as the only one.
-	// So there is no `filter` state and no `showReady`/`showCooking`/`showRaw` gate: every group
+	// So there is no `filter` state and no `showReady`/`showProcessing`/`showRaw` gate: every group
 	// renders, every time, and the reader narrows the list by saying what they want.
 
 	function liveOf(id: string) {
@@ -425,7 +425,7 @@
 	/**
 	 * Everything a SongRow displays about a song, in ONE place.
 	 *
-	 * Spread rather than written out at each call site because there are five of them (ready, cooking,
+	 * Spread rather than written out at each call site because there are five of them (ready, processing,
 	 * raw, popular, recently-queued) and they had already drifted: the ready group read
 	 * `artistCanonical ?? artist` while the other four read the raw `artist`, so one song showed a
 	 * different name depending on which group it happened to be in. Both canonical fields are passed
@@ -441,10 +441,10 @@
 		viewCount: m.viewCount,
 		// The original detected key, spelled and confidence-gated by the shared helper (null below the
 		// floor). Added to the FIXED rowMeta shape so it reaches every SongRow call site — SongRow itself
-		// only paints the chip on a ready row, so a null here (raw/cooking song, or no key) is harmless.
+		// only paints the chip on a ready row, so a null here (raw/processing song, or no key) is harmless.
 		keyName: originalKeyLabel(m.songProfile) ?? undefined,
 		// The song's descriptive tags, threaded through the ONE shared row shape so every call site
-		// gets them; SongRow paints them on a READY row only, so a raw/cooking row's undefined is
+		// gets them; SongRow paints them on a READY row only, so a raw/processing row's undefined is
 		// harmless. Reads the map by id — a song with no tags is simply absent from it.
 		tags: libraryTags[m.id]
 	});
@@ -454,18 +454,18 @@
 	}
 
 	/**
-	 * Every song cooking right now. WHEN NOT SEARCHING this is the full union — the live status map
-	 * plus anything the catalog says is cooking — because this is the one place a cook you started is
+	 * Every song processing right now. WHEN NOT SEARCHING this is the full union — the live status map
+	 * plus anything the catalog says is processing — because this is the one place a process you started is
 	 * guaranteed to be visible, so a song you kicked off then went idle from must not disappear while
-	 * it works. WHEN SEARCHING it is scoped to the query via `cookingResults`, the server's
-	 * query-matched cooking group: a song someone else is cooking that does not match your search must
-	 * NOT appear under it (#252). The id-selection lives in the pure `cookingGroupIds` helper so it is
+	 * it works. WHEN SEARCHING it is scoped to the query via `processingResults`, the server's
+	 * query-matched processing group: a song someone else is processing that does not match your search must
+	 * NOT appear under it (#252). The id-selection lives in the pure `processingGroupIds` helper so it is
 	 * unit-testable; `failed` is included and `ready`/`canceled` excluded, all inside that helper.
 	 */
-	const cookingRows = $derived.by(() => {
-		const ids = cookingGroupIds({
+	const processingRows = $derived.by(() => {
+		const ids = processingGroupIds({
 			searchActive,
-			cookingResults,
+			processingResults,
 			mediaStatus,
 			mediaCatalog,
 			readiness: readinessFor
@@ -485,16 +485,16 @@
 	/**
 	 * The songs the readiness groups above already account for. The whole point of the readiness axis
 	 * is that a song appears EXACTLY ONCE, so the zero-query shortcut lists (popular / recently
-	 * queued) must subtract it — otherwise a cooked song shows up three times on one screen, once per
+	 * queued) must subtract it — otherwise a processed song shows up three times on one screen, once per
 	 * list, which is precisely the confusion the source tabs used to cause.
 	 *
-	 * Unconditional since #833: with the readiness chips gone, the ready and cooking groups always
+	 * Unconditional since #833: with the readiness chips gone, the ready and processing groups always
 	 * render, so they always account for their songs.
 	 */
 	const accountedFor = $derived.by(() => {
 		const ids = new Set<string>();
 		for (const m of searchActive ? readyResults : library) ids.add(m.id);
-		for (const c of cookingRows) ids.add(c.id);
+		for (const c of processingRows) ids.add(c.id);
 		return ids;
 	});
 	function unaccounted(list: Media[]): Media[] {
@@ -505,9 +505,9 @@
 	let query = $state('');
 	let readyResults = $state<Media[]>([]);
 	let rawResults = $state<Media[]>([]);
-	// The server's query-matched cooking group. Held so `cookingRows` can scope to the query while a
+	// The server's query-matched processing group. Held so `processingRows` can scope to the query while a
 	// search is active instead of re-deriving from the whole catalog (#252). Cleared with the box.
-	let cookingResults = $state<Media[]>([]);
+	let processingResults = $state<Media[]>([]);
 	let searching = $state(false);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let inflight: AbortController | undefined;
@@ -519,7 +519,7 @@
 		if (!q) {
 			readyResults = [];
 			rawResults = [];
-			cookingResults = [];
+			processingResults = [];
 			searching = false;
 			inflight?.abort();
 			loadShortcuts();
@@ -545,13 +545,13 @@
 			const j = await res.json();
 			readyResults = j.ready ?? [];
 			rawResults = j.results ?? [];
-			cookingResults = j.cooking ?? [];
-			mergeMedia([...readyResults, ...rawResults, ...cookingResults]);
+			processingResults = j.processing ?? [];
+			mergeMedia([...readyResults, ...rawResults, ...processingResults]);
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
 				readyResults = [];
 				rawResults = [];
-				cookingResults = [];
+				processingResults = [];
 				showError('Search failed — check your connection');
 			}
 		} finally {
@@ -607,7 +607,7 @@
 		}
 	}
 
-	// the saved-karaoke library + whatever is cooking, for a client that just loaded
+	// the saved-karaoke library + whatever is processing, for a client that just loaded
 	let library = $state<Media[]>([]);
 	// A song's descriptive tags, mediaId → its 'tag'-kind values, arriving beside `library` from
 	// /api/library (#689). A parallel map rather than a field on Media because tags live in their own
@@ -631,12 +631,12 @@
 			library = j.library ?? [];
 			libraryTags = j.tags ?? {};
 			mergeMedia(library);
-			const cooking: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.cooking ?? [];
-			if (cooking.length) {
-				mergeMedia(cooking.map((c) => c.media));
+			const processing: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.processing ?? [];
+			if (processing.length) {
+				mergeMedia(processing.map((c) => c.media));
 				const next = new Map(mediaStatus);
 				// a live broadcast is fresher than this snapshot — never overwrite one
-				for (const c of cooking)
+				for (const c of processing)
 					if (!next.has(c.media.id)) next.set(c.media.id, { status: c.status, pct: c.pct, etaSec: c.etaSec });
 				mediaStatus = next;
 			}
@@ -663,7 +663,7 @@
 	const resultShape = $derived(
 		!searchActive
 			? ''
-			: [query.trim(), readyResults.length, cookingRows.length, rawResults.length, library.length, popular.length, recent.length].join(
+			: [query.trim(), readyResults.length, processingRows.length, rawResults.length, library.length, popular.length, recent.length].join(
 					'|'
 				)
 	);
@@ -869,7 +869,7 @@
 	 *
 	 * The slot under the finger is read by hit-testing rather than computed from row heights: rows can
 	 * change height while the mode is open (a byline gains an `away` badge, another guest queues a
-	 * cooking card), and a cached geometry table would then point at the wrong slot — the precise class
+	 * processing card), and a cached geometry table would then point at the wrong slot — the precise class
 	 * of "commits somewhere the guest did not choose" that XR-PH-18 exists to prevent.
 	 */
 	function onGripPointerDown(entry: QueueEntry, e: PointerEvent) {
@@ -939,7 +939,7 @@
 		const reason = modeInvalidation(myPicks, movingId, entries.find((e) => e.id === movingId)?.status);
 		if (reason) exitReorder(null, reason);
 	});
-	// The entry that will ACTUALLY play next (skipping any still cooking), matching the server's
+	// The entry that will ACTUALLY play next (skipping any still processing), matching the server's
 	// nextPlayable(). Pure + unit-tested in $lib/readiness.
 	const nextPlayableId = $derived(
 		nextPlayableEntryId(
@@ -1105,7 +1105,7 @@
 			beforeName: before ? (singers.get(before.singerId)?.displayName ?? null) : null,
 			nowRemainingSec,
 			aheadDurationsSec: queued.slice(0, idx).map((e) => mediaCatalog.get(e.mediaId)?.durationSec ?? null),
-			// Only claim "up next" when the song can actually play next: a still-cooking song is skipped
+			// Only claim "up next" when the song can actually play next: a still-processing song is skipped
 			// by the TV, which contradicted the playable-aware badge in the queue list below.
 			playable: entryPlayable(mediaCatalog.get(myNextEntry.mediaId), liveOf(myNextEntry.mediaId))
 		});
@@ -1409,7 +1409,7 @@
 						onclick={() => exitReorder(slot.index)}>{slot.ordinal}</button
 					>
 				{/if}
-				{#if card === 'cooking' || card === 'failed'}
+				{#if card === 'processing' || card === 'failed'}
 					{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
 					<ProcessingCard
 						seq={i + 1}
@@ -1534,24 +1534,24 @@
 					pct={liveOf(m.id)?.pct ?? 0}
 					status={liveOf(m.id)?.status}
 					inQueue={inMyQueue(m.id)}
-					cookable={isCookableSource(m.source)}
+					processable={isProcessableSource(m.source)}
 					onadd={() => addSong(m.id)}
-					onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
+					onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
 				/>
 			{/each}
 		{/if}
 	{/if}
 
 	<!--
-		Cooking, immediately above the ready rows: rotation HOLDS a cooking song's slot, so it keeps its
-		fair position and plays when the stems land. Cooking is not a blocked state, which is why these
+		Processing, immediately above the ready rows: rotation HOLDS a processing song's slot, so it keeps its
+		fair position and plays when the stems land. Processing is not a blocked state, which is why these
 		rows sit with the singable ones rather than behind a chip. The heading that said so in prose was
 		mechanism 4 and is deleted — SongRow's own readiness chip already says it per row, and a failed
-		cook says so on its own row rather than in a heading covering the whole group.
+		process says so on its own row rather than in a heading covering the whole group.
 	-->
-	{#if searchActive && cookingRows.length}
-		{@const cookingStack = [...cookingRows].reverse()}
-		{#each cookingStack as c (c.id)}
+	{#if searchActive && processingRows.length}
+		{@const processingStack = [...processingRows].reverse()}
+		{#each processingStack as c (c.id)}
 			{@const r = displayReadiness(c.media, liveOf(c.id))}
 			<SongRow
 				{...rowMeta(c.media)}
@@ -1559,9 +1559,9 @@
 				pct={c.pct}
 				status={c.status}
 				inQueue={inMyQueue(c.id)}
-				cookable={isCookableSource(c.media.source)}
+				processable={isProcessableSource(c.media.source)}
 				onadd={() => addSong(c.id)}
-				onmake={canCook(c.media, r) ? () => singThis(c.id) : undefined}
+				onmake={canProcess(c.media, r) ? () => singThis(c.id) : undefined}
 			/>
 		{/each}
 	{/if}

@@ -1,5 +1,5 @@
 // Retention. The invariant that matters: nothing UNRECOVERABLE is ever deleted. `audio/` and
-// `meta/` are untouchable; only `derived/` (regenerable from audio, at the cost of a re-cook) is fair
+// `meta/` are untouchable; only `derived/` (regenerable from audio, at the cost of a re-process) is fair
 // game, and pre-policy WAVs are recompressed in place rather than evicted so the song stays singable.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
@@ -71,13 +71,13 @@ describe('legacy-format detection', () => {
 	it('does NOT flag a lossy stem for "upgrade" to lossless — that would be actively harmful', () => {
 		// When the instrumental target became FLAC, a rule of "anything not the current format" would
 		// have transcoded every .m4a to FLAC. That cannot recover what AAC discarded: it produces a ~4x
-		// larger file containing identical audio. A real codec upgrade means re-cooking from raw audio.
+		// larger file containing identical audio. A real codec upgrade means re-processing from raw audio.
 		expect(isLegacyStemRef('derived/stems/a-instrumental.m4a')).toBe(false);
 		expect(isLegacyStemRef('derived/stems/a-instrumental.flac')).toBe(false);
 		expect(planRecompress([media('a', { instrumentalRef: 'derived/stems/a-instrumental.m4a' })])).toEqual([]);
 	});
 
-	it('plans both stems of a legacy cook, since they were produced together', () => {
+	it('plans both stems of a legacy process, since they were produced together', () => {
 		const targets = planRecompress([media('a', { instrumentalRef: 'derived/stems/a-instrumental.wav' }), media('b')]);
 		expect(targets).toHaveLength(2); // only 'a'; 'b' is already current
 		expect(targets.map((t) => t.kind).sort()).toEqual(['instrumental', 'vocals']);
@@ -206,9 +206,9 @@ describe('evictDerived', () => {
 		expect(evictDerived(m).bytes).toBe(900);
 	});
 
-	it('counts an INTERIM cook (flac instrumental + m4a vocals) via the stored m.vocalsRef', () => {
+	it('counts an INTERIM process (flac instrumental + m4a vocals) via the stored m.vocalsRef', () => {
 		// #480 regression pin: flipping VOCALS_EXT to .flac makes BOTH vocalsKey and the ext-blind swap
-		// derive -vocals.flac, so neither names the .m4a vocals stem an interim cook actually left on
+		// derive -vocals.flac, so neither names the .m4a vocals stem an interim process actually left on
 		// disk (this PR deliberately does not recompress it). The ONLY thing that still counts it is the
 		// STORED m.vocalsRef. This is the real on-disk layout, not a synthetic one. Deleting m.vocalsRef
 		// from derivedRefsOf reds this (drops to 500) — proving the stored ref is load-bearing.
@@ -300,7 +300,7 @@ describe('evictDerived', () => {
 		// "inherits the retention the cap already bounds" — but eviction here is ref-driven and
 		// derivedRefsOf enumerated no raw-caption key, so derivedBytesOf undercounted (the identical
 		// #496/#442 undercount) and evictDerived orphaned the file on disk PERMANENTLY: retention strips
-		// the song to un-cooked and the raw caption survives the eviction with nothing left pointing at it.
+		// the song to un-processed and the raw caption survives the eviction with nothing left pointing at it.
 		// The worker writes it to derived/captions/<kind>/<id>.captions.<ext> keyed per media id (no ref
 		// stored on Media), so derivedRefsOf enumerates CAPTION_KINDS × KNOWN_CAPTION_EXTS via rawCaptionKey.
 		// Removing that enumeration line reds this: bytes drops to 500 and both caption files survive.

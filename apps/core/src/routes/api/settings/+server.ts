@@ -1,5 +1,5 @@
 // GET  /api/settings        — both scopes, as the clients render them.
-// PUT  /api/settings        — update GLOBAL (deployment separator + cook policy).
+// PUT  /api/settings        — update GLOBAL (deployment separator + process policy).
 // PUT  /api/settings/room   — update THIS ROOM (pacing, downward-only quality ceiling).
 //
 // A write broadcasts `settings:changed` with the combined payload, so a client never merges two

@@ -1,5 +1,5 @@
 // The readiness axis: one deduped result set, three groups. The invariant that matters is that a
-// song appears EXACTLY ONCE — the old source-tab UI could show the same song as both "cooked in the
+// song appears EXACTLY ONCE — the old source-tab UI could show the same song as both "processed in the
 // library" and "raw on YouTube", which is the confusion this partition exists to prevent.
 import { test, expect } from 'bun:test';
 import { readinessOf, matchesQuery, partitionSearch } from './readiness';
@@ -23,13 +23,13 @@ const ready = (id: string, over: Partial<Media> = {}) =>
 		songProfile: EMPTY_SONG_PROFILE,
 		...over
 	});
-const cooking = (id: string, over: Partial<Media> = {}) => m(id, { stemStatus: 'queued', ...over });
+const processing = (id: string, over: Partial<Media> = {}) => m(id, { stemStatus: 'queued', ...over });
 
 test('readinessOf classifies the three states a singer actually distinguishes', () => {
 	expect(readinessOf(ready('a'))).toBe('ready');
-	expect(readinessOf(cooking('a'))).toBe('cooking');
+	expect(readinessOf(processing('a'))).toBe('processing');
 	expect(readinessOf(m('a'))).toBe('unacquired'); // no instrumental — nothing to play
-	// a local file is no different: it has vocals, so it is a cook candidate, not a song to sing
+	// a local file is no different: it has vocals, so it is a process candidate, not a song to sing
 	expect(readinessOf(m('a', { source: 'local', stemStatus: 'none' }))).toBe('unacquired');
 });
 
@@ -43,30 +43,30 @@ test('matchesQuery covers title and artist, case-insensitively; empty query matc
 	expect(matchesQuery(song, '   ')).toBe(false);
 });
 
-test('partitions into ready / cooking / unacquired', () => {
+test('partitions into ready / processing / unacquired', () => {
 	const catalog = [
 		ready('r1', { title: 'Take On Me' }),
-		cooking('c1', { title: 'Take On Me live' }),
+		processing('c1', { title: 'Take On Me live' }),
 		m('x1', { title: 'Bohemian' })
 	];
 	const results = [m('n1', { title: 'Take On Me cover' })];
 	const p = partitionSearch('take on me', catalog, results);
 	expect(p.ready.map((x) => x.id)).toEqual(['r1']);
-	expect(p.cooking.map((x) => x.id)).toEqual(['c1']);
+	expect(p.processing.map((x) => x.id)).toEqual(['c1']);
 	expect(p.unacquired.map((x) => x.id)).toEqual(['n1']); // 'Bohemian' does not match the query
 });
 
-test('THE INVARIANT: a cooked song appears once, as ready — never also as an unacquired result', () => {
+test('THE INVARIANT: a processed song appears once, as ready — never also as an unacquired result', () => {
 	// The route materializes a resolver hit onto the existing catalog media, so `results` carries the
 	// SAME object. Before the sourceRef fix that recognition failed and produced a second raw row.
-	const cooked = ready('r1', { title: 'Take On Me', sourceRef: 'djV11Xbc914' });
-	const p = partitionSearch('take on me', [cooked], [cooked]);
+	const processed = ready('r1', { title: 'Take On Me', sourceRef: 'djV11Xbc914' });
+	const p = partitionSearch('take on me', [processed], [processed]);
 	expect(p.ready.map((x) => x.id)).toEqual(['r1']);
 	expect(p.unacquired).toHaveLength(0);
-	expect(p.ready.length + p.cooking.length + p.unacquired.length).toBe(1);
+	expect(p.ready.length + p.processing.length + p.unacquired.length).toBe(1);
 });
 
-test('a known cooked song survives the resolver being unreachable (offline / yt-dlp down)', () => {
+test('a known processed song survives the resolver being unreachable (offline / yt-dlp down)', () => {
 	const p = partitionSearch('take on me', [ready('r1', { title: 'Take On Me' })], []);
 	expect(p.ready.map((x) => x.id)).toEqual(['r1']); // still offered, still instantly singable
 });

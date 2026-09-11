@@ -49,7 +49,7 @@ function bail(msg) {
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
 if (!(await fetch(base + '/health').catch(() => null))?.ok) {
-	bail('no Encore server on ' + base + '. Start one (ephemeral + fake-stems-worker + a cooked song) and re-run.');
+	bail('no Encore server on ' + base + '. Start one (ephemeral + fake-stems-worker + a processed song) and re-run.');
 }
 
 // A song that can actually be sung has to exist before this test means anything.
@@ -57,7 +57,7 @@ const ready = await fetch(base + '/api/search?q=caroline')
 	.then((r) => r.json())
 	.then((d) => d.ready ?? []);
 if (!ready.length) {
-	bail('no READY song in the library - seed + cook one first (bun run e2e:seed && bun e2e/fake-stems-worker.mjs).');
+	bail('no READY song in the library - seed + process one first (bun run e2e:seed && bun e2e/fake-stems-worker.mjs).');
 }
 console.log('fixture: "' + ready[0].title + '" -> ' + ready[0].instrumentalRef + '\n');
 
@@ -82,7 +82,7 @@ let browser;
 try {
 	browser = await connect(CDP_PORT);
 
-	// -- a singer joins and queues the cooked song, through the real UI --
+	// -- a singer joins and queues the processed song, through the real UI --
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
 	await phone.goto(base + '/');
@@ -96,7 +96,7 @@ try {
 	const hasAdd = await phone.count(SEL.addTurn);
 	await phone.click(hasAdd > 0 ? SEL.addTurn : SEL.sing);
 	await phone.waitFor('document.querySelectorAll(' + JSON.stringify(SEL.queueRow) + ').length > 0');
-	check('a singer can join and queue the cooked song', true);
+	check('a singer can join and queue the processed song', true);
 
 	// -- the TV, gestureless --
 	const tv = await browser.newPage();

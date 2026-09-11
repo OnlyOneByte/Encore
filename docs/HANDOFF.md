@@ -12,14 +12,14 @@
 
 Self-hosted, mobile-first karaoke (personal project, `github.com/OnlyOneByte/Encore`). Scan a QR →
 name+color, no signup → search → one-tap queue. A TV surface plays **gaplessly** with round-robin
-rotation. **Make-karaoke** strips vocals via Demucs; word-timed lyrics and live pitch scoring ride on
+rotation. **Process** strips vocals via Demucs; word-timed lyrics and live pitch scoring ride on
 the stems. Pillars: **UI-first, wicked-fast/optimistic, as close to one container as possible.**
 
 ---
 
 ## 1. Three things that will bite you first
 
-- **A worker is a separate process.** Core alone accepts a make-karaoke request and leaves it at
+- **A worker is a separate process.** Core alone accepts a process request and leaves it at
   `queued` **forever**, with no warning in the UI.
 - **A green suite is the floor, not the bar.** Every real defect found lately was invisible to
   passing tests and only surfaced by driving the app (§5). Never report a feature working on unit
@@ -131,9 +131,9 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
 
 ## 4. Gotchas (each one costs an hour)
 
-0. **`/metrics` is empty for songs cooked before the attempt ledger shipped, and that is correct.**
+0. **`/metrics` is empty for songs processed before the attempt ledger shipped, and that is correct.**
    Processing history lives in `job_attempts`, which only starts recording when it is deployed — the
-   durations of past cooks were never written down and are not recoverable. A song with no history
+   durations of past processes were never written down and are not recoverable. A song with no history
    says so explicitly on its audit page rather than reading as "never processed". Related: `/metrics`
    and `/api/audit/*` are **ungated** by decision (there is no operator identity in Encore; any LAN
    phone can self-join), so treat them as LAN-visible. See ARCHITECTURE §10 (gating this is open work).
@@ -171,11 +171,11 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
     "separating 100%" that silently retries 3× — a full separation pass each time. Now pinned in
     `requirements.txt`; before that it arrived only transitively via `whisperx`, so a stems-only
     worker was broken while the full install worked.
-12. **A `failed` job leaves the media stuck showing `queued`/cooking forever.** Nothing surfaces the
+12. **A `failed` job leaves the media stuck showing `queued`/processing forever.** Nothing surfaces the
     error to the phone or TV and terminal jobs are never retried. Recover by deleting the failed row
     from `jobs` and resetting that media's `stem_status` to `none` — dedup is on `(mediaId, jobType)`,
     so a re-tap alone won't re-enqueue. Worth a real fix.
-13. **Read the `jobs` table when a cook misbehaves** — its `error` column is often the ONLY place the
+13. **Read the `jobs` table when a process misbehaves** — its `error` column is often the ONLY place the
     message exists. The column is `error`, not `last_error`.
 14. **Not every YouTube video downloads.** yt-dlp hits `This video is not available` on some ids and
     the job fails at stage `downloading` after 3 attempts. That is upstream bot-checking, not an
@@ -238,10 +238,10 @@ something can only be flagged for a human (audio, real ML, network).
 **Nothing plays unprocessed.** A `Media` is one downloaded rendition, and it is playable only when it
 has a separated instrumental — `stemStatus === 'ready'` **and** an `instrumentalRef`, both, because the
 two are written by separate steps and a status running ahead of its artifact hands the player an empty
-source. There is no YouTube embed path and no raw-source path; a local library file is a cook candidate
-like any other source. `playbackRef` returns `''` for anything uncooked and `isPlayable` is defined in
+source. There is no YouTube embed path and no raw-source path; a local library file is a process candidate
+like any other source. `playbackRef` returns `''` for anything unprocessed and `isPlayable` is defined in
 terms of it, so "what do I load" and "is there anything to load" cannot disagree. Readiness is
-`ready` / `cooking` / `unacquired`.
+`ready` / `processing` / `unacquired`.
 
 **Acquisition is declared, never inferred.** A job carries `params.fetcher` (`ytdlp` or `local`) and the
 worker parses it at its boundary. Do not reintroduce a test on the URI's shape: an `http(s)` prefix check
@@ -267,13 +267,13 @@ function or the invariant breaks.
 one malformed message could end a party. Validation lives in `hub.ts:validateCommand`.
 
 **Rotation.** `rotate` / `assignSeqs` / `applyAndReseq`. Terminal entries (`done`/`canceled`) are
-pruned on apply and hydrate. The **held-slot rule** — a singer keeps their seq while their song cooks
+pruned on apply and hydrate. The **held-slot rule** — a singer keeps their seq while their song processes
 — is real: a not-yet-ready `file` entry is skipped by `isEntryReady` but keeps its seq.
 
 **Media identity** (learned the hard way). `sourceRef` is **immutable origin identity**; the
-cooked stem key lives in `Media.instrumentalRef` and players ask `playbackRef(media)` what to load.
-Overwriting `sourceRef` on cook made a song unmatchable against its own search result forever, so
-every search minted a fresh uncooked duplicate.
+processed stem key lives in `Media.instrumentalRef` and players ask `playbackRef(media)` what to load.
+Overwriting `sourceRef` on process made a song unmatchable against its own search result forever, so
+every search minted a fresh unprocessed duplicate.
 
 **Presence.** The WS upgrade resolves which singer a socket belongs to from the session cookie; a
 ref-counted `PresenceTracker` broadcasts `singer:presence{online}` on 0→1 and 1→0 only, and
@@ -282,7 +282,7 @@ ref-counted `PresenceTracker` broadcasts `singer:presence{online}` on 0→1 and 
 
 **TV surfaces.** Four states via the pure `tvScreen()` in `src/lib/tv/screen.ts`, precedence
 `playing > waiting > lobby > attract`: **attract** (nobody here, full-screen QR), **lobby** (people,
-nothing queued — hero QR + roster strip), **waiting** (queued, still cooking), **playing**. **The
+nothing queued — hero QR + roster strip), **waiting** (queued, still processing), **playing**. **The
 join card is bottom-right and must stay there** — the lower-third owns bottom-left.
 
 **Gapless TV.** Two-player swap (A visible / B warming, swap on `ended`), telemetry-driven

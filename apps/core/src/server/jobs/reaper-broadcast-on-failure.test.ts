@@ -1,7 +1,7 @@
-// Done-when: a reaper-killed cook is REPORTED, not silent (issue #303), and every terminal-fail path
+// Done-when: a reaper-killed process is REPORTED, not silent (issue #303), and every terminal-fail path
 // runs the SAME four-step epilogue (issue #451). #90 wired the reaper's onFailed hook to settle the
 // readiness gate, but the hook did nothing else — no media:status broadcast, no operator log, no
-// scratch reclaim — so the phone that watched the cook stayed pinned on "Making karaoke… N%" with no
+// scratch reclaim — so the phone that watched the process stayed pinned on "Making karaoke… N%" with no
 // Sing button forever.
 //
 // This test drives a REAL JobReaper + JobRepository (in-memory sqlite) to attempts-exhaustion with
@@ -16,7 +16,7 @@ import { migratedDb } from '../db/test-db';
 import { JobReaper } from './reaper';
 import { JobRepository } from './repository';
 import { ackDeadline, progressDeadline } from './leases';
-import { reportTerminalFailure } from './make-karaoke';
+import { reportTerminalFailure } from './process';
 import type { Media, ServerEvent } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
@@ -55,7 +55,7 @@ function exhaust(jobType: 'stems' | 'align' | 'stems-upgrade', over: Partial<Med
 	return { jobs, mediaById, job, broadcasts };
 }
 
-test('#303 reaper-killed stems cook broadcasts media:status failed + logs uniformly (the room is told)', () => {
+test('#303 reaper-killed stems process broadcasts media:status failed + logs uniformly (the room is told)', () => {
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
 		const { jobs, job, broadcasts } = exhaust('stems', { stemStatus: 'queued' });
@@ -80,7 +80,7 @@ test('#303 reaper-killed stems cook broadcasts media:status failed + logs unifor
 	}
 });
 
-test('#303 reaper-killed align cook (playable song) still broadcasts failed', () => {
+test('#303 reaper-killed align process (playable song) still broadcasts failed', () => {
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
 		// align dies on an already-playable song; the lyrics gate settles but the room must still hear failed.
@@ -100,7 +100,7 @@ test('#303 reaper-killed align cook (playable song) still broadcasts failed', ()
 test('#303 a dead stems-upgrade on an ALREADY-singable song is NOT broadcast (no ready-row regress)', () => {
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
-		// shouldBroadcastCook returns false for a stems-upgrade on a readyToSing song — broadcasting failed
+		// shouldBroadcastProcess returns false for a stems-upgrade on a readyToSing song — broadcasting failed
 		// would flip a happy ready row back to a failure chip for a background job the singer never saw.
 		const { jobs, job, broadcasts } = exhaust('stems-upgrade', {
 			stemStatus: 'ready',

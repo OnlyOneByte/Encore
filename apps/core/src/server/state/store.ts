@@ -106,7 +106,7 @@ export class AuthoritativeState {
 			// auto-start gates jammed. Drop it here to UNJAM those gates — there is no boot resync or boot
 			// reconcile, so nothing starts a singer at hydrate time. The room is left genuinely idle with a
 			// ready queue, and recovery happens on the next real event that runs reconcileOnReady: the next
-			// queue:command (apps/core/server.ts, on a dangling/absent current), a cook completing
+			// queue:command (apps/core/server.ts, on a dangling/absent current), a process completing
 			// (reconcileOnReady in onMediaReady, apps/core/src/server/app.ts), or a manual play — the play
 			// control stays enabled because a non-empty queue satisfies its gate (routes/+page.svelte).
 			if (this.#playback.currentEntryId !== null && !entryResolves(this.#entries, this.#playback.currentEntryId)) {

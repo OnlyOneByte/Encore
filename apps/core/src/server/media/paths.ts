@@ -87,7 +87,7 @@ export function resolveBase(ref: string): { base: string; rest: string } {
 //
 // These MUST agree byte-for-byte with the worker's output paths (apps/worker/src/processor.py),
 // because the TV resolves `/media/${ref}`. A mismatch is silent: the file exists, the
-// player 404s. Keep the two in sync or the cook→play path breaks.
+// player 404s. Keep the two in sync or the process→play path breaks.
 
 /** Raw original audio. The one unrecoverable asset. */
 export function audioKey(mediaId: string, ext = 'wav'): string {
@@ -141,9 +141,9 @@ export function candidateAudioRefs(mediaId: string): string[] {
  *   trimmed it out at startup (#480); matching codecs remove the NEED for that startup correction. FLAC
  *   in <audio> is the decode path the instrumental already uses (TvPlayer.svelte).
  *
- * Songs cooked under an earlier policy keep their own (per-media) refs and still play — these helpers
- * only name NEW output. A stored `-vocals.m4a` ref from a legacy cook resolves unchanged; only newly
- * cooked stems land as `.flac`. AAC→FLAC recompression of existing files is deliberately NOT done
+ * Songs processed under an earlier policy keep their own (per-media) refs and still play — these helpers
+ * only name NEW output. A stored `-vocals.m4a` ref from a legacy process resolves unchanged; only newly
+ * processed stems land as `.flac`. AAC→FLAC recompression of existing files is deliberately NOT done
  * (see retention.ts isLegacyStemRef) — it cannot recover discarded data, only bloat the file.
  */
 export const INSTRUMENTAL_EXT = 'flac';
@@ -157,30 +157,30 @@ export function vocalsKey(mediaId: string, ext: string = VOCALS_EXT): string {
 }
 
 /**
- * Every historical vocals-stem extension, newest first. A cook records its vocals stem under one of
- * these; the extension a given row used depends on the VOCALS_EXT in force when it was cooked (legacy
+ * Every historical vocals-stem extension, newest first. A process records its vocals stem under one of
+ * these; the extension a given row used depends on the VOCALS_EXT in force when it was processed (legacy
  * `.wav`, interim `.m4a` before #480, current `.flac`). Retention and the guiding-track backfill both
  * need to enumerate all of them to find an existing stem whose extension differs from today's constant.
  */
 export const KNOWN_VOCALS_EXTS = ['flac', 'm4a', 'wav'] as const;
 
 /**
- * The SINGLE authority for the legacy `-instrumental.` -> `-vocals.` fallback derivation. A song cooked
+ * The SINGLE authority for the legacy `-instrumental.` -> `-vocals.` fallback derivation. A song processed
  * under the older layout has an instrumental ref whose sibling vocals file shares the same name; the
  * only honest fallback (when no vocals ref was stored) is the vocals sibling at EVERY known extension,
  * because the on-disk extension can differ from the instrumental's after VOCALS_EXT changes (#480).
  *
  * This replaces the ext-blind single `.replace('-instrumental.', '-vocals.')` that had been copied to
  * three sites and drifted (#496 / f6f8fa7): a `.flac` instrumental swapped ext-blind names only a
- * `.flac` vocals stem, so an interim `.m4a` cook became unfindable.
+ * `.flac` vocals stem, so an interim `.m4a` process became unfindable.
  */
 export function siblingVocalsRef(instrumentalRef: string): string {
 	return instrumentalRef.replace('-instrumental.', '-vocals.');
 }
 
 /**
- * Every ref a legacy cook's vocals stem might live at — the same-extension sibling of the
- * instrumental ref (a legacy cook shares one extension across both stems) re-based to every known
+ * Every ref a legacy process's vocals stem might live at — the same-extension sibling of the
+ * instrumental ref (a legacy process shares one extension across both stems) re-based to every known
  * vocals extension, so a row whose on-disk vocals extension differs from today's VOCALS_EXT is still
  * named. Empty when the ref carries no `-instrumental.` marker (nothing to derive from).
  */

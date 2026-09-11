@@ -4,7 +4,7 @@
 import { test, expect } from 'bun:test';
 import type { LyricsCandidate, Media } from '@encore/shared';
 import { chosenCandidate } from '@encore/shared';
-import { setMediaLyrics } from '../jobs/make-karaoke';
+import { setMediaLyrics } from '../jobs/process';
 
 // toRelativeKey strips the REAL MEDIA_DIR, so the absolute paths a worker reports only relativize
 // against the configured root (see paths.ts). Pin it, as the other media tests do.

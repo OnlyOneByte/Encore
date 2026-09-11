@@ -204,7 +204,7 @@ def test_the_written_track_is_found_and_parsed(tmp_path):
 
 
 def test_track_choice_is_deterministic_when_several_languages_land(tmp_path):
-    """Both are equally authoritative; picking the same one every run is what stops a re-cook producing
+    """Both are equally authoritative; picking the same one every run is what stops a re-process producing
     different lyrics for no reason."""
     (tmp_path / "captions.en.vtt").write_text(SAMPLE_VTT, encoding="utf-8")
     (tmp_path / "captions.en-GB.vtt").write_text(SAMPLE_VTT, encoding="utf-8")
@@ -443,10 +443,10 @@ async def test_configured_ytdlp_binary_reaches_the_caption_argv(tmp_path):
 # ── issue #670: the raw caption track survives job-scratch teardown when opted in ─────────────────────
 # The caption fetch writes the raw `.vtt` into per-job scratch (`ctx.work/<kind>/`), which
 # `dial_home._run_job` rmtrees when the job ends — so only the PARSED cues survive, and a
-# caption-parsing defect (#539/#542-class) can never be re-examined from the source bytes after a cook.
+# caption-parsing defect (#539/#542-class) can never be re-examined from the source bytes after a process.
 # `ENCORE_KEEP_RAW_CAPTIONS=1` copies the raw track out to the durable `derived/` store BEFORE teardown,
 # keeping the authored/machine distinction structural (a directory), off by default so the footprint of
-# an ordinary cook does not change. The flag is resolved at the config boundary (#709): the step takes a
+# an ordinary process does not change. The flag is resolved at the config boundary (#709): the step takes a
 # resolved `keep_raw` bool, and `WorkerConfig.from_env` parses the env with the same false-spelling set
 # every operator boolean uses — so `ENCORE_KEEP_RAW_CAPTIONS=0` is OFF, not a truthy non-empty string.
 
@@ -476,7 +476,7 @@ async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted
     With `ENCORE_KEEP_RAW_CAPTIONS=1`, after the fetch step runs the RAW caption track is retrievable
     from a durable `derived/` path — not only from the scratch directory that is torn down with the
     job. This is what lets a caption-parsing bug be diagnosed from the exact bytes production parsed,
-    long after the cook that produced it has finished and its scratch is gone.
+    long after the process that produced it has finished and its scratch is gone.
 
     Drives the real `FetchCaptions` step against the same no-overwrite yt-dlp stand-in the #96 guarantee
     uses, so the retained bytes are exactly what `read_captions` was handed. Asserts both tiers land in
@@ -492,7 +492,7 @@ async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted
     machine_dest = raw_caption_path(ctx.job.media_dir, ctx.job.media_id, MACHINE, "vtt")
 
     # 1. Both tiers were retained to the DURABLE derived/ store, each in its own directory — the same
-    #    structural split the scratch fetch keeps, so the two kinds cannot be confused post-cook.
+    #    structural split the scratch fetch keeps, so the two kinds cannot be confused post-process.
     assert os.path.exists(authored_dest), "authored raw track must be retained to derived/"
     assert os.path.exists(machine_dest), "machine raw track must be retained to derived/"
     assert os.path.dirname(authored_dest) != os.path.dirname(machine_dest), (
@@ -559,7 +559,7 @@ async def test_keep_raw_captions_env_true_spellings_turn_retention_ON(tmp_path, 
 
 
 def test_keep_raw_captions_defaults_off_when_unset():
-    """Unset resolves to False — an ordinary cook's footprint is unchanged (#709)."""
+    """Unset resolves to False — an ordinary process's footprint is unchanged (#709)."""
     assert WorkerConfig.from_env({}).keep_raw_captions is False
 
 
