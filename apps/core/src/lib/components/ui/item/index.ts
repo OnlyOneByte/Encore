@@ -5,14 +5,12 @@ import Footer from "./item-footer.svelte";
 import Group from "./item-group.svelte";
 import Header from "./item-header.svelte";
 import Media from "./item-media.svelte";
-import Separator from "./item-separator.svelte";
 import Title from "./item-title.svelte";
 import Root from "./item.svelte";
 
 export {
 	Root,
 	Group,
-	Separator,
 	Header,
 	Footer,
 	Content,
@@ -23,7 +21,6 @@ export {
 	//
 	Root as Item,
 	Group as ItemGroup,
-	Separator as ItemSeparator,
 	Header as ItemHeader,
 	Footer as ItemFooter,
 	Content as ItemContent,

@@ -88,10 +88,10 @@ const FLOORS: Record<string, Floor[]> = {
 	'apps/core/src/lib/ui-scoped-style-reach-913.test.ts': [
 		{
 			subject: 'files.length',
-			min: 85,
+			min: 80,
 			count: 1,
 			guards:
-				'the walk the reach check reads — the vendored tree PLUS the app side. An empty walk reports an empty offenders array exactly like a clean tree does, so the population is counted. #913 brought in 22 components across 67 files, and lib/components + routes dedupe to 90. The scope originally stopped at components/ui, which is why `<Table.Cell class="name">` in metrics/+page.svelte shipped green — the app side hands classes to shadcn components too now. A walk that falls materially below this lost a root, and the check went unenforceable rather than clean.'
+				'the walk the reach check reads — the vendored tree PLUS the app side. An empty walk reports an empty offenders array exactly like a clean tree does, so the population is counted. #913 left 19 components across 62 files, and lib/components + routes dedupe to 85. The scope originally stopped at components/ui, which is why `<Table.Cell class="name">` in metrics/+page.svelte shipped green — the app side hands classes to shadcn components too now. A walk that falls materially below this lost a root, and the check went unenforceable rather than clean.'
 		},
 		{
 			subject: 'styled.size',

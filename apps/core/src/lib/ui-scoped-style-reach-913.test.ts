@@ -166,10 +166,10 @@ function scopedRuleClasses(css: string): Map<string, string> {
 
 test('no scoped rule styles a class it hands to a child component (#913)', () => {
 	const files = [...new Set([...svelteFiles(UI), ...APP.flatMap(svelteFiles)])];
-	// Non-vacuity: measured, not guessed — 67 files under ui/ (22 components), 81 under lib/components
-	// including those, and 9 under routes/, deduping to 90. A walk that drops materially below that lost a
+	// Non-vacuity: measured, not guessed — 62 files under ui/ (19 components), 76 under lib/components
+	// including those, and 9 under routes/, deduping to 85. A walk that drops materially below that lost a
 	// root, and the empty offenders array below would then mean "scanned nothing" rather than "clean".
-	expect(files.length).toBeGreaterThanOrEqual(85); // @nvf-floor files.length
+	expect(files.length).toBeGreaterThanOrEqual(80); // @nvf-floor files.length
 
 	const offenders: string[] = [];
 	let filesWithBoth = 0;

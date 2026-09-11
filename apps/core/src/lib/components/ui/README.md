@@ -6,11 +6,16 @@ CSS somewhere the source-scanning design guards can still read and edit it. A he
 that CSS into `node_modules`, where a 38 px button, a 14 px input, a `vh` sheet cap and a
 `content: '✕'` all become **invisible rather than illegal**.
 
-**#913 filled this directory.** It holds 22 components, and the app's controls go through them:
-Button, Input, NativeSelect, Textarea, Label, Field, Checkbox, Switch, Slider, Tabs, Collapsible,
-Card, Badge, Progress, Table, Item, Empty, Skeleton, Spinner, Separator, Sonner and Chart. If you are
-adding number 23, the five sections below are the constraints that will bite you, in the order they
-bit #913.
+**#913 filled this directory.** It holds 19 components, every one wired to a real call site: Button,
+Input, NativeSelect, Label, Field, Checkbox, Slider, Tabs, Collapsible, Card, Badge, Progress, Table,
+Item, Empty, Skeleton, Spinner, Sonner and Chart. `Label` is reached through `Field.Label` rather than
+directly; it is the only indirect one.
+
+`Switch`, `Textarea` and `Separator` were vendored during the migration and deleted again before review
+closed, because nothing used them — "vendored but unwired" reads as migrated when it is not. Unused
+*parts* of components we DO use are kept on purpose: a part is the registry's unit, and deleting one
+makes the next `--overwrite` look like a regression. If you are adding number 20, the five sections below
+are the constraints that will bite you, in the order they bit #913.
 
 ---
 
