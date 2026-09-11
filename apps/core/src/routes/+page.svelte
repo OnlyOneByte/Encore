@@ -2199,19 +2199,31 @@
 		flex-direction: column;
 		gap: var(--space-sm);
 	}
-	.skel-thumb,
 	/*
 	 * Docked-toast stacking, measured UP from the docked primary button. --dock-h is bound to that band's
 	 * clientHeight, and the BAND's own padding already includes env(safe-area-inset-bottom), so the
 	 * inset arrives THROUGH --dock-h — do NOT add another env() term here or the gap doubles.
 	 *
 	 * The offsets were hand-tuned constants (14 / 70) stacking one element above the other above a
-	 * measured value, so they overlapped the instant either toast changed height. Named as scoped
-	 * tokens the stacking order is explicit: undo sits just above the band; the error toast docks above
-	 * the undo toast's REAL rendered height (--undo-h, bound to its clientHeight in script; 0 when it
-	 * is absent) plus a fixed gap, so the two never draw over each other however many lines the undo
-	 * toast wraps to. The height is content-dependent and unbounded, so it MUST be measured, not a
-	 * constant. Adjust the gaps, not the measurement.
+	 * measured value, so they overlapped the instant either toast changed height. Naming them as scoped
+	 * tokens made the stacking order explicit: undo sat just above the band, and the error toast docked
+	 * above the undo toast's rendered height plus a fixed gap.
+	 *
+	 * BOTH TOKENS ARE NOW DECLARED-BUT-UNREAD, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT.
+	 * #913 S5 moved the toasts onto Sonner, which stacks its own surfaces — so there is no second
+	 * independently-positioned toast to offset, and the `$effect` that published the undo toast's
+	 * measured height was deleted with it. Consequences worth stating, because the previous version of
+	 * this comment asserted the opposite and a comment that contradicts its code is a defect class here:
+	 *
+	 *   - there is NO writer for --undo-h anywhere in the tree, so it always resolves to its 0px
+	 *     fallback and --error-dock is simply --undo-dock + 14px;
+	 *   - no rule reads either token, so neither currently positions anything.
+	 *
+	 * They are retained rather than removed because two guards still resolve against this text:
+	 * `routes/phone-home-shell-832.test.ts` asserts the --undo-dock declaration by regex AND uses the
+	 * literal string `--error-dock:` as the end boundary of the slice it reads this rationale out of.
+	 * Deleting either line breaks that guard on a stale enumeration rather than on a real defect, so
+	 * retiring them is a test-owning change and not a CSS one.
 	 */
 	:root {
 		--undo-dock: calc(var(--dock-h, 0px) + 14px);
