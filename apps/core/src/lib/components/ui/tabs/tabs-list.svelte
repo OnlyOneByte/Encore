@@ -10,12 +10,10 @@
   `touch-targets.test.ts` reads CSS RULES, so a `min-h-tap` in a class attribute would make the tap
   floor invisible to the guard that exists to protect it.
 
-  Two facts carried over verbatim, both guarded elsewhere:
-    - `min-height: var(--tap)`, named rather than restated (XR-PH-01). A 38px pill would be the one
-      control on this page under the 44px floor.
-    - the active fill is `var(--accent)` with `var(--on-accent)` ink — the certified pair that carries
-      a label at 5.09:1 (#840, XR-COL-12). The fill and its ink are set together, never separately.
-    - `font-size: var(--ph-text-base)` (16px) so iOS does not auto-zoom when a tab takes focus.
+  This file styles the CONTAINER only — the pill rail the triggers sit in. The tap floor, the certified
+  `--accent`/`--on-accent` active pair and the 16px type all belong to `tabs-trigger.svelte`, which
+  carries its own header for them. They were listed here too for one build, which sent anyone auditing
+  the 44px floor to a file whose style block has no `min-height` in it at all.
 -->
 <script lang="ts" module>
 	import { tv, type VariantProps } from "tailwind-variants";

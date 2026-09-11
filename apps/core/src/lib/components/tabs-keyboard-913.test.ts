@@ -20,7 +20,7 @@
  */
 import { test, expect } from 'bun:test';
 import { mount, flushSync } from '../../../../../test-setup/svelte-client';
-import Probe from './tabs-keyboard-913.probe.svelte';
+import Probe from './tabs-keyboard-913.harness.svelte';
 
 /** The rendered tabs, in document order. */
 function tabsOf(host: HTMLElement): HTMLElement[] {
@@ -54,7 +54,12 @@ test('the tablist is announced as one control with a name, not three loose butto
 	const list = host.querySelector('[role="tablist"]');
 	expect(list).not.toBeNull();
 	expect(list!.getAttribute('aria-label')).toBe('Settings scope');
-	expect(tabsOf(host)).toHaveLength(3);
+	// Non-vacuity: the harness really rendered the control. Every arrow-key arm below walks this list, so
+	// a harness that mounted but produced no tabs would let all of them pass over an empty array — the
+	// silent-green shape these behavioural arms exist to avoid.
+	const triggers = tabsOf(host);
+	expect(triggers.length).toBeGreaterThanOrEqual(3); // @nvf-floor triggers.length
+	expect(triggers).toHaveLength(3);
 	// Each tab owns a panel, which is what lets a screen reader move from tab to content.
 	expect(host.querySelectorAll('[role="tabpanel"]').length).toBeGreaterThanOrEqual(1);
 });

@@ -22,9 +22,13 @@
      #253. The settings sliders are unaffected because every settings test is a source scan; nothing
      mounts that page. Migrating GuidingTrack means moving those seven renders to the LAYOUT rung, which
      skips wherever Chromium is absent — a coverage trade that is the owner's call, not this commit's.
-  5. Root and track are scoped CSS; fill and thumb are utilities. Not a style choice — `Range` and
-     `Thumb` are child COMPONENTS, and Svelte's scoped CSS cannot reach an element another component
-     renders, so those two must use classes minted from this directory instead.
+  5. Three different mechanisms, and each one is forced rather than chosen:
+       - the ROOT is `:global([data-slot='slider'])`. It was a scoped class for one build, and the rule
+         matched nothing — the root is a Bits UI component, so Svelte's hash lands on no element. The
+         style block below records what that cost.
+       - the TRACK is ordinary scoped CSS, because it is a `<span>` THIS file renders.
+       - the FILL and THUMB are utilities, because they are child components and a class is the only
+         thing that reaches them.
 -->
 <script lang="ts">
 	import { Slider as SliderPrimitive } from "bits-ui";

@@ -60,13 +60,79 @@ function styleBlock(src: string): string {
  * A component is spelled with a capital or a dot (`<Button`, `<TabsPrimitive.Trigger`), which is
  * Svelte's own rule for telling a component from an element. Only static class tokens are collected —
  * an interpolated one cannot be matched against a selector anyway.
+ *
+ * THREE THINGS THIS DELIBERATELY DOES NOT DO NAIVELY, each closing a real blind spot a reviewer found
+ * in the first version of this file. A guard with a known gap is what let the defect above ship, so
+ * the gaps are closed and each has a mutation arm at the bottom of this file:
+ *
+ *   1. The tag is scanned brace-aware rather than with `[^>]*`. A `>` inside an attribute expression
+ *      — `onclick={() => a > b}` — ends a naive match early, and any `class=` after it is invisible.
+ *   2. Class literals are collected from EVERY string in the tag's attributes, not only the one
+ *      immediately after `class=` or `class={cn(`. `cn($lib.x, "encore-foo")` puts it in second
+ *      position; `class={cond ? "a" : "b"}` puts it in neither.
+ *   3. `tv({ base: "…" })` bases count too. A tailwind-variants base reaches the same element by the
+ *      same route, and three components in this tree style themselves that way.
  */
+function tagsOfChildComponents(src: string): string[] {
+	const out: string[] = [];
+	for (const m of src.matchAll(/<([A-Z][\w.]*|[a-z][\w-]*\.[\w.]*)\b/g)) {
+		// `<svelte:element>` renders a real DOM element and DOES carry the scope hash.
+		if (m[1]!.startsWith('svelte:')) continue;
+		// Walk forward to the tag's own `>`, tracking brace and quote depth so an expression cannot
+		// terminate the tag early.
+		let i = m.index! + m[0].length;
+		let depth = 0;
+		let quote: string | null = null;
+		for (; i < src.length; i++) {
+			const c = src[i]!;
+			if (quote) {
+				if (c === quote) quote = null;
+				continue;
+			}
+			if (c === '"' || c === "'" || c === '`') quote = c;
+			else if (c === '{') depth++;
+			else if (c === '}') depth--;
+			else if (c === '>' && depth === 0) break;
+		}
+		out.push(src.slice(m.index!, i));
+	}
+	return out;
+}
+
+/** Class tokens a file hands to a child component, from any string position in the tag. */
 function classesOnChildComponents(src: string): Set<string> {
 	const out = new Set<string>();
-	for (const tag of src.matchAll(/<([A-Z][\w.]*|[a-z][\w-]*\.[\w.]*)\b([^>]*)>/g)) {
-		const attrs = tag[2] ?? '';
-		for (const cls of attrs.matchAll(/class=(?:\{cn\(|\{)?\s*"([^"]*)"/g))
-			for (const t of cls[1]!.split(/\s+/)) if (t && !t.includes('{')) out.add(t);
+	for (const tag of tagsOfChildComponents(src)) {
+		if (!/\bclass\s*=/.test(tag)) continue;
+		for (const lit of tag.matchAll(/"([^"]*)"|'([^']*)'/g)) {
+			for (const t of (lit[1] ?? lit[2] ?? '').split(/\s+/)) {
+				if (t && !t.includes('{') && !t.includes('(')) out.add(t);
+			}
+		}
+	}
+	/*
+	 * …and a `tv()` base, but ONLY when a child component is what consumes it.
+	 *
+	 * The unconditional version of this was wrong and said so loudly: `badge.svelte` builds its class
+	 * from `badgeVariants()` and renders `<svelte:element this={href ? "a" : "span"}>`, which is a REAL
+	 * element — Svelte puts the scope hash on it (verified in the SSR output), so its scoped
+	 * `.encore-chip` rule applies exactly as intended. Flagging it was a false positive, and a guard
+	 * that cries wolf on a correct file gets its finding waved through on the day it is right.
+	 *
+	 * `<svelte:element>` is therefore an element here, not a component. What matters is whether the tag
+	 * that CONSUMES the variants call is a component; `tabs-list` is the case that must still be caught.
+	 */
+	const variantsConsumedByComponent = new Set<string>();
+	for (const tag of tagsOfChildComponents(src)) {
+		for (const call of tag.matchAll(/\b([A-Za-z_][\w]*Variants)\s*\(/g)) {
+			variantsConsumedByComponent.add(call[1]!);
+		}
+	}
+	for (const decl of src.matchAll(/\b(?:const|let)\s+([A-Za-z_][\w]*Variants)\s*=\s*tv\(\s*\{([\s\S]*?)\n\t\}\)/g)) {
+		if (!variantsConsumedByComponent.has(decl[1]!)) continue;
+		for (const lit of decl[2]!.matchAll(/"([^"]*)"/g)) {
+			for (const t of lit[1]!.split(/\s+/)) if (t && !t.includes(':')) out.add(t);
+		}
 	}
 	return out;
 }
@@ -89,7 +155,7 @@ function scopedRuleClasses(css: string): Map<string, string> {
 test('no scoped rule in ui/ styles a class it hands to a child component (#913)', () => {
 	const files = svelteFiles(UI);
 	// Non-vacuity: the vendored tree is real and this walk reached it. #913 brought in 19 components.
-	expect(files.length).toBeGreaterThan(30);
+	expect(files.length).toBeGreaterThan(30); // @nvf-floor files.length
 
 	const offenders: string[] = [];
 	let filesWithBoth = 0;
@@ -136,4 +202,145 @@ test('the reach check actually catches the shape it was written for (#913)', () 
 <style>.encore-slider { min-height: var(--tap); }</style>`;
 	expect(classesOnChildComponents(plainFix).has('encore-slider')).toBe(false);
 	expect(scopedRuleClasses(styleBlock(plainFix)).has('encore-slider')).toBe(true);
+});
+
+test('the reach check sees a class the naive scans missed (#913 blind spots)', () => {
+	/*
+	 * One arm per gap a reviewer found in this file's first version. Each source below is a shape the
+	 * original `[^>]*` / `class={cn("…` matcher walked straight past, so each would have let a dead rule
+	 * ship exactly the way the slider's did.
+	 */
+
+	// 1. a `>` inside an attribute expression must not end the tag early.
+	const braceTrap = `<SliderPrimitive.Root onValueChange={(v) => v > 2} class="encore-x" />`;
+	expect(classesOnChildComponents(braceTrap).has('encore-x')).toBe(true);
+
+	// 2. the class literal is not always the first string in the tag.
+	const secondPosition = `<TabsPrimitive.Trigger class={cn(someBase, "encore-y")} />`;
+	expect(classesOnChildComponents(secondPosition).has('encore-y')).toBe(true);
+	const ternary = `<ProgressPrimitive.Root class={big ? "encore-z" : "encore-w"} />`;
+	expect(classesOnChildComponents(ternary).has('encore-z')).toBe(true);
+	expect(classesOnChildComponents(ternary).has('encore-w')).toBe(true);
+
+	// 3. a tailwind-variants base counts when a COMPONENT consumes it…
+	const tvBase = `<script lang="ts" module>
+	export const xVariants = tv({
+		base: "encore-tv-base",
+		variants: {}
+	});
+</script>
+<TabsPrimitive.List class={cn(xVariants(), className)} />`;
+	expect(classesOnChildComponents(tvBase).has('encore-tv-base')).toBe(true);
+
+	// …and NOT when a real element does. `<svelte:element>` is an element: it carries the scope hash, so
+	// its scoped rule applies. This is the badge.svelte shape, and flagging it was a false positive.
+	const tvOnElement = `<script lang="ts" module>
+	export const yVariants = tv({
+		base: "encore-tv-elem",
+		variants: {}
+	});
+</script>
+<svelte:element this={href ? "a" : "span"} class={cn(yVariants(), className)} />`;
+	expect(classesOnChildComponents(tvOnElement).has('encore-tv-elem')).toBe(false);
+
+	// …and none of the above should invent a class that is not there.
+	expect(classesOnChildComponents(`<div class="plain-element" />`).size).toBe(0);
+});
+
+/**
+ * Every `data-slot` name this tree STYLES must be a name this tree EMITS.
+ *
+ * This closes the other direction, and it is the direction #913's own fix opened. The defect at the
+ * top of this file was a rule that could not reach its element; the fix moved every such rule to
+ * `:global([data-slot='…'])`. Nothing then checked that the markup still carries the attribute the
+ * new selector keys on — so the fix mechanism was unguarded in exactly the way the bug had been.
+ *
+ * It is not hypothetical. Deleting the single `data-slot="tabs-trigger"` attribute kills the 44px tap
+ * floor, the active fill, the focus ring and the pill radius at once, and the suite stays FULLY GREEN:
+ * `touch-targets.test.ts` matches its `/tabs-trigger/` token against the rule's SELECTOR TEXT, which is
+ * still there and now applies to nothing. That is the same "correct in source, wrong on screen" shape
+ * as the original, and 11 of the 12 styled slots had no anchor of any kind — only `slider` did, and
+ * only incidentally, through an e2e selector.
+ *
+ * A source scan settles it: all 12 names are written in this tree's own markup, so there is no case
+ * where the emitter is inside a dependency and out of reach.
+ */
+/**
+ * A file's MARKUP: style blocks, script blocks and HTML comments removed.
+ *
+ * Every one of those three can satisfy a naive `data-slot=` scan with text that renders no attribute,
+ * and the first version of the check below was defeated by TWO of them at once. The `:global([data-slot=
+ * 'tabs-trigger'])` selector contains the exact substring the emitter scan was looking for, so the rule
+ * VOUCHED FOR ITSELF and the mutation stayed green; and the header comment explaining the convention
+ * contributed a slot literally named `…`. That is the same "text is not behaviour" mistake as the defect
+ * this file exists to catch, so the scan is narrowed to the only region that can actually emit an
+ * attribute.
+ */
+function markupOnly(src: string): string {
+	return src
+		.replace(/<style[\s\S]*?<\/style>/g, ' ')
+		.replace(/<script[\s\S]*?<\/script>/g, ' ')
+		.replace(/<!--[\s\S]*?-->/g, ' ');
+}
+
+/** A file's STYLE text with comments removed, so prose cannot register a styled slot. */
+function styleOnly(src: string): string {
+	const blocks = src.match(/<style[\s\S]*?<\/style>/g) ?? [];
+	return blocks.join('\n').replace(/\/\*[\s\S]*?\*\//g, ' ');
+}
+
+test('every data-slot styled via :global is emitted by markup in this tree (#913)', () => {
+	const styled = new Map<string, string[]>();
+	for (const f of svelteFiles(UI)) {
+		const src = styleOnly(readFileSync(f, 'utf8'));
+		for (const m of src.matchAll(/:global\(\[data-slot='([^']+)'\]/g)) {
+			const list = styled.get(m[1]!) ?? [];
+			list.push(f.slice(f.indexOf('components/ui/')));
+			styled.set(m[1]!, list);
+		}
+	}
+
+	// A styled slot with no anchor at all would be a silent regression waiting to happen.
+	expect(styled.size).toBeGreaterThanOrEqual(12); // @nvf-floor styled.size
+
+	// The emitter can be ANY component in the app, not only one in ui/: a compound component's parts
+	// style each other's slots, and a page may spell one itself.
+	const emitted = new Set<string>();
+	for (const f of svelteFiles(join(import.meta.dir, '..'))) {
+		const markup = markupOnly(readFileSync(f, 'utf8'));
+		for (const m of markup.matchAll(/data-slot=["']([^"']+)["']/g)) emitted.add(m[1]!);
+	}
+
+	const unreachable = [...styled.entries()]
+		.filter(([slot]) => !emitted.has(slot))
+		.map(([slot, files]) => `${files.join(', ')}: styles [data-slot='${slot}'] but no markup emits it`);
+	expect(unreachable).toEqual([]);
+});
+
+test('the data-slot reach check fails when the attribute is dropped (#913)', () => {
+	/*
+	 * Mutation proof, run against strings rather than the tree: the check must red on a rule whose slot
+	 * nothing emits, and stay quiet when the emitter is present anywhere — including a DIFFERENT file,
+	 * which is the normal case for a compound component whose parts style each other's slots.
+	 */
+	const file = `<!-- a header naming :global([data-slot='…']) as the convention -->
+<div class="wrap">slot is styled but never emitted</div>
+<style>:global([data-slot='ghost-slot']) { min-height: var(--tap); }</style>`;
+
+	// The style block registers the styled slot; the prose comment must NOT register one.
+	const slots = [...styleOnly(file).matchAll(/:global\(\[data-slot='([^']+)'\]/g)].map((m) => m[1]!);
+	expect(slots).toEqual(['ghost-slot']);
+
+	// The rule must not be able to vouch for itself: its own selector text contains `data-slot='…'`,
+	// so scanning the whole file would find an "emitter" that renders nothing. Markup only.
+	const emitted = new Set(
+		[...markupOnly(file).matchAll(/data-slot=["']([^"']+)["']/g)].map((m) => m[1]!)
+	);
+	expect(emitted.has('ghost-slot')).toBe(false);
+	expect(slots.filter((x) => !emitted.has(x))).toEqual(['ghost-slot']);
+
+	// …and it goes quiet once real markup emits it, including from another file.
+	const fixed = markupOnly(`<div data-slot="ghost-slot"></div>`);
+	const nowEmitted = new Set([...fixed.matchAll(/data-slot=["']([^"']+)["']/g)].map((m) => m[1]!));
+	expect(slots.filter((x) => !nowEmitted.has(x))).toEqual([]);
 });

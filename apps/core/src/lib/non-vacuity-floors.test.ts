@@ -85,6 +85,56 @@ type Floor = {
  * and the two on the motion guard's new utility-class arm.
  */
 const FLOORS: Record<string, Floor[]> = {
+	'apps/core/src/lib/ui-scoped-style-reach-913.test.ts': [
+		{
+			subject: 'files.length',
+			min: 30,
+			count: 1,
+			guards:
+				'the walk over the vendored tree that the reach check reads. An empty walk reports an empty offenders array exactly like a clean tree does, so the population is counted. #913 brought in 22 components across 67 files; a walk that fell to single digits means the directory moved or the recursion broke, and the check went unenforceable rather than clean.'
+		},
+		{
+			subject: 'styled.size',
+			min: 12,
+			count: 1,
+			guards:
+				"the `:global([data-slot='…'])` selectors whose slot must be emitted by real markup. This is the direction #913's own fix opened: the original defect was a rule that could not reach its element, the fix moved every such rule onto shadcn's data-slot attribute, and for one build nothing checked the attribute was still THERE. Deleting one `data-slot=\"tabs-trigger\"` killed the 44px tap floor, the active fill, the focus ring and the pill radius with the suite fully green, because touch-targets.test.ts matches its token against selector TEXT. If this count falls, rules stopped being keyed this way and the emit check is examining nothing."
+		}
+	],
+	'apps/core/src/lib/ui-card-surface-913.test.ts': [
+		{
+			subject: 'callers.length',
+			min: 8,
+			count: 1,
+			guards:
+				'the elements that take the shared `.card` surface rather than a <Card.Root>. The rule "app.css must define .card with a background" is unfalsifiable if nothing uses the class, and S4 deleted the rule after an audit whose grep (`class="card[ "]`) only matched class lists STARTING with card — nine spell it mid-list. This counts the population both directions of that check depend on.'
+		},
+		{
+			subject: 'rules.length',
+			min: 1,
+			count: 1,
+			guards:
+				'the `.card` rules collected from app.css. The earlier version used .exec() and read only the FIRST rule, so appending `.card { background: none; border: 0; }` stripped the surface from all nine callers with the suite green. Every rule is now collected and the LAST declaration asserted, which is what the cascade uses; this floor makes sure something was collected at all.'
+		}
+	],
+	'apps/core/src/lib/shadcn-ink-ban-913.test.ts': [
+		{
+			subject: 'scanned.length',
+			min: 30,
+			count: 1,
+			guards:
+				'the deduped app-source files the ink ban reads, outside the vendored tree. The list previously composed svelteFiles(LIB) with styleFiles(LIB), which already returns .svelte — 24 files were counted twice and the floor read 57 where the truth is 33, so it would still have passed with a third of the tree unreachable. Now deduped, with app.css deliberately in scope as the likeliest home for an `@apply text-primary`.'
+		}
+	],
+	'apps/core/src/lib/components/tabs-keyboard-913.test.ts': [
+		{
+			subject: 'triggers.length',
+			min: 3,
+			count: 1,
+			guards:
+				"the rendered Tabs.Trigger elements the keyboard arms drive. These are the only #913 assertions that measure BEHAVIOUR rather than text, and a harness that mounted but rendered no triggers would let every arrow-key assertion pass over an empty list. Bits UI owns the key handling; what this guards is Encore's wrapper still forwarding restProps and the page still using the primitive."
+		}
+	],
 	'apps/core/src/lib/tailwind-toolchain.test.ts': [
 		{
 			subject: 'mintSurfaces',
@@ -308,9 +358,9 @@ const FLOORS: Record<string, Floor[]> = {
 const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 	'apps/core/src/lib/ui-foreign-theme-913.test.ts': [
 		{
-			subject: 'files.length (the copied-in-component theme scan)',
+			subject: 'files.length',
 			reason:
-				"RETIRED BY #913's restructure. XR-VER-06/07 record. (a) The invariant: a copied-in shadcn component must reference NO shadcn theme name (bg-primary, text-muted-foreground, border-ring), because app.css defined none of them, so such a class resolved to nothing and the element rendered unstyled, which looks like a design choice in a screenshot rather than a defect. (b) What left scope: the PREMISE, deliberately inverted. app.css now defines the semantic layer (--primary: var(--accent) and friends) and bridges it in @theme, precisely so a vendored component works UNEDITED and `shadcn-svelte add --overwrite` stays safe across the fourteen components S2-S8 brought in. Those class names are the intended mechanism now; a guard banning them would forbid the architecture. (c) What covers it now, together strictly more than this file did: shadcn-ink-ban-913.test.ts bans the INK direction (text-primary, text-destructive) in app source while exempting the vendored tree by path, which is the real hazard since --accent as ink measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2 and 2.90 on --card-tint2, four AA failures; tailwind-toolchain.test.ts still refuses to register a PLAYER HUE in @theme, whose per-stop ink/fill split no single minted utility can respect; and motion.test.ts's net arm is what caught transition-all shipping in the stock Button and is what catches its return after any --overwrite. The floor was retired rather than lowered to 0, which is what \"never leave a guard passing vacuously\" requires."
+				"The copied-in-component theme scan. RETIRED BY #913's restructure. XR-VER-06/07 record. (a) The invariant: a copied-in shadcn component must reference NO shadcn theme name (bg-primary, text-muted-foreground, border-ring), because app.css defined none of them, so such a class resolved to nothing and the element rendered unstyled, which looks like a design choice in a screenshot rather than a defect. (b) What left scope: the PREMISE, deliberately inverted. app.css now defines the semantic layer (--primary: var(--accent) and friends) and bridges it in @theme, precisely so a vendored component works UNEDITED and `shadcn-svelte add --overwrite` stays safe across the fourteen components S2-S8 brought in. Those class names are the intended mechanism now; a guard banning them would forbid the architecture. (c) What covers it now, together strictly more than this file did: shadcn-ink-ban-913.test.ts bans the INK direction (text-primary, text-destructive) in app source while exempting the vendored tree by path, which is the real hazard since --accent as ink measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2 and 2.90 on --card-tint2, four AA failures; tailwind-toolchain.test.ts still refuses to register a PLAYER HUE in @theme, whose per-stop ink/fill split no single minted utility can respect; and motion.test.ts's net arm is what caught transition-all shipping in the stock Button and is what catches its return after any --overwrite. The floor was retired rather than lowered to 0, which is what \"never leave a guard passing vacuously\" requires."
 		}
 	],
 	'apps/core/src/lib/design-system.test.ts': [
@@ -459,7 +509,7 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
 	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
 	// prescribes rather than counted: raised absurdly high, read `Received: 40`.
-	expect(located).toBeGreaterThanOrEqual(40);
+	expect(located).toBeGreaterThanOrEqual(46);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -517,7 +567,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(40);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(46);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

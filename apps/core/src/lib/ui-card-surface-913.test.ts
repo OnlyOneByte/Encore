@@ -80,19 +80,42 @@ function callersInTree(): string[] {
 test('while anything uses `card`, app.css defines it WITH a background (#913)', () => {
 	const callers = callersInTree();
 	// Non-vacuity: the population is real. An empty set would make the rule below unfalsifiable.
-	expect(callers.length).toBeGreaterThanOrEqual(8);
+	expect(callers.length).toBeGreaterThanOrEqual(8); // @nvf-floor callers.length
 
-	const css = readFileSync(join(SRC, 'app.css'), 'utf8');
-	const rule = /(?:^|\n)\.card\s*\{([^}]*)\}/.exec(css);
+	const css = readFileSync(join(SRC, 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+	/*
+	 * EVERY `.card` rule, not the first one.
+	 *
+	 * This read `.exec()` and looked at one rule in a thousand-line stylesheet, which made the claim below
+	 * — "a rule that paints nothing is the same defect wearing a rule" — one the check did not actually
+	 * deliver. Appending six characters of override stripped the surface from all nine enumerated callers
+	 * with the suite fully green:
+	 *
+	 *     .card { background: none; border: 0; }
+	 *
+	 * In the cascade the LAST matching declaration wins, so that is the one to assert on. Collecting every
+	 * rule also means a refactor that splits `.card` across two blocks cannot hide the paint.
+	 */
+	const rules = [...css.matchAll(/(?:^|\n)\s*\.card\s*\{([^}]*)\}/g)].map((m) => m[1]!);
+	const rule: [unknown, string] | null = rules.length ? [true, rules.join('\n')] : null;
 	expect(
 		rule,
 		`${callers.length} element(s) list \`card\` as a class — ${callers.join(', ')} — but app.css defines ` +
 			`no \`.card\` rule. Every one of them renders with no surface. Restore the rule, or migrate those ` +
 			`elements and delete the class from their markup in the same change.`
 	).not.toBeNull();
-	// A rule that paints nothing is the same defect wearing a rule.
-	expect(rule![1], '`.card` must actually paint a surface').toMatch(/background:\s*var\(--card\)/);
-	expect(rule![1], '`.card` must carry its border').toMatch(/border:\s*1px solid var\(--line\)/);
+	// Non-vacuity: at least one rule was collected, so the assertions below read something.
+	expect(rules.length).toBeGreaterThanOrEqual(1); // @nvf-floor rules.length
+
+	// Assert on what SURVIVES the cascade: `lastOf` takes the final declaration of a property across every
+	// `.card` rule, which is what the browser will actually use.
+	const lastOf = (prop: string): string | null => {
+		const hits = [...rules.join('\n').matchAll(new RegExp(`(?:^|;|\\{)\\s*${prop}\\s*:\\s*([^;}]+)`, 'g'))];
+		return hits.length ? hits[hits.length - 1]![1]!.trim() : null;
+	};
+	expect(lastOf('background'), '`.card` must actually paint a surface').toMatch(/var\(--card\)/);
+	expect(lastOf('border'), '`.card` must carry its border').toMatch(/1px solid var\(--line\)/);
 });
 
 test('every `card` caller is enumerated, so a new one is a decision (#913)', () => {
@@ -115,4 +138,28 @@ test('every `card` caller is enumerated, so a new one is a decision (#913)', () 
 
 	// Each entry carries a reason a reader can weigh, not a bare path.
 	for (const c of CALLERS) expect(c.why.length, `${c.file} needs a substantive reason`).toBeGreaterThan(25);
+});
+
+test('a later rule that un-paints `card` is caught, not just a deleted one (#913)', () => {
+	/*
+	 * Mutation proof for the override direction, which the `.exec()` version could not see. Deleting the
+	 * rule already redded; NEUTRALISING it with a second rule did not, and that is the more likely
+	 * accident — a reset block, a theme override, a well-meant `background: none`.
+	 */
+	const lastOf = (css: string, prop: string): string | null => {
+		const rules = [...css.matchAll(/(?:^|\n)\s*\.card\s*\{([^}]*)\}/g)].map((m) => m[1]!);
+		const hits = [...rules.join('\n').matchAll(new RegExp(`(?:^|;|\\{)\\s*${prop}\\s*:\\s*([^;}]+)`, 'g'))];
+		return hits.length ? hits[hits.length - 1]![1]!.trim() : null;
+	};
+
+	const healthy = `.card {\n\tbackground: var(--card);\n\tborder: 1px solid var(--line);\n}`;
+	expect(lastOf(healthy, 'background')).toMatch(/var\(--card\)/);
+
+	const overridden = `${healthy}\n.card {\n\tbackground: none;\n\tborder: 0;\n}`;
+	expect(lastOf(overridden, 'background')).toBe('none');
+	expect(lastOf(overridden, 'background')).not.toMatch(/var\(--card\)/);
+
+	// …and a comment mentioning the property must not count as a declaration.
+	const commented = `/* background: none would break this */\n${healthy}`;
+	expect(lastOf(commented.replace(/\/\*[\s\S]*?\*\//g, ' '), 'background')).toMatch(/var\(--card\)/);
 });

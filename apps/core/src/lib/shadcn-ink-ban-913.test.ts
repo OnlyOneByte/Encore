@@ -47,7 +47,41 @@ const bannedRe = new RegExp(`\\b(?:dark:|hover:|focus:|active:|disabled:)*(?:${B
 function sources(): string[] {
 	// `.svelte` + `.css` covers every place a class list can be written as markup or a style rule.
 	// A utility composed in a `.ts` constant is the net arm's job in motion.test.ts, not this file's.
-	return [...svelteFiles(LIB), ...svelteFiles(ROUTES), ...styleFiles(LIB)];
+	//
+	// DEDUPED, because `styleFiles` already returns `.svelte` as well as `.css`. Composing it with
+	// `svelteFiles(LIB)` counted 24 files twice — the non-vacuity floor below read 57 where the truth is
+	// 33, which is a floor that would still pass with a third of the tree unreachable, and offender
+	// strings were reported twice.
+	//
+	// `src/app.css` is included DELIBERATELY: it is the shared design system and by far the likeliest
+	// home for an `@apply text-primary`, and it sits outside both LIB and ROUTES so the earlier list
+	// never read it at all.
+	const appCss = join(LIB, '..', 'app.css');
+	return [
+		...new Set([
+			...svelteFiles(LIB),
+			...svelteFiles(ROUTES),
+			...styleFiles(LIB),
+			...styleFiles(ROUTES),
+			appCss
+		])
+	].sort();
+}
+
+/**
+ * Source with comments removed, so PROSE cannot red the suite.
+ *
+ * Without this the guard criminalises its own documentation: a CSS comment that merely NAMES
+ * `text-primary` to explain why it is banned changes no behaviour and yet fails the build. That makes
+ * the rule unwritable next to the code it governs — and this repo has already had to fix exactly this
+ * anti-pattern in `ui-foreign-theme-913`, `tailwind-toolchain` and both name-scanning arms of
+ * `motion.test.ts`. The mutation arm below proves the stripper does not also blind the scan.
+ */
+function withoutComments(src: string): string {
+	return src
+		.replace(/<!--[\s\S]*?-->/g, ' ')
+		.replace(/\/\*[\s\S]*?\*\//g, ' ')
+		.replace(/(^|[\s;{])\/\/[^\n]*/g, '$1 ');
 }
 
 describe('#913 a semantic fill is never minted into app source as ink', () => {
@@ -60,7 +94,7 @@ describe('#913 a semantic fill is never minted into app source as ink', () => {
 			// `--overwrite` stays safe, and `ui/_encore/` is where our own overrides live. A stock
 			// component's own `text-primary` on its own `bg-primary` surface is the legal pairing.
 			if (f.includes(VENDORED)) continue;
-			for (const m of readFileSync(f, 'utf8').matchAll(bannedRe)) {
+			for (const m of withoutComments(readFileSync(f, 'utf8')).matchAll(bannedRe)) {
 				offenders.push(`${f.slice(f.indexOf('src/'))}: ${m[0]}`);
 			}
 		}
@@ -76,6 +110,28 @@ describe('#913 a semantic fill is never minted into app source as ink', () => {
 	});
 
 	test('non-vacuity: the scan reached app source outside the vendored tree', () => {
-		expect(files.filter((f) => !f.includes(VENDORED)).length).toBeGreaterThanOrEqual(20);
+		// Deduped count. Every entry is a distinct file, so this number means what it says.
+		const scanned = files.filter((f) => !f.includes(VENDORED));
+		expect(scanned.length).toBeGreaterThanOrEqual(30); // @nvf-floor scanned.length
+		expect(new Set(scanned).size).toBe(scanned.length);
+		// …and the shared stylesheet is in scope, which is where an `@apply` would most likely land.
+		expect(scanned.some((f) => f.endsWith('app.css'))).toBe(true);
+	});
+
+	test('a comment naming the ban does not red the suite, but real usage still does', () => {
+		// Both directions in one arm: the stripper must remove prose WITHOUT blinding the scan. The
+		// second half is what stops this becoming a hole rather than a fix.
+		const prose = `<!-- text-primary is banned: 3.10:1 on --card2 -->\n<p class="ink">x</p>`;
+		expect([...withoutComments(prose).matchAll(bannedRe)].length).toBe(0);
+
+		const cssProse = `/* never @apply text-destructive here */\n.x { color: var(--ink); }`;
+		expect([...withoutComments(cssProse).matchAll(bannedRe)].length).toBe(0);
+
+		const real = `<p class="text-primary">x</p>`;
+		expect([...withoutComments(real).matchAll(bannedRe)].length).toBe(1);
+
+		// A banned utility on the same LINE as a trailing comment must still be seen.
+		const mixed = `.x { color: red; } // text-primary explained\n.y { @apply text-primary; }`;
+		expect([...withoutComments(mixed).matchAll(bannedRe)].length).toBe(1);
 	});
 });
