@@ -1520,7 +1520,14 @@
 		align-items: center;
 		justify-content: center;
 		gap: 3.2vh;
-		padding: 0 var(--tv-safe-x);
+		/* right/top/bottom are real screen edges, so content is inset from them with the overscan token
+		   (stage-scale.test.ts requires a full-bleed painted container to pad with --tv-safe-*). The
+		   left edge is the INTERIOR 2px border, not a screen edge, so it takes a plain gutter rather
+		   than a second full overscan inset — charging --tv-safe-x on both sides stole ~192px of a
+		   600px panel and was half of why the join address clipped (XR-TV-19). The other half was the
+		   panel being too narrow; --tv-attract-right is now sized so a 23-char address fits at
+		   --tv-name (see the token comment in app.css). */
+		padding: var(--tv-safe-y) var(--tv-safe-x) var(--tv-safe-y) var(--space-4xl);
 		text-align: center;
 		overflow: hidden;
 	}
@@ -1528,6 +1535,8 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+		width: 100%;
+		min-width: 0;
 	}
 	.jt-step {
 		font-size: var(--tv-body);
@@ -1539,11 +1548,13 @@
 	}
 	.jt-url {
 		/*
-		 * The mockup's `.url` budget is 44px (--tv-name); at --tv-joinurl (88px) a real LAN address split
-		 * mid-octet in the 600px panel ("10.69.1.1 / 69:3721/j / oin"), so a guest transcribed the wrong
-		 * host (XR-TV-19 blocker). An address is ONE unbreakable token: shrinking beats breaking, so this
-		 * carries NO overflow-wrap — the room code (the largest element) is the thing being transcribed,
-		 * and it renders unbroken; the URL is the secondary route and fits one line at this budget.
+		 * An address is ONE unbreakable token, so shrinking beats breaking — it renders at the --tv-name
+		 * (44px) budget and never wraps (NO overflow-wrap; the ratified-states guard pins both the size
+		 * and the absence of an escape hatch). What makes 44px actually FIT — the real XR-TV-19 fix — is
+		 * the panel width: --tv-attract-right is sized from the measured width of a 23-char address at
+		 * this size plus the overscan padding, so the token fits one line at 720p/1080p/4K. The previous
+		 * regression left this at --tv-joinurl (88px) in a 600px panel, where a LAN address split
+		 * mid-octet and a guest transcribed the wrong host.
 		 */
 		font-size: var(--tv-name);
 		font-weight: 800;

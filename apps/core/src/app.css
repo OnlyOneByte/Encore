@@ -622,10 +622,18 @@
 	 * are the named exemption to the "no viewport term" rule and may carry vw/vmin (XR-TV-02, XR-TV-09).
 	 */
 	/* The attract split: a left column at the title-safe x carrying the label + phrase, and a flat-filled
-	   right panel carrying the join block. Widths track the panel so the 820/600 proportion from the
-	   mockup holds at 1080p and scales on a larger wall rather than freezing two pixel columns. */
-	--tv-attract-left: min(820px, 44vw);
-	--tv-attract-right: min(600px, 32vw);
+	   right panel carrying the join block. Widths are `clamp(floor, Nvw, ceiling)` so the panel is
+	   proportional to the wall and GROWS on a 4K stage instead of freezing at a phone-sized column while
+	   the vh-scaled type doubles (#821/XR-TV-19). The right panel's 37.5vw term and floor are sized from
+	   a MEASURED fact: a 23-char LAN address ("192.168.1.100:3721/join") rendered at --tv-name is 414px
+	   @720p / 604px @1080p / 1208px @4K, and the panel must clear that PLUS its overscan padding
+	   (--tv-safe-x ≈ 48/96/192px + a 20px interior gutter). 37.5vw yields ~480/720/1440px at those
+	   widths, so the address fits ONE line at --tv-name everywhere — which is what lets .jt-url keep the
+	   fixed 44px budget the ratified-states guard pins, with no font escape hatch and no mid-token break.
+	   Old form was `min(820px, 44vw)` / `min(600px, 32vw)`, which cap AT the px term — too narrow at
+	   1080p AND frozen at 4K, the two composing halves of the XR-TV-19 clip. */
+	--tv-attract-left: clamp(560px, 44vw, 1400px);
+	--tv-attract-right: clamp(482px, 37.5vw, 1440px);
 	/* The attract panel's own QR (not the --tv-qr hero): 230px in the mockup, in vmin so it grows. */
 	--tv-attract-qr: clamp(190px, 16vmin, 300px);
 	/* The full-screen takeover's family-coloured left border (Next-up / Still-processing / Skipping). One
@@ -695,7 +703,6 @@
 	   ResizeObserver so the fullscreen button (.fs-btn) can sit below it (#889). 0px fallback stands
 	   before the first measure and whenever no next song is queued (the block is absent). */
 	--tv-upnext-h: 0px;
-
 
 	/*
 	 * ── THE SHADCN SEMANTIC LAYER (#913, restructure) ────────────────────────────────────────────────
