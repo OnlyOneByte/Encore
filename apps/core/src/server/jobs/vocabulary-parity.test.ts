@@ -14,7 +14,7 @@
  * These tests read the Python SOURCE as text rather than executing it, so they need no Python
  * interpreter and run inside the ordinary `bun test` gate — a drift reds a check instead of a party.
  */
-import { describe, expect, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -65,42 +65,40 @@ const protocolPy = readFileSync(join(WORKER_SRC, 'protocol.py'), 'utf8');
  */
 const ARTIFACT_WRITERS = ['steps/separate.py'] as const;
 
-describe('artifact envelope parity (worker yield vs core read)', () => {
-	for (const file of ARTIFACT_WRITERS) {
-		test(`${file} publishes songProfile as a SIBLING of stems, not inside it`, () => {
-			const path = join(WORKER_SRC, file);
-			// Fail LOUDLY on a moved file rather than vacuously passing on an empty read. A guard that
-			// quietly stops guarding is worse than no guard: the whole point is that nobody is watching.
-			expect(existsSync(path), `${file} not found under ${WORKER_SRC} — did the module move?`).toBe(true);
-			const src = readFileSync(path, 'utf8');
-			// The step assigns each kind at the top level of the artifacts dict.
-			const assigns = [...src.matchAll(/out\.artifacts\[["'](\w+)["']\]\s*=/g)].map((m) => m[1]!);
-			expect(assigns).toContain('stems');
-			expect(assigns).toContain('songProfile');
-			// guideOffsetMs is a SIBLING too — a measurement, not a file — and is guarded the same
-			// way, so a future edit that nested it inside `stems` reds here instead of at a party.
-			expect(assigns).toContain('guideOffsetMs');
-			// ...and never reaches through stems to do it.
-			expect(/artifacts\[["']stems["']\]\[["']songProfile["']\]/.test(src)).toBe(false);
-		});
-	}
-
-	test('core reads it from the top level too — no reaching through stems', () => {
-		const raw = readFileSync(join(import.meta.dir, 'worker-hub.ts'), 'utf8');
-		// Strip comments before scanning. The comment at that read site DOCUMENTS the bad path in prose,
-		// so a naive scan flags its own explanation — the same trap icons.test.ts calls out, where a
-		// guard that reds on its own documentation gets deleted within a week. Newlines are preserved so
-		// nothing else about the file shifts.
-		const hub = raw
-			.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-			.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, ' '));
-		expect(hub).toContain('artifacts?.songProfile');
-		// The exact drift that shipped once. Guard the shape, not just the presence of a read.
-		expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*songProfile/);
-		// guideOffsetMs is read the same way — top-level, never through stems.
-		expect(hub).toContain('artifacts?.guideOffsetMs');
-		expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*guideOffsetMs/);
+for (const file of ARTIFACT_WRITERS) {
+	test(`artifact envelope parity (worker yield vs core read): ${file} publishes songProfile as a SIBLING of stems, not inside it`, () => {
+		const path = join(WORKER_SRC, file);
+		// Fail LOUDLY on a moved file rather than vacuously passing on an empty read. A guard that
+		// quietly stops guarding is worse than no guard: the whole point is that nobody is watching.
+		expect(existsSync(path), `${file} not found under ${WORKER_SRC} — did the module move?`).toBe(true);
+		const src = readFileSync(path, 'utf8');
+		// The step assigns each kind at the top level of the artifacts dict.
+		const assigns = [...src.matchAll(/out\.artifacts\[["'](\w+)["']\]\s*=/g)].map((m) => m[1]!);
+		expect(assigns).toContain('stems');
+		expect(assigns).toContain('songProfile');
+		// guideOffsetMs is a SIBLING too — a measurement, not a file — and is guarded the same
+		// way, so a future edit that nested it inside `stems` reds here instead of at a party.
+		expect(assigns).toContain('guideOffsetMs');
+		// ...and never reaches through stems to do it.
+		expect(/artifacts\[["']stems["']\]\[["']songProfile["']\]/.test(src)).toBe(false);
 	});
+}
+
+test('artifact envelope parity (worker yield vs core read): core reads it from the top level too — no reaching through stems', () => {
+	const raw = readFileSync(join(import.meta.dir, 'worker-hub.ts'), 'utf8');
+	// Strip comments before scanning. The comment at that read site DOCUMENTS the bad path in prose,
+	// so a naive scan flags its own explanation — the same trap icons.test.ts calls out, where a
+	// guard that reds on its own documentation gets deleted within a week. Newlines are preserved so
+	// nothing else about the file shifts.
+	const hub = raw
+		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+		.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, ' '));
+	expect(hub).toContain('artifacts?.songProfile');
+	// The exact drift that shipped once. Guard the shape, not just the presence of a read.
+	expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*songProfile/);
+	// guideOffsetMs is read the same way — top-level, never through stems.
+	expect(hub).toContain('artifacts?.guideOffsetMs');
+	expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*guideOffsetMs/);
 });
 
 /**
@@ -112,36 +110,34 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
  * as TEXT so it runs in the ordinary `bun test` gate with no Python interpreter and no `@encore/shared`
  * import on the worker side.
  */
-describe('every worker-written artifact key is declared in JobArtifacts', () => {
-	// Top-level field names of `interface JobArtifacts { ... }`, read from the source as text. Matches
-	// `name?:` / `name:` at the start of an indented line inside the interface body — the same
-	// read-source-as-text idiom used above, so no build step is needed to know the declared set.
-	function declaredArtifactKeys(): Set<string> {
-		const events = readFileSync(join(WORKER_SRC, '../../../packages/shared/src/core/events.ts'), 'utf8');
-		const m = events.match(/export interface JobArtifacts \{([\s\S]*?)\n\}/);
-		expect(m, 'JobArtifacts interface not found in events.ts').toBeTruthy();
-		const body = m![1]!;
-		// Field lines only: a single-tab indent then an identifier then optional `?` then `:`. Nested
-		// object members are more deeply indented and by design NOT top-level keys, so they are skipped.
-		return new Set([...body.matchAll(/^\t(\w+)\??:/gm)].map((x) => x[1]!));
-	}
+// Top-level field names of `interface JobArtifacts { ... }`, read from the source as text. Matches
+// `name?:` / `name:` at the start of an indented line inside the interface body — the same
+// read-source-as-text idiom used above, so no build step is needed to know the declared set.
+function declaredArtifactKeys(): Set<string> {
+	const events = readFileSync(join(WORKER_SRC, '../../../packages/shared/src/core/events.ts'), 'utf8');
+	const m = events.match(/export interface JobArtifacts \{([\s\S]*?)\n\}/);
+	expect(m, 'JobArtifacts interface not found in events.ts').toBeTruthy();
+	const body = m![1]!;
+	// Field lines only: a single-tab indent then an identifier then optional `?` then `:`. Nested
+	// object members are more deeply indented and by design NOT top-level keys, so they are skipped.
+	return new Set([...body.matchAll(/^\t(\w+)\??:/gm)].map((x) => x[1]!));
+}
 
-	test('no steps/*.py writes an artifacts key absent from JobArtifacts', () => {
-		const declared = declaredArtifactKeys();
-		expect(declared.has('stems'), 'sanity: JobArtifacts parsed').toBe(true);
-		const stepsDir = join(WORKER_SRC, 'steps');
-		const pyFiles = readdirSync(stepsDir).filter((f) => f.endsWith('.py'));
-		expect(pyFiles.length, 'no steps/*.py found — did the package move?').toBeGreaterThan(0);
-		const offenders: string[] = [];
-		for (const f of pyFiles) {
-			const src = readFileSync(join(stepsDir, f), 'utf8');
-			for (const mm of src.matchAll(/(?:out|ctx\.out)\.artifacts\[["'](\w+)["']\]\s*=/g)) {
-				const key = mm[1]!;
-				if (!declared.has(key)) offenders.push(`steps/${f}: artifacts["${key}"]`);
-			}
+test('every worker-written artifact key is declared in JobArtifacts: no steps/*.py writes an artifacts key absent from JobArtifacts', () => {
+	const declared = declaredArtifactKeys();
+	expect(declared.has('stems'), 'sanity: JobArtifacts parsed').toBe(true);
+	const stepsDir = join(WORKER_SRC, 'steps');
+	const pyFiles = readdirSync(stepsDir).filter((f) => f.endsWith('.py'));
+	expect(pyFiles.length, 'no steps/*.py found — did the package move?').toBeGreaterThan(0);
+	const offenders: string[] = [];
+	for (const f of pyFiles) {
+		const src = readFileSync(join(stepsDir, f), 'utf8');
+		for (const mm of src.matchAll(/(?:out|ctx\.out)\.artifacts\[["'](\w+)["']\]\s*=/g)) {
+			const key = mm[1]!;
+			if (!declared.has(key)) offenders.push(`steps/${f}: artifacts["${key}"]`);
 		}
-		expect(offenders, `worker writes artifact keys not declared in JobArtifacts: ${offenders.join(', ')}`).toEqual([]);
-	});
+	}
+	expect(offenders, `worker writes artifact keys not declared in JobArtifacts: ${offenders.join(', ')}`).toEqual([]);
 });
 
 /** Members of a `class Name(_StrEnum)` block, by their string VALUE (`FOO = "foo"` → `foo`). */
@@ -177,152 +173,150 @@ function pyCapabilityTokens(): string[] {
 	return [...capabilities.matchAll(/Probe\(\s*"([^"]+)"/g)].map((m) => m[1]!);
 }
 
-describe('TS↔Python vocabulary parity', () => {
-	test('JobType matches the worker Action enum', () => {
-		// JobType is a bare union type, so it has no runtime value to import — the union is asserted
-		// against the Python enum via an explicit list that TypeScript itself checks below.
-		const tsJobTypes = ['fetch', 'stems', 'stems-upgrade', 'align'] as const;
-		// If JobType ever gains or loses a member, this assignment stops compiling, so the list above
-		// cannot silently fall behind the type it mirrors.
-		const _exhaustive: readonly import('@encore/shared').JobType[] = tsJobTypes;
-		void _exhaustive;
-		expect([...pyEnumValues(vocabulary, 'Action')].sort()).toEqual([...tsJobTypes].sort());
-	});
+test('TS↔Python vocabulary parity: JobType matches the worker Action enum', () => {
+	// JobType is a bare union type, so it has no runtime value to import — the union is asserted
+	// against the Python enum via an explicit list that TypeScript itself checks below.
+	const tsJobTypes = ['fetch', 'stems', 'stems-upgrade', 'align'] as const;
+	// If JobType ever gains or loses a member, this assignment stops compiling, so the list above
+	// cannot silently fall behind the type it mirrors.
+	const _exhaustive: readonly import('@encore/shared').JobType[] = tsJobTypes;
+	void _exhaustive;
+	expect([...pyEnumValues(vocabulary, 'Action')].sort()).toEqual([...tsJobTypes].sort());
+});
 
-	test('ASR checkpoints match the worker AsrModel enum', () => {
-		expect(pyEnumValues(vocabulary, 'AsrModel').sort()).toEqual(ASR_MODELS.map((m) => m.id).sort());
-	});
+test('TS↔Python vocabulary parity: ASR checkpoints match the worker AsrModel enum', () => {
+	expect(pyEnumValues(vocabulary, 'AsrModel').sort()).toEqual(ASR_MODELS.map((m) => m.id).sort());
+});
 
-	test('sync modes match the worker SyncMode enum', () => {
-		expect(pyEnumValues(vocabulary, 'SyncMode').sort()).toEqual(SYNC_MODES.map((m) => m.id).sort());
-	});
+test('TS↔Python vocabulary parity: sync modes match the worker SyncMode enum', () => {
+	expect(pyEnumValues(vocabulary, 'SyncMode').sort()).toEqual(SYNC_MODES.map((m) => m.id).sort());
+});
 
-	test('separator engines match the worker Engine enum', () => {
-		expect(pyEnumValues(vocabulary, 'Engine').sort()).toEqual(SEPARATOR_ENGINES.map((e) => e.id).sort());
-	});
+test('TS↔Python vocabulary parity: separator engines match the worker Engine enum', () => {
+	expect(pyEnumValues(vocabulary, 'Engine').sort()).toEqual(SEPARATOR_ENGINES.map((e) => e.id).sort());
+});
 
-	test('fetchers match the worker Fetcher enum', () => {
-		expect(pyEnumValues(vocabulary, 'Fetcher').sort()).toEqual(FETCHERS.map((f) => f.id).sort());
-	});
+test('TS↔Python vocabulary parity: fetchers match the worker Fetcher enum', () => {
+	expect(pyEnumValues(vocabulary, 'Fetcher').sort()).toEqual(FETCHERS.map((f) => f.id).sort());
+});
 
-	// vocabulary.py is read once at module load; if it ever moves, that read throws a bare ENOENT and
-	// every parity test above fails for the wrong reason. Assert its presence loudly, the same way the
-	// artifact-envelope block guards its per-file reads, so a moved file names itself.
-	test('vocabulary.py is where the parity reads expect it', () => {
-		const path = join(WORKER_SRC, 'vocabulary.py');
-		expect(existsSync(path), `vocabulary.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
-	});
+// vocabulary.py is read once at module load; if it ever moves, that read throws a bare ENOENT and
+// every parity test above fails for the wrong reason. Assert its presence loudly, the same way the
+// artifact-envelope block guards its per-file reads, so a moved file names itself.
+test('TS↔Python vocabulary parity: vocabulary.py is where the parity reads expect it', () => {
+	const path = join(WORKER_SRC, 'vocabulary.py');
+	expect(existsSync(path), `vocabulary.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
+});
 
-	test('lyrics text sources match the worker TextSource enum', () => {
-		// LyricsTextSource is a bare union with no runtime value to import, so — exactly like JobType
-		// above — the members are listed explicitly and TypeScript checks the list IS the union, so it
-		// cannot silently fall behind. The Python side is TextSource, promoted from chain.py's SOURCE_*
-		// string constants precisely so this guard can cover it.
-		const tsTextSources = ['lrclib', 'captions', 'asr', 'manual'] as const;
-		const _exhaustive: readonly import('@encore/shared').LyricsTextSource[] = tsTextSources;
-		void _exhaustive;
-		expect(pyEnumValues(vocabulary, 'TextSource').sort()).toEqual([...tsTextSources].sort());
-	});
+test('TS↔Python vocabulary parity: lyrics text sources match the worker TextSource enum', () => {
+	// LyricsTextSource is a bare union with no runtime value to import, so — exactly like JobType
+	// above — the members are listed explicitly and TypeScript checks the list IS the union, so it
+	// cannot silently fall behind. The Python side is TextSource, promoted from chain.py's SOURCE_*
+	// string constants precisely so this guard can cover it.
+	const tsTextSources = ['lrclib', 'captions', 'asr', 'manual'] as const;
+	const _exhaustive: readonly import('@encore/shared').LyricsTextSource[] = tsTextSources;
+	void _exhaustive;
+	expect(pyEnumValues(vocabulary, 'TextSource').sort()).toEqual([...tsTextSources].sort());
+});
 
-	test('lyrics timing tiers match the worker Timing enum', () => {
-		const tsTimings = ['word', 'line', 'none'] as const;
-		const _exhaustive: readonly import('@encore/shared').LyricsTiming[] = tsTimings;
-		void _exhaustive;
-		expect(pyEnumValues(vocabulary, 'Timing').sort()).toEqual([...tsTimings].sort());
-	});
+test('TS↔Python vocabulary parity: lyrics timing tiers match the worker Timing enum', () => {
+	const tsTimings = ['word', 'line', 'none'] as const;
+	const _exhaustive: readonly import('@encore/shared').LyricsTiming[] = tsTimings;
+	void _exhaustive;
+	expect(pyEnumValues(vocabulary, 'Timing').sort()).toEqual([...tsTimings].sort());
+});
 
-	test('every engine capability string is one the worker can advertise', () => {
-		// This is the pairing dispatch.ts compares with raw `capabilities.includes(cap)`, so a typo on
-		// either side parks the job forever rather than failing loudly.
-		const advertisable = new Set(pyCapabilityTokens());
-		const missing = SEPARATOR_ENGINES.map((e) => e.capability).filter((c) => !advertisable.has(c));
-		expect(missing).toEqual([]);
-	});
+test('TS↔Python vocabulary parity: every engine capability string is one the worker can advertise', () => {
+	// This is the pairing dispatch.ts compares with raw `capabilities.includes(cap)`, so a typo on
+	// either side parks the job forever rather than failing loudly.
+	const advertisable = new Set(pyCapabilityTokens());
+	const missing = SEPARATOR_ENGINES.map((e) => e.capability).filter((c) => !advertisable.has(c));
+	expect(missing).toEqual([]);
+});
 
-	test('every fetcher capability the core routes on is one the worker can advertise', () => {
-		const advertisable = new Set(pyCapabilityTokens());
-		// `local` needs no worker — it is served from the media volume, so it advertises nothing.
-		const routed = FETCHERS.filter((f) => f.id !== 'local').map((f) => `fetch:${f.id}`);
-		expect(routed.filter((c) => !advertisable.has(c))).toEqual([]);
-	});
+test('TS↔Python vocabulary parity: every fetcher capability the core routes on is one the worker can advertise', () => {
+	const advertisable = new Set(pyCapabilityTokens());
+	// `local` needs no worker — it is served from the media volume, so it advertises nothing.
+	const routed = FETCHERS.filter((f) => f.id !== 'local').map((f) => `fetch:${f.id}`);
+	expect(routed.filter((c) => !advertisable.has(c))).toEqual([]);
+});
 
-	/**
-	 * The two assertions above enumerate the engine and fetcher capability TABLES, but the core does
-	 * not route on a table — it routes on `requiredCapability(jobType)` (dispatch.ts), whose LAST
-	 * branch is a bare `return jobType`. That fall-through covers `align`, whose capability lives in
-	 * neither `SEPARATOR_ENGINES` nor `FETCHERS`, so neither assertion above ever reaches it: rename
-	 * the worker's `align` probe (the natural change the moment align gains a second backend, exactly
-	 * as `stems` grew `stems:roformer`) and every align job is routed on a capability no worker can
-	 * advertise, parking silently at 0% with both suites green. Assert the ROUTED set directly —
-	 * every JobType's required capability must be advertisable — which subsumes both checks above and
-	 * closes the fall-through. `align` and `stems-upgrade` are the members the enumerations miss.
-	 */
-	test('every JobType routes to a capability the worker can advertise', () => {
-		// TypeScript checks this list IS the JobType union (same trick as the enum tests), so it
-		// cannot silently fall behind if a job type is added.
-		const jobTypes = ['fetch', 'stems', 'stems-upgrade', 'align'] as const;
-		const _exhaustive: readonly JobType[] = jobTypes;
-		void _exhaustive;
-		const advertisable = new Set(pyCapabilityTokens());
-		// With no settings, requiredCapability returns each type's DEFAULT-routed capability — the one
-		// a job actually carries when the operator has not overridden the engine. That is the set the
-		// worker must be able to serve out of the box.
-		const missing = jobTypes
-			.map((jt) => ({ jt, cap: requiredCapability(jt) }))
-			.filter(({ cap }) => !advertisable.has(cap));
-		expect(missing).toEqual([]);
-	});
-	/**
-	 * The WIRE VERBS were the last contract in this file guarded only by a comment.
-	 *
-	 * `protocol.py` carries `# message type strings (must match packages/shared/src/core/events.ts)` above
-	 * eleven frame names, and nothing checked it. Rename a frame on either side and every test here
-	 * stayed green while the worker silently ignored an unrecognised `type` (or the core dropped the
-	 * worker's) — a worker that connects, handshakes, and then never accepts a job. That is the same
-	 * "hung worker at 0%" signature the capability-derivation work was written to end, one layer up.
-	 */
-	test('worker→core frame names match the WorkerMessage union', () => {
-		const tsWorkerMessages = [
-			'worker:hello',
-			'worker:heartbeat',
-			'job:accept',
-			'job:reject',
-			'job:progress',
-			'job:complete',
-			'job:failed'
-		] as const;
-		// Same trick as JobType above: TypeScript checks the list IS the union, so it cannot fall behind.
-		const _exhaustive: readonly import('@encore/shared').WorkerMessage['type'][] = tsWorkerMessages;
-		void _exhaustive;
-		expect(pyWireVerbs('worker -> core').sort()).toEqual([...tsWorkerMessages].sort());
-	});
+/**
+ * The two assertions above enumerate the engine and fetcher capability TABLES, but the core does
+ * not route on a table — it routes on `requiredCapability(jobType)` (dispatch.ts), whose LAST
+ * branch is a bare `return jobType`. That fall-through covers `align`, whose capability lives in
+ * neither `SEPARATOR_ENGINES` nor `FETCHERS`, so neither assertion above ever reaches it: rename
+ * the worker's `align` probe (the natural change the moment align gains a second backend, exactly
+ * as `stems` grew `stems:roformer`) and every align job is routed on a capability no worker can
+ * advertise, parking silently at 0% with both suites green. Assert the ROUTED set directly —
+ * every JobType's required capability must be advertisable — which subsumes both checks above and
+ * closes the fall-through. `align` and `stems-upgrade` are the members the enumerations miss.
+ */
+test('TS↔Python vocabulary parity: every JobType routes to a capability the worker can advertise', () => {
+	// TypeScript checks this list IS the JobType union (same trick as the enum tests), so it
+	// cannot silently fall behind if a job type is added.
+	const jobTypes = ['fetch', 'stems', 'stems-upgrade', 'align'] as const;
+	const _exhaustive: readonly JobType[] = jobTypes;
+	void _exhaustive;
+	const advertisable = new Set(pyCapabilityTokens());
+	// With no settings, requiredCapability returns each type's DEFAULT-routed capability — the one
+	// a job actually carries when the operator has not overridden the engine. That is the set the
+	// worker must be able to serve out of the box.
+	const missing = jobTypes
+		.map((jt) => ({ jt, cap: requiredCapability(jt) }))
+		.filter(({ cap }) => !advertisable.has(cap));
+	expect(missing).toEqual([]);
+});
+/**
+ * The WIRE VERBS were the last contract in this file guarded only by a comment.
+ *
+ * `protocol.py` carries `# message type strings (must match packages/shared/src/core/events.ts)` above
+ * eleven frame names, and nothing checked it. Rename a frame on either side and every test here
+ * stayed green while the worker silently ignored an unrecognised `type` (or the core dropped the
+ * worker's) — a worker that connects, handshakes, and then never accepts a job. That is the same
+ * "hung worker at 0%" signature the capability-derivation work was written to end, one layer up.
+ */
+test('TS↔Python vocabulary parity: worker→core frame names match the WorkerMessage union', () => {
+	const tsWorkerMessages = [
+		'worker:hello',
+		'worker:heartbeat',
+		'job:accept',
+		'job:reject',
+		'job:progress',
+		'job:complete',
+		'job:failed'
+	] as const;
+	// Same trick as JobType above: TypeScript checks the list IS the union, so it cannot fall behind.
+	const _exhaustive: readonly import('@encore/shared').WorkerMessage['type'][] = tsWorkerMessages;
+	void _exhaustive;
+	expect(pyWireVerbs('worker -> core').sort()).toEqual([...tsWorkerMessages].sort());
+});
 
-	test('core→worker frame names match the WorkerCommand union', () => {
-		const tsWorkerCommands = ['worker:welcome', 'job:assign', 'job:cancel', 'ping'] as const;
-		const _exhaustive: readonly import('@encore/shared').WorkerCommand['type'][] = tsWorkerCommands;
-		void _exhaustive;
-		expect(pyWireVerbs('core -> worker').sort()).toEqual([...tsWorkerCommands].sort());
-	});
+test('TS↔Python vocabulary parity: core→worker frame names match the WorkerCommand union', () => {
+	const tsWorkerCommands = ['worker:welcome', 'job:assign', 'job:cancel', 'ping'] as const;
+	const _exhaustive: readonly import('@encore/shared').WorkerCommand['type'][] = tsWorkerCommands;
+	void _exhaustive;
+	expect(pyWireVerbs('core -> worker').sort()).toEqual([...tsWorkerCommands].sort());
+});
 
-	/**
-	 * `Stage` was the one worker enum this file did not cross-check. The worker emits it as
-	 * `job:progress.stage`, typed `MediaStatus`, and the core rebroadcasts it to phones — so a stage
-	 * the union does not contain is a progress row that renders no label or freezes mid-cook. Subset,
-	 * not equality: `queued`/`ready`/`failed`/`canceled` are core-side states no worker emits.
-	 */
-	test('worker stages are all valid MediaStatus values', () => {
-		const tsMediaStatuses = ['queued', 'downloading', 'separating', 'aligning', 'ready', 'failed', 'canceled'] as const;
-		const _exhaustive: readonly import('@encore/shared').MediaStatus[] = tsMediaStatuses;
-		void _exhaustive;
-		const stages = pyEnumValues(vocabulary, 'Stage');
-		expect(stages.length).toBeGreaterThan(0); // a silent empty parse would pass vacuously
-		expect(stages.filter((s) => !tsMediaStatuses.includes(s as never))).toEqual([]);
-	});
+/**
+ * `Stage` was the one worker enum this file did not cross-check. The worker emits it as
+ * `job:progress.stage`, typed `MediaStatus`, and the core rebroadcasts it to phones — so a stage
+ * the union does not contain is a progress row that renders no label or freezes mid-cook. Subset,
+ * not equality: `queued`/`ready`/`failed`/`canceled` are core-side states no worker emits.
+ */
+test('TS↔Python vocabulary parity: worker stages are all valid MediaStatus values', () => {
+	const tsMediaStatuses = ['queued', 'downloading', 'separating', 'aligning', 'ready', 'failed', 'canceled'] as const;
+	const _exhaustive: readonly import('@encore/shared').MediaStatus[] = tsMediaStatuses;
+	void _exhaustive;
+	const stages = pyEnumValues(vocabulary, 'Stage');
+	expect(stages.length).toBeGreaterThan(0); // a silent empty parse would pass vacuously
+	expect(stages.filter((s) => !tsMediaStatuses.includes(s as never))).toEqual([]);
+});
 
-	test('protocol.py is where the wire-verb read expects it', () => {
-		const path = join(WORKER_SRC, 'protocol.py');
-		expect(existsSync(path), `protocol.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
-	});
+test('TS↔Python vocabulary parity: protocol.py is where the wire-verb read expects it', () => {
+	const path = join(WORKER_SRC, 'protocol.py');
+	expect(existsSync(path), `protocol.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
 });
 
 /**
@@ -340,36 +334,34 @@ describe('TS↔Python vocabulary parity', () => {
  * actually measured against has
  * to come here and state that it did. Neither test blesses the mismatch; they stop it being silent.
  */
-describe('roformer token ↔ checkpoint identity', () => {
-	const roformerPy = readFileSync(join(WORKER_SRC, 'separation/roformer.py'), 'utf8');
+const roformerPy = readFileSync(join(WORKER_SRC, 'separation/roformer.py'), 'utf8');
 
-	function pyRoformerModels(): Record<string, string> {
-		// Anchor to a MODULE-LEVEL assignment (^ under the m flag = column 0). Python indents nothing
-		// at module scope and a comment begins with `#`, so a `# ROFORMER_MODELS = {...}` line above
-		// the live table can no longer be the first (unanchored) match and mask a real divergence.
-		const block = roformerPy.match(/^ROFORMER_MODELS\s*=\s*\{([\s\S]*?)\n\}/m);
-		if (!block)
-			throw new Error(
-				'ROFORMER_MODELS not found at module level in roformer.py — did the table move or get commented out?'
-			);
-		const out: Record<string, string> = {};
-		for (const m of block[1]!.matchAll(/"([^"]+)"\s*:\s*"([^"]+)"/g)) out[m[1]!] = m[2]!;
-		return out;
-	}
+function pyRoformerModels(): Record<string, string> {
+	// Anchor to a MODULE-LEVEL assignment (^ under the m flag = column 0). Python indents nothing
+	// at module scope and a comment begins with `#`, so a `# ROFORMER_MODELS = {...}` line above
+	// the live table can no longer be the first (unanchored) match and mask a real divergence.
+	const block = roformerPy.match(/^ROFORMER_MODELS\s*=\s*\{([\s\S]*?)\n\}/m);
+	if (!block)
+		throw new Error(
+			'ROFORMER_MODELS not found at module level in roformer.py — did the table move or get commented out?'
+		);
+	const out: Record<string, string> = {};
+	for (const m of block[1]!.matchAll(/"([^"]+)"\s*:\s*"([^"]+)"/g)) out[m[1]!] = m[2]!;
+	return out;
+}
 
-	test('every roformer model the UI offers resolves to a slug the worker can run', () => {
-		const mapped = pyRoformerModels();
-		expect(Object.keys(mapped).length).toBeGreaterThan(0);
-		const offered = SEPARATOR_ENGINES.filter((e) => e.id === 'roformer').flatMap((e) => e.models.map((m) => m.id));
-		expect(offered.length).toBeGreaterThan(0);
-		expect(offered.filter((id) => !mapped[id])).toEqual([]);
-	});
+test('roformer token ↔ checkpoint identity: every roformer model the UI offers resolves to a slug the worker can run', () => {
+	const mapped = pyRoformerModels();
+	expect(Object.keys(mapped).length).toBeGreaterThan(0);
+	const offered = SEPARATOR_ENGINES.filter((e) => e.id === 'roformer').flatMap((e) => e.models.map((m) => m.id));
+	expect(offered.length).toBeGreaterThan(0);
+	expect(offered.filter((id) => !mapped[id])).toEqual([]);
+});
 
-	test('bs-roformer-1297 still resolves to the KNOWN-MISMATCHED slug, not the benchmarked one', () => {
-		// Change this only together with the rtFactor/rank in separators.ts and the comment in
-		// roformer.py — the point of the pin is that the three move as one.
-		expect(pyRoformerModels()['bs-roformer-1297']).toBe('roformer-model-bs-roformer-sw-by-jarredou');
-	});
+test('roformer token ↔ checkpoint identity: bs-roformer-1297 still resolves to the KNOWN-MISMATCHED slug, not the benchmarked one', () => {
+	// Change this only together with the rtFactor/rank in separators.ts and the comment in
+	// roformer.py — the point of the pin is that the three move as one.
+	expect(pyRoformerModels()['bs-roformer-1297']).toBe('roformer-model-bs-roformer-sw-by-jarredou');
 });
 
 /**
@@ -390,75 +382,73 @@ describe('roformer token ↔ checkpoint identity', () => {
  * keepalive must not expire the lease, so the interval must sit comfortably under it (the constant's own
  * comment says "comfortably under"). Half the lease is that margin.
  */
-describe('worker ML keepalive stays under the core progress lease', () => {
-	const runnerPy = readFileSync(join(WORKER_SRC, 'runtime/runner.py'), 'utf8');
-	// Python's effective value is the LAST module-level assignment. Take the last column-0 match, not
-	// the first, so a triple-quoted string containing `LEASE_KEEPALIVE_SEC = <value>` above the real
-	// assignment cannot shadow it and hide a drifted constant. (Folded in from review.)
-	const lastKeepaliveSec = (): number | null => {
-		const ms = [...runnerPy.matchAll(/^LEASE_KEEPALIVE_SEC = ([\d.]+)/gm)];
-		const last = ms[ms.length - 1];
-		return last ? Number(last[1]) : null;
-	};
+const runnerPy = readFileSync(join(WORKER_SRC, 'runtime/runner.py'), 'utf8');
+// Python's effective value is the LAST module-level assignment. Take the last column-0 match, not
+// the first, so a triple-quoted string containing `LEASE_KEEPALIVE_SEC = <value>` above the real
+// assignment cannot shadow it and hide a drifted constant. (Folded in from review.)
+const lastKeepaliveSec = (): number | null => {
+	const ms = [...runnerPy.matchAll(/^LEASE_KEEPALIVE_SEC = ([\d.]+)/gm)];
+	const last = ms[ms.length - 1];
+	return last ? Number(last[1]) : null;
+};
 
-	test('LEASE_KEEPALIVE_SEC is defined and read as a number', () => {
-		const sec = lastKeepaliveSec();
-		expect(sec).not.toBeNull();
-		expect(Number.isFinite(sec!)).toBe(true);
-	});
+test('worker ML keepalive stays under the core progress lease: LEASE_KEEPALIVE_SEC is defined and read as a number', () => {
+	const sec = lastKeepaliveSec();
+	expect(sec).not.toBeNull();
+	expect(Number.isFinite(sec!)).toBe(true);
+});
 
-	test('the keepalive interval sits comfortably under the core progress lease', () => {
-		const keepaliveMs = lastKeepaliveSec()! * 1000;
-		// A margin, not `<`: one dropped keepalive must not already breach the lease.
-		expect(keepaliveMs).toBeLessThan(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
-	});
+test('worker ML keepalive stays under the core progress lease: the keepalive interval sits comfortably under the core progress lease', () => {
+	const keepaliveMs = lastKeepaliveSec()! * 1000;
+	// A margin, not `<`: one dropped keepalive must not already breach the lease.
+	expect(keepaliveMs).toBeLessThan(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
+});
 
-	/**
-	 * The OTHER side of the same wire, previously unguarded: the core ADVERTISES
-	 * `heartbeatIntervalSec` in the welcome handshake (worker-hub.ts). A worker that HONOURS the
-	 * advertised value paces its own `job:progress` by it, so the advertised interval is bound by the
-	 * SAME margin the worker constant above is: at the full lease, a worker doing exactly as told
-	 * emits its next tick right at the deadline and one dropped tick breaches it. The value it
-	 * advertises must therefore also sit under `progressLeaseMs / 2`.
-	 *
-	 * Read worker-hub.ts as TEXT and compute the advertised seconds from the divisor chain the source
-	 * applies to progressLeaseMs — NOT by re-evaluating the code's own expression. Dropping the `/ 2`
-	 * changes the divisors this extracts, so the computed value reds this check.
-	 */
-	const hubRaw = readFileSync(join(import.meta.dir, 'worker-hub.ts'), 'utf8');
-	const hubStripped = hubRaw
-		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-		.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, ' '));
+/**
+ * The OTHER side of the same wire, previously unguarded: the core ADVERTISES
+ * `heartbeatIntervalSec` in the welcome handshake (worker-hub.ts). A worker that HONOURS the
+ * advertised value paces its own `job:progress` by it, so the advertised interval is bound by the
+ * SAME margin the worker constant above is: at the full lease, a worker doing exactly as told
+ * emits its next tick right at the deadline and one dropped tick breaches it. The value it
+ * advertises must therefore also sit under `progressLeaseMs / 2`.
+ *
+ * Read worker-hub.ts as TEXT and compute the advertised seconds from the divisor chain the source
+ * applies to progressLeaseMs — NOT by re-evaluating the code's own expression. Dropping the `/ 2`
+ * changes the divisors this extracts, so the computed value reds this check.
+ */
+const hubRaw = readFileSync(join(import.meta.dir, 'worker-hub.ts'), 'utf8');
+const hubStripped = hubRaw
+	.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+	.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, ' '));
 
-	test('core advertises heartbeatIntervalSec derived from progressLeaseMs', () => {
-		// The advertisement must be a Math.floor over progressLeaseMs and nothing else, so the value
-		// tracks the lease rather than being a hard-coded number that can silently desync from it.
-		const m = /heartbeatIntervalSec:\s*Math\.floor\(\s*this\.#config\.progressLeaseMs\s*((?:\/\s*\d+\s*)+)\)/.exec(
-			hubStripped
-		);
-		expect(
-			m,
-			'heartbeatIntervalSec advertisement not found in worker-hub.ts — did it move or stop deriving from progressLeaseMs?'
-		).not.toBeNull();
-	});
+test('worker ML keepalive stays under the core progress lease: core advertises heartbeatIntervalSec derived from progressLeaseMs', () => {
+	// The advertisement must be a Math.floor over progressLeaseMs and nothing else, so the value
+	// tracks the lease rather than being a hard-coded number that can silently desync from it.
+	const m = /heartbeatIntervalSec:\s*Math\.floor\(\s*this\.#config\.progressLeaseMs\s*((?:\/\s*\d+\s*)+)\)/.exec(
+		hubStripped
+	);
+	expect(
+		m,
+		'heartbeatIntervalSec advertisement not found in worker-hub.ts — did it move or stop deriving from progressLeaseMs?'
+	).not.toBeNull();
+});
 
-	test('the advertised heartbeat interval sits comfortably under the core progress lease', () => {
-		const m = /heartbeatIntervalSec:\s*Math\.floor\(\s*this\.#config\.progressLeaseMs\s*((?:\/\s*\d+\s*)+)\)/.exec(
-			hubStripped
-		);
-		// Compute the advertised value from the divisor literals the source applies — an INDEPENDENT
-		// computation over DEFAULT_LEASE_CONFIG, not a copy of the code's expression. The divisors are
-		// the only free variable, so a dropped `/ 2` reds this.
-		const divisors = m![1].match(/\d+/g)!.map(Number);
-		expect(divisors.length).toBeGreaterThan(0); // a vacuous parse would divide by nothing
-		const advertisedSec = Math.floor(divisors.reduce((acc, d) => acc / d, DEFAULT_LEASE_CONFIG.progressLeaseMs));
-		const advertisedMs = advertisedSec * 1000;
-		// AT MOST half the lease. Half is the margin: a worker honouring 15s emits its next tick at
-		// 30s == the deadline after one dropped tick, so it does not breach; the full lease (30s) does.
-		// `<=` because exactly-half is the intended value the fix ships (advertising the full lease is
-		// what reds — 30000 is not <= 15000).
-		expect(advertisedMs).toBeLessThanOrEqual(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
-	});
+test('worker ML keepalive stays under the core progress lease: the advertised heartbeat interval sits comfortably under the core progress lease', () => {
+	const m = /heartbeatIntervalSec:\s*Math\.floor\(\s*this\.#config\.progressLeaseMs\s*((?:\/\s*\d+\s*)+)\)/.exec(
+		hubStripped
+	);
+	// Compute the advertised value from the divisor literals the source applies — an INDEPENDENT
+	// computation over DEFAULT_LEASE_CONFIG, not a copy of the code's expression. The divisors are
+	// the only free variable, so a dropped `/ 2` reds this.
+	const divisors = m![1].match(/\d+/g)!.map(Number);
+	expect(divisors.length).toBeGreaterThan(0); // a vacuous parse would divide by nothing
+	const advertisedSec = Math.floor(divisors.reduce((acc, d) => acc / d, DEFAULT_LEASE_CONFIG.progressLeaseMs));
+	const advertisedMs = advertisedSec * 1000;
+	// AT MOST half the lease. Half is the margin: a worker honouring 15s emits its next tick at
+	// 30s == the deadline after one dropped tick, so it does not breach; the full lease (30s) does.
+	// `<=` because exactly-half is the intended value the fix ships (advertising the full lease is
+	// what reds — 30000 is not <= 15000).
+	expect(advertisedMs).toBeLessThanOrEqual(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
 });
 
 /**
@@ -481,139 +471,135 @@ describe('worker ML keepalive stays under the core progress lease', () => {
  * interpreter) and compare the extracted constants and path shapes against the IMPORTED core
  * constants and the REAL core key builders, so a drift on EITHER side reds this `bun test` check.
  */
-describe('stem path/extension parity (worker processor.py vs core paths.ts)', () => {
-	const PROCESSOR_REL = 'processor.py';
-	const processorPath = join(WORKER_SRC, PROCESSOR_REL);
-	const processorPy = readFileSync(processorPath, 'utf8');
+const PROCESSOR_REL = 'processor.py';
+const processorPath = join(WORKER_SRC, PROCESSOR_REL);
+const processorPy = readFileSync(processorPath, 'utf8');
 
-	// A fixed sample id, run through the real core key builders, is the byte-for-byte reference the
-	// worker path must reproduce. Using the builders (not a re-typed literal) makes this a genuine
-	// cross-seam check: if the core builder shape changes, the reference moves with it.
-	const ID = 'sample-media-id';
+// A fixed sample id, run through the real core key builders, is the byte-for-byte reference the
+// worker path must reproduce. Using the builders (not a re-typed literal) makes this a genuine
+// cross-seam check: if the core builder shape changes, the reference moves with it.
+const ID = 'sample-media-id';
 
-	/** A `NAME = "value"` module-level string constant in processor.py, by name. Throws if absent. */
-	function pyStrConst(name: string): string {
-		const m = new RegExp(`^${name}\\s*=\\s*"([^"]+)"`, 'm').exec(processorPy);
-		if (!m) throw new Error(`${name} not found as a module-level string in ${PROCESSOR_REL}`);
-		return m[1]!;
-	}
+/** A `NAME = "value"` module-level string constant in processor.py, by name. Throws if absent. */
+function pyStrConst(name: string): string {
+	const m = new RegExp(`^${name}\\s*=\\s*"([^"]+)"`, 'm').exec(processorPy);
+	if (!m) throw new Error(`${name} not found as a module-level string in ${PROCESSOR_REL}`);
+	return m[1]!;
+}
 
-	/**
-	 * The relative ref a `*_path` builder produces for ID, reconstructed from the `os.path.join(...)`
-	 * call in its body — read as TEXT, never executed. `media_dir` is the volume root the caller
-	 * supplies (it is NOT part of the ref that goes on the wire), so it is dropped; every other
-	 * segment is a string literal or an f-string over `media_id` / an EXT constant, which we expand
-	 * with the values we already extracted. A shape change (a renamed segment, a dropped `derived/`,
-	 * a hard-coded extension) changes the reconstructed ref and reds the comparison below.
-	 */
-	function pyPathRef(fnName: string, subs: Record<string, string>): string {
-		const fn = new RegExp(`def ${fnName}\\([^)]*\\)[^:]*:([\\s\\S]*?)\\n(?:def |[A-Za-z@#])`, 'm').exec(
-			processorPy + '\ndef '
-		);
-		if (!fn) throw new Error(`def ${fnName} not found in ${PROCESSOR_REL}`);
-		// Grab the WHOLE return line, then peel the outer os.path.join(...) by taking everything
-		// between its first `(` and the LAST `)` on that line — a non-greedy match stops at the inner
-		// `)` of a call like `ext.lstrip('.')` and truncates the arg list.
-		const retLine = /return\s+os\.path\.join\(([\s\S]*)\)\s*$/m.exec(fn[1]!);
-		if (!retLine) throw new Error(`${fnName} does not end in os.path.join(...) — shape changed?`);
-		const joinCall = retLine;
-		// Split the join args at top-level commas; the first is media_dir (the volume root, not part
-		// of the wire ref) so it is dropped.
-		const args = joinCall[1]!
-			.split(',')
-			.map((a) => a.trim())
-			.filter((a) => a.length > 0);
-		if (args[0] !== 'media_dir') throw new Error(`${fnName} does not join under media_dir first`);
-		const segs = args.slice(1).map((a) => {
-			// A bare string segment: "derived", "stems", "audio".
-			const lit = /^"([^"]*)"$/.exec(a);
-			if (lit) return lit[1]!;
-			// A bare identifier segment passed as a runtime argument, e.g. `kind` in raw_caption_path.
-			// It is not a literal in the source; resolve it from the same subs map the caller supplies
-			// so the reconstructed ref uses the concrete value under test.
-			if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(a)) {
-				if (a in subs) return subs[a]!;
-				throw new Error(`${fnName}: bare segment ${a} has no value in subs`);
-			}
-			// An f-string filename: f"{media_id}-instrumental.{INSTRUMENTAL_EXT}" etc. Expand the two
-			// interpolation forms we know: {media_id}[.lstrip(...)] and {<EXT const>}. Anything else is
-			// an unrecognised shape and must fail loudly rather than pass a half-parsed ref.
-			const fstr = /^f"([^"]*)"$/.exec(a);
-			if (!fstr) throw new Error(`${fnName}: unrecognised join segment ${a}`);
-			return fstr[1]!.replace(/\{([^}]+)\}/g, (_all, expr: string) => {
-				const key = expr.split('.')[0]!.trim(); // media_id, media_id.lstrip('.'), INSTRUMENTAL_EXT…
-				if (key === 'media_id') return subs.media_id!;
-				if (key === 'ext') return subs.ext ?? '';
-				if (key in subs) return subs[key]!;
-				throw new Error(`${fnName}: cannot expand {${expr}} — unknown interpolation`);
-			});
-		});
-		return segs.join('/');
-	}
-
-	test('processor.py is where the parity read expects it', () => {
-		expect(existsSync(processorPath), `${PROCESSOR_REL} not found under ${WORKER_SRC} — did the module move?`).toBe(
-			true
-		);
-	});
-
-	test('INSTRUMENTAL_EXT / VOCALS_EXT agree across the seam', () => {
-		expect(pyStrConst('INSTRUMENTAL_EXT')).toBe(INSTRUMENTAL_EXT);
-		expect(pyStrConst('VOCALS_EXT')).toBe(VOCALS_EXT);
-	});
-
-	test('the instrumental stem key agrees byte-for-byte', () => {
-		const worker = pyPathRef('instrumental_path', {
-			media_id: ID,
-			INSTRUMENTAL_EXT: pyStrConst('INSTRUMENTAL_EXT')
-		});
-		expect(worker).toBe(instrumentalKey(ID));
-	});
-
-	test('the vocals stem key agrees byte-for-byte', () => {
-		const worker = pyPathRef('vocals_path', {
-			media_id: ID,
-			VOCALS_EXT: pyStrConst('VOCALS_EXT')
-		});
-		expect(worker).toBe(vocalsKey(ID));
-	});
-
-	test('the raw source-audio key agrees byte-for-byte', () => {
-		// source_audio_path interpolates media_id and a default ext="wav"; audioKey defaults the same.
-		const worker = pyPathRef('source_audio_path', { media_id: ID, ext: 'wav' });
-		expect(worker).toBe(audioKey(ID, 'wav'));
-	});
-
-	test('the retained raw caption key agrees byte-for-byte', () => {
-		// raw_caption_path(media_dir, media_id, kind, ext="vtt") is the FOURTH path builder that crosses
-		// this seam; it shipped with no parity guard, and retention.ts enumerates it per (kind, ext)
-		// to count and evict the retained track. Check BOTH kinds and BOTH known exts so a drift on either
-		// side of the seam reds this. `kind` is a bare runtime arg, so it is supplied via subs.
-		for (const kind of ['captions', 'auto-captions']) {
-			for (const ext of ['vtt', 'srt']) {
-				const worker = pyPathRef('raw_caption_path', { media_id: ID, kind, ext });
-				expect(worker).toBe(rawCaptionKey(ID, kind, ext));
-			}
+/**
+ * The relative ref a `*_path` builder produces for ID, reconstructed from the `os.path.join(...)`
+ * call in its body — read as TEXT, never executed. `media_dir` is the volume root the caller
+ * supplies (it is NOT part of the ref that goes on the wire), so it is dropped; every other
+ * segment is a string literal or an f-string over `media_id` / an EXT constant, which we expand
+ * with the values we already extracted. A shape change (a renamed segment, a dropped `derived/`,
+ * a hard-coded extension) changes the reconstructed ref and reds the comparison below.
+ */
+function pyPathRef(fnName: string, subs: Record<string, string>): string {
+	const fn = new RegExp(`def ${fnName}\\([^)]*\\)[^:]*:([\\s\\S]*?)\\n(?:def |[A-Za-z@#])`, 'm').exec(
+		processorPy + '\ndef '
+	);
+	if (!fn) throw new Error(`def ${fnName} not found in ${PROCESSOR_REL}`);
+	// Grab the WHOLE return line, then peel the outer os.path.join(...) by taking everything
+	// between its first `(` and the LAST `)` on that line — a non-greedy match stops at the inner
+	// `)` of a call like `ext.lstrip('.')` and truncates the arg list.
+	const retLine = /return\s+os\.path\.join\(([\s\S]*)\)\s*$/m.exec(fn[1]!);
+	if (!retLine) throw new Error(`${fnName} does not end in os.path.join(...) — shape changed?`);
+	const joinCall = retLine;
+	// Split the join args at top-level commas; the first is media_dir (the volume root, not part
+	// of the wire ref) so it is dropped.
+	const args = joinCall[1]!
+		.split(',')
+		.map((a) => a.trim())
+		.filter((a) => a.length > 0);
+	if (args[0] !== 'media_dir') throw new Error(`${fnName} does not join under media_dir first`);
+	const segs = args.slice(1).map((a) => {
+		// A bare string segment: "derived", "stems", "audio".
+		const lit = /^"([^"]*)"$/.exec(a);
+		if (lit) return lit[1]!;
+		// A bare identifier segment passed as a runtime argument, e.g. `kind` in raw_caption_path.
+		// It is not a literal in the source; resolve it from the same subs map the caller supplies
+		// so the reconstructed ref uses the concrete value under test.
+		if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(a)) {
+			if (a in subs) return subs[a]!;
+			throw new Error(`${fnName}: bare segment ${a} has no value in subs`);
 		}
-	});
-
-	test('non-vacuity: the extracted keys are non-empty, stem-shaped derived refs', () => {
-		// A silent empty parse (renamed fn, changed join shape) would let a comparison pass vacuously.
-		// Pin the concrete shape so the guard cannot degrade into asserting '' === ''.
-		const ins = pyPathRef('instrumental_path', {
-			media_id: ID,
-			INSTRUMENTAL_EXT: pyStrConst('INSTRUMENTAL_EXT')
+		// An f-string filename: f"{media_id}-instrumental.{INSTRUMENTAL_EXT}" etc. Expand the two
+		// interpolation forms we know: {media_id}[.lstrip(...)] and {<EXT const>}. Anything else is
+		// an unrecognised shape and must fail loudly rather than pass a half-parsed ref.
+		const fstr = /^f"([^"]*)"$/.exec(a);
+		if (!fstr) throw new Error(`${fnName}: unrecognised join segment ${a}`);
+		return fstr[1]!.replace(/\{([^}]+)\}/g, (_all, expr: string) => {
+			const key = expr.split('.')[0]!.trim(); // media_id, media_id.lstrip('.'), INSTRUMENTAL_EXT…
+			if (key === 'media_id') return subs.media_id!;
+			if (key === 'ext') return subs.ext ?? '';
+			if (key in subs) return subs[key]!;
+			throw new Error(`${fnName}: cannot expand {${expr}} — unknown interpolation`);
 		});
-		const voc = pyPathRef('vocals_path', { media_id: ID, VOCALS_EXT: pyStrConst('VOCALS_EXT') });
-		expect(ins).toMatch(/^derived\/stems\/.+-instrumental\..+$/);
-		expect(voc).toMatch(/^derived\/stems\/.+-vocals\..+$/);
-		expect(pyStrConst('INSTRUMENTAL_EXT').length).toBeGreaterThan(0);
-		expect(pyStrConst('VOCALS_EXT').length).toBeGreaterThan(0);
-		// A renamed segment or dropped `kind` in raw_caption_path would let a bare comparison pass
-		// vacuously; pin the concrete shape.
-		const rawCap = pyPathRef('raw_caption_path', { media_id: ID, kind: 'captions', ext: 'vtt' });
-		expect(rawCap).toMatch(/^derived\/captions\/captions\/.+\.captions\..+$/);
 	});
+	return segs.join('/');
+}
+
+test('stem path/extension parity (worker processor.py vs core paths.ts): processor.py is where the parity read expects it', () => {
+	expect(existsSync(processorPath), `${PROCESSOR_REL} not found under ${WORKER_SRC} — did the module move?`).toBe(true);
+});
+
+test('stem path/extension parity (worker processor.py vs core paths.ts): INSTRUMENTAL_EXT / VOCALS_EXT agree across the seam', () => {
+	expect(pyStrConst('INSTRUMENTAL_EXT')).toBe(INSTRUMENTAL_EXT);
+	expect(pyStrConst('VOCALS_EXT')).toBe(VOCALS_EXT);
+});
+
+test('stem path/extension parity (worker processor.py vs core paths.ts): the instrumental stem key agrees byte-for-byte', () => {
+	const worker = pyPathRef('instrumental_path', {
+		media_id: ID,
+		INSTRUMENTAL_EXT: pyStrConst('INSTRUMENTAL_EXT')
+	});
+	expect(worker).toBe(instrumentalKey(ID));
+});
+
+test('stem path/extension parity (worker processor.py vs core paths.ts): the vocals stem key agrees byte-for-byte', () => {
+	const worker = pyPathRef('vocals_path', {
+		media_id: ID,
+		VOCALS_EXT: pyStrConst('VOCALS_EXT')
+	});
+	expect(worker).toBe(vocalsKey(ID));
+});
+
+test('stem path/extension parity (worker processor.py vs core paths.ts): the raw source-audio key agrees byte-for-byte', () => {
+	// source_audio_path interpolates media_id and a default ext="wav"; audioKey defaults the same.
+	const worker = pyPathRef('source_audio_path', { media_id: ID, ext: 'wav' });
+	expect(worker).toBe(audioKey(ID, 'wav'));
+});
+
+test('stem path/extension parity (worker processor.py vs core paths.ts): the retained raw caption key agrees byte-for-byte', () => {
+	// raw_caption_path(media_dir, media_id, kind, ext="vtt") is the FOURTH path builder that crosses
+	// this seam; it shipped with no parity guard, and retention.ts enumerates it per (kind, ext)
+	// to count and evict the retained track. Check BOTH kinds and BOTH known exts so a drift on either
+	// side of the seam reds this. `kind` is a bare runtime arg, so it is supplied via subs.
+	for (const kind of ['captions', 'auto-captions']) {
+		for (const ext of ['vtt', 'srt']) {
+			const worker = pyPathRef('raw_caption_path', { media_id: ID, kind, ext });
+			expect(worker).toBe(rawCaptionKey(ID, kind, ext));
+		}
+	}
+});
+
+test('stem path/extension parity (worker processor.py vs core paths.ts): non-vacuity: the extracted keys are non-empty, stem-shaped derived refs', () => {
+	// A silent empty parse (renamed fn, changed join shape) would let a comparison pass vacuously.
+	// Pin the concrete shape so the guard cannot degrade into asserting '' === ''.
+	const ins = pyPathRef('instrumental_path', {
+		media_id: ID,
+		INSTRUMENTAL_EXT: pyStrConst('INSTRUMENTAL_EXT')
+	});
+	const voc = pyPathRef('vocals_path', { media_id: ID, VOCALS_EXT: pyStrConst('VOCALS_EXT') });
+	expect(ins).toMatch(/^derived\/stems\/.+-instrumental\..+$/);
+	expect(voc).toMatch(/^derived\/stems\/.+-vocals\..+$/);
+	expect(pyStrConst('INSTRUMENTAL_EXT').length).toBeGreaterThan(0);
+	expect(pyStrConst('VOCALS_EXT').length).toBeGreaterThan(0);
+	// A renamed segment or dropped `kind` in raw_caption_path would let a bare comparison pass
+	// vacuously; pin the concrete shape.
+	const rawCap = pyPathRef('raw_caption_path', { media_id: ID, kind: 'captions', ext: 'vtt' });
+	expect(rawCap).toMatch(/^derived\/captions\/captions\/.+\.captions\..+$/);
 });
 
 /**
@@ -633,48 +619,44 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
  * is: read the Python tuple as TEXT (no interpreter, runs in `bun test`) and assert it agrees, in
  * both directions, with the demucs engine's offered model ids.
  */
-describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)', () => {
-	const demucsPy = readFileSync(join(WORKER_SRC, 'separation/demucs.py'), 'utf8');
+const demucsPy = readFileSync(join(WORKER_SRC, 'separation/demucs.py'), 'utf8');
 
-	/** The ids in `DEMUCS_MODELS = ("a", "b", ...)`, read from demucs.py as text. */
-	function pyDemucsModels(): string[] {
-		// Anchor to a MODULE-LEVEL assignment (^ under the m flag = column 0). Unanchored, String.match
-		// takes the FIRST occurrence, so a commented-out CORRECT tuple parked above a live WRONG one
-		// would parse the comment and pass on a genuine drift — a false EXEMPT on the exact divergence
-		// this guard exists to catch. A `#`-commented line cannot start at column 0, so it is skipped.
-		const block = demucsPy.match(/^DEMUCS_MODELS\s*=\s*\(([\s\S]*?)\)/m);
-		if (!block)
-			throw new Error(
-				'DEMUCS_MODELS not found at module level in demucs.py — did the tuple move or get commented out?'
-			);
-		return [...block[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
-	}
+/** The ids in `DEMUCS_MODELS = ("a", "b", ...)`, read from demucs.py as text. */
+function pyDemucsModels(): string[] {
+	// Anchor to a MODULE-LEVEL assignment (^ under the m flag = column 0). Unanchored, String.match
+	// takes the FIRST occurrence, so a commented-out CORRECT tuple parked above a live WRONG one
+	// would parse the comment and pass on a genuine drift — a false EXEMPT on the exact divergence
+	// this guard exists to catch. A `#`-commented line cannot start at column 0, so it is skipped.
+	const block = demucsPy.match(/^DEMUCS_MODELS\s*=\s*\(([\s\S]*?)\)/m);
+	if (!block)
+		throw new Error('DEMUCS_MODELS not found at module level in demucs.py — did the tuple move or get commented out?');
+	return [...block[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
+}
 
-	/** The model ids the `demucs` engine offers phones in the shared registry. */
-	function offeredDemucsModels(): string[] {
-		return SEPARATOR_ENGINES.filter((e) => e.id === 'demucs').flatMap((e) => e.models.map((m) => m.id));
-	}
+/** The model ids the `demucs` engine offers phones in the shared registry. */
+function offeredDemucsModels(): string[] {
+	return SEPARATOR_ENGINES.filter((e) => e.id === 'demucs').flatMap((e) => e.models.map((m) => m.id));
+}
 
-	test('the worker whitelist and the offered set agree exactly, in both directions', () => {
-		const worker = pyDemucsModels();
-		const offered = offeredDemucsModels();
-		// Non-vacuity floor: a silent empty parse on either side would let the equality pass with
-		// nothing in it, exactly the trap the roformer/stage guards above call out.
-		expect(worker.length, 'DEMUCS_MODELS parsed empty from demucs.py — did the tuple change shape?').toBeGreaterThan(0);
-		expect(
-			offered.length,
-			'the demucs engine offers no models in separators.ts — did the registry move?'
-		).toBeGreaterThan(0);
-		// Set equality both directions: a model selectable in room settings the worker will reject
-		// (offered ⊄ worker) parks every cook of it on a non-retryable ValueError; a worker checkpoint
-		// no UI offers (worker ⊄ offered) is dead config that drifts unnoticed.
-		expect([...worker].sort()).toEqual([...offered].sort());
-	});
+test('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts): the worker whitelist and the offered set agree exactly, in both directions', () => {
+	const worker = pyDemucsModels();
+	const offered = offeredDemucsModels();
+	// Non-vacuity floor: a silent empty parse on either side would let the equality pass with
+	// nothing in it, exactly the trap the roformer/stage guards above call out.
+	expect(worker.length, 'DEMUCS_MODELS parsed empty from demucs.py — did the tuple change shape?').toBeGreaterThan(0);
+	expect(
+		offered.length,
+		'the demucs engine offers no models in separators.ts — did the registry move?'
+	).toBeGreaterThan(0);
+	// Set equality both directions: a model selectable in room settings the worker will reject
+	// (offered ⊄ worker) parks every cook of it on a non-retryable ValueError; a worker checkpoint
+	// no UI offers (worker ⊄ offered) is dead config that drifts unnoticed.
+	expect([...worker].sort()).toEqual([...offered].sort());
+});
 
-	test('demucs.py is where the whitelist read expects it', () => {
-		const path = join(WORKER_SRC, 'separation/demucs.py');
-		expect(existsSync(path), `demucs.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
-	});
+test('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts): demucs.py is where the whitelist read expects it', () => {
+	const path = join(WORKER_SRC, 'separation/demucs.py');
+	expect(existsSync(path), `demucs.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
 });
 
 /**
@@ -699,62 +681,59 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
  * the TS interface DECLARATION (read as text, since a type is erased at runtime), and the runtime keys
  * of `EMPTY_SONG_PROFILE`.
  */
-describe('songProfile inner-field parity (worker dict vs shared type)', () => {
-	const SHARED_SONG_PROFILE = join(WORKER_SRC, '../../../packages/shared/src/cook/song-profile.ts');
-	const WORKER_SONG_PROFILE = join(WORKER_SRC, 'analysis/song_profile.py');
+const SHARED_SONG_PROFILE = join(WORKER_SRC, '../../../packages/shared/src/cook/song-profile.ts');
+const WORKER_SONG_PROFILE = join(WORKER_SRC, 'analysis/song_profile.py');
 
-	/** Keys of `_NULL_PROFILE = { "name": None, ... }`, read from the Python as text. */
-	function pyProfileKeys(): string[] {
-		expect(
-			existsSync(WORKER_SONG_PROFILE),
-			`song_profile.py not found under ${WORKER_SRC} — did the module move?`
-		).toBe(true);
-		const src = readFileSync(WORKER_SONG_PROFILE, 'utf8');
-		const m = src.match(/_NULL_PROFILE\s*=\s*\{([\s\S]*?)\n\}/);
-		expect(m, '_NULL_PROFILE dict not found in song_profile.py — did the null shape move?').toBeTruthy();
-		return [...m![1]!.matchAll(/^\s*"(\w+)"\s*:/gm)].map((x) => x[1]!);
-	}
+/** Keys of `_NULL_PROFILE = { "name": None, ... }`, read from the Python as text. */
+function pyProfileKeys(): string[] {
+	expect(existsSync(WORKER_SONG_PROFILE), `song_profile.py not found under ${WORKER_SRC} — did the module move?`).toBe(
+		true
+	);
+	const src = readFileSync(WORKER_SONG_PROFILE, 'utf8');
+	const m = src.match(/_NULL_PROFILE\s*=\s*\{([\s\S]*?)\n\}/);
+	expect(m, '_NULL_PROFILE dict not found in song_profile.py — did the null shape move?').toBeTruthy();
+	return [...m![1]!.matchAll(/^\s*"(\w+)"\s*:/gm)].map((x) => x[1]!);
+}
 
-	/** Top-level field names of `export interface SongProfile { ... }`, read as text. */
-	function tsDeclaredKeys(): string[] {
-		expect(
-			existsSync(SHARED_SONG_PROFILE),
-			`song-profile.ts not found at ${SHARED_SONG_PROFILE} — did the module move?`
-		).toBe(true);
-		const src = readFileSync(SHARED_SONG_PROFILE, 'utf8');
-		const m = src.match(/export interface SongProfile \{([\s\S]*?)\n\}/);
-		expect(m, 'SongProfile interface not found in song-profile.ts').toBeTruthy();
-		// Field lines only: doc-comment lines inside the body start with `*` or `/`, never an ident.
-		return [...m![1]!.matchAll(/^\t([A-Za-z_]\w*)\??:/gm)].map((x) => x[1]!);
-	}
+/** Top-level field names of `export interface SongProfile { ... }`, read as text. */
+function tsDeclaredKeys(): string[] {
+	expect(
+		existsSync(SHARED_SONG_PROFILE),
+		`song-profile.ts not found at ${SHARED_SONG_PROFILE} — did the module move?`
+	).toBe(true);
+	const src = readFileSync(SHARED_SONG_PROFILE, 'utf8');
+	const m = src.match(/export interface SongProfile \{([\s\S]*?)\n\}/);
+	expect(m, 'SongProfile interface not found in song-profile.ts').toBeTruthy();
+	// Field lines only: doc-comment lines inside the body start with `*` or `/`, never an ident.
+	return [...m![1]!.matchAll(/^\t([A-Za-z_]\w*)\??:/gm)].map((x) => x[1]!);
+}
 
-	test('the Python null profile and the TS interface declare exactly the same fields', () => {
-		const py = pyProfileKeys();
-		const ts = tsDeclaredKeys();
-		// Non-vacuity floor on BOTH sides: an empty parse from either regex would let the equality
-		// pass with nothing in it, which is the trap the guards above call out by name.
-		expect(py.length, '_NULL_PROFILE parsed empty — did the dict change shape?').toBeGreaterThan(0);
-		expect(ts.length, 'SongProfile parsed empty — did the interface change shape?').toBeGreaterThan(0);
-		expect([...py].sort()).toEqual([...ts].sort());
-	});
+test('songProfile inner-field parity (worker dict vs shared type): the Python null profile and the TS interface declare exactly the same fields', () => {
+	const py = pyProfileKeys();
+	const ts = tsDeclaredKeys();
+	// Non-vacuity floor on BOTH sides: an empty parse from either regex would let the equality
+	// pass with nothing in it, which is the trap the guards above call out by name.
+	expect(py.length, '_NULL_PROFILE parsed empty — did the dict change shape?').toBeGreaterThan(0);
+	expect(ts.length, 'SongProfile parsed empty — did the interface change shape?').toBeGreaterThan(0);
+	expect([...py].sort()).toEqual([...ts].sort());
+});
 
-	test('EMPTY_SONG_PROFILE carries every declared field at runtime, and no extras', () => {
-		// The declaration is erased at runtime, so a field can be declared and missing from the
-		// always-publish literal the gate depends on. This is the arm that catches that.
-		expect([...Object.keys(EMPTY_SONG_PROFILE)].sort()).toEqual([...tsDeclaredKeys()].sort());
-	});
+test('songProfile inner-field parity (worker dict vs shared type): EMPTY_SONG_PROFILE carries every declared field at runtime, and no extras', () => {
+	// The declaration is erased at runtime, so a field can be declared and missing from the
+	// always-publish literal the gate depends on. This is the arm that catches that.
+	expect([...Object.keys(EMPTY_SONG_PROFILE)].sort()).toEqual([...tsDeclaredKeys()].sort());
+});
 
-	test('normalizeSongProfile emits every declared field even from garbage input', () => {
-		// The boundary must not narrow the shape: a field it forgets to copy is a measurement that
-		// silently never arrives, whatever both sides declare.
-		expect([...Object.keys(normalizeSongProfile({ nonsense: true }))].sort()).toEqual([...tsDeclaredKeys()].sort());
-	});
+test('songProfile inner-field parity (worker dict vs shared type): normalizeSongProfile emits every declared field even from garbage input', () => {
+	// The boundary must not narrow the shape: a field it forgets to copy is a measurement that
+	// silently never arrives, whatever both sides declare.
+	expect([...Object.keys(normalizeSongProfile({ nonsense: true }))].sort()).toEqual([...tsDeclaredKeys()].sort());
+});
 
-	test('the measured loudness level crosses the wire under one name on both sides', () => {
-		// Named explicitly, not just covered by the set equality above: this is the field the loudness measurement adds,
-		// and a set-equality guard stays green if BOTH sides are renamed to something the playback
-		// side does not read.
-		expect(pyProfileKeys()).toContain('loudnessLufs');
-		expect(tsDeclaredKeys()).toContain('loudnessLufs');
-	});
+test('songProfile inner-field parity (worker dict vs shared type): the measured loudness level crosses the wire under one name on both sides', () => {
+	// Named explicitly, not just covered by the set equality above: this is the field the loudness measurement adds,
+	// and a set-equality guard stays green if BOTH sides are renamed to something the playback
+	// side does not read.
+	expect(pyProfileKeys()).toContain('loudnessLufs');
+	expect(tsDeclaredKeys()).toContain('loudnessLufs');
 });

@@ -26,7 +26,7 @@
  * `--color-accent` and `preflight.css` in order to explain why they are absent — can neither satisfy
  * nor trip an arm. That strip is load-bearing: without it arm 2 fails on app.css's own prose.
  */
-import { describe, expect, it } from 'bun:test';
+import { expect, it } from 'bun:test';
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { svelteFiles, styleFiles, SKIP_DIRS } from './test-helpers';
@@ -244,294 +244,282 @@ function configColourOffences(src: string, rel: string): string[] {
 	return out;
 }
 
-describe('the @theme block registers no colour', () => {
-	it('finds the @theme block at all — the other arm is worthless if this regex stops matching', () => {
-		const blocks = themeBlocks(CSS);
-		expect(blocks.length).toBeGreaterThanOrEqual(1);
-		// and it is not an empty shell: the spacing + type bridge really is in there
-		expect(blocks.join('\n')).toContain('--spacing-tap');
-		expect(blocks.join('\n')).toContain('--text-tv-lyric');
-	});
+it('the @theme block registers no colour: finds the @theme block at all — the other arm is worthless if this regex stops matching', () => {
+	const blocks = themeBlocks(CSS);
+	expect(blocks.length).toBeGreaterThanOrEqual(1);
+	// and it is not an empty shell: the spacing + type bridge really is in there
+	expect(blocks.join('\n')).toContain('--spacing-tap');
+	expect(blocks.join('\n')).toContain('--text-tv-lyric');
+});
 
+/*
+ * ── RETIRED BY THE REGISTRY RESTRUCTURE, ON THE RECORD (XR-VER-07) ─────────────────────────────────────
+ *
+ * This arm asserted `@theme` registers NO colour, so `text-<hue>` could never be minted. Its
+ * measurement was never wrong: `--accent` as ink is 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2
+ * and 2.90 on --card-tint2 — four AA failures.
+ *
+ * What it could not see is the cost on the other side. Refusing to register the semantic colours
+ * made every vendored shadcn component non-functional unedited, which forced a hand-repointing of
+ * each one and made `shadcn-svelte add --overwrite` destructive — a price paid once per component
+ * across the whole registry migration, to prevent a class from EXISTING when the hazard is the class
+ * being USED.
+ *
+ * SUCCESSOR: `shadcn-ink-ban-913.test.ts` bans those utility NAMES in app source, exempting the
+ * vendored tree by path. That is the same mechanism `components/motion.test.ts`'s net arm already
+ * uses for `transition-all`. The per-stop half stays with `contrast.test.ts`, which records
+ * accent-as-ink leaving scope as a universal fact and becoming per-stop across the palette's 48 stops.
+ *
+ * The PLAYER HUES are still unregistered and still un-mintable: `--accent2`, `--grad`, `--fill-N`
+ * and `--hue-N` appear nowhere in `@theme`, which the arm below now pins directly.
+ */
+it('the @theme block registers no colour: registers no PLAYER HUE, so no per-stop `text-<hue>` utility can be minted', () => {
 	/*
-	 * ── RETIRED BY THE REGISTRY RESTRUCTURE, ON THE RECORD (XR-VER-07) ─────────────────────────────────────
+	 * Two independent tests per declaration, because a colour can enter by NAME or by VALUE and
+	 * either one mints the family:
+	 *   - name: anything in Tailwind's `--color-*` namespace.
+	 *   - value: a hex, rgb()/hsl()/oklch()/lab()/color-mix(), or a gradient — which is how
+	 *     `--grad` would arrive, and `--grad` carries a decoration-only ban that a minted
+	 *     `bg-grad`/`text-grad` pair would hand out as ordinary.
+	 * The `ball`-marker lesson applies here too: the check is on what the declaration IS, not on
+	 * whether its name looks colour-ish.
 	 *
-	 * This arm asserted `@theme` registers NO colour, so `text-<hue>` could never be minted. Its
-	 * measurement was never wrong: `--accent` as ink is 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2
-	 * and 2.90 on --card-tint2 — four AA failures.
-	 *
-	 * What it could not see is the cost on the other side. Refusing to register the semantic colours
-	 * made every vendored shadcn component non-functional unedited, which forced a hand-repointing of
-	 * each one and made `shadcn-svelte add --overwrite` destructive — a price paid once per component
-	 * across the whole registry migration, to prevent a class from EXISTING when the hazard is the class
-	 * being USED.
-	 *
-	 * SUCCESSOR: `shadcn-ink-ban-913.test.ts` bans those utility NAMES in app source, exempting the
-	 * vendored tree by path. That is the same mechanism `components/motion.test.ts`'s net arm already
-	 * uses for `transition-all`. The per-stop half stays with `contrast.test.ts`, which records
-	 * accent-as-ink leaving scope as a universal fact and becoming per-stop across the palette's 48 stops.
-	 *
-	 * The PLAYER HUES are still unregistered and still un-mintable: `--accent2`, `--grad`, `--fill-N`
-	 * and `--hue-N` appear nowhere in `@theme`, which the arm below now pins directly.
+	 * XR-COL-14 widens this two ways over the original: the value-bridge now catches the
+	 * per-stop INK tokens (`--on-accent`, `--on-fill-N`) that the anchored family list used to miss,
+	 * and the scan covers any `tailwind.config.*` in the tree as well as app.css's `@theme`, since a
+	 * v3-shape config would register colours entirely outside app.css. `mintSurfaces` counts every
+	 * surface actually examined so the arm cannot pass by looking at nothing (XR-VER-05/06).
 	 */
-	it('registers no PLAYER HUE, so no per-stop `text-<hue>` utility can be minted', () => {
-		/*
-		 * Two independent tests per declaration, because a colour can enter by NAME or by VALUE and
-		 * either one mints the family:
-		 *   - name: anything in Tailwind's `--color-*` namespace.
-		 *   - value: a hex, rgb()/hsl()/oklch()/lab()/color-mix(), or a gradient — which is how
-		 *     `--grad` would arrive, and `--grad` carries a decoration-only ban that a minted
-		 *     `bg-grad`/`text-grad` pair would hand out as ordinary.
-		 * The `ball`-marker lesson applies here too: the check is on what the declaration IS, not on
-		 * whether its name looks colour-ish.
-		 *
-		 * XR-COL-14 widens this two ways over the original: the value-bridge now catches the
-		 * per-stop INK tokens (`--on-accent`, `--on-fill-N`) that the anchored family list used to miss,
-		 * and the scan covers any `tailwind.config.*` in the tree as well as app.css's `@theme`, since a
-		 * v3-shape config would register colours entirely outside app.css. `mintSurfaces` counts every
-		 * surface actually examined so the arm cannot pass by looking at nothing (XR-VER-05/06).
-		 */
-		const offenders: string[] = [];
-		let mintSurfaces = 0;
-		for (const block of themeBlocks(CSS)) {
-			mintSurfaces++;
+	const offenders: string[] = [];
+	let mintSurfaces = 0;
+	for (const block of themeBlocks(CSS)) {
+		mintSurfaces++;
+		for (const line of block.split('\n')) {
+			const decl = /^\s*(--[a-zA-Z0-9-]+)\s*:\s*([^;]+);/.exec(line);
+			if (!decl) continue;
+			const [, name, rawValue] = decl;
+			offenders.push(...colourOffences(name!, rawValue!.trim()));
+		}
+	}
+	for (const cfg of tailwindConfigs(REPO)) {
+		mintSurfaces++;
+		offenders.push(...configColourOffences(readFileSync(cfg, 'utf8'), cfg.slice(REPO.length + 1)));
+	}
+	expect(offenders).toEqual([]);
+	// NON-VACUITY (XR-VER-05/06): the rule is unenforceable if no @theme block and no config were
+	// seen, and an empty `offenders` from an empty scan reads identically to a clean tree. Fail
+	// LOUDLY here instead — the day Tailwind is uninstalled, or the @theme regex stops matching, is
+	// the day this arm must go red rather than green. `blocks.length >= 1` above is the app.css leg;
+	// this is the whole-scan leg, and it is the floor registered in non-vacuity-floors.test.ts.
+	expect(mintSurfaces).toBeGreaterThanOrEqual(1); // @nvf-floor mintSurfaces
+});
+
+it('the @theme block registers no colour — MUTATION: registering a player hue in @theme reds the arm above', () => {
+	/*
+	 * The arm is only worth its floor if it actually fires. Prove it: take the real app.css, splice
+	 * a player-hue registration into its `@theme inline` block in each of the shapes the guard must
+	 * catch — a `--color-*` name, a raw hex, and a bridge to the per-stop ink token that used to slip
+	 * the anchor — and assert each one produces an offence. This is the mutation the issue asks for,
+	 * run in-process against the guard's own logic rather than against a throwaway file on disk.
+	 */
+	const mutate = (decl: string): string[] => {
+		const mutated = stripCssComments(APP_CSS).replace(/@theme\b([^{]*)\{/, `@theme$1{\n\t${decl}\n`);
+		const found: string[] = [];
+		for (const block of themeBlocks(mutated)) {
 			for (const line of block.split('\n')) {
-				const decl = /^\s*(--[a-zA-Z0-9-]+)\s*:\s*([^;]+);/.exec(line);
-				if (!decl) continue;
-				const [, name, rawValue] = decl;
-				offenders.push(...colourOffences(name!, rawValue!.trim()));
+				const d = /^\s*(--[a-zA-Z0-9-]+)\s*:\s*([^;]+);/.exec(line);
+				if (!d) continue;
+				found.push(...colourOffences(d[1]!, d[2]!.trim()));
 			}
 		}
-		for (const cfg of tailwindConfigs(REPO)) {
-			mintSurfaces++;
-			offenders.push(...configColourOffences(readFileSync(cfg, 'utf8'), cfg.slice(REPO.length + 1)));
-		}
-		expect(offenders).toEqual([]);
-		// NON-VACUITY (XR-VER-05/06): the rule is unenforceable if no @theme block and no config were
-		// seen, and an empty `offenders` from an empty scan reads identically to a clean tree. Fail
-		// LOUDLY here instead — the day Tailwind is uninstalled, or the @theme regex stops matching, is
-		// the day this arm must go red rather than green. `blocks.length >= 1` above is the app.css leg;
-		// this is the whole-scan leg, and it is the floor registered in non-vacuity-floors.test.ts.
-		expect(mintSurfaces).toBeGreaterThanOrEqual(1); // @nvf-floor mintSurfaces
-	});
-
-	it('MUTATION: registering a player hue in @theme reds the arm above', () => {
-		/*
-		 * The arm is only worth its floor if it actually fires. Prove it: take the real app.css, splice
-		 * a player-hue registration into its `@theme inline` block in each of the shapes the guard must
-		 * catch — a `--color-*` name, a raw hex, and a bridge to the per-stop ink token that used to slip
-		 * the anchor — and assert each one produces an offence. This is the mutation the issue asks for,
-		 * run in-process against the guard's own logic rather than against a throwaway file on disk.
-		 */
-		const mutate = (decl: string): string[] => {
-			const mutated = stripCssComments(APP_CSS).replace(/@theme\b([^{]*)\{/, `@theme$1{\n\t${decl}\n`);
-			const found: string[] = [];
-			for (const block of themeBlocks(mutated)) {
-				for (const line of block.split('\n')) {
-					const d = /^\s*(--[a-zA-Z0-9-]+)\s*:\s*([^;]+);/.exec(line);
-					if (!d) continue;
-					found.push(...colourOffences(d[1]!, d[2]!.trim()));
-				}
-			}
-			return found;
-		};
-		// by-name in the --color-* namespace
-		expect(mutate('--color-accent: var(--accent);').length).toBeGreaterThan(0);
-		// by-value raw hex (a player hue pasted straight in)
-		expect(mutate('--player-hue-3: #7254e6;').length).toBeGreaterThan(0);
-		// THE HOLE THIS CLOSES: a bridge to the per-stop ink token, whose name begins `--on` and used to
-		// walk past the anchored family alternation untouched.
-		expect(mutate('--text-hue-41: var(--on-accent);').length).toBeGreaterThan(0);
-		expect(mutate('--text-hue-7: var(--on-fill-7);').length).toBeGreaterThan(0);
-		// and confirm the OLD anchored regex would have missed the ink bridge, so the widening is real
-		expect(
-			/var\(\s*--(?:accent|grad|ok|warn|danger|ink|bg|card|line|focus|scrim|track|stage)/.test('var(--on-accent)')
-		).toBe(false);
-		expect(COLOUR_TOKEN_RE.test('var(--on-accent)')).toBe(true);
-		expect(COLOUR_TOKEN_RE.test('var(--on-fill-7)')).toBe(true);
-	});
-
-	it('MUTATION: a v3-shape tailwind.config that registers colours reds the config scan', () => {
-		// The other half of the widening: prove the config-file leg fires on a reintroduced v3 config. In-process
-		// against configColourOffences, so no file is written into the tree.
-		const cfg = "export default { theme: { extend: { colors: { accent: '#7254e6' } } } };";
-		expect(configColourOffences(cfg, 'tailwind.config.ts').length).toBeGreaterThan(0);
-		// a config with a colours key but no recognisable literal is STILL caught — the family is minted
-		// regardless of whether the value is a hex the scan can read.
-		expect(
-			configColourOffences('export default { theme: { colors: { accent: brand } } };', 'tailwind.config.js').length
-		).toBeGreaterThan(0);
-		// and a config that touches no colours is clean, so the leg is not vacuously red
-		expect(
-			configColourOffences('export default { theme: { extend: { spacing: { tap: "44px" } } } };', 'tailwind.config.ts')
-		).toEqual([]);
-	});
+		return found;
+	};
+	// by-name in the --color-* namespace
+	expect(mutate('--color-accent: var(--accent);').length).toBeGreaterThan(0);
+	// by-value raw hex (a player hue pasted straight in)
+	expect(mutate('--player-hue-3: #7254e6;').length).toBeGreaterThan(0);
+	// THE HOLE THIS CLOSES: a bridge to the per-stop ink token, whose name begins `--on` and used to
+	// walk past the anchored family alternation untouched.
+	expect(mutate('--text-hue-41: var(--on-accent);').length).toBeGreaterThan(0);
+	expect(mutate('--text-hue-7: var(--on-fill-7);').length).toBeGreaterThan(0);
+	// and confirm the OLD anchored regex would have missed the ink bridge, so the widening is real
+	expect(
+		/var\(\s*--(?:accent|grad|ok|warn|danger|ink|bg|card|line|focus|scrim|track|stage)/.test('var(--on-accent)')
+	).toBe(false);
+	expect(COLOUR_TOKEN_RE.test('var(--on-accent)')).toBe(true);
+	expect(COLOUR_TOKEN_RE.test('var(--on-fill-7)')).toBe(true);
 });
 
-describe('Preflight stays out until someone decides otherwise', () => {
-	it('does not import preflight.css', () => {
-		/*
-		 * Both spellings, because either one would bring the reset in: the explicit part import, and
-		 * the one-line `@import 'tailwindcss'` whose whole point is that it includes Preflight.
-		 * If you are here because this test failed and you MEANT to enable Preflight: the install's
-		 * acceptance requires before/after frames of the existing screens and the fallout named, so
-		 * run `e2e/probes/preflight-reset-audit.mjs` on both sides and deal with what it reports —
-		 * last measured at 2,696 moved boxes — rather than deleting this arm.
-		 */
-		expect(CSS).not.toMatch(/@import\s+['"]tailwindcss\/preflight\.css['"]/);
-		expect(CSS).not.toMatch(/@import\s+['"]tailwindcss['"]\s*;/);
-	});
-
-	it('still imports the parts it does want, so the arm above is not passing by Tailwind being absent', () => {
-		expect(CSS).toMatch(/@import\s+['"]tailwindcss\/theme\.css['"]\s+layer\(theme\)/);
-		expect(CSS).toMatch(/@import\s+['"]tailwindcss\/utilities\.css['"]\s+layer\(utilities\)/);
-	});
+it('the @theme block registers no colour — MUTATION: a v3-shape tailwind.config that registers colours reds the config scan', () => {
+	// The other half of the widening: prove the config-file leg fires on a reintroduced v3 config. In-process
+	// against configColourOffences, so no file is written into the tree.
+	const cfg = "export default { theme: { extend: { colors: { accent: '#7254e6' } } } };";
+	expect(configColourOffences(cfg, 'tailwind.config.ts').length).toBeGreaterThan(0);
+	// a config with a colours key but no recognisable literal is STILL caught — the family is minted
+	// regardless of whether the value is a hex the scan can read.
+	expect(
+		configColourOffences('export default { theme: { colors: { accent: brand } } };', 'tailwind.config.js').length
+	).toBeGreaterThan(0);
+	// and a config that touches no colours is clean, so the leg is not vacuously red
+	expect(
+		configColourOffences('export default { theme: { extend: { spacing: { tap: "44px" } } } };', 'tailwind.config.ts')
+	).toEqual([]);
 });
 
-describe('utilities are minted from the copy-in target only', () => {
-	it('disables Tailwind source auto-detection', () => {
-		/*
-		 * `source(none)` is what stops the whole-repo scan. Without it Tailwind harvested 50 utilities
-		 * from string literals in tests and markdown, two of which (`.underline`, `.block`) collide
-		 * with `ball` marker classes the app applies to real elements.
-		 */
-		expect(CSS).toMatch(/@import\s+['"]tailwindcss\/utilities\.css['"][^;]*\bsource\(none\)/);
-	});
-
-	it('names exactly one source, and it is the copy-in directory restricted to components', () => {
-		// The glob's file-extension half matters as much as its directory half. Scoped to the bare
-		// directory, `.underline` was minted again — out of `ui/README.md`, which names it in prose
-		// precisely to warn about it. A utility can only be USED in a component, so components are
-		// what gets scanned.
-		const sources = [...CSS.matchAll(/@source\s+(?:not\s+)?['"]([^'"]+)['"]/g)].map((m) => m[1]!);
-		expect(sources).toEqual(['../src/lib/components/ui/**/*.svelte']);
-		// and the directory that glob is rooted at is the real copy-in target, not a typo
-		expect(join(SRC, '../src/lib/components/ui')).toBe(join(SRC, 'lib', 'components', 'ui'));
-	});
-
-	it('no class a copied-in component uses is also a class the app applies semantically', () => {
-		/*
-		 * THE ARM THAT WOULD HAVE CAUGHT THE REAL BUG, and the one that matters going forward.
-		 *
-		 * The two arms above pin the CONFIGURATION; neither can see the built CSS, and the collision
-		 * that shipped was only ever visible there. This one attacks the hazard directly and without
-		 * needing Tailwind's vocabulary: a collision requires the SAME TOKEN to be a utility in a
-		 * copied-in component AND a semantic class on an app element. So intersect the two sets.
-		 *
-		 * It is empty today because `ui/` holds no component yet, which is honest rather than vacuous —
-		 * the arm exists for the moment a copy-in lands one, where a `class="... block ..."` on a shadcn
-		 * drawer would otherwise silently re-arm `.block` against the lyrics ball. The floor below
-		 * asserts the app side really was collected, so the intersection cannot pass by finding nothing.
-		 */
-		const uiDir = join(SRC, 'lib', 'components', 'ui');
-		const uiComponents = svelteFiles(SRC).filter((f) => f.startsWith(uiDir + '/'));
-
-		/** Every whitespace-separated static class token in a `class="…"`, interpolations blanked. */
-		/*
-		 * S3: strip comments FIRST. This scanned raw text, so a component's own documentation
-		 * naming a class — `<label class="check">` in the Checkbox's deviation header — was collected as
-		 * a class the component USES, and reported as a collision with the app. A guard that criminalises
-		 * its own explanation teaches people to stop writing the explanation. The mutation arm below
-		 * proves the stripper does not blind the scan.
-		 */
-		const classTokens = (src: string): Set<string> => {
-			const out = new Set<string>();
-			const code = src
-				.replace(/<!--[\s\S]*?-->/g, ' ')
-				.replace(/\/\*[\s\S]*?\*\//g, ' ');
-			for (const m of code.matchAll(/class=(?:"([^"]*)"|'([^']*)')/g)) {
-				const raw = (m[1] ?? m[2] ?? '').replace(/\{[^}]*\}/g, ' ');
-				for (const t of raw.split(/\s+/)) if (t) out.add(t);
-			}
-			return out;
-		};
-
-		// MUTATION: the stripper must hide PROSE without hiding CODE. A class named inside a comment is
-		// not a class the file uses; one in markup is. If a future edit widens the stripper into the
-		// markup, this reds instead of the scan going quietly blind.
-		expect(classTokens('<!-- <label class="from-a-comment"> -->\n<div class="from-markup">')).toEqual(
-			new Set(['from-markup'])
-		);
-		expect(classTokens('/* class="in-a-block-comment" */ <p class="also-markup">')).toEqual(
-			new Set(['also-markup'])
-		);
-
-		// the app side: every component OUTSIDE the copy-in target, plus the `ball` marker enum, whose
-		// values reach markup through `class="ball {ball}"` and so never appear as static tokens.
-		const appClasses = new Set<string>();
-		for (const f of svelteFiles(SRC)) {
-			if (f.startsWith(uiDir + '/')) continue;
-			for (const t of classTokens(readFileSync(f, 'utf8'))) appClasses.add(t);
-		}
-		expect(appClasses.size).toBeGreaterThan(100); // the app side was really collected
-
-		const offenders: string[] = [];
-		for (const f of uiComponents) {
-			for (const t of classTokens(readFileSync(f, 'utf8'))) {
-				if (appClasses.has(t)) {
-					offenders.push(`${f.slice(SRC.length + 1)}: \`${t}\` is also a class the app applies`);
-				}
-			}
-		}
-		expect(offenders).toEqual([]);
-	});
-});
-
-describe('the copy-in target is genuinely in guard scope', () => {
+it('Preflight stays out until someone decides otherwise: does not import preflight.css', () => {
 	/*
-	 * The claim in `test-helpers.ts` is that a new source directory is in scope BY CONSTRUCTION,
-	 * because every walk is unconditionally recursive and there is no include-allowlist. The Tailwind install created
-	 * `src/lib/components/ui/`, so the claim is testable for the first time.
-	 *
-	 * This is proven by MATERIALISING a file and walking for it, rather than by asserting a committed
-	 * fixture exists. A fixture would rot into ordinary source that someone eventually "cleans up",
-	 * and its absence would then look like a passing test. Creating the file inside the test means the
-	 * proof is re-derived on every run against whatever the walk currently does. It is removed in a
-	 * `finally`, and its name marks it as machinery.
+	 * Both spellings, because either one would bring the reset in: the explicit part import, and
+	 * the one-line `@import 'tailwindcss'` whose whole point is that it includes Preflight.
+	 * If you are here because this test failed and you MEANT to enable Preflight: the install's
+	 * acceptance requires before/after frames of the existing screens and the fallout named, so
+	 * run `e2e/probes/preflight-reset-audit.mjs` on both sides and deal with what it reports —
+	 * last measured at 2,696 moved boxes — rather than deleting this arm.
 	 */
-	const UI_DIR = join(SRC, 'lib', 'components', 'ui');
+	expect(CSS).not.toMatch(/@import\s+['"]tailwindcss\/preflight\.css['"]/);
+	expect(CSS).not.toMatch(/@import\s+['"]tailwindcss['"]\s*;/);
+});
 
-	it('the directory exists in the repo, so the @source scope is not vacuous in a fresh clone', () => {
-		/*
-		 * Git does not track empty directories, so `ui/` needs at least one committed file or it would
-		 * vanish on clone — and app.css's `@source` would then point at nothing, emitting no utilities
-		 * while looking exactly like a correctly-scoped setup with nothing using one yet. That is the
-		 * failure mode this arm exists to make loud. `ui/README.md` is the committed file; it is
-		 * markdown, so neither walk below picks it up and no design guard has an opinion about it.
-		 */
-		expect(existsSync(UI_DIR)).toBe(true);
-		expect(existsSync(join(UI_DIR, 'README.md'))).toBe(true);
-	});
+it('Preflight stays out until someone decides otherwise: still imports the parts it does want, so the arm above is not passing by Tailwind being absent', () => {
+	expect(CSS).toMatch(/@import\s+['"]tailwindcss\/theme\.css['"]\s+layer\(theme\)/);
+	expect(CSS).toMatch(/@import\s+['"]tailwindcss\/utilities\.css['"]\s+layer\(utilities\)/);
+});
 
-	it('is not excluded by SKIP_DIRS — no segment of its path is skipped', () => {
-		for (const segment of ['lib', 'components', 'ui']) {
-			expect(SKIP_DIRS.has(segment)).toBe(false);
+it('utilities are minted from the copy-in target only: disables Tailwind source auto-detection', () => {
+	/*
+	 * `source(none)` is what stops the whole-repo scan. Without it Tailwind harvested 50 utilities
+	 * from string literals in tests and markdown, two of which (`.underline`, `.block`) collide
+	 * with `ball` marker classes the app applies to real elements.
+	 */
+	expect(CSS).toMatch(/@import\s+['"]tailwindcss\/utilities\.css['"][^;]*\bsource\(none\)/);
+});
+
+it('utilities are minted from the copy-in target only: names exactly one source, and it is the copy-in directory restricted to components', () => {
+	// The glob's file-extension half matters as much as its directory half. Scoped to the bare
+	// directory, `.underline` was minted again — out of `ui/README.md`, which names it in prose
+	// precisely to warn about it. A utility can only be USED in a component, so components are
+	// what gets scanned.
+	const sources = [...CSS.matchAll(/@source\s+(?:not\s+)?['"]([^'"]+)['"]/g)].map((m) => m[1]!);
+	expect(sources).toEqual(['../src/lib/components/ui/**/*.svelte']);
+	// and the directory that glob is rooted at is the real copy-in target, not a typo
+	expect(join(SRC, '../src/lib/components/ui')).toBe(join(SRC, 'lib', 'components', 'ui'));
+});
+
+it('utilities are minted from the copy-in target only: no class a copied-in component uses is also a class the app applies semantically', () => {
+	/*
+	 * THE ARM THAT WOULD HAVE CAUGHT THE REAL BUG, and the one that matters going forward.
+	 *
+	 * The two arms above pin the CONFIGURATION; neither can see the built CSS, and the collision
+	 * that shipped was only ever visible there. This one attacks the hazard directly and without
+	 * needing Tailwind's vocabulary: a collision requires the SAME TOKEN to be a utility in a
+	 * copied-in component AND a semantic class on an app element. So intersect the two sets.
+	 *
+	 * It is empty today because `ui/` holds no component yet, which is honest rather than vacuous —
+	 * the arm exists for the moment a copy-in lands one, where a `class="... block ..."` on a shadcn
+	 * drawer would otherwise silently re-arm `.block` against the lyrics ball. The floor below
+	 * asserts the app side really was collected, so the intersection cannot pass by finding nothing.
+	 */
+	const uiDir = join(SRC, 'lib', 'components', 'ui');
+	const uiComponents = svelteFiles(SRC).filter((f) => f.startsWith(uiDir + '/'));
+
+	/** Every whitespace-separated static class token in a `class="…"`, interpolations blanked. */
+	/*
+	 * S3: strip comments FIRST. This scanned raw text, so a component's own documentation
+	 * naming a class — `<label class="check">` in the Checkbox's deviation header — was collected as
+	 * a class the component USES, and reported as a collision with the app. A guard that criminalises
+	 * its own explanation teaches people to stop writing the explanation. The mutation arm below
+	 * proves the stripper does not blind the scan.
+	 */
+	const classTokens = (src: string): Set<string> => {
+		const out = new Set<string>();
+		const code = src.replace(/<!--[\s\S]*?-->/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
+		for (const m of code.matchAll(/class=(?:"([^"]*)"|'([^']*)')/g)) {
+			const raw = (m[1] ?? m[2] ?? '').replace(/\{[^}]*\}/g, ' ');
+			for (const t of raw.split(/\s+/)) if (t) out.add(t);
 		}
-	});
+		return out;
+	};
 
-	it('svelteFiles and styleFiles both reach a file placed there', () => {
-		const probe = join(UI_DIR, '__scope-probe.svelte');
-		/*
-		 * NON-VACUITY, RE-ANCHORED BY S1 (XR-VER-07).
-		 *
-		 * This previously asserted the walk returns NOTHING from this directory, and used that emptiness
-		 * to prove a later hit was the walk arriving rather than the walk being indiscriminate. S1
-		 * copied in the first real component (`button/`), so that premise is gone — and it is gone
-		 * because the thing it was waiting for happened, which is the good case, not a regression.
-		 *
-		 * The property still worth pinning is the one the original was reaching for: the walk reaches
-		 * THIS EXACT probe path, not merely something in the directory. So the pre-condition becomes
-		 * "the probe is not already there", and the assertion below is unchanged.
-		 */
-		expect(svelteFiles(SRC)).not.toContain(probe);
-		try {
-			writeFileSync(probe, '<span class="scope-probe"></span>\n');
-			expect(svelteFiles(SRC)).toContain(probe);
-			expect(styleFiles(SRC)).toContain(probe);
-		} finally {
-			rmSync(probe, { force: true });
+	// MUTATION: the stripper must hide PROSE without hiding CODE. A class named inside a comment is
+	// not a class the file uses; one in markup is. If a future edit widens the stripper into the
+	// markup, this reds instead of the scan going quietly blind.
+	expect(classTokens('<!-- <label class="from-a-comment"> -->\n<div class="from-markup">')).toEqual(
+		new Set(['from-markup'])
+	);
+	expect(classTokens('/* class="in-a-block-comment" */ <p class="also-markup">')).toEqual(new Set(['also-markup']));
+
+	// the app side: every component OUTSIDE the copy-in target, plus the `ball` marker enum, whose
+	// values reach markup through `class="ball {ball}"` and so never appear as static tokens.
+	const appClasses = new Set<string>();
+	for (const f of svelteFiles(SRC)) {
+		if (f.startsWith(uiDir + '/')) continue;
+		for (const t of classTokens(readFileSync(f, 'utf8'))) appClasses.add(t);
+	}
+	expect(appClasses.size).toBeGreaterThan(100); // the app side was really collected
+
+	const offenders: string[] = [];
+	for (const f of uiComponents) {
+		for (const t of classTokens(readFileSync(f, 'utf8'))) {
+			if (appClasses.has(t)) {
+				offenders.push(`${f.slice(SRC.length + 1)}: \`${t}\` is also a class the app applies`);
+			}
 		}
-		// and it is gone again, so a later guard in this same run cannot trip over it
-		expect(svelteFiles(SRC)).not.toContain(probe);
-	});
+	}
+	expect(offenders).toEqual([]);
+});
+
+/*
+ * The claim in `test-helpers.ts` is that a new source directory is in scope BY CONSTRUCTION,
+ * because every walk is unconditionally recursive and there is no include-allowlist. The Tailwind install created
+ * `src/lib/components/ui/`, so the claim is testable for the first time.
+ *
+ * This is proven by MATERIALISING a file and walking for it, rather than by asserting a committed
+ * fixture exists. A fixture would rot into ordinary source that someone eventually "cleans up",
+ * and its absence would then look like a passing test. Creating the file inside the test means the
+ * proof is re-derived on every run against whatever the walk currently does. It is removed in a
+ * `finally`, and its name marks it as machinery.
+ */
+const UI_DIR = join(SRC, 'lib', 'components', 'ui');
+
+it('the copy-in target is genuinely in guard scope: the directory exists in the repo, so the @source scope is not vacuous in a fresh clone', () => {
+	/*
+	 * Git does not track empty directories, so `ui/` needs at least one committed file or it would
+	 * vanish on clone — and app.css's `@source` would then point at nothing, emitting no utilities
+	 * while looking exactly like a correctly-scoped setup with nothing using one yet. That is the
+	 * failure mode this arm exists to make loud. `ui/README.md` is the committed file; it is
+	 * markdown, so neither walk below picks it up and no design guard has an opinion about it.
+	 */
+	expect(existsSync(UI_DIR)).toBe(true);
+	expect(existsSync(join(UI_DIR, 'README.md'))).toBe(true);
+});
+
+it('the copy-in target is genuinely in guard scope: is not excluded by SKIP_DIRS — no segment of its path is skipped', () => {
+	for (const segment of ['lib', 'components', 'ui']) {
+		expect(SKIP_DIRS.has(segment)).toBe(false);
+	}
+});
+
+it('the copy-in target is genuinely in guard scope: svelteFiles and styleFiles both reach a file placed there', () => {
+	const probe = join(UI_DIR, '__scope-probe.svelte');
+	/*
+	 * NON-VACUITY, RE-ANCHORED BY S1 (XR-VER-07).
+	 *
+	 * This previously asserted the walk returns NOTHING from this directory, and used that emptiness
+	 * to prove a later hit was the walk arriving rather than the walk being indiscriminate. S1
+	 * copied in the first real component (`button/`), so that premise is gone — and it is gone
+	 * because the thing it was waiting for happened, which is the good case, not a regression.
+	 *
+	 * The property still worth pinning is the one the original was reaching for: the walk reaches
+	 * THIS EXACT probe path, not merely something in the directory. So the pre-condition becomes
+	 * "the probe is not already there", and the assertion below is unchanged.
+	 */
+	expect(svelteFiles(SRC)).not.toContain(probe);
+	try {
+		writeFileSync(probe, '<span class="scope-probe"></span>\n');
+		expect(svelteFiles(SRC)).toContain(probe);
+		expect(styleFiles(SRC)).toContain(probe);
+	} finally {
+		rmSync(probe, { force: true });
+	}
+	// and it is gone again, so a later guard in this same run cannot trip over it
+	expect(svelteFiles(SRC)).not.toContain(probe);
 });

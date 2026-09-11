@@ -18,7 +18,7 @@
  * The per-stop half of the invariant is enforced elsewhere and deliberately: `contrast.test.ts` records
  * accent-as-ink leaving scope as a UNIVERSAL fact and becoming per-stop across all 48 palette stops.
  */
-import { describe, expect, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { svelteFiles, styleFiles } from './test-helpers';
@@ -85,54 +85,52 @@ function withoutComments(src: string): string {
 		.replace(/(^|[\s;{])\/\/[^\n]*/g, '$1 ');
 }
 
-describe('a semantic fill is never minted into app source as ink', () => {
-	const files = sources();
+const files = sources();
 
-	test('no app file uses a banned ink utility', () => {
-		const offenders: string[] = [];
-		for (const f of files) {
-			// The pristine registry components are exempt BY PATH: they are vendored verbatim so
-			// `--overwrite` stays safe, and `ui/_encore/` is where our own overrides live. A stock
-			// component's own `text-primary` on its own `bg-primary` surface is the legal pairing.
-			if (f.includes(VENDORED)) continue;
-			for (const m of withoutComments(readFileSync(f, 'utf8')).matchAll(bannedRe)) {
-				offenders.push(`${f.slice(f.indexOf('src/'))}: ${m[0]}`);
-			}
+test('a semantic fill is never minted into app source as ink: no app file uses a banned ink utility', () => {
+	const offenders: string[] = [];
+	for (const f of files) {
+		// The pristine registry components are exempt BY PATH: they are vendored verbatim so
+		// `--overwrite` stays safe, and `ui/_encore/` is where our own overrides live. A stock
+		// component's own `text-primary` on its own `bg-primary` surface is the legal pairing.
+		if (f.includes(VENDORED)) continue;
+		for (const m of withoutComments(readFileSync(f, 'utf8')).matchAll(bannedRe)) {
+			offenders.push(`${f.slice(f.indexOf('src/'))}: ${m[0]}`);
 		}
-		expect(offenders).toEqual([]);
-	});
+	}
+	expect(offenders).toEqual([]);
+});
 
-	test('the legal pairing is not caught by the ban', () => {
-		// The mutation that proves the regex is not simply matching everything.
-		expect('text-primary-foreground'.match(bannedRe)).toBeNull();
-		expect('bg-primary'.match(bannedRe)).toBeNull();
-		expect([...'text-primary'.matchAll(bannedRe)].length).toBe(1);
-		expect([...'hover:text-destructive'.matchAll(bannedRe)].length).toBe(1);
-	});
+test('a semantic fill is never minted into app source as ink: the legal pairing is not caught by the ban', () => {
+	// The mutation that proves the regex is not simply matching everything.
+	expect('text-primary-foreground'.match(bannedRe)).toBeNull();
+	expect('bg-primary'.match(bannedRe)).toBeNull();
+	expect([...'text-primary'.matchAll(bannedRe)].length).toBe(1);
+	expect([...'hover:text-destructive'.matchAll(bannedRe)].length).toBe(1);
+});
 
-	test('non-vacuity: the scan reached app source outside the vendored tree', () => {
-		// Deduped count. Every entry is a distinct file, so this number means what it says.
-		const scanned = files.filter((f) => !f.includes(VENDORED));
-		expect(scanned.length).toBeGreaterThanOrEqual(30); // @nvf-floor scanned.length
-		expect(new Set(scanned).size).toBe(scanned.length);
-		// …and the shared stylesheet is in scope, which is where an `@apply` would most likely land.
-		expect(scanned.some((f) => f.endsWith('app.css'))).toBe(true);
-	});
+test('a semantic fill is never minted into app source as ink — non-vacuity: the scan reached app source outside the vendored tree', () => {
+	// Deduped count. Every entry is a distinct file, so this number means what it says.
+	const scanned = files.filter((f) => !f.includes(VENDORED));
+	expect(scanned.length).toBeGreaterThanOrEqual(30); // @nvf-floor scanned.length
+	expect(new Set(scanned).size).toBe(scanned.length);
+	// …and the shared stylesheet is in scope, which is where an `@apply` would most likely land.
+	expect(scanned.some((f) => f.endsWith('app.css'))).toBe(true);
+});
 
-	test('a comment naming the ban does not red the suite, but real usage still does', () => {
-		// Both directions in one arm: the stripper must remove prose WITHOUT blinding the scan. The
-		// second half is what stops this becoming a hole rather than a fix.
-		const prose = `<!-- text-primary is banned: 3.10:1 on --card2 -->\n<p class="ink">x</p>`;
-		expect([...withoutComments(prose).matchAll(bannedRe)].length).toBe(0);
+test('a semantic fill is never minted into app source as ink: a comment naming the ban does not red the suite, but real usage still does', () => {
+	// Both directions in one arm: the stripper must remove prose WITHOUT blinding the scan. The
+	// second half is what stops this becoming a hole rather than a fix.
+	const prose = `<!-- text-primary is banned: 3.10:1 on --card2 -->\n<p class="ink">x</p>`;
+	expect([...withoutComments(prose).matchAll(bannedRe)].length).toBe(0);
 
-		const cssProse = `/* never @apply text-destructive here */\n.x { color: var(--ink); }`;
-		expect([...withoutComments(cssProse).matchAll(bannedRe)].length).toBe(0);
+	const cssProse = `/* never @apply text-destructive here */\n.x { color: var(--ink); }`;
+	expect([...withoutComments(cssProse).matchAll(bannedRe)].length).toBe(0);
 
-		const real = `<p class="text-primary">x</p>`;
-		expect([...withoutComments(real).matchAll(bannedRe)].length).toBe(1);
+	const real = `<p class="text-primary">x</p>`;
+	expect([...withoutComments(real).matchAll(bannedRe)].length).toBe(1);
 
-		// A banned utility on the same LINE as a trailing comment must still be seen.
-		const mixed = `.x { color: red; } // text-primary explained\n.y { @apply text-primary; }`;
-		expect([...withoutComments(mixed).matchAll(bannedRe)].length).toBe(1);
-	});
+	// A banned utility on the same LINE as a trailing comment must still be seen.
+	const mixed = `.x { color: red; } // text-primary explained\n.y { @apply text-primary; }`;
+	expect([...withoutComments(mixed).matchAll(bannedRe)].length).toBe(1);
 });

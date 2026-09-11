@@ -10,7 +10,7 @@
 // behavioural test can express (there is nothing left to exercise). Reads raw source so a stray
 // re-introduction in either code or a copied comment is caught. Mutation-proven on base: every
 // assertion below reds when the deleted code is restored.
-import { describe, expect, it } from 'bun:test';
+import { expect, it } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { appSrc, read as readRepoFile } from '@encore/test-support';
 import { join } from 'node:path';
@@ -23,38 +23,36 @@ import { join } from 'node:path';
 // exactly what this guard wants to see.
 const read = (rel: string) => readRepoFile('apps/core/src', rel);
 
-describe('the unreachable browse-by-genre feature stays removed', () => {
-	it('the uncalled POST /api/tag route is gone', () => {
-		// Deliberately still an existsSync, but on an anchor that cannot silently be wrong: `appSrc` is
-		// derived from the repo root marker and self-checked on load, so a false here means the route is
-		// absent rather than that the path was.
-		expect(existsSync(join(appSrc, 'routes/api/tag/+server.ts'))).toBe(false);
-	});
+it('the unreachable browse-by-genre feature stays removed: the uncalled POST /api/tag route is gone', () => {
+	// Deliberately still an existsSync, but on an anchor that cannot silently be wrong: `appSrc` is
+	// derived from the repo root marker and self-checked on load, so a false here means the route is
+	// absent rather than that the path was.
+	expect(existsSync(join(appSrc, 'routes/api/tag/+server.ts'))).toBe(false);
+});
 
-	it('the dead genre read methods are gone from the media repository', () => {
-		const repo = read('server/media/repository.ts');
-		expect(repo).not.toMatch(/\bgenreFacets\s*\(/);
-		expect(repo).not.toMatch(/\bbyGenre\s*\(/);
-	});
+it('the unreachable browse-by-genre feature stays removed: the dead genre read methods are gone from the media repository', () => {
+	const repo = read('server/media/repository.ts');
+	expect(repo).not.toMatch(/\bgenreFacets\s*\(/);
+	expect(repo).not.toMatch(/\bbyGenre\s*\(/);
+});
 
-	it('the library endpoint no longer exposes a genre facet or a ?genre= filter branch', () => {
-		const lib = read('routes/api/library/+server.ts');
-		expect(lib).not.toMatch(/genreFacets|byGenre/);
-		expect(lib).not.toMatch(/searchParams\.get\(\s*['"]genre['"]\s*\)/);
-	});
+it('the unreachable browse-by-genre feature stays removed: the library endpoint no longer exposes a genre facet or a ?genre= filter branch', () => {
+	const lib = read('routes/api/library/+server.ts');
+	expect(lib).not.toMatch(/genreFacets|byGenre/);
+	expect(lib).not.toMatch(/searchParams\.get\(\s*['"]genre['"]\s*\)/);
+});
 
-	it('the phone has no Browse-by-genre chip row', () => {
-		const page = read('routes/+page.svelte');
-		expect(page).not.toContain('Browse by genre');
-		expect(page).not.toMatch(/facets\.genres/);
-	});
+it('the unreachable browse-by-genre feature stays removed: the phone has no Browse-by-genre chip row', () => {
+	const page = read('routes/+page.svelte');
+	expect(page).not.toContain('Browse by genre');
+	expect(page).not.toMatch(/facets\.genres/);
+});
 
-	// The generic tag machinery (setTags/tagsOf and the genre|tag|mood kind enum) is NOT part of the
-	// removal — it is used elsewhere and the owner did not name it. Assert it survived, so a future
-	// over-eager cleanup cannot delete the reusable primitive under cover of this guard.
-	it('the generic setTags/tagsOf primitive is retained', () => {
-		const repo = read('server/media/repository.ts');
-		expect(repo).toMatch(/\bsetTags\s*\(/);
-		expect(repo).toMatch(/\btagsOf\s*\(/);
-	});
+// The generic tag machinery (setTags/tagsOf and the genre|tag|mood kind enum) is NOT part of the
+// removal — it is used elsewhere and the owner did not name it. Assert it survived, so a future
+// over-eager cleanup cannot delete the reusable primitive under cover of this guard.
+it('the unreachable browse-by-genre feature stays removed: the generic setTags/tagsOf primitive is retained', () => {
+	const repo = read('server/media/repository.ts');
+	expect(repo).toMatch(/\bsetTags\s*\(/);
+	expect(repo).toMatch(/\btagsOf\s*\(/);
 });

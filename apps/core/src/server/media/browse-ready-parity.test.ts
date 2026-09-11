@@ -25,7 +25,7 @@
 //     `!!m.instrumentalRef && (m.lyricsStatus === 'ready' || !!m.lyricsRef)` still slips through. That
 //     ceiling is ASSERTED below, not merely described, so raising the floor further has to move the
 //     assertion on purpose rather than leaving this comment behind.
-import { beforeEach, describe, expect, it } from 'bun:test';
+import { expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -110,101 +110,114 @@ const legacyLyricsRef = (id: string): Media => ({
 
 let repo: MediaRepository;
 
-describe('— every browse reader answers readiness the same way', () => {
-	beforeEach(() => {
-		repo = new MediaRepository(migratedDb());
-		// The original three measured rows, plus five added later so every gate arm has a seeded row:
-		//   a — finished, READY.                       artist 'The Band',       tag 'acoustic'
-		//   b — mid-align, not ready.                  artist 'The Band',       tag 'acoustic'  (shares both with a)
-		//   c — mid-align, not ready.                  artist 'Other',          tag 'ballad'
-		//   d — unacquired, not ready.                 artist 'The Band',       tag 'unacquired'
-		//   e — stems queued, not ready.               artist 'The Band',       tag 'stems-queued'
-		//   f — stems ready / no artifact, not ready.  artist 'The Band',       tag 'no-instrumental'
-		//   g — alignment never ran, not ready.        artist 'The Band',       tag 'lyrics-never-ran'
-		//   h — legacy lyricsRef, READY.               artist 'Legacy Library', tag 'legacy'
-		//
-		// The two groupings are deliberate and catch different leaks. Five not-ready rows share artist
-		// 'The Band' with a, so a leak INFLATES that one facet count and lengthens its filter. Each
-		// not-ready row also holds its tag ALONE, so the tag readers name WHICH row leaked instead of
-		// only reporting a wrong total.
-		repo.upsert(finished('a'));
-		repo.upsert(midAlign('b'));
-		repo.upsert(midAlign('c'));
-		repo.upsert(unacquired('d'));
-		repo.upsert(stemsQueued('e'));
-		repo.upsert(stemsReadyNoArtifact('f'));
-		repo.upsert(lyricsNeverRan('g'));
-		repo.upsert(legacyLyricsRef('h'));
-		repo.setCanonical('a', { artist: 'The Band' });
-		repo.setCanonical('b', { artist: 'The Band' });
-		repo.setCanonical('c', { artist: 'Other' });
-		repo.setCanonical('d', { artist: 'The Band' });
-		repo.setCanonical('e', { artist: 'The Band' });
-		repo.setCanonical('f', { artist: 'The Band' });
-		repo.setCanonical('g', { artist: 'The Band' });
-		repo.setCanonical('h', { artist: 'Legacy Library' });
-		repo.setTags('a', 'tag', ['acoustic']);
-		repo.setTags('b', 'tag', ['acoustic']);
-		repo.setTags('c', 'tag', ['ballad']);
-		repo.setTags('d', 'tag', ['unacquired']);
-		repo.setTags('e', 'tag', ['stems-queued']);
-		repo.setTags('f', 'tag', ['no-instrumental']);
-		repo.setTags('g', 'tag', ['lyrics-never-ran']);
-		repo.setTags('h', 'tag', ['legacy']);
-	});
+/**
+ * The eight-row seed the behavioural arm runs against. It was a describe-scoped `beforeEach`; the
+ * group it belonged to is gone, and leaving the hook at file scope would silently reseed a fresh DB
+ * for the finished-only sentinel and for every source-scan test as well. So it is a named helper,
+ * called as the first line of each test that was in that group.
+ */
+function seedParityLibrary() {
+	repo = new MediaRepository(migratedDb());
+	// The original three measured rows, plus five added later so every gate arm has a seeded row:
+	//   a — finished, READY.                       artist 'The Band',       tag 'acoustic'
+	//   b — mid-align, not ready.                  artist 'The Band',       tag 'acoustic'  (shares both with a)
+	//   c — mid-align, not ready.                  artist 'Other',          tag 'ballad'
+	//   d — unacquired, not ready.                 artist 'The Band',       tag 'unacquired'
+	//   e — stems queued, not ready.               artist 'The Band',       tag 'stems-queued'
+	//   f — stems ready / no artifact, not ready.  artist 'The Band',       tag 'no-instrumental'
+	//   g — alignment never ran, not ready.        artist 'The Band',       tag 'lyrics-never-ran'
+	//   h — legacy lyricsRef, READY.               artist 'Legacy Library', tag 'legacy'
+	//
+	// The two groupings are deliberate and catch different leaks. Five not-ready rows share artist
+	// 'The Band' with a, so a leak INFLATES that one facet count and lengthens its filter. Each
+	// not-ready row also holds its tag ALONE, so the tag readers name WHICH row leaked instead of
+	// only reporting a wrong total.
+	repo.upsert(finished('a'));
+	repo.upsert(midAlign('b'));
+	repo.upsert(midAlign('c'));
+	repo.upsert(unacquired('d'));
+	repo.upsert(stemsQueued('e'));
+	repo.upsert(stemsReadyNoArtifact('f'));
+	repo.upsert(lyricsNeverRan('g'));
+	repo.upsert(legacyLyricsRef('h'));
+	repo.setCanonical('a', { artist: 'The Band' });
+	repo.setCanonical('b', { artist: 'The Band' });
+	repo.setCanonical('c', { artist: 'Other' });
+	repo.setCanonical('d', { artist: 'The Band' });
+	repo.setCanonical('e', { artist: 'The Band' });
+	repo.setCanonical('f', { artist: 'The Band' });
+	repo.setCanonical('g', { artist: 'The Band' });
+	repo.setCanonical('h', { artist: 'Legacy Library' });
+	repo.setTags('a', 'tag', ['acoustic']);
+	repo.setTags('b', 'tag', ['acoustic']);
+	repo.setTags('c', 'tag', ['ballad']);
+	repo.setTags('d', 'tag', ['unacquired']);
+	repo.setTags('e', 'tag', ['stems-queued']);
+	repo.setTags('f', 'tag', ['no-instrumental']);
+	repo.setTags('g', 'tag', ['lyrics-never-ran']);
+	repo.setTags('h', 'tag', ['legacy']);
+}
 
-	// Expected values are hard-coded from the seed above: 'a' and 'h' are the only ready songs, so they
-	// are the only ids any reader may return and the only songs any facet may count. `readySongs`
-	// orders newest-id-first, so the library reads ['h', 'a'].
-	it('the library list holds only the ready songs', () => {
-		expect(repo.listReady().map((m) => m.id)).toEqual(['h', 'a']);
-	});
+// Expected values are hard-coded from the seed above: 'a' and 'h' are the only ready songs, so they
+// are the only ids any reader may return and the only songs any facet may count. `readySongs`
+// orders newest-id-first, so the library reads ['h', 'a'].
+it('every browse reader answers readiness the same way: the library list holds only the ready songs', () => {
+	seedParityLibrary();
+	expect(repo.listReady().map((m) => m.id)).toEqual(['h', 'a']);
+});
 
-	it('the artist filter does not reveal the not-ready songs the library hides (F1)', () => {
-		// base: ['g', 'f', 'e', 'd', 'b', 'a'] — filtering a list narrowed it INTO rows the unnarrowed
-		// list refuses. Five of the six are the shapes the original seed never held.
-		expect(repo.byArtist('The Band').map((m) => m.id)).toEqual(['a']);
-		// 'Other' has one song and it is not ready, so its filter is empty…
-		expect(repo.byArtist('Other')).toEqual([]);
-		expect(repo.byArtist('Legacy Library').map((m) => m.id)).toEqual(['h']);
-	});
+it('every browse reader answers readiness the same way: the artist filter does not reveal the not-ready songs the library hides (F1)', () => {
+	seedParityLibrary();
+	// base: ['g', 'f', 'e', 'd', 'b', 'a'] — filtering a list narrowed it INTO rows the unnarrowed
+	// list refuses. Five of the six are the shapes the original seed never held.
+	expect(repo.byArtist('The Band').map((m) => m.id)).toEqual(['a']);
+	// 'Other' has one song and it is not ready, so its filter is empty…
+	expect(repo.byArtist('Other')).toEqual([]);
+	expect(repo.byArtist('Legacy Library').map((m) => m.id)).toEqual(['h']);
+});
 
-	it('the artist rail counts only ready songs, and never offers a heading that opens empty (F2)', () => {
-		// base: [{ 'The Band', 6 }, { 'Other', 1 }, { 'Legacy Library', 1 }] — 6 under a chip whose list
-		// holds 1, and a chip for 'Other' whose list is empty. Facet order is count desc, then value asc.
-		expect(repo.artistFacets()).toEqual([
-			{ artist: 'Legacy Library', count: 1 },
-			{ artist: 'The Band', count: 1 }
-		]);
-	});
+it('every browse reader answers readiness the same way: the artist rail counts only ready songs, and never offers a heading that opens empty (F2)', () => {
+	seedParityLibrary();
+	// base: [{ 'The Band', 6 }, { 'Other', 1 }, { 'Legacy Library', 1 }] — 6 under a chip whose list
+	// holds 1, and a chip for 'Other' whose list is empty. Facet order is count desc, then value asc.
+	expect(repo.artistFacets()).toEqual([
+		{ artist: 'Legacy Library', count: 1 },
+		{ artist: 'The Band', count: 1 }
+	]);
+});
 
-	it('the tag rail counts only ready songs, and never offers a heading that opens empty (F2)', () => {
-		// base: acoustic 2, ballad 1, unacquired 1, stems-queued 1, no-instrumental 1,
-		// lyrics-never-ran 1, legacy 1 — five of those seven chips opened a measured EMPTY list.
-		expect(repo.tagFacets()).toEqual([
-			{ tag: 'acoustic', count: 1 },
-			{ tag: 'legacy', count: 1 }
-		]);
-	});
+it('every browse reader answers readiness the same way: the tag rail counts only ready songs, and never offers a heading that opens empty (F2)', () => {
+	seedParityLibrary();
+	// base: acoustic 2, ballad 1, unacquired 1, stems-queued 1, no-instrumental 1,
+	// lyrics-never-ran 1, legacy 1 — five of those seven chips opened a measured EMPTY list.
+	expect(repo.tagFacets()).toEqual([
+		{ tag: 'acoustic', count: 1 },
+		{ tag: 'legacy', count: 1 }
+	]);
+});
 
-	it('the tag filter holds only the ready songs', () => {
-		expect(repo.byTag('acoustic').map((m) => m.id)).toEqual(['a']);
-		expect(repo.byTag('ballad')).toEqual([]);
-		expect(repo.byTag('legacy').map((m) => m.id)).toEqual(['h']);
-	});
+it('every browse reader answers readiness the same way: the tag filter holds only the ready songs', () => {
+	seedParityLibrary();
+	expect(repo.byTag('acoustic').map((m) => m.id)).toEqual(['a']);
+	expect(repo.byTag('ballad')).toEqual([]);
+	expect(repo.byTag('legacy').map((m) => m.id)).toEqual(['h']);
+});
 
-	// One row per not-ready gate shape, checked against all five readers. `it.each` names the shape in
-	// the failure line, so a leak points at the gate arm that let it through rather than at a total.
-	// Each row's tag is held by that row alone (b is the exception — it shares 'acoustic' with a, which
-	// is what the count assertions above cover), so `byTag` and `tagFacets` discriminate per row.
-	it.each([
-		['b', 'mid-align, sharing both groupings with a', 'The Band', 'acoustic'],
-		['c', 'mid-align, sole holder of its groupings', 'Other', 'ballad'],
-		['d', 'unacquired — separation never started', 'The Band', 'unacquired'],
-		['e', 'separation still enqueued', 'The Band', 'stems-queued'],
-		['f', "stemStatus 'ready' with no instrumental artifact", 'The Band', 'no-instrumental'],
-		['g', 'alignment never ran', 'The Band', 'lyrics-never-ran']
-	])('%s (%s) is hidden by every one of the five readers', (id, _shape, artist, tag) => {
+// One row per not-ready gate shape, checked against all five readers. `it.each` names the shape in
+// the failure line, so a leak points at the gate arm that let it through rather than at a total.
+// Each row's tag is held by that row alone (b is the exception — it shares 'acoustic' with a, which
+// is what the count assertions above cover), so `byTag` and `tagFacets` discriminate per row.
+it.each([
+	['b', 'mid-align, sharing both groupings with a', 'The Band', 'acoustic'],
+	['c', 'mid-align, sole holder of its groupings', 'Other', 'ballad'],
+	['d', 'unacquired — separation never started', 'The Band', 'unacquired'],
+	['e', 'separation still enqueued', 'The Band', 'stems-queued'],
+	['f', "stemStatus 'ready' with no instrumental artifact", 'The Band', 'no-instrumental'],
+	['g', 'alignment never ran', 'The Band', 'lyrics-never-ran']
+])(
+	'every browse reader answers readiness the same way: %s (%s) is hidden by every one of the five readers',
+	(id, _shape, artist, tag) => {
+		seedParityLibrary();
 		expect(repo.listReady().map((m) => m.id)).not.toContain(id);
 		expect(repo.byArtist(artist).map((m) => m.id)).not.toContain(id);
 		expect(repo.byTag(tag).map((m) => m.id)).not.toContain(id);
@@ -218,61 +231,62 @@ describe('— every browse reader answers readiness the same way', () => {
 			{ tag: 'acoustic', count: 1 },
 			{ tag: 'legacy', count: 1 }
 		]);
-	});
+	}
+);
 
-	it('the legacy lyrics-artifact row IS ready, and every one of the five readers shows it', () => {
-		// The other direction: a gate narrowed to `lyricsStatus === 'ready'` — dropping the legacy arm
-		// in `gates.ts` — would HIDE this song from all five readers. 'a' alone cannot detect that,
-		// because it carries `lyricsStatus: 'ready'` and satisfies either spelling.
-		expect(repo.listReady().map((m) => m.id)).toContain('h');
-		expect(repo.byArtist('Legacy Library').map((m) => m.id)).toEqual(['h']);
-		expect(repo.byTag('legacy').map((m) => m.id)).toEqual(['h']);
-		expect(repo.artistFacets()).toContainEqual({ artist: 'Legacy Library', count: 1 });
-		expect(repo.tagFacets()).toContainEqual({ tag: 'legacy', count: 1 });
-	});
+it('every browse reader answers readiness the same way: the legacy lyrics-artifact row IS ready, and every one of the five readers shows it', () => {
+	seedParityLibrary();
+	// The other direction: a gate narrowed to `lyricsStatus === 'ready'` — dropping the legacy arm
+	// in `gates.ts` — would HIDE this song from all five readers. 'a' alone cannot detect that,
+	// because it carries `lyricsStatus: 'ready'` and satisfies either spelling.
+	expect(repo.listReady().map((m) => m.id)).toContain('h');
+	expect(repo.byArtist('Legacy Library').map((m) => m.id)).toEqual(['h']);
+	expect(repo.byTag('legacy').map((m) => m.id)).toEqual(['h']);
+	expect(repo.artistFacets()).toContainEqual({ artist: 'Legacy Library', count: 1 });
+	expect(repo.tagFacets()).toContainEqual({ tag: 'legacy', count: 1 });
+});
 
-	// The invariants, stated over whatever the readers return rather than over the seed. These are the
-	// two the issue names, and they are what a sixth reader would break.
-	it('every artist facet count equals the length of the filter it opens, whose rows are all in the library', () => {
-		const libraryIds = new Set(repo.listReady().map((m) => m.id));
-		const facets = repo.artistFacets();
-		expect(facets.length).toBeGreaterThan(0); // not vacuous: there IS a facet to check
-		for (const f of facets) {
-			const opened = repo.byArtist(f.artist);
-			expect(opened.length).toBe(f.count);
-			expect(opened.length).toBeGreaterThan(0); // a chip never lands on an empty list
-			for (const m of opened) expect(libraryIds.has(m.id)).toBe(true);
-		}
-	});
+// The invariants, stated over whatever the readers return rather than over the seed. These are the
+// two the issue names, and they are what a sixth reader would break.
+it('every browse reader answers readiness the same way: every artist facet count equals the length of the filter it opens, whose rows are all in the library', () => {
+	seedParityLibrary();
+	const libraryIds = new Set(repo.listReady().map((m) => m.id));
+	const facets = repo.artistFacets();
+	expect(facets.length).toBeGreaterThan(0); // not vacuous: there IS a facet to check
+	for (const f of facets) {
+		const opened = repo.byArtist(f.artist);
+		expect(opened.length).toBe(f.count);
+		expect(opened.length).toBeGreaterThan(0); // a chip never lands on an empty list
+		for (const m of opened) expect(libraryIds.has(m.id)).toBe(true);
+	}
+});
 
-	it('every tag facet count equals the length of the filter it opens, whose rows are all in the library', () => {
-		const libraryIds = new Set(repo.listReady().map((m) => m.id));
-		const facets = repo.tagFacets();
-		expect(facets.length).toBeGreaterThan(0);
-		for (const f of facets) {
-			const opened = repo.byTag(f.tag);
-			expect(opened.length).toBe(f.count);
-			expect(opened.length).toBeGreaterThan(0);
-			for (const m of opened) expect(libraryIds.has(m.id)).toBe(true);
-		}
-	});
+it('every browse reader answers readiness the same way: every tag facet count equals the length of the filter it opens, whose rows are all in the library', () => {
+	seedParityLibrary();
+	const libraryIds = new Set(repo.listReady().map((m) => m.id));
+	const facets = repo.tagFacets();
+	expect(facets.length).toBeGreaterThan(0);
+	for (const f of facets) {
+		const opened = repo.byTag(f.tag);
+		expect(opened.length).toBe(f.count);
+		expect(opened.length).toBeGreaterThan(0);
+		for (const m of opened) expect(libraryIds.has(m.id)).toBe(true);
+	}
 });
 
 // Non-vacuity sentinel: with every not-ready row absent, all the assertions above must PASS on base too
 // — so the redness above comes from the not-ready windows, not from the invariants being unsatisfiable.
-describe('— the same invariants hold for a library of finished songs alone', () => {
-	it('a finished-only library agrees across all five readers', () => {
-		const r = new MediaRepository(migratedDb());
-		r.upsert(finished('a'));
-		r.setCanonical('a', { artist: 'The Band' });
-		r.setTags('a', 'tag', ['acoustic']);
+it('the same invariants hold for a library of finished songs alone: a finished-only library agrees across all five readers', () => {
+	const r = new MediaRepository(migratedDb());
+	r.upsert(finished('a'));
+	r.setCanonical('a', { artist: 'The Band' });
+	r.setTags('a', 'tag', ['acoustic']);
 
-		expect(r.listReady().map((m) => m.id)).toEqual(['a']);
-		expect(r.byArtist('The Band').map((m) => m.id)).toEqual(['a']);
-		expect(r.artistFacets()).toEqual([{ artist: 'The Band', count: 1 }]);
-		expect(r.byTag('acoustic').map((m) => m.id)).toEqual(['a']);
-		expect(r.tagFacets()).toEqual([{ tag: 'acoustic', count: 1 }]);
-	});
+	expect(r.listReady().map((m) => m.id)).toEqual(['a']);
+	expect(r.byArtist('The Band').map((m) => m.id)).toEqual(['a']);
+	expect(r.artistFacets()).toEqual([{ artist: 'The Band', count: 1 }]);
+	expect(r.byTag('acoustic').map((m) => m.id)).toEqual(['a']);
+	expect(r.tagFacets()).toEqual([{ tag: 'acoustic', count: 1 }]);
 });
 
 // ── source scan: one definition, and it stays one ──────────────────────────────────────────────────
@@ -320,110 +334,109 @@ const NARROWING = /stemStatus\s*(?:,|===|==)\s*'ready'/g;
 const GATE = /\breadyToSing\b/g;
 const count = (re: RegExp, s: string) => s.match(re)?.length ?? 0;
 
-describe('— readiness is defined once for the whole browse block', () => {
-	it('the shared helper exists and is where BOTH halves of the predicate live', () => {
-		const shared = body('readySongs');
-		expect(count(NARROWING, shared)).toBe(1);
-		expect(count(GATE, shared)).toBe(1);
-	});
+it('readiness is defined once for the whole browse block: the shared helper exists and is where BOTH halves of the predicate live', () => {
+	const shared = body('readySongs');
+	expect(count(NARROWING, shared)).toBe(1);
+	expect(count(GATE, shared)).toBe(1);
+});
 
-	it('the readiness comparison appears exactly once in the file, and the gate call exactly once', () => {
-		// This is the drift ban. A second spelling anywhere in this file — a new reader, or a revert of
-		// one body to its own query, in SQL or in JS — makes one of these two counts 2.
-		expect(count(NARROWING, CODE)).toBe(1);
-		expect(count(GATE, CODE.replace(/^import .*$/gm, ''))).toBe(1);
-	});
+it('readiness is defined once for the whole browse block: the readiness comparison appears exactly once in the file, and the gate call exactly once', () => {
+	// This is the drift ban. A second spelling anywhere in this file — a new reader, or a revert of
+	// one body to its own query, in SQL or in JS — makes one of these two counts 2.
+	expect(count(NARROWING, CODE)).toBe(1);
+	expect(count(GATE, CODE.replace(/^import .*$/gm, ''))).toBe(1);
+});
 
-	// The floor and the ceiling of that ban, asserted against fixture strings rather than production —
-	// the point is what the PATTERN can see, and production holds exactly one match by the test above.
-	// Fixtures, not the real file, is also what lets the JS shape be checked at all: it does not exist
-	// in `repository.ts` and must not be added there to test for it.
-	describe('— what the drift ban catches, and what it admits it does not', () => {
-		/** The pattern the first drift ban shipped: the drizzle comma form only. Kept so the widening is pinned, not assumed. */
-		const PRE_WIDENING = /stemStatus\s*,\s*'ready'/g;
+// The floor and the ceiling of that ban, asserted against fixture strings rather than production —
+// the point is what the PATTERN can see, and production holds exactly one match by the test above.
+// Fixtures, not the real file, is also what lets the JS shape be checked at all: it does not exist
+// in `repository.ts` and must not be added there to test for it.
+/** The pattern the first drift ban shipped: the drizzle comma form only. Kept so the widening is pinned, not assumed. */
+const PRE_WIDENING = /stemStatus\s*,\s*'ready'/g;
 
-		/** The drizzle spelling the real `readySongs` uses. */
-		const SQL_FORM = "const narrowing = and(eq(media.stemStatus, 'ready'), isNotNull(media.instrumentalRef));";
+/** The drizzle spelling the real `readySongs` uses. */
+const SQL_FORM = "const narrowing = and(eq(media.stemStatus, 'ready'), isNotNull(media.instrumentalRef));";
 
-		/**
-		 * The sixth reader the widening measured. Its body re-derives readiness in JS after `.map(fromRow)` — it
-		 * calls no gate and writes no drizzle predicate, so the first ban saw nothing and the whole suite
-		 * stayed green with it in the file.
-		 */
-		const JS_REDERIVATION = ".map(fromRow).filter((m) => m.stemStatus === 'ready' && !!m.instrumentalRef)";
+/**
+ * The sixth reader the widening measured. Its body re-derives readiness in JS after `.map(fromRow)` — it
+ * calls no gate and writes no drizzle predicate, so the first ban saw nothing and the whole suite
+ * stayed green with it in the file.
+ */
+const JS_REDERIVATION = ".map(fromRow).filter((m) => m.stemStatus === 'ready' && !!m.instrumentalRef)";
 
-		/**
-		 * The CEILING, stated as code. A re-derivation that never names `stemStatus` — reading the
-		 * artifact columns the two gates happen to imply — is invisible to a `stemStatus`-anchored ban
-		 * and to a `readyToSing` grep alike. Nothing here claims otherwise.
-		 */
-		const NEVER_NAMES_STEMSTATUS =
-			".map(fromRow).filter((m) => !!m.instrumentalRef && (m.lyricsStatus === 'ready' || !!m.lyricsRef))";
+/**
+ * The CEILING, stated as code. A re-derivation that never names `stemStatus` — reading the
+ * artifact columns the two gates happen to imply — is invisible to a `stemStatus`-anchored ban
+ * and to a `readyToSing` grep alike. Nothing here claims otherwise.
+ */
+const NEVER_NAMES_STEMSTATUS =
+	".map(fromRow).filter((m) => !!m.instrumentalRef && (m.lyricsStatus === 'ready' || !!m.lyricsRef))";
 
-		it('catches the drizzle spelling, as it did before', () => {
-			expect(count(NARROWING, SQL_FORM)).toBe(1);
-		});
+it('readiness is defined once for the whole browse block: what the drift ban catches, and what it admits it does not: catches the drizzle spelling, as it did before', () => {
+	expect(count(NARROWING, SQL_FORM)).toBe(1);
+});
 
-		it('now catches a JS re-derivation, which the pre-widening pattern did not', () => {
-			expect(count(PRE_WIDENING, JS_REDERIVATION)).toBe(0); // the measured hole
-			expect(count(NARROWING, JS_REDERIVATION)).toBe(1); // reverting NARROWING to PRE_WIDENING reds here
-			expect(count(GATE, JS_REDERIVATION)).toBe(0); // and the gate grep never saw it either
-		});
+it('readiness is defined once for the whole browse block: what the drift ban catches, and what it admits it does not: now catches a JS re-derivation, which the pre-widening pattern did not', () => {
+	expect(count(PRE_WIDENING, JS_REDERIVATION)).toBe(0); // the measured hole
+	expect(count(NARROWING, JS_REDERIVATION)).toBe(1); // reverting NARROWING to PRE_WIDENING reds here
+	expect(count(GATE, JS_REDERIVATION)).toBe(0); // and the gate grep never saw it either
+});
 
-		it('does NOT catch a re-derivation that never names stemStatus — the stated ceiling', () => {
-			// Deliberate, and documented in this file's header. If a later change raises the floor past
-			// this shape, this assertion must be moved on purpose and the header updated with it —
-			// which is the point of asserting a limitation instead of only writing it in prose.
-			expect(count(NARROWING, NEVER_NAMES_STEMSTATUS)).toBe(0);
-			expect(count(GATE, NEVER_NAMES_STEMSTATUS)).toBe(0);
-		});
+it('readiness is defined once for the whole browse block: what the drift ban catches, and what it admits it does not: does NOT catch a re-derivation that never names stemStatus — the stated ceiling', () => {
+	// Deliberate, and documented in this file's header. If a later change raises the floor past
+	// this shape, this assertion must be moved on purpose and the header updated with it —
+	// which is the point of asserting a limitation instead of only writing it in prose.
+	expect(count(NARROWING, NEVER_NAMES_STEMSTATUS)).toBe(0);
+	expect(count(GATE, NEVER_NAMES_STEMSTATUS)).toBe(0);
+});
 
-		it('does not fire on the row mappers, which name stemStatus without comparing it', () => {
-			// Why widening to `,|===|==` costs no false positive: a property copy is not a comparison.
-			expect(count(NARROWING, 'stemStatus: r.stemStatus,\n\tlyricsStatus: r.lyricsStatus,')).toBe(0);
-		});
-	});
+it('readiness is defined once for the whole browse block: what the drift ban catches, and what it admits it does not: does not fire on the row mappers, which name stemStatus without comparing it', () => {
+	// Why widening to `,|===|==` costs no false positive: a property copy is not a comparison.
+	expect(count(NARROWING, 'stemStatus: r.stemStatus,\n\tlyricsStatus: r.lyricsStatus,')).toBe(0);
+});
 
-	it.each([
-		['listReady', /readySongs\(/],
-		['byArtist', /readySongs\(/],
-		['artistFacets', /readySongs\(/],
-		['byTag', /readyTagged\(/],
-		['tagFacets', /readyTagged\(/]
-	])('%s resolves readiness through the shared helper rather than restating it', (name, expected) => {
+it.each([
+	['listReady', /readySongs\(/],
+	['byArtist', /readySongs\(/],
+	['artistFacets', /readySongs\(/],
+	['byTag', /readyTagged\(/],
+	['tagFacets', /readyTagged\(/]
+])(
+	'readiness is defined once for the whole browse block: %s resolves readiness through the shared helper rather than restating it',
+	(name, expected) => {
 		const b = body(name);
 		expect(b).toMatch(expected);
 		expect(count(NARROWING, b)).toBe(0);
 		expect(count(GATE, b)).toBe(0);
-	});
+	}
+);
 
-	it('the tag helper inherits readiness from the shared set instead of re-asking it', () => {
-		// `readyTagged` must not carry its own readiness clause; membership of readySongs() IS the
-		// gate. Without this, the tag pair of readers could drift from the other three again.
-		const tagged = body('readyTagged');
-		expect(tagged).toMatch(/readySongs\(/);
-		expect(count(NARROWING, tagged)).toBe(0);
-		expect(count(GATE, tagged)).toBe(0);
-	});
+it('readiness is defined once for the whole browse block: the tag helper inherits readiness from the shared set instead of re-asking it', () => {
+	// `readyTagged` must not carry its own readiness clause; membership of readySongs() IS the
+	// gate. Without this, the tag pair of readers could drift from the other three again.
+	const tagged = body('readyTagged');
+	expect(tagged).toMatch(/readySongs\(/);
+	expect(count(NARROWING, tagged)).toBe(0);
+	expect(count(GATE, tagged)).toBe(0);
+});
 
-	it('the SQL aggregation machinery is gone from this file, so a facet count cannot go back into SQL', () => {
-		// `sql` and `asc` were imported for ONE purpose: the facets' `count(*)` / `ORDER BY count(*)
-		// DESC, value ASC`. A count taken in SQL cannot consult the gate table, which is the parity
-		// defect, so re-importing either is the shape of a relapse — deliberate re-use would have to
-		// update this assertion on purpose.
-		const importLine = /^import \{[^}]*\} from 'drizzle-orm';$/m.exec(SRC)?.[0] ?? '';
-		expect(importLine).not.toBe('');
-		expect(importLine).not.toMatch(/\bsql\b/);
-		expect(importLine).not.toMatch(/\basc\b/);
-		expect(importLine).toMatch(/\btype SQL\b/); // the narrowing parameter's type
-		expect(CODE).not.toMatch(/count\(\*\)/);
-	});
+it('readiness is defined once for the whole browse block: the SQL aggregation machinery is gone from this file, so a facet count cannot go back into SQL', () => {
+	// `sql` and `asc` were imported for ONE purpose: the facets' `count(*)` / `ORDER BY count(*)
+	// DESC, value ASC`. A count taken in SQL cannot consult the gate table, which is the parity
+	// defect, so re-importing either is the shape of a relapse — deliberate re-use would have to
+	// update this assertion on purpose.
+	const importLine = /^import \{[^}]*\} from 'drizzle-orm';$/m.exec(SRC)?.[0] ?? '';
+	expect(importLine).not.toBe('');
+	expect(importLine).not.toMatch(/\bsql\b/);
+	expect(importLine).not.toMatch(/\basc\b/);
+	expect(importLine).toMatch(/\btype SQL\b/); // the narrowing parameter's type
+	expect(CODE).not.toMatch(/count\(\*\)/);
+});
 
-	it("listReady's own docstring no longer claims to narrow in SQL itself", () => {
-		// RAW text, because a comment is the subject. `listReady` is now a one-liner containing no SQL
-		// at all, so the old sentence describing its query became a comment contradicting its code —
-		// the exact defect class the original report names in `tagFacets`.
-		expect(SRC).not.toContain('The SQL narrows to separated songs');
-		expect(docAbove('listReady')).toMatch(/readySongs/);
-	});
+it("readiness is defined once for the whole browse block: listReady's own docstring no longer claims to narrow in SQL itself", () => {
+	// RAW text, because a comment is the subject. `listReady` is now a one-liner containing no SQL
+	// at all, so the old sentence describing its query became a comment contradicting its code —
+	// the exact defect class the original report names in `tagFacets`.
+	expect(SRC).not.toContain('The SQL narrows to separated songs');
+	expect(docAbove('listReady')).toMatch(/readySongs/);
 });

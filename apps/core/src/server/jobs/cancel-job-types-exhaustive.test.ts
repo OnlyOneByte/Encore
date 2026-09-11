@@ -22,7 +22,7 @@
  *
  * Reading the sources as text keeps the check independent of how the code assembles the list.
  */
-import { describe, expect, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -47,35 +47,33 @@ function jobTypeMembers(): string[] {
 	return members;
 }
 
-describe('cancel.ts job-type table is exhaustive over JobType', () => {
-	const cancelNoComments = stripComments(cancelSrc);
+const cancelNoComments = stripComments(cancelSrc);
 
-	test('every JobType member is a key of the CANCELLABLE_JOB_TYPES record', () => {
-		const members = jobTypeMembers();
-		// Isolate the record body so a key mentioned elsewhere (e.g. a string literal in the loop)
-		// cannot vacuously satisfy the check.
-		const rec = cancelNoComments.match(/CANCELLABLE_JOB_TYPES\s*:\s*Record<JobType,\s*true>\s*=\s*\{([\s\S]*?)\}/);
-		expect(rec, 'CANCELLABLE_JOB_TYPES: Record<JobType, true> literal must exist in cancel.ts').not.toBeNull();
-		const body = rec![1];
-		for (const member of members) {
-			// key may be bare (fetch:) or quoted ('stems-upgrade':)
-			const keyRe = new RegExp(`(^|[\\s,{])['"]?${member.replace(/[-]/g, '\\-')}['"]?\\s*:`);
-			expect(keyRe.test(body), `JobType '${member}' must be a key of CANCELLABLE_JOB_TYPES`).toBe(true);
-		}
-	});
+test('cancel.ts job-type table is exhaustive over JobType: every JobType member is a key of the CANCELLABLE_JOB_TYPES record', () => {
+	const members = jobTypeMembers();
+	// Isolate the record body so a key mentioned elsewhere (e.g. a string literal in the loop)
+	// cannot vacuously satisfy the check.
+	const rec = cancelNoComments.match(/CANCELLABLE_JOB_TYPES\s*:\s*Record<JobType,\s*true>\s*=\s*\{([\s\S]*?)\}/);
+	expect(rec, 'CANCELLABLE_JOB_TYPES: Record<JobType, true> literal must exist in cancel.ts').not.toBeNull();
+	const body = rec![1];
+	for (const member of members) {
+		// key may be bare (fetch:) or quoted ('stems-upgrade':)
+		const keyRe = new RegExp(`(^|[\\s,{])['"]?${member.replace(/[-]/g, '\\-')}['"]?\\s*:`);
+		expect(keyRe.test(body), `JobType '${member}' must be a key of CANCELLABLE_JOB_TYPES`).toBe(true);
+	}
+});
 
-	test('the exhaustive Record<JobType,true> witness is used and drives the list (no bare array literal)', () => {
-		// The exhaustive witness must be present...
-		expect(/CANCELLABLE_JOB_TYPES\s*:\s*Record<JobType,\s*true>\s*=/.test(cancelNoComments)).toBe(true);
-		// ...and PIPELINE_JOB_TYPES must be DERIVED from it, not re-typed as a bare array literal
-		// (a bare `const PIPELINE_JOB_TYPES: readonly JobType[] = [...]` re-opens the silent hole).
-		expect(
-			/const\s+PIPELINE_JOB_TYPES\s*=\s*Object\.keys\(\s*CANCELLABLE_JOB_TYPES\s*\)/.test(cancelNoComments),
-			'PIPELINE_JOB_TYPES must be derived from CANCELLABLE_JOB_TYPES keys'
-		).toBe(true);
-		expect(
-			/const\s+PIPELINE_JOB_TYPES\s*:\s*readonly\s+JobType\[\]\s*=\s*\[/.test(cancelNoComments),
-			'PIPELINE_JOB_TYPES must NOT be a bare array literal (that re-opens the omission hole)'
-		).toBe(false);
-	});
+test('cancel.ts job-type table is exhaustive over JobType: the exhaustive Record<JobType,true> witness is used and drives the list (no bare array literal)', () => {
+	// The exhaustive witness must be present...
+	expect(/CANCELLABLE_JOB_TYPES\s*:\s*Record<JobType,\s*true>\s*=/.test(cancelNoComments)).toBe(true);
+	// ...and PIPELINE_JOB_TYPES must be DERIVED from it, not re-typed as a bare array literal
+	// (a bare `const PIPELINE_JOB_TYPES: readonly JobType[] = [...]` re-opens the silent hole).
+	expect(
+		/const\s+PIPELINE_JOB_TYPES\s*=\s*Object\.keys\(\s*CANCELLABLE_JOB_TYPES\s*\)/.test(cancelNoComments),
+		'PIPELINE_JOB_TYPES must be derived from CANCELLABLE_JOB_TYPES keys'
+	).toBe(true);
+	expect(
+		/const\s+PIPELINE_JOB_TYPES\s*:\s*readonly\s+JobType\[\]\s*=\s*\[/.test(cancelNoComments),
+		'PIPELINE_JOB_TYPES must NOT be a bare array literal (that re-opens the omission hole)'
+	).toBe(false);
 });

@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -46,82 +46,78 @@ const AA = 4.5;
 const CHROMATIC = registry.variants.chromatic;
 const STOPS = CHROMATIC.stops;
 
-describe('the 48-stop registry is measured against the surfaces app.css paints', () => {
-	test('the registry surfaces ARE the app.css tokens — not the mockup values (XR-COL-04)', () => {
-		// The assertion this file exists for. The generator reads these three tokens; this proves the
-		// committed artifact was generated from the values the app still declares. Change `--card` in
-		// `app.css` without regenerating and this reds, naming the declared and the recorded value.
-		expect(registry.surfaces).toEqual({
-			bg: token('bg'),
-			card: token('card'),
-			card2: token('card2')
-		});
-		// and specifically NOT the mockup surfaces that produced the six failures
-		expect(registry.surfaces.card).not.toBe('#131a2e');
+test('the 48-stop registry is measured against the surfaces app.css paints: the registry surfaces ARE the app.css tokens — not the mockup values (XR-COL-04)', () => {
+	// The assertion this file exists for. The generator reads these three tokens; this proves the
+	// committed artifact was generated from the values the app still declares. Change `--card` in
+	// `app.css` without regenerating and this reds, naming the declared and the recorded value.
+	expect(registry.surfaces).toEqual({
+		bg: token('bg'),
+		card: token('card'),
+		card2: token('card2')
 	});
-
-	test('all 48 stops carry a distinct, canonical fill (XR-COL-09)', () => {
-		expect(STOPS.length).toBe(48);
-		expect(new Set(STOPS.map((s) => s.fill)).size).toBe(48);
-		expect(STOPS.filter((s) => !/^#[0-9a-f]{6}$/.test(s.fill))).toEqual([]);
-	});
+	// and specifically NOT the mockup surfaces that produced the six failures
+	expect(registry.surfaces.card).not.toBe('#131a2e');
 });
 
-describe('every stop clears every role floor with margin > 0', () => {
-	const bg = token('bg');
-	const card = token('card');
+test('the 48-stop registry is measured against the surfaces app.css paints: all 48 stops carry a distinct, canonical fill (XR-COL-09)', () => {
+	expect(STOPS.length).toBe(48);
+	expect(new Set(STOPS.map((s) => s.fill)).size).toBe(48);
+	expect(STOPS.filter((s) => !/^#[0-9a-f]{6}$/.test(s.fill))).toEqual([]);
+});
 
-	test('fill is visible as an identity dot on --bg and on --card (XR-COL-05, 3:1)', () => {
-		const weak = STOPS.filter(
-			(s) => contrastRatio(s.fill, bg) <= NON_TEXT || contrastRatio(s.fill, card) <= NON_TEXT
-		).map((s) => s.name);
-		expect(weak).toEqual([]);
-	});
+const bg = token('bg');
+const card = token('card');
 
-	test('on_fill clears AA against its own fill (XR-COL-06, 4.5:1)', () => {
-		// Surface-independent, so the surface remeasurement did not move it. Pinned here because it is one of the four
-		// roles the registry claims to have measured, and nothing else measures it.
-		const weak = STOPS.filter((s) => contrastRatio(s.on_fill, s.fill) <= AA).map((s) => s.name);
-		expect(weak).toEqual([]);
-	});
+test('every stop clears every role floor with margin > 0: fill is visible as an identity dot on --bg and on --card (XR-COL-05, 3:1)', () => {
+	const weak = STOPS.filter(
+		(s) => contrastRatio(s.fill, bg) <= NON_TEXT || contrastRatio(s.fill, card) <= NON_TEXT
+	).map((s) => s.name);
+	expect(weak).toEqual([]);
+});
 
-	test('accent_ink clears AA as text on the real --card (XR-COL-07, 4.5:1)', () => {
-		const weak = STOPS.filter((s) => contrastRatio(s.accent_ink, card) <= AA).map((s) => s.name);
-		expect(weak).toEqual([]);
-	});
+test('every stop clears every role floor with margin > 0: on_fill clears AA against its own fill (XR-COL-06, 4.5:1)', () => {
+	// Surface-independent, so the surface remeasurement did not move it. Pinned here because it is one of the four
+	// roles the registry claims to have measured, and nothing else measures it.
+	const weak = STOPS.filter((s) => contrastRatio(s.on_fill, s.fill) <= AA).map((s) => s.name);
+	expect(weak).toEqual([]);
+});
 
-	test('the six stops named above now clear the real --card, and by more than a rounding error', () => {
-		// The regression fixture. Each of these measured 4.47–4.49 against `--card` while the registry
-		// recorded ~4.50 against the mockup card. `> AA` alone would have passed at 4.5000001, which is
-		// exactly the margin that let a surface change go unnoticed, so the floor asserted here is the
-		// generator's own `AA + INK_MARGIN`.
-		const NAMED = ['Cobalt', 'Denim', 'Rose', 'Orchid', 'Magenta', 'Fuchsia'] as const;
-		const measured = NAMED.map((name) => {
-			const stop = STOPS.find((s) => s.name === name);
-			if (!stop) throw new Error(`stop ${name} is gone from the registry — the owner ratified 48`);
-			return [name, contrastRatio(stop.accent_ink, card)] as const;
-		});
-		expect(measured.filter(([, r]) => r < 4.55).map(([n]) => n)).toEqual([]);
-	});
+test('every stop clears every role floor with margin > 0: accent_ink clears AA as text on the real --card (XR-COL-07, 4.5:1)', () => {
+	const weak = STOPS.filter((s) => contrastRatio(s.accent_ink, card) <= AA).map((s) => s.name);
+	expect(weak).toEqual([]);
+});
 
-	test('the published r_* figures agree with a fresh measurement', () => {
-		// Catches a hand-edited hex whose recorded ratio was not updated with it — the cheap half of
-		// `XR-COL-02`, which runs without a Python interpreter.
-		const drift = STOPS.filter(
-			(s) =>
-				Math.abs(contrastRatio(s.fill, bg) - s.r_dot_bg) > 0.005 ||
-				Math.abs(contrastRatio(s.fill, card) - s.r_dot_card) > 0.005 ||
-				Math.abs(contrastRatio(s.on_fill, s.fill) - s.r_label) > 0.005 ||
-				Math.abs(contrastRatio(s.accent_ink, card) - s.r_ink_card) > 0.005
-		).map((s) => s.name);
-		expect(drift).toEqual([]);
+test('every stop clears every role floor with margin > 0: the six stops named above now clear the real --card, and by more than a rounding error', () => {
+	// The regression fixture. Each of these measured 4.47–4.49 against `--card` while the registry
+	// recorded ~4.50 against the mockup card. `> AA` alone would have passed at 4.5000001, which is
+	// exactly the margin that let a surface change go unnoticed, so the floor asserted here is the
+	// generator's own `AA + INK_MARGIN`.
+	const NAMED = ['Cobalt', 'Denim', 'Rose', 'Orchid', 'Magenta', 'Fuchsia'] as const;
+	const measured = NAMED.map((name) => {
+		const stop = STOPS.find((s) => s.name === name);
+		if (!stop) throw new Error(`stop ${name} is gone from the registry — the owner ratified 48`);
+		return [name, contrastRatio(stop.accent_ink, card)] as const;
 	});
+	expect(measured.filter(([, r]) => r < 4.55).map(([n]) => n)).toEqual([]);
+});
 
-	test('the generator recorded zero failures against these surfaces', () => {
-		expect(CHROMATIC.stats.failures).toEqual([]);
-		expect(CHROMATIC.stats.unresolved).toEqual([]);
-		expect(CHROMATIC.stats.surfaces).toEqual(registry.surfaces);
-	});
+test('every stop clears every role floor with margin > 0: the published r_* figures agree with a fresh measurement', () => {
+	// Catches a hand-edited hex whose recorded ratio was not updated with it — the cheap half of
+	// `XR-COL-02`, which runs without a Python interpreter.
+	const drift = STOPS.filter(
+		(s) =>
+			Math.abs(contrastRatio(s.fill, bg) - s.r_dot_bg) > 0.005 ||
+			Math.abs(contrastRatio(s.fill, card) - s.r_dot_card) > 0.005 ||
+			Math.abs(contrastRatio(s.on_fill, s.fill) - s.r_label) > 0.005 ||
+			Math.abs(contrastRatio(s.accent_ink, card) - s.r_ink_card) > 0.005
+	).map((s) => s.name);
+	expect(drift).toEqual([]);
+});
+
+test('every stop clears every role floor with margin > 0: the generator recorded zero failures against these surfaces', () => {
+	expect(CHROMATIC.stats.failures).toEqual([]);
+	expect(CHROMATIC.stats.unresolved).toEqual([]);
+	expect(CHROMATIC.stats.surfaces).toEqual(registry.surfaces);
 });
 
 test('the registry regenerates byte-identically from its committed inputs (XR-COL-02)', () => {
