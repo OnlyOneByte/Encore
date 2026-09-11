@@ -87,17 +87,18 @@ test('XR-PH-20 · no mode state gates the move buttons', () => {
 	expect(openConds.some((c) => /\breorderable\b/.test(c))).toBe(true);
 });
 
-test('XR-PH-20 · the page keeps the buttons wired on the row being dragged', () => {
-	// `rowFrozen` is the mode's only suppression, and it is scoped to OTHER guests' rows — so the
-	// dragged row (which is always the actor's own) keeps `reorderable` and both handlers.
+test('XR-PH-20 · the page keeps the buttons wired on every row while the mode is open', () => {
+	// #912 widened every queued row into a legal drop target, so the mode suppresses NO row: `rowFrozen`
+	// is now a constant `false`, and both row kinds keep `reorderable` and both handlers. That is
+	// XR-PH-20 satisfied for the whole list rather than just the actor's own row.
 	const src = stripComments(page());
 	expect(src).toContain('function rowFrozen(');
-	expect(/function rowFrozen\([^)]*\)[^{]*\{\s*return reorderOpen && e\.singerId !== me\?\.id;/.test(src)).toBe(true);
+	expect(/function rowFrozen\([^)]*\)[^{]*\{\s*(void e;\s*)?return false;/.test(src)).toBe(true);
 	expect(src).toContain('onup={()');
 	expect(src).toContain('ondown={()');
 	// Applied on BOTH row kinds — ProcessingCard (a processing pick) and QueueRow (a ready pick). Counted
 	// rather than matched once, for the same reason global-reorder-client-638.test.ts:32 counts: losing
-	// it on either row leaves the mode offering a cross-singer control on a row it has just dimmed.
+	// it on either row leaves that row with no single-pointer alternative while the drag mode is open.
 	expect((src.match(/reorderable=\{!rowFrozen\(e\) &&/g) ?? []).length).toBe(2);
 });
 
@@ -160,22 +161,25 @@ test('XR-PH-17 · no other component reintroduces a row-level grab cursor', () =
 
 test('XR-PH-17 · the grip binding goes through the predicate, never a literal', () => {
 	// Found by mutation: `grip={true}` on every row left the whole suite green — and that is exactly the
-	// recorded regression (a grip on another guest's song, where it is the sole affordance). The
+	// recorded regression (a grip on another guest's song where it was the sole affordance). The
 	// predicate's own tests cannot see this: they prove `gripVisible` answers correctly, not that the
 	// template asks it.
 	const m = markup(page());
 	expect(m).toContain('grip={gripFor(e)}');
 	expect(/grip=\{(true|false|!?\w+\.\w+)\}/.test(m)).toBe(false);
 
-	// …and `gripFor` really forwards the row's own singer identity, so `mine` cannot be hard-true.
+	// …and `gripFor` really forwards the queue-wide reorderability, so the grip cannot be hard-true. It
+	// no longer reads `mine` (#912): under `move-to-index` every queued row is draggable.
 	const src = stripComments(page());
 	const fn = /function gripFor\([\s\S]*?\n\t\}/.exec(src);
 	expect(fn).not.toBeNull(); // sentinel
 	const body = fn![0]!;
 	expect(body).toContain('gripVisible(');
-	expect(body).toContain('mine: e.singerId === me?.id');
-	expect(body).toContain('ownQueuedCount: myPicks.length');
+	expect(body).toContain('queuedCount: queued.length');
 	expect(body).toContain('reorderMeaningful: canReorder');
+	// The own-picks basis must be gone — a grip gated on `mine` would re-narrow the drag to own picks.
+	expect(body).not.toContain('e.singerId === me?.id');
+	expect(body).not.toContain('myPicks');
 });
 
 // ── the four invariants the DRIVEN run found, pinned cheaply ──────────────────────────────────────
@@ -246,17 +250,20 @@ test('#836 driven-find 5 · focus return is re-found by attribute, not by a held
 	expect(exit![0]).toContain('tick().then(');
 });
 
-test('#836 · the processing row dims too, with a surface and not opacity', () => {
-	// Another guest's processing song is one of the rows the mode has to de-emphasise — found by driving the
-	// mode, where the only non-mine row on screen was a ProcessingCard and stayed at full weight.
+test('#836 · the .dimmed rule stays a surface token, not opacity — and no row is dimmed by the mode (#912)', () => {
+	// The `.dimmed` rule is retained on both row kinds (the prop survives for a future mode that needs
+	// it), and XR-PH-03 still governs its SHAPE: a surface token, never subtree opacity. But #912 made
+	// every queued row a legal drop target, so the mode dims NOTHING now — both call sites bind
+	// `dimmed={false}`.
 	const src = stripComments(readFileSync(join(import.meta.dir, 'ProcessingCard.svelte'), 'utf8'));
 	const rule = /\.dimmed\s*\{([^}]*)\}/.exec(src);
 	expect(rule).not.toBeNull(); // sentinel
 	const body = rule![1]!;
 	expect(/background:\s*var\(--[\w-]+\)/.test(body)).toBe(true);
 	expect(/(^|[;\s])opacity\s*:/.test(body)).toBe(false);
-	// …and it is actually bound at the call site, on BOTH row kinds.
-	expect((stripComments(page()).match(/dimmed=\{reorderOpen && !isMine\}/g) ?? []).length).toBe(2);
+	// …and the mode no longer de-emphasises any row: both row kinds bind a constant false.
+	expect((stripComments(page()).match(/dimmed=\{false\}/g) ?? []).length).toBe(2);
+	expect(stripComments(page())).not.toContain('dimmed={reorderOpen');
 });
 
 // ── XR-PH-06 · the mode's motion is CSS-driven ────────────────────────────────────────────────────
@@ -302,45 +309,48 @@ test('XR-PH-18 · each drop target is a real button carrying its ordinal as an a
 	expect(block).toContain('exitReorder(slot.index)');
 });
 
-test('XR-PH-18 · the slots render only while the mode is open, and only on the guest\u2019s own rows', () => {
+test('XR-PH-18 · the slots render only while the mode is open, one per queued row (#912)', () => {
 	const m = markup(page());
-	expect(m).toContain('{#if reorderOpen && isMine && ownIdx >= 0 && mySlots[ownIdx]}');
+	expect(m).toContain('{#if reorderOpen && slots[i]}');
 });
 
-test('XR-PH-18 · the PAGE derives its slots from the guest\u2019s own picks, not the visible list', () => {
-	// Found by mutation: pointing this derivation at `queued.length` left every other assertion in this
-	// suite green, because they all test `ownSlots` in isolation. `ownSlots` cannot defend the claim on
-	// its own — it is not given the list length, so the only place the wrong collection can be supplied
-	// is here. That makes this scan the sole guard on XR-PH-18's central sentence, and the count claim
-	// vacuous without it.
+test('XR-PH-18 · the PAGE derives its slots from the whole queued list, not own picks (#912)', () => {
+	// Found by mutation on the old model: pointing this derivation at the wrong collection left every
+	// other assertion in this suite green, because they all test the slot builder in isolation. The
+	// builder cannot defend the claim on its own — it is only given a count — so the only place the
+	// wrong collection can be supplied is here. That makes this scan the sole guard on XR-PH-18's
+	// central sentence, and the count claim vacuous without it. #912 flips the required collection from
+	// the guest's own picks to the whole queued list.
 	const src = stripComments(page());
-	const decl = /const mySlots = \$derived\(([^)]*\)?[^;]*)\);/.exec(src);
+	const decl = /const slots = \$derived\(([^;]*)\);/.exec(src);
 	expect(decl).not.toBeNull(); // sentinel: the derivation exists to be judged
 	const expr = decl![1]!;
-	expect(expr).toContain('myPicks.length');
-	// The two collections it must never read: the whole queued list, and the rendered rows.
-	expect(/\bqueued\b/.test(expr)).toBe(false);
-	expect(/\bentries\b/.test(expr)).toBe(false);
+	expect(expr).toContain('queued.length');
+	// It must NOT re-narrow to the own-picks basis, which is what would undo the widening.
+	expect(/\bmyPicks\b/.test(expr)).toBe(false);
 });
 
-test('XR-PH-18 · the dimming is applied to other guests\u2019 rows only', () => {
-	// Mirror of the slot guard: the visual half of "only the guest's own positions accept a drop" is a
-	// binding on this page, so an inverted or unscoped condition here is invisible to a unit test.
+test('XR-PH-18 · no row is dimmed by the mode — every row is a legal drop target (#912)', () => {
+	// Mirror of the slot guard: the visual half of "any position accepts a drop" is that no row is
+	// de-emphasised. An inverted or unscoped condition here is invisible to a unit test.
 	const m = markup(page());
-	expect(m).toContain('dimmed={reorderOpen && !isMine}');
+	expect(m).toContain('dimmed={false}');
+	expect(m).not.toContain('dimmed={reorderOpen');
 });
 
-test('XR-PH-18 · every release is routed through dropTarget rather than passed to moveEntry raw', () => {
-	// `reorderWithinSinger` CLAMPS an out-of-range toIdx, so a raw pass-through would commit a position
-	// the guest did not choose. The guard is that the only `moveEntry` in the mode's exit reads the
-	// value `dropTarget` returned.
+test('XR-PH-18 · every release is routed through dropTarget rather than passed to moveToIndex raw', () => {
+	// `moveToIndex` CLAMPS an out-of-range toIdx, so a raw pass-through would commit a position the
+	// guest did not choose. The guard is that the only `moveToIndex` in the mode's exit reads the value
+	// `dropTarget` returned.
 	const src = stripComments(page());
 	const exit = /function exitReorder\([\s\S]*?\n\t\}/.exec(src);
 	expect(exit).not.toBeNull(); // sentinel
 	const body = exit![0]!;
 	expect(body).toContain('const target = dropTarget(');
-	expect(/store\?\.moveEntry\(id, target\)/.test(body)).toBe(true);
+	expect(/store\?\.moveToIndex\(id, target\)/.test(body)).toBe(true);
 	expect(/target !== null/.test(body)).toBe(true);
+	// …and it commits the GLOBAL op, not the own-picks `move` the drag used before #912.
+	expect(/store\?\.moveEntry\(/.test(body)).toBe(false);
 });
 
 // #856 step 4 — the cross-singer arrow wiring, pinned so reverting the call site reds. The arrow
