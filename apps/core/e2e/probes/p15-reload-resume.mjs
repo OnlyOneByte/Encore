@@ -1,5 +1,5 @@
 /*
- * P15 — DOES A MID-SONG TV RELOAD RESUME AT THE ROOM POSITION? (#795)
+ * P15 — DOES A MID-SONG TV RELOAD RESUME AT THE ROOM POSITION?
  *
  * The reported defect: reloading the TV page mid-song restarted the song from 0 instead of resuming
  * where the room is, and the reloaded TV's own telemetry then dragged the server's position backwards,
@@ -271,7 +271,7 @@ if (before.bytes <= 32768) bail(`A is not really decoding (${before.bytes}B) —
 if (!Number.isFinite(roomBefore) || roomBefore <= 3) bail(`server position is not past 3s (${roomBefore}) — no resume to test`);
 
 // ── the actual test: RELOAD the TV mid-song ───────────────────────────────
-console.log(`\nreloading /tv mid-song (room at ${roomBefore.toFixed(2)}s) — the #795 repro\n`);
+console.log(`\nreloading /tv mid-song (room at ${roomBefore.toFixed(2)}s) — the repro\n`);
 await page.goto(`${BASE}/tv`);
 
 // Wait for the fresh master to mount and reach a real decode, then read where it landed.
@@ -305,14 +305,14 @@ if (gap > RESUME_TOL) {
 	console.error(
 		`\nFAIL — the reloaded master did NOT resume: TV t=${after.t.toFixed(2)}s vs room ${roomAfter.toFixed(2)}s (gap ${gap.toFixed(2)}s > ${RESUME_TOL}s).`
 	);
-	console.error('  A cold-mounted TV restarted the song from ~0 instead of resuming. This is #795.');
+	console.error('  A cold-mounted TV restarted the song from ~0 instead of resuming.');
 	failed = true;
 }
 if (serverDrop > SERVER_DRAG_TOL) {
 	console.error(
 		`\nFAIL — the reloaded TV dragged the server position BACKWARDS ${serverDrop.toFixed(2)}s (${roomBefore.toFixed(2)}s -> ${roomAfter.toFixed(2)}s).`
 	);
-	console.error("  The fresh master's telemetry overwrote the room position from 0. This is #795.");
+	console.error("  The fresh master's telemetry overwrote the room position from 0.");
 	failed = true;
 }
 if (failed) process.exit(1);

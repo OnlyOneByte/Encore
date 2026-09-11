@@ -49,8 +49,8 @@ from ..lyrics import (
 )
 from ..lyrics.captions import find_caption_file
 
-# _opening_window_indices moved to lyrics/validate.py (#456); re-imported so `_opens_for`'s
-# fallback works and the #459 guard tests can still do `from src.steps.lyrics import
+# _opening_window_indices moved to lyrics/validate.py; re-imported so `_opens_for`'s
+# fallback works and the guard tests can still do `from src.steps.lyrics import
 # _opening_window_indices`.
 from ..lyrics.validate import LrcShift, _opening_window_indices, estimate_lrc_shift, shift_segments
 from ..processor import ProgressEvent, raw_caption_path
@@ -64,14 +64,14 @@ from ..vocabulary import Stage, SyncMode, TextSource
 AUTHORED = "captions"
 MACHINE = "auto-captions"
 
-#: Whether to retain the RAW caption track for post-cook diagnosis (#670). The raw `.vtt`/`.srt` is
+#: Whether to retain the RAW caption track for post-cook diagnosis. The raw `.vtt`/`.srt` is
 #: otherwise written into per-job scratch (`ctx.work`) and destroyed with it, so a caption-parsing
-#: defect (#539/#542-class) can never be re-examined from the source bytes after a cook, and
+#: defect can never be re-examined from the source bytes after a cook, and
 #: re-fetching needs the network and a still-live upload. When on, the winning raw track is copied to
 #: `derived/captions/<kind>/` before teardown -- the same storage class as the other retained
 #: artifacts, with the authored/machine split kept structural by directory.
 #:
-#: RESOLVED AT THE CONFIG BOUNDARY, not here (#709). `ENCORE_KEEP_RAW_CAPTIONS` is parsed once in
+#: RESOLVED AT THE CONFIG BOUNDARY, not here. `ENCORE_KEEP_RAW_CAPTIONS` is parsed once in
 #: `config.WorkerConfig.from_env` with the same false-spelling set every operator boolean uses and
 #: threaded in as `keep_raw`. Off unless the operator opts in -- and crucially off for every spelling
 #: of false (`0`/`false`/`no`/`off`), which a bare `os.environ.get()` truthiness check got wrong:
@@ -97,9 +97,9 @@ class FetchCaptions(Step):
         # The worker's configured yt-dlp binary (ENCORE_YTDLP_BIN), threaded from the align plan. Without
         # it every caption fetch shelled out to a bare "yt-dlp" from PATH and silently missed.
         self.ytdlp_bin = ytdlp_bin
-        # Whether to retain the raw caption track (#670). A RESOLVED bool threaded from config via the
+        # Whether to retain the raw caption track. A RESOLVED bool threaded from config via the
         # align plan -- the step no longer reads the environment, so ENCORE_KEEP_RAW_CAPTIONS=0 is off
-        # like every other worker boolean rather than a truthy non-empty string (#709).
+        # like every other worker boolean rather than a truthy non-empty string.
         self.keep_raw = keep_raw
         self.name = f"fetch-captions:{'machine' if self.auto else 'authored'}"
         self.writes = frozenset({"lyrics.machine_cues" if self.auto else "lyrics.authored_cues"})
@@ -125,7 +125,7 @@ class FetchCaptions(Step):
         except Exception as exc:  # noqa: BLE001 — no track / no yt-dlp / no network: all the same miss
             ctx.note(f"{self.name}: none ({exc})")
 
-        # Persist the raw track before the scratch it lives in is torn down (#670). Off unless the
+        # Persist the raw track before the scratch it lives in is torn down. Off unless the
         # operator opted in; done here rather than at teardown because this step is the only place
         # that knows which directory the track landed in and which tier it belongs to.
         if self.keep_raw:
@@ -141,7 +141,7 @@ class FetchCaptions(Step):
             ctx.note(f"{self.name}: {len(cues)} lines — using as {role}")
 
     def _retain_raw(self, ctx: Ctx, out_dir: str) -> None:
-        """Copy the RAW caption track out of scratch into the durable `derived/` store (#670).
+        """Copy the RAW caption track out of scratch into the durable `derived/` store.
 
         Copies the SAME file the parser chose (`find_caption_file`), so the retained bytes are
         exactly what produced this cook's cues — the point is to diagnose the parser, so any other
@@ -225,7 +225,7 @@ class AcquireTexts(Step):
         return sources
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
-        # #640: an operator RE-PICK short-circuits acquisition entirely. The core names the candidate to
+        # an operator RE-PICK short-circuits acquisition entirely. The core names the candidate to
         # re-time (`pinnedRef`), optionally with pasted words (`pinnedText`). Re-running the providers
         # could only produce a different answer than the one the human just chose — and grading it would
         # discard the pin outright (see GradeAndSelect.applies).
@@ -279,7 +279,7 @@ class AcquireTexts(Step):
             else:
                 texts, run_notes = val
         # A source that ran and did not deliver now leaves a trace — a provider transport failure (incl.
-        # the LRCLIB DNS sinkhole, #444) says so loudly instead of looking like a song without lyrics.
+        # the LRCLIB DNS sinkhole) says so loudly instead of looking like a song without lyrics.
         for note in run_notes:
             ctx.note(note)
         ctx.lyrics.texts = texts
@@ -325,14 +325,14 @@ class GradeAndSelect(Step):
 
     name = "grade-and-select"
     stage = Stage.ALIGNING
-    # audio.duration_sec is read so the overshoot demotion (#667) can measure how far a candidate's own
+    # audio.duration_sec is read so the overshoot demotion can measure how far a candidate's own
     # timings run past the end of the audio. `runtime/plan.py` fails plan validation for a key nothing
     # produces, so this must be declared, not read implicitly.
     reads = frozenset({"lyrics.texts", "audio.duration_sec"})
     writes = frozenset({"lyrics.selection", "lyrics.texts"})
 
     def applies(self, ctx: Ctx) -> bool:
-        """Skip comparative selection on a pinned re-time (#640).
+        """Skip comparative selection on a pinned re-time.
 
         Not an optimisation. A pinned text is hand-built, so it is ROLE_UNSPECIFIED (fail-closed, see
         LyricsText.role): `select_by_baselines` puts it in neither `candidates_of` nor `baselines_of`,
@@ -345,13 +345,13 @@ class GradeAndSelect(Step):
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         duration_sec = ctx.audio.duration_sec
         sel = select_by_baselines(ctx.lyrics.texts, duration_sec)
-        # Report overshoot in the same operator log that already carries timing defects (#667 piece 2),
+        # Report overshoot in the same operator log that already carries timing defects,
         # so a candidate timed past audio-end is visible in the cook log rather than only on the TV.
         #
-        # #731: report from the candidates as they were BEFORE selection, not from `sel.publish`. A
+        # report from the candidates as they were BEFORE selection, not from `sel.publish`. A
         # candidate DEMOTED for overshoot (chain.py overshoot_penalized) is not among the survivors, so
         # iterating `sel.publish` fired the note exactly when the demotion changed nothing and stayed
-        # SILENT exactly when it changed the outcome — the one case #667 piece 2 exists for. Walk every
+        # SILENT exactly when it changed the outcome — the one case this note exists for. Walk every
         # pre-selection candidate (each source's own text plus its alternates); `select_by_baselines`
         # does not mutate its input (it rebinds via `replace`), so `ctx.lyrics.texts` still carries them.
         # Published-vs-demoted is decided by identity against `sel.publish` on (text_source, variant),
@@ -359,7 +359,7 @@ class GradeAndSelect(Step):
         if duration_sec and duration_sec > 0:
             published_keys = {(p.text_source, p.variant) for p in sel.publish}
             winner_label = (sel.publish[0].variant or sel.publish[0].text_source) if sel.publish else "none"
-            # #739: walk the pool ONCE into a deduped list before wording any verdict, because two of
+            # walk the pool ONCE into a deduped list before wording any verdict, because two of
             # the three verdicts below are facts about the POOL, not about the candidate being reported.
             # `is_published` is the only pool fact the old ladder had, and two of its arms wrote claims
             # that fact does not carry. Acquisition order, so the labels read in the order the sources
@@ -392,7 +392,7 @@ class GradeAndSelect(Step):
                 is_published = key in published_keys
                 if over / duration_sec <= OVERSHOOT_FRACTION_MAX:
                     # A small, tolerated overshoot the demotion did not act on — still worth seeing,
-                    # but #739 F2: say WHOSE. This is the only arm that can fire for a candidate the
+                    # but F2: say WHOSE. This is the only arm that can fire for a candidate the
                     # operator has no other way to place — `sel.choices` names a winner only when one
                     # source offered several versions — so worded bare it read as an overshoot on the
                     # SHIPPED lyrics when it was on a rejected rival, a false alarm about a cook whose
@@ -404,8 +404,8 @@ class GradeAndSelect(Step):
                         else f"within tolerance — NOT published, {winner_label} was"
                     )
                 elif is_published:
-                    # Over the limit and it WON: #667's own stated cost (owner ruling B fixes some
-                    # cases, not all). #739 F1: whether a fitting candidate existed is decided from the
+                    # Over the limit and it WON: the stated cost of owner ruling B (it fixes some
+                    # cases, not all). F1: whether a fitting candidate existed is decided from the
                     # POOL, never from `is_published`, which says only that THIS text is in
                     # `sel.publish`. `overshoot_penalized` (lyrics/chain.py) subtracts the overshoot
                     # FRACTION from the composite score — a COMPARATIVE penalty — so an overshooter
@@ -421,14 +421,14 @@ class GradeAndSelect(Step):
                         else ", no candidate that fits the audio"
                     )
                 else:
-                    # Over the limit and NOT published — the case #667 piece 2 was written to surface.
-                    # #851 F2: this is the third arm of the ladder #739 corrected the other two of, and
+                    # Over the limit and NOT published — the case this note was written to surface.
+                    # F2: this is the third arm of the ladder whose other two were corrected, and
                     # it repeated their exact defect. `is_published` False means only that THIS text is
                     # not in `sel.publish`; it does NOT mean the overshoot penalty is why. The wrong-song
                     # case loses on AGREEMENT by a margin the comparative `overshoot_penalized` never came
                     # near — the winner is identical with the penalty switched off — so "DEMOTED" here
                     # asserted a causation the step cannot see, and did so on the one line an operator
-                    # reads to decide whether #667's demotion did anything. Word it from the fact the step
+                    # reads to decide whether the overshoot demotion did anything. Word it from the fact the step
                     # actually has, mirroring the `PUBLISHED anyway` / `within tolerance` sibling arms.
                     verdict = f"past the OVERSHOOT limit — NOT published, {winner_label} was"
                 ctx.note(
@@ -446,7 +446,7 @@ class GradeAndSelect(Step):
         if sel.winner_suspect:
             # Report the number the JUDGEMENT actually used — baseline coverage — and carry the ranking
             # score beside it. Naming only the composite would print a number that did not decide this
-            # (#542): the two axes disagree by design on a partial baseline, which is exactly the case a
+            #: the two axes disagree by design on a partial baseline, which is exactly the case a
             # reader of this line is trying to tell apart from a real wrong-song pick.
             ctx.note(
                 f"best lyrics are missing most of what was heard (baseline coverage "
@@ -456,7 +456,7 @@ class GradeAndSelect(Step):
             )
             # Demote via replace rather than `sel.publish[0].text_confidence = "low"`: that reached from
             # the step layer straight into a domain LyricsText, mutating a caller-owned object in place
-            # (the same cross-object write #605 fixes in chain.py). Rebinding the list slot to a copy keeps
+            # (the same cross-object write chain.py was corrected for). Rebinding the list slot to a copy keeps
             # the demotion local to the published list — see presplit.py's replace() note.
             sel.publish[0] = replace(sel.publish[0], text_confidence="low")
         ctx.lyrics.selection = sel
@@ -468,7 +468,7 @@ class GradeAndSelect(Step):
 def _opens_for(text: Any) -> list[int]:
     """Opening-window index per human segment for the version fit.
 
-    Prefer the `align_window_opens` presplit EMITTED beside the windows (issue #459): it knew the
+    Prefer the `align_window_opens` presplit EMITTED beside the windows: it knew the
     segment->window map when it built them, so it is EXACT. Only fall back to re-deriving by
     start-equality (`_opening_window_indices`) for a hand-built text (a test) that set `align_windows`
     without the opens map — a fallback that strands every line after one start that fails to match to
@@ -477,7 +477,7 @@ def _opens_for(text: Any) -> list[int]:
     opens: list[int] | None = getattr(text, "align_window_opens", None)
     if opens is not None:
         # The emitter's invariant (one open per human segment). Assert it here so a future producer that
-        # emits a mismatched map fails LOUD rather than as a silent index mismatch downstream (#459).
+        # emits a mismatched map fails LOUD rather than as a silent index mismatch downstream.
         if len(opens) == len(text.segments):
             return opens
     return _opening_window_indices(text.align_windows, text.segments)
@@ -512,7 +512,7 @@ class TimeTexts(Step):
             )
 
         sel = ctx.lyrics.selection
-        # #794: the baseline line series, measured by Whisper on THIS audio, is the same for every
+        # the baseline line series, measured by Whisper on THIS audio, is the same for every
         # candidate — compute it ONCE. A synced LRC's windows are then placed onto this recording
         # against it before alignment (see `_shift_for`). Baselines carry line starts only
         # (whisper's `transcribe()` returns segment bounds, not word bounds), which is exactly what the
@@ -532,7 +532,7 @@ class TimeTexts(Step):
                 ctx.note(
                     f"{t.text_source}: LRC placed onto this audio before aligning "
                     f"(shift {sh.offset_sec:+.2f}s, scale {sh.scale:.3f} over {sh.pairs} baseline lines) "
-                    "— its master starts earlier/later than this upload (#794)"
+                    "— its master starts earlier/later than this upload"
                 )
             return sh
 
@@ -575,7 +575,7 @@ class TimeTexts(Step):
                     )
                     if text.timing != TIMING_LINE:
                         continue  # nothing honest left to publish for this source
-                    # #794: this degrade path publishes the source's OWN line timings, so it is the
+                    # this degrade path publishes the source's OWN line timings, so it is the
                     # SAME wrong-number risk the line-sync fallbacks in `_time_one` carry — an LRC whose
                     # master starts before this upload would re-introduce the early-highlighting symptom
                     # here even though the aligner was placed. Place the segments with the same measured
@@ -584,7 +584,7 @@ class TimeTexts(Step):
                     doc = line_synced_lyrics(placed, language=text.language or language)
                     timing, timing_confidence = TIMING_LINE, "low"
                 else:
-                    # ACT on the smears/flashes rep just diagnosed (issue #629, item #2). validate_timing
+                    # ACT on the smears/flashes rep just diagnosed. validate_timing
                     # reports them; this REPAIRS them in the doc that publishes, provably order-preserving
                     # so it can never turn a defect into the one disqualifier (an out-of-order word). Only
                     # on a usable word doc — a degraded line-sync doc has no per-word spans to repair.
@@ -600,7 +600,7 @@ class TimeTexts(Step):
                         # names them, so nothing is lost by gating on this alone.
                         ctx.note(f"timing repaired — {fixed.summary()}")
                     elif fixed.flashed_uncorrectable:
-                        # #773: `flashed_uncorrectable` is BY CONSTRUCTION the branch that wrote
+                        # `flashed_uncorrectable` is BY CONSTRUCTION the branch that wrote
                         # NOTHING, so ORing it into the line above claimed a repair on a
                         # byte-identical doc — the ordinary shape, since back-to-back aligner words
                         # leave every flash with no room. The operator still needs to know, so it
@@ -622,10 +622,10 @@ class TimeTexts(Step):
             # TIMING, which catches the case where a different master shifts or stretches every line.
             if timing == TIMING_WORD and text.timing == TIMING_LINE:
                 # Compute the OPENING-window index of each human line, then hand the fit decision
-                # to lyrics/validate.lrc_fit_notes (#456 moved the ~45-line decision + its two pairing
+                # to lyrics/validate.lrc_fit_notes (an earlier extraction moved the ~45-line decision + its two pairing
                 # helpers into the domain package; this step now owns only the windows/opens the
                 # decision needs). `_opens_for` prefers presplit's EMITTED opens map over re-deriving by
-                # float-equality — that preference is pinned HERE, in the step layer, by #459, which is
+                # float-equality — that preference is pinned HERE, in the step layer, by a guard test, which is
                 # why the call site stays in TimeTexts.run and is not folded into the domain function.
                 # When presplit set `align_windows`, only each line's OPENING window carries a real
                 # source start; when it did not, the segments ARE the windows and every index opens one.
@@ -634,7 +634,7 @@ class TimeTexts(Step):
                     opens = _opens_for(text)
                 else:
                     windows, opens = text.segments, list(range(len(text.segments)))
-                # #794: when the LRC was PLACED onto this audio before aligning, the aligner searched
+                # when the LRC was PLACED onto this audio before aligning, the aligner searched
                 # the shifted windows, so the post-align fit must compare against those SAME placed
                 # starts — feeding it the LRC master's unshifted starts would report the shift itself
                 # as a residual and mislabel a matching recording "different version". A no-op shift
@@ -644,7 +644,7 @@ class TimeTexts(Step):
                 for note in lrc_fit_notes(text.text_source, windows, opens, doc):
                     ctx.note(note)
 
-            # #640: a pinned re-time writes under the ref the CORE chose, never a re-derived key. The core
+            # a pinned re-time writes under the ref the CORE chose, never a re-derived key. The core
             # merges on `ref` (mergeLyricsCandidate), so reusing the same key is exactly what makes this
             # OVERWRITE the pinned candidate with freshly-timed words instead of adding a rival beside it.
             # A derived key could not do that: `candidate_key` folds in the timing TIER, so re-timing a
@@ -684,7 +684,7 @@ class TimeTexts(Step):
                     # the two that separates "a different song" from "the baseline heard only part of
                     # this one" (see SUSPECT_COVERAGE in lyrics/chain.py). Publishing only the ranking
                     # score left the TV thresholding a number that decided nothing, which convicted
-                    # correct lyrics graded against a partial baseline as ANOTHER SONG (#806).
+                    # correct lyrics graded against a partial baseline as ANOTHER SONG.
                     **(
                         {"coverage": sel.winner_coverage}
                         if (sel is not None and text is sel.publish[0] and sel.winner_coverage is not None)
@@ -698,7 +698,8 @@ class TimeTexts(Step):
         # Persist WHY this lyric won, not just which one. `sel.choices` already carries every rejected
         # label with its score, `decided_by` and the baseline vote count; those reach the cook log via
         # summary() above but the log rotates and is per-container. Crossing them to durable state here
-        # is the whole of #669 — the audit trail can then say which of #542's arms fired for a mis-pick.
+        # is the whole point of persisting the record — the audit trail can then say which arm of the
+        # selection fired for a mis-pick.
         if sel is not None:
             ctx.out.selection = sel.to_record()
         yield ProgressEvent(stage=self.stage, pct=100)
@@ -755,7 +756,7 @@ def _default_aligner(ctx: Ctx) -> Any:
 
 
 def _pinned_ref(ctx: Ctx) -> str | None:
-    """The MediaStore key of a candidate the operator pinned for re-timing (#640), or None.
+    """The MediaStore key of a candidate the operator pinned for re-timing, or None.
 
     REFUSES an absolute path and any key that climbs out of the media directory. This value is joined
     with `ctx.job.media_dir` to both READ a stored doc and WRITE the re-timed one, so an escaping key
@@ -810,7 +811,7 @@ def _stored_line_texts(path: str) -> list[str]:
 def _pinned_lyrics_text(ctx: Ctx, ref: str) -> LyricsText | None:
     """The ONE text a pinned align job must time, or None when the pin cannot be honoured.
 
-    Two shapes, one per way an operator re-picks (#640):
+    Two shapes, one per way an operator re-picks:
 
       * `pinnedText` — pasted words, used verbatim. The FIRST producer of SOURCE_MANUAL, which
         `chain.py` has held reserved with no producer since the two-tier split.
@@ -844,7 +845,7 @@ def _attach_romanizations(doc: dict[str, Any], source_segments: list[dict[str, A
 
     Only touches ``doc`` when the line counts agree, so a mismatch (the aligner split or merged lines)
     leaves the word-timed doc single-script rather than pairing a romanization with the wrong line.
-    Never adds an empty/absent romanization — dual script stays strictly if-available (issue #431)."""
+    Never adds an empty/absent romanization — dual script stays strictly if-available."""
     lines = doc.get("lines")
     if not isinstance(lines, list) or len(lines) != len(source_segments):
         return
@@ -891,7 +892,7 @@ def _time_one(
         if is_valid_lyrics(doc):
             return doc, TIMING_WORD, "medium"
 
-    # #794: place the LRC on THIS audio's timeline before its numbers are used for anything. `shift`
+    # place the LRC on THIS audio's timeline before its numbers are used for anything. `shift`
     # is measured by the caller from the Whisper baselines (a series the LRC did not bound) and is a
     # no-op (`applied == False`) unless the song's vocal sits confidently later/earlier than the LRC
     # master. It moves BOTH the aligner's search windows AND the line-sync fallbacks, because those
@@ -911,7 +912,7 @@ def _time_one(
         # whose human lines overflow a row): a tighter window is a better alignment anchor, and the
         # aligner re-times every word inside it. `segments` stays the source's OWN line timings for
         # the line-sync fallbacks below, so those still publish the human timestamps unmodified.
-        # Both are `_placed` first (#794): the aligner must search the span the LRC actually occupies
+        # Both are `_placed` first: the aligner must search the span the LRC actually occupies
         # on this audio, not the master's, or `whisperx.align`'s per-segment crop confines it to the
         # wrong window and it publishes confident early word times.
         base_search = text.align_windows if getattr(text, "align_windows", None) else text.segments
@@ -921,7 +922,7 @@ def _time_one(
         if not is_valid_lyrics(doc):
             raise RuntimeError("aligner returned no word-timed lyrics")
         # The aligner re-times the ORIGINAL script and drops the per-line romanization the source
-        # shipped; re-attach it to the word-timed doc by source-line position (issue #431). Best-effort:
+        # shipped; re-attach it to the word-timed doc by source-line position. Best-effort:
         # when the aligner has split/merged lines so the counts no longer match, the word-timed doc
         # simply shows single script — the romanization still rides the line-sync fallbacks.
         _attach_romanizations(doc, text.segments)

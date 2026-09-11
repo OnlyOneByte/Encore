@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S7) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S7) ───────────────────────────────────────────────────────────────────
   1. `animate-pulse` is REPLACED, not kept. motion.test.ts bans motion utility names tree-wide because
      a keyframes utility cannot honour Reduce Motion, and Encore's skeleton was never a pulse: it is a
      travelling SHIMMER, a gradient swept across the box. That gradient and its keyframes move here
@@ -42,7 +42,7 @@
 	/*
 	 * Motion is OPT-IN, declared inside a no-preference block rather than declared-then-reset. Both
 	 * forms satisfy #148, and this one cannot drift: there is no reset to lose the cascade to a later
-	 * rule (#337), and a static block is a fine resting state for a placeholder.
+	 * rule, and a static block is a fine resting state for a placeholder.
 	 */
 	@media (prefers-reduced-motion: no-preference) {
 		.encore-skel {

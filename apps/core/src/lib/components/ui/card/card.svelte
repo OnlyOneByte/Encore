@@ -1,14 +1,14 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S4) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S4) ────────────────────────────────────────────────────────────────────────
   The registry's appearance is kept — S4 deliberately accepted the visual change from Encore's
   bordered card to shadcn's ring-and-spacing one. One containment rule is ADDED, and it is not
   cosmetic:
 
   `min-width: 0`. A card is frequently a GRID ITEM, and a grid item defaults to `min-width: auto`
-  (= min-content). Without this, /stats' trend chart — a row of 44px day buttons (#144) — sizes its
+  (= min-content). Without this, /stats' trend chart — a row of 44px day buttons — sizes its
   card to the full 1424px scroll width and overflows the document horizontally, turning a tap-target
   fix into a layout regression. It was measured when first fixed: document overflow 21px → 0, chart
-  scrollable true. The rule lived in the page until #913; scoped CSS there can no longer reach the
+  scrollable true. The rule lived in the page until this component was vendored in; scoped CSS there can no longer reach the
   element this component renders, so it moved here with the guard that holds it.
 
   Safe to apply to every card: `min-width` only participates when the box is a flex or grid item.

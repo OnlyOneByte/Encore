@@ -69,7 +69,7 @@ class PlanRunner:
         ctx = Ctx(
             job=job,
             work=scratch_for(job),
-            # params is validated to be a dict at the inbound boundary (dial_home._on_assign, #459).
+            # params is validated to be a dict at the inbound boundary (dial_home._on_assign).
             engines=self._resolve_engines(job.params),
         )
         os.makedirs(ctx.work, exist_ok=True)

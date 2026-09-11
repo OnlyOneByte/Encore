@@ -72,7 +72,7 @@ export interface SeekPlan {
  *
  * THE ZERO FIXED POINT. A `restart` sets the reported position to 0 (player.ts) while the song plays
  * on, so a restart pressed under `SEEK_JUMP_SEC` into the song — a currentTime below 1.5s — reads as
- * a sub-threshold move and the master never rewinds: the restart does nothing (#95). Telemetry cannot
+ * a sub-threshold move and the master never rewinds: the restart does nothing. Telemetry cannot
  * report a target of 0 unless the song is genuinely at ~0, in which case the master is already there
  * and moving it is a no-op; so a target of exactly 0 with the master past the pre-roll tolerance is
  * unambiguously a rewind, never a telemetry frame. It is admitted as a jump on that basis, WITHOUT
@@ -135,14 +135,14 @@ export function guideCorrection(guideSec: number, masterSec: number): GuideCorre
 }
 
 /**
- * The pre-roll alignment decision — the START half of guide sync, and the fix for #578.
+ * The pre-roll alignment decision — the START half of guide sync.
  *
  * The guide must be at the master's playhead AT THE MOMENT IT BECOMES AUDIBLE. The old wiring aligned
  * it when the transport effect ran and then called `play()`: the guide's decoder spin-up is not free,
  * so the master advanced by the guide's start latency (~150-250ms) before the first guide frame
  * emerged, and the guide entered that much behind. A residual that size lands in the governor's TRIM
  * band (0.015-0.3s), where policy is a <=2% tempo trim closing it at ~15s per e-fold — "starts late
- * and stays late" (#578). The remedy is not a wider tolerance (that silences the comparison while the
+ * and stays late". The remedy is not a wider tolerance (that silences the comparison while the
  * guide is still audibly late); it is to TAKE the comparison later — on the guide's `canplay`, against
  * the master's playhead THEN — so the seek→audible gap is a primed-buffer flush, not a cold start.
  *
@@ -162,7 +162,7 @@ export function prerollSeekTarget(guideSec: number, masterSec: number): { seek: 
 }
 
 /**
- * The cold-mount RESUME decision — the fix for #795, and the master's counterpart to
+ * The cold-mount RESUME decision — the master's counterpart to
  * `prerollSeekTarget`.
  *
  * When the TV page is reloaded mid-song the room's position (`playback:state.positionSec`) arrives
@@ -170,7 +170,7 @@ export function prerollSeekTarget(guideSec: number, masterSec: number): { seek: 
  * slot, which the server sends AFTER `playback:state`. The seek effect fires against a null `master`
  * and drops the target, and position telemetry never bumps `rev`, so `seekPlan`'s effect is never
  * re-woken and the target is never re-offered — the fresh master plays from 0 while the room is at 6s,
- * and the TV's own telemetry then drags the server's position backwards (#795 measured: master 0.52s,
+ * and the TV's own telemetry then drags the server's position backwards (measured: master 0.52s,
  * server falling from 6.00s).
  *
  * This is NOT a jump subject to `seekPlan`. `seekPlan` separates "the phone scrubbed" (a JUMP worth a
@@ -186,7 +186,7 @@ export function prerollSeekTarget(guideSec: number, masterSec: number): { seek: 
  * sits more than `GUIDE_PREROLL_ALIGN_SEC` from where the fresh element is. The component reads this on
  * the master's `canplay` — when the buffer is primed and the seek is a flush of a primed buffer rather
  * than a cold start — and applies it ONCE per element-and-src load, then clears the held target. Applied
- * then cleared is what keeps #396 shut: a stale target cannot be re-yanked onto a later song by catalog
+ * then cleared is what keeps the stale-target defect shut: a stale target cannot be re-yanked onto a later song by catalog
  * churn, because there is no held target left to apply after the one resume it was taken for.
  *
  * @param masterSec the fresh master's playhead at the moment it can play (≈0 on a cold mount)

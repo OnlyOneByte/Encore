@@ -1,4 +1,4 @@
-// Re-exports Svelte's CLIENT runtime for component tests (issue #698).
+// Re-exports Svelte's CLIENT runtime for component tests.
 //
 // WHY THIS EXISTS. The bare `svelte` specifier resolves to Svelte's SERVER build under `bun test`
 // (the `default` export condition), whose `mount()` throws "not available on the server". A preload

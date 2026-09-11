@@ -440,13 +440,13 @@ async def test_configured_ytdlp_binary_reaches_the_caption_argv(tmp_path):
         )
 
 
-# ── issue #670: the raw caption track survives job-scratch teardown when opted in ─────────────────────
+# ── the raw caption track survives job-scratch teardown when opted in ─────────────────────
 # The caption fetch writes the raw `.vtt` into per-job scratch (`ctx.work/<kind>/`), which
 # `dial_home._run_job` rmtrees when the job ends — so only the PARSED cues survive, and a
 # caption-parsing defect (#539/#542-class) can never be re-examined from the source bytes after a cook.
 # `ENCORE_KEEP_RAW_CAPTIONS=1` copies the raw track out to the durable `derived/` store BEFORE teardown,
 # keeping the authored/machine distinction structural (a directory), off by default so the footprint of
-# an ordinary cook does not change. The flag is resolved at the config boundary (#709): the step takes a
+# an ordinary cook does not change. The flag is resolved at the config boundary: the step takes a
 # resolved `keep_raw` bool, and `WorkerConfig.from_env` parses the env with the same false-spelling set
 # every operator boolean uses — so `ENCORE_KEEP_RAW_CAPTIONS=0` is OFF, not a truthy non-empty string.
 
@@ -454,7 +454,7 @@ from src.processor import raw_caption_path  # noqa: E402
 
 
 async def test_the_raw_caption_track_is_NOT_retained_by_default(tmp_path):
-    """DEFAULT footprint is unchanged — the durable path stays empty unless opted in (#670).
+    """DEFAULT footprint is unchanged — the durable path stays empty unless opted in.
 
     The step now takes a RESOLVED `keep_raw` bool (default False); it no longer reads the environment
     (#709), so the default is exercised by simply not passing keep_raw=True.
@@ -478,7 +478,7 @@ async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted
     job. This is what lets a caption-parsing bug be diagnosed from the exact bytes production parsed,
     long after the cook that produced it has finished and its scratch is gone.
 
-    Drives the real `FetchCaptions` step against the same no-overwrite yt-dlp stand-in the #96 guarantee
+    Drives the real `FetchCaptions` step against the same no-overwrite yt-dlp stand-in the guarantee
     uses, so the retained bytes are exactly what `read_captions` was handed. Asserts both tiers land in
     their OWN durable directory (the authored/machine split stays structural, never a filename guess)
     and that the retained bytes are byte-identical to the scratch source.
@@ -523,7 +523,7 @@ async def test_keep_raw_captions_env_false_spellings_leave_retention_OFF(tmp_pat
     step, so `=0` (this project's own documented way to turn a worker flag off, per README's ENCORE_ANNOTATE
     guidance) was a NON-EMPTY string and silently turned retention ON — the exact inversion.
 
-    An empty or whitespace-only value counts as false too (#709 A1): `ENCORE_KEEP_RAW_CAPTIONS=` is the
+    An empty or whitespace-only value counts as false too (A1): `ENCORE_KEEP_RAW_CAPTIONS=` is the
     .env/compose idiom for "neutralise this", and a default-OFF flag must honour it as OFF.
 
     Exercised through the REAL boundary, `WorkerConfig.from_env`, which is where #709 moves the parse, then
@@ -547,7 +547,7 @@ async def test_keep_raw_captions_env_false_spellings_leave_retention_OFF(tmp_pat
 
 @pytest.mark.parametrize("value", ["1", "true", "True", "yes", "on"])
 async def test_keep_raw_captions_env_true_spellings_turn_retention_ON(tmp_path, value):
-    """The affirmative half: true spellings resolve to True and retain the track (#709/#670)."""
+    """The affirmative half: true spellings resolve to True and retain the track."""
     cfg = WorkerConfig.from_env({"ENCORE_KEEP_RAW_CAPTIONS": value})
     assert cfg.keep_raw_captions is True, f"{value!r} must resolve to keep_raw_captions=True"
 
@@ -559,7 +559,7 @@ async def test_keep_raw_captions_env_true_spellings_turn_retention_ON(tmp_path, 
 
 
 def test_keep_raw_captions_defaults_off_when_unset():
-    """Unset resolves to False — an ordinary cook's footprint is unchanged (#709)."""
+    """Unset resolves to False — an ordinary cook's footprint is unchanged."""
     assert WorkerConfig.from_env({}).keep_raw_captions is False
 
 
@@ -610,7 +610,7 @@ def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
     """
     segs = parse_vtt(_ROLLING_FIXTURE.read_text(encoding="utf-8"))
 
-    # #686 INVARIANT, PRESERVED. The prefix-extend collapse still fires: no adjacent pair where the
+    # INVARIANT, PRESERVED. The prefix-extend collapse still fires: no adjacent pair where the
     # earlier line is a strict prefix of the later one AND that later line is long enough to be a real
     # rolling extend. Base leaves 115 such pairs here; #686 drives them to 0. (Sub-threshold short
     # leftovers created by the scroll trim below — a 1–2 word line quoted at the head of the next — are
@@ -627,7 +627,7 @@ def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
         "a strict prefix of the later one (base parse_vtt leaves 115 here)"
     )
 
-    # #687 INVARIANT. The SCROLL residual is gone. YouTube's window also scrolls — words drop off the
+    # INVARIANT. The SCROLL residual is gone. YouTube's window also scrolls — words drop off the
     # front — so line N+1's HEAD repeats line N's TAIL without N being a prefix of N+1. Measured on this
     # fixture the base has 90 adjacent pairs overlapping by >= _SCROLL_MIN_OVERLAP_WORDS words (46.1% of
     # all words repeat the previous tail). The trim drives that to 0. This is the assertion that reds on

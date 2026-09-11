@@ -28,7 +28,7 @@ def test_every_whitelist_token_resolves_to_a_checkpoint_filename():
 
 
 def test_the_default_token_is_the_measured_becruily_checkpoint():
-    """The owner ruled Option A on `instrumental_becruily` specifically (#483); the default token must be
+    """The owner ruled Option A on `instrumental_becruily` specifically; the default token must be
     that model and resolve to the exact checkpoint the benchmark measured (checkpoint_cost.py)."""
     assert audiosep.DEFAULT_AUDIOSEP_MODEL == "instrumental_becruily"
     assert (
@@ -209,7 +209,7 @@ async def test_an_audiosep_cook_runs_the_real_audiosep_engine_end_to_end(tmp_pat
     inst = completes[0].artifacts["stems"]["instrumental"]
     assert inst.endswith("ma-instrumental.flac")
     assert Path(inst).exists()
-    # the isolated vocals stem — the guiding track — is ALSO published (lossless FLAC, #480)
+    # the isolated vocals stem — the guiding track — is ALSO published (lossless FLAC)
     vox = completes[0].artifacts["stems"]["vocals"]
     assert vox.endswith("ma-vocals.flac")
     assert Path(vox).exists()
@@ -225,7 +225,7 @@ async def test_an_audiosep_cook_runs_the_real_audiosep_engine_end_to_end(tmp_pat
 async def test_an_audiosep_cook_that_produces_no_instrumental_fails_loudly(tmp_path):
     """The find_outputs discovery contract from the failure side: if audio-separator writes nothing into
     --output_dir, Separate must raise rather than publish a phantom cook — the same guard demucs and
-    roformer have, now proven on the audiosep path. And the raise is non-retryable (#571 class): a
+    roformer have, now proven on the audiosep path. And the raise is non-retryable (class): a
     wrong output-filename contract is deterministic, so every retry re-runs the same pass identically."""
     runner, _ = _audiosep_fake_runner(store_writes=False)
     proc = plans.stems_runner(runner=runner)

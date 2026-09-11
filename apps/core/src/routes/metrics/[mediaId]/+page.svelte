@@ -31,7 +31,7 @@
 		rtFactor: number | null;
 		models: Record<string, string | null>;
 		stages: { stage: string; ms: number }[];
-		// WHY the published lyric won, when the align attempt recorded it (#669). Null otherwise.
+		// WHY the published lyric won, when the align attempt recorded it. Null otherwise.
 		selection: SelectionRecord | null;
 	}
 	interface Cook {
@@ -49,7 +49,7 @@
 			titleCanonical?: string | null;
 			artistCanonical?: string | null;
 			durationSec: number;
-			// The guiding-track fields (#766): whether this song has a vocals stem to align, and the
+			// The guiding-track fields: whether this song has a vocals stem to align, and the
 			// measured guide/instrumental offset in signed ms (undefined = never measured).
 			vocalsRef?: string;
 			guideOffsetMs?: number;
@@ -79,7 +79,7 @@
 
 	// dur() moved to $lib/metrics-format — it had drifted from /metrics's copy, so a new job type
 	// taught to one page silently showed its raw DB name on the other.
-	// localStamp renders each instant in the VIEWER'S local zone (#141): the old toISOString() form
+	// localStamp renders each instant in the VIEWER'S local zone: the old toISOString() form
 	// printed UTC with the Z sliced off, dating an evening US run to the next day.
 	const stamp = (ms: number) => localStamp(ms);
 	/** Only the model fields this step actually carries — a null is "not applicable", not "unknown". */
@@ -109,7 +109,7 @@
 
 	// STAGE_LABELS/stageLabel moved to $lib/metrics-format (shared with /metrics).
 
-	// WHY THE LYRIC WAS PICKED, in words (#669). 'agreement' means a baseline actually voted, so a
+	// WHY THE LYRIC WAS PICKED, in words. 'agreement' means a baseline actually voted, so a
 	// wrong pick there is a metric problem; 'metadata' means none could and cheap ordering stood, which
 	// is the arm a new similarity metric does NOT fix — that distinction is the whole point of persisting it.
 	const DECIDED_LABELS: Record<string, string> = {
@@ -141,7 +141,7 @@
 
 		{#if audit.media?.vocalsRef}
 			<!--
-				The MEASURED guide/instrumental offset (#766), so a wrong alignment is diagnosable here rather
+				The MEASURED guide/instrumental offset, so a wrong alignment is diagnosable here rather
 				than only by ear on the party box. Shown only when this song has a guiding track (a vocals
 				stem) — the only case an offset means anything. `undefined` ⇔ never measured (an older cook);
 				a number, 0 included, ⇔ measured, so the two read differently.
@@ -282,7 +282,7 @@
 	}
 	/* .card in app.css has no padding — see routes/stats/+page.svelte. */
 	/*
-	 * #913 S4: `.card`'s local padding left this file — shadcn's Card owns its spacing through
+	 * S4: `.card`'s local padding left this file — shadcn's Card owns its spacing through
 	 * `--card-spacing`. The visual change is accepted deliberately (a ring rather than a border, its
 	 * own scale). Layout classes that must apply to the GRID ITEM stay on a wrapper element, because a
 	 * scoped rule cannot reach an element a child component renders.
@@ -290,7 +290,7 @@
 	/* The cook owns the attempts beneath it, so its header takes full ink and a dividing rule. At
 	   --ink-dim it was the same grey as the timestamp under it and barely out-ranked a step name. */
 	/*
-	 * #913 S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
+	 * S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
 	 * title where this was hand-styled, which is part of the visual change accepted for S4.
 	 */
 	header {
@@ -379,7 +379,7 @@
 		margin: 0;
 		color: var(--ink);
 	}
-	/* WHY the lyric was picked (#669): one small block per source, each line dim so it reads as
+	/* WHY the lyric was picked: one small block per source, each line dim so it reads as
 	   provenance beside the timings rather than competing with them. */
 	.selection {
 		display: flex;
@@ -406,10 +406,10 @@
 		color: var(--warn);
 	}
 	/*
-	 * #913 S6: `.pill` and its three outcome tones are ui/badge's now. The outcome→tone mapping moved to
+	 * S6: `.pill` and its three outcome tones are ui/badge's now. The outcome→tone mapping moved to
 	 * the call site because the tone IS the meaning, and the certified triples live with the component.
 	 */
-	/* `abandoned` reads as a failure, so it maps to the `bad` tone at the call sites above (#913 S6). */
+	/* `abandoned` reads as a failure, so it maps to the `bad` tone at the call sites above (S6). */
 	.err {
 		font-size: var(--ph-text-xs);
 		color: var(--danger-ink);

@@ -1,4 +1,4 @@
-// POST /api/delete-media — { mediaId } -> hard-delete a song from the library ENTIRELY (issue #639).
+// POST /api/delete-media — { mediaId } -> hard-delete a song from the library ENTIRELY.
 // The destructive admin action: cancels any in-flight cook, removes every queue entry for the song
 // (skipping to the next singer if it was playing), unlinks the sidecar FIRST then audio + derived,
 // drops the index row + tags, and broadcasts. The order is enforced in deleteMediaEntirely; this route

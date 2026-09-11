@@ -1,6 +1,6 @@
 // How the room decides who sings next — the ordering algorithm as a registry, not a hardcoded rule.
 //
-// THE MODEL (#856): the queue is a single STORED ordered list, and that list is the source of truth.
+// THE MODEL: the queue is a single STORED ordered list, and that list is the source of truth.
 // It is persisted (`rotationSeq` is the durable position) and mutated in place — it is NOT recomputed
 // from entry fields on every render. So an ordering "algorithm" is not a full sort any more. It is an
 // INSERT-POSITION rule: given the current stored queue, at what index does one newly-added song go?

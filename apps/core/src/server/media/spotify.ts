@@ -11,7 +11,7 @@
 //
 // GRACEFUL DEGRADATION mirrors ytDlpSearch: with the env vars unset (the default deployment), this
 // returns [] rather than throwing, so the search fan-out simply has one fewer source — safeSearch in
-// the route already tolerates a dead source by design. Each FAILURE exit also names its reason (#872,
+// the route already tolerates a dead source by design. Each FAILURE exit also names its reason (
 // mirroring ytDlpSearch after #767), so a token refusal, throttle, or timeout is distinguishable from
 // a healthy account with no match; only the creds-unset default (spotifyEnv → null) stays silent.
 //
@@ -96,7 +96,7 @@ async function appToken(env: SpotifyEnv, now: () => number, fetchImpl: typeof fe
 			body: 'grant_type=client_credentials'
 		});
 		if (!res.ok) {
-			// #872: name the status — a 401 (bad creds), 429 (throttle) and 5xx are the difference
+			// name the status — a 401 (bad creds), 429 (throttle) and 5xx are the difference
 			// between "operator typed the wrong secret" and "Spotify is down", and the []-return above
 			// erases it. Degrade behaviour (return null → []) is UNCHANGED; only the silence is fixed.
 			console.warn(`[spotify] token endpoint refused with ${res.status}; search will degrade to empty`);
@@ -104,14 +104,14 @@ async function appToken(env: SpotifyEnv, now: () => number, fetchImpl: typeof fe
 		}
 		const j = (await res.json()) as { access_token?: string; expires_in?: number };
 		if (!j.access_token) {
-			// #872: a 200 with no access_token is a malformed/unexpected token response, not a miss.
+			// a 200 with no access_token is a malformed/unexpected token response, not a miss.
 			console.warn('[spotify] token endpoint returned 200 but no access_token; search will degrade to empty');
 			return null;
 		}
 		_token = { value: j.access_token, expiresAt: now() + (j.expires_in ?? 3600) * 1000 };
 		return _token.value;
 	} catch (err) {
-		// #872: a token fetch that THREW (DNS, offline, TLS) is invisible without this — same class the
+		// a token fetch that THREW (DNS, offline, TLS) is invisible without this — same class the
 		// sibling ytDlpSearch reports, and the parity claim in this file's header depends on it.
 		console.warn('[spotify] token fetch failed (network/DNS/TLS); search will degrade to empty:', err);
 		return null;
@@ -148,14 +148,14 @@ export async function spotifySearch(
 			signal: controller.signal
 		});
 		if (!res.ok) {
-			// #872: 429 (rate limit), 403 and 5xx all become the same empty page without this — and a
+			// 429 (rate limit), 403 and 5xx all become the same empty page without this — and a
 			// clean 200-with-no-match is byte-identical to a throttle. Naming res.status is the fix.
 			console.warn(`[spotify] search refused with ${res.status}; degrading to empty`);
 			return [];
 		}
 		return parseSpotifySearchJson(await res.json());
 	} catch (err) {
-		// #872: an abort (the SEARCH_TIMEOUT_MS killer) and a genuine network fault are indistinguishable
+		// an abort (the SEARCH_TIMEOUT_MS killer) and a genuine network fault are indistinguishable
 		// once collapsed to []. Bind and name it; the degrade (return []) is unchanged.
 		console.warn('[spotify] search failed (timeout/network); degrading to empty:', err);
 		return [];

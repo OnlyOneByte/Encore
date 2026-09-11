@@ -1,5 +1,5 @@
 /**
- * The cross-language parity corpus for `agreement` (#542).
+ * The cross-language parity corpus for `agreement`.
  *
  * WHY IT EXISTS. `agreement` / `agreementScore` / `SUSPECT_COVERAGE` are implemented TWICE — here in
  * TypeScript (the authority) and in `apps/worker/src/lyrics/chain.py` (a hand-kept mirror). Duplicated

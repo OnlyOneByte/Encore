@@ -1,11 +1,11 @@
--- #856 step 3: drop the queue_entries.pinned_seq column — pinning is deleted as a concept.
+-- step 3: drop the queue_entries.pinned_seq column — pinning is deleted as a concept.
 --
--- pinned_seq held a HOST's durable global-reorder pin. Under the stored-list model (#856 steps 1+2)
+-- pinned_seq held a HOST's durable global-reorder pin. Under the stored-list model that steps 1+2 built
 -- the queue IS the stored ordered list and a drag rewrites it in place, so there is no re-derivation
 -- for a pin to survive and nothing reads pinned_seq any more (the move-global/unpin ops, placePins,
 -- and QueueEntry.pinnedSeq all go with it).
 --
--- Owner ruling C on #856's re-triage: no live room crosses this upgrade (the party box's DB is wiped
+-- Owner ruling C on the re-triage: no live room crosses this upgrade (the party box's DB is wiped
 -- between parties), so the column is dropped clean — no backfill, no read-time remap, no data
 -- migration. Existing queue rows are preserved verbatim minus this one column.
 --

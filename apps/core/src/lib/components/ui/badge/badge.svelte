@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S6) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S6) ───────────────────────────────────────────────────────────────────
   The registry's appearance and tone set are REPLACED by Encore's chip, because the chips this
   migrates are a semantic STATE system rather than decoration: eleven rules in SongRow mapping a
   song's readiness and kind onto `--ok` / `--warn` / `--danger` / `--accent-ink`, each a certified
@@ -11,7 +11,7 @@
   3. Appearance is scoped CSS, not utilities: `app.css` sets `source(none)` with a single `@source`
      over this directory, and scoped CSS needs no minting at all.
   4. A `wrap` axis exists because ONE chip carries a phrase instead of a token; the reason is on the
-     variant, taken from #857.
+     variant, taken.
 -->
 <script lang="ts" module>
 	import { type VariantProps, tv } from "tailwind-variants";
@@ -33,7 +33,7 @@
 				tag: "encore-chip-accent encore-chip-tag",
 			},
 			/*
-			 * A chip that carries a PHRASE rather than a token must wrap (#857). Every other chip here is
+			 * A chip that carries a PHRASE rather than a token must wrap. Every other chip here is
 			 * short enough to fit one line at 200% text; "Longer than a song" is ~230px doubled, wider
 			 * than the row holds, and a blanket `white-space: nowrap` made its min-content width its FULL
 			 * width — so it could not shrink and pushed the browse page past a 320px viewport.

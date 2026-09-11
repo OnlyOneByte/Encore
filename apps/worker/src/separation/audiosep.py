@@ -35,7 +35,7 @@ confirms the exact output-stem filenames, an audiosep cook only runs where an op
 `stems:audiosep` capability (which is advertised only when the dep is present — capabilities.py).
 
 ⚠️ The `instrumental_becruily` checkpoint ships as a LIVE-SELECTABLE model with TWO caveats the owner
-accepted knowingly (issue #483, owner ruling Option A): it has no prior ear-approval (only
+accepted knowingly (owner ruling Option A): it has no prior ear-approval (only
 `bs-roformer-1297` has a published SDR and an owner listening test — SUMMARY.md §4), and its model weights
 may carry non-commercial / research licence terms on their Hugging Face card (DECISIONS.md's MIT clearance
 covers the PACKAGES surveyed, not the individual checkpoint weights). Both were flagged and the owner took
@@ -85,7 +85,7 @@ def _find_audiosep_stem(out_dir: str, marker: str) -> str | None:
     DELIMITED role marker (`_(instrumental)_` / `_(vocals)_`), not a bare `"instrumental"` / `"vocal"`
     substring: the model filename is part of the output name and itself contains `instrumental` (and
     other checkpoints contain `vocals`), so a bare substring test lets the instrumental file satisfy the
-    vocals search and vice-versa — the exact `_find_roformer_stem` trap (#445). The marker sits before
+    vocals search and vice-versa — the exact `_find_roformer_stem` trap. The marker sits before
     the model name and is unaffected by it. Listing is sorted so the pick is deterministic (os.listdir
     order is unspecified), matching roformer.py and acquisition/fetch.py:find_downloaded. Matched
     case-insensitively so an upstream output-naming tweak does not silently break the pickup (the exact

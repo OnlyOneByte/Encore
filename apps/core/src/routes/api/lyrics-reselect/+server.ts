@@ -1,5 +1,5 @@
 // POST /api/lyrics-reselect — { mediaId, ref } | { mediaId, text } -> re-pick a song's lyrics and
-// re-time them (#640). A fallback for when the ranker chose the wrong lyrics set: the user either
+// re-time them. A fallback for when the ranker chose the wrong lyrics set: the user either
 // picks a different STORED candidate by ref, or PASTES words (a `manual` source), and the align step
 // re-times the chosen text from the retained vocals stem.
 //

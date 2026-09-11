@@ -47,7 +47,7 @@ def align_plan(
 
     Seams stay injectable for the same reason they always were — the real WhisperX, the real LRCLIB and
     the real yt-dlp only ever run on a worker box, so the whole flow has to be exercisable without any of
-    them. `diarizer` is the newest seam (#691): the real pyannote pipeline only runs on a worker box, so
+    them. `diarizer` is the newest seam: the real pyannote pipeline only runs on a worker box, so
     Diarize takes an injected diarizer exactly as TimeTexts takes an aligner.
     """
     return LinearPlan(
@@ -231,7 +231,7 @@ def stems_runner(
 
     `backend` is the hardware backend `backends.resolve_backend` resolved for this worker (torch/mlx),
     resolved once in `dial_home`. It is threaded into `engine_for` so it drives the engine that actually
-    runs and is recorded into `facts.backend` — before #119 the resolved backend reached only a startup
+    runs and is recorded into `facts.backend` — before threading, the resolved backend reached only a startup
     print, so a Mac announcing `mlx` still ran torch demucs and recorded `torch`.
     """
     from .runtime.runner import PlanRunner

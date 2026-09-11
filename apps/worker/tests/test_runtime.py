@@ -360,7 +360,7 @@ async def test_a_step_publishing_ctx_out_facts_without_declaring_it_is_caught(tm
     """`facts` is watched with the same field granularity as `artifacts`. A step that resolves an
     engine/model/device onto `ctx.out.facts` without declaring `out` must be caught: `facts` is what
     the per-attempt audit page shows, and letting it slip is the exact undeclared-publisher defect
-    #75 was filed for. Companion to the `artifacts` case; every wire-shaped `Outputs` field has one such pin.
+    this pin exists for. Companion to the `artifacts` case; every wire-shaped `Outputs` field has one such pin.
     """
     monkeypatch.setattr(runner_mod, "STRICT_WRITES", True)
 
@@ -403,11 +403,11 @@ async def test_a_step_publishing_ctx_out_media_uri_without_declaring_it_is_caugh
 
 @pytest.mark.asyncio
 async def test_a_step_publishing_ctx_out_selection_without_declaring_it_is_caught(tmp_path, monkeypatch):
-    """`selection` is the fourth wire-shaped field (#669/#700): it crosses to the `job_attempts` audit
+    """`selection` is the fourth wire-shaped field: it crosses to the `job_attempts` audit
     trail as the durable account of WHY a lyric variant won. It was added to `Outputs` after `_snapshot`
     was written, and the guard's `out` snapshot listed `artifacts`, `facts`, `media_uri` explicitly, so
-    `selection` was outside the watch (#708) — an undeclared second writer could silently decide what
-    the per-attempt audit page reports about the variant pick, the same failure mode #75 and #197 hit
+    `selection` was outside the watch — an undeclared second writer could silently decide what
+    the per-attempt audit page reports about the variant pick, the same failure mode seen
     on the earlier fields. It must be caught like any other wire-shaped publish; the guard now derives
     the watched set from the dataclass fields so this cannot recur when a fifth field lands.
     """
@@ -575,7 +575,7 @@ async def test_run_blocking_survives_a_second_cancel_during_the_shielded_await(m
     # Second cancel lands on the shielded await inside the finally.
     close_task.cancel()
 
-    # BOUNDED probe first (deadlock-hazard class, #180): never wedge the whole worker suite. A bound
+    # BOUNDED probe first (deadlock-hazard class): never wedge the whole worker suite. A bound
     # comfortably longer than the 0.4s thread but far short of a hang.
     try:
         await asyncio.wait_for(asyncio.shield(close_task), timeout=2.0)
@@ -632,7 +632,7 @@ def test_the_cleanup_derives_its_delete_target_FROM_scratch_for_not_a_hand_rebui
     A hand-rebuilt copy is a SECOND spelling of the producer's layout that drifts silently: change
     `scratch_for` and the cleanup keeps deleting the old path, orphaning the new one. The two
     `test_dial_home.py` cleanup tests hardcode the literal a THIRD time, so they pin the consumer and
-    are blind to producer drift — the asymmetry is the whole finding (#294). The durable fix is to
+    are blind to producer drift — the asymmetry is the whole finding. The durable fix is to
     delete the duplication: have the consumer consume the producer. This guard reads dial_home's source
     and fails if the finally-block rmtree reverts to a hand-built `os.path.join(..., "work", ...)`
     instead of `scratch_for(job)`.
@@ -652,14 +652,14 @@ def test_the_cleanup_derives_its_delete_target_FROM_scratch_for_not_a_hand_rebui
     assert "def _run_job" in text and "scratch_for" in text
 
 
-# ── run_stage: a slow-but-alive subprocess must keep its lease (#435) ─────────────
+# ── run_stage: a slow-but-alive subprocess must keep its lease ─────────────
 
 
 @pytest.mark.asyncio
 async def test_run_stage_emits_a_time_based_keepalive_while_the_child_is_quiet(monkeypatch):
     """A subprocess stage whose child makes no NEW percentage for longer than the progress lease must
     still renew the lease with a TIME-BASED keepalive, or the core's 30 s progressLeaseMs expires and a
-    HEALTHY cook is reaped and retried as a fresh pass (#435).
+    HEALTHY cook is reaped and retried as a fresh pass.
 
     This is the roformer shape exactly: `parse` returns None unconditionally (roformer's
     parse_progress does), so NOT ONE line parses to a percentage, and the child stays quiet for a long

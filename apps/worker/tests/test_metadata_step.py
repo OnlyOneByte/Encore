@@ -1,4 +1,4 @@
-"""The Annotate STEP, driven end-to-end — the decline must reach the operator's log (#102).
+"""The Annotate STEP, driven end-to-end — the decline must reach the operator's log.
 
 test_annotate.py covers annotate_or_reason as a unit. What was missing is exactly this: the STEP that
 production runs on every fetch, deciding what an operator is told when the lookup declines. Before this
@@ -105,7 +105,7 @@ async def test_a_genuine_miss_notes_a_DIFFERENT_reason_than_a_throttle():
     assert "throttled" not in notes
 
 
-# ── #268: a slow MusicBrainz lookup must NOT go silent — it renews the progress lease ──────────────
+# ── a slow MusicBrainz lookup must NOT go silent — it renews the progress lease ──────────────
 async def test_a_slow_lookup_emits_keepalive_progress_so_the_lease_is_renewed(monkeypatch):
     """Annotate is a BLOCKING step (the MusicBrainz gate serialises calls and SLEEPS to hold one request
     per second). Before #268 it used a raw asyncio.to_thread and emitted NOTHING for the whole wait, so a

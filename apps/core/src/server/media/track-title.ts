@@ -281,7 +281,7 @@ export function parseTrackTitle(rawTitle: string, uploader?: string | null): Par
 			const l = comparable(left);
 			const r = comparable(right);
 			// The uploader must CONTAIN the side, one direction only: "Adele" ⊂ "AdeleVEVO", "Daft Punk"
-			// == "Daft Punk". The reverse test — side.includes(u) — was the garbage generator (#672): a
+			// == "Daft Punk". The reverse test — side.includes(u) — was the garbage generator: a
 			// channel name sitting ANYWHERE inside a longer side promoted the WHOLE side to artist at the
 			// parser's highest confidence, so "Sophia George - Girlie Girlie (1986) • TopPop" by uploader
 			// "TopPop" wrote artist "Girlie Girlie (1986) • TopPop" and "Glimpse Of Us by Joji - Jamal

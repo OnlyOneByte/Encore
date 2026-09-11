@@ -154,7 +154,7 @@ class _Classified:
 
     Stamping here deletes the second copy instead of synchronizing it. A source now answers only "what
     text can I get", and the registry answers "and what is that text's standing" — which is where the
-    classification was always described. The stamp covers the fetched text AND its alternates (#873): an
+    classification was always described. The stamp covers the fetched text AND its alternates: an
     alternate is another version of the same song that `select_by_baselines` grades alongside the parent
     and may publish, so it wears the same tier — stamping only the parent left every alternate at the
     fail-closed ROLE_UNSPECIFIED default and let a winning alternate publish as unspecified.
@@ -180,7 +180,7 @@ class _Classified:
         # pool `[cand, *cand.alternates]` (chain.py) and MAY PUBLISH an alternate. So they carry the
         # same tier as their parent: stamping only `got` left every alternate at the fail-CLOSED
         # ROLE_UNSPECIFIED default, and a winning alternate then published as the song's words while
-        # unspecified — the exact fail-open the role default exists to prevent (#873). In-place is
+        # unspecified — the exact fail-open the role default exists to prevent. In-place is
         # correct here specifically: `got` and its alternates were just built by the source inside
         # this call and are held by nobody else, which is why the two lines above already mutate in
         # place. This is NOT the cross-object write #605 removed (that was the step layer reaching

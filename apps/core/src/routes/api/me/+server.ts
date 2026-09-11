@@ -18,7 +18,7 @@ export const GET: RequestHandler = async ({ cookies }) => {
 	const singer = getApp().singers.bySessionToken(token);
 	if (!singer) return json({ singer: null }, { status: 401 });
 	// `roomId` goes too, not just the token: this projects a StoredSinger onto the wire `Singer`, and
-	// `room_id` is a server-side scoping key (#797). The phone already learned its room from /api/join.
+	// `room_id` is a server-side scoping key. The phone already learned its room from /api/join.
 	const { sessionToken: _t, roomId: _r, ...safe } = singer;
 	return json({ singer: safe });
 };
@@ -38,7 +38,7 @@ export const PATCH: RequestHandler = async ({ request, cookies }) => {
 	const color = typeof body.color === 'string' ? normalizeSingerColor(body.color) : me.color;
 
 	try {
-		// Scope to `me.roomId` (#656) — uniqueness is per-party — and except `me.id`, or changing your
+		// Scope to `me.roomId` — uniqueness is per-party — and except `me.id`, or changing your
 		// own capitalisation would collide with yourself.
 		assertNameFree(app, me.roomId, displayName, me.id);
 	} catch (e) {
@@ -55,7 +55,7 @@ export const PATCH: RequestHandler = async ({ request, cookies }) => {
 	//
 	// `roomId` is stripped above as well as the token: this frame is typed `PublicSinger`, which has no
 	// room field, and a variable (rather than an inline literal) fires no excess-property check — so
-	// nothing but this strip keeps the wire shape equal to its declared type (#797).
+	// nothing but this strip keeps the wire shape equal to its declared type.
 	app.publish({ type: 'singer:updated', singer: safe });
 	return json({ singer: safe });
 };

@@ -17,13 +17,13 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	// What an empty setting resolves to (env, else this request). The TV needs it to recognise a
 	// settings change that CLEARED the address, which moves the QR back to this value.
 	const fallback = fallbackJoinOrigin(request, url);
-	// Advertise THIS room's join code in the QR (#654), so a scan lands the phone in this party rather
+	// Advertise THIS room's join code in the QR, so a scan lands the phone in this party rather
 	// than at a bare landing. The code is a query param the landing page (`/`) reads and forwards to
 	// /api/join. Absent only if the app singleton is unavailable (prerender/unit load), where a plain
 	// `/` is the honest fallback.
-	// #658 one-TV-per-room: resolve WHICH room this TV shows. An explicit ?room=<code> (validated
+	// one-TV-per-room: resolve WHICH room this TV shows. An explicit ?room=<code> (validated
 	// against the room repo) points the TV at that specific party; a bare /tv falls back to the room
-	// this box serves (activeRoomId), which is the pre-#658 behaviour. The resolved code is both what
+	// this box serves (activeRoomId), which is the pre-change behaviour. The resolved code is both what
 	// the QR advertises AND what the client passes on its WS URL (?room=<code>) so the socket binds to
 	// the same room — see tvRoomId in the WS upgrade. An unknown ?room code falls through to the
 	// served room rather than a code-less TV, so a stale code never dark-screens the display.

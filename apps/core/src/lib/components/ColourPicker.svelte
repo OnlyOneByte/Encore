@@ -123,7 +123,7 @@
 		e.preventDefault();
 		const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
 		// Anchor arrow movement on the SAME index the tab stop uses (presetTabStopIndex, via
-		// nextSwatchIndex) so the two cannot disagree after a wheel pick — see #215.
+		// nextSwatchIndex) so the two cannot disagree after a wheel pick —.
 		const next = nextSwatchIndex(value, step);
 		pickPreset(SINGER_COLORS[next]!);
 		(e.currentTarget as HTMLElement)?.querySelector<HTMLElement>(`[data-swatch="${next}"]`)?.focus();
@@ -197,7 +197,7 @@
 		gap: var(--space-lg);
 	}
 	/*
-	 * #913 S4: NOT migrated to ui/field, and the name is a coincidence rather than a shared pattern.
+	 * S4: NOT migrated to ui/field, and the name is a coincidence rather than a shared pattern.
 	 * These are presentational headings for a `role="radiogroup"` that carries its own `aria-label`, so
 	 * there is no control for a <label> to point at — `Field.Label` renders a real <label>, which would
 	 * be a label with no control, and `Field.Title` carries `data-slot="field-label"` and would inherit

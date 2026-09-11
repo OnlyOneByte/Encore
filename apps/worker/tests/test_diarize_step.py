@@ -1,4 +1,4 @@
-"""The Diarize step, wired into the real align plan (#691).
+"""The Diarize step, wired into the real align plan.
 
 Drives `plans.align_runner` with an injected fake diarizer and a vocals stem on disk, and asserts the
 published word-timed doc gains `part` labels on a confident duet — and stays byte-identical to today

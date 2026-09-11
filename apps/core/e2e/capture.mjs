@@ -33,8 +33,8 @@ import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #564, following the
- * #553/#557–#563 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so they
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
+ * same pattern as the other e2e drivers). Browser/Page are derived from cdp.mjs's own return types so they
  * cannot drift from the driver. page.evaluate() comes back Promise<any>, so DOM-shaped results are
  * cast at the call site.
  *
@@ -284,7 +284,7 @@ try {
 	);
 
 	/*
-	 * #833 re-shot this frame. It used to open the browse disclosure and photograph the artist and genre
+	 * re-shot this frame. It used to open the browse disclosure and photograph the artist and genre
 	 * facet rails; direction B deleted both, along with the readiness chips and the group headings, so
 	 * there is nothing to open. What the frame shows now is the thing that replaced them: the search box
 	 * docked in the thumb zone with the results stacked upward from it, which is only visible with a
@@ -312,7 +312,7 @@ try {
 	}
 
 	await frame('phone-search', async () => {
-		await openBrowseFromHome(maya); // #832: search lives behind the browse push
+		await openBrowseFromHome(maya); // search lives behind the browse push
 		await maya.fill(SEL.search, readyQuery ?? 'caroline');
 		await maya.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length`, {
 			timeout: 15_000
@@ -340,7 +340,7 @@ try {
 				.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`, { timeout: 10_000 })
 				.catch(() => 0);
 			await sleep(600);
-			// The transport is on the now-playing hero since #832 (it used to need the sheet's peek opened
+			// The transport is on the now-playing hero now (it used to need the sheet's peek opened
 			// with ArrowUp), and the hero is on home — which is also where the queue rows above render.
 			await returnHomeFromBrowse(maya);
 			await sleep(400);
@@ -372,7 +372,7 @@ try {
 	}
 
 	// Was 'phone-queue-sheet' — the pull-up sheet this frame existed to show is retired from the phone
-	// route by #832. The same content is now the home screen itself: hero, position line, rotation.
+	// route. The same content is now the home screen itself: hero, position line, rotation.
 	await frame('phone-home', async () => {
 		await returnHomeFromBrowse(maya);
 		await sleep(500);

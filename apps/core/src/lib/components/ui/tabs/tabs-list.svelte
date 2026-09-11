@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S4) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S4) ───────────────────────────────────────────────────────────────────
   Encore's settings scope switcher is a PILL SEGMENTED CONTROL, not shadcn's underlined tab strip, and
   the appearance is replaced rather than layered.
 

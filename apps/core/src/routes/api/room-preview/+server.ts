@@ -1,5 +1,5 @@
 // GET /api/room-preview?code=CODE — resolve a scanned/typed join code to a WORDS confirmation for an
-// unjoined guest: how many people are here now, and a couple of their names (#834, XR-PH-14, Q1-B).
+// unjoined guest: how many people are here now, and a couple of their names (XR-PH-14, Q1-B).
 //
 // Unauthenticated on purpose, and it is no new exposure: /tv reads no session and already renders the
 // present singers BY NAME on the big screen (`lib/tv/screen.ts`), and /metrics is ungated too — there is

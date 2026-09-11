@@ -758,13 +758,13 @@ test('with NO room cap, dispatch uses the global default unchanged (ceiling is d
 	expect(assign.params.model).toBe('bs-roformer-1297');
 });
 
-// ── #90: an unservable cook TTL-killed by dispatch() must settle its readiness gate ──
+// ── an unservable cook TTL-killed by dispatch() must settle its readiness gate ──
 // The TTL branch in dispatch() moves a permanently-unservable job to terminal `failed`, but before
-// #90 it left the media's gate mid-flight forever: readyToSing never flips, rotation holds the queue
+// it left the media's gate mid-flight forever: readyToSing never flips, rotation holds the queue
 // entry on every pass, and the song never plays even with its instrumental on disk. The existing
 // 'unservable job past the TTL is failed' test asserts only job.status + broadcast — never the media.
 // These assert the MEDIA state the issue names as the missing coverage.
-test('#90 TTL: a dead stems cook settles the STEMS gate back to un-cooked', () => {
+test('TTL: a dead stems cook settles the STEMS gate back to un-cooked', () => {
 	const { hub, jobs, mediaById, setClock } = harness();
 	mediaById.set('m1', media('m1', { stemStatus: 'queued' })); // separation in flight
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
@@ -776,11 +776,11 @@ test('#90 TTL: a dead stems cook settles the STEMS gate back to un-cooked', () =
 	setClock(T0 + 121_000);
 	hub.dispatch(); // past TTL → fail
 	expect(jobs.byId(job.id)!.status).toBe('failed');
-	// The regression: before #90 this stayed 'queued' forever.
+	// The regression: before the TTL branch settled the gate, this stayed 'queued' forever.
 	expect(mediaById.get('m1')!.stemStatus).toBe('none');
 });
 
-test('#90 TTL: a dead align cook settles the LYRICS gate on an already-playable song', () => {
+test('TTL: a dead align cook settles the LYRICS gate on an already-playable song', () => {
 	const { hub, jobs, mediaById, setClock } = harness();
 	// Instrumental on disk, song plays; only the align follow-up is unservable.
 	mediaById.set(

@@ -178,11 +178,11 @@ export const SINGER_HUES: readonly number[] = Array.from(
 // palette across that field washes the reel out, so the stage is generated far darker and far less
 // saturated.
 //
-// WHAT THIS TIER NO LONGER DOES, and the change is deliberate (#425). It used to be the room's only
+// WHAT THIS TIER NO LONGER DOES, and the change is deliberate. It used to be the room's only
 // way to name a stage colour: the room stored a HUE ANGLE and every stage went through
 // `stageHueToHex`, so the tier doubled as a LEGIBILITY BOUND that no picker could escape. The owner
 // retired that bound and replaced the job it was doing with a different mechanism — the lyric reel
-// now carries its own `-webkit-text-stroke` outline (#750, `b764d92`), so the words survive any
+// now carries its own `-webkit-text-stroke` outline (`b764d92`), so the words survive any
 // field instead of the field being restricted to keep them readable. Protecting the reel beats
 // restricting the choice, and a stroke works over a music video too, which a bound on the stage
 // colour never could.
@@ -319,7 +319,7 @@ export function isLegibleSingerColor(input: string): boolean {
 
 /**
  * The colour the TV lyric highlight should paint for the singer who is up — or `null` to leave the
- * room accent in place (#634).
+ * room accent in place.
  *
  * WHY THIS IS A SEPARATE FUNCTION and not a call to `normalizeSingerColor`. That sibling exists to
  * produce a colour that can be STORED, so it must always return something and falls back to a preset.
@@ -334,8 +334,8 @@ export function isLegibleSingerColor(input: string): boolean {
  * silently dropped the phone's avatar halo once already (see `normalizeSingerColor`, and the
  * `singer-color.test.ts` guard). So this is the sanitising boundary, not a convenience.
  *
- * WHY THE LEGIBILITY GATE IS `isLegibleSingerColor` and not a new rule. The owner's ruling on #634 was
- * to keep the singer's hue and let the reel's own `-webkit-text-stroke` (#750) carry legibility over
+ * WHY THE LEGIBILITY GATE IS `isLegibleSingerColor` and not a new rule. The owner's ruling was
+ * to keep the singer's hue and let the reel's own `-webkit-text-stroke` carry legibility over
  * the stage and over video — so there is no per-frame brightness derivation to invent here. What
  * remains is the floor that a colour must clear to be an identity colour at all, and that floor
  * already exists and is tested. A value that fails it is not a legitimate singer colour: it is junk,
@@ -374,7 +374,7 @@ export function normalizeSingerColor(input: string): string {
  * vanished identity marker is unrecoverable — a guest cannot see that their dot is invisible on
  * someone else's TV. A stage colour is the opposite: the room picked it, the room is looking at it,
  * and the thing it used to endanger (the word-timed lyric reel) now defends itself with a stroked
- * outline (#750, `b764d92`). So the room may pick white, and the words stay readable.
+ * outline (`b764d92`). So the room may pick white, and the words stay readable.
  *
  * What survives from the retired pin is its OTHER stated reason, which was never about brightness:
  * canonical 6-digit lowercase hex. The value is interpolated straight into a `style` attribute, and a
@@ -389,7 +389,7 @@ export function normalizeStageColor(input: unknown, fallback: string): string {
 	return rgb ? toHex(rgb) : fallback;
 }
 
-// ── stage dim (#782, piece 3 of #425) ──────────────────────────────────────
+// ── stage dim (piece 3) ──────────────────────────────────────
 //
 // A room-level 0..1 dimmer for the stage background. The owner ratified Q2 = A: "Dim the stage colour
 // toward black — today's geometry, no new layer." It is a LIGHTNESS control by another name, not an
@@ -519,10 +519,10 @@ export function nextSwatchIndex(value: string, step: number): number {
 /** A singer colour is any legible hex now, not one of eight literals. */
 export type SingerColor = string;
 
-// ── duet part colours (#692) ───────────────────────────────────────────────
+// ── duet part colours ───────────────────────────────────────────────
 
 /**
- * Map the abstract `part` letters a diarized duet carries (#691) onto DISTINCT, LEGIBLE reel
+ * Map the abstract `part` letters a diarized duet carries onto DISTINCT, LEGIBLE reel
  * colours — the visible half of the duet feature.
  *
  * WHAT IT RETURNS. A `Map<partLabel, hex>`, one legible colour per part, assigned in the order the
@@ -531,7 +531,7 @@ export type SingerColor = string;
  * The colours come from `SINGER_COLORS` — the palette the singer-identity dots already use — so the
  * two-colour reel reads in the app's established vocabulary rather than an invented pair.
  *
- * WHY IT REUSES `isLegibleSingerColor` AND NOT A HARD-CODED PAIR. The owner's ruling on #692 was
+ * WHY IT REUSES `isLegibleSingerColor` AND NOT A HARD-CODED PAIR. The owner's ruling was
  * explicit: over video with a scrim an illegible second colour is worse than one colour, and a
  * hard-coded second colour is rejected because it skips the legibility floor the singer-colour
  * vocabulary already enforces. So every colour handed back has cleared `isLegibleSingerColor`; a

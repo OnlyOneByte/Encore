@@ -1,6 +1,6 @@
 <script lang="ts">
 	/*
-	 * The guest's own place in the rotation, in WORDS (XR-PH-09, issue #832).
+	 * The guest's own place in the rotation, in WORDS (XR-PH-09).
 	 *
 	 * "3rd — you're up after Sam, roughly 11 minutes" is direction A's core promise, and the reason it
 	 * is a component rather than a string in the route is the DEGRADATION: the minutes clause is a

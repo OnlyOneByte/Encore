@@ -151,7 +151,7 @@ test('F1 the prose ban DISCRIMINATES — it still flags the exact sentences that
 	// green on a tree that had re-added them.
 	const shipped = [
 		'The room-scoping chain reads it: #655 keyed playback by room, and #656 keys the queue + roster',
-		'#654 sets the identity; the chain that scopes queue/playback to a room (#655/#656) reads it.'
+		'#654 sets the identity; the chain that scopes queue/playback to a room reads it.'
 	];
 	for (const s of shipped) {
 		// each names the mechanism within the window of a reading verb...

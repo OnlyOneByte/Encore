@@ -20,10 +20,10 @@ export interface StatePersistence {
 const NOOP_PERSIST: StatePersistence = { persist() {} };
 
 /**
- * The #128 resolution predicate: does `currentEntryId` name a live entry? This is the SINGLE
- * production statement of it. It was stated twice before (#803 removed server.ts's copy but left
+ * The resolution predicate: does `currentEntryId` name a live entry? This is the SINGLE
+ * production statement of it. It was stated twice before (an earlier fix removed server.ts's copy but left
  * this store boot-heal and player.ts's runtime recovery as two byte-identical copies modulo the
- * receiver, #848), and a developer narrowing one and not the other left boot and runtime disagreeing
+ * receiver), and a developer narrowing one and not the other left boot and runtime disagreeing
  * about whether the room is idle. Both askers — `hydrate`'s boot self-heal and
  * `reconcileOnReady`'s runtime recovery (player.ts) — now call this, so "what resolves" has one
  * answer. Lives here because store owns both `entries` and `PlaybackState`; `realtime` already
@@ -53,7 +53,7 @@ export class AuthoritativeState {
 	#orderingOf: () => Ordering;
 	// Monotonic source of the server-owned `addedAt` stamp. Every add op is re-stamped from this
 	// at the hub seam (see nextAddedAt), so the ordering input a room ranks singers by is never
-	// client-minted (issue #345). Seeded on hydrate from the max persisted stamp so a restart
+	// client-minted. Seeded on hydrate from the max persisted stamp so a restart
 	// followed by an add in the same millisecond still mints a value strictly above every
 	// persisted entry — the monotonic guarantee has to hold across the reboot, not just within one
 	// process lifetime.
@@ -100,7 +100,7 @@ export class AuthoritativeState {
 		}
 		if (playback) {
 			this.#playback = { ...playback };
-			// Self-heal a persisted DANGLING currentEntryId (issue #128): persist() snapshots entries and
+			// Self-heal a persisted DANGLING currentEntryId: persist() snapshots entries and
 			// playback independently, so a room saved while the playing entry was already pruned stores an
 			// id that names no live entry. Left as-is it survives the reboot and keeps the `!currentEntryId`
 			// auto-start gates jammed. Drop it here to UNJAM those gates — there is no boot resync or boot
@@ -153,7 +153,7 @@ export class AuthoritativeState {
 	 * Mint the next server-owned `addedAt` for an add op. MONOTONIC: `Math.max(Date.now(), last + 1)`
 	 * so two adds in the same millisecond still get distinct, strictly increasing stamps — the
 	 * ordering ranks singers by this value and the move-as-addedAt-permute reorder needs it total
-	 * (issue #345, and the original Finding #4 the client store records at stores/queue.ts). Owned
+	 * (the original Finding #4 the client store records at stores/queue.ts). Owned
 	 * here rather than as a module global so it is per-room and seeded from persisted state on hydrate.
 	 */
 	nextAddedAt(): number {
@@ -192,7 +192,7 @@ export class AuthoritativeState {
 		// `NOT NULL playback_state.position_sec` and took the process down from inside the flush timer.
 		// Telemetry is ephemeral: dropping a bad sample costs nothing, crashing the room costs the party.
 		if (!Number.isFinite(positionSec)) return;
-		// Keep SUB-SECOND precision in the broadcast/in-memory position (#718). Flooring HERE made the
+		// Keep SUB-SECOND precision in the broadcast/in-memory position. Flooring HERE made the
 		// first ~1.25s of every song (and every restart) broadcast an exact `positionSec: 0`, which
 		// `guide-sync.ts`'s `restartToZero` clause reads as an unambiguous rewind — so any command in
 		// that window (key/guide/pause) re-seeked the master and guide back to 0. The `integer`

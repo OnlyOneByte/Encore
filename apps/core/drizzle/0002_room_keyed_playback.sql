@@ -1,4 +1,4 @@
--- #655: key playback_state by room, dropping the deployment-wide 'singleton' row.
+-- key playback_state by room, dropping the deployment-wide 'singleton' row.
 --
 -- A real numbered migration (0002, after #669's 0001 job_attempts.selection), NOT an in-place
 -- 0000_baseline edit: an in-place baseline rewrite is never re-applied to an existing DB (drizzle
@@ -9,7 +9,7 @@
 -- RE-KEYED onto the active room rather than dropped, preserving the party's now-playing / position /
 -- key-shift / background across the upgrade. The active room is the oldest one — the same room
 -- RoomRepository.ensureActive() resolves to (ORDER BY created_at ASC), which is where an unqualified
--- join lands. A DB with a persisted playback row but NO rooms row yet (a pre-#654 database) has no
+-- join lands. A DB with a persisted playback row but NO rooms row yet (a pre-change database) has no
 -- room to carry it onto; the WHERE guard drops that orphan row instead of failing the NOT NULL PK.
 PRAGMA foreign_keys=OFF;--> statement-breakpoint
 CREATE TABLE `__new_playback_state` (

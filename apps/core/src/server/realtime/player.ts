@@ -44,7 +44,7 @@ const EPHEMERAL_RESET = {
  * visible beat to disappear from the rotation. `ops: []` with the entries inline is the same shape
  * handleQueueCommand sends; the client adopts the snapshot and re-applies its pending ops on top.
  *
- * Exported (#762) for `media/delete.ts`, the other server-side path that removes entries nobody asked
+ * Exported for `media/delete.ts`, the other server-side path that removes entries nobody asked
  * to remove. It had the same defect for the same reason — `applyQueueOp` publishes nothing — and closing
  * it by open-coding a second `queue:patch` there would have made this repo's fourth hand-written copy
  * of one broadcast. One publisher; the SHAPE of a queue broadcast is decided here.
@@ -64,7 +64,7 @@ export function publishQueue(deps: HubDeps): void {
  * re-deriving them at its own seam.
  *
  * This exists because the `hello` resync in apps/core/server.ts used to hand-build a byte-identical
- * copy of this payload (issue #803). `deps.publish` is typed `(event: ServerEvent) => void`, but the
+ * copy of this payload. `deps.publish` is typed `(event: ServerEvent) => void`, but the
  * resync path writes through `ws.send(JSON.stringify(...))`, which accepts anything — so the compiler
  * named only ONE of the two sites when the variant changed, and a reconnecting TV/phone could be
  * served a stale projection while every live client got the new one. Returning the typed variant
@@ -128,7 +128,7 @@ export function reconcileOnReady(deps: HubDeps): void {
 	// such pairing, so a remove/status of the PLAYING entry leaves currentEntryId dangling. Enforce it
 	// here, at the recovery entry point, by treating a dangling id exactly like a null one.
 	//
-	// #128 recovery predicate, now single-sourced: `entryResolves` (state/store.ts) is the ONE
+	// recovery predicate, now single-sourced: `entryResolves` (state/store.ts) is the ONE
 	// production statement of "does currentEntryId name a live entry?". #803 removed server.ts's
 	// copy that decided whether to CALL this function, but left two copies of the predicate itself —
 	// this runtime recovery and store.ts's boot self-heal — byte-identical modulo the receiver, which
@@ -291,7 +291,7 @@ export interface TvTelemetry {
 	 * unconditional advance. When present, an `ended` for an entry that is no longer
 	 * `state.playback.currentEntryId` is a stale/duplicate frame (a double send, a second TV,
 	 * or a reconnecting TV replaying its last frame) and is ignored, so one bad track can no
-	 * longer consume the next singer's turn as well (#70).
+	 * longer consume the next singer's turn as well.
 	 */
 	entryId?: string;
 }
@@ -307,12 +307,12 @@ export function handleTelemetry(t: TvTelemetry, deps: HubDeps): void {
 	if (!t || typeof t !== 'object') return;
 	const { state } = deps;
 	// A frame that names an entry which is no longer `currentEntryId` is stale — a duplicate send,
-	// a second/reconnecting TV replaying its last frame, or (the position case, #125) the outgoing
+	// a second/reconnecting TV replaying its last frame, or (the position case) the outgoing
 	// song's `<audio>` firing one more `ontimeupdate` across the round-trip + slot swap of an advance.
 	// Whatever it reports, act on NOTHING it says: the `ended` branch must not advance a second time
-	// and skip the next singer's turn (#70), and the position branch must not write the previous
+	// and skip the next singer's turn, and the position branch must not write the previous
 	// song's playhead as the new entry's position — which is fed back to the TV as a seek target and
-	// starts the incoming singer mid-song (#125). A frame with no id keeps the legacy behaviour so an
+	// starts the incoming singer mid-song. A frame with no id keeps the legacy behaviour so an
 	// older TV that stamps no entry id is unaffected on both paths.
 	if (t.entryId !== undefined && t.entryId !== state.playback.currentEntryId) return;
 	if (t.ended) {

@@ -43,8 +43,8 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #564, following the
- * #553/#557–#563 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so they
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
+ * pattern the other out-of-program drivers use). Browser/Page are derived from cdp.mjs's own return types so they
  * cannot drift from the driver. page.evaluate()/fetch().json() come back Promise<any>, so DOM/API-shaped
  * results are cast at the call site via the domain typedefs below.
  *
@@ -252,7 +252,7 @@ try {
 		await page.goto(`${base}/join`);
 		await page.fill(SEL.nameInput, name);
 		await page.clickByText('Start singing');
-		// Wait for the remote. The search field USED to be the signal the room UI mounted; since #832 it
+		// Wait for the remote. The search field USED to be the signal the room UI mounted; now it
 		// lives on the browse screen, so the docked band is the joined-home signal and this helper also
 		// leaves the page on the browse screen, where the rest of this probe expects to be.
 		await page.waitFor(`location.pathname === '/'`);
@@ -269,7 +269,7 @@ try {
 	// better and future controls will need it.
 	/**
 	 * Reach the transport. It used to live in the queue sheet's peek and needed the sheet opened; since
-	 * #832 it is on the now-playing HERO, on the joined home screen, so reaching it means BEING there —
+	 * it is on the now-playing HERO, on the joined home screen, so reaching it means BEING there —
 	 * which is also where the rotation rows this probe counts are rendered.
 	 * @param {Page} page
 	 */
@@ -280,13 +280,13 @@ try {
 	// Queue a cooked song from a phone. Uses the real UI: search, then click .add on a ready row.
 	/** @param {Page} page @param {string} q */
 	async function queueSong(page, q) {
-		await openBrowseFromHome(page); // #832: search lives behind the browse push
+		await openBrowseFromHome(page); // search lives behind the browse push
 		await page.fill(SEL.search, q);
 		await page.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 		// Prefer .add (already cooked) over .sing (queue+cook) so we do not depend on the fake worker.
 		const hasAdd = await page.count(SEL.addTurn);
 		await page.click(hasAdd > 0 ? SEL.addTurn : SEL.sing);
-		// The rotation is on home (#832). A PLAYING entry is not a `.qrow` — `queued` filters it out and
+		// The rotation is on home. A PLAYING entry is not a `.qrow` — `queued` filters it out and
 		// it renders on the hero — so accept either, or the first song of the night reads as unqueued.
 		await returnHomeFromBrowse(page);
 		await page

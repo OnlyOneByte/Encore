@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S7) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS ─────────────────────────────────────────────────────────────────────────────
   The registry's Empty is a PANEL: `p-12`, a dashed border, `flex-1`, centred, and `text-balance` inside
   a `max-w-sm` header. Encore's empty state is a quiet dim LINE — `.empty` was
   `color: var(--ink-dim); padding: 0 var(--space-2xs); font-size: var(--ph-text-md)`.

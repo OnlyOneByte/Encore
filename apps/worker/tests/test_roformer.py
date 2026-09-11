@@ -75,7 +75,7 @@ def test_stem_discovery_is_not_fooled_by_a_slug_that_contains_the_other_role(tmp
     vocals-revive-v2-by-unwa,vocals-revive-v3e-by-unwa,instrumental-resurrection-by-unwa}), so a bare
     substring match lets the instrumental file satisfy find_roformer_vocals (and, for the
     instrumental-named slug, the vocals file satisfy find_roformer_instrumental). Assert both stems
-    resolve to their OWN role for every slug. RED on base for the six colliding slugs (#445)."""
+    resolve to their OWN role for every slug. RED on base for the six colliding slugs."""
     inst = tmp_path / f"input_(Instrumental)_{slug}.wav"
     vox = tmp_path / f"input_(Vocals)_{slug}.wav"
     inst.write_bytes(b"INST")
@@ -168,7 +168,7 @@ def test_the_demucs_default_cannot_reach_the_roformer_engine():
     )
     assert eng.id == "roformer"
     assert eng.resolve_model({}) == roformer_default_slug, (
-        "a demucs checkpoint reached the roformer engine and stranded DEFAULT_ROFORMER_MODEL (issue #84)"
+        "a demucs checkpoint reached the roformer engine and stranded DEFAULT_ROFORMER_MODEL"
     )
 
     # The roformer engine can still be given its OWN default explicitly.
@@ -178,7 +178,7 @@ def test_the_demucs_default_cannot_reach_the_roformer_engine():
 
 # ── end-to-end roformer cook (fake bs-roformer-infer runner) ──────────────────────
 #
-# Issue #86: every test above is a pure-helper test — none constructs a stems job with
+# every test above is a pure-helper test — none constructs a stems job with
 # `engine == "roformer"` and drives it through `plans.stems_runner`. So the four documented
 # demucs/roformer differences (engines.py:1-20) and the resolved-slug `facts["model"]` were
 # UNASSERTED, and a regression in the RoformerEngine seam (input handed the file not its dir,
@@ -205,7 +205,7 @@ def _roformer_fake_runner(
     simulates a roformer run that produced the instrumental but not the vocals stem (best-effort path).
 
     The acquisition / volumedetect / encode branches (including the volumedetect branch that makes the
-    silence probe real) live in the shared `fake_cli_runner` (issue #455); only the bs-roformer-infer
+    silence probe real) live in the shared `fake_cli_runner`; only the bs-roformer-infer
     writes + tqdm progress are here."""
     calls: list[list[str]] = []
 
@@ -346,7 +346,7 @@ async def test_a_roformer_cook_missing_vocals_is_best_effort_still_publishes_ins
     RoformerEngine.find_outputs maps the `vocals` key onto None and the publish step drops null stems.
     The cook must still complete best-effort and publish the load-bearing instrumental, with the vocals
     key simply ABSENT — not a None value. Without this, a roformer cook could silently drop its guiding
-    track on the best-effort path and every worker test stayed green (issue #346, the half of #245 that
+    track on the best-effort path and every worker test stayed green (the half that
     #333 left open). Mirrors the demucs sibling's `"vocals" not in stems` shape, NOT
     `stems["vocals"] is None`."""
     runner, _ = _roformer_fake_runner(write_vocals=False)  # instrumental written, vocals output absent

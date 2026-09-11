@@ -1,7 +1,7 @@
 // The position the lyrics reel DRAWS at, as a pure function of the authoritative playback position —
 // and specifically why the paused case may not depend on a running clock.
 //
-// THE BUG THIS CLOSES (issue #54). Defocus the TV while a song is PAUSED and the reel snaps to
+// THE BUG THIS CLOSES. Defocus the TV while a song is PAUSED and the reel snaps to
 // the first line; unpausing restores the correct place. The drawn scroll offset is derived from
 // `displayPos`, which LyricsOverlay kept as a mutable `$state(0)` that its requestAnimationFrame loop
 // rewrote every frame. A backgrounded tab has its rAF throttled or stopped, so the loop that was the

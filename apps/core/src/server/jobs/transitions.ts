@@ -77,7 +77,7 @@ export function assertEvent(from: JobStatus, event: JobEvent): JobStatus {
 // — status-pair view (derived) —
 // Kept so callers/tests that ask "is any edge from A to B legal?" still work. This is the LOSSY
 // projection the event table replaces: it cannot say WHICH event produced the edge, which is exactly
-// why the machine is now keyed on the event. `assertTransition`'s message matches the pre-#471 wire.
+// why the machine is now keyed on the event. `assertTransition`'s message matches the pre-change wire.
 
 /** True iff SOME event carries `from` to `to`. */
 export function canTransition(from: JobStatus, to: JobStatus): boolean {

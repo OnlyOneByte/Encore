@@ -107,7 +107,7 @@ def fake_runner(
     simulates a run that produced the instrumental but not the vocals (best-effort path).
 
     The acquisition / volumedetect / encode branches (and the volumedetect branch that makes the silence
-    probe real) live in the shared `fake_cli_runner` (issue #455); only the demucs-specific writes are
+    probe real) live in the shared `fake_cli_runner`; only the demucs-specific writes are
     here."""
 
     async def demucs_handler(argv):
@@ -162,7 +162,7 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
     assert completes[0].artifacts["stems"]["instrumental"] == final
     # the isolated vocals stem is ALSO published (was previously discarded)
     vocals = completes[0].artifacts["stems"]["vocals"]
-    assert vocals.endswith("m1-vocals.flac")  # #480: vocals stem is lossless FLAC
+    assert vocals.endswith("m1-vocals.flac")  # vocals stem is lossless FLAC
     assert Path(vocals).exists()
 
 
@@ -294,7 +294,7 @@ def test_decode_forces_stereo_but_NEVER_resamples():
 
 
 def test_both_stems_are_encoded_LOSSLESS_flac():
-    # #480: both stems go through encode_flac_argv. The instrumental plays at volume (a second lossy
+    # both stems go through encode_flac_argv. The instrumental plays at volume (a second lossy
     # generation is audible on crash cymbals); the vocals stem is the guiding track (a played second
     # <audio>) and sharing the FLAC codec removes the AAC-in-m4a priming-sample start offset.
     for out in ("/m/derived/stems/id1-instrumental.flac", "/m/derived/stems/id1-vocals.flac"):
@@ -313,7 +313,7 @@ def test_find_downloaded_ignores_partial_downloads():
         assert fetch_mod.find_downloaded(d, "id1") is None
         open(_os.path.join(d, "id1.webm.part"), "w").close()
         assert fetch_mod.find_downloaded(d, "id1") is None  # an interrupted download is not a result
-        # #672: --write-info-json drops `<id>.info.json` beside the audio. `.info.json` sorts BEFORE
+        # --write-info-json drops `<id>.info.json` beside the audio. `.info.json` sorts BEFORE
         # `.webm`/`.m4a` in the `sorted(os.listdir(...))` scan, so without the skip it would be
         # returned as ctx.audio.path on every fresh download (and the retained-original early-return
         # would then point at the JSON). It is metadata, never the audio.
@@ -487,7 +487,7 @@ async def test_subprocess_runner_idle_timer_resets_on_each_line(monkeypatch):
 
 
 def test_classify_retryable_flows_through_the_shared_retry_policy_table():
-    """#497 (Part 2/3 of #443): demucs.classify_retryable must CONSUME retry_policy's one canonical
+    """demucs.classify_retryable must CONSUME retry_policy's one canonical
     PERMANENT_MARKERS table, not keep a divergent copy. demucs raises ProcessError for ffmpeg and
     bs-roformer-infer too, so a deterministic separator/encoder failure whose stderr hits a canonical
     marker must classify NON-retryable — reds on base, whose download-only list omitted these markers.
@@ -511,8 +511,8 @@ def test_classify_retryable_flows_through_the_shared_retry_policy_table():
 
 
 def test_resolve_demucs_model_unknown_is_structurally_non_retryable():
-    """The unknown-model ValueError now routes through retry_policy.BoundaryError (#497 coordination
-    note), so it stays a ValueError drop-in but carries the shared structured retryable = False —
+    """The unknown-model ValueError now routes through retry_policy.BoundaryError (the shared
+    boundary type), so it stays a ValueError drop-in but carries the shared structured retryable = False —
     an unknown model fails fast instead of burning three attempts. Reds on base (plain ValueError,
     no .retryable, so is_retryable would default it retryable off the heuristic)."""
     from src import retry_policy
@@ -524,7 +524,7 @@ def test_resolve_demucs_model_unknown_is_structurally_non_retryable():
     assert retry_policy.is_retryable(excinfo.value) is False
 
 
-# ── #119: the resolved backend must DRIVE the run, not just reach a log line ───────
+# ── the resolved backend must DRIVE the run, not just reach a log line ───────
 # Before this fix, backends.resolve_backend picked a backend (mlx on an Apple-Silicon box) that
 # reached nothing but a startup print: stems_runner had no backend parameter, engine_for always built
 # the torch DemucsEngine, and facts.backend was the hardcoded class attribute "torch". So a Mac
@@ -549,8 +549,8 @@ def test_engine_for_mlx_backend_builds_the_mlx_engine_not_torch():
     """`engine_for('demucs', backend='mlx')` builds the MLX engine (backend 'mlx') — it NEVER returns a
     torch DemucsEngine under an mlx label.
 
-    This is the machine-checkable form of the log-lies-to-you bug (#119): an mlx resolution must not
-    silently produce a torch cook. #595 implemented the MLX engine, so it now builds and runs rather than
+    This is the machine-checkable form of the log-lies-to-you bug: an mlx resolution must not
+    silently produce a torch cook. The MLX engine is now implemented, so it builds and runs rather than
     refusing — but it is still a distinct engine reporting backend 'mlx', never the torch DemucsEngine.
     """
     from src.separation.engines import DemucsEngine, MlxDemucsEngine, engine_for
@@ -579,13 +579,13 @@ async def test_a_torch_stems_cook_records_torch_because_torch_ran(tmp_path):
 
 @pytest.mark.asyncio
 async def test_an_mlx_resolved_stems_cook_runs_demucs_mlx_and_derives_the_instrumental(tmp_path):
-    """The wire, end-to-end (#595): stems_runner(backend='mlx') runs the `demucs-mlx` CLI (never the
+    """The wire, end-to-end: stems_runner(backend='mlx') runs the `demucs-mlx` CLI (never the
     torch `demucs` CLI), derives the instrumental with an ffmpeg mix-minus pass over the non-vocal
     stems, publishes it, and records facts.backend == 'mlx' because MLX actually RAN.
 
-    Before #595 this cook failed loudly at construction ('demucs-mlx engine is not implemented'); the
+    Before the MLX runtime existed this cook failed loudly at construction ('demucs-mlx engine is not implemented'); the
     MLX runtime is now implemented, so it completes. The torch demucs CLI must still never run for an
-    mlx cook — that is the #119 honesty contract preserved.
+    mlx cook — that is the honesty contract above preserved.
     """
     ran: list[str] = []
 

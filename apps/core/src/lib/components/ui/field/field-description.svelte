@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S4) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S4) ───────────────────────────────────────────────────────────────────
   shadcn's TYPOGRAPHY is kept — S4 accepted the visual change. What is restored is LAYOUT, because
   losing it is a broken page rather than a different-looking one:
 

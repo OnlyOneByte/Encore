@@ -1,4 +1,4 @@
--- #766: media.guide_offset_ms — the measured signed millisecond offset of the vocals stem against
+-- media.guide_offset_ms — the measured signed millisecond offset of the vocals stem against
 -- the instrumental, so guide/instrumental alignment is OBSERVABLE instead of assumed.
 --
 -- A real numbered migration (0006, after #425's 0005_tv_background_color), NOT an in-place edit of a

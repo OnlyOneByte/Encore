@@ -183,7 +183,7 @@
 	 * navigation and the fine print at the same visual level.
 	 */
 	/*
-	 * #913 S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
+	 * S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
 	 * title where this was hand-styled, which is part of the visual change accepted for S4.
 	 */
 	/*
@@ -191,7 +191,7 @@
 	 * stretching each tile to ~350px, and capping the container solved that at the root. A fixed 260px
 	 * max here instead wrapped the third tile onto its own row inside the narrower container.
 	 *
-	 * The floor is in `em`, not `px` (#850). A tile's own longest word cannot wrap — "different" is one
+	 * The floor is in `em`, not `px`. A tile's own longest word cannot wrap — "different" is one
 	 * token — so a track narrower than that word plus the card's padding does not clip, it pushes the
 	 * whole page wider. A px floor is fixed while the word it has to hold grows with the guest's
 	 * text-size setting, so at 200% the floor stops bounding anything. 9em tracks the type: at the
@@ -234,7 +234,7 @@
 	 * the third stranded beside empty space. The headline takes the full row instead, which reads as a
 	 * banner over two supporting figures rather than a broken grid.
 	 *
-	 * `max(9em, 40%)` is that two-up written as a floor rather than as a fixed `1fr 1fr` (#850). The
+	 * `max(9em, 40%)` is that two-up written as a floor rather than as a fixed `1fr 1fr`. The
 	 * 40% term is what caps the row at two — three tracks would need 120% of the row, so they never
 	 * fit — and it replaces the fixed pair without changing the phone layout at the default text size.
 	 * The 9em term is what makes the row give way: once the type outgrows half the width, one column is
@@ -249,7 +249,7 @@
 		}
 	}
 	/*
-	 * #913 S8 fix: the grid is on the element that CONTAINS the spans, INSIDE Card.Content. It was on the
+	 * S8 fix: the grid is on the element that CONTAINS the spans, INSIDE Card.Content. It was on the
 	 * outer wrapper for one build, where it did nothing — Card.Content sits between, so each tile's
 	 * number, label and footnote laid out inline and read as a single wrapping line. A screenshot caught
 	 * it; nothing else could, because both elements exist and both rules apply, just not to each other.

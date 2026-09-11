@@ -1,8 +1,8 @@
--- #462 (PR3, "apply the gain"): room_settings gains loudness_normalization — a per-room toggle that,
+-- (PR3, "apply the gain"): room_settings gains loudness_normalization — a per-room toggle that,
 -- when on, pulls loud OUTLIER songs down at playback (a song whose measured songProfile.loudnessLufs
 -- is more than 6 dB above the library median is attenuated to median + 6, once at least 8 songs carry
 -- a measured level). Owner ruling 2026-09-09. The decision + pulldown happen at playback in TvPlayer;
--- the measurement (PR1 #747) and its persistence (PR2 #785) already landed.
+-- the measurement and its persistence already landed.
 --
 -- A real numbered migration (0008, after #782's 0007_add_tv_background_dim), NOT an in-place edit of a
 -- baseline: drizzle replays on the journal `when`, so a rewritten baseline never re-applies to an

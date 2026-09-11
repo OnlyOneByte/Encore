@@ -1,7 +1,7 @@
 """One canonical fake CLI runner for the worker suite.
 
 Three copies of this scaffolding used to live in test_demucs.py, test_song_profile.py and
-test_roformer.py (issue #455). The copies drifted, and one branch in particular carries correctness:
+test_roformer.py. The copies drifted, and one branch in particular carries correctness:
 the ``ffmpeg ... volumedetect`` case is a MEASURING call (it ends in ``-f null -``, writes no file) and is
 the only thing that makes ``ProbeSilence`` real. An earlier revision treated it like an encode, wrote to
 ``dirname("-") == ""``, raised, and ``ProbeSilence``'s ``try/except`` (``steps/separate.py``) swallowed it --

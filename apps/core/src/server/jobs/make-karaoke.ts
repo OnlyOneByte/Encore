@@ -133,7 +133,7 @@ export function cookState(
 	// FIRST, and before any room state: this is a property of the SONG, not of the moment. A
 	// metadata-only source (Spotify) has no fetcher that can pull its bytes, so no sequence of events
 	// can ever make it cookable — answering anything else here is what let the phone offer Sing and
-	// book a turn that could never play (#742). Checked ahead of `playing`/`ready`/`over-limit`
+	// book a turn that could never play. Checked ahead of `playing`/`ready`/`over-limit`
 	// deliberately: those are all states a song passes through, and this one it can never leave.
 	if (!isCookableSource(media.source)) return 'not-cookable';
 	const current = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId);
@@ -216,7 +216,7 @@ export interface ReselectResult {
 }
 
 /**
- * The MediaStore key a pasted manual candidate is written under (#640). Deterministic so a repeated
+ * The MediaStore key a pasted manual candidate is written under. Deterministic so a repeated
  * paste OVERWRITES the same artifact rather than stacking duplicates — the worker computes the same
  * key from `pinnedRef` and `mergeLyricsCandidate` dedupes on it. Mirrors the worker's `candidate_key`
  * for the (manual, word) tier; a re-time always lands word timings, so the tier is fixed.
@@ -226,7 +226,7 @@ export function manualLyricsRef(mediaId: string): string {
 }
 
 /**
- * A HUMAN RE-PICK of the lyrics set, then a re-time (#640). Two shapes: pick an already-stored
+ * A HUMAN RE-PICK of the lyrics set, then a re-time. Two shapes: pick an already-stored
  * candidate by `ref`, or paste new `text` (a `manual`-source candidate the worker will time). Either
  * way the choice is pinned on the media (`lyricsOverrideRef`) so it OUTRANKS `pickBestLyrics`
  * everywhere the chosen candidate is resolved, and an `align` job is made to actually RUN.
@@ -390,7 +390,7 @@ export function settleGatesForFailedJob(job: Job, mediaById: Map<string, Media>)
  * inferred from the (now uniform) format: `worker` — the worker reported job:failed and retries are
  * exhausted (worker-hub #onFailed); `unservable` — no connected worker ever advertised the required
  * capability within the TTL (worker-hub dispatch loop); `reaper` — a lease expired and the JobReaper
- * exhausted attempts with no worker in the loop at all (app.ts, issue #303).
+ * exhausted attempts with no worker in the loop at all (app.ts).
  */
 export type TerminalFailureCause = 'worker' | 'unservable' | 'reaper';
 
@@ -419,17 +419,17 @@ export interface TerminalFailureDeps {
 
 /**
  * The terminal-failure EPILOGUE — the four things every permanently-failed cook must do, in one
- * place (issue #451). Before this, three sites open-coded the identical four steps
+ * place. Before this, three sites open-coded the identical four steps
  * (worker-hub #onFailed, worker-hub's unservable-TTL branch, and app.ts's reaper onFailed hook) and a
  * fourth copy was reconstructed inside reaper-broadcast-on-failure.test.ts. Only the inner gate rule
- * (settleGatesForFailedJob, #90) had been extracted, so the epilogue AROUND it kept drifting: the TTL
+ * (settleGatesForFailedJob) had been extracted, so the epilogue AROUND it kept drifting: the TTL
  * branch omitted cleanJobWork, app.ts hand-reimplemented the private #emitStatus, and all three log
  * lines diverged (different tag, some missing media/attempts) so no single grep found every terminal
  * failure — the shape that let the reaper path ship silent until #303.
  *
  * The four steps, in order:
  *   1. Settle the readiness gate for this job type so `readyToSing` can flip and rotation stops
- *      holding the queue entry (settleGatesForFailedJob, #90).
+ *      holding the queue entry (settleGatesForFailedJob).
  *   2. Broadcast `media:status` so a watching phone leaves 'cooking' → 'failed' and the Sing button
  *      returns — gated on shouldBroadcastCook exactly as #emitStatus is, so a dead `stems-upgrade` on
  *      an already-singable song does not flip every ready row back to "Making karaoke".
@@ -490,7 +490,7 @@ export function markLyricsQueued(mediaId: string, mediaById: Map<string, Media>)
  *   • `musicbrainz` — a search that AGREED on artist and title with a corroborating duration; carries
  *     an MBID.
  *   • `youtube` — YouTube's OWN extracted `track`/`artist` metadata, captured for free at download time
- *     (#672). The uploader DECLARED the credit rather than us reverse-engineering it from the title, so
+ *. The uploader DECLARED the credit rather than us reverse-engineering it from the title, so
  *     it is a citation, not a guess — `high`, and with NO MBID (YouTube does not mint one). An MBID is
  *     therefore required only for the `musicbrainz` source.
  *
@@ -564,7 +564,7 @@ export function setMediaLyrics(
 			merged = mergeLyricsCandidate(merged, { ...c, ref });
 		}
 		media.lyricsCandidates = merged;
-		// Resolve through the SHARED resolver so a human override (#640) wins over the ranking here just
+		// Resolve through the SHARED resolver so a human override wins over the ranking here just
 		// as it does on a sidecar restore — the SAME function, so a live align completion and a restore
 		// can never disagree. With no override this is exactly pickBestLyrics as before.
 		const chosen = resolveLyricsRef(merged, media.lyricsOverrideRef);
@@ -604,7 +604,7 @@ export function setMediaVocals(mediaId: string, uri: string | undefined, mediaBy
 
 /**
  * Attach the MEASURED guide offset — how far the vocals stem sits from the instrumental, in signed
- * milliseconds, so guide/instrumental alignment is observable instead of assumed (#766).
+ * milliseconds, so guide/instrumental alignment is observable instead of assumed.
  *
  * Additive and independent of the instrumental flip, like setMediaVocals — and like it, a VALUE-OR-NOTHING
  * field, not an always-write one. The worker measures the offset best-effort and only reports it when it

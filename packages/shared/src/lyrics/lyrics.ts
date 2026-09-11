@@ -102,7 +102,7 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
  * It reads `coverage`, NOT `agreement`. Thresholding the ranking score instead convicts a CORRECT
  * candidate whose baseline heard only part of the song — the repo's normal case, since YouTube's ASR
  * suppresses sung vocals — and then the ASR baseline wins `pickBestLyrics` while the correct words sit
- * unshown beside it (#806). `agreement` stays a preference axis inside `breaksTie`, which is ranking
+ * unshown beside it. `agreement` stays a preference axis inside `breaksTie`, which is ranking
  * and is its correct use.
  * Demoting its `textConfidence` alone is NOT enough: that only drops it to the same rank as the
  * baseline it was measured against, and `breaksTie` then PREFERS it, because it carries a numeric
@@ -195,7 +195,7 @@ export const MIN_TOKENS_TO_COMPARE = 12;
 /**
  * Below this BASELINE COVERAGE, treat an authoritative lookup as probably the WRONG SONG.
  *
- * Replaces `SUSPECT_AGREEMENT = 0.25` (#542). Both the metric and the axis changed, so the constant is
+ * Replaces `SUSPECT_AGREEMENT = 0.25`. Both the metric and the axis changed, so the constant is
  * renamed rather than re-valued — a same-named threshold on a different scale is a trap.
  *
  * Coverage, not the ranking score, because only coverage is immune to the size asymmetry a partial
@@ -208,7 +208,7 @@ export const MIN_TOKENS_TO_COMPARE = 12;
 export const SUSPECT_COVERAGE = 0.4;
 
 /**
- * Weight of the POSITION-aware term in the ranking score (#542). Equal weight with the count-aware
+ * Weight of the POSITION-aware term in the ranking score. Equal weight with the count-aware
  * term; any other split would be a coefficient nobody has measured. Ranking is threshold-free, so this
  * steers a comparison and cannot by itself accept or reject anything.
  */
@@ -254,7 +254,7 @@ export interface Agreement {
 /**
  * Compare a CANDIDATE against a BASELINE, or `null` when the comparison says nothing.
  *
- * The directional split is the point (#542). Symmetric Jaccard averaged the two directions into one
+ * The directional split is the point. Symmetric Jaccard averaged the two directions into one
  * number and destroyed the fingerprint of "right song, WRONG version" — near-complete coverage of the
  * audible words while a large part of the candidate is not audible at all (measured on the real reported
  * mis-pick: coverage 0.857, fidelity 0.485, and a symmetric 0.448 that sailed past the old 0.25).
@@ -286,7 +286,7 @@ export function agreement(candidate: string, baseline: string): Agreement | null
 /**
  * The 0..1 ranking score for one candidate against one baseline, or `null` when not comparable.
  *
- * Count- and position-aware since #542; it was symmetric Jaccard over token SETS. Selection ranks by
+ * Count- and position-aware; it was symmetric Jaccard over token SETS. Selection ranks by
  * this and applies no threshold to it; the absolute wrong-song judgement reads `coverage` instead.
  */
 export function agreementScore(candidate: string, baseline: string): number | null {

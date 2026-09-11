@@ -1,5 +1,5 @@
 /*
- * #736 — THE TAP-TO-START SCRIM MUST NOT OUTLIVE THE ROOM.
+ * — THE TAP-TO-START SCRIM MUST NOT OUTLIVE THE ROOM.
  *
  * `{#if autoplayBlocked}` was the only gate on the full-screen tap-to-start overlay, so it carried no
  * term for "there is something to play". The latch has exactly two writers, both per-slot props
@@ -11,7 +11,7 @@
  *
  * WHY THIS PROBE AND NOT A UNIT TEST. The defect is a rendered stacking-order fact — which element is
  * topmost at the join card's own centre — and Encore has no jsdom, so it is not decidable in `bun test`.
- * The suite guard is a source scan (apps/core/src/lib/tv/autoplay-recovery.test.ts, "#736"); this is the
+ * The suite guard is a source scan (apps/core/src/lib/tv/autoplay-recovery.test.ts, "the /tv autoplay hint is scoped to the on-stage band"); this is the
  * rendered half.
  *
  * GESTURELESS BY CONSTRUCTION: no --autoplay-policy flag anywhere below. That restriction is the whole
@@ -163,7 +163,7 @@ try {
 	await openBrowseFromHome(phone);
 	await ensureProbeWs(phone);
 
-	await openBrowseFromHome(phone); // #832: search lives behind the browse push
+	await openBrowseFromHome(phone); // search lives behind the browse push
 	await phone.fill(SEL.search, 'caroline');
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const hasAdd = await phone.count(SEL.addTurn);

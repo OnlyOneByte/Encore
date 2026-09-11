@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S8) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S8) ───────────────────────────────────────────────────────────────────
   What Encore uses this for is the CONFIG CONTRACT — `config` → a `--color-<series>` custom property
   per series, emitted by ChartStyle onto `[data-chart=<id>]` — not layerchart's marks.
 

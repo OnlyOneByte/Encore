@@ -7,10 +7,10 @@ import type { LyricsCandidate } from '../lyrics/lyrics';
 import type { SongProfile } from '../cook/song-profile';
 import type { EffectiveSettings, TvBackgroundStyle } from './settings';
 
-// The Bun.serve pub/sub TOPIC a room's realtime events ride (#657). Room isolation: every event for
+// The Bun.serve pub/sub TOPIC a room's realtime events ride. Room isolation: every event for
 // a room is published to — and every one of that room's sockets subscribes to — THIS topic and no
 // other, so a broadcast in room A can never reach room B's clients. The topic is derived from the
-// room's internal id (`rooms.id`), which #654 mints and #655/#656 already scope playback/queue/roster
+// room's internal id (`rooms.id`), which the rooms table mints and which playback/queue/roster are already scoped
 // by, so two rooms deterministically get two distinct topics. Namespaced under `room:` so a future
 // non-room topic on the same server cannot collide with a room whose id happened to match.
 export function roomTopic(roomId: string): string {
@@ -256,7 +256,7 @@ export interface JobParams {
 	syncMode?: string;
 	/**
 	 * A HUMAN re-pick: the MediaStore key of the candidate this `align` job must re-time, instead of
-	 * running its own comparative selection (#640). Set only by the re-select flow (`/api/lyrics-reselect`).
+	 * running its own comparative selection. Set only by the re-select flow (`/api/lyrics-reselect`).
 	 *
 	 * When present the worker SHORT-CIRCUITS `GradeAndSelect` to this candidate's stored text and times
 	 * that — re-timing the words a human chose from the RETAINED vocals stem, no re-download, no re-pick.
@@ -264,7 +264,7 @@ export interface JobParams {
 	 */
 	pinnedRef?: string;
 	/**
-	 * PASTED lyrics text for a `manual`-source re-pick (#640): the user supplied words no provider had.
+	 * PASTED lyrics text for a `manual`-source re-pick: the user supplied words no provider had.
 	 * When present the worker times THIS text (source `manual`) rather than any stored candidate, and
 	 * `pinnedRef` is the ref it will be written under. Absent on every normal cook and on a re-pick of an
 	 * already-stored candidate.
@@ -310,7 +310,7 @@ export interface JobArtifacts {
 	songProfile?: SongProfile;
 	/**
 	 * The MEASURED guide/instrumental offset in signed milliseconds — the guide-alignment half of the
-	 * guide feature made observable (#766). A SIBLING of `stems`, like `songProfile`: it is a
+	 * guide feature made observable. A SIBLING of `stems`, like `songProfile`: it is a
 	 * measurement, not a file, so it does not belong inside the file-key record. Positive = the vocals
 	 * LAG the instrumental; negative = they lead.
 	 *
@@ -349,7 +349,7 @@ export interface JobArtifacts {
 	 * `media_uri`, not this key, so nothing reads it today; it is declared here so it is not the last
 	 * UNDECLARED key riding this frame. An undeclared key is exactly what stalled every cook while
 	 * `songProfile` shipped one level too deep — declaring `source` makes any future reader a typed one
-	 * and the parity guard below asserts every worker-written key is a member of this interface (#459).
+	 * and the parity guard below asserts every worker-written key is a member of this interface.
 	 */
 	source?: { audio: string };
 }

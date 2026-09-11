@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S8) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS ─────────────────────────────────────────────────────────────────────────────
   What this component is used for here is its GRAMMAR, not its appearance. Three list rows — QueueRow,
   SongRow and ProcessingCard — each invented their own class names for the same four parts (a leading
   indicator, a title, a subtitle, a trailing action cluster). Item names them once.

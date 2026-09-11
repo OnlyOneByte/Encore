@@ -29,7 +29,7 @@ import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 
 /**
- * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
+ * Types for this out-of-program driver (pattern). Browser/Page derive from
  * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
@@ -191,7 +191,7 @@ try {
 			);
 			// The address must not intersect the strip AND must be the element painted at its own centre.
 			// The address must be clear AND painted AND the strip must not clip OR occlude any roster
-			// member: the #826 full-roster fix must not trade the burial for silently dropping the people
+			// member: the full-roster fix must not trade the burial for silently dropping the people
 			// it names, and no chip may hide under a corner control (XR-TV-14).
 			const ok =
 				m.overlap === 0 &&

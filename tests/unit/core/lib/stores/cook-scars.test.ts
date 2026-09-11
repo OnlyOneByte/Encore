@@ -1,4 +1,4 @@
-// Scars are the first persisted client state in the app (Encore #68). The load-bearing behaviours are
+// Scars are the first persisted client state in the app. The load-bearing behaviours are
 // the TTL boundary, the storage-failure degradation, and that the snapshot carries enough to render a
 // failed row after a reload. The pure helpers are tested with hard-coded deadlines (never derived
 // through the same expression the code uses); the I/O layer runs through an injectable in-memory

@@ -1,4 +1,4 @@
-// Test stub for SvelteKit's `$app/state` virtual module (issue #822, rung M).
+// Test stub for SvelteKit's `$app/state` virtual module (rung M).
 //
 // Two first-party consumers read `page` today: routes/join/+page.svelte (`page.url.searchParams`)
 // and routes/metrics/[mediaId]/+page.svelte (`page.params.mediaId`). The stub therefore carries a

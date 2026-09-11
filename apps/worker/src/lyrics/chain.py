@@ -30,7 +30,7 @@ from typing import Any, NamedTuple
 
 from ..vocabulary import ROLE_BASELINE, ROLE_CANDIDATE, ROLE_UNSPECIFIED, TextSource, Timing
 from .artifact import (
-    candidate_key as candidate_key,  # noqa: F401 — re-export: moved to artifact.py in #456, kept importable from chain
+    candidate_key as candidate_key,  # noqa: F401 — re-export: moved to artifact.py, kept importable from chain
 )
 from .source import LyricsFetchError
 
@@ -65,7 +65,7 @@ TIMING_NONE = Timing.NONE.value
 # that produced a silent vocals stem, an upload YouTube captioned badly, a passage no model hears.
 # Averaging over independent errors is what makes the ruler steadier than any of its parts.
 #
-# The role constants themselves now live in src/vocabulary.py beside TextSource/Timing (moved in #605)
+# The role constants themselves now live in src/vocabulary.py beside TextSource/Timing
 # and are re-exported here — imported above — so every importer of chain.py is unchanged. ROLE_UNSPECIFIED
 # is the fail-closed default for a hand-built text: see LyricsText.role and vocabulary.py's ROLES note.
 
@@ -147,9 +147,9 @@ class LyricsText:
     #: registry's `role`/`baseline_rank` fields a second declaration of the same fact that nothing read —
     #: so the two could disagree and every test would stay green. The default below therefore applies
     #: only to a text built by hand (a test, or one rehydrated from disk by `split_blob_text`) — and it is
-    #: fail-CLOSED (#605): ROLE_UNSPECIFIED is in neither `candidates_of` nor `baselines_of`, so an
+    #: fail-CLOSED: ROLE_UNSPECIFIED is in neither `candidates_of` nor `baselines_of`, so an
     #: unspecified text is NOT published as the song's words (and is not used as grading evidence) until a
-    #: role is stamped. The registry stamps a fetched text AND its `alternates` (#873), because
+    #: role is stamped. The registry stamps a fetched text AND its `alternates`, because
     #: `select_by_baselines` grades `[cand, *cand.alternates]` and may publish an alternate — so an
     #: alternate left unspecified could win and publish as unspecified, the very hole this default guards.
     #: The old default was ROLE_CANDIDATE — the PUBLISHABLE tier — which silently let an
@@ -182,7 +182,7 @@ class LyricsText:
     #: per line that carries the source's own timestamp (its ``start`` equals the segment start
     #: exactly). Emitted by ``bound_blob_text`` when it builds the windows, because that is where
     #: the segment->window mapping is KNOWN; re-deriving it later by float-equality strands every
-    #: line after the first start that fails to match to 1e-6 (issue #459). ``len`` equals the
+    #: line after the first start that fails to match to 1e-6. ``len`` equals the
     #: number of segments, and index ``i`` opens segment ``i``. None whenever ``align_windows`` is.
     align_window_opens: list[int] | None = None
 
@@ -203,7 +203,7 @@ def acquire_with_notes(sources: list[LyricsSource], req: LyricsRequest) -> tuple
     authoritative source and ASR are complements, not alternatives. A source that raises is skipped —
     one broken tier must never cost the others.
 
-    The notes are the point (issue #444). `acquire()` used to drop every miss on the floor, so a
+    The notes are the point. `acquire()` used to drop every miss on the floor, so a
     provider that had been failing 100% for a month (lrclib.net DNS-sinkholed on the corp box) looked
     EXACTLY like a run of songs that simply have no lyrics — a bare `return None` and "this is an
     instrumental" were the same observation. A source that RAISED (a provider transport/5xx failure,
@@ -252,7 +252,7 @@ def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]
 
 MIN_TOKENS_TO_COMPARE = 12
 
-#: Below this BASELINE COVERAGE the winner is probably a different song entirely (#542).
+#: Below this BASELINE COVERAGE the winner is probably a different song entirely.
 #:
 #: Replaces SUSPECT_AGREEMENT = 0.25, which was a threshold on symmetric set Jaccard. Both the metric
 #: and the axis changed, so the constant is renamed rather than re-valued: a same-named threshold on a
@@ -284,7 +284,7 @@ MIN_TOKENS_TO_COMPARE = 12
 #: evidence about the real distribution of songs. Re-derive this number once #668 lands.
 SUSPECT_COVERAGE = 0.40
 
-#: How much of the ranking score is the POSITION-aware term (#542). Equal weight with the count-aware
+#: How much of the ranking score is the POSITION-aware term. Equal weight with the count-aware
 #: term, for the same reason `composite_score` weights baselines equally: any other split would be a
 #: coefficient nobody has measured. Only the ranking score uses this, and ranking is threshold-free —
 #: `select_by_baselines` takes an argmax — so the weight steers a comparison and cannot, on its own,
@@ -292,12 +292,12 @@ SUSPECT_COVERAGE = 0.40
 SEQUENCE_WEIGHT = 0.5
 
 #: How far past the end of the audio a candidate's own timings may run before selection DEMOTES it
-#: (#667, owner ruling B). Expressed as a FRACTION of the song's duration, not raw seconds, because
+#: (owner ruling B). Expressed as a FRACTION of the song's duration, not raw seconds, because
 #: a fixed second-count would be lenient on a 30s clip and harsh on a 7-minute track. The two real
 #: wrong-version cases overshoot by +39% (Total Eclipse, 268s->374s) and +27% (Friends in Low
 #: Places, 281s->357s), so 10% clears both with margin while leaving room for the owner's stated
 #: trap — a legitimate LRC for the SAME recording carrying a short trailing artefact cue, which is
-#: seconds, not tens of percent. PROPOSED FOR REVIEW: Q2 of #667 was ruled "a percentage, proposed
+#: seconds, not tens of percent. PROPOSED FOR REVIEW: Q2 was ruled "a percentage, proposed
 #: by the implementer" — 0.10 is that proposal. Raise it if a same-recording false positive appears.
 OVERSHOOT_FRACTION_MAX = 0.10
 
@@ -348,7 +348,7 @@ def _adjacent_pairs(tokens: list[str]) -> list[tuple[str, str]]:
 class Agreement(NamedTuple):
     """One candidate compared against one baseline, kept as the THREE numbers instead of an average.
 
-    The directional split is the point (#542). Symmetric Jaccard averages the two directions into one
+    The directional split is the point. Symmetric Jaccard averages the two directions into one
     number and destroys the fingerprint of "right song, WRONG version": near-complete coverage of the
     audible words while a large part of the candidate is not audible at all. Measured on the real
     reported mis-pick: coverage 0.857, fidelity 0.485 — one number cannot say that.
@@ -414,7 +414,7 @@ def agreement(candidate: str, baseline: str) -> Agreement | None:
 def agreement_score(candidate: str, baseline: str) -> float | None:
     """The 0..1 ranking score for one candidate against one baseline, or None when not comparable.
 
-    Count- and position-aware since #542; it was symmetric Jaccard over token SETS, which scored the
+    Count- and position-aware; it was symmetric Jaccard over token SETS, which scored the
     reported wrong-version mis-pick at 0.448 — above the old 0.25 threshold, so it was accepted. See
     `Agreement` for why the three numbers are kept apart and `SUSPECT_COVERAGE` for which of them the
     absolute judgement reads.
@@ -438,7 +438,7 @@ def candidates_of(texts: list[LyricsText]) -> list[LyricsText]:
 class Composite(NamedTuple):
     """One candidate graded against every baseline that could speak.
 
-    Two means, not one, because the two mechanisms below read different axes (#542): `score` is what
+    Two means, not one, because the two mechanisms below read different axes: `score` is what
     selection ranks by, `coverage` is what the absolute wrong-song judgement thresholds. `votes` is the
     per-baseline ranking scores that formed the mean, so `len(votes)` is how many baselines spoke.
 
@@ -496,7 +496,7 @@ def candidate_last_end(candidate: LyricsText) -> float | None:
 
 
 def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float | None) -> float:
-    """The candidate's composite score after DEMOTING it for running past the end of the audio (#667).
+    """The candidate's composite score after DEMOTING it for running past the end of the audio.
 
     Owner ruling B: a candidate timed well past audio-end is a wrong-version pick — its lyrics belong to
     a longer master, so a quarter of them can never be sung. It must lose to a rival that fits, without
@@ -536,7 +536,7 @@ def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float
 # it (measured: baseline coverage 0.857 for the reported wrong-version mis-pick). What separates them is
 # not an absolute score but the COMPARISON. Argmax needs no threshold at all — only a difference.
 #
-# So the two mechanisms are complementary, both run, and since #542 they read DIFFERENT AXES of the same
+# So the two mechanisms are complementary, both run, and they read DIFFERENT AXES of the same
 # comparison rather than sharing one averaged number:
 #   SELECT   comparative, no threshold — `Composite.score`, the weaker count direction blended with the
 #            adjacent-pair term. Harsh and discriminating on purpose: the wrong-version fingerprint is
@@ -584,7 +584,7 @@ class VariantChoice:
 
         `summary()` renders these for the cook log, which rotates and is per-container; this crosses
         the wire and lands in the job_attempts audit trail so a mis-pick is diagnosable from state
-        weeks later (#669). Deliberately NOT the lyric bodies — label + composite score is enough to
+        weeks later. Deliberately NOT the lyric bodies — label + composite score is enough to
         say which of #542's three arms fired (metadata fallback vs a real disagreement), and storing
         four rejected full texts per song would multiply the lyrics footprint for triage-only data.
         """
@@ -609,7 +609,7 @@ class Selection:
     #: axis `winner_suspect` reads — see SUSPECT_COVERAGE.
     winner_score: float | None = None
     #: Mean BASELINE COVERAGE of the winning candidate — how much of what was audible it carries. This
-    #: is the number the wrong-song judgement thresholds (#542). None when no baseline could speak.
+    #: is the number the wrong-song judgement thresholds. None when no baseline could speak.
     winner_coverage: float | None = None
     #: True when there was no candidate at all, so a baseline is being shown as the answer.
     baseline_fallback: bool = False
@@ -633,10 +633,10 @@ class Selection:
             "baselineFallback": self.baseline_fallback,
             "winnerSuspect": self.winner_suspect,
             "winnerScore": self.winner_score,
-            # The axis `winnerSuspect` is actually decided on (#800). Without it the record reads as a
+            # The axis `winnerSuspect` is actually decided on. Without it the record reads as a
             # MISSED DETECTION on its own numbers — `winnerSuspect: false` beside a `winnerScore` under
             # the documented threshold — because the score shown is the ranking axis and the threshold
-            # belongs to coverage. This is the number that cleared it (#806).
+            # belongs to coverage. This is the number that cleared it.
             "winnerCoverage": self.winner_coverage,
             "choices": [c.to_record() for c in self.choices],
         }
@@ -650,7 +650,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
       1. Split by role. Baselines are evidence of what is audible; candidates are claims about the words.
       2. Score each candidate — and each of its alternate versions — as the MEAN agreement across every
          baseline that can speak (`composite_score`), then DEMOTE any whose own timings run well past the
-         end of the audio (`overshoot_penalized`, #667). Argmax over the penalised score wins; ties keep
+         end of the audio (`overshoot_penalized`). Argmax over the penalised score wins; ties keep
          the better metadata match. The reported score stays the raw agreement — the penalty steers the
          COMPARISON, it is not itself a similarity claim about the words.
       3. Publish the winner. Also publish the best baseline when the winner cannot be trusted, so there
@@ -678,18 +678,18 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
 
     best: LyricsText | None = None
     best_score: float | None = None
-    #: The winner's mean BASELINE COVERAGE — the axis the wrong-song judgement reads (#542). Tracked
+    #: The winner's mean BASELINE COVERAGE — the axis the wrong-song judgement reads. Tracked
     #: alongside the rank so the judgement is made on the coverage of whatever actually wins, never on
     #: a coverage borrowed from a candidate that lost.
     best_coverage: float | None = None
-    #: The penalised score the picked winner is RANKED by across sources (#667). Kept apart from
+    #: The penalised score the picked winner is RANKED by across sources. Kept apart from
     #: `best_score` so an over-covered winner loses to a clean rival while `winner_score` still reports
     #: the raw agreement of whatever ultimately wins.
     best_rank: float | None = None
     for cand in candidates:
         pool = [cand, *cand.alternates]
         scored = [composite_score(c, baselines) for c in pool]
-        # The RANKING key demotes a version timed past audio-end (#667); `scored` itself keeps the raw
+        # The RANKING key demotes a version timed past audio-end; `scored` itself keeps the raw
         # agreement so provenance and `winner_score` report what the words actually matched, not the
         # penalty. A None-scored (unjudgeable) version stays -1.0 and is never penalised into a lower
         # negative that could reorder the unjudged tail — the penalty only ever touches a real score.
@@ -732,7 +732,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
                 )
             )
         # Across sources, the same comparison decides — on the PENALISED rank of the pick, so a source
-        # whose only version overshoots audio-end loses to a source that fits (#667). An unjudged
+        # whose only version overshoots audio-end loses to a source that fits. An unjudged
         # candidate (-1.0) never displaces a judged one, and among unjudged candidates the first
         # acquired stands. `best_score` records the winner's RAW agreement for provenance either way.
         rank = ranked[pick]
@@ -750,7 +750,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
     sel.publish = [best]
     sel.winner_score = best_score
     sel.winner_coverage = best_coverage
-    # The JUDGE axis is coverage, not the ranking score (#542). A correct candidate graded against a
+    # The JUDGE axis is coverage, not the ranking score. A correct candidate graded against a
     # baseline that only heard part of the song has a LOW rank score by construction — most of the
     # candidate is not audible, so its fidelity is low — and thresholding that would demote correct
     # lyrics for a defect in the evidence. Coverage asks the question that is actually absolute: does
@@ -766,12 +766,12 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
 # ── sources: re-exported from lyrics/sources.py ────────────────────────────────────
 #
 # The four source adapters, the ``LyricsSource`` protocol and ``_source_name`` were extracted to
-# lyrics/sources.py in #456 (the ``sources/*`` seam of the declared split). They are imported here at
+# lyrics/sources.py (the ``sources/*`` seam of the declared split). They are imported here at
 # the foot of the module -- AFTER LyricsRequest / LyricsText and the SOURCE_* / TIMING_* vocabulary are
 # defined above -- so that ``from .chain import AsrSource``, lyrics/registry.py's import group and the
 # package surface keep resolving unchanged, and there is no import cycle. ``acquire_with_notes`` above
 # still calls ``_source_name``, which is why it is re-imported alongside the classes.
-from .sources import (  # noqa: E402, F401 — deliberate re-export of the extracted source classes (#456)
+from .sources import (  # noqa: E402, F401 — deliberate re-export of the extracted source classes
     AsrSource,
     AutoCaptionsSource,
     CaptionsSource,

@@ -1,10 +1,10 @@
-"""Guard: presplit's segment-classification-and-subdivide walk exists exactly ONCE (#886).
+"""Guard: presplit's segment-classification-and-subdivide walk exists exactly ONCE.
 
 `presplit.py` used to implement the same per-segment passthrough/subdivide decision in TWO private
 functions — `_relineate_segments` and `_relineate_with_opens` — kept equal only by a comment. That is
 the "N places must change together, with nothing forcing the Nth" shape (N=2): a change to the rule in
 one walk silently diverges the line-sync publish path from the aligner-window path, the exact class of
-seam bug this file keeps producing (#217, #336, #410, #459).
+seam bug this file keeps producing.
 
 A behaviour-preserving consolidation has no behavioural test that can red, so pin it STRUCTURALLY: read
 the source, drop comments AND string literals (so the docstring that describes the walk cannot satisfy
@@ -75,7 +75,7 @@ def test_presplit_relineate_walk_appears_exactly_once():
     count = code.count(_NEEDLE)
     assert count == 1, (
         f"presplit re-lineation walk is duplicated ({count} code sites of the passthrough "
-        f"decision). De-duplicate to one walk (see #886)."
+        f"decision). De-duplicate to one walk."
     )
 
 
@@ -86,5 +86,5 @@ def test_guard_anchor_is_present_not_vacuous():
     code = _code_only(_PRESPLIT.read_text())
     assert _NEEDLE in code, (
         "guard anchor missing — the presplit passthrough decision moved or was reshaped; "
-        "update this guard to track the single walk (see #886)."
+        "update this guard to track the single walk."
     )

@@ -1,5 +1,5 @@
 /*
- * Diff two preflight-reset-audit runs (issue #853).
+ * Diff two preflight-reset-audit runs.
  *
  *   bun run e2e/probes/preflight-diff.mjs <before.json> <after.json>
  *

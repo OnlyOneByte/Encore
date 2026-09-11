@@ -380,7 +380,7 @@ def test_resolve_warns_on_an_align_device_ctranslate2_cannot_use():
 
 
 def test_annotate_flag_is_case_insensitive_like_its_siblings():
-    # ENCORE_ANNOTATE was the only boolean parsed WITHOUT .lower() (issue #298), so the natural
+    # ENCORE_ANNOTATE was the only boolean parsed WITHOUT .lower(), so the natural
     # capitalized spellings silently left annotation ON on the very box the flag exists to spare.
     # Expected values are hard-coded (never derived through the config's own parse) so the assertion
     # cannot agree with a still-broken parse. off-spellings resolve to False; on-spellings to True.

@@ -19,12 +19,12 @@
 		singerAway?: boolean;
 		/**
 		 * The optimistic add of this entry has not yet been confirmed by the server. Mirrors QueueRow's
-		 * `pending` (issue #304): the primary ✨ Sing flow produces a COOKING entry, so the ProcessingCard
+		 * `pending`: the primary ✨ Sing flow produces a COOKING entry, so the ProcessingCard
 		 * is what actually renders during an add — the unconfirmed state has to survive here or it is
 		 * invisible on the exact path that creates it. Dims the card, appends the pending marker, and
 		 * hides the remove/reorder cluster until the server acks.
 		 *
-		 * A KIND, not a boolean (XR-PH-10, issue #832): a pending REORDER of a cooking entry must not
+		 * A KIND, not a boolean (XR-PH-10): a pending REORDER of a cooking entry must not
 		 * announce that it is "adding".
 		 */
 		pending?: 'add' | 'move' | null;
@@ -37,7 +37,7 @@
 		onremove?: () => void;
 		reorderable?: boolean;
 		/**
-		 * XR-PH-18 (issue #836) — another guest's row while the own-picks reorder mode is open. A cooking
+		 * XR-PH-18 — another guest's row while the own-picks reorder mode is open. A cooking
 		 * song is still a queue entry, so another guest's cook is one of the rows the mode has to
 		 * de-emphasise; found by driving the mode, where the only non-mine row on screen was a cooking
 		 * card and stayed at full weight. Surface token, never `opacity` (XR-PH-03) — same rule and same
@@ -70,9 +70,9 @@
 	// pct is shown separately in the .stage row, so the line itself omits it.
 	const stageLabel = $derived(cookStageLabel(status));
 	// What the unconfirmed marker SAYS — one expression, so a pending reorder cannot re-borrow the
-	// add path's word (XR-PH-10, issue #832). Mirrors QueueRow's derivation of the same name.
+	// add path's word (XR-PH-10). Mirrors QueueRow's derivation of the same name.
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
-	// A terminally failed cook is NOT in flight. It reaches this card (#741) because the singer's own
+	// A terminally failed cook is NOT in flight. It reaches this card because the singer's own
 	// queue slot must say the cook died — a dead turn used to render as a plain waiting row,
 	// indistinguishable from a turn about to play. On this branch the card drops the progress bar and
 	// the sparkle (there is no progress to show) and tints the stage line as a failure. `failed`
@@ -162,7 +162,7 @@
 
 <style>
 	/*
-	 * #913 S8: `.meta` and `.actions` moved to ui/item as Encore's shared row grammar — both were
+	 * S8: `.meta` and `.actions` moved to ui/item as Encore's shared row grammar — both were
 	 * verbatim duplicates of QueueRow's. `.seq`, `.t` and `.who` STAY, because they declare COLOUR and
 	 * contrast.test.ts reasons about this row by reading those rules in this file (its exclusion list
 	 * names "the .seq bubble" directly, and a sibling arm reads the singer dot's own rule).
@@ -170,7 +170,7 @@
 	/* .list-row gives the padding, margin and gap; ProcessingCard overrides its display to a two-row
 	   grid. Row 1: seq (auto) / title+singer (1fr) / actions (auto). Row 2: the progress block, spanning
 	   every column so it always gets the card's full inner width — the actions cluster can no longer eat
-	   into the bar or the stage line (issue #176). align-items on row 1 keeps the seq bubble and the
+	   into the bar or the stage line. align-items on row 1 keeps the seq bubble and the
 	   action cluster anchored to the title line rather than floating in a taller card. */
 	.qrow.proc {
 		display: grid;
@@ -187,7 +187,7 @@
 		background: linear-gradient(var(--card), var(--card-tint));
 		border-color: var(--line-tint);
 	}
-	/* A dead cook (#741). The card's own border reads as broken before the text is, matching the red
+	/* A dead cook. The card's own border reads as broken before the text is, matching the red
 	   "Couldn't make karaoke" chip the search row shows for the same media, and the stage line takes
 	   the danger ink instead of the in-flight --warn. Borrows the shared --danger tokens rather than a
 	   fourth palette. */
@@ -197,11 +197,11 @@
 	.stage.bad {
 		color: var(--danger-ink);
 	}
-	/* Optimistic-add markers, matching QueueRow (issue #304): warn-tint the CARD SURFACE and the
+	/* Optimistic-add markers, matching QueueRow: warn-tint the CARD SURFACE and the
 	   appended `adding…` word so an unconfirmed cooking entry reads as not-yet-committed.
-	   NOT with opacity (#735). This rule was `opacity: 0.55`, which flattened the whole card and
+	   NOT with opacity. This rule was `opacity: 0.55`, which flattened the whole card and
 	   composited it against --bg, so the stage line -- `Making karaoke… / 68%`, the only thing telling
-	   a singer the cook is moving, on the card the #304 fix says actually renders during the primary
+	   a singer the cook is moving, on the card the fix says actually renders during the primary
 	   ✨ Sing flow -- rendered at 3.76:1 against a 4.5:1 floor, and the singer dot at 2.57:1 under its
 	   3:1 floor. Retuning the alpha cannot work (the byline needs 0.807, indistinguishable from 1.0),
 	   so the state moved to app.css's --warn-bg/--warn-line status pair and the subtree keeps full
@@ -267,7 +267,7 @@
 		color: var(--warn);
 		margin-left: 0.35em;
 	}
-	/* flex: 0 0 auto is load-bearing HERE, not just QueueRow parity (issue #89). .who is a
+	/* flex: 0 0 auto is load-bearing HERE, not just QueueRow parity. .who is a
 	   `display: flex` container; the dot is an empty flex item whose automatic minimum size is 0, so
 	   without a non-shrinking basis it is the item that gives up width first. When the actions cluster
 	   renders (the normal in-rotation card) it cuts .who from ~282px to 134px (actions = 3x44 + 2x8 =
@@ -278,11 +278,11 @@
 	     • a name with spaces (e.g. "Christopher Alexander Montgomery") wraps, sharing the deficit, and
 	       the dot shrinks 10px -> ~5.45px — a ~45% loss;
 	     • an UNBROKEN name at the maxlength (e.g. "ChristopherAlexanderMontgomeryJr", 32 chars, reachable — both
-	       name fields are maxlength=32 and nothing rejects a single token, cf. #109) cannot wrap, so
+	       name fields are maxlength=32 and nothing rejects a single token,) cannot wrap, so
 	       the dot absorbs the ENTIRE deficit and collapses to 0px — the singer's colour VANISHES from
 	       their own card. colors.ts:12-14 calls that dot "the only thing telling two singers apart
 	       besides the name", so the real worst case is total loss, not a cosmetic shrink.
-	   The mechanism is the same as QueueRow's 0px collapse in #89; the only difference is that
+	   The mechanism is the same as QueueRow's 0px collapse; the only difference is that
 	   QueueRow.svelte's .who adds `min-width:0; white-space:nowrap; overflow:hidden`, which makes EVERY
 	   name unbreakable (that is why #89 hit 0px even with a spaced name), whereas here only an unbroken
 	   token is unbreakable. design-system.test.ts's identity-dot guard reds if this rule is dropped;
@@ -295,7 +295,7 @@
 		background: var(--singer);
 	}
 	/*
-	 * #913 S6: `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
+	 * S6: `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
 	 * so this consolidated a duplicate. The swap also buys what neither hand-rolled bar had:
 	 * `role="progressbar"` with aria-valuenow, so a cook's progress is finally visible to assistive
 	 * tech. Spacing from the element above stays HERE, because that is this component's layout rather
@@ -317,5 +317,5 @@
 	   to the title line (flex-start) rather than the card's centre — its own comment already claimed
 	   this, but align-items:center floated the buttons mid-card. */
 	/* Sizing, radius, surface and glyph size come from <Button variant="icon"> in components/ui/button.
-	   `.icon-btn` in app.css was deleted in #913 S1b when its ten consumers became that variant. */
+	   `.icon-btn` in app.css was deleted S1b when its ten consumers became that variant. */
 </style>

@@ -1,7 +1,7 @@
 // The TV's media-catalog boundary — ONE writer for server truth, and a snapshot seam the cook
 // pipeline structurally cannot reach.
 //
-// WHY THIS MODULE EXISTS (#396). "The playing song jumped back to an earlier part when another song
+// WHY THIS MODULE EXISTS. "The playing song jumped back to an earlier part when another song
 // finished processing" was fixed four times and returned four times, because every fix hardened one
 // CONSUMER against one churn PATH. The invariant was written down once, in prose, in the old
 // `mergeCatalog` docstring on the TV route — "an unrelated cook must not churn the object graph the

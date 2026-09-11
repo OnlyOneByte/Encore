@@ -80,8 +80,8 @@ import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
- * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (issue #557); the shapes
- * below are derived from cdp.mjs's own return types (#553) so they cannot drift from the driver.
+ * Types for the out-of-program driver. This file runs under tsconfig.e2e.json; the shapes
+ * below are derived from cdp.mjs's own return types so they cannot drift from the driver.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
@@ -784,7 +784,7 @@ async function readWorld() {
 	const { master, how } = pickMaster(tvState.rows, curMedia?.instrumentalRef);
 	// Record the FIRST decoded byte-count seen for this src — the preload burst a blocked TV never
 	// exceeds. atPreloadFloor() reads this to tell an un-started TV from one that is genuinely playing,
-	// which is what makes the refusal excuse survive a seek without crying wolf (#591 A).
+	// which is what makes the refusal excuse survive a seek without crying wolf.
 	if (master && master.decoded !== null && master.decoded !== undefined && !preloadFloor.has(master.src)) {
 		preloadFloor.set(master.src, master.decoded);
 	}
@@ -953,7 +953,7 @@ function checkI1(w, lastInput) {
  *
  * The honest predicate for "this television has not been started yet" is NOT `currentTime === 0`: a
  * `seek` on a still-blocked master moves the playhead off 0 while the element stays paused and the
- * decoder stays at its preload floor (issue #591 A), so keying on currentTime turns every gestureless
+ * decoder stays at its preload floor, so keying on currentTime turns every gestureless
  * seek into a phantom I6. Key instead on what is actually true of an un-started element: its decoder
  * has not advanced past the preload burst it recorded the first time it saw this src (`atPreloadFloor`).
  * That is honest across a transport too — a skip mounts a fresh element that sits at its OWN preload
@@ -999,7 +999,8 @@ async function checkI4(w, lastInput) {
 	// cross-surface invariants. So the first read after the current entry changes (or after any
 	// position-resetting transport) sees the OLD reel against a playhead that just snapped to ~0,
 	// which is propagation lag, not a highlight defect. Skip that one read with its reason named,
-	// the same way I1 skips a currentTime fall across an entry change (#591 B made this reachable).
+	// the same way I1 skips a currentTime fall across an entry change (reachable only once the TV
+	// really starts).
 	{
 		const id = w.current?.id ?? null;
 		const changed = id !== lastLyricsEntry;
@@ -1221,7 +1222,7 @@ async function driveInput(input, world) {
 			const wantRaw = raw.length > 0 && (ready.length === 0 || rnd() < 0.3);
 			const row = pick(wantRaw ? raw : ready);
 			const term = String(row.title).split(/\s+/)[0].toLowerCase();
-			await openBrowseFromHome(page); // #832: search lives behind the browse push
+			await openBrowseFromHome(page); // search lives behind the browse push
 			await page.fill(SEL.search, term);
 			try {
 				await page.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`, { timeout: 15000 });
@@ -1346,9 +1347,9 @@ function printSummary() {
 }
 
 /**
- * THE GESTURE, DELIVERED — AND KEPT. #332 added a trusted real tap to the driver (cdp.mjs realClick,
+ * THE GESTURE, DELIVERED — AND KEPT. A trusted real tap was added to the driver (cdp.mjs realClick,
  * proven 7/7 by p13-tap-to-start.mjs), but this randomised driver never called it — so gesturelessly
- * the TV never started and I4/I6 could only ever SKIP (#591 B). Deliver the real tap the first time
+ * the TV never started and I4/I6 could only ever SKIP. Deliver the real tap the first time
  * the room has a mounted master on the current song and claims to be playing, and re-apply it whenever
  * the CURRENT master is paused at its own preload floor under a playing room. No --autoplay-policy flag
  * is granted, so this is still a television; a viewer’s tap is the one gesture a living-room TV gets,
@@ -1377,7 +1378,7 @@ async function maybeDeliverTap(world) {
 		sequence.push({
 			who: 'TV',
 			input: 'real-tap',
-			detail: 'the one real tap a viewer makes to start a gestureless TV (#591 B)'
+			detail: 'the one real tap a viewer makes to start a gestureless TV'
 		});
 	}
 	await sleep(1200); // let the decoder begin climbing before the next invariant read
@@ -1401,7 +1402,7 @@ try {
 		await page.waitFor(`location.pathname === '/'`, { timeout: 15000 });
 		await openBrowseFromHome(page, { timeout: 15000 });
 		await openWire(page);
-		// The transport used to need the queue sheet opened. Since #832 it is on the now-playing hero on
+		// The transport used to need the queue sheet opened. It now lives on the now-playing hero on
 		// HOME, so the fuzzer starts each phone there — that is where its transport taps and its `.qrow`
 		// counts both apply.
 		await returnHomeFromBrowse(page);
@@ -1435,7 +1436,7 @@ try {
 			waiting: world.waiting,
 			cooking: world.cooking
 		};
-		// The one real tap lands as soon as the room is playing a mounted master (#591 B). Faithful to a
+		// The one real tap lands as soon as the room is playing a mounted master. Faithful to a
 		// living-room TV, and what makes I4/I6 measurable at all under the gestureless default.
 		await maybeDeliverTap(world);
 		const input = drawInput(prev, w);
@@ -1455,7 +1456,7 @@ try {
 
 	if (exitCode === 0) {
 		printSummary();
-		// NON-VACUITY FLOOR (#591 B). I6 is the invariant this file calls the one that cannot be dropped;
+		// NON-VACUITY FLOOR. I6 is the invariant this file calls the one that cannot be dropped;
 		// a run that never got to evaluate it measured nothing about audio and must NOT wear a green badge.
 		// Exit 2 ("the environment could not host the run") is the file’s own contract for a run that
 		// proved nothing — never 0. Never conflate 2 with 0; that conflation is how the original hole hid.

@@ -10,7 +10,7 @@
 // That fact used to be an ARGUMENT FOR A BOUND: every stage was generated at the pinned stage tier
 // (`stageHueToHex`) from a stored hue angle, precisely so no option could produce a field bright
 // enough to wash those lyrics out. #425 retired the bound and kept the concern, by moving the defence
-// onto the thing being defended: the reel now paints its own `-webkit-text-stroke` outline (#750,
+// onto the thing being defended: the reel now paints its own `-webkit-text-stroke` outline (
 // `b764d92`), so the words hold against any field. That is strictly stronger, because a stage bound
 // only ever protected the make-karaoke case — over a real music video the reel sat on frames nothing
 // here controls, and was already unprotected.
@@ -39,7 +39,7 @@ function glowInHue(hue: number, dim: number): string {
  *
  * `stageColor` is the room's stored stage colour (`RoomSettings.tvBackgroundColor`), canonical hex,
  * used only by the `solid` style. It is rendered verbatim rather than regenerated at the stage tier —
- * see the header for why that bound moved onto the lyric reel in #425.
+ * see the header for why that bound moved onto the lyric reel.
  *
  * `singerColor` is the current singer's stored colour (`singers.color`), used only by the `singer`
  * style. When it is absent or unparseable — nobody is up yet, or the roster has not arrived — `singer`
@@ -50,7 +50,7 @@ function glowInHue(hue: number, dim: number): string {
  * TV_BACKGROUND_STYLES without teaching this function about it is a type error rather than a silent
  * fallback — the same discipline `TvProgress.svelte` applies to the progress styles.
  *
- * `dim` is the room's 0..1 stage dimmer (`RoomSettings.tvBackgroundDim`, #782): 0 leaves the colour at
+ * `dim` is the room's 0..1 stage dimmer (`RoomSettings.tvBackgroundDim`): 0 leaves the colour at
  * full strength, 1 pulls it to black. It is applied to the CONCRETE colour a style resolves to — the
  * `solid` room colour, and the `singer` glow's inner hue stop — because "dim the stage colour toward
  * black" (owner ruling Q2 = A) is a lightness transform on a colour, and the stage layer sits behind
@@ -79,7 +79,7 @@ export function stageBackgroundCss(
 		}
 		case 'solid':
 			// The room's colour, as stored — then dimmed toward black by the room's dimmer. No tier, no
-			// guard on the colour itself (#425); the dim is the room's own lightness choice (#782).
+			// guard on the colour itself; the dim is the room's own lightness choice.
 			return dimTowardBlack(stageColor, dim);
 		case 'visualizer':
 			// The FLOOR under the canvas, not the visualizer itself. A visualizer is a drawing loop, not

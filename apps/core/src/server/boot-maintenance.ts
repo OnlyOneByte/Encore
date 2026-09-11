@@ -1,4 +1,4 @@
-// The per-pass ISOLATION runner for the boot library-maintenance chain (issue #446 defect 1).
+// The per-pass ISOLATION runner for the boot library-maintenance chain (defect 1).
 //
 // The chain used to be a single 168-line promise chain under one terminal `.catch`: a rejection in
 // any pass skipped every pass after it, and the one log line named no pass. Because every downstream

@@ -80,7 +80,7 @@ def test_dropping_a_requested_capability_is_never_silent(monkeypatch, tmp_path):
 
 # ── specific tokens ─────────────────────────────────────────────────────────────────
 def test_ensemble_is_never_advertised_because_no_engine_implements_it(monkeypatch, tmp_path):
-    # issue #118: the worker used to advertise `stems:ensemble` whenever both engines were present, but
+    # the worker used to advertise `stems:ensemble` whenever both engines were present, but
     # NO ensemble engine exists — `engine_for("ensemble")` raises. So the core would route an ensemble
     # upgrade to this box and the job would die at plan selection with "no separator engine: ensemble",
     # which is the exact "claim the box cannot honour" failure this module exists to remove, and it
@@ -134,7 +134,7 @@ def test_every_advertised_stems_capability_resolves_to_a_real_engine(monkeypatch
 
 
 def test_audiosep_is_advertised_only_when_its_dep_is_present(monkeypatch, tmp_path):
-    # #483: the mel-band RoFormer engine (python-audio-separator). Advertised only when the dep is
+    # the mel-band RoFormer engine (python-audio-separator). Advertised only when the dep is
     # present — the same honesty contract as every other token. A box with demucs but no audio-separator
     # must NOT claim stems:audiosep, or the core would route a mel-band cook that dies at plan selection.
     _with_path(monkeypatch, tmp_path)
@@ -218,14 +218,14 @@ def test_advertised_order_is_stable_across_restarts(monkeypatch, tmp_path):
     assert first == second == tuple(sorted(first))
 
 
-# ── issue #606 / #595: advertise `stems` only when the RESOLVED backend has a demucs engine ──────
+# ── advertise `stems` only when the RESOLVED backend has a demucs engine ──────
 def test_stems_survives_on_an_mlx_box(monkeypatch):
     """Issue #606 established that `stems` is dropped when the resolved backend has no demucs engine.
     #595 IMPLEMENTED the MLX engine, so an Apple-Silicon box that auto-resolves its backend to `mlx`
     now HAS a demucs engine and must KEEP advertising `stems` — the box can genuinely run the cook
     (demucs-mlx CLI + mix-minus derivation), so dropping it would refuse work it can do.
 
-    This is the inverse of the pre-#595 pin: before, an mlx box dropped `stems` (advertise -> cook ->
+    This is the inverse of the pre-change pin: before, an mlx box dropped `stems` (advertise -> cook ->
     die at the unimplemented engine); now it keeps it and no drop warning fires.
 
     Simulates the box exactly as test_backends.py does: patch platform to Darwin/arm64 and make the
@@ -252,7 +252,7 @@ def test_stems_survives_on_an_mlx_box(monkeypatch):
     assert backends.resolve_backend(None).backend.value == "mlx"
 
     assert "stems" in resolved.capabilities, (
-        "an mlx-resolved box now HAS a demucs engine (#595), so it must keep advertising stems"
+        "an mlx-resolved box now HAS a demucs engine, so it must keep advertising stems"
     )
     assert "align" in resolved.capabilities
     assert not [w for w in warnings if "dropping capability 'stems'" in w], (
@@ -288,7 +288,7 @@ def test_narrow_for_backend_keys_on_a_real_engine_impl():
     the backends `engine_for("demucs", backend=b)` builds an engine for."""
     from src.separation.engines import MlxDemucsEngine, demucs_engine_backed_by, engine_for
 
-    # torch, None (portable default) AND mlx (#595) all build a real demucs engine.
+    # torch, None (portable default) AND mlx all build a real demucs engine.
     assert demucs_engine_backed_by("torch") is True
     assert demucs_engine_backed_by(None) is True
     assert demucs_engine_backed_by("mlx") is True

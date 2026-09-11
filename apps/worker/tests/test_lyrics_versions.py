@@ -9,7 +9,7 @@ Two mechanisms, deliberately separate, and the distinction is the point of most 
 
   * SELECTION is comparative (`select_by_baselines`). No threshold. It works precisely because two versions
     of one song both score far ABOVE the wrong-song threshold, so only their ORDER matters.
-  * DEMOTION is absolute (SUSPECT_COVERAGE on baseline coverage, #542). It judges whether the winner
+  * DEMOTION is absolute (SUSPECT_COVERAGE on baseline coverage). It judges whether the winner
     is trustworthy at all.
 """
 
@@ -176,7 +176,7 @@ def test_a_baseline_is_never_a_candidate():
     assert baselines_of([lrclib, auto]) == [auto]
     # even though the auto track's text matches the audio PERFECTLY (it is the audio), the lookup wins
     sel = select_by_baselines([lrclib, auto])
-    # The published winner is the lrclib candidate. It is a COPY, not the same object (#605): the
+    # The published winner is the lrclib candidate. It is a COPY, not the same object: the
     # selector now clears `alternates` via dataclasses.replace instead of mutating the caller's object
     # in place, so compare by identifying content rather than by `is`.
     assert sel.publish[0].text_source == lrclib.text_source
@@ -634,7 +634,7 @@ def test_captions_cannot_be_about_a_different_version_of_the_song():
     assert got.alternates == []
 
 
-# ── overshoot demotion: a candidate timed past audio-end loses to one that fits (#667) ─────────────
+# ── overshoot demotion: a candidate timed past audio-end loses to one that fits ─────────────
 #
 # Owner ruling B: a candidate whose own timings run well past the end of the audio is a wrong-version
 # pick (its lyrics belong to a longer master), and it must be DEMOTED during selection so a rival that

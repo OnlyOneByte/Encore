@@ -1,5 +1,5 @@
 // guard: the TV must be able to RECOVER from a blocked autoplay, and must do so WITHOUT building a
-// WebAudio graph. (#64)
+// WebAudio graph.
 //
 // THE DEFECT. A plain <audio> in a page that never received a user gesture is refused under the
 // browser's default autoplay policy with a NotAllowedError — which is exactly the state a set-and-
@@ -39,7 +39,7 @@ function stripComments(src: string): string {
 const TV_PLAYER = at('apps/core/src/lib/tv/TvPlayer.svelte');
 const TV_ROUTE = at('apps/core/src/routes/tv/+page.svelte');
 
-test('TvPlayer latches recovery on NotAllowedError SPECIFICALLY, not on every rejection (#64)', () => {
+test('TvPlayer latches recovery on NotAllowedError SPECIFICALLY, not on every rejection', () => {
 	const src = stripComments(readFileSync(TV_PLAYER, 'utf8'));
 	// It must branch on the error NAME being NotAllowedError — a blanket catch that latches on any
 	// rejection would arm the hint on an AbortError from a real src change too. The distinction is the
@@ -52,7 +52,7 @@ test('TvPlayer latches recovery on NotAllowedError SPECIFICALLY, not on every re
 	expect(src).toContain('the room will be silent');
 });
 
-test('TvPlayer arms a document-wide gesture listener that re-attempts playback (#64)', () => {
+test('TvPlayer arms a document-wide gesture listener that re-attempts playback', () => {
 	const src = stripComments(readFileSync(TV_PLAYER, 'utf8'));
 	// A user gesture ANYWHERE authorises playback for the document, so the listener is on window and
 	// covers a tap AND a keypress (a remote / keyboard is a valid gesture on a TV).
@@ -78,7 +78,7 @@ test('TvPlayer arms a document-wide gesture listener that re-attempts playback (
 	expect(src).toMatch(/onautoplayrecovered\s*[,\n]/);
 });
 
-test('the gesture recovery path builds NO AudioContext / MediaElementSource — keyShift===0 invariant (#64)', () => {
+test('the gesture recovery path builds NO AudioContext / MediaElementSource — keyShift===0 invariant', () => {
 	const src = stripComments(readFileSync(TV_PLAYER, 'utf8'));
 	// Isolate the recovery helper + the gesture-listener effect and prove neither constructs a graph.
 	// The ONLY sanctioned graph construction in this file is the lazy `new PitchShiftGraph(...)` inside
@@ -98,7 +98,7 @@ test('the gesture recovery path builds NO AudioContext / MediaElementSource — 
 	expect(recoveryRegion).not.toContain('createMediaElementSource');
 });
 
-test('the /tv route surfaces the hint gated on the block, and wires both slots (#64)', () => {
+test('the /tv route surfaces the hint gated on the block, and wires both slots', () => {
 	const src = stripComments(readFileSync(TV_ROUTE, 'utf8'));
 	// A page-level latch, fed only by the slots' callbacks.
 	expect(src).toMatch(/let\s+autoplayBlocked\s*=\s*\$state\(false\)/);
@@ -150,7 +150,7 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots (
 // must be announced again the moment something reaches the stage, which requires the latch to survive
 // the idle window.
 //
-// Source scan for the same reason as the #64 guards above: no jsdom, so which terms gate a markup
+// Source scan for the same reason as the guards above: no jsdom, so which terms gate a markup
 // block is a property of the component text. The rendered proof (the scrim is gone and the join card is
 // the topmost element at its own centre after the drain) is the CDP capture in the PR body.
 
@@ -195,7 +195,7 @@ test('the /tv autoplay hint is scoped to the on-stage band, so it cannot outlive
 // THE FIX. TvPlayer fires a new `onplaybackfailed(reason)` from that else branch (active+visible slot
 // only, mirroring onautoplayblocked so the hidden pre-warming slot cannot raise a phantom), and the
 // /tv route renders an on-screen "the room is silent" panel from a `playbackFailedReason` $state fed
-// only by those callbacks. These are source-scan guards for the same reason as the #64 ones above:
+// only by those callbacks. These are source-scan guards for the same reason as the ones above:
 // no jsdom, so the wiring is a property of the component text.
 
 test('TvPlayer FIRES onplaybackfailed from the non-recoverable else branch, active+visible only', () => {

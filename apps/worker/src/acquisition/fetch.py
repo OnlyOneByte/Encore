@@ -63,7 +63,7 @@ def find_downloaded(directory: str, media_id: str) -> str | None:
     never mistaken for a finished one: the `.part` stream file AND its fragment payloads
     `<id>.<ext>.part-Frag<N>` (both carry `.part`), the `.ytdl` fragment index, and the postprocessor
     temp `<id>.temp.<ext>` (a `.temp.` infix). Also skips the `--write-info-json` metadata sidecar
-    `<id>.info.json` (#672), which shares the `<id>.` prefix but is not audio. A finished output is
+    `<id>.info.json`, which shares the `<id>.` prefix but is not audio. A finished output is
     `<id>.<ext>`, which carries none of these markers, so this cannot reject a genuine download.
     """
     try:
@@ -75,7 +75,7 @@ def find_downloaded(directory: str, media_id: str) -> str | None:
             name.startswith(f"{media_id}.")
             and ".part" not in name
             and not name.endswith(".ytdl")
-            and not name.endswith(".info.json")  # the metadata sidecar (#672), never the audio
+            and not name.endswith(".info.json")  # the metadata sidecar, never the audio
             and ".temp." not in name
         ):
             return os.path.join(directory, name)
@@ -105,7 +105,7 @@ def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp")
         ytdlp_bin,
         "--no-playlist",
         "--newline",  # emit progress as discrete lines (not \r) so the parser sees each update
-        # Write the extraction metadata yt-dlp ALREADY produced to a sidecar `<id>.info.json` (#672).
+        # Write the extraction metadata yt-dlp ALREADY produced to a sidecar `<id>.info.json`.
         # yt-dlp performs a full per-video extraction to evaluate the format selector, so `track`,
         # `artist`, `album` and `release_year` are already in hand — capturing them costs NO extra
         # network round trip. These are the uploader's OWN declared credits (a citation, not a guess),

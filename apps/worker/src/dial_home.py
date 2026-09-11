@@ -39,7 +39,7 @@ CONFIG = WorkerConfig.from_env()
 # () until config.resolve() fills them on a NEW object). __init__ now reads CONFIG directly.
 RECONNECT_BACKOFF_SEC = 3.0
 
-# Drains detached from a dropped connection so the reconnect loop does not BLOCK on them (#459).
+# Drains detached from a dropped connection so the reconnect loop does not BLOCK on them.
 # A drop while a run_blocking step is mid-pass (native torch, uninterruptible — runner.py awaits
 # the thread) made the old inline `await client.drain(cancel=True)` hold the loop for up to a
 # full align before redialling, so the worker was both absent AND still doing the duplicate work
@@ -52,8 +52,8 @@ _DETACHED_DRAINS: set[asyncio.Task] = set()
 
 def _on_detached_drain_done(task: asyncio.Task) -> None:
     """Discard the finished detached drain AND retrieve its exception, so a drain that raised is logged
-    rather than surfacing only as asyncio's "Task exception was never retrieved" at GC (#459 advisory;
-    the #444/#475 silent-failure family). CancelledError is expected and stays quiet."""
+    rather than surfacing only as asyncio's "Task exception was never retrieved" at GC (an
+    advisory-level finding in the silent-failure family). CancelledError is expected and stays quiet."""
     _DETACHED_DRAINS.discard(task)
     if task.cancelled():
         return
@@ -67,7 +67,7 @@ def _on_detached_drain_done(task: asyncio.Task) -> None:
 # handshake; this is only the floor so the leg is never fully silent. Kept below the 30s lease so a
 # reconciling frame always lands before a lease can expire.
 DEFAULT_HEARTBEAT_INTERVAL_SEC = 10.0
-# Orphaned-scratch reclaim (#469). A retryable failure on the LAST attempt is terminal but the worker
+# Orphaned-scratch reclaim. A retryable failure on the LAST attempt is terminal but the worker
 # cannot see it (no attempt count on the wire), so _run_job preserves that scratch and this sweep is
 # the only thing that reclaims it. Two knobs make the sweep SAFE on a media volume shared by several
 # workers: it runs PERIODICALLY (so a long-lived worker reclaims without a restart) and it only
@@ -155,7 +155,7 @@ class WorkerClient:
         never emits), and it has no core-side liveness poll, so WITHOUT this loop worker:heartbeat is
         never sent and registry.heartbeat never runs. That path is the only one that gives a slot back
         after the reaper requeues a lease-expired job, so its absence lets one reaped job strand the
-        worker's capacity permanently (issue #132). Runs until cancelled (on disconnect, from
+        worker's capacity permanently. Runs until cancelled (on disconnect, from
         _run_forever). The interval is refreshed live from self.heartbeat_interval_sec each tick, so a
         worker:welcome that lands after the loop starts still takes effect.
         """
@@ -251,7 +251,7 @@ class WorkerClient:
         # `**params`-style access downstream would raise mid-cook, escaping into the reconnect handler.
         # Reject it job-scoped at the boundary — the same shape as the checks above — so the one check
         # here makes the two defensive `isinstance(job.params, dict)` re-guards downstream (runner.py,
-        # ctx.py) dead (issue #459). Absent `params` is fine: `.get` defaults to {} below.
+        # ctx.py) dead. Absent `params` is fine: `.get` defaults to {} below.
         params = msg.get("params", {})
         if not isinstance(params, dict):
             print(f"[worker] rejecting malformed job:assign {job_id!r} (params not an object)", flush=True)
@@ -272,7 +272,7 @@ class WorkerClient:
             source_uri=msg.get("sourceUri", ""),
             params=params,
             media_dir=self._media_dir,
-            # Trace id for this cook (#472). Absent on a frame from a core that predates it -> "".
+            # Trace id for this cook. Absent on a frame from a core that predates it -> "".
             cook_id=msg.get("cookId", ""),
         )
         # run processing concurrently so the loop keeps reading ping/cancel
@@ -285,7 +285,7 @@ class WorkerClient:
         task.add_done_callback(_pop_task)
 
     async def _run_job(self, job: JobSpec) -> None:
-        # Retry reuse (#469): a core retry requeues the SAME jobId (JobRepository.requeue transitions
+        # Retry reuse: a core retry requeues the SAME jobId (JobRepository.requeue transitions
         # the job row in place — it does not mint a new id), so scratch_for(job) resolves to the SAME
         # work/<jobId> dir on the next attempt. Preserving it across a RETRYABLE failure lets the
         # steps' own "my output is already on disk" guards (AcquireAudio.find_downloaded,
@@ -328,7 +328,7 @@ class WorkerClient:
             #
             # The one gap this cannot close from here: the LAST retryable attempt (retries exhausted)
             # is ALSO terminal, but the worker cannot tell it apart — JobSpec and the wire carry no
-            # attempt/maxAttempts, that is core-side state (#469 review). So an exhausted-retry job's
+            # attempt/maxAttempts, that is core-side state (noted in review). So an exhausted-retry job's
             # scratch is preserved here and would leak; sweep_orphaned_scratch() at worker startup is
             # what reclaims it (see _run_forever). preserve_scratch is thus "keep for a POSSIBLE retry",
             # and the startup sweep is the backstop for the attempts that turned out to be the last.
@@ -350,7 +350,7 @@ class WorkerClient:
             # Delete EXACTLY what the runner created — call scratch_for, don't rebuild its layout by
             # hand: a hand-rebuilt copy silently drifts from the producer and leaks every job's scratch.
             #
-            # ...but NOT between attempts of the same job (#469): on a retryable failure the scratch is
+            # ...but NOT between attempts of the same job: on a retryable failure the scratch is
             # this attempt's completed work, and the next attempt reuses it in place. Cleaned on every
             # outcome the worker can SEE as terminal: success, permanent (non-retryable) failure, and a
             # cancel (CancelledError derives from BaseException, so `except Exception` above does not
@@ -384,7 +384,7 @@ class WorkerClient:
         The cancel propagates GeneratorExit into each processor immediately (subprocess_runner kills
         the child), so a dropped socket stops the duplicate work at once — but a run_blocking step
         awaits its uninterruptible thread, so the tasks are not DONE when this returns. Pair it with a
-        detached `drain()` (see _run_forever's finally, #459) to settle them off the reconnect path.
+        detached `drain()` (see _run_forever's finally) to settle them off the reconnect path.
         """
         for task in list(self._tasks.values()):
             task.cancel()
@@ -449,7 +449,7 @@ def sweep_orphaned_scratch(
     retry that never comes. Nothing else reclaims it — the runner's makedirs(exist_ok=True) is what
     makes resume work so it must NOT rmtree, a re-request mints a fresh jobId (a new work/<jobId>),
     and core retention bounds only derived/, never work/. So without this, one exhausted-retry job
-    leaks its decoded WAV + separated stems — the pipeline's biggest intermediates — forever (#469).
+    leaks its decoded WAV + separated stems — the pipeline's biggest intermediates — forever.
 
     TWO guards keep it safe on a media volume SHARED by several workers (docker-compose mounts the
     same volume into core and every worker), where "orphan for THIS worker" is not "orphan for the
@@ -485,7 +485,7 @@ def sweep_orphaned_scratch(
 
 
 async def _scratch_sweep_loop(media_dir: str, live_job_ids: Callable[[], frozenset[str]]) -> None:
-    """Periodically reclaim aged-out orphaned scratch for the process's whole lifetime (#469).
+    """Periodically reclaim aged-out orphaned scratch for the process's whole lifetime.
 
     A one-shot startup sweep left a long-lived worker (restart: unless-stopped can mean weeks of
     uptime) accumulating one orphaned scratch dir per exhausted-retry job until it restarted. Running
@@ -499,13 +499,13 @@ async def _scratch_sweep_loop(media_dir: str, live_job_ids: Callable[[], frozens
 
 
 def _is_retryable(exc: Exception) -> bool:
-    # The retry decision lives in ONE place now: retry_policy.is_retryable (#443). It prefers a
+    # The retry decision lives in ONE place now: retry_policy.is_retryable. It prefers a
     # structured `.retryable` flag (ProcessError/ProcessTimeout, and the boundary errors that carry
     # retryable=False) and otherwise falls back to the canonical permanent-marker table — so this
     # module no longer keeps its own divergent four-substring copy that defaulted the four boundary
     # failures (unknown fetcher/ASR model/engine, no plan) to retryable and cost the room 3 attempts.
     #
-    # SECOND CONSUMER (#469): this now also decides SCRATCH LIFETIME in _run_job — a retryable failure
+    # SECOND CONSUMER: this now also decides SCRATCH LIFETIME in _run_job — a retryable failure
     # keeps its scratch for a possible retry, a permanent one cleans it. So widening the classifier
     # (more errors -> retryable) also keeps more scratch around until the startup sweep reclaims it,
     # and narrowing it cleans scratch for errors nobody was thinking of as a disk decision. Weigh both
@@ -598,7 +598,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     device: str | None = None
     # The RESOLVED separator backend for this worker (torch/mlx). Bound to None up here alongside
     # `device` so it is unconditionally defined, then threaded into stems_runner below so it drives the
-    # engine and is recorded into facts — not merely printed (#119).
+    # engine and is recorded into facts — not merely printed.
     backend: str | None = None
     if any(c in cfg.capabilities for c in ("stems", "stems:roformer", "stems:ensemble", "align")):
         from .backends import resolve_backend
@@ -663,7 +663,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             device=device,
             # The resolved backend now DRIVES the engine and is recorded into facts, not just printed:
             # it is the same value the startup log announced, so facts.backend and the log can no longer
-            # disagree (#119).
+            # disagree.
             backend=backend,
             jobs=cfg.demucs_jobs,
             overlap=cfg.demucs_overlap,
@@ -733,7 +733,7 @@ async def _run_forever() -> None:
         print(f"[worker] config warning: {warning}", flush=True)
 
     # Probe the optional line-bounder ONCE and say which of absent / broken / available it resolved to
-    # (#475). Left silent, "not installed" and "installed but the shim broke" are one observation: the
+    #. Left silent, "not installed" and "installed but the shim broke" are one observation: the
     # deploy box installs karaoke-lyrics-processor --no-deps while the dev box has it absent, so a
     # regression on deploy would look exactly like the always-absent dev box. This line makes it legible.
     from .lyrics import klp_probe_line
@@ -742,7 +742,7 @@ async def _run_forever() -> None:
 
     processor: Processor = _build_processor(cfg)
 
-    # Reclaim AGED-OUT orphaned scratch for the whole process lifetime (#469). A retryable failure on
+    # Reclaim AGED-OUT orphaned scratch for the whole process lifetime. A retryable failure on
     # the final attempt is terminal but the worker cannot see it, so _run_job preserves that scratch;
     # this periodic, age-bounded sweep is the only thing that reclaims it. It NEVER touches a live job:
     # the 6h age bound means a scratch being actively written cannot qualify, so it is safe even though
@@ -785,7 +785,7 @@ async def _run_forever() -> None:
                 # The message pump below only ever REACTS to inbound frames (async for raw in ws), so a
                 # periodic heartbeat has to run as its own task alongside it — otherwise worker:heartbeat
                 # is never sent and the core can never reconcile this worker's slotsFree after a reaped
-                # job (issue #132). Cancelled in the finally, before the next reconnect builds a fresh
+                # job. Cancelled in the finally, before the next reconnect builds a fresh
                 # client, so it is bound to exactly this socket's lifetime.
                 heartbeat_task = asyncio.create_task(client.heartbeat_loop())
                 async for raw in ws:
@@ -814,12 +814,12 @@ async def _run_forever() -> None:
             #
             # Cancel SYNCHRONOUSLY here (the GeneratorExit that kills a subprocess step must propagate
             # the instant the socket drops), but settle the tasks in a DETACHED background task rather
-            # than awaiting them inline (#459): a run_blocking step awaits an uninterruptible native
+            # than awaiting them inline: a run_blocking step awaits an uninterruptible native
             # thread, so an inline `await drain` would hold this loop — and thus block redial — for up
             # to a full align pass, leaving the worker both disconnected AND still running the duplicate
             # work. Detaching lets the `while True` redial immediately while the cancelled tasks settle.
             if client is not None:
-                # NOTE (#459 advisory): detaching the drain means the NEXT client announces a full,
+                # NOTE (advisory): detaching the drain means the NEXT client announces a full,
                 # fresh WorkerState while a cancelled run_blocking step may still hold the GPU on its
                 # uninterruptible native thread — so on concurrency=1 the worker can briefly run two
                 # passes for one song. The old inline await avoided that by blocking redial until the

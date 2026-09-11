@@ -21,7 +21,7 @@
 	const shown = $derived(Math.max(0, Math.min(100, Math.round(pct))));
 	const valueLabel = $derived(!available || shown === 0 ? 'Off' : `${shown}%`);
 	// The hint narrates only what the control DOES. The out-of-place "No isolated vocals for this song
-	// yet" line (#253) was removed: when the control is disabled the greyed-out slider and "Off" readout
+	// yet" line was removed: when the control is disabled the greyed-out slider and "Off" readout
 	// already say it is dead, and telling a singer to re-cook a song from the performance surface was
 	// noise. So the hint is empty when unavailable and otherwise explains the effect.
 	const hint = $derived(
@@ -61,7 +61,7 @@
 		opacity: 0.5;
 	}
 	/*
-	 * #913 S3: the disabled rail/thumb recolouring that lived here as four ::-webkit-slider-* and
+	 * S3: the disabled rail/thumb recolouring that lived here as four ::-webkit-slider-* and
 	 * ::-moz-range-* rules is ui/slider's `data-disabled` treatment on the guiding variant now —
 	 * scoped CSS cannot reach an element a child component renders. `.gt.disabled { opacity }` is
 	 * untouched, and XR-PH-03 still holds: the reason sentence sits OUTSIDE this dimmed subtree.

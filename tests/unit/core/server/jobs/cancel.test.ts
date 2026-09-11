@@ -315,7 +315,7 @@ test('EDGE (b) reverse: a job:complete landing AFTER a cancel is dropped as stal
 	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // never flipped to ready
 });
 
-// ── FIX (#91): a cancel on the LYRICS step must settle THAT gate, not only stems ───────────────────
+// ── FIX: a cancel on the LYRICS step must settle THAT gate, not only stems ───────────────────
 // A song finishes separation (stemStatus 'ready', a real instrumentalRef), followUps enqueues `align`
 // and markLyricsQueued sets lyricsStatus 'queued' — the phone shows "Timing lyrics". A remove cancels
 // the align job. Before the fix, cancel.ts only called settleStemsGate, which refuses a finished cook

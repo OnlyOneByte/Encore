@@ -66,7 +66,7 @@ const REQUEUE_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT', 'LEAS
 // (reaper.ts, `fail()` on a `running` job whose progress lease lapsed — the worker is presumed dead)
 // and from the unservable-TTL branch (worker-hub.ts, on a still-`queued` job). Keying release off the
 // FAIL event alone freed the slot of a worker that still holds the job whenever the reaper fired,
-// driving an assign/reject storm (issue #555). Release for the worker-reported terminal FAIL is
+// driving an assign/reject storm. Release for the worker-reported terminal FAIL is
 // therefore made explicitly at its ONE worker-report call site — `#onFailed`'s terminal branch in
 // worker-hub.ts, guarded by `job.workerId === msg.workerId` so the worker is provably alive — exactly
 // as that handler's retryable branch already does its own explicit release (both are the one true
@@ -162,7 +162,7 @@ export class JobRepository {
 	}
 
 	/**
-	 * Free a FINISHED job's dedup slot so the song can be re-processed (#640). A `ready` job still
+	 * Free a FINISHED job's dedup slot so the song can be re-processed. A `ready` job still
 	 * occupies the slot in both the app check and the partial unique index, and `ready` is TERMINAL —
 	 * `cancel()` cannot move it (the state machine gives terminal states no outgoing events). So a
 	 * re-run of a completed step (a human re-picking lyrics, a future re-cook button) has no way to
@@ -226,7 +226,7 @@ export class JobRepository {
 	 * Fire a lifecycle EVENT through the pure state machine, patching any provided fields and always
 	 * bumping `updatedAt`. The event (not a bare destination status) is the input, so the machine can
 	 * tell a REJECT from a LEASE_EXPIRED even though both land on `queued` — the distinction the
-	 * status-pair table lost (#471). Throws on an unknown id or an event illegal from the current
+	 * status-pair table lost. Throws on an unknown id or an event illegal from the current
 	 * status (the machine is the authority). Returns the updated job.
 	 */
 	transition(id: string, event: JobEvent, patch: JobPatch, now: number): Job {
@@ -235,7 +235,7 @@ export class JobRepository {
 		const to = assertEvent(current.status, event);
 
 		// The event carries the ledger outcome, so the ledger hooks the MACHINE, not seven hand-written
-		// wrappers (#471 step 2). Now that the event is a parameter, `transition` alone knows both that
+		// wrappers. Now that the event is a parameter, `transition` alone knows both that
 		// a status changed AND what caused it — a REJECT and a LEASE_EXPIRED both land on `queued` but
 		// seal the attempt as `abandoned` identically, while a COMPLETE seals `ready`. Sealing the
 		// in-flight attempt happens BEFORE the row write (it patches the open attempt by jobId, and a
@@ -246,7 +246,7 @@ export class JobRepository {
 		const outcome = OUTCOME_FOR_EVENT[event];
 		if (outcome) this.#ledger?.closed(id, outcome, now, patch.error ?? null);
 
-		// Slot accounting via the machine (issue #524 step 3). A worker-reported release event frees
+		// Slot accounting via the machine. A worker-reported release event frees
 		// the OWNING worker's concurrency slot — read from the pre-write row, because a requeue patch
 		// (REJECT) clears `workerId` before the write. This retires the three hand-paired
 		// registry.releaseSlot() calls in worker-hub.ts (#onReject/#onComplete/#onFailed): the release
@@ -271,7 +271,7 @@ export class JobRepository {
 	 * `soonestSeqFor` taken ONCE at enqueue (make-karaoke.ts). When the singer's queue add is dropped
 	 * over a reconnecting socket, that snapshot is `NO_QUEUE_PRIORITY` — nobody was waiting yet — and
 	 * nothing ever revises it, so the cook sorts behind the lyrics backfill forever even after the
-	 * turn lands (the starvation half of #135).
+	 * turn lands (the starvation half of the late queue-add defect).
 	 *
 	 * This cannot go through `transition`: a starved cook is still `queued`, and `queued → queued` is
 	 * deliberately not a legal edge (transitions.ts) — opening one would let a lease-expiry requeue
@@ -349,7 +349,7 @@ export class JobRepository {
 	}
 
 	/**
-	 * Return a non-terminal job to the queue. `cause` names WHY — the whole point of #471: a worker
+	 * Return a non-terminal job to the queue. `cause` names WHY — the whole point of the event parameter: a worker
 	 * REJECT, an ack-timeout or progress-lease `LEASE_EXPIRED`, and a boot `RECOVER` are three
 	 * distinct events that a status-pair machine could not tell apart because all three land on
 	 * `queued`. It is validated against the machine (a REJECT is only legal from `assigned`; RECOVER

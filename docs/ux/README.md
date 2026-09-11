@@ -58,8 +58,8 @@ stops at rung M has made none of them checkable. See `XR-VER-01`.
 **3. Four concurrency premises were stale.** A host **mechanism** already exists and is
 centralised (`server/auth/capabilities.ts`, `can(actor, cap)`), carrying the owner's dated ruling
 that "today every joined singer is a host". A **cross-singer host reorder already ships**
-(a direct rewrite of the stored ordered list — no durable pin; pinning was deleted in #856 step 3
-— still gated on `queue:reorder-any`, with the arrow/drag "move to index" wiring landing in #856
+(a direct rewrite of the stored ordered list — no durable pin; pinning was deleted step 3
+— still gated on `queue:reorder-any`, with the arrow/drag "move to index" wiring landing
 step 4) — so the within-singer rule holds for the `move` op but not for the product. **One rate limit exists**
 (`MAX_CONCURRENT_COOKS_PER_SINGER = 3`, answered HTTP 429); the uncapped axis is queue depth. And
 a **lost optimistic race is already disclosed** (`hub.ts` → `op:reject` → rollback → `role="alert"`
@@ -84,7 +84,7 @@ Self-contained HTML using the real tokens, in the **workspace, not the repo** �
 
 Two of those files are now **exceptions**: the 48-stop player palette's generator and its registry
 moved into the repo as `packages/shared/scripts/_player_palette.py` and
-`packages/shared/src/presentation/player-palette-48.json` (#820), because `XR-COL-01`/`XR-COL-02` require the
+`packages/shared/src/presentation/player-palette-48.json`, because `XR-COL-01`/`XR-COL-02` require the
 registry to be tracked and its regeneration to be checkable. The HTML mockups stay in the workspace.
 
 `tv-chosen.html` is the decided TV design (split-panel attract, full roster lobby, full-screen

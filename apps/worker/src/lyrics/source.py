@@ -66,7 +66,7 @@ class LrcEntry:
     text: str
     #: A second-script rendering of the SAME line, when the LRC interleaves one (a Chinese record
     #: that ships both the characters and the pinyin). None for a single-script line — dual script is
-    #: strictly IF-AVAILABLE (issue #431), never fabricated. Set by ``fold_romanization_entries``.
+    #: strictly IF-AVAILABLE, never fabricated. Set by ``fold_romanization_entries``.
     romanization: str | None = None
 
 
@@ -104,7 +104,7 @@ def parse_lrc(lrc_text: str) -> list[LrcEntry]:
     return entries
 
 
-# ── pure: fold an interleaved second script into the line it romanizes (issue #431) ──
+# ── pure: fold an interleaved second script into the line it romanizes ──
 #
 # A Chinese record on LRCLIB (e.g. "Yi Jian Mei") does not carry a romanization FIELD — LRCLIB's API
 # has no such field — it ships the pinyin INTERLEAVED in the same syncedLyrics, as a second line under
@@ -117,7 +117,7 @@ def parse_lrc(lrc_text: str) -> list[LrcEntry]:
 # order — original first — is preserved). Left alone they become a real line plus a zero-span twin that
 # reads as a duplicate. This folds each such same-stamp pair into ONE entry: the CJK/non-Latin member
 # stays `text`, its Latin-script twin becomes `romanization`. Deliberately NOT a per-language parser
-# (issue #431 owner ruling): the ONLY discriminator is script (does the line carry non-Latin letters),
+# (owner ruling): the ONLY discriminator is script (does the line carry non-Latin letters),
 # which needs no language table and covers any romanized script, not just Mandarin.
 def _is_romanization_of(original: str, other: str) -> bool:
     """`other` reads as a romanization of `original`: `original` carries a non-Latin letter (the script

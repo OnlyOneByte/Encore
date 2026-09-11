@@ -64,7 +64,7 @@ export interface HubDeps {
 	seenOp?: (clientOpId: string) => boolean;
 	/**
 	 * Optional: NON-RECORDING peek at the same idempotency ledger — returns true if this clientOpId
-	 * was already applied, with NO side effect. Used on the validation-FAILURE path (#490): a resent
+	 * was already applied, with NO side effect. Used on the validation-FAILURE path: a resent
 	 * already-applied op whose shape no longer validates must be re-acked, but a genuinely-invalid
 	 * never-applied op that fails validation must NOT be written to the ledger (its resend must still
 	 * reject, every time). Reading with a recording seenOp there would insert the failing op's id and
@@ -82,7 +82,7 @@ export interface HubDeps {
 	/**
 	 * Optional: called AFTER an `add` op is applied, with the added entry's mediaId and the post-add
 	 * queue. The add-side mirror of onEntryRemoved. It exists for the reconnect-starvation case
-	 * (#135): a make-karaoke POST can be filed while the singer's queue add is still in flight over a
+	 *: a make-karaoke POST can be filed while the singer's queue add is still in flight over a
 	 * reconnecting socket, so the cook lands at NO_QUEUE_PRIORITY and sorts behind the lyrics backfill
 	 * forever even once the turn arrives. server.ts wires this to reprioritizeCookForMedia, which
 	 * lowers the outstanding cook to the soonest waiting turn and kicks dispatch; unset in the pure
@@ -144,7 +144,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// removableOnLeave's status!=='playing' filter (leave.ts:33) so the singer's own Leave then
 			// removes it, and it reseqs behind the entry that should be next. So the id is only free to
 			// re-land on while its entry is still 'queued'; a re-add onto a non-queued row is rejected,
-			// same as a different-identity collision (#370, residual of #285's identical-identity carve-out).
+			// same as a different-identity collision (residual of #285's identical-identity carve-out).
 			const existing = deps.state.entries.find((e) => e.id === op.entry.id);
 			if (
 				existing &&
@@ -171,7 +171,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// so those persist SILENTLY into the room's state and onto disk. So this guard is not
 			// defence-in-depth behind a strict column: for STATUS it is the ONLY thing keeping an off-enum
 			// value out of the queue (status is NOT re-stamped anywhere). For addedAt the story is different
-			// since #345: the seam ~168 lines below unconditionally REPLACES every client addedAt with the
+			//: the seam ~168 lines below unconditionally REPLACES every client addedAt with the
 			// server's monotonic stamp, so a missing or Infinity addedAt can no longer crash the flush or
 			// persist to disk — the re-stamp closes both of those classes on its own. The finiteness reject
 			// here is therefore a SHAPE reject on addedAt (fail the frame early rather than silently rewrite a
@@ -180,7 +180,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// is right. Same seam as the singerId crash above and the telemetry positionSec one. Reject here so
 			// nothing bad — whether it would crash the flush or slip past it — is ever applied or persisted.
 			//
-			// #324: enum-MEMBERSHIP is too broad for a CLIENT-MINTED status. 'playing' and 'done' are both
+			// enum-MEMBERSHIP is too broad for a CLIENT-MINTED status. 'playing' and 'done' are both
 			// in VALID_ENTRY_STATUSES (the enum is ['queued','playing','done']) but are SERVER-OWNED
 			// lifecycle values, so admitting the whole enum admits them — beginSinging
 			// mints 'playing', advance mints 'done', both via applyQueueOp DIRECTLY, never this wire seam. The
@@ -210,7 +210,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// entry") is only the asker for a DIFFERENT singer's entry. Gating every remove through it — the
 			// scope this arm previously used — is inert while can() ignores the capability, but the day can()
 			// is narrowed to a host role (the migration :9-11 exists to enable) it would refuse a singer their
-			// own song. So consult can() ONLY for someone else's entry (issue #241).
+			// own song. So consult can() ONLY for someone else's entry.
 			if (removeTarget.singerId !== deps.actorSingerId) {
 				if (!can({ singerId: deps.actorSingerId }, 'queue:remove-any')) return 'not allowed to remove this entry';
 			}
@@ -220,15 +220,15 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			const moveTarget = deps.state.entries.find((e) => e.id === op.id);
 			if (!moveTarget) return `unknown entry: ${op.id}`;
 			// Same ownership scope as remove above: reordering your OWN entry needs no capability;
-			// `queue:reorder-any` is only the asker for SOMEONE ELSE'S entry (issue #241).
+			// `queue:reorder-any` is only the asker for SOMEONE ELSE'S entry.
 			if (moveTarget.singerId !== deps.actorSingerId) {
 				if (!can({ singerId: deps.actorSingerId }, 'queue:reorder-any')) return 'not allowed to reorder this entry';
 			}
 			return null;
 		}
 		case 'move-to-index': {
-			// Cross-singer reorder (#856 step 4). `toIdx` is a position in the WHOLE queued list, so moving
-			// ANOTHER singer's entry jumps them — precisely what `queue:reorder-any` gates (issue #241, same
+			// Cross-singer reorder (step 4). `toIdx` is a position in the WHOLE queued list, so moving
+			// ANOTHER singer's entry jumps them — precisely what `queue:reorder-any` gates (same
 			// scope as the `move` arm). Reordering your OWN entry to a global slot needs no capability.
 			const target = deps.state.entries.find((e) => e.id === op.id);
 			if (!target) return `unknown entry: ${op.id}`;
@@ -273,12 +273,12 @@ export function handleQueueCommand(
 	// `cmd.clientOpId`, which is itself a crash when the frame carried no command at all.
 	const err = validateCommand(cmd, deps);
 	if (err) {
-		// #490: the idempotency ledger must be consulted BEFORE a validation failure becomes a reject.
+		// the idempotency ledger must be consulted BEFORE a validation failure becomes a reject.
 		// A resent command (a reconnect whose lost broadcast left the op pending, then resendPending on
 		// `hello`) is one the server has ALREADY applied — so current state now contradicts the op and
 		// validateCommand fails it: a `remove`'s entry has been pruned (`unknown entry`), and an `add`
 		// whose entry the server has since started fails the id-collision guard (`entry id already
-		// taken`, since #370). Rejecting there turned the re-ack the ledger exists to produce into a
+		// taken`,). Rejecting there turned the re-ack the ledger exists to produce into a
 		// false `op:reject` the phone shows the singer as an error for something that succeeded. So on a
 		// validation failure, ask the ledger first: on a hit, emit the same idempotent re-ack the
 		// already-applied branch below builds (`queue:patch` with `ops: []` and this `causedBy`) and do
@@ -306,7 +306,7 @@ export function handleQueueCommand(
 	// idempotency: a resent command (e.g. after reconnect) must not double-apply. Re-ack with the
 	// current rev so the originator clears its pending op, but don't mutate state again. A resend whose
 	// op still validates against current state (e.g. an `add` whose entry is still `queued`) lands here;
-	// one that no longer validates is re-acked in the validation-failure branch above (#490).
+	// one that no longer validates is re-acked in the validation-failure branch above.
 	if (deps.seenOp?.(cmd.clientOpId)) {
 		deps.publish({ type: 'queue:patch', patch: { rev: deps.state.rev, ops: [], causedBy: cmd.clientOpId } });
 		return null;
@@ -322,7 +322,7 @@ export function handleQueueCommand(
 			? (deps.state.entries.find((e) => e.id === (cmd.op as { id: string }).id)?.mediaId ?? null)
 			: null;
 
-	// Server-stamp the add's `addedAt` (issue #345). `addedAt` is the ordering input every
+	// Server-stamp the add's `addedAt`. `addedAt` is the ordering input every
 	// addedAt-reading policy ranks singers by (queue-order.ts orderFair/orderFcfs/orderLeastRecentlySung),
 	// but validateCommand's add arm only checks it for finiteness — so one frame carrying a stamp below
 	// every other singer's first pick puts that singer at the head of every round, the jump

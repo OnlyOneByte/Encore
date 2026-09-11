@@ -1,4 +1,4 @@
-"""Guard: every runtime print in dial_home.py flushes, and the connect/disconnect pair especially (#473).
+"""Guard: every runtime print in dial_home.py flushes, and the connect/disconnect pair especially.
 
 THE DEFECT. dial_home.py's two connection-lifecycle prints -- the "connected to ..." announcement and
 the "disconnected (...); reconnecting in Ns" line -- were the ONLY two of the worker's runtime prints
@@ -49,7 +49,7 @@ def test_every_print_in_dial_home_flushes() -> None:
     offenders = [c.lineno for c in calls if not _has_flush_true(c)]
     assert not offenders, (
         f"print() without flush=True at dial_home.py lines {offenders} -- a buffered runtime print is "
-        f"lost when the worker then sleeps or crashes (#473)"
+        f"lost when the worker then sleeps or crashes"
     )
 
 
@@ -73,5 +73,5 @@ def test_the_connect_and_disconnect_prints_specifically_flush() -> None:
     disconnect = [c for c in calls if "reconnecting in" in _text_of(c)]
     assert len(connect) == 1, f"expected exactly one 'connected to' print, found {len(connect)}"
     assert len(disconnect) == 1, f"expected exactly one reconnect print, found {len(disconnect)}"
-    assert _has_flush_true(connect[0]), "the 'connected to' print must flush (#473)"
-    assert _has_flush_true(disconnect[0]), "the 'reconnecting in Ns' print must flush (#473)"
+    assert _has_flush_true(connect[0]), "the 'connected to' print must flush"
+    assert _has_flush_true(disconnect[0]), "the 'reconnecting in Ns' print must flush"

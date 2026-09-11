@@ -9,13 +9,13 @@
  *
  * ── WHY A QUARANTINE EXISTS AT ALL ─────────────────────────────────────────────────────────────
  *
- * Issue #823 moved four honour-system claims onto real measurement. The first thing a real
+ * This gate moved four honour-system claims onto real measurement. The first thing a real
  * measurement did was find four control classes the source scan had been waving through for as long
  * as it has existed — because `touch-targets.test.ts`'s structural arm skips any rule that declares
  * no hard height, and every one of these four sizes itself from padding or a UA default.
  *
  * Fixing them is a production change with its own design questions (you do not "raise a checkbox to
- * 44px"; you make its label the target), and issue #831 already owns strengthening the touch-target
+ * 44px"; you make its label the target), and a separate issue already owns strengthening the touch-target
  * guard. So they are QUARANTINED here with the number each one actually measures, and the gate's job
  * is that the set never grows and never gets worse. This is the annotated-baseline shape the repo
  * already uses when a widened guard surfaces pre-existing violations — the alternative, shipping a
@@ -35,7 +35,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Encore's own tap floor, stricter than WCAG 2.2 SC 2.5.8's 24px — READ OUT OF `--tap` (issue #831).
+ * Encore's own tap floor, stricter than WCAG 2.2 SC 2.5.8's 24px — READ OUT OF `--tap`.
  *
  * The line here used to be `export const TAP = 44` under a comment that said "Read live from `--tap`
  * too". The gate does read the token live per box; THIS constant did not, so the sentence was true of
@@ -66,7 +66,7 @@ function readTapToken() {
 export const MIN_FIELD_PX = 16;
 
 /*
- * RETIRED IN #903 — `SHEET_CAP_FRACTION = 0.82`, the queue sheet's cap as a fraction of the visual
+ * RETIRED — `SHEET_CAP_FRACTION = 0.82`, the queue sheet's cap as a fraction of the visual
  * viewport (XR-VER-11). Its source declaration was `max-height: 82dvh` in QueueSheet.svelte, and the
  * whole drawer surface was deleted, so the number had nothing left to mirror and its CLAIM 3 arm was
  * removed rather than re-pointed: nothing docked caps itself in a viewport fraction now — the docked
@@ -90,7 +90,7 @@ export const VIEWPORTS = [
 /**
  * What counts as an interactive control. Derived from the roles a user can actually operate, not
  * from a hand-listed class allowlist — that is the mistake `touch-targets.test.ts` was already
- * corrected for once (#400), and re-introducing it here would re-introduce the blindness.
+ * corrected for once, and re-introducing it here would re-introduce the blindness.
  */
 export const CONTROL_SELECTOR = [
 	'button',
@@ -137,7 +137,7 @@ export const FOCUS_VISIBLE = ':focus-visible';
  * more than 1px worse (sub-pixel layout differs between viewport widths) and fails if a reading
  * reaches TAP.
  *
- * ── EMPTIED BY #863 ────────────────────────────────────────────────────────────────────────────
+ * ── EMPTIED ────────────────────────────────────────────────────────────────────────────────────
  *
  * The four entries this gate first surfaced are all resolved now, and each is recorded in RETIRED
  * below rather than deleted — XR-VER-06/07: a quarantine whose defect no longer reproduces is
@@ -165,28 +165,28 @@ export const RETIRED = [
 		match: { tag: 'input', type: null, cls: '', near: 'Search a song or artist' },
 		was: 22,
 		reason:
-			'FIXED in #863. The dock search field is a bare <input> in `div.card.searchbox`; its rule declared no height, so the real hit extent was the 22px text line while the div carried the tappable-looking padding. The `.searchbox input` rule now sets `min-height: var(--tap)`, and the narrow-breakpoint searchbox rose from 42px to var(--tap) so it is not clipped. The gate measures it live at var(--tap) now, and touch-targets.test.ts sees it too: the `.searchbox input` rule is examined by the #863 arm there, so a revert reds the structural scan.'
+			'FIXED. The dock search field is a bare <input> in `div.card.searchbox`; its rule declared no height, so the real hit extent was the 22px text line while the div carried the tappable-looking padding. The `.searchbox input` rule now sets `min-height: var(--tap)`, and the narrow-breakpoint searchbox rose from 42px to var(--tap) so it is not clipped. The gate measures it live at var(--tap) now, and touch-targets.test.ts sees it too: the `.searchbox input` rule is examined by the min-height arm there, so a revert reds the structural scan.'
 	},
 	{
 		where: '/settings',
 		match: { tag: 'select', type: null },
 		was: 41,
 		reason:
-			'FIXED in #863. Every <select> on /settings sized from the UA default plus the route padding and landed at 41px — 3px short. The shared `select, .text, .name-input` rule now sets `min-height: var(--tap)` with box-sizing:border-box, which closes all eight selects at once. A native select box is browser-owned, so this is verified on the real render by gate:measured (now live, not quarantined) rather than declared.'
+			'FIXED. Every <select> on /settings sized from the UA default plus the route padding and landed at 41px — 3px short. The shared `select, .text, .name-input` rule now sets `min-height: var(--tap)` with box-sizing:border-box, which closes all eight selects at once. A native select box is browser-owned, so this is verified on the real render by gate:measured (now live, not quarantined) rather than declared.'
 	},
 	{
 		where: '/settings',
 		match: { tag: 'input', type: 'checkbox', cls: '', near: 'Song intro before each turn' },
 		was: 18,
 		reason:
-			'FALSE POSITIVE of the gate, closed in #863. The song-intro checkbox is wrapped by `<label class="check">`, which already carries `min-height: var(--tap)` on `main` — tapping the 44px label toggles it. The gate read 18px because its own() counted only the glyph and its descendants. measured-design.mjs now credits the wrapping label as the tap target for a checkbox/radio glyph, so the live reading is the label extent (>= var(--tap)). No markup change was needed; resizing the glyph to 44px was explicitly the WRONG fix.'
+			'FALSE POSITIVE of the gate, since closed. The song-intro checkbox is wrapped by `<label class="check">`, which already carries `min-height: var(--tap)` on `main` — tapping the 44px label toggles it. The gate read 18px because its own() counted only the glyph and its descendants. measured-design.mjs now credits the wrapping label as the tap target for a checkbox/radio glyph, so the live reading is the label extent (>= var(--tap)). No markup change was needed; resizing the glyph to 44px was explicitly the WRONG fix.'
 	},
 	{
 		where: '/settings',
 		match: { tag: 'input', type: 'text', cls: 'text', near: 'Address phones join at' },
 		was: 35,
 		reason:
-			'FIXED in #863. The join-address field on the Server tab measured 35px — its own text-class rule set font-size and padding but no height, the shape the structural scan skipped. It shares the `select, .text, .name-input` rule that now carries `min-height: var(--tap)`, so the same one edit that closed the selects closed this field, and the #863 structural arm catches it via that shared rule.'
+			'FIXED. The join-address field on the Server tab measured 35px — its own text-class rule set font-size and padding but no height, the shape the structural scan skipped. It shares the `select, .text, .name-input` rule that now carries `min-height: var(--tap)`, so the same one edit that closed the selects closed this field, and the structural arm catches it via that shared rule.'
 	}
 ];
 

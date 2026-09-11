@@ -1,4 +1,4 @@
-// Test stub for SvelteKit's `$app/environment` virtual module (issue #822, rung M).
+// Test stub for SvelteKit's `$app/environment` virtual module (rung M).
 //
 // No first-party file imports this today (verified across apps/ and packages/ — the only hits are
 // generated files under .svelte-kit/). It is stubbed anyway because it is the module a component

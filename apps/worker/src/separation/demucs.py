@@ -47,7 +47,7 @@ def resolve_demucs_model(params: dict, default: str = DEFAULT_MODEL) -> str:
     if requested not in DEMUCS_MODELS:
         # BoundaryError subclasses ValueError (drop-in for existing pytest.raises(ValueError)) but
         # carries the shared structured `retryable = False`, so an unknown model fails fast via
-        # retry_policy instead of spending three attempts rediscovering the same bad token (#497).
+        # retry_policy instead of spending three attempts rediscovering the same bad token.
         raise BoundaryError(f"unknown demucs model {requested!r}; expected one of {DEMUCS_MODELS}")
     return cast(str, requested)
 
@@ -70,7 +70,7 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
     return ffmpeg_argv(ffmpeg_bin, input_path, ["-ac", "2", "-c:a", "pcm_s16le"], [out_wav])
 
 
-# History (#480): the vocals stem used to be stored as stereo AAC-in-m4a at 192k, on the argument that a
+# History: the vocals stem used to be stored as stereo AAC-in-m4a at 192k, on the argument that a
 # guiding track mixed UNDER the instrumental master tolerates lossy compression. #480 replaced that with
 # lossless FLAC for both stems (see encode_flac_argv below and PublishStems in steps/separate.py): the
 # offset argument won -- an AAC-in-m4a encoder adds priming samples (~21 ms) that shift the vocals start
@@ -81,7 +81,7 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
 def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", level: int = 8) -> list[str]:
     """ffmpeg argv: encode a separated stem to LOSSLESS FLAC, 16-bit stereo at the source rate.
 
-    Used for BOTH stems (#480). The instrumental plays at volume as the master, so it stays lossless;
+    Used for BOTH stems. The instrumental plays at volume as the master, so it stays lossless;
     the vocals guiding track uses the SAME encoder so the two stems share one codec and one container
     and decode to a sample-exact common start (removing the ~21 ms AAC-in-m4a priming-sample START
     offset the guide used to carry and the player used to trim out at startup). FLAC in a browser is a
@@ -174,7 +174,7 @@ def classify_retryable(stderr_text: str) -> bool:
     """True if the failure is worth retrying (transient); False for permanent source/format errors.
 
     The permanent-marker table is NOT owned here: it is `retry_policy.PERMANENT_MARKERS`, the one
-    canonical union (issue #443 Part 2/3). demucs raises `ProcessError` for EVERY CLI it runs —
+    canonical union (Part 2/3). demucs raises `ProcessError` for EVERY CLI it runs —
     yt-dlp, ffmpeg, and bs-roformer-infer — so a deterministic separator/encoder failure whose stderr
     hits a canonical marker (`"unsupported"`, `"corrupt"`) is now classified non-retryable here too,
     exactly as `dial_home` classifies it, instead of being retried to maxAttempts off a

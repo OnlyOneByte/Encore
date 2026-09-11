@@ -49,7 +49,7 @@ export function doLeave(app: EncoreApp, singerId: string): LeaveResult {
 	// them and no client has to reconcile a roster that still lists someone who just left.
 	app.presence.forget(singerId);
 
-	// #636: an explicit leave un-queues their songs, which can change who plays next — a leaving
+	// an explicit leave un-queues their songs, which can change who plays next — a leaving
 	// singer's queued pick may be the advertised upNext, or removing it promotes another singer. Each
 	// remove above published only queue:patch, so nowplaying:changed was never re-derived and the TV
 	// kept naming the departed song. Re-broadcast the true next once, after the removals, only when

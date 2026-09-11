@@ -1,4 +1,4 @@
--- #640: media.lyrics_override_ref — a human's explicit lyrics pick, by candidate ref, the fallback
+-- media.lyrics_override_ref — a human's explicit lyrics pick, by candidate ref, the fallback
 -- for when the ranker chose the wrong lyrics set. The chosen candidate is resolved through the shared
 -- resolveLyricsRef: an override present in the candidate set outranks pickBestLyrics, everywhere the
 -- pointer is derived (sidecar restore + align completion).

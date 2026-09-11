@@ -1,4 +1,4 @@
-# Spike · QueueSheet on the shadcn/vaul drawer (#827)
+# Spike · QueueSheet on the shadcn/vaul drawer
 
 > **⚠ SUPERSEDED BY #903 — this document is history, not a plan.** Its verdict ("GO on the drawer") was
 > never acted on, and the question it answered is closed the other way: the ratified phone design has no
@@ -52,7 +52,7 @@ under `@media (max-height: 480px)`. The value the page actually resolves is **ne
 `QueueSheet.svelte:60` writes the measured peek height inline on `documentElement` and an inline
 property outranks any media query. Measured: 164px at 844 tall and 151px at 480 tall — the 84px rule
 never wins while the sheet is mounted. The port keeps that contract intact, including the unmount
-teardown (#460 §14).
+teardown (§14).
 
 Two corrections to how the issue frames N4, both measured by removing the inline property and
 re-reading the cascade (deterministic, no racing hydration):
@@ -93,7 +93,7 @@ asserted-in-prose, in `apps/core/src/lib/components/drawer-spike-827.test.ts`.
 
 **Risk 4 · drag reorder — OUT OF SCOPE.** The drawer is the *sheet pull*, which the incumbent already
 implements with pointer handlers. Row reorder is `svelte-dnd-action` (`docs/ux/02-phone.md` XR-PH-06)
-and #836 owns it. Its "blocked on #827" premise does not hold — different library, different gesture.
+and #836 owns it. Its "blocked" premise does not hold — different library, different gesture.
 
 **Risk 5 · do the guards keep working — NO, as already ruled (Q1 · C).** Confirmed, and narrowed.
 The port takes exactly two named assertions out of scope, and **both fail loudly**, which is the good
@@ -148,7 +148,7 @@ its own imports — verified: `Cannot find package 'bits-ui'`. The adopting comm
 itself, with nothing upstream stating a compatible range. `1.0.0-next.7` published 2025-03-24 and is
 still the newest.
 
-**4. A ported QueueSheet cannot be loaded by `bun test`, so the mount rung (#822) goes dark on it.**
+**4. A ported QueueSheet cannot be loaded by `bun test`, so the mount rung goes dark on it.**
 This is the sharpest cost the spike found, and it was not on the issue's list.
 `vaul-svelte`'s `exports["."]` declares only `types` and `svelte` — **no `default`, no `import`, no
 `require`**. Vite/SvelteKit apply the `svelte` condition, so the app builds; `bun test` does not, so

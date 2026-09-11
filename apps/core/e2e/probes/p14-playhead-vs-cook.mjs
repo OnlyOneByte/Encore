@@ -1,5 +1,5 @@
 /*
- * P14 — DOES A COOK MOVE THE PLAYING SONG'S PLAYHEAD? (#396)
+ * P14 — DOES A COOK MOVE THE PLAYING SONG'S PLAYHEAD?
  *
  * The invariant under test, stated as the owner did: "the currently playing song should absolutely
  * NOT be affected by anything happening for processing."
@@ -29,8 +29,8 @@ import { connect, sleep } from '../cdp.mjs';
 import { findChromium } from '../lib/chromium.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #559, following the
- * #557/#558 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so they cannot
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
+ * /pattern). Browser/Page are derived from cdp.mjs's own return types so they cannot
  * drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped results
  * are cast at the call site.
  *
@@ -317,7 +317,7 @@ const TOL = 0.25;
 if (worstDrop > TOL) {
 	console.error(`\nFAIL — A's playhead moved BACKWARDS ${worstDrop.toFixed(2)}s during B's cook`);
 	if (worstAt) console.error(`  ${worstAt.from.toFixed(2)}s -> ${worstAt.to.toFixed(2)}s`);
-	console.error('  Processing another song perturbed the playing song. This is #396.');
+	console.error('  Processing another song perturbed the playing song.');
 	process.exit(1);
 }
 if (!readyB) {

@@ -2,7 +2,7 @@
 //
 // WHY THIS EXISTS. `/api/stats` and `/api/metrics` were born in one commit and grown by copying
 // each other, so each carried its own `clampDays` — same algorithm, different constants, with
-// nothing forcing the two copies to stay in sync (#530). One copy's docstring also stated a lower
+// nothing forcing the two copies to stay in sync. One copy's docstring also stated a lower
 // bound of 1 that its code never applied: `Math.floor(0.5)` is `0`, so `?days=0.5` survived the
 // `<= 0` gate and collapsed the window to zero length. This is the single implementation both routes
 // call; the differing constants (a 30-day public trend vs a 7-day operator window) stay at each call

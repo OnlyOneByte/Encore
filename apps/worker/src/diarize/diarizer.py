@@ -1,14 +1,14 @@
-"""Diarization: labelling WHICH voice sings each stretch of the vocals stem (#691).
+"""Diarization: labelling WHICH voice sings each stretch of the vocals stem.
 
 The `Diarizer` seam and the real pyannote-backed implementation behind it. This is the SOURCE of duet
-part attribution the owner ruled for on #632 ("A — diarize in the worker", 2026-09-07 17:08Z); the
+part attribution the owner ruled for ("A — diarize in the worker", 2026-09-07 17:08Z); the
 pure mapping from its output to a `part` label on each lyric line lives next door in `attribution.py`,
 and the two are separate for the same reason ASR and alignment are: one INVENTS speaker turns from
 audio, the other is pure arithmetic over the result and must be testable with no model.
 
 Runs on the ISOLATED VOCALS STEM (`ctx.audio.vocals_path`), the same input the aligner and ASR prefer
 — a full mix diarizes even worse, and the stem is already separated and retained. Diarization on
-*overlapping sung* vocals is materially harder than on speech (the cost #632 named), which is why the
+*overlapping sung* vocals is materially harder than on speech (the cost that ruling named), which is why the
 attribution layer is conservative and the whole feature falls back to one colour when unsure.
 
 torch/pyannote are imported LAZILY inside the loader, exactly like `lyrics/asr.py`: a worker that
@@ -25,7 +25,7 @@ from ..lyrics.timing import ML_LOCK
 
 #: The pyannote pipeline id. Gated on Hugging Face, so it only loads on a box whose operator accepted
 #: the model terms and set a token — probed for below, and absent by default (this box has nowhere for
-#: a secret, per the #632 duet research), which is why `diarize` is an OPT-IN capability that narrows
+#: a secret, per the duet research), which is why `diarize` is an OPT-IN capability that narrows
 #: to unavailable rather than failing a cook.
 DEFAULT_PIPELINE = "pyannote/speaker-diarization-3.1"
 

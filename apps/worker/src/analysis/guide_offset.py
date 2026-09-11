@@ -1,5 +1,5 @@
 """Measure the guiding track's offset against the instrumental — the guide-alignment half of the guide
-feature, made OBSERVABLE at cook time instead of assumed in the room (#766).
+feature, made OBSERVABLE at cook time instead of assumed in the room.
 
 WHY THIS EXISTS. `guide-sync.ts` on the TV is blind by construction to any offset baked into the DECODED
 audio: it only ever compares the two media elements' reported `currentTime`, so a vocals stem that is

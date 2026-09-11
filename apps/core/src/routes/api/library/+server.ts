@@ -21,7 +21,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	// the whole table would bury the library in things you cannot sing yet.
 	// One active browse facet at a time (the phone UI enforces this too): an artist filter, a tag
 	// filter, or neither. `?tag=` reuses the media_tags byKindValue index via byTag — NOT a client-side
-	// filter over the whole payload, which the #632 design rejected because it wastes an on-disk index
+	// filter over the whole payload, which the design rejected because it wastes an on-disk index
 	// and stops scaling past a few hundred songs. artist wins if both are somehow present, matching the
 	// mutual-exclusion the chip row already imposes.
 	const artist = url.searchParams.get('artist')?.trim();
@@ -67,12 +67,12 @@ export const GET: RequestHandler = async ({ url }) => {
 	return json({
 		library,
 		cooking,
-		// mediaId → its 'tag'-kind values, for the library row's tag chips (#689). Additive: a client
+		// mediaId → its 'tag'-kind values, for the library row's tag chips. Additive: a client
 		// that does not read it is unaffected, and #690's tag filter reads this same map.
 		tags,
 		// Browse facets always describe the WHOLE ready library, never the current filter — otherwise
 		// picking an artist would collapse the facet list to that one artist and strand you there. The
-		// tag facet (#690) rides the same rule and the same byKindValue index the tag filter reads.
+		// tag facet rides the same rule and the same byKindValue index the tag filter reads.
 		facets: { artists: app.media.artistFacets(), tags: app.media.tagFacets() },
 		filter: artist ? { artist } : tag ? { tag } : null
 	});

@@ -30,9 +30,9 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #563, following the
- * #553/#557/#558/#559/#560/#561/#562 pattern). Browser/Page are derived from cdp.mjs's own return types
- * (#553) so they cannot drift from the driver. page.evaluate()/fetch().json() come back Promise<any>, so
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
+ * fuzz.mjs pattern). Browser/Page are derived from cdp.mjs's own return types
+ * so they cannot drift from the driver. page.evaluate()/fetch().json() come back Promise<any>, so
  * DOM/API-shaped results are cast at the call site via the domain typedefs below.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -751,7 +751,7 @@ try {
 		const nowHas = await tv.evaluate(`document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)}) !== null`);
 		if (nowHas) return true;
 		// Fall back to re-queueing.
-		await openBrowseFromHome(phone); // #832: search lives behind the browse push
+		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'caroline');
 		await sleep(300);
 		await phone

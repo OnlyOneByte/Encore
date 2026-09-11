@@ -1,4 +1,4 @@
-// Re-prioritising a cook whose turn arrived AFTER it was filed — the starvation half of #135.
+// Re-prioritising a cook whose turn arrived AFTER it was filed — the starvation half of the late queue-add defect.
 //
 // A cook's `priority` is a snapshot of `soonestSeqFor` taken ONCE, at enqueue (make-karaoke.ts).
 // The queue entry that gives a song its rotation position, though, does not always exist yet when

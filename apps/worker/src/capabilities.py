@@ -73,9 +73,9 @@ def probe_all(
     rof_ok, rof_why = _either("bs_roformer", roformer_bin)
     probes.append(Probe("stems:roformer", rof_ok, rof_why))
 
-    # python-audio-separator: the mel-band RoFormer engine (#483), run through the `audio-separator`
+    # python-audio-separator: the mel-band RoFormer engine, run through the `audio-separator`
     # CLI. Advertised only when the dep is present — the same honesty contract as every other token, so
-    # the #118 parity guard (test_every_advertised_stems_capability_resolves_to_a_real_engine) holds:
+    # the parity guard (test_every_advertised_stems_capability_resolves_to_a_real_engine) holds:
     # engine_for("audiosep") builds a real AudioSepEngine, so a box advertising this can actually run it.
     asep_ok, asep_why = _either("audio_separator", audiosep_bin)
     probes.append(Probe("stems:audiosep", asep_ok, asep_why))
@@ -110,7 +110,7 @@ def probe_all(
         )
     )
 
-    # Diarization (#691) — the SOURCE of duet part attribution. Its own probe because an advertised
+    # Diarization — the SOURCE of duet part attribution. Its own probe because an advertised
     # capability the box cannot run is the exact failure this module exists to remove: pyannote is
     # HF-gated (needs a token this box may not have) and heavy, so `diarize` is opt-in and reports
     # available only when the pipeline can actually be imported. It rides the `align` action rather

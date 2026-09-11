@@ -59,7 +59,7 @@ class AudioCtx:
     duration_sec: float | None = None
     #: Scratch WAV a separator needs, when the engine cannot read the retained original directly.
     decoded_wav: str | None = None
-    #: YouTube's OWN declared credit, captured from the download's `.info.json` (#672). The annotation
+    #: YouTube's OWN declared credit, captured from the download's `.info.json`. The annotation
     #: artifact shape (`{source:'youtube', artist, title, confidence:'high'}`) or None when the upload
     #: carried no music-panel metadata. A citation, not a parse — Annotate prefers it and also uses it
     #: as the MusicBrainz query key so a wrong title parse can no longer defeat the lookup.
@@ -117,7 +117,7 @@ class Outputs:
     #: The artifact the CompleteResult points at. First published wins; ranking is the core's job.
     media_uri: str = ""
     #: Why the published lyric was chosen over the rejected candidates — the VariantChoice provenance
-    #: as durable data (#669). None on any job that made no lyrics pick. Crosses the wire to the
+    #: as durable data. None on any job that made no lyrics pick. Crosses the wire to the
     #: job_attempts audit trail; deliberately NOT the sidecar, which is library identity not run log.
     selection: dict[str, Any] | None = None
 
@@ -140,7 +140,7 @@ class Ctx:
 
     @property
     def params(self) -> dict[str, Any]:
-        # Guaranteed a dict by the inbound boundary check (dial_home._on_assign, #459); no re-guard.
+        # Guaranteed a dict by the inbound boundary check (dial_home._on_assign); no re-guard.
         return self.job.params
 
     def note(self, line: str) -> None:

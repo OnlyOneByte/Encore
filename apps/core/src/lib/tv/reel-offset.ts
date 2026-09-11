@@ -2,7 +2,7 @@
 // geometry — and specifically why the offset must be clamped to the READABLE window, not the derived
 // reel height and not even the full clipped band.
 //
-// #270 — the sung row off the TOP of the reel. Raise the TV Text size while Lines-ahead exceeds
+// — the sung row off the TOP of the reel. Raise the TV Text size while Lines-ahead exceeds
 // Lines-sung and the line being sung scrolled off the top: the singer was left with only dim upcoming
 // lines and no marker. The anchor places the current row by biasing it away from centre so an
 // asymmetric row split (more lines after than before) can be honoured:
@@ -14,12 +14,12 @@
 // clipped by max-height 100vh - --tv-chrome-h, so the height it is actually SEEN through — band
 // (the viewport clientHeight) — is smaller whenever that cap binds. Clamping the biased offset into
 // the band kept the sung row on screen; symmetric splits have bias 0, which is why the shipped 2/2
-// default never showed #270.
+// default never showed it.
 //
-// #671 — the sung row parked INSIDE the edge-fade ramp. Clamping to [0, band] is not enough, because
+// — the sung row parked INSIDE the edge-fade ramp. Clamping to [0, band] is not enough, because
 // the viewport box FADES 1.9em (one row) to transparent at each edge that has context rows (the mask
 // in LyricsOverlay.svelte). The region a singer can actually READ is the UNMASKED window
-// [fadeTop, band - fadeBot], and #270 clamp parked the row at top === 0 / bottom === band —
+// [fadeTop, band - fadeBot], and the earlier clamp parked the row at top === 0 / bottom === band —
 // congruent with a ramp, the worst available position: the line being sung rendered fainter than the
 // line after it, and the ball (drawn above its word) sat in the lowest-alpha slice of the ramp. The
 // fade is correct (it makes the reel read as a continuous scroll, and a no-context edge is deliberately
@@ -34,7 +34,7 @@
 //
 // fadeTop/fadeBot are the ACTUAL rendered ramp depths in px, keyed off whether each edge has
 // context rows (LyricsOverlay passes 0 for a no-context edge and the CSS-capped depth otherwise). With
-// both 0 the window IS [0, band], so this reduces to #270 clamp exactly.
+// both 0 the window IS [0, band], so this reduces to the earlier clamp exactly.
 //
 // Pure (no DOM, no globals — the measured rects are passed in) so the clamp invariant is unit-testable
 // without a real element, matching transport.ts, guide-sync.ts and lyrics-position.ts.
@@ -52,7 +52,7 @@ export interface ReelOffsetInputs {
 	linesAfter: number;
 	/**
 	 * Rendered depth of the TOP edge-fade ramp in px (0 when the top edge has no context rows and is
-	 * therefore unfaded). Defaults to 0 so a caller that does not measure the fade gets #270 [0, band]
+	 * therefore unfaded). Defaults to 0 so a caller that does not measure the fade gets the [0, band]
 	 * clamp unchanged.
 	 */
 	fadeTop?: number;

@@ -84,7 +84,7 @@ SEEDED_KEYS = frozenset(
 class PlanError(RuntimeError):
     """A plan that cannot be executed correctly. Raised at validation time, not at run time.
 
-    `retryable = False` (#443): a job whose action has no plan, or a malformed plan, is a
+    `retryable = False`: a job whose action has no plan, or a malformed plan, is a
     permanent boundary failure — retrying re-selects the same (missing) plan. The structured
     flag lets `retry_policy.is_retryable` fail it fast instead of spending three attempts.
     """

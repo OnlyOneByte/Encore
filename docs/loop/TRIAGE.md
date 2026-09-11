@@ -53,7 +53,7 @@ cannot tell your comment from a human's by author — every lane on this repo po
 user. The marker is the *only* thing that stops your own comment from waking a triage turn about
 itself. It renders as nothing, so it costs the reader nothing.
 
-Measured on 2026-09-08: a triage comment posted **without** the marker (on #759) was picked up as if
+Measured on 2026-09-08: a triage comment posted **without** the marker was picked up as if
 it were a human reply and spent a whole follow-up turn before that lane worked out it was reading its
 own words. Nothing worse happened only because the follow-up lane re-checks authoritatively — do not
 rely on that safety net.

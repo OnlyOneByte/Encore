@@ -1,4 +1,4 @@
-// The own-picks reorder MODE, as pure functions (XR-PH-17 … XR-PH-20, issue #836).
+// The own-picks reorder MODE, as pure functions (XR-PH-17 … XR-PH-20).
 //
 // WHY A MODE AT ALL. `move`'s `toSeq` is an index into the singer's own QUEUED picks, not a
 // `rotationSeq` (packages/shared/src/core/ops.ts:12, `reorderWithinSinger` at rotation.ts:127). The op
@@ -23,12 +23,12 @@ import type { EntryStatus } from '@encore/shared';
  *    another guest's song. `QueueRow.svelte` records that a grip once rendered only on another guest's
  *    row, where it was the sole affordance; that exact regression is what this argument forbids.
  *  • `ownQueuedCount > 1` — with one pick there is no second position to move it to.
- *  • `reorderMeaningful` — always true under the stored-list model (#856): the queue IS the stored
+ *  • `reorderMeaningful` — always true under the stored-list model: the queue IS the stored
  *    list and a move rewrites it, so no policy can discard a reorder. It was false under `shuffle`,
  *    which ranked by entry id and re-derived over any move; nothing re-derives a position now. The
  *    parameter is kept so the caller states the claim explicitly rather than assuming it.
  *
- * (The `!ownPicksPinned` clause was removed with pinning in #856 step 3: with no durable pin there is
+ * (The `!ownPicksPinned` clause was removed with pinning step 3: with no durable pin there is
  * nothing left to re-seat a moved row, so the clause was constant-true and its predicate dead.)
  */
 export function gripVisible(opts: {

@@ -1,4 +1,4 @@
-// The attract screen's rotating phrase set and its shuffled-bag order (issue #826, XR-TV-16/17).
+// The attract screen's rotating phrase set and its shuffled-bag order (XR-TV-16/17).
 //
 // The attract screen shows a FIXED `Karaoke` label with one of these phrases rotating beneath it. A
 // guest who glances up during any phrase still learns what they are looking at (the label never

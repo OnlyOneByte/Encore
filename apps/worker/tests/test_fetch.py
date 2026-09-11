@@ -263,7 +263,7 @@ async def test_no_lookup_keys_means_no_annotation_attempted(tmp_path):
     # OBSERVE the attempt, not just the outcome: with no artist/track the lookup must be DECLINED
     # BEFORE any query is built, so search() is never reached. Asserting only the absent artifact is
     # blind -- a query built from (None, None) blows up in escape_lucene and is swallowed by the
-    # blanket except, producing the same empty-artifact outcome (issue #120). This pins the DECLINE.
+    # blanket except, producing the same empty-artifact outcome. This pins the DECLINE.
     assert annotator.search_calls == [], f"expected no lookup attempt, saw {annotator.search_calls}"
     assert "annotation" not in done.artifacts
 
@@ -340,7 +340,7 @@ async def test_configured_ytdlp_binary_reaches_the_download_argv(tmp_path):
     assert seen[0][0] == configured, f"argv[0] must be the configured ENCORE_YTDLP_BIN, got {seen[0][0]!r}"
 
 
-# ── #672: capture YouTube's OWN declared credit at download time ───────────────────────────────────
+# ── capture YouTube's OWN declared credit at download time ───────────────────────────────────
 
 
 def test_download_argv_writes_the_info_json():
@@ -405,7 +405,7 @@ async def test_a_fetch_captures_the_youtube_credit_and_publishes_it_as_the_annot
 
 @pytest.mark.asyncio
 async def test_the_youtube_credit_becomes_the_musicbrainz_query_key(tmp_path):
-    # The reversed-parse defect (#672) is that a wrong artist parse ("No Vocal") defeats the MusicBrainz
+    # The reversed-parse defect is that a wrong artist parse ("No Vocal") defeats the MusicBrainz
     # lookup. Querying with the YouTube CITATION instead of the parse is what lets the lookup succeed —
     # and a MusicBrainz match then upgrades the youtube floor to a musicbrainz citation with an MBID.
     audio = tmp_path / "audio" / "m1.m4a"

@@ -1,4 +1,4 @@
--- #782 (piece 3 of #425): room_settings gains tv_background_dim — a 0..1 fraction that dims the stage
+-- (piece 3): room_settings gains tv_background_dim — a 0..1 fraction that dims the stage
 -- colour toward black. Owner ruling Q2 = A, 2026-09-07: "Dim the stage colour toward black — today's
 -- geometry, no new layer." A lightness control, not an opacity layer over the video: the stage sits at
 -- z-index 0 behind the video on a black floor, so darkening it toward black reveals nothing of the

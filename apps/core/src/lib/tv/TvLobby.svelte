@@ -41,10 +41,10 @@
 	const count = $derived(roster.length + overflow);
 
 	/*
-	 * FULL ROSTER, NO TRUNCATION (issue #826, XR-TV-14).
+	 * FULL ROSTER, NO TRUNCATION (XR-TV-14).
 	 *
 	 * The lobby shows EVERY guest — the reason to show the roster at all is that it must not degrade as
-	 * the party grows, so a "+N more" fold (the old #98 behaviour) is exactly the degradation to avoid.
+	 * the party grows, so a "+N more" fold (the previous behaviour) is exactly the degradation to avoid.
 	 * The route now passes the whole roster (lobbyRoster with no cap), so `overflow` is 0 and this
 	 * renders one chip per present singer.
 	 *
@@ -57,7 +57,7 @@
 	const dense = $derived(roster.length > CHIP_STEPDOWN);
 	/* Scheme-less AND query-less, matching attract: nobody types "http://" or the redundant ?room=CODE
 	   off a wall (the QR carries the full URL). Stripping the query is also what keeps the address to one
-	   line so it cannot collide with a full roster below it (#826). */
+	   line so it cannot collide with a full roster below it. */
 	const joinShort = $derived(joinUrl.replace(/^https?:\/\//, '').replace(/\?.*$/, ''));
 	/** Somebody has picked, it just is not singable yet. Different situation, different words. */
 	const cooking = $derived(pendingCount > 0);
@@ -163,7 +163,7 @@
 		 * strip begins; the strip flows beneath it in normal order. Centring the stack across the full
 		 * `inset: 0` box while the strip was pinned `bottom: 0` and grew upward as names wrapped meant the
 		 * two intersected on short panels (≤768px), and DOM order painted the strip's backdrop and chips
-		 * over the typed join address — the only way in when a camera won't read the QR (#98). With the
+		 * over the typed join address — the only way in when a camera won't read the QR. With the
 		 * strip in flow its real height always reserves its band, so no roster size at any panel height
 		 * can reach the address. The 1920/3840 panels never overlapped, so a reserve keyed to a fixed
 		 * height would have been wrong at the tall end; letting the strip's own height do the reserving is
@@ -216,7 +216,7 @@
 	}
 	h1 {
 		/*
-		 * --tv-name (not --tv-hero): the lobby now shows the WHOLE roster below (#826), so the headline
+		 * --tv-name (not --tv-hero): the lobby now shows the WHOLE roster below, so the headline
 		 * yields height to the roster rather than owning the reel-adjacent hero tier. Still well above the
 		 * ten-foot floor; it is read once, not sung along to.
 		 */
@@ -247,8 +247,8 @@
 	.strip {
 		/*
 		 * In normal flow at the foot of the .lobby column, not `position: absolute; bottom: 0`. Its height
-		 * is part of layout, which reserves the band above it (#98). It now shows the WHOLE roster
-		 * (#826/XR-TV-14), so it WRAPS to multiple rows rather than clipping — a party is not truncated.
+		 * is part of layout, which reserves the band above it. It now shows the WHOLE roster
+		 * (XR-TV-14), so it WRAPS to multiple rows rather than clipping — a party is not truncated.
 		 */
 		flex: none;
 		/*
@@ -258,7 +258,7 @@
 		 * one place a guest confirms the room actually saw them join. A guard that only inspects edge
 		 * OFFSETS cannot catch this shape, which is why it survived the first pass of the stage scale.
 		 *
-		 * RESERVE THE CORNER CONTROLS (#826, XR-TV-14 blocker). The fullscreen button (.fs-btn) and the
+		 * RESERVE THE CORNER CONTROLS (XR-TV-14 blocker). The fullscreen button (.fs-btn) and the
 		 * join corner badge are `position: absolute` in the bottom-right at `right: var(--tv-safe-x)`,
 		 * ABOVE this strip in the paint order (--z-tv-card > --z-tv-reel). A wrapped roster's rightmost
 		 * chip used to land UNDER the button (elementFromPoint returned .fs-btn at 10–12 guests), which is
@@ -274,7 +274,7 @@
 		justify-content: center;
 		gap: var(--space-2xl);
 		/*
-		 * WRAP the full roster (#826). No cap, no clip: every guest is shown. The step-down (`.dense`
+		 * WRAP the full roster. No cap, no clip: every guest is shown. The step-down (`.dense`
 		 * below) is what keeps a large party inside the title-safe band — the chips shrink rather than
 		 * the roster being truncated or clipped off-screen.
 		 */
@@ -283,12 +283,12 @@
 		 * A vh max-height so the wrapped strip cannot grow UPWARD past its band into the corner controls
 		 * either (the horizontal clear handles the same-row case; this handles the extra-rows case). NO
 		 * `overflow: hidden` — with the step-down keeping 13+ inside two rows this is a safety net, not a
-		 * clip, and a hard clip is what silently ate roster members in the pre-#826 design.
+		 * clip, and a hard clip is what silently ate roster members in the previous design.
 		 */
 		max-height: 26vh;
 	}
 	/*
-	 * THE CHIP STEP-DOWN RULE (#826/XR-TV-14). Above CHIP_STEPDOWN (12) guests the chip type and dot
+	 * THE CHIP STEP-DOWN RULE (XR-TV-14). Above CHIP_STEPDOWN (12) guests the chip type and dot
 	 * step down a tier, so 13+ still fit two rows inside the title-safe area instead of pushing chips
 	 * off-screen. A RULE, applied by the `dense` class the script derives, rather than a size a party
 	 * discovers by overflowing. Written as `.dense .name` / `.dense .swatch` (not `.dense .person`) so

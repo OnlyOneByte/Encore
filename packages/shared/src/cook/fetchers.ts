@@ -102,7 +102,7 @@ export const METADATA_ONLY_SOURCES: readonly MediaSource[] = ['spotify'];
  * It lives here, in the acquisition registry, because the reason is an acquisition fact: no fetcher
  * knows how to pull these bytes.
  *
- * WHY IT IS A SHARED PREDICATE AND NOT A CHECK INSIDE ONE FUNCTION (#742). The rule used to be
+ * WHY IT IS A SHARED PREDICATE AND NOT A CHECK INSIDE ONE FUNCTION. The rule used to be
  * enforced at exactly one point — a `media.source === 'spotify'` line inside `requestMakeKaraoke` —
  * and asserted at five others. Enforcement there is too late: `cookState` still answered `'cookable'`,
  * so the phone offered Sing, `cookAndQueue` took the singer's turn, and only THEN did the cook get

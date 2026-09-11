@@ -1,4 +1,4 @@
-// guard: the #64 tap-to-start affordance — the ONLY route out of a silent TV — is exercisable e2e
+// guard: the tap-to-start affordance — the ONLY route out of a silent TV — is exercisable e2e
 // ONLY if the CDP driver can deliver a REAL user gesture, and only if some probe actually uses it.
 //
 // every click verb in apps/core/e2e/cdp.mjs is a synthetic `el.click()` through

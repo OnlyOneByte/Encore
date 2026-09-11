@@ -6,7 +6,7 @@
 	import type { HTMLAttributes } from "svelte/elements";
 
 	/*
-	 * #913: the second parameter is part of the formatter SIGNATURE a caller may override, so it cannot
+	 * the second parameter is part of the formatter SIGNATURE a caller may override, so it cannot
 	 * be dropped — an override receives the payload positionally. The default simply has no use for it.
 	 * Kept vendored-verbatim apart from this disable.
 	 */

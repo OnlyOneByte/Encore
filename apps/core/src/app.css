@@ -1,5 +1,5 @@
 /*
- * TAILWIND v4 — IMPORTED IN THREE PARTS ON PURPOSE, WITH PREFLIGHT DELIBERATELY OMITTED (issue #853).
+ * TAILWIND v4 — IMPORTED IN THREE PARTS ON PURPOSE, WITH PREFLIGHT DELIBERATELY OMITTED.
  *
  * `@import 'tailwindcss'` is the one-line form and it pulls in a fourth thing: `preflight.css`, a
  * GLOBAL reset. This app carries ~4,950 lines of hand-written CSS that predates it, so the reset is
@@ -95,7 +95,7 @@
 	/*
 	 * accents
 	 *
-	 * ── THE FILL IS THE ACTIONABLE ACCENT (#840, XR-COL-11) ───────────────────────────────────────
+	 * ── THE FILL IS THE ACTIONABLE ACCENT (XR-COL-11) ───────────────────────────────────────
 	 *
 	 * `--accent-strong` USED TO LIVE HERE and is RETIRED, not renamed. It was defined as "a 3% darken
 	 * of --accent" and existed for exactly one reason: white on `--accent` #7c5cff measures 4.35:1,
@@ -120,7 +120,7 @@
 	 * The gradient's SECOND stop. Still the brand pink, deliberately: the registry derives a per-stop
 	 * `accent2` at +42° hue (stop 41's is #b235af), but this token is also the lyrics overlay's "sing
 	 * this now" active-word cue, and `colors.ts`'s `ACCENT2_HUE` is computed from #ff5cae. Re-pointing
-	 * it is the picker's job when a stop is APPLIED (#839), not the token layer's — see the per-stop
+	 * it is the picker's job when a stop is APPLIED, not the token layer's — see the per-stop
 	 * pairing contract below.
 	 */
 	--accent2: #ff5cae;
@@ -128,7 +128,7 @@
 	--warn: #ffb84d;
 	/*
 	 * --grad is DECORATION ONLY: progress fills, the wordmark via background-clip. NEVER put a text
-	 * label on it, ON ANY STOP (#840, XR-COL-13).
+	 * label on it, ON ANY STOP (XR-COL-13).
 	 *
 	 * THE BAN STANDS; ITS REASON IS NO LONGER ONE NUMBER. It used to rest on a single measurement —
 	 * white on the pink stop, 2.84:1 — but with `accent2` derived per stop this is 48 gradients, so
@@ -146,7 +146,7 @@
 	 */
 	--grad: linear-gradient(135deg, var(--accent), var(--accent2));
 	/*
-	 * The only ink permitted on --accent, and NO LONGER A CONSTANT (#840, XR-COL-12).
+	 * The only ink permitted on --accent, and NO LONGER A CONSTANT (XR-COL-12).
 	 *
 	 * It reads #ffffff because that is stop 41's `on_fill` — not because white is the rule. Across the
 	 * 48 stops `on_fill` is 36 DARK / 12 white, a per-stop fact. So the pairing discipline that used to
@@ -180,7 +180,7 @@
 	 * Accent as INK, lightened until it clears AA on a card. `--accent` itself is too dark to read at
 	 * 0.65rem, which is why a one-off #c4a9ff kept reappearing wherever accent-coloured text was wanted.
 	 *
-	 * A REQUIRED, DISTINCT TOKEN — do not collapse it into `--accent` (#840, XR-COL-10). In the 48-stop
+	 * A REQUIRED, DISTINCT TOKEN — do not collapse it into `--accent` (XR-COL-10). In the 48-stop
 	 * registry `accent_ink` differs from `fill` for 13 of 48 stops (Redline, Scarlet, Cerulean, Cobalt,
 	 * Denim, Periwinkle, Iris, Violet, Magenta, Fuchsia, Orchid, Rose, Hibiscus), because a deep stop
 	 * cannot be its own card ink. Collapsing the two silently downgrades those 13 to sub-AA text.
@@ -221,7 +221,7 @@
 	 * ONE step now, because the tree had grown FIVE different alphas (0.35 / 0.45 / 0.5 / 0.84 / 0.85)
 	 * for what is conceptually one effect, spelled differently in every file that wanted it. The
 	 * lighter step (--scrim, 0.45) dimmed the page behind the queue sheet and was retired with the
-	 * drawer surface itself (#903) — its only reader was that sheet's scrim rule.
+	 * drawer surface itself — its only reader was that sheet's scrim rule.
 	 */
 	--scrim-strong: rgba(0, 0, 0, 0.85);
 
@@ -242,7 +242,7 @@
 	/*
 	 * Minimum touch target. One token so a control can declare the standard instead of restating 44px,
 	 * and so the guard tests and the components resolve the SAME declaration: `lib/test-helpers.ts`
-	 * parses this line for its `TAP` (issue #831). Before that it hand-wrote 44, so this comment's
+	 * parses this line for its `TAP`. Before that it hand-wrote 44, so this comment's
 	 * "same number from the same place" claim was false — the guards and the components agreed only by
 	 * coincidence, and editing this value moved one side alone. Editing it now moves both, which is why
 	 * a control must express `var(--tap)` and never the number.
@@ -253,7 +253,7 @@
 	--max-w: 480px;
 
 	/*
-	 * ══ THE FIVE NON-COLOUR SCALES (issue #829) ═══════════════════════════════════════════════════
+	 * ══ THE FIVE NON-COLOUR SCALES ═══════════════════════════════════════════════════
 	 *
 	 * WHY THESE EXIST AT ALL, WHICH IS NOT "TIDINESS". `design-system.test.ts` enforces one decidable
 	 * rule -- a literal must not duplicate a value that already has a token -- so its reach is exactly
@@ -377,7 +377,7 @@
 	--motion-tick: 1s;
 
 	/*
-	 * ── BREAKPOINTS (issue #852) ──────────────────────────────────────────────────────────────────
+	 * ── BREAKPOINTS ──────────────────────────────────────────────────────────────────
 	 *
 	 * The sixth zero-token dimension #829 named and deliberately left for this issue, because a
 	 * breakpoint set has no meaning without the parity test that pins the `@media` widths to it, and
@@ -385,7 +385,7 @@
 	 * "what this deliberately does not do" note said exactly this). So the declaration and its guard
 	 * (`design-system.test.ts`, "every @media width literal is a declared breakpoint") land together.
 	 *
-	 * MEMBERSHIP, NOT EQUALITY — the owner's #831 Q1-C ruling. Two DIFFERENT lists are in play and
+	 * MEMBERSHIP, NOT EQUALITY — the owner's Q1-C ruling. Two DIFFERENT lists are in play and
 	 * conflating them was the original defect: 390 / 820 / 1440 px are widths a reviewer EYEBALLS
 	 * (`docs/loop/REVIEW-PASSES.md:223`), while these are the widths the CSS actually SWITCHES at. The
 	 * reviewer list is left exactly as it is; the guard asserts only that every `@media` width literal
@@ -419,7 +419,7 @@
 	 * ── PAINT ORDER ───────────────────────────────────────────────────────────────────────────────
 	 *
 	 * TWO LADDERS, because there are two stacking worlds and the same integer meant different things
-	 * in each: the phone's queue sheet sat at 9/10 (retired with the drawer surface, #903) while the
+	 * in each: the phone's queue sheet sat at 9/10 (retired with the drawer surface) while the
 	 * TV's status dot and tap affordance also sat at 9/10. Bare integers cannot say which of those a
 	 * `10` is, so a reader had to reconstruct the
 	 * scheme from a comment in one route -- and XR-TV-10 asks for exactly this: named tiers, each used
@@ -452,7 +452,7 @@
 	/*
 	 * THE PHONE. The dock tier is 30 — a wide margin above the row-lifted tier — because the undo and
 	 * error toasts must be reachable while a row is being dragged. The gap is the incumbent value and
-	 * it is load-bearing, not slack: it was cleared over a sheet tier at 10 (retired in #903), so do
+	 * it is load-bearing, not slack: it was cleared over a sheet tier at 10, so do
 	 * not close it up on the grounds that nothing occupies the middle now.
 	 */
 	--z-header: 1;
@@ -504,7 +504,7 @@
 	 * TV route so the same components size correctly in the /components gallery, which renders them
 	 * outside it; the ROOT that gives the rem its px is what is scoped to /tv (routes/tv/+page.svelte).
 	 *
-	 * HISTORY (#906 → #821). #906 recorded that the previous clamp minimums were NOT all at the ten-foot
+	 * HISTORY (→ #821). #906 recorded that the previous clamp minimums were NOT all at the ten-foot
 	 * floor and that the comment which claimed they were had read as false certification: against
 	 * `MIN_TV_PX` (24px) in `lib/tv/stage-scale.test.ts`, `--tv-eyebrow` bound at 16px and `--tv-label`
 	 * at 20px, both also binding on a 720p panel and resolving to 16.2px / 21.6px at 1080p. #821 lands
@@ -514,7 +514,7 @@
 	 */
 	/* env(safe-area-inset-*) is specified for NON-RECTANGULAR displays, so a rectangular TV reports 0
 	   and cannot help today — but folding it into the max() costs nothing now and improves automatically
-	   if this is ever wrapped in a webview that DOES report insets (#821 "Also in scope", XR-TV-03). The
+	   if this is ever wrapped in a webview that DOES report insets ("Also in scope", XR-TV-03). The
 	   5vw floor is the ratified action-safe margin. */
 	--tv-safe-x: max(env(safe-area-inset-left), env(safe-area-inset-right), 48px, 5vw);
 	/* 6vh (64.8px at 1080p), not 5vh: the old max(32px,5vh) resolved to exactly 54px, sitting right on
@@ -522,7 +522,7 @@
 	   folded in for the same reason as --tv-safe-x above; the ratified 6vh floor is unchanged. */
 	--tv-safe-y: max(env(safe-area-inset-top), env(safe-area-inset-bottom), 40px, 6vh);
 	/*
-	 * ── TV TYPE LADDER — rem OFF THE ONE ROOT FLOOR (issue #821, XR-TV-01/02) ──────────────────────
+	 * ── TV TYPE LADDER — rem OFF THE ONE ROOT FLOOR (XR-TV-01/02) ──────────────────────
 	 *
 	 * THE FLOOR LIVES IN EXACTLY ONE DECLARATION. It is NOT here: it is `font-size` on `:root`, injected
 	 * by the /tv route (routes/tv/+page.svelte's <svelte:head>) only while that route is mounted, and it
@@ -571,7 +571,7 @@
 	/* who is singing. 1.509rem ≈ 44px. */
 	--tv-name: 1.509rem;
 	/*
-	 * An 88px idle join-URL tier. RETAINED BUT NOT CURRENTLY RENDERED (issue #826, XR-TV-19). It used to
+	 * An 88px idle join-URL tier. RETAINED BUT NOT CURRENTLY RENDERED (XR-TV-19). It used to
 	 * size the attract/lobby typed address, but at 88px a real LAN address split mid-octet in the 600px
 	 * attract panel, so the join URL was moved DOWN to --tv-name (44px, the mockup's `.url` budget) where
 	 * an address is one unbreakable token that fits one line. This token stays declared because it is a
@@ -585,7 +585,7 @@
 	   hero, 3.567rem ≈ 104px. */
 	--tv-hero: 3.567rem;
 	/*
-	 * ── THE RATIFIED TV STATES (issue #826, XR-TV-09) ──────────────────────────────────────────────
+	 * ── THE RATIFIED TV STATES (XR-TV-09) ──────────────────────────────────────────────
 	 * The attract phrase, the room code, and the takeover heroes are their own tiers because the
 	 * decided design's guarantees are MADE OF them: the fixed phrase box (no layout shift) is sized from
 	 * --tv-phrase × --tv-phrase-lines, and "the room code is the largest element" is a claim about these
@@ -618,7 +618,7 @@
 	 */
 	--tv-qr: clamp(300px, 26vmin, 460px);
 	/*
-	 * ── #826 GEOMETRY (BOXES, not type) ── these size layout boxes, so like --tv-safe-* / --tv-qr they
+	 * ── GEOMETRY (BOXES, not type) ── these size layout boxes, so like --tv-safe-* / --tv-qr they
 	 * are the named exemption to the "no viewport term" rule and may carry vw/vmin (XR-TV-02, XR-TV-09).
 	 */
 	/* The attract split: a left column at the title-safe x carrying the label + phrase, and a flat-filled
@@ -692,13 +692,13 @@
 		var(--tv-safe-y) + 1.2 * (var(--tv-label) + var(--tv-name) + var(--tv-body) + var(--tv-label)) + 54px
 	);
 	/* Measured height of the top-right "Up next" block, published by routes/tv/+page.svelte's
-	   ResizeObserver so the fullscreen button (.fs-btn) can sit below it (#889). 0px fallback stands
+	   ResizeObserver so the fullscreen button (.fs-btn) can sit below it. 0px fallback stands
 	   before the first measure and whenever no next song is queued (the block is absent). */
 	--tv-upnext-h: 0px;
 
 
 	/*
-	 * ── THE SHADCN SEMANTIC LAYER (#913, restructure) ────────────────────────────────────────────────
+	 * ── THE SHADCN SEMANTIC LAYER (restructure) ────────────────────────────────────────────────
 	 *
 	 * Every component in the registry is styled in this vocabulary — `bg-primary`,
 	 * `text-muted-foreground`, `border-ring`. Encore did not define one of these names, which is the
@@ -726,7 +726,7 @@
 	--popover-foreground: var(--ink);
 	--card-surface: var(--card);
 	/*
-	 * #913 S4: shadcn's Card is styled in `bg-card` / `text-card-foreground`. `--card` already exists
+	 * S4: shadcn's Card is styled in `bg-card` / `text-card-foreground`. `--card` already exists
 	 * in this file and already means exactly "the card surface", so the bridge below points straight at
 	 * it rather than aliasing — an alias would have been the circular `--card: var(--card)`. Only the
 	 * INK half was missing, because Encore never needed to name it: a card inherits `--ink` from the
@@ -738,7 +738,7 @@
 }
 
 /*
- * THE TOKEN BRIDGE (issue #853, scope item 4) — NON-COLOUR TOKENS ONLY.
+ * THE TOKEN BRIDGE (scope item 4) — NON-COLOUR TOKENS ONLY.
  *
  * `@theme` is how Tailwind v4 is configured: there is no `tailwind.config.ts` in this setup because v4
  * takes its scale from CSS custom properties in this block, and a JS config would be the v3 shape.
@@ -789,7 +789,7 @@
  */
 @theme inline {
 	/*
-	 * COLOUR, REGISTERED DELIBERATELY (#913 restructure) — and the reason this is safe now.
+	 * COLOUR, REGISTERED DELIBERATELY (restructure) — and the reason this is safe now.
 	 *
 	 * This block used to register no colour at all, because minting is all-or-nothing per namespace:
 	 * `--color-primary` hands out `text-primary` in the same breath as `bg-primary`, and `--accent` as
@@ -849,7 +849,7 @@
 	--text-tv-lyric: var(--tv-lyric);
 
 	/*
-	 * TYPE, PHONE (#829) — mints text-ph-*. The counterpart to the TV ladder above, and the thing the
+	 * TYPE, PHONE — mints text-ph-*. The counterpart to the TV ladder above, and the thing the
 	 * comment above used to say there was "nothing to bridge" for. Prefixed `ph-` for the same reason
 	 * the TV tiers are prefixed `tv-`: Tailwind's own type namespace already ships --text-xs..9xl, so
 	 * an unprefixed --text-sm here would REPLACE the size every copied-in component means by text-sm.
@@ -864,7 +864,7 @@
 	--text-ph-2xl: var(--ph-text-2xl);
 
 	/*
-	 * SPACING SCALE (#829) — mints p-sm / gap-lg / m-2xl and the rest, beside the three semantic
+	 * SPACING SCALE — mints p-sm / gap-lg / m-2xl and the rest, beside the three semantic
 	 * entries above. t-shirt keys rather than numbers, and that is the load-bearing half: Tailwind
 	 * computes `p-2` from its single `--spacing` multiplier, so a `--spacing-2` here would replace it
 	 * and hand a copied-in component 2px where it asked for 8px. The namespace ships no t-shirt keys,
@@ -882,7 +882,7 @@
 	--spacing-4xl: var(--space-4xl);
 
 	/*
-	 * LINE HEIGHT (#829) — mints leading-app-*. Prefixed because Tailwind ships --leading-tight / -snug /
+	 * LINE HEIGHT — mints leading-app-*. Prefixed because Tailwind ships --leading-tight / -snug /
 	 * -normal / -relaxed / -loose already, and this app's tight is 1.1 against their 1.25: an unprefixed
 	 * entry would quietly retune `leading-tight` for every copy-in component. `app` rather than `ph`
 	 * because the scale is surface-neutral — a unitless ratio carries no viewing distance, so the TV uses
@@ -895,7 +895,7 @@
 	--leading-app-loose: var(--lh-loose);
 
 	/*
-	 * MOTION (#829) — mints duration-fast / -base / -slow / -tick. Unprefixed, and safe to be:
+	 * MOTION — mints duration-fast / -base / -slow / -tick. Unprefixed, and safe to be:
 	 * Tailwind's duration utility is bare-value (`duration-200` reads the number out of the class),
 	 * so the namespace ships no keys at all and there is nothing here to overwrite. Registering a
 	 * duration mints no reduced-motion behaviour — that stays the @media wrapper's job.
@@ -908,7 +908,7 @@
 
 /*
  * This app resets box-sizing ITSELF, and has since before Tailwind was on the table. Worth naming
- * because it is the single largest thing Preflight would otherwise contribute (issue #853): the
+ * because it is the single largest thing Preflight would otherwise contribute: the
  * universal border-box rule is already here, so switching Preflight off gives up far less than the
  * measured 2,457 moved boxes suggests — most of that number is Preflight UNDOING deliberate styling
  * (heading weights, button padding, control colours), not supplying something missing.
@@ -1000,7 +1000,7 @@ body {
 /*
  * THE SHARED CARD SURFACE.
  *
- * #913 S4 deleted this rule, on the premise that every `.card` had become a <Card.Root>. That premise
+ * S4 deleted this rule, on the premise that every `.card` had become a <Card.Root>. That premise
  * was WRONG, and the audit behind it was wrong in a specific way worth recording: it grepped
  * `class="card[ "]`, which only matches a class list STARTING with `card`. Nine elements spell it in
  * the middle — `class="row card list-row"`, `class="hero card"`, `class="track card"` — and every one

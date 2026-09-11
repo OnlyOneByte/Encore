@@ -52,13 +52,13 @@ export const SEL = {
 	 * The join-page error announcement: `<div class="err" role="alert">` (lib/components/JoinLanding.svelte).
 	 * A class + UNQUOTED attribute compound the p8-presence probe reads to tell a duplicate-name
 	 * rejection (form sits on /join with this alert) from a clean join (lands on / with the search box).
-	 * Migrated here from KNOWN_OFFENDERS as Group B of the #513 per-driver SEL split (tail of #494).
+	 * Migrated here from KNOWN_OFFENDERS as Group B of the per-driver SEL split.
 	 */
 	joinError: '.err[role=alert]',
 
 	// ── phone remote ──────────────────────────────────────────────────────
 	/*
-	 * HOME IS THE QUEUE (#832, direction A), and since the 2026-09-09 owner correction (#902) the SEARCH
+	 * HOME IS THE QUEUE (direction A), and since the 2026-09-09 owner correction the SEARCH
 	 * BOX IS DOCKED AT THE BOTTOM OF IT AT ALL TIMES for a joined singer — it is the add affordance, so
 	 * there is no `+ Add a turn` push and no browse mode. Typing expands results upward IN PLACE.
 	 *
@@ -67,8 +67,8 @@ export const SEL = {
 	 * longer needs a click. `openBrowseFromHome()` in `lib/phone.mjs` therefore just waits for the box;
 	 * it is kept (rather than removed from 20 call sites) so a future IA change has one place to edit.
 	 *
-	 * RETIRED (#902): `openBrowse` was `.cta-dock .cta`, the `+ Add a turn` button that pushed `?browse=1`
-	 * to reveal the search box. #902 docked the box permanently and deleted the button, so the anchor is
+	 * RETIRED: `openBrowse` was `.cta-dock .cta`, the `+ Add a turn` button that pushed `?browse=1`
+	 * to reveal the search box. The owner correction docked the box permanently and deleted the button, so the anchor is
 	 * absent from every source — an anchor guard for markup nobody renders reports a permanent failure,
 	 * not an invariant. The search box (`search` below) is now reached with no click.
 	 */
@@ -79,7 +79,7 @@ export const SEL = {
 	 * element and so cannot be spelled out at the call site.
 	 */
 	mainColumn: 'main',
-	/** The now-playing hero — the joined home's own surface, and where the transport lives since #832. */
+	/** The now-playing hero — the joined home's own surface, and where the transport lives under direction A. */
 	hero: '.hero',
 	/**
 	 * The playing song's TITLE on the hero. Load-bearing for the rotation checks: the PLAYING entry is
@@ -90,8 +90,8 @@ export const SEL = {
 	heroTitle: '.hero .song',
 
 	/*
-	 * The hero's LIVE-CONTROLS disclosure and the guiding track inside it (#835, XR-PH-15/XR-PH-03).
-	 * Added by #913, when those claims moved from the mount rung to p16: GuidingTrack's control is
+	 * The hero's LIVE-CONTROLS disclosure and the guiding track inside it (XR-PH-15/XR-PH-03).
+	 * Added when those claims moved from the mount rung to p16: GuidingTrack's control is
 	 * Bits UI's slider now, which needs a real layout engine to exist, so `bun test` could no longer
 	 * mount the hero at all.
 	 */
@@ -108,21 +108,21 @@ export const SEL = {
 	/** Its readout, which reads 'Off' rather than a live-looking number when the track is dead. */
 	guideReadout: '.gt-val',
 	/**
-	 * The vendored slider's root, by shadcn's OWN `data-slot` rather than an Encore class (#913). That
+	 * The vendored slider's root, by shadcn's OWN `data-slot` rather than an Encore class. That
 	 * choice is the point: a class in a copied-in component belongs to the component and a re-vendor
 	 * may rename it, while `data-slot` is the contract shadcn itself maintains.
 	 *
 	 * Note it is NOT `input[type="range"]` — see `hueSlider`, which still is one. GuidingTrack's
-	 * control stopped being a native range in #913; the colour picker's hue rail did not.
+	 * control stopped being a native range when it moved to the vendored <Slider>; the colour picker's hue rail did not.
 	 */
 	slider: "[data-slot='slider']",
-	/** Back to the queue from the results view — it CLEARS the search (#902). Renders only while a query
+	/** Back to the queue from the results view — it CLEARS the search. Renders only while a query
 	 *  is present; with an empty box the queue is already showing. The phone's own Back gesture at the
 	 *  empty-box home leaves the room, as it always has under direction A. */
 	backToQueue: '.back-btn',
 	search: 'input[aria-label="Search a song or artist"]',
 	/**
-	 * The docked search band (#833; the SOLE home band since #902). Search is bottom-anchored in the
+	 * The docked search band (the SOLE home band, now that the readiness chips and the browse disclosure are gone). Search is bottom-anchored in the
 	 * thumb zone and the results stack upward from it, so this band — not the search box's own wrapper —
 	 * is what publishes `--dock-h` and what the measured gate reads the band contract off. It is docked
 	 * on home for a joined singer at all times, so it is also `homeReady` (same selector, semantic alias
@@ -146,7 +146,7 @@ export const SEL = {
 	 * Bare remote-list handles the probes read directly (not scoped under .row like addTurn/sing/songTitle
 	 * above): p3/p8/p10 query `.add`, `.sing`, `.t` on their own to check an action or a title exists at all,
 	 * and p8/p12 read the presence and empty-state chrome. Named here so those reads come through the
-	 * contract instead of being spelled out per probe (#494, migrated from KNOWN_OFFENDERS).
+	 * contract instead of being spelled out per probe (migrated from KNOWN_OFFENDERS).
 	 */
 	addAction: '.add',
 	singAction: '.sing',
@@ -156,7 +156,7 @@ export const SEL = {
 	rowTitle: '.t',
 	empty: '.empty',
 	/*
-	 * RETIRED (#833): `readyChip` was `.chips button.ok`, the Ready readiness filter chip. Direction B
+	 * RETIRED: `readyChip` was `.chips button.ok`, the Ready readiness filter chip. Direction B
 	 * deleted the readiness chip row — one of the four concurrent filter mechanisms — so the anchor no
 	 * longer exists in any source and the entry could only resolve vacuously or red. p12-search reached
 	 * `readyEmptyState` by clicking it; it now reaches the same copy by typing a non-matching query,
@@ -165,17 +165,17 @@ export const SEL = {
 	 */
 	/** A SongRow status/kind chip (`<span class="chip state">` / `<span class="chip kind ...">` in
 	 *  SongRow.svelte) — the SCALING probe (p10) contrast-checks its text on the remote. Migrated from
-	 *  KNOWN_OFFENDERS in #547 (Group E). This is the per-row label chip; the readiness FILTER chip it
-	 *  used to be distinguished from was deleted by #833. */
+	 *  KNOWN_OFFENDERS (Group E). This is the per-row label chip; the readiness FILTER chip it
+	 *  used to be distinguished from was deleted with direction B. */
 	chip: '.chip',
 	away: '.away',
-	/* Attract-only markup used as a freshness gate by p8: the fixed `Karaoke` label on the #826 split
-	   panel (the old `.is-label` "Nobody here yet" strip was removed with the pre-#826 attract). */
+	/* Attract-only markup used as a freshness gate by p8: the fixed `Karaoke` label on the split attract
+	   panel (the old `.is-label` "Nobody here yet" strip was removed with the previous attract design). */
 	isLabel: '.phrase-kick',
 	strip: '.strip',
 	stripPerson: '.strip .person',
 
-	// ── transport (on the now-playing hero since #832) ────────────────────
+	// ── transport (on the now-playing hero under direction A) ─────────────
 	play: { role: 'button' as const, name: 'play/pause' },
 	skip: { role: 'button' as const, name: 'skip' },
 	restart: { role: 'button' as const, name: 'restart' },
@@ -184,7 +184,7 @@ export const SEL = {
 	/*
 	 * THE EMPTY-ROOM STAGE, and the three things asserted on it.
 	 *
-	 * `.attract` is the state itself (the #826 split panel). It is what "the room is empty" is
+	 * `.attract` is the state itself (the split attract panel). It is what "the room is empty" is
 	 * keyed on: the flow used to wait for `.url`, which is the LOBBY's typed address (TvLobby.svelte)
 	 * and therefore appears only once somebody HAS joined. The gate was inverted — it could not pass on
 	 * the fresh empty room it demanded.
@@ -207,7 +207,7 @@ export const SEL = {
 	badQr: '.badqr',
 	/*
 	 * The `.badqr` operator-notice card's own text lines the SCALING probe (p10) contrast-checks —
-	 * migrated from KNOWN_OFFENDERS in #547 (Group E of the #513 per-driver split, tail of #494).
+	 * migrated from KNOWN_OFFENDERS (Group E of the per-driver split).
 	 * All three are children of `.badqr` in src/lib/tv/JoinBadge.svelte: `.badqr-t` is the
 	 * "Join QR unavailable" title, `.badqr-b` the body paragraph, `.badqr-fix` the fix hint. p10 reads
 	 * them for existence/geometry/contrast, never clicks them.
@@ -232,7 +232,7 @@ export const SEL = {
 	 *  single query; the resolver treats a comma list as a union, so one branch existing is enough. */
 	anyTransientState: '.state-error, .state-waiting, .state-next',
 	/*
-	 * TV STAGE STRUCTURE the timing/scaling probes read (#494, migrated from KNOWN_OFFENDERS).
+	 * TV STAGE STRUCTURE the timing/scaling probes read (migrated from KNOWN_OFFENDERS).
 	 *
 	 * `.tv` is the stage root; `.lobby` is the joined-but-not-playing screen (distinct from `.attract`,
 	 * the empty room); `.interstitial` is the between-songs card. `.slot` is a rotation media slot and
@@ -261,7 +261,7 @@ export const SEL = {
 	nowNameScoped: '.lower-third .ls-name',
 	nowSongScoped: '.lower-third .ls-song',
 	/*
-	 * LYRICS OVERLAY internals the lyrics probe reads (#494). `.lyrics` is the overlay; `.reel` scrolls,
+	 * LYRICS OVERLAY internals the lyrics probe reads. `.lyrics` is the overlay; `.reel` scrolls,
 	 * `.viewport` clips it, `.row`/`.row.current` are the lines, `.lyrics.unverified` flags ASR-only text,
 	 * `.ls-source` is the provenance badge naming the lyrics source (`.ls-asr` = its amber guess variant),
 	 * `.ball` is the bouncing dot. `activeWord` (below) is the word
@@ -276,23 +276,23 @@ export const SEL = {
 	lsSource: '.ls-source',
 	lsAsr: '.ls-asr',
 	ball: '.ball',
-	/** The full-screen tap-to-start affordance the autoplay-block probe checks for (#64/#494). */
+	/** The full-screen tap-to-start affordance the autoplay-block probe checks for. */
 	autoplayHint: '.autoplay-hint',
 	/*
-	 * LOBBY strip the overlap probe reads (#494). `.strip` is the joined-singers ribbon, `.person` a
+	 * LOBBY strip the overlap probe reads. `.strip` is the joined-singers ribbon, `.person` a
 	 * chip in it, `.url` the lobby's typed join address. Scoped forms are what lobby-overlap.mjs queries.
-	 * The "+N more" overflow chip is RETIRED (#826/XR-TV-14): the lobby now shows every guest with no
+	 * The "+N more" overflow chip is RETIRED (XR-TV-14): the lobby now shows every guest with no
 	 * truncation, so there is no overflow chip and no `.person.more` anchor.
 	 */
 	lobbyUrl: '.lobby .url',
 	lobbyStrip: '.lobby .strip',
 	lobbyStripPerson: '.lobby .strip .person',
 	lobbyAddress: '.url',
-	/* The bottom-right fullscreen control (#424). It is position:absolute above the lobby roster strip,
-	   so the roster must not paint a chip UNDER it (#826/XR-TV-14) — the measured gate and lobby-overlap
+	/* The bottom-right fullscreen control. It is position:absolute above the lobby roster strip,
+	   so the roster must not paint a chip UNDER it (XR-TV-14) — the measured gate and lobby-overlap
 	   probe sweep the roster against this. */
 	fsBtn: '.fs-btn',
-	/* KEY-SHIFT control the transpose probe reads (#494): the +/- buttons and the current-key label. */
+	/* KEY-SHIFT control the transpose probe reads: the +/- buttons and the current-key label. */
 	keyBtn: '.key .key-btn',
 	keyLabel: '.key .lab',
 	/* The remote's app shell (p10 measures its width to catch a capped grid leaving a void). */
@@ -342,7 +342,7 @@ export const SEL = {
 	// ── dashboards (the stats/metrics /stats page the p11 probe reads) ─────
 	/*
 	 * The /stats dashboard's card/tile/chart hooks the p11-dashboards probe reads. Migrated here from
-	 * KNOWN_OFFENDERS as Group D of the #513 per-driver SEL split (tail of #494) — the ENGINE-HEAVY
+	 * KNOWN_OFFENDERS as Group D of the per-driver SEL split — the ENGINE-HEAVY
 	 * group, because `dashChartOrBody` uses shapes the resolver could not model on base: the `+`
 	 * adjacent-sibling combinator and a `:not()` exclusion chain. The resolver now models both (see
 	 * selectorResolves in contract.test.ts), so all four resolve against the /stats page's own markup.
@@ -362,7 +362,7 @@ export const SEL = {
 	 * exist, their relative position is not source-checkable.
 	 */
 	dashChartOrBody: '.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)',
-	// ── admin dashboard (/admin — the #639 entry-delete surface the admin-delete probe drives) ──
+	// ── admin dashboard (/admin — the entry-delete surface the admin-delete probe drives) ───────
 	/** A deletable song row on /admin: <li class="song-row"> (routes/admin/+page.svelte). */
 	adminSongRow: '.song-row',
 	/** The first-step Delete button on an admin song row: <button class="delete"> — arms the confirm. */
@@ -417,7 +417,7 @@ export const HOOKS: Hook[] = [
 		id: 'search',
 		file: 'src/routes/+page.svelte',
 		anchor: 'aria-label="Search a song or artist"',
-		why: 'the flow searches the library through this field, on the browse screen since #832'
+		why: 'the flow searches the library through this field, on the browse screen since direction A moved it there'
 	},
 	{
 		id: 'mainColumn',
@@ -483,23 +483,23 @@ export const HOOKS: Hook[] = [
 		id: 'backToQueue',
 		file: 'src/routes/+page.svelte',
 		anchor: 'class="back-btn" onclick={clearSearch}',
-		why: 'a driver that queued a song returns to the queue through this control, which now clears the search (#902)'
+		why: 'a driver that queued a song returns to the queue through this control, which now clears the search'
 	},
 	{
 		id: 'homeReady',
 		file: 'src/routes/+page.svelte',
 		anchor: 'class="search-dock"',
-		why: 'the docked search band is what says the joined home has rendered, and it is present in both the queue and results views (#902)'
+		why: 'the docked search band is what says the joined home has rendered, and it is present in both the queue and results views'
 	},
 	/*
-	 * RETIRED (#902): the `openBrowse` hook (anchor `class="cta" onclick={openBrowse}`). #902 docked the
+	 * RETIRED: the `openBrowse` hook (anchor `class="cta" onclick={openBrowse}`). The owner correction docked the
 	 * search box permanently and deleted the `+ Add a turn` button that used to push `?browse=1`, so the
 	 * anchor is absent from every source — an anchor guard for markup nobody renders reports a permanent
 	 * failure, not an invariant. The search box is now reached with no click; `homeReady` above is the
 	 * band that proves the joined home rendered.
 	 */
 	/*
-	 * RETIRED (#833): the `readinessChips` hook (anchor `aria-label="Filter by readiness"`) and the
+	 * RETIRED: the `readinessChips` hook (anchor `aria-label="Filter by readiness"`) and the
 	 * `browseToggle` hook (anchor `class="browse-toggle"`). Direction B deleted the readiness chip row
 	 * and the browse disclosure outright, so both anchors are absent from every source — an anchor
 	 * guard for markup nobody renders reports a permanent failure, not an invariant. What replaced them
@@ -510,7 +510,7 @@ export const HOOKS: Hook[] = [
 		id: 'searchDock',
 		file: 'src/routes/+page.svelte',
 		anchor: 'class="search-dock"',
-		why: 'search is bottom-anchored in the thumb zone and is the ONLY way to narrow the list since #833'
+		why: 'search is bottom-anchored in the thumb zone and is the ONLY way to narrow the list since direction B deleted the filter chips'
 	},
 	{
 		id: 'songRow',
@@ -546,7 +546,7 @@ export const HOOKS: Hook[] = [
 		anchor: '.proc',
 		why: 'a cooking song holds its rotation slot; .proc is a subset of .qrow, so either class proves it'
 	},
-	// transport — on the now-playing HERO since #832 (direction A). The SELECTORS are unchanged (same
+	// transport — on the now-playing HERO under direction A. The SELECTORS are unchanged (same
 	// aria-labels), so the driven flow is untouched; only which file to look in moved.
 	{
 		id: 'play',
@@ -585,7 +585,7 @@ export const HOOKS: Hook[] = [
 		id: 'stageHeadline',
 		file: 'src/routes/tv/+page.svelte',
 		anchor: 'class="phrase-line"',
-		why: 'the attract rotating phrase (#826); the flow asserts it clears the ten-foot floor'
+		why: 'the attract rotating phrase; the flow asserts it clears the ten-foot floor'
 	},
 	{
 		id: 'stageBrand',
@@ -623,7 +623,7 @@ export const HOOKS: Hook[] = [
 		id: 'guidingTrack',
 		file: 'src/lib/components/GuidingTrack.svelte',
 		anchor: 'aria-label="Guiding track — original vocal level"',
-		why: 'the flow mixes the original vocals back in through this control — a <Slider> since #913, not a range input, though the aria-label anchoring it is deliberately unchanged'
+		why: 'the flow mixes the original vocals back in through this control — a <Slider> since the shadcn vendoring, not a range input, though the aria-label anchoring it is deliberately unchanged'
 	},
 
 	// per-song stage background hook removed: the stage look now lives only in room settings, so the

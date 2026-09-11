@@ -127,7 +127,7 @@ Then, the traps a green table still cannot see:
 - **A test that derives its expected value using the same operation the code performs.** #165's test
   rounded its own expected value, so it never pinned whether the component rounded, and guests kept
   seeing `31.200000000000003%`. Rounding, formatting and numeric transforms are where this hides.
-- **A fix on a branch that is dead on the path the issue describes** (#190). The clause can be
+- **A fix on a branch that is dead on the path the issue describes**. The clause can be
   correct and pin a test while fixing nothing the reporter saw. Trace the call chain.
 - Does a fake or double swallow the very signal being asserted? (The shipped precedent: a fake
   `ffmpeg` runner that threw on unexpected argv inside a blanket `except`, making a whole silence
@@ -177,7 +177,7 @@ bun test · cd apps/worker && python3 -m pytest -q · bun run build · bun run t
   "exits 2 with 9 known `song-profile` errors = green" rule is DEAD — treat any error as this PR's
   regression. Read the `found N errors` line, not `grep -c error` (which counts the literal string in
   "found 0 errors").
-- `bun run gate:measured` → **exit 0** (issue #823). The layout rung; run it AFTER `bun run build`,
+- `bun run gate:measured` → **exit 0**. The layout rung; run it AFTER `bun run build`,
   because it drives the real bundle. It boots its own ephemeral server and its own headless Chromium
   and has **no skip path** — a missing browser or an unbuilt app is a red gate, by design. Its
   quarantine (`apps/core/e2e/gates/measured-design-register.mjs`) records the controls already under

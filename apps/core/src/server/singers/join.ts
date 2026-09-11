@@ -18,7 +18,7 @@ export interface JoinInput {
 
 export interface JoinResult {
 	singer: Singer;
-	/** The room this join landed in — the room identity the session then carries (#654). */
+	/** The room this join landed in — the room identity the session then carries. */
 	roomId: string;
 }
 
@@ -60,7 +60,7 @@ export const normalizeRoomCode = (code: string): string => code.trim().toUpperCa
  * owner has actually gone, and stays claimed through the grace window so nobody takes it while she is in
  * the bathroom.
  *
- * `roomId` scopes the check to ONE party (#656): a name is only taken if someone still in the SAME
+ * `roomId` scopes the check to ONE party: a name is only taken if someone still in the SAME
  * room holds it, so two rooms can each have a Dana. `exceptId` is for a RENAME: a singer changing
  * their capitalisation must not collide with themselves.
  */
@@ -98,7 +98,7 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 
 	const name = (input.displayName ?? '').trim();
 	if (!name) throw new Error('display name required');
-	// In-room uniqueness (#656): a name is free if no one still in THIS room holds it.
+	// In-room uniqueness: a name is free if no one still in THIS room holds it.
 	assertNameFree(app, room.id, name);
 	/*
 	 * Was `isValidColor(input.color) ? input.color : SINGER_COLORS[0]` — an allowlist of the eight
@@ -126,7 +126,7 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 	app.presence.connect(singer.id);
 	app.presence.disconnect(singer.id, app.now());
 
-	// SECURITY (#796): the broadcast reaches every socket in the room — including a cookie-less
+	// SECURITY: the broadcast reaches every socket in the room — including a cookie-less
 	// spectator that never joined (server.ts upgrades it, room-scope subscribes it to the served
 	// room's topic). `singer` is the full row minted WITH the session token, and that token IS the
 	// whole auth axis (bySessionToken resolves who you are). Strip it before it hits the wire, the

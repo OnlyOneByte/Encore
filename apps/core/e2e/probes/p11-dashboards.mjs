@@ -31,9 +31,9 @@ import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 
 /**
- * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (issue #558, following
- * the #557 fuzz.mjs pattern). The Browser/Page shapes are derived from cdp.mjs's own return types
- * (#553) so they cannot drift from the driver; every JSON endpoint and page.evaluate() result is
+ * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
+ * the fuzz.mjs pattern). The Browser/Page shapes are derived from cdp.mjs's own return types
+ * so they cannot drift from the driver; every JSON endpoint and page.evaluate() result is
  * protocol-/API-shaped and stays loose (cdp.mjs types evaluate as Promise<any>), cast at the call site.
  *
  * @typedef {Awaited<ReturnType<typeof import('../cdp.mjs').connect>>} Browser

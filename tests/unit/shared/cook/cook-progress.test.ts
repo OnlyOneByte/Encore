@@ -46,7 +46,7 @@ it('overallCookPct weights separation heaviest — its band is the widest of the
 
 // Every in-flight stage must own a NON-ZERO band. A collapsed band means the bar STOPS MOVING for
 // the whole of that stage while the worker reports 0→100 on it — the same "bar lies about the cook"
-// class this module was written to kill (#51), in the opposite direction. The BAND_END table is
+// class this module was written to kill, in the opposite direction. The BAND_END table is
 // hand-tuned and explicitly invites re-weighting (see the docstring), so pin the floor per stage:
 // verified RED per-band (queued/downloading/aligning each collapse alone with the suite otherwise
 // green; separating was only caught incidentally by the widest-band ordering above).

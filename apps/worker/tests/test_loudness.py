@@ -1,4 +1,4 @@
-"""Integrated-loudness measurement (issue #462) + its wiring into build_song_profile.
+"""Integrated-loudness measurement + its wiring into build_song_profile.
 
 The measure is BS.1770-4 via pyloudnorm; these tests pin the TRI-STATE contract (a real negative
 float for a real signal, None for silence / too-short / missing / unreadable), that the value is

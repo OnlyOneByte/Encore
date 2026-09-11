@@ -182,7 +182,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				 * cpuPrecision is a per-model measurement, not a global switch. `overlap` is this model's
 				 * own default of 2, an integer window count (MDXC/RoFormer semantics).
 				 *
-				 * Two caveats the owner accepted knowingly (#483 Option A): NO prior ear-approval (only
+				 * Two caveats the owner accepted knowingly (Option A): NO prior ear-approval (only
 				 * bs-roformer-1297 has a published SDR and an owner listening test), and the model weights
 				 * may carry non-commercial / research licence terms on their Hugging Face card (the MIT
 				 * clearance in DECISIONS.md covers the surveyed PACKAGES, not the checkpoint weights).

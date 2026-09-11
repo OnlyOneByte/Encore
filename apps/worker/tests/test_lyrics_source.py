@@ -211,10 +211,10 @@ def test_client_get_unparseable_body_raises():
         ls.LrclibClient(fetcher=fetcher_returning(200, "<html>not json</html>")).get("x", "y")
 
 
-# ── the DNS-sinkhole gap (#444): a URLError must NOT vanish as an ordinary miss ────────
+# ── the DNS-sinkhole gap: a URLError must NOT vanish as an ordinary miss ────────
 def test_urllib_fetch_converts_urlerror_to_lyricsfetcherror(monkeypatch):
     """A DNS sinkhole (or refused connection / TLS failure / timeout) raises urllib.error.URLError,
-    which carries NO HTTP status. Before #444 `_urllib_fetch` caught only HTTPError, so a URLError
+    which carries NO HTTP status. Previously `_urllib_fetch` caught only HTTPError, so a URLError
     escaped to LyricsSource's bare `except Exception` and became a plain None — indistinguishable from
     "this song has no lyrics", which is exactly how lrclib.net failing 100% for a month stayed invisible.
     Now it must surface as the one explicit transport class the chain already routes to a note."""
@@ -242,7 +242,7 @@ def test_urllib_fetch_still_maps_httperror_to_its_status(monkeypatch):
     assert status == 503 and body == ""
 
 
-# ── retry + rate gate (issue #474: LRCLIB lacked the retry/rate gate its MusicBrainz twin has) ──────
+# ── retry + rate gate (LRCLIB lacked the retry/rate gate its MusicBrainz twin has) ──────────────────
 #
 # All hermetic: an injected fetcher scripts the transport, an injected clock/sleep drives the gate so
 # nothing touches the wall clock or the network. Mirrors the injectable-clock pattern used to test
@@ -363,7 +363,7 @@ def test_default_client_shares_the_process_global_gate():
     assert ls.limiter() is ls._LIMITER
 
 
-# ── issue #431: interleaved second script (Chinese characters + pinyin) ─────────────
+# ── interleaved second script (Chinese characters + pinyin) ─────────────────────────
 # A bilingual LRCLIB record ships the romanization INLINE under the same [mm:ss] stamp as the
 # characters (LRCLIB has no romanization field). fold_romanization_entries pairs them so BOTH
 # scripts reach the doc; a single-script record is untouched.

@@ -25,7 +25,7 @@ export const load: PageServerLoad = async ({ cookies, request, url }) => {
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
 	if (!singer) {
 		// Carry the tab through the join gate, or a guest sent here to fix their name lands on Party.
-		// `/` is the landing/join page now (#834 Q2-A retired /join); `safeNextPath` is read there and
+		// `/` is the landing/join page now (Q2-A retired /join); `safeNextPath` is read there and
 		// keeps this `?next=` from becoming an open redirect, exactly as the old /join route did.
 		const next = encodeURIComponent(`/settings${url.search}`);
 		redirect(303, `/?next=${next}`);

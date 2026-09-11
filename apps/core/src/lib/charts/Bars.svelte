@@ -33,7 +33,7 @@
 	</Empty.Root>
 {:else}
 	<!--
-		#913 S8: <Chart.Container> supplies the series config, so the fill paints from `--color-plays`
+		<Chart.Container> supplies the series config, so the fill paints from `--color-plays`
 		rather than naming a token directly. The marks stay a labelled <ol> — this is a proportional LIST,
 		where each row's label and value are real text, not a plotted series whose values live in an SVG
 		path a screen reader cannot read.
@@ -118,5 +118,5 @@
 		color: var(--ink-dim);
 		margin-top: 0.25rem;
 	}
-	/* #913 S7: `.empty` is ui/empty's now. */
+	/* `.empty` is ui/empty's now. */
 </style>

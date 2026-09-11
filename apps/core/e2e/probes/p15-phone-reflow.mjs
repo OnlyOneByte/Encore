@@ -8,7 +8,7 @@
  * "Rendered-DOM or driven-browser measurement. **Not a source scan** — both halves are geometry",
  * and defers to the rendered rung XR-PH-21. This file is that rendered rung for the reflow half.
  *
- * WHY IT HAD TO BE A DRIVEN BROWSER (issue #850). `/stats` overflowed a 320px viewport by 8px at 200%
+ * WHY IT HAD TO BE A DRIVEN BROWSER. `/stats` overflowed a 320px viewport by 8px at 200%
  * while `phone-inventory.test.ts`'s XR-PH-02 arm was green, and that arm was not broken: it flags a
  * single declaration wider than 320px, and this overflow was a SUM — two grid tracks plus two cards'
  * padding, against a word that cannot wrap once type doubles. No scan over declarations can add that
@@ -232,7 +232,7 @@ async function measure(label, path, opts) {
 console.log(`viewport ${VIEWPORT_W}x${VIEWPORT_H} @ DPR 2, root font-size ${SCALED_ROOT_FONT_SIZE}\n`);
 
 await measure('/', '/');
-// `/join` was retired (#834 Q2-A): the unjoined `/` above IS the join surface now, and its six-segment
+// `/join` was retired (Q2-A): the unjoined `/` above IS the join surface now, and its six-segment
 // code entry (XR-PH-14) is the widest fixed row on it — six boxes in a flex row at a 32px root is the
 // exact reflow class this rung is about, and `measure('/', '/')` renders it (no session → unjoined).
 await measure('/settings', '/settings');
@@ -259,14 +259,14 @@ const joined = await page.evaluate(`(async () => {
 if (!joined) bail('could not join the ephemeral room, so the browse screen could not be measured');
 
 /*
- * MEASURE BROWSE WITH ITS REAL OFFENDER ON SCREEN (#857). The browse-screen reflow lives in SongRow's
+ * MEASURE BROWSE WITH ITS REAL OFFENDER ON SCREEN. The browse-screen reflow lives in SongRow's
  * control labels at doubled type, and the widest is the odd-duration chip: a whole phrase ("Longer
  * than a song") that `.chip`'s blanket `white-space: nowrap` turned into an unshrinkable ~230px box,
  * pushing the row — and the browse page — past a 320px viewport. An EMPTY joined room renders no rows
  * at all, so measuring it would be a clean 320 over a surface that never grew the label the criterion
  * is about — the XR-VER-05 vacuity #850 exists to forbid, and the reason this arm was rejected once.
  *
- * So the arm SEARCHES first. `openBrowseFromHome` is the shared post-join step (#832) — it reaches the
+ * So the arm SEARCHES first. `openBrowseFromHome` is the shared post-join step — it reaches the
  * browse screen and its search box the one sanctioned way — and typing into `SEL.search` surfaces the
  * canned result set, which deterministically includes songs past the 8-minute unusual-duration
  * threshold (`isUnusualSongDuration`); every one renders the odd-duration chip. Both the browse push
@@ -283,7 +283,7 @@ await page.fill(SEL.search, 'caroline');
 const rowsReady = await page
 	.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length >= 1`, { timeout: 12_000 })
 	.catch(() => false);
-if (rowsReady === false) bail('the browse search returned no rows, so the #857 offender could not be rendered');
+if (rowsReady === false) bail('the browse search returned no rows, so the offender could not be rendered');
 
 await measure('browse (joined /, searched)', '/', { skipNav: true });
 

@@ -204,7 +204,7 @@ def test_no_confident_artist_or_title_means_no_lookup_at_all():
     # OBSERVE the attempt, not just the None: "no lookup at all" is the point of the test, so a
     # call-recording client must show search() was NEVER reached. Asserting only `is None` is blind --
     # deleting the artist/title guard makes annotate() call search(None, ...)/search(..., ""), whose
-    # query builder raises and is swallowed by the blanket except into the same None (issue #120).
+    # query builder raises and is swallowed by the blanket except into the same None.
     calls: list = []
     assert ann.annotate(client(calls=calls), None, "Take On Me", 218.0) is None
     assert ann.annotate(client(calls=calls), "a-ha", "", 218.0) is None
@@ -491,7 +491,7 @@ def test_a_recording_with_no_credit_list_cannot_agree_with_anything():
     assert ann.pick_best(ann.parse_recordings(body), "A", "T", 200.0) is None
 
 
-# ── the decline REASON: throttle vs miss must be distinguishable (#102) ─────────────
+# ── the decline REASON: throttle vs miss must be distinguishable ─────────────
 def test_a_throttle_decline_carries_the_gate_counters_so_it_is_not_a_silent_none():
     # An IP-level block and "nothing agreed on the names" are the same observable event from annotate():
     # both return None. annotate_or_reason separates them by CATCHING AnnotationFetchError and reading

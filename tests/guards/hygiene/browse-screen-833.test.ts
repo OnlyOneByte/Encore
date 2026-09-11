@@ -248,6 +248,8 @@ test('— this guard really read the route, and really stripped its comments', (
 	expect(PAGE.split('\n').length).toBe(RAW.split('\n').length);
 	// And it must really strip: the route explains this deletion where it happened, so its comments name
 	// the very mechanisms the arms above ban. A no-op stripper would red every one of them.
-	expect(RAW).toContain('DELETED HERE (#833, direction B)');
-	expect(PAGE).not.toContain('DELETED HERE (#833, direction B)');
+	// The issue number left this marker when production source was cleared; `direction B` is the part
+	// that identifies WHICH deletion was ruled, so that is what the guard pins.
+	expect(RAW).toContain('DELETED HERE (direction B)');
+	expect(PAGE).not.toContain('DELETED HERE (direction B)');
 });

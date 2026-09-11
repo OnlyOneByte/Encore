@@ -21,7 +21,7 @@ export const PUT: RequestHandler = async ({ request, cookies, url }) => {
 	// Which room this write addresses. The repository is keyed by room id; `?roomId=` names it
 	// explicitly, and an omitted param falls back to the LIVE room (app.activeRoomId), NOT the literal
 	// 'main' — otherwise a param-less client (the phone settings page fetches this bare) writes to
-	// 'main' while every reader now reads app.activeRoomId, silently discarding the write (#728). Read
+	// 'main' while every reader now reads app.activeRoomId, silently discarding the write. Read
 	// from the query string rather than the body so the JSON payload stays a pure Partial<RoomSettings>
 	// that flows straight into the normalizer.
 	const roomId = url.searchParams.get('roomId') ?? app.activeRoomId;
@@ -61,7 +61,7 @@ export const PUT: RequestHandler = async ({ request, cookies, url }) => {
 				media: mediaFor(reordered.entries, { mediaById: app.mediaById })
 			}
 		});
-		// #636: a queueOrder change re-derives rotationSeq, so it changes who plays NEXT (the comment
+		// a queueOrder change re-derives rotationSeq, so it changes who plays NEXT (the comment
 		// above says exactly this). The queue:patch alone left nowplaying:changed stale, so the TV
 		// kept naming the pre-reorder next. Re-broadcast the true next; deps mirror the authoritative
 		// reconcileOnReady bag in app.ts so upNextAfter ranks by the order just chosen. Guarded by

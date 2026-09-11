@@ -11,7 +11,7 @@ export default defineConfig({
 	build: { rollupOptions: { external: ['bun:sqlite'] } },
 	plugins: [
 		/*
-		 * Tailwind v4 through its FIRST-PARTY VITE PLUGIN, not PostCSS (issue #853).
+		 * Tailwind v4 through its FIRST-PARTY VITE PLUGIN, not PostCSS.
 		 *
 		 * The plugin was the open question, not the default: this app runs Vite 8, and `@tailwindcss/vite`
 		 * only widened its peer range to `^8` in 4.2.2 — every release up to 4.2.1 declares `^5.2.0 || ^6

@@ -27,10 +27,10 @@ import { parseTrackTitle, type TrackParseRule } from './track-title';
 // 3: `artifacts.songProfile` added (key + vocal range). Purely additive: a schema-2 record simply has
 // no profile, which mediaFromSidecar restores as absent — the stems gate then reads that song as
 // still-cooking and the boot pipeline re-analyses it, exactly as an old song with no vocals ref did.
-// 4: `artifacts.guideOffsetMs` added (#766, the measured guide/instrumental offset). Purely additive: a
+// 4: `artifacts.guideOffsetMs` added (the measured guide/instrumental offset). Purely additive: a
 // schema-3 record has no offset, restored as absent, which the client's guideOffsetSec maps to 0 — so an
 // un-upgraded song is held exactly as today until a re-cook measures one.
-// 5: `artifacts.lyricsOverrideRef` added (#640, a human's explicit lyrics pick). Purely additive: a
+// 5: `artifacts.lyricsOverrideRef` added (a human's explicit lyrics pick). Purely additive: a
 // schema-4 record has no override, so chosenLyricsRef falls through to the ranking exactly as before.
 export const SIDECAR_SCHEMA = 5;
 
@@ -84,7 +84,7 @@ export interface MediaSidecar {
 		 */
 		lyricsCandidates?: LyricsCandidate[];
 		/**
-		 * A human's explicit lyrics pick, by candidate `ref` (#640). Authoritative here so the choice
+		 * A human's explicit lyrics pick, by candidate `ref`. Authoritative here so the choice
 		 * survives a DB wipe like every other derived fact. Optional/absent on schema-4 and earlier;
 		 * absent means "no override" and `chosenLyricsRef` falls through to the ranking. A stored ref that
 		 * no longer names a candidate is ignored on read, not honoured blindly.
@@ -98,7 +98,7 @@ export interface MediaSidecar {
 		 */
 		songProfile?: SongProfile;
 		/**
-		 * The MEASURED guide/instrumental offset in signed ms (#766). Authoritative here so a DB wipe
+		 * The MEASURED guide/instrumental offset in signed ms. Authoritative here so a DB wipe
 		 * restores it without re-cooking, like every derived artifact. Optional/absent on schema-3 and
 		 * earlier; absent means "never measured" (the client holds the guide as today), which is distinct
 		 * from a stored 0 ("measured, aligned").
@@ -136,7 +136,7 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 	// title, so neither may be clobbered by a later write. Without this, every sidecar write would
 	// silently downgrade a cited artist back to a title parse — the exact regression applyAnnotation
 	// refuses at runtime, reintroduced through persistence.
-	// A YouTube citation counts the same as a MusicBrainz one (#672): YouTube's OWN extracted metadata
+	// A YouTube citation counts the same as a MusicBrainz one: YouTube's OWN extracted metadata
 	// is a declared credit, not a re-parse, so a later title parse must not clobber it either.
 	const CITED = ['manual', 'musicbrainz', 'youtube'];
 	const keepCited = (field: 'artist' | 'title') => CITED.includes(prev?.provenance?.[field]?.by ?? '');
@@ -195,7 +195,7 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			// and losing the set here would silently destroy the upgrade path the set exists for.
 			lyricsCandidates: m.lyricsCandidates ?? prev?.artifacts.lyricsCandidates,
 			// Same runtime-first / preserve-prior rule as lyricsCandidates: a human's pick must not be
-			// erased by an index-only hydrate that carries no override on the Media (#640).
+			// erased by an index-only hydrate that carries no override on the Media.
 			lyricsOverrideRef: m.lyricsOverrideRef ?? prev?.artifacts.lyricsOverrideRef,
 			// Same runtime-first / preserve-prior rule as lyricsCandidates: an index-only hydrate that has
 			// not read the sidecar yet carries no profile on the Media, so falling back to the prior
@@ -270,7 +270,7 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		lyricsRef: chosenLyricsRef(s),
 		lyricsCandidates: s.artifacts.lyricsCandidates,
 		// Carry the human override onto the runtime Media so the phone can show which pick is pinned and
-		// whether a newer candidate now out-ranks it (#640), and so a re-persist does not lose it.
+		// whether a newer candidate now out-ranks it, and so a re-persist does not lose it.
 		lyricsOverrideRef: s.artifacts.lyricsOverrideRef,
 		// Restore the key/range so a wiped DB comes back with the analysis intact — no re-cook. The
 		// stored value is authoritative but still untrusted (an older writer, a hand edit), so it is
@@ -292,7 +292,7 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 /**
  * Which lyrics artifact a restored song should show.
  *
- * A HUMAN OVERRIDE wins first (#640): if `lyricsOverrideRef` names a candidate still in the set, it is
+ * A HUMAN OVERRIDE wins first: if `lyricsOverrideRef` names a candidate still in the set, it is
  * honoured over the ranking — the one thing that may show a lower-ranked candidate, because a person
  * outranks the heuristic. Otherwise RE-PICKS from the candidate set rather than trusting the stored
  * `lyrics` pointer, so a ranking change (or a candidate written by an older worker that mis-chose) is
@@ -329,7 +329,7 @@ export function lookupTitle(s: MediaSidecar): string | null {
 /**
  * The lookup-safe FULL artist billing ("Lady Gaga feat. Beyoncé"): null when the artist parse was
  * only a guess. Same confidence gate as `browseArtist`/`lookupTitle`, and here for a sharper reason
- * (#672).
+ *.
  *
  * `artistCredit` is stored UNGATED — it is the upload's raw billing and is preserved verbatim across
  * writes so a re-annotated song does not lose it. But its downstream consumer is the LRCLIB ranking:

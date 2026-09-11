@@ -1,4 +1,4 @@
-// Test stub for SvelteKit's `$env/dynamic/public` virtual module (issue #822, rung M).
+// Test stub for SvelteKit's `$env/dynamic/public` virtual module (rung M).
 //
 // No first-party file imports this today (verified across apps/ and packages/); stubbed because
 // issue #822's acceptance names it and because a component that reads a PUBLIC_* variable would

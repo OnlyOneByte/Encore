@@ -277,7 +277,7 @@ test('presetTabStopIndex points at the matching swatch for a preset value', () =
 });
 
 test('presetTabStopIndex keeps a tab stop after a wheel pick — the closed-door bug', () => {
-	// The bug (#88): after any hue pick, value is a wheel hex, no swatch matches, and the old
+	// The bug: after any hue pick, value is a wheel hex, no swatch matches, and the old
 	// `value === c ? 0 : -1` expression left EVERY swatch at -1 — the whole group fell out of the tab
 	// order and the wheel provably cannot return to a preset. The fallback keeps swatch 0 tabbable.
 	//

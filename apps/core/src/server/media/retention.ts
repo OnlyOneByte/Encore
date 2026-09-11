@@ -39,7 +39,7 @@ export function retentionCapBytes(env: Record<string, string | undefined> = proc
 /**
  * A stem ref worth transcoding: an UNCOMPRESSED (WAV) artifact from before the audio policy.
  *
- * Deliberately NOT "anything not the current format": both stems now target FLAC (#480), so that
+ * Deliberately NOT "anything not the current format": both stems now target FLAC, so that
  * looser rule would flag every existing `.m4a` vocals stem for "upgrade", and AAC→FLAC is actively
  * harmful — it cannot recover what the lossy encode discarded, only produce a ~4x larger file of the
  * same audio. Legacy `.m4a` cooks therefore keep their `.m4a` and are NOT recompressed; only WAV
@@ -204,7 +204,7 @@ export function planEviction(
  * because the ext-blind `-instrumental.`→`-vocals.` swap only resolves when the two stems share an
  * extension, and `vocalsKey` derives from the CURRENT `VOCALS_EXT`. Neither can name a stem whose
  * stored extension differs from today's constant — e.g. an interim cook (instrumental `.flac`, vocals
- * `.m4a`) after #480 flipped `VOCALS_EXT` to `.flac`. So the authoritative source is `m.vocalsRef`,
+ * `.m4a`) left behind when `VOCALS_EXT` was flipped to `.flac`. So the authoritative source is `m.vocalsRef`,
  * the ref each cook actually stored; it covers legacy `.wav`, interim `.m4a`, and current `.flac`
  * alike. `planEviction` compares the SUM against the cap, so undercounting made retention conclude
  * there was nothing to reclaim on a volume genuinely over budget. Anything derived that a song can own
@@ -221,8 +221,8 @@ export function planEviction(
  *
  * Callers dedupe with a Set, so overlap (a candidate that equals `lyricsRef`) is free.
  *
- * Exported (#762) because `media/delete.ts` needs the same answer: it had grown a SECOND enumeration
- * (`derivedRefsFor`) that omitted `lyricsCandidates`, re-creating the exact undercount #496/#442 closed
+ * Exported because `media/delete.ts` needs the same answer: it had grown a SECOND enumeration
+ * (`derivedRefsFor`) that omitted `lyricsCandidates`, re-creating the exact undercount closed
  * here — N−1 lyrics JSONs orphaned forever, since a hard delete removes the sidecar and the row and
  * nothing can ever enumerate that media again. Two hand-maintained answers to "what does this media own
  * on disk" is the defect; this is the one answer. The delete adds id-derived keys on top (it must name
@@ -235,7 +235,7 @@ export function derivedRefsOf(m: Media): string[] {
 		// The STORED per-media vocals ref is authoritative and covers ALL layouts regardless of what
 		// VOCALS_EXT currently is: legacy .wav, interim .m4a, and current .flac cooks all recorded a ref.
 		// vocalsKey + the ext-blind swap are the FALLBACK for old rows that never stored one. Without
-		// m.vocalsRef, flipping VOCALS_EXT to .flac (#480) would strand the already-cooked .m4a vocals
+		// m.vocalsRef, flipping VOCALS_EXT to .flac would strand the already-cooked .m4a vocals
 		// cohort — the cohort this PR deliberately does not recompress — from both byte-counting and
 		// eviction, so derivedBytesOf would undercount and evictDerived would orphan those files.
 		// candidateVocalsRefs is the SINGLE candidate list (vocalsKey + every legacy-ext sibling);
@@ -245,12 +245,12 @@ export function derivedRefsOf(m: Media): string[] {
 		// Every lyrics candidate's JSON, not just the chosen one (`lyricsRef`). Each source mints a
 		// distinct key, so the others are silently orphaned on eviction unless enumerated here.
 		...(m.lyricsCandidates ?? []).map((c) => c.ref),
-		// The retained RAW caption track (#670). It is NOT stored as a ref on Media — the worker copies it
+		// The retained RAW caption track. It is NOT stored as a ref on Media — the worker copies it
 		// to a deterministic per-media path (derived/captions/<kind>/<id>.captions.<ext>) gated on
 		// ENCORE_KEEP_RAW_CAPTIONS — so it is enumerated from the id, one key per (kind, ext). Without this
 		// it inherits NONE of the "safe to delete, first to evict" retention its own docstring claims:
 		// derivedBytesOf undercounts and evictDerived orphans the file on disk permanently, the identical
-		// undercount #496/#442 closed for the vocals/lyrics siblings above. Naming both exts per kind is
+		// undercount closed for the vocals/lyrics siblings above. Naming both exts per kind is
 		// free: the ext is chosen from the winning file at cook time (.vtt/.srt), and a key whose file is
 		// absent is skipped by the existsSync check below. Callers dedupe with a Set.
 		...CAPTION_KINDS.flatMap((kind) => KNOWN_CAPTION_EXTS.map((ext) => rawCaptionKey(m.id, kind, ext)))
@@ -308,7 +308,7 @@ export function derivedBytesOf(m: Media): number {
 const TRANSCODE_TIMEOUT_MS = 120_000;
 
 /**
- * ffmpeg-backed transcoder: lossless stereo FLAC, matching the worker's `encode_flac_argv` (#480), so
+ * ffmpeg-backed transcoder: lossless stereo FLAC, matching the worker's `encode_flac_argv`, so
  * a recompressed legacy stem lands in the SAME codec and container a freshly cooked one does. The
  * destination is a `.flac` ref (INSTRUMENTAL_EXT/VOCALS_EXT, paths.ts), and a legacy WAV stem is
  * itself lossless — FLAC recompresses it without a second lossy generation, exactly what the FLAC

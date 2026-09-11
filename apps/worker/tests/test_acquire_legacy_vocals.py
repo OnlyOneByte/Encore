@@ -1,4 +1,4 @@
-"""AcquireAudio must find a pre-#480 legacy vocals stem (issue #501).
+"""AcquireAudio must find a pre-change legacy vocals stem.
 
 #480 switched VOCALS_EXT from `m4a` to `flac` for NEW cooks, but the worker never receives the stored
 vocals ref — it re-derives the path from the CURRENT VOCALS_EXT on every align job. Every song cooked in
@@ -55,7 +55,7 @@ def _drive_acquire(tmp_path) -> Ctx:
 
 
 def _legacy_m4a_path(tmp_path) -> str:
-    # The pre-#480 name for the same key: <media_dir>/derived/stems/<id>-vocals.m4a
+    # The pre-change name for the same key: <media_dir>/derived/stems/<id>-vocals.m4a
     canonical = vocals_path(str(tmp_path), "m1")
     return canonical[: -(len(VOCALS_EXT) + 1)] + ".m4a"
 

@@ -1,5 +1,5 @@
 /*
- * P16 — THE HERO'S LIVE CONTROLS, AND THEIR HONEST DEGRADATION (issue #835, XR-PH-15, XR-PH-03).
+ * P16 — THE HERO'S LIVE CONTROLS, AND THEIR HONEST DEGRADATION (XR-PH-15, XR-PH-03).
  *
  * ── WHY THIS PROBE EXISTS ──────────────────────────────────────────────────────────────────────
  *

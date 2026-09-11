@@ -1,8 +1,8 @@
 /*
  * The phone's post-join step, in ONE place.
  *
- * WHY THIS FILE EXISTS. Direction A (#832) made the room's queue the home screen; the 2026-09-09 owner
- * correction (#902) then docked the search box at the bottom of it AT ALL TIMES and deleted the
+ * WHY THIS FILE EXISTS. Direction A made the room's queue the home screen; the 2026-09-09 owner
+ * correction then docked the search box at the bottom of it AT ALL TIMES and deleted the
  * `+ Add a turn` push. So the search box is on `/` again — but fifteen driver and probe call sites had
  * baked in the intermediate `?browse=1` assumption, and rather than edit all of them twice, the
  * sequence lives here: reaching the search box is now just waiting for it, no click. The next IA change
@@ -44,7 +44,7 @@ export async function openBrowseFromHome(page, { timeout = DEFAULT_TIMEOUT } = {
 /**
  * The other direction: from a search that is showing RESULTS back to the QUEUE, which is home.
  *
- * The rotation rows, the position line and the transport are all on home since #832 — a driver that
+ * The rotation rows, the position line and the transport are all on home — a driver that
  * searched and then counted `.qrow` was reading the results view, where the rotation is not rendered.
  * Since #902 there is no browse mode to leave: the "← Queue" control (`backToQueue`) CLEARS the search,
  * and clearing it brings the queue back in place. This clicks it only when the hero is not already

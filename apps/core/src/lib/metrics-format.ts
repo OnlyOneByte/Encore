@@ -72,7 +72,7 @@ export const stageLabel = (stage: string): string => STAGE_LABELS[stage] ?? stag
  * The audit log is a timeline read to reconstruct how a song came to be, so the times must match
  * the operator's own clock. The previous `new Date(ms).toISOString()...` printed UTC with the `Z`
  * sliced off, so west of Greenwich the time was wrong and — for a US evening party (this project's
- * own zone is CDT, UTC−5) — anything after 19:00 rolled the printed DATE to the next day (#141).
+ * own zone is CDT, UTC−5) — anything after 19:00 rolled the printed DATE to the next day.
  *
  * Built from `Intl.DateTimeFormat` parts rather than `toLocaleString` so the layout is fixed
  * (sortable `YYYY-MM-DD HH:MM:SS`, 24h, zero-padded) regardless of the host locale, while the

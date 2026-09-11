@@ -10,7 +10,7 @@ Two guarantees, both red on base (`origin/main`) before the fix:
   * `dial_home` no longer keeps a private classification table: it delegates to `retry_policy`, so the
     single source of truth drives the one real caller and the two tables cannot drift again.
 
-The transient-blip default (an UNSTRUCTURED failure is retried) is deliberately preserved — the #443 fix
+The transient-blip default (an UNSTRUCTURED failure is retried) is deliberately preserved — the fix
 gives the boundary errors a structured `retryable = False`, it does not flip the heuristic's default.
 """
 
@@ -162,12 +162,12 @@ def test_dial_home_keeps_no_private_classification_table():
     )
 
 
-# ── #651: the two SEPARATOR MODEL RESOLVERS are boundary failures too ───────────────────────────────
+# ── the two SEPARATOR MODEL RESOLVERS are boundary failures too ───────────────────────────────
 # An explicit-but-unknown model token is a permanent config error (retrying re-resolves the same bad
 # token forever, burning cook attempts). Both resolvers must fail NON-retryable through is_retryable.
 # On base, roformer.resolve_roformer_slug raised a bare ValueError (.retryable=None → is_retryable
 # defaulted it retryable), so the roformer row REDS on base; the demucs row already routed through
-# BoundaryError (#497) and PASSES on base — it is the not-vacuous sentinel that keeps this test honest
+# BoundaryError and PASSES on base — it is the not-vacuous sentinel that keeps this test honest
 # if the anchor for the demucs side ever moves.
 @pytest.mark.parametrize(
     "resolve",
@@ -187,7 +187,7 @@ def test_unknown_separator_model_is_non_retryable(resolve):
 
 
 def test_every_separation_raise_carries_a_structured_retryable():
-    """CLOSE THE CLASS (#651): every `raise` in apps/worker/src/separation/*.py must raise an
+    """CLOSE THE CLASS: every `raise` in apps/worker/src/separation/*.py must raise an
     exception type that carries a structured `retryable` flag — never a bare Exception/ValueError/
     RuntimeError whose retryability falls to the message heuristic. On base this AST census finds
     exactly one offender, roformer.py's bare `ValueError`, so it REDS on base; after the fix it finds

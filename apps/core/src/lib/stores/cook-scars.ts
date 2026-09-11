@@ -3,7 +3,7 @@
 // Why this exists: a failed cook is a LIVE signal. The catalog Media records no failure (a dead cook
 // settles back to un-cooked via settleStemsGate server-side), and the in-memory `mediaStatus` map that
 // carries the live `failed` status is lost on reload — so a guest who reloads sees the song back as a
-// plain un-cooked row with no trace that it broke, and no idea why it never came (Encore #68). The
+// plain un-cooked row with no trace that it broke, and no idea why it never came. The
 // owner ruled a client-side scar over the two alternatives (a server `last_error` column, or leaving
 // it as-is): per-device, data-free, no migration.
 //

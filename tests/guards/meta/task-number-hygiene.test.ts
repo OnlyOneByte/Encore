@@ -41,30 +41,53 @@ const REPO = repoRoot;
 // retired schemes this sweep cleared. `\b` on both ends is what keeps `T-<n>` from firing inside, say, a
 // hyphenated identifier, and what makes the bare-number timestamp constants (`T1`) unreachable.
 //
-// `#<n>` IS SCOPED TO TEST FILES, and the scope is the finding rather than a convenience. THE RULE above
-// says task ids belong in a PR, a commit message, or docs — and by that reasoning a GitHub issue number
-// in a test name or header is the same noise, which is why 1,780 of them were removed from test prose.
-// But the rule was never applied to production source or docs, which still carry ~847 and ~212
-// references respectively. Banning those is a separate decision with a separate cost, so this pattern
-// stops at `*.test.ts` rather than quietly widening the guard's remit to a thousand offenders it was
-// never ruled on.
+// `#<n>` NOW APPLIES REPO-WIDE. It began scoped to `*.test.ts`, and that scope was recorded here as a
+// finding rather than a convenience: THE RULE above says task ids belong in a PR, a commit message, or
+// docs, so an issue number in a test name was noise by that reasoning — but production source and docs
+// carried ~1,800 and ~235 more, and banning those was a separate decision with a separate cost.
+//
+// That decision has since been made: the references are gone from source, docs, migrations and config too,
+// so the scope is lifted and the guard now covers every tracked file. The measured totals at the time were
+// 2,198 references across 343 files; 957 came out mechanically and the remainder by hand, because most of
+// what was left sat in SUBJECT position where deleting the number leaves a sentence without one.
+//
+// THE DIGIT RANGE WAS ALSO WRONG. It matched `#[0-9]{3,4}`, so two-digit references were invisible to it —
+// `#88` and `#64` sat in banned files while this guard passed. It is now `{1,4}`, which brings in the
+// 1- and 2-digit references and, with them, two conventions that are NOT GitHub issues and must survive:
+//
+//   * `Finding #4` — a numbered REVIEW finding. A different scheme, never ruled on, and stripping it would
+//     destroy a reference a reader can actually resolve (the findings are listed in the review).
+//   * ordinals — `socket #0`, `sample #0`, `frame #1`. Not references at all: they count things. There are
+//     8 in the tree, and a ban that ate them would rewrite `socket #0 drops` into nonsense.
+//
+// Both are excluded by pattern rather than by an exemption list, because they are shapes rather than sites:
+// a new `Finding #7` or `slot #3` should be allowed without anyone editing this file.
 //
 // DISCRIMINATING AN ISSUE FROM A COLOUR. There is no syntactic difference between the issue `#913` and
 // the three-digit hex colour `#913`, so the only signal is the CLOSING quote: a colour is written as a
 // string literal (`'#000'`), while an issue reference in prose is followed by space or punctuation.
+// A six-digit colour matters too — `#7254e6` opens with four digits — which is what the trailing
+// `[0-9a-fA-F]` exclusion covers.
 //
 // An earlier version excluded a quote on EITHER side, which looked symmetrical and was wrong — it made
 // the pattern blind to exactly the case this ban exists for, a test name opening `test('…`, where
 // the quote sits immediately before the `#`. Only the trailing quote may be excluded. The mutation arm
 // at the bottom of this file pins both halves so that cannot regress.
+const ORDINAL_NOUNS = 'socket|sample|slot|step|entry|row|frame|attempt|worker|stop|revision|track|stem|tier|pass';
 const PATTERNS: { re: RegExp; family: string; only?: (rel: string) => boolean }[] = [
 	{ re: /\bT-[0-9]+\b/, family: 'T-<n>' },
 	{ re: /\bB-[0-9]+\b/, family: 'B-<n> (retired)' },
 	{ re: /\bM[0-9]+-C[0-9]+\b/, family: 'M<n>-C<n> (retired)' },
 	{
-		re: /(?<![0-9a-fA-F#])#[0-9]{3,4}(?![0-9a-fA-F'"])/,
-		family: 'GitHub issue #<n> in test prose',
-		only: (rel) => rel.endsWith('.test.ts')
+		re: new RegExp(
+			// not preceded by a hex digit, a `#`, `Finding `, or an ordinal noun…
+			`(?<![0-9a-fA-F#])(?<!\\bFinding )(?<!\\bFinding #[0-9]{1,4}/)(?<!\\b(?:${ORDINAL_NOUNS}) )` +
+				// …one to four decimal digits…
+				`#[0-9]{1,4}` +
+				// …not followed by a hex digit or a closing quote (either would make it a colour).
+				`(?![0-9a-fA-F'"])`
+		),
+		family: 'GitHub issue #<n>'
 	}
 ];
 

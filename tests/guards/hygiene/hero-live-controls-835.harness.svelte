@@ -1,13 +1,13 @@
 <script lang="ts">
 	/*
-	 * Test harness for the hero's LIVE controls and their honest degradation (issue #835, XR-PH-15).
+	 * Test harness for the hero's LIVE controls and their honest degradation (XR-PH-15).
 	 *
 	 * It exists for the same reason `phone-home-832.harness.svelte` does: the controls arrive as a
 	 * SNIPPET prop, and building one in the test file exercises a different code path
 	 * (`createRawSnippet` from the bare `svelte` specifier resolves to the SERVER runtime under
 	 * `bun test`). So the snippet is real markup here, the way `+page.svelte` passes it.
 	 *
-	 * The difference from the #832 harness is deliberate: this one mounts the REAL
+	 * The difference from the harness is deliberate: this one mounts the REAL
 	 * `GuidingTrack` rather than a stand-in range input, because the claim under test is about the
 	 * relationship between the disabled control and the sentence explaining it — that the sentence is
 	 * NOT inside the subtree `.gt.disabled` dims with `opacity` (XR-PH-03). A stub cannot carry that.

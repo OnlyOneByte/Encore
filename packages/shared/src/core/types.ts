@@ -118,7 +118,7 @@ export interface Media {
 	vocalsRef?: string;
 	/**
 	 * Signed millisecond offset of the guiding track against the instrumental, MEASURED at cook time —
-	 * the guide-alignment half of the guide feature made observable instead of assumed (#766).
+	 * the guide-alignment half of the guide feature made observable instead of assumed.
 	 *
 	 * `guide-sync.ts` is blind by construction to any offset baked into the DECODED audio: it only ever
 	 * compares the two elements' reported `currentTime`, so a stem that is time-shifted in its samples
@@ -133,10 +133,11 @@ export interface Media {
 	 * `guide-sync.ts` stays a pure policy function with no new branch (read `guideOffsetSec` there).
 	 *
 	 * ABSENT OR 0 IS TODAY'S BEHAVIOUR, EXACTLY. Every song cooked before this field existed carries no
-	 * value, and a freshly-cooked song whose two stems are the same FLAC codec (#480) decodes to a
+	 * value, and a freshly-cooked song whose two stems are the same FLAC codec decodes to a
 	 * sample-exact common start and measures ~0 — so the field is 0 for essentially the whole library on
-	 * the day it lands, and `guideOffsetSec` maps absent → 0. The non-zero case is a legacy pre-#480
-	 * `.m4a` vocals stem (the ~21 ms AAC priming asymmetry) or a deliberately shifted stem.
+	 * the day it lands, and `guideOffsetSec` maps absent → 0. The non-zero case is a legacy `.m4a`
+	 * vocals stem from before both stems became FLAC (the ~21 ms AAC priming asymmetry) or a
+	 * deliberately shifted stem.
 	 */
 	guideOffsetMs?: number;
 	lyricsRef?: string; // MediaStore key of the word-timed lyrics JSON artifact — drives the
@@ -153,14 +154,14 @@ export interface Media {
 	lyricsCandidates?: LyricsCandidate[];
 	/**
 	 * A HUMAN'S explicit lyrics pick, by candidate `ref` — the fallback for when the ranker chose
-	 * wrong (#640). When set and still present in `lyricsCandidates`, it OUTRANKS `pickBestLyrics`
+	 * wrong. When set and still present in `lyricsCandidates`, it OUTRANKS `pickBestLyrics`
 	 * everywhere the chosen candidate is resolved (`chosenLyricsRef` on restore, `setMediaLyrics` on a
 	 * later align completion). `undefined` means no override — the ranking decides, as before.
 	 *
 	 * This is the one thing that can make the shown candidate WORSE by rank, so it is a SEPARATE field
 	 * the resolver consults, never a change to `pickBestLyrics`: the never-regress guarantee
 	 * (`mergeLyricsCandidate`) stays intact, and a later re-cook that produces a better candidate is
-	 * still KEPT beside the pick — which is what lets the phone say "a better version exists" (#640,
+	 * still KEPT beside the pick — which is what lets the phone say "a better version exists" (
 	 * owner ruling Q2=C: sticky, plus surface the newer candidate) instead of silently losing it.
 	 */
 	lyricsOverrideRef?: string;
@@ -213,7 +214,7 @@ export function isPlayable(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): bo
 
 /**
  * The guide-alignment offset in SECONDS, ready to add to the master playhead — 0 whenever there is
- * nothing measured (#766).
+ * nothing measured.
  *
  * The wire and the schema carry `guideOffsetMs` (a signed integer, or absent). The client aligns in
  * seconds, so this converts once and, crucially, DEFAULTS ABSENT/NON-FINITE TO 0: a song cooked before
@@ -254,7 +255,7 @@ export interface QueueEntry {
 	mediaId: string;
 	singerId: string;
 	status: EntryStatus;
-	rotationSeq: number; // server-owned position in the stored ordered list (#856)
+	rotationSeq: number; // server-owned position in the stored ordered list
 	addedAt: number;
 }
 
@@ -460,7 +461,7 @@ export interface JobAttempt {
 	stages: string | null;
 
 	/**
-	 * WHY the published lyric was chosen, as a JSON string (#669). Present only on `align` attempts
+	 * WHY the published lyric was chosen, as a JSON string. Present only on `align` attempts
 	 * that made a pick among versions; null everywhere else. Stored whole for the same reason as
 	 * `stages` and `media.lyricsCandidates`: it is read whole to explain one attempt, never queried
 	 * inside, so a table would buy a join and a migration for no query. Parse with `attemptSelection()`.
@@ -484,7 +485,7 @@ export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; m
 }
 
 /**
- * WHY one lyric candidate won over the others, as durable data (#669).
+ * WHY one lyric candidate won over the others, as durable data.
  *
  * The worker's `VariantChoice.summary()` already renders exactly these facts, but only to the cook
  * log, which rotates and is per-container and is long gone by the time someone notices wrong lyrics on
@@ -507,7 +508,7 @@ export interface SelectionRecord {
 	 * Baseline COVERAGE of the published winner — the number `winnerSuspect` was actually thresholded
 	 * against. Null when nothing could judge it.
 	 *
-	 * OPTIONAL because an attempt row written before #806 has no such key, and `attemptSelection`
+	 * OPTIONAL because an attempt row written before the coverage axis landed has no such key, and `attemptSelection`
 	 * parses defensively rather than rejecting an older record: a missing coverage must read as "this
 	 * worker did not record it", never as a decision made on nothing.
 	 */
@@ -576,7 +577,7 @@ export function chosenCandidate(m: Pick<Media, 'lyricsRef' | 'lyricsCandidates'>
 
 /**
  * The single place that resolves WHICH candidate wins: a human override if one is set and still on
- * disk, otherwise `pickBestLyrics` (#640). Returns the winning `ref`, or `undefined` when nothing is
+ * disk, otherwise `pickBestLyrics`. Returns the winning `ref`, or `undefined` when nothing is
  * showable.
  *
  * Both rank-derivation sites route through here so override-then-rank has ONE definition:

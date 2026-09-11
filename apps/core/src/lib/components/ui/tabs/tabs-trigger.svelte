@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S4) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S4) ───────────────────────────────────────────────────────────────────
   Encore's settings scope switcher is a PILL SEGMENTED CONTROL, not shadcn's underlined tab strip, and
   the appearance is replaced rather than layered.
 
@@ -14,7 +14,7 @@
     - `min-height: var(--tap)`, named rather than restated (XR-PH-01). A 38px pill would be the one
       control on this page under the 44px floor.
     - the active fill is `var(--accent)` with `var(--on-accent)` ink — the certified pair that carries
-      a label at 5.09:1 (#840, XR-COL-12). The fill and its ink are set together, never separately.
+      a label at 5.09:1 (XR-COL-12). The fill and its ink are set together, never separately.
     - `font-size: var(--ph-text-base)` (16px) so iOS does not auto-zoom when a tab takes focus.
 -->
 <script lang="ts">
@@ -54,7 +54,7 @@
 		cursor: pointer;
 	}
 	/*
-	 * --accent + --on-accent is the certified pair that carries a label: 5.09:1 (#840, XR-COL-12 — the
+	 * --accent + --on-accent is the certified pair that carries a label: 5.09:1 (XR-COL-12 — the
 	 * fill and its ink are set together, never separately). `data-active` is Bits UI's own state
 	 * attribute, verified by a real mount rather than assumed.
 	 */

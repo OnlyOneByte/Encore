@@ -236,7 +236,10 @@ test("hydrate()'s heal comment (store.ts) tells the truth about boot recovery", 
 	// Non-vacuous: the heal the comment describes must actually be present, or the checks below
 	// would pass against a file that no longer has the code they document.
 	expect(STORE).toMatch(/currentEntryId:\s*null,\s*isPlaying:\s*false/);
-	expect(STORE).toContain('Self-heal a persisted DANGLING currentEntryId (issue #128)');
+	// Anchored on the CLAIM, not on the issue number that used to trail it. The number was removed when
+	// issue references were cleared from production source; the sentence it labelled is the actual subject,
+	// and pinning the label meant this guard measured the label rather than the behaviour it documents.
+	expect(STORE).toContain('Self-heal a persisted DANGLING currentEntryId');
 
 	// THE PINNED FALSEHOOD. The retired comment claimed "the boot resync/reconcile then starts the
 	// next singer" — asserting a boot-time resync/reconcile that STARTS/recovers a singer. No such

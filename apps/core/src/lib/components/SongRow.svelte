@@ -85,7 +85,7 @@
 		 * The live cook STATUS (queued/downloading/separating/aligning/ready). Present, the row
 		 * shows how far through the whole cook it is via `overallCookPct(status, pct)` instead of
 		 * the raw per-step `pct` — a per-step number filled the bar to 100% at the end of each
-		 * step and even jumped backward when the next step reset it (see #80). Absent (a raw
+		 * step and even jumped backward when the next step reset it. Absent (a raw
 		 * search row that is not cooking), the raw `pct` is used unchanged.
 		 */
 		status?: MediaStatus;
@@ -96,7 +96,7 @@
 		 *
 		 * Defaults true, so every row that CAN be sung is unaffected. False is the metadata-only case: a
 		 * Spotify search hit, which exists to sharpen the query but whose bytes are never pulled, so no
-		 * cook can ever run for it. Both actions have to go, not just Sing (#742): the two branches below
+		 * cook can ever run for it. Both actions have to go, not just Sing: the two branches below
 		 * are an either/or, so dropping `onmake` alone fell straight through to a live `＋ Turn` — and a
 		 * turn on a song that can never be cooked is exactly the dead end this row's one-primary-action
 		 * design exists to remove. It is held in the rotation and skipped on every pass, silently, for
@@ -219,9 +219,9 @@
 		// Round only the READOUT, matching ProcessingCard's convention (its :62 comment): the bar keeps
 		// the unrounded barPct so its transition stays smooth, but the guest-facing "Making karaoke… N%"
 		// line must be an integer — overallCookPct returns a band-interpolated float (e.g. 67.6), and an
-		// unrounded readout prints "67.6%" or "31.200000000000003%" (#80).
+		// unrounded readout prints "67.6%" or "31.200000000000003%".
 		if (readiness === 'cooking') return cookStageLabel('queued', { pct: Math.round(barPct) });
-		// Metadata-only (#742): the actions are gone, so the row MUST say why. A disabled button with a
+		// Metadata-only: the actions are gone, so the row MUST say why. A disabled button with a
 		// `title` is not enough — this is a phone, there is no hover — and an unexplained dead control
 		// reads as the app being broken. Last, after the three readiness branches, so it can never mask
 		// a real cook state (a song that can't be cooked never reaches ready/cooking anyway).
@@ -234,7 +234,7 @@
 	// COST ("about a minute") because that is the difference between the two actions, and it is the one
 	// thing an icon cannot say.
 	//
-	// The RETRY case is a third label, not a variant of the first (#741). `onmake` with `inQueue` means
+	// The RETRY case is a third label, not a variant of the first. `onmake` with `inQueue` means
 	// the singer already holds a queued turn for this song and its cook died — the only state that
 	// reaches it, because a cook in flight renders `.add` instead. Announcing "Sing this" there
 	// promised a turn the action deliberately no longer takes (it re-cooks the turn already held), so
@@ -246,7 +246,7 @@
 			? 'Try making the karaoke again — you already have a turn for this song'
 			: onmake
 				? 'Sing this — strips the vocals first, takes about a minute'
-				: // Metadata-only (#742). Announced BEFORE the inQueue branch because it is the stronger fact:
+				: // Metadata-only. Announced BEFORE the inQueue branch because it is the stronger fact:
 					// this song can never be sung here, so "Already in the queue" would be both wrong and
 					// beside the point. A screen reader gets the reason, not just a disabled control.
 					!cookable
@@ -297,7 +297,7 @@
 		<!--
 			The title and the cooking mark share a flex line so the mark is a SIBLING of .t, not a child of it.
 			.t clamps to two lines with overflow:hidden; a mark rendered INSIDE that box is laid out on the
-			discarded third line and never paints on a phone (issue #194). As a flex:0 0 auto sibling it always
+			discarded third line and never paints on a phone. As a flex:0 0 auto sibling it always
 			paints and no longer competes with the title for the last line's characters.
 		-->
 		<div class="title-line">
@@ -311,7 +311,7 @@
 					<!--
 						The readiness tone is chosen HERE and passed as a variant, because the tone IS the meaning:
 						each one is a certified surface+border+ink triple in ui/badge, set together and never
-						separately. `wrap` because this chip carries a phrase rather than a token (#857).
+						separately. `wrap` because this chip carries a phrase rather than a token.
 					-->
 					<Badge
 						variant={readiness === 'ready' ? 'ok' : readiness === 'cooking' ? 'warn' : readiness === 'failed' ? 'bad' : 'neutral'}
@@ -387,7 +387,7 @@
 
 <style>
 	/*
-	 * #913 S8: `.meta` moved to ui/item as Encore's shared row grammar (`min-width: 0; flex: 1`), which
+	 * S8: `.meta` moved to ui/item as Encore's shared row grammar (`min-width: 0; flex: 1`), which
 	 * all three rows carried identically. `.thumb` STAYS: it declares a background, and contrast.test.ts
 	 * reasons about this row's surfaces from the rules in this file.
 	 */
@@ -473,10 +473,10 @@
 	/*
 	 * TWO lines, not one. A single ellipsised line is what hid "(Official Music Video)". The title text
 	 * shares .title-line with the cooking mark; min-width:0 + the two-line clamp bound ONLY the title
-	 * text, so the mark beside it is never pushed onto the discarded third line (issue #194).
+	 * text, so the mark beside it is never pushed onto the discarded third line.
 	 * flex-grow MUST stay 0 (flex: 0 1 auto, the initial value): with flex-grow:1 the clamp box grew to
 	 * fill the whole line and pushed the flex:0 0 auto mark to the column's right edge, up to 116px from
-	 * a short title it marks (issue #334). flex-grow:0 lets the box shrink to its text so the mark hugs
+	 * a short title it marks. flex-grow:0 lets the box shrink to its text so the mark hugs
 	 * the title, while flex-shrink:1 still keeps a long title clamped to two lines.
 	 */
 	.title-line {
@@ -497,7 +497,7 @@
 	}
 	/*
 	 * The cooking marker, a flex:0 0 auto SIBLING of .t on .title-line — so it always paints and never
-	 * competes with the title for the last line's characters (issue #194). The margin is still
+	 * competes with the title for the last line's characters. The margin is still
 	 * load-bearing: it separates the mark from the clamped title box, and a space in the markup would be
 	 * collapsed away by the flex layout, so the gap has to be a margin. margin-top nudges the mark down to
 	 * sit on the first title line rather than at the flex row's top edge.
@@ -528,7 +528,7 @@
 		margin-top: var(--space-xs);
 	}
 	/*
-	 * #913 S6: `.chip` and its ten tone rules moved to ui/badge. The tones went with them verbatim —
+	 * S6: `.chip` and its ten tone rules moved to ui/badge. The tones went with them verbatim —
 	 * each is a certified surface+border+ink triple — so no chip changes colour; only the element does.
 	 * `.chips` stays here because it is this row's LAYOUT, which a scoped rule can still reach.
 	 */
@@ -548,7 +548,7 @@
 	/* Same treatment as the badge it explains, so the two read as one signal rather than two. */
 
 	/*
-	 * #913 S6: `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
+	 * S6: `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
 	 * so this consolidated a duplicate. The swap also buys what neither hand-rolled bar had:
 	 * `role="progressbar"` with aria-valuenow, so a cook's progress is finally visible to assistive
 	 * tech. Spacing from the element above stays HERE, because that is this component's layout rather
@@ -600,7 +600,7 @@
 		color: var(--on-accent);
 	}
 	/*
-	 * The RETRY sing (#741) keeps the accent fill — it is still the primary intent on this row, and it
+	 * The RETRY sing keeps the accent fill — it is still the primary intent on this row, and it
 	 * is the action the failed group header points the singer at — but takes the danger ring so it is
 	 * not the same button as a first tap. It sits next to that row's own red "Couldn't make karaoke"
 	 * chip, so it borrows that chip's line colour rather than inventing a fourth semantic family. The
@@ -619,7 +619,7 @@
 		opacity: 0.7;
 	}
 	/*
-	 * The song can never be cooked, so the control must not wear the "go" clothes (#742). `disabled`
+	 * The song can never be cooked, so the control must not wear the "go" clothes. `disabled`
 	 * alone was not enough: `.add`'s green border and green mark are the app's actionable signal, and a
 	 * full-strength green `＋` that does nothing when tapped reads as the app being broken rather than as
 	 * an action that is unavailable. This drops the accent entirely — hairline border, dim ink — so the

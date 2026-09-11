@@ -128,7 +128,7 @@
 	   Scoped :not(.badqr) so this QR treatment's flex row does not reach the unreachable-join
 	   ALERT, which reuses the `corner` class only for its pin (.badqr.corner re-declares the same
 	   position/right/bottom/z-index). Without this the alert's three block children became
-	   side-by-side flex columns and the fix instruction was squeezed off-screen (#357). */
+	   side-by-side flex columns and the fix instruction was squeezed off-screen. */
 	.corner:not(.badqr) {
 		position: absolute;
 		right: var(--tv-safe-x);
@@ -187,7 +187,7 @@
 		/*
 		 * Prose width, not a QR's. 34ch here resolved against this element's own 16px root font
 		 * (~346px) — a column two words wide that never grew with the TV type — so the address was
-		 * forced to break mid-token and the trailing clause orphaned its comma (#62). This is the same
+		 * forced to break mid-token and the trailing clause orphaned its comma. This is the same
 		 * vmin axis the TV type scale rides, so the card grows on a 4K wall instead of dead-ending.
 		 */
 		max-width: clamp(320px, 44vmin, 720px);
@@ -213,7 +213,7 @@
 		color: var(--ink);
 	}
 	/* Each part on its own line: the sentence never wraps around the address, so the comma that used
-	   to orphan onto its own line (#62) is gone with the clause it followed. */
+	   to orphan onto its own line is gone with the clause it followed. */
 	.badqr-lead {
 		display: block;
 	}

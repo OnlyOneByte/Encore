@@ -1,4 +1,4 @@
-"""Guide-offset measurement (#766): the guide-alignment half of the guide feature, made observable.
+"""Guide-offset measurement: the guide-alignment half of the guide feature, made observable.
 
 These tests pin the measurement is REAL, not vacuous: they build an instrumental and a vocals stem that
 is the SAME signal shifted by a KNOWN number of samples, and assert measure_guide_offset_ms recovers that

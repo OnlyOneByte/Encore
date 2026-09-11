@@ -28,7 +28,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	if (state === 'unknown') return json({ error: 'unknown media' }, { status: 409 });
 	// A metadata-only source (Spotify): no fetcher can pull its bytes, so this is not a transient
 	// refusal and never becomes one. Named explicitly because it used to fall all the way through to
-	// the generic `could not start make-karaoke` below (#742) — `cookState` answered `'cookable'`, so
+	// the generic `could not start make-karaoke` below — `cookState` answered `'cookable'`, so
 	// none of the honest arms fired, and the singer got a four-second toast that said nothing about the
 	// turn they had just been given, which could never play.
 	if (state === 'not-cookable') {

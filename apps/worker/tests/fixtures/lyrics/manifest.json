@@ -3,7 +3,7 @@
   "snapshotCommit": "e5ffab6",
   "snapshotArchive": "debug_encore/archive2.zip",
   "snapshotArchiveBytes": 1746000,
-  "note": "Provenance for the curated real-lyrics corpus (issue #668). Every field here is READ by tests/test_lyrics_corpus_668.py — durationSec is what the overshoot measurement needs and the artifacts themselves do not carry it, and sha256 pins the bytes so a re-export cannot silently move a measured number. Renaming or dropping the media ids was considered and rejected: the raw archive is already committed with the ids intact on the branch above, so renaming here would not un-commit them and would only break the trace back to the source.",
+  "note": "Provenance for the curated real-lyrics corpus. Every field here is READ by tests/test_lyrics_corpus_668.py — durationSec is what the overshoot measurement needs and the artifacts themselves do not carry it, and sha256 pins the bytes so a re-export cannot silently move a measured number. Renaming or dropping the media ids was considered and rejected: the raw archive is already committed with the ids intact on the branch above, so renaming here would not un-commit them and would only break the trace back to the source.",
   "specimens": [
     {
       "file": "wrong-version-overshoot-total-eclipse.json",
@@ -17,7 +17,7 @@
       "lines": 97,
       "words": 470,
       "sha256": "301197844dcf901d7fa9834488554f75f594745b06c452ea8863612480ecf107",
-      "pins": "WRONG VERSION, labelled by construction: the text is timed to a 374s master against 268s of audio, so 25 of its 97 lines start after the song has ended. Ground truth for OVERSHOOT_FRACTION_MAX (#667) with no human judgement needed."
+      "pins": "WRONG VERSION, labelled by construction: the text is timed to a 374s master against 268s of audio, so 25 of its 97 lines start after the song has ended. Ground truth for OVERSHOOT_FRACTION_MAX with no human judgement needed."
     },
     {
       "file": "wrong-version-overshoot-friends-in-low-places.json",

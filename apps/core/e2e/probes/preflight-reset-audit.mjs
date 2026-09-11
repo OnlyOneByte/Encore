@@ -1,5 +1,5 @@
 /*
- * Preflight audit (issue #853) — measure the properties Tailwind's Preflight RESETS, on every
+ * Preflight audit — measure the properties Tailwind's Preflight RESETS, on every
  * element of every reachable surface, so the before/after answer is a diff rather than an opinion.
  *
  * WHY THIS EXISTS AND NOT JUST SCREENSHOTS. Preflight is a global reset and this app carries ~4,950

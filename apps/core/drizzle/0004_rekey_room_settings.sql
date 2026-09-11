@@ -1,4 +1,4 @@
--- #728: re-key the durable room_settings row from the literal 'main' onto the ACTIVE room.
+-- re-key the durable room_settings row from the literal 'main' onto the ACTIVE room.
 --
 -- A real numbered migration (0004, after #656's 0003_room_keyed_queue), NOT an in-place baseline
 -- edit: a rewritten 0000 is never re-applied to an existing DB (drizzle keys on the journal `when`,
@@ -17,7 +17,7 @@
 --
 -- The active room is the OLDEST one -- the same room ensureActive() resolves to and where an
 -- unqualified join lands. Guards:
---   * A DB with a 'main' settings row but NO rooms row yet (a pre-#654 database) has no room to carry
+--   * A DB with a 'main' settings row but NO rooms row yet (a pre-change database) has no room to carry
 --     it onto -- the subquery is NULL and the WHERE drops the UPDATE, leaving the row untouched.
 --   * If the active room ALREADY has its own row (a client that sent ?roomId=<active> wrote one), the
 --     explicit per-room row wins: we DELETE the orphan 'main' row rather than collide on the PK.

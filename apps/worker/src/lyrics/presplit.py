@@ -239,7 +239,7 @@ _KLP: Any = _UNSET
 
 #: Why `_load_klp` returned what it did — probed once, reported at startup. `None` until first load.
 #: The three failure-adjacent facts the load can establish are kept DISTINCT here, because the caller
-#: collapses them to one behaviour (bound nothing) and #444 filed this exact conflation as a defect:
+#: collapses them to one behaviour (bound nothing) and this exact conflation was filed as a defect:
 #: without a status an operator cannot tell "package absent" from "stub broke" from "no line was
 #: over-long", so a klp regression on the deploy box is invisible from the dev box where it is absent.
 #:   • "available" — imported; `_KLP` is the class and bounding runs.
@@ -254,7 +254,7 @@ def _load_klp() -> Any:
     """Import `KaraokeLyricsProcessor`, or None if it is absent or broken. Cached (import is not free).
 
     Also records WHY it returned what it did in `_KLP_STATUS`/`_KLP_DETAIL` so absent, broken and a
-    legitimate no-op stay three distinguishable observations rather than one silent `None` (#475).
+    legitimate no-op stay three distinguishable observations rather than one silent `None`.
     Absent (not installed) is told apart from broken (installed but raises on import) with `find_spec`,
     which answers without importing — the same probe-don't-infer rule `backends._module_available` uses.
 
@@ -300,7 +300,7 @@ def _load_klp() -> Any:
 
 def klp_status() -> tuple[str, str]:
     """Load klp if not already, and return its resolved ``(status, detail)`` — one of available /
-    absent / broken with a human-readable reason. The distinguishing observation #475 asks for."""
+    absent / broken with a human-readable reason. The distinguishing observation an operator needs."""
     _load_klp()
     # _load_klp always sets _KLP_STATUS before returning; the `or` only guards a caller that somehow
     # reads this before any load (there is none) so it never returns None to a formatter.
@@ -434,7 +434,7 @@ def bound_blob_text(
     lineator = lambda body: bound([body], max_chars)  # noqa: E731 — one-line adapter, matches call sites
     # Build the windows AND record where each human segment opens, in the SAME walk that produces them,
     # so the opening index of every line is a KNOWN fact rather than one re-derived downstream by
-    # float-equality (issue #459: a single start that fails to match to 1e-6 strands every later line).
+    # float-equality (a single start that fails to match to 1e-6 strands every later line).
     # `opens[i]` is the index in `windows` of the first window contributed by `text.segments[i]`; a
     # segment passed through whole contributes exactly one, and a subdivided one opens at the block head.
     windows, opens = _relineate_with_opens(text, lineator)

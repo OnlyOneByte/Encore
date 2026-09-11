@@ -79,7 +79,7 @@ import type { LyricsTiming } from '../lyrics/lyrics';
 /**
  * Deployment-wide separator and cook policy. Writable by ANY joined singer via `PUT /api/settings`
  * (`settings:write-global`, which `can()` grants to every joined singer) — NOT operator-owned. This is
- * the owner's confirmed ruling (Q3, 2026-09-09, issue #828): deployment-scoped settings stay open,
+ * the owner's confirmed ruling (Q3, 2026-09-09): deployment-scoped settings stay open,
  * accepted. Published policy: docs/ux/05-concurrency.md § "Owner rulings".
  */
 export interface GlobalSettings {
@@ -314,10 +314,10 @@ export interface RoomSettings {
 	 * field rather than each carrying their own; the visualizer takes its palette's hue from it through
 	 * `hueOfColor`.
 	 *
-	 * A REAL COLOUR, not a hue angle — changed by #425. It was an angle, quantised to the wheel step and
+	 * A REAL COLOUR, not a hue angle — the field changed type. It was an angle, quantised to the wheel step and
 	 * rendered at a pinned stage lightness by `stageHueToHex`, so that no room could produce a field
 	 * bright enough to wash out the word-timed lyric reel. That bound is retired: the reel now carries
-	 * its own `-webkit-text-stroke` outline (#750, `b764d92`), which protects the words on any field —
+	 * its own `-webkit-text-stroke` outline (`b764d92`), which protects the words on any field —
 	 * including over a music video, which a bound on the stage colour could never reach. A room may
 	 * pick white.
 	 *
@@ -331,7 +331,7 @@ export interface RoomSettings {
 	 * stage colour at full strength, 1 pulls it all the way to black. Room-scoped like the colour it
 	 * dims — one party's staging taste.
 	 *
-	 * Piece 3 of #425 (owner ruling Q2 = A, 2026-09-07): "Dim the stage colour toward black — today's
+	 * Piece 3 of the stage-colour change (owner ruling Q2 = A, 2026-09-07): "Dim the stage colour toward black — today's
 	 * geometry, no new layer." It is a LIGHTNESS control, not an opacity layer over the video: the
 	 * stage sits behind the video on a black floor, so darkening it toward black reveals nothing of the
 	 * video and adds no layer. Applied to the concrete colour the stage resolves to — see
@@ -401,8 +401,8 @@ export interface RoomSettings {
 	 */
 	guideLevelDefault: number;
 	/**
-	 * Whether this room pulls loud outlier songs DOWN toward the library level (#462). Room-scoped
-	 * because it is a property of one party's audio taste, and open to any joined singer per the #828
+	 * Whether this room pulls loud outlier songs DOWN toward the library level. Room-scoped
+	 * because it is a property of one party's audio taste, and open to any joined singer per the owner's
 	 * Q3 = B ruling (room settings need no capability gate).
 	 *
 	 * When on, a song whose measured `songProfile.loudnessLufs` is more than `LOUDNESS_CLAMP_N_DB`
@@ -445,7 +445,7 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	// behind the song, and a default that changed the stage would be a surprise, not a feature.
 	tvBackgroundStyle: 'off',
 	// 240° — the blue that tested cleanest against the pink active word — is where the old hue slider
-	// started, and `#001d31` is exactly what `stageHueToHex(240)` rendered it as, so #425's change from
+	// started, and `#001d31` is exactly what `stageHueToHex(240)` rendered it as, so the change from
 	// an angle to a colour leaves an existing box looking identical. Only used once a room picks `solid`
 	// or `visualizer`, so this is the starting point of the picker rather than something anyone sees by
 	// default.
@@ -533,14 +533,14 @@ export function normalizeRoomSettings(
 	const lyricsCase = isValidLyricsCase(textCase) ? textCase : d.lyricsCase;
 	const bg = input?.tvBackgroundStyle;
 	const tvBackgroundStyle = isTvBackgroundStyle(bg) ? bg : d.tvBackgroundStyle;
-	// A COLOUR now, not an angle (#425). Normalised to canonical hex and deliberately NOT gated on
-	// brightness: the pin that used to bound it was replaced by the lyric reel's own stroke (#750), so
+	// A COLOUR now, not an angle. Normalised to canonical hex and deliberately NOT gated on
+	// brightness: the pin that used to bound it was replaced by the lyric reel's own stroke, so
 	// a room may pick white. Unparseable input keeps the colour the room already chose rather than
 	// resetting it — the same rule every other field here follows.
 	const tvBackgroundColor = normalizeStageColor(input?.tvBackgroundColor, d.tvBackgroundColor);
 	// A 0..1 dim fraction, clamped like guideLevelDefault (rounded to a hundredth) — the two 0..1 room
 	// fractions store and compare the same way. A junk write keeps the room's current dim, not the
-	// default, matching every other field here. #782.
+	// default, matching every other field here.
 	const tvBackgroundDim = normalizeStageDim(input?.tvBackgroundDim, d.tvBackgroundDim);
 	// Clamped, like the song intro: a room default outside 0..1 should still yield a usable room. Note
 	// this one is NOT nullable — the room default is the floor the per-song override falls back to, so

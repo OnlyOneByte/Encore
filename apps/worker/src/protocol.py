@@ -121,7 +121,7 @@ def complete(
         msg["stages"] = stages
     # WHY THIS LYRIC WON. `summary()` renders these facts to the cook log, which rotates and is
     # per-container; this is the same facts as durable data so a mis-pick is answerable from the
-    # audit trail weeks later, not from a log line that is already gone (#669).
+    # audit trail weeks later, not from a log line that is already gone.
     if selection:
         msg["selection"] = selection
     return msg

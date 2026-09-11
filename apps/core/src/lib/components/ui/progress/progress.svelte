@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S6) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S6) ────────────────────────────────────────────────────────────────────────
   Encore's cook bar, replacing the registry's flat `bg-muted` / `bg-primary` pair. Both call sites —
   ProcessingCard and SongRow — carried the SAME hand-rolled idiom (`.bar` + an `<i>` scaled from the
   left edge), differing only in height, so this consolidates a duplicate rather than restyling one.

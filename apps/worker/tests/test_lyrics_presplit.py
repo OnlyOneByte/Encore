@@ -104,7 +104,7 @@ def test_agreement_thresholds_mirror_the_ts_authority():
     # MIN_TOKENS_TO_COMPARE / SUSPECT_COVERAGE are declared authoritative in packages/shared/src/
     # lyrics.ts (chain.py calls itself their mirror) but nothing cross-checked them. Read the TS
     # values and assert the Python copies equal them, so a threshold change on the authority side reds.
-    # SUSPECT_COVERAGE replaced SUSPECT_AGREEMENT in #542 — a different metric on a different axis, so
+    # SUSPECT_COVERAGE replaced SUSPECT_AGREEMENT — a different metric on a different axis, so
     # the constant was renamed rather than re-valued. tests/test_lyrics_agreement_542.py carries the
     # behavioural half of that parity guard (a shared corpus both suites assert against).
     assert MIN_TOKENS_TO_COMPARE == _ts_number(_SHARED_LYRICS_TS, "MIN_TOKENS_TO_COMPARE")
@@ -566,7 +566,7 @@ def test_presplit_leaves_a_SHORT_alternate_unwindowed_246():
     assert out[0].alternates[0].align_windows is None
 
 
-# ── #475: absent / broken / no-op must be THREE distinguishable observations, not one ────────────
+# ── absent / broken / no-op must be THREE distinguishable observations, not one ────────────
 #
 # The defect: `_load_klp` cached `_KLP = None` on ANY failure with no report, so "package absent",
 # "stub broke on import" and "no line was over-long" (a legitimate no-op of a WORKING package) all
@@ -675,7 +675,7 @@ def test_klp_probe_line_names_the_resolved_state(monkeypatch):
 
 
 def test_bound_blob_text_emits_align_window_opens_mapping_each_segment_to_its_opening_window():
-    # #459: presplit KNOWS the segment->window map as it subdivides, so it emits `align_window_opens`
+    # presplit KNOWS the segment->window map as it subdivides, so it emits `align_window_opens`
     # (the index of each human segment's OPENING window) beside `align_windows`. The consumer then uses
     # this exact map instead of re-deriving it by float-equality on window starts — a re-derivation that
     # strands every later line the moment one start fails to match to 1e-6.

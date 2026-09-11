@@ -1,7 +1,7 @@
 // Rotation — the differentiator. Pure functions so the client can PREDICT the exact list the server
 // will commit. See docs/ARCHITECTURE.md.
 //
-// THE MODEL (#856): the queue is a single STORED ordered list and that list is the source of truth.
+// THE MODEL: the queue is a single STORED ordered list and that list is the source of truth.
 // `rotationSeq` is each entry's durable position in it. Nothing re-derives the order from entry
 // fields: this module keeps the stored list, mutates it in place, and renumbers it so the positions
 // stay contiguous.
@@ -37,8 +37,8 @@ export function storedOrder(entries: QueueEntry[]): QueueEntry[] {
  * leaves in the same order with tidy positions, so calling this on an unchanged queue is a no-op and
  * switching the room's algorithm does not re-sort anything already queued (the algorithm only decides
  * where the NEXT add lands). The stored order is the sole authority — nothing re-seats an entry after
- * the list is stored, which is why a drag is durable by construction (#856 step 3 deleted the pin pass
- * that used to sit here).
+ * the list is stored, which is why a drag is durable by construction (the pin pass that used to sit here
+ * was deleted).
  */
 export function assignSeqs(entries: QueueEntry[], _ordering: Ordering = {}): QueueEntry[] {
 	return storedOrder(entries).map((e, i) => ({ ...e, rotationSeq: i }));
@@ -100,12 +100,12 @@ export function applyAndReseq(entries: QueueEntry[], op: QueueOp, ordering: Orde
  * Under the stored-list model a reorder IS a list rewrite. (It used to permute the singer's `addedAt`
  * stamps, because the order was re-derived from them; nothing reads `addedAt` for position now, so a
  * stamp permutation would be an invisible no-op.) The index space is unchanged and is the singer's own
- * QUEUED picks in stored order — the client derives `toSeq` from exactly that list (#637), so counting
+ * QUEUED picks in stored order — the client derives `toSeq` from exactly that list, so counting
  * a playing entry here would make every index one short.
  *
  * The move permutes the singer's songs among the stored slots THAT SINGER ALREADY HOLDS, so the two
  * songs swap places and nobody else's row shifts. That is the stored-list form of what the stamp
- * permutation did before. A global "move to any index" is the sibling `moveToIndex` (#856 step 4);
+ * permutation did before. A global "move to any index" is the sibling `moveToIndex`;
  * this one stays own-picks only.
  */
 export function reorderWithinSinger(entries: QueueEntry[], id: string, toIdx: number): QueueEntry[] {
@@ -138,7 +138,7 @@ export function reorderWithinSinger(entries: QueueEntry[], id: string, toIdx: nu
 /**
  * Move one entry to index `toIdx` in the WHOLE queued list, by rewriting the stored list. This is the
  * cross-singer reorder: unlike `reorderWithinSinger`, the target index counts EVERY queued entry, so a
- * host can move any song to any global slot (#856 step 4, #828 Q4-A). No pin — the stored list is the
+ * host can move any song to any global slot. No pin — the stored list is the
  * source of truth, so the move sticks by construction and re-derivation reproduces it.
  *
  * Only the queued rows move; a playing/terminal entry keeps its slot (it never occupies a queued

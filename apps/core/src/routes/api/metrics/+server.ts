@@ -23,7 +23,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	// Window by TIME, not by a bare row count. The old row-count window (`allFinished(limit)`) had no
 	// notion of its own edge: at the cap it returned N rows with nothing saying more existed, and a
 	// cook straddling that edge lost its older steps yet still reported `complete: true` and measured
-	// its span from only the surviving rows — silently understating that cook's duration (#472). A
+	// its span from only the surviving rows — silently understating that cook's duration. A
 	// time window has a knowable edge (`windowStart`), which `perCook`/`e2e` use to flag and drop a
 	// boundary-straddling cook, and it buys the one query Encore lacked: "the last N days".
 	const windowStart = app.now() - windowDays * DAY_MS;

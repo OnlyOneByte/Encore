@@ -75,7 +75,7 @@ test('LyricsOverlay imports and consumes drawPosition from the pure module', () 
 });
 
 test('the drawn position is not a mutable $state accumulator that a stopped rAF would lose', () => {
-	// The bug shape (#54): the drawn position kept as a mutable `$state(0)` that a requestAnimationFrame
+	// The bug shape: the drawn position kept as a mutable `$state(0)` that a requestAnimationFrame
 	// tick rewrites every frame — so a throttled/stopped rAF (backgrounded tab) drifts it back to 0.
 	// The invariant is BEHAVIOURAL, not a name: the drawn position must be a $derived DIRECTLY over the
 	// pure `drawPosition(...)`, and the rAF tick may advance only the clock, never a drawn-position

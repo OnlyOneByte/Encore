@@ -336,7 +336,7 @@ async def test_scratch_is_cleaned_on_a_PERMANENT_failure(tmp_path):
     """A NON-retryable failure is terminal — the core will not re-dispatch it — so its scratch is
     reclaimed here exactly as a success is. `"source not found (404)"` carries a permanent marker, so
     `is_retryable` is False and this job never runs again; leaving its scratch would leak it forever.
-    (The retryable case is the opposite invariant — see the #469 test below.)"""
+    (The retryable case is the opposite invariant — see the test below.)"""
     work = tmp_path / "work" / "j2"
     work.mkdir(parents=True)
     (work / "input.wav").write_bytes(b"BIG")
@@ -402,7 +402,7 @@ async def test_scratch_is_PRESERVED_across_a_RETRYABLE_failure_issue_469(tmp_pat
     failed = [m for m in sent if m["type"] == protocol.FAILED]
     assert len(failed) == 1 and failed[0]["retryable"] is True
     # ...and BECAUSE it is retryable, the partial scratch survives for attempt 2 to reuse.
-    assert work.exists(), "a retryable failure must keep scratch so the same-jobId retry reuses it (#469)"
+    assert work.exists(), "a retryable failure must keep scratch so the same-jobId retry reuses it"
     assert (work / "input.wav").exists(), "the completed-step artifact in scratch must survive the retry"
     # slot is still freed (the finally's state.finish is unconditional, only the rmtree is gated).
     assert client.state.slots_free == 1
@@ -794,7 +794,7 @@ async def test_local_store_is_unaffected_by_the_object_guard(tmp_path):
     assert sock.of_type(protocol.COMPLETE)
 
 
-# ── issue #132: the worker must SEND worker:heartbeat on its own, not only answer a ping the core
+# ── the worker must SEND worker:heartbeat on its own, not only answer a ping the core
 #    never emits. registry.heartbeat is the only path that reconciles slotsFree after the reaper
 #    requeues a lease-expired job, so without a periodic sender one reaped job strands the worker's
 #    capacity forever. These pin the production path (heartbeat_loop), not the passive PING responder.
@@ -877,7 +877,7 @@ async def test_welcome_ignores_a_missing_or_bad_interval(tmp_path):
     assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
 
 
-# ── issue #132 WIRING GUARD: the whole production fix is one line in _run_forever —
+# ── WIRING GUARD: the whole production fix is one line in _run_forever —
 #    asyncio.create_task(client.heartbeat_loop()) — and the behavioural tests above prove the loop
 #    BEHAVES, never that it RUNS. This repo's most-repeated defect is a mechanism built, unit-tested,
 #    and never wired to the path that needs it; deleting that one line leaves the whole suite green
@@ -907,7 +907,7 @@ def test_run_forever_starts_the_heartbeat_loop():
     ]
     assert started, (
         "_run_forever never starts client.heartbeat_loop() — worker:heartbeat would never be sent "
-        "(issue #132)"
+        ""
     )
 
 
@@ -922,12 +922,12 @@ def test_run_forever_cancels_the_heartbeat_task_in_a_finally():
                     cancels_in_finally.append(stmt)
     assert cancels_in_finally, (
         "_run_forever never cancels the heartbeat task in a finally — it would leak across "
-        "reconnects (issue #132)"
+        "reconnects"
     )
 
 
 def test_run_forever_finally_cancels_in_flight_synchronously_and_does_NOT_await_drain_inline_459():
-    # #459 blocking: the whole drain/redial fix lives in _run_forever's finally — cancel the in-flight
+    # blocking: the whole drain/redial fix lives in _run_forever's finally — cancel the in-flight
     # tasks SYNCHRONOUSLY (cancel_now) and settle them in a DETACHED task, never `await client.drain(...)`
     # inline (which held the reconnect loop for a full uninterruptible ML pass while the core reaper had
     # already requeued the job). cancel_now() has a unit test, but nothing pinned that the finally USES
@@ -951,7 +951,7 @@ def test_run_forever_finally_cancels_in_flight_synchronously_and_does_NOT_await_
                     awaits_drain_inline = True
     assert calls_cancel_now, (
         "_run_forever's finally never calls client.cancel_now() — the synchronous cancel that lets "
-        "redial proceed without awaiting an uninterruptible ML pass would be gone (issue #459)"
+        "redial proceed without awaiting an uninterruptible ML pass would be gone"
     )
     assert not awaits_drain_inline, (
         "_run_forever's finally awaits client.drain(...) INLINE — that is exactly the base defect "
@@ -977,13 +977,13 @@ def test_run_forever_detaches_the_drain_rather_than_awaiting_it_459():
                     schedules_drain = True
     assert schedules_drain, (
         "_run_forever never SCHEDULES client.drain(...) as a detached task — the settle must run in "
-        "the background so redial is not blocked by it (issue #459)"
+        "the background so redial is not blocked by it"
     )
     # The tracking set that keeps the detached task alive must be referenced by name in dial_home.
     src = _Path(dh.__file__).read_text(encoding="utf-8")
     assert "_DETACHED_DRAINS" in src, (
         "the _DETACHED_DRAINS tracking set is gone — a detached drain task could be GC'd mid-flight "
-        "(issue #459)"
+        ""
     )
 
 
@@ -1036,7 +1036,7 @@ async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_align_plan(tmp_
     )
 
 
-# ── issue #469, blocking finding: exhausted-retry scratch must be reclaimed ──────────
+# ── , blocking finding: exhausted-retry scratch must be reclaimed ──────────
 # A retryable failure that was the LAST attempt is terminal, but _run_job cannot tell it apart (no
 # attempt count on the wire), so it preserves that scratch for a retry that never comes. A periodic,
 # age-bounded sweep reclaims it — safely, because a live job's scratch is always fresher than the age
@@ -1046,7 +1046,7 @@ async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_align_plan(tmp_
 
 def test_sweep_reclaims_an_aged_orphan_but_never_a_live_one(tmp_path):
     """sweep_orphaned_scratch removes an AGED work/<jobId> dir belonging to no in-flight job, and
-    leaves a live one alone. The exhausted-retry leak (#469) is exactly an aged orphan with no live
+    leaves a live one alone. The exhausted-retry leak is exactly an aged orphan with no live
     job. min_age_sec=0 so the just-created orphan qualifies without waiting."""
     from src.dial_home import sweep_orphaned_scratch
 
@@ -1060,7 +1060,7 @@ def test_sweep_reclaims_an_aged_orphan_but_never_a_live_one(tmp_path):
     removed = sweep_orphaned_scratch(str(tmp_path), frozenset({"jRunning"}), min_age_sec=0)
 
     assert removed == ["jExhausted"], f"only the orphan must be reclaimed, got {removed}"
-    assert not orphan.exists(), "the exhausted-retry orphan must be reclaimed (#469)"
+    assert not orphan.exists(), "the exhausted-retry orphan must be reclaimed"
     assert live.exists(), "this worker's live job's scratch must NEVER be swept"
 
 
@@ -1080,7 +1080,7 @@ def test_sweep_never_touches_a_FRESH_dir_even_when_not_in_the_live_set(tmp_path)
 
     assert removed == [], f"a freshly-written scratch must never be swept, got {removed}"
     assert other_worker_live.exists(), (
-        "a concurrent worker's in-flight scratch was destroyed — the shared-volume regression (#469 round 2)"
+        "a concurrent worker's in-flight scratch was destroyed — the shared-volume regression (round 2)"
     )
 
 
@@ -1139,7 +1139,7 @@ def test_sweep_is_a_noop_when_there_is_no_work_dir(tmp_path):
 
 # ── WIRING GUARD: _run_forever must START the periodic sweep loop — the whole reclaim path is that one
 #    create_task, and the behavioural tests prove the sweep WORKS, never that it RUNS. Deleting the
-#    line reintroduces the #469 leak with the suite still green. Pin it at the source level (ast).
+#    line reintroduces the leak with the suite still green. Pin it at the source level (ast).
 def test_run_forever_starts_the_periodic_scratch_sweep():
     fn = _run_forever_ast()
     started = [
@@ -1153,7 +1153,7 @@ def test_run_forever_starts_the_periodic_scratch_sweep():
     ]
     assert started, (
         "_run_forever never starts _scratch_sweep_loop — an exhausted-retry job's preserved scratch "
-        "would leak until the worker restarts (#469)"
+        "would leak until the worker restarts"
     )
 
 
@@ -1217,7 +1217,7 @@ async def test_cook_id_defaults_empty_for_a_legacy_frame_without_it(tmp_path):
 
 
 def test_run_forever_reports_the_klp_line_bounder_state_at_startup():
-    # #475 wiring guard. `klp_probe_line()` behaves correctly (proven in test_lyrics_presplit) but that
+    # wiring guard. `klp_probe_line()` behaves correctly (proven in test_lyrics_presplit) but that
     # is worthless unless _run_forever actually CALLS it — deleting the one startup print line would
     # otherwise leave every unit test green with the silent-disable back (this repo's most-repeated
     # defect: a mechanism built + tested + never wired). Source-level AST guard, no network/torch:
@@ -1238,7 +1238,7 @@ def test_run_forever_reports_the_klp_line_bounder_state_at_startup():
         )
         for node in ast.walk(fn)
     )
-    assert calls_probe, "_run_forever must call klp_probe_line() to report the line-bounder state (#475)"
+    assert calls_probe, "_run_forever must call klp_probe_line() to report the line-bounder state"
 
 
 @pytest.mark.asyncio
@@ -1246,7 +1246,7 @@ async def test_reject_when_params_is_not_an_object_issue_459(tmp_path):
     # `params` is the last required assign field with no parse layer at the boundary (jobId/jobType/
     # mediaId already reject). A non-dict reaches JobSpec.params: dict untyped and would raise deeper
     # in the cook, escaping into the reconnect handler and tearing down the socket for one bad frame.
-    # It must be rejected job-scoped here, the same shape as the checks above (#459).
+    # It must be rejected job-scoped here, the same shape as the checks above.
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     bad = assign()
@@ -1264,7 +1264,7 @@ async def test_reject_when_params_is_not_an_object_issue_459(tmp_path):
 
 @pytest.mark.asyncio
 async def test_cancel_now_cancels_in_flight_without_awaiting_issue_459(tmp_path):
-    # #459: the reconnect finally must cancel in-flight tasks SYNCHRONOUSLY (so a subprocess step's
+    # the reconnect finally must cancel in-flight tasks SYNCHRONOUSLY (so a subprocess step's
     # GeneratorExit fires at once) but NOT block the loop awaiting an uninterruptible run_blocking
     # thread. cancel_now() is the synchronous half: it requests cancellation on every tracked task and
     # returns immediately, leaving the settle to a detached drain.

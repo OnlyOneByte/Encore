@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S3) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S3) ───────────────────────────────────────────────────────────────────
   Encore's range geometry, replacing the registry's. The incumbent was a hand-styled
   `input[type='range']` with per-engine `::-webkit-slider-*` and `::-moz-range-*` rules; Bits UI builds
   the same control out of real elements, so those two parallel rule sets collapse into one.

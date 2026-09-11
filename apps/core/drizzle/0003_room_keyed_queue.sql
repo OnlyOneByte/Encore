@@ -1,9 +1,9 @@
--- #656: key queue_entries and singers by room, dropping the deployment-wide queue + roster.
+-- key queue_entries and singers by room, dropping the deployment-wide queue + roster.
 --
 -- A real numbered migration (0003, after #655's 0002_room_keyed_playback), NOT an in-place
 -- baseline edit: a rewritten 0000 is never re-applied to an existing DB (drizzle keys on the
 -- journal `when`, not the file hash), so room_id would never appear and boot hydrate() would read
--- the wrong room — the two workers who in-place-edited a migration (#655/#669) crashed boot this way.
+-- the wrong room — the two workers who in-place-edited a migration crashed boot this way.
 --
 -- drizzle-kit generated a bare `ALTER TABLE ... ADD room_id text NOT NULL`, which is the boot-failure
 -- trap: SQLite refuses to add a NOT NULL column with no DEFAULT to a table that has rows, so an
@@ -14,7 +14,7 @@
 --
 -- The active room is the OLDEST one — the same room RoomRepository.ensureActive() resolves to
 -- (ORDER BY created_at ASC), which is where an unqualified join lands and whose code the QR
--- advertises. A DB with queue/singer rows but NO rooms row yet (a pre-#654 database) has no room to
+-- advertises. A DB with queue/singer rows but NO rooms row yet (a pre-change database) has no room to
 -- carry them onto; the WHERE guard drops those orphan rows instead of failing the NOT NULL room_id.
 PRAGMA foreign_keys=OFF;--> statement-breakpoint
 CREATE TABLE `__new_queue_entries` (

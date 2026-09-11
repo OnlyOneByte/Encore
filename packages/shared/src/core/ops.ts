@@ -14,7 +14,7 @@ export type QueueOp =
 	// singer's own picks (that is `move` above). `move` cannot express this — it permutes one singer's
 	// picks among the slots that singer already holds, so it can never jump another singer. `move-to-index`
 	// splices the entry to any queued index and rewrites the stored list, which the stored-list model
-	// makes durable by construction (#856 step 4). No pin: the list IS the truth. Gated in hub.ts
+	// makes durable by construction (step 4). No pin: the list IS the truth. Gated in hub.ts
 	// validateCommand on `queue:reorder-any` for an entry the actor does not own. Crosses the wire
 	// contract: client and server ship together and both rewrite the list identically through
 	// `moveToIndex` in applyAndReseq, so optimistic and authoritative states cannot diverge.

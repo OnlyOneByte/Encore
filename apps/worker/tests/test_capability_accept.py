@@ -63,7 +63,7 @@ def test_no_free_slots_still_refuses_a_supported_action():
     assert reason == "no free slots"
 
 
-# ── #131: stems-upgrade, the one action whose capability lives under a DIFFERENT name ──────────────
+# ── stems-upgrade, the one action whose capability lives under a DIFFERENT name ──────────────────────
 #
 # `stems-upgrade` is a fourth Action, but no capability token is ever named `stems-upgrade` or
 # `stems-upgrade:*`: `capabilities.probe_all` emits only `fetch:ytdlp`, `stems`, `stems:roformer`,
@@ -104,7 +104,7 @@ def test_a_fetch_only_worker_still_refuses_a_stems_upgrade_job():
 
 # ── class-closing guard: EVERY action the core can dispatch must be accepted by a worker advertising
 #    the capability the core's requiredCapability would demand for it. This is the loop the issue asks
-#    for; it would have caught this bug, the original `fetch:ytdlp` regression, and #82's `align`.
+#    for; it would have caught this bug, the original `fetch:ytdlp` regression, and the earlier `align` one.
 #
 # The demanded capability is mirrored from apps/core/src/server/jobs/dispatch.ts `requiredCapability`:
 # fetch -> fetch:<fetcher>, stems -> the default engine's capability, stems-upgrade -> the upgrade

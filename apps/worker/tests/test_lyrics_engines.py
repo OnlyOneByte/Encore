@@ -214,7 +214,7 @@ def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, 
     monkeypatch.setattr(cls, "__init__", slow_init)
 
     old_interval = sys.getswitchinterval()
-    sys.setswitchinterval(1e-9)  # widen the interleave so the tiny window is hit reliably (see #180)
+    sys.setswitchinterval(1e-9)  # widen the interleave so the tiny window is hit reliably
     try:
         # Loop trials: the window is narrow, so one trial can miss it even unlocked. A handful of trials
         # makes the unlocked race virtually certain to surface while staying bounded.

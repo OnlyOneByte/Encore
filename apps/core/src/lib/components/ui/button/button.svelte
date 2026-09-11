@@ -1,6 +1,6 @@
 <script lang="ts" module>
 	/*
-	 * ── DEVIATIONS FROM REGISTRY OUTPUT (#913) ───────────────────────────────────────────────────────
+	 * ── DEVIATIONS FROM REGISTRY OUTPUT ───────────────────────────────────────────────────────
 	 *
 	 * Copied with `shadcn-svelte add button` (v1.6.1, style `vega`), then edited. shadcn is copy-in
 	 * precisely so the component is yours to own, so editing is the intended workflow — but an edit
@@ -17,7 +17,7 @@
 	 * `touch-targets.test.ts`. `grid place-items-center` comes with it because Icon renders as a block
 	 * and without a centring context the mark sits off-centre (the reported off-centre X).
 	 * 3. A `press` axis and its scoped styles at the bottom of this file — three incumbent behaviours
-	 * over one shape. `touch-action: none` on the grab case is load-bearing for the #836 drag:
+	 * over one shape. `touch-action: none` on the grab case is load-bearing for the drag:
 	 * without it the browser claims the vertical gesture for scrolling and `onpointerdown` never
 	 * fires. `cursor: grab` must stay pinned to this control and never reach a row (XR-PH-17,
 	 * guarded by `reorder-mode-source-836.test.ts`).
@@ -61,7 +61,7 @@
 				 * radius is `--radius` (18px), the card/sheet radius rather than the button's own 10px,
 				 * because at full width it reads as a surface.
 				 *
-				 * #913 rebase note: this arrived on main as `size="blockLg" shape="lg"` — a separate
+				 * rebase note: this arrived on main as `size="blockLg" shape="lg"` — a separate
 				 * `shape` axis that existed only to carry a radius. Folded into one size here rather than
 				 * reintroducing that axis: the registry's sizes already own their radius, and a second
 				 * axis for it would be two ways to say one thing.

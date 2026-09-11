@@ -102,13 +102,13 @@ def test_the_domain_packages_are_exactly_the_ones_declared():
 
 
 def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed():
-    """Issue #85. The separation domain's audio policy is the rule that stops a reader re-encoding a stem
+    """The separation domain's audio policy is the rule that stops a reader re-encoding a stem
     badly, and its load-bearing clauses were false in the direction that RELAXES the rule.
 
-    Part (1) is the original #85 finding: "nothing plays [the vocals stem]" — false, the vocals stem is
+    Part (1) is the original finding: "nothing plays [the vocals stem]" — false, the vocals stem is
     the guiding track, a second <audio> the TV mixes under the instrumental at up to full gain and pitch-
-    shifts with the key (apps/core/src/lib/tv/TvPlayer.svelte). Part (2) is #502's tail-cleanup of #480:
-    once #480 pointed PublishStems at encode_flac_argv, the AAC vocals path (STEM_BITRATE + encode_stem_argv
+    shifts with the key (apps/core/src/lib/tv/TvPlayer.svelte). Part (2) is the tail-cleanup that followed:
+    once PublishStems was pointed at encode_flac_argv, the AAC vocals path (STEM_BITRATE + encode_stem_argv
     + the ENCORE_STEM_BITRATE knob) reached no argv, so it was deleted. There is no behaviour to test, so
     this pins the prose and the delete: the guiding-track reason stays named, and the dead AAC names must
     not reappear in apps/worker/src."""
@@ -119,18 +119,18 @@ def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed(
     separate_src = (src / "steps" / "separate.py").read_text(encoding="utf-8")
     for name, text in (("separation/__init__.py", init_doc), ("steps/separate.py", separate_src)):
         assert "nothing plays" not in text, (
-            f"{name} still claims the vocals stem is unplayed — it is the guiding track (issue #85)"
+            f"{name} still claims the vocals stem is unplayed — it is the guiding track"
         )
     # The true reason must be stated where the policy lives, not merely absent.
     assert "GUIDING TRACK" in init_doc, (
-        "separation/__init__.py must name the guiding track as the reason (#85)"
+        "separation/__init__.py must name the guiding track as the reason"
     )
     assert "GUIDING TRACK" in separate_src, (
-        "steps/separate.py must name the guiding track as the reason (#85)"
+        "steps/separate.py must name the guiding track as the reason"
     )
 
-    # (2) #502 (tail of #480): the AAC vocals path is dead. STEM_BITRATE and encode_stem_argv reached
-    # no argv once #480 pointed PublishStems at encode_flac_argv, so both were removed. Guard that
+    # (2) The AAC vocals path is dead. STEM_BITRATE and encode_stem_argv reached
+    # no argv once PublishStems was pointed at encode_flac_argv, so both were removed. Guard that
     # neither name reappears anywhere in apps/worker/src, with line comments and docstrings stripped
     # so the retired-policy prose in demucs.py can neither satisfy nor trip this. A sentinel proves the
     # strip did not silently blank the corpus.
@@ -143,26 +143,26 @@ def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed(
     code_only = "\n".join(_code_only((f).read_text(encoding="utf-8")) for f in sorted(src.rglob("*.py")))
     # non-vacuous sentinel: a live symbol that must survive the strip, else the strip ate everything.
     assert "encode_flac_argv" in code_only, (
-        "comment/docstring strip removed live code — the STEM_BITRATE guard would pass vacuously (#502)"
+        "comment/docstring strip removed live code — the STEM_BITRATE guard would pass vacuously"
     )
     for dead in ("STEM_BITRATE", "encode_stem_argv"):
         assert dead not in code_only, (
-            f"{dead} still reaches code in apps/worker/src — #480 made the AAC vocals path dead and "
-            "#502 removed it; nothing consumes the AAC bitrate knob now (issue #502)"
+            f"{dead} still reaches code in apps/worker/src — pointing PublishStems at encode_flac_argv "
+            "made the AAC vocals path dead and it was removed; nothing consumes the AAC bitrate knob now"
         )
 
     # And the current reality must be positively stated where the policy lives: both stems are FLAC.
     demucs_src = (src / "separation" / "demucs.py").read_text(encoding="utf-8")
-    assert "Used for BOTH stems (#480)" in demucs_src, (
-        "encode_flac_argv must state it encodes BOTH stems since #480 (issue #502)"
+    assert "Used for BOTH stems" in demucs_src, (
+        "encode_flac_argv must state it encodes BOTH stems"
     )
 
 
 def test_the_key_detect_band_floor_comment_does_not_misstate_the_rfft_resolution_limit():
-    """Issue #103. The _MIN_MIDI band-floor comment justified the floor with arithmetic that was wrong
+    """The _MIN_MIDI band-floor comment justified the floor with arithmetic that was wrong
     by 18 semitones and is exactly the kind of reasoning the next person to touch the chromagram trusts.
 
-    The constant (_MIN_MIDI = 24, C1, 32.7Hz) is CORRECT and measured — see the issue. What was false:
+    The constant (_MIN_MIDI = 24, C1, 32.7Hz) is CORRECT and measured. What was false:
     (1) that below C1 the rfft bin spacing is coarser than a semitone (the crossover is actually ~90Hz /
     MIDI ~42 at frame=8192, so the band's lowest 18 semitones are BELOW the limit, not above it); and
     (2) that the floor keeps sub-bass rumble out (the band starts at 32.7Hz, which IS sub-bass). There is
@@ -177,20 +177,20 @@ def test_the_key_detect_band_floor_comment_does_not_misstate_the_rfft_resolution
     for banned in ("bin spacing is coarser than a semitone", "the fold is unreliable"):
         assert banned not in key_detect_src, (
             f"key_detect.py still justifies _MIN_MIDI with the false clause {banned!r} — the resolution "
-            "crossover is ~90Hz/MIDI ~42, not the C1 floor (issue #103)"
+            "crossover is ~90Hz/MIDI ~42, not the C1 floor"
         )
     # (2) The false "keeps sub-bass out" justification must not reappear: the band STARTS in sub-bass.
     assert "keeps sub-bass rumble and hiss out" not in key_detect_src, (
         "key_detect.py still claims the band floor keeps sub-bass out — the band starts at 32.7Hz, which "
-        "is sub-bass, and sums raw magnitudes there (issue #103)"
+        "is sub-bass, and sums raw magnitudes there"
     )
     # The true reason must be NAMED where the constant lives, not merely absent: the floor bounds the
     # fold and reaches below the resolution limit on purpose.
     assert "BOUND the fold" in key_detect_src, (
-        "key_detect.py must state that the floor bounds the fold (issue #103)"
+        "key_detect.py must state that the floor bounds the fold"
     )
     assert "BELOW the rfft resolution limit" in key_detect_src, (
-        "key_detect.py must state the floor sits below the resolution limit on purpose (issue #103)"
+        "key_detect.py must state the floor sits below the resolution limit on purpose"
     )
 
     # Pin the arithmetic to the code's own defaults so a future `frame` change surfaces HERE: the
@@ -204,19 +204,19 @@ def test_the_key_detect_band_floor_comment_does_not_misstate_the_rfft_resolution
     # crossover freq where a semitone (f*(2**(1/12)-1)) first equals one bin, in MIDI
     f_cross = bin_hz / (2 ** (1 / 12) - 1)
     midi_cross = 69.0 + 12.0 * np.log2(f_cross / 440.0)
-    assert _MIN_MIDI == 24, "issue #103 measured this floor as correct; do not change the constant"
+    assert _MIN_MIDI == 24, "this floor was measured as correct; do not change the constant"
     assert 41.0 < midi_cross < 42.5, (
-        f"resolution crossover moved to MIDI {midi_cross:.2f}; the band-floor comment (issue #103) "
+        f"resolution crossover moved to MIDI {midi_cross:.2f}; the band-floor comment "
         "quotes ~MIDI 42 at frame=8192 and must be re-derived if `frame` changed"
     )
     assert midi_cross - _MIN_MIDI > 15, (
-        "the comment's whole point (issue #103) is that the band reaches ~18 semitones below the "
+        "the comment's whole point is that the band reaches ~18 semitones below the "
         f"resolution limit; that gap is now only {midi_cross - _MIN_MIDI:.1f} semitones"
     )
 
 
 def test_the_separation_seam_note_points_at_the_real_current_sites():
-    """Issue #237. The separation domain header's KNOWN SEAM PROBLEM paragraph recorded the seam at
+    """The separation domain header's KNOWN SEAM PROBLEM paragraph recorded the seam at
     three sites that no longer exist and said the fixing refactor was still pending.
 
     Every claim was false at HEAD: (1) "`roformer` does `from . import demucs as d`" — roformer.py imports
@@ -240,49 +240,49 @@ def test_the_separation_seam_note_points_at_the_real_current_sites():
     #     assert roformer performs it. Ban the specific subject-verb-object phrasing.
     assert "`roformer` does `from . import demucs as d`" not in init_doc, (
         "separation/__init__.py again claims roformer imports demucs — that import lives in engines.py:25, "
-        "not roformer.py (issue #237)"
+        "not roformer.py"
     )
     # (2)/(3) The whisperx module was dissolved; the header must not reach for it as a live site.
     assert "whisperx" not in lowered, (
         "separation/__init__.py again names ../whisperx as reaching into the seam — that module was "
-        "dissolved in S0-S6 and does not exist (issue #237)"
+        "dissolved in S0-S6 and does not exist"
     )
     # (4) The header must not describe S3 as a pending future that would fix the borrowing — S3 landed.
     assert "lifts them out; this stage only moved files" not in init_doc, (
         "separation/__init__.py again says the S3 refactor is pending — 8f7212c (S3) already removed the "
-        "demucs import from roformer.py and lifted the yt-dlp half to acquisition/fetch.py (issue #237)"
+        "demucs import from roformer.py and lifted the yt-dlp half to acquisition/fetch.py"
     )
 
     # ── PRESENCE: the header must point at the REAL surviving seam ────────────────────────────────
     # The yt-dlp half was lifted; acquisition/fetch.py owns download_argv now.
     assert "acquisition/fetch.py" in init_doc, (
-        "separation/__init__.py must state that S3 lifted the yt-dlp half to acquisition/fetch.py (#237)"
+        "separation/__init__.py must state that S3 lifted the yt-dlp half to acquisition/fetch.py"
     )
     # The ffmpeg half is what remains, consumed engine-agnostically at the two real current sites.
     assert "steps/separate.py" in init_doc, (
         "separation/__init__.py must name steps/separate.py as a real consumer of the demucs.py ffmpeg "
-        "builders on a roformer cook (issue #237)"
+        "builders on a roformer cook"
     )
     assert "dial_home.py" in init_doc, (
         "separation/__init__.py must name dial_home.py as a real consumer of demucs.py's subprocess_runner "
-        "(issue #237)"
+        ""
     )
 
     # ── SECONDARY (:12-13): the silence probe is not in separation/, it is in processor.py ────────
     assert "processor.py" in init_doc, (
         "separation/__init__.py must state that the silence probe (volumedetect_argv/parse_max_volume_db/"
-        "is_silent/SILENCE_FLOOR_DB) lives in processor.py, not here (issue #237)"
+        "is_silent/SILENCE_FLOOR_DB) lives in processor.py, not here"
     )
 
 
 def test_no_docstring_claims_step_timings_reach_the_metrics_page():
-    """Issue #377. Three docstrings justified structural decisions with observability the code does not
+    """Three docstrings justified structural decisions with observability the code does not
     deliver. The runner measures `ctx.out.timings_sec[step.name]` per step (runner.py) and puts it on the
     wire as the `stepTimingsSec` fact (runner.py `setdefault`), but the core drops it: `pickFacts`'s
     allowlist (apps/core/src/server/jobs/attempts.ts) keeps eight keys and `stepTimingsSec` is not among
     them, and `ResolvedFacts` (packages/shared/src/core/events.ts) does not declare it. So `/metrics` gains no
     per-step resolution from it and structurally cannot until the core is wired for it — a separate,
-    owner-gated change (issue #377's branch two; #193 wants the same data).
+    owner-gated change (a second branch of the same work; another open request wants the same data).
 
     Production behaviour is correct; only the three claims were false, so this pins the prose. The false
     `/metrics`-resolution clauses stay gone and the corrected framing (measured for the worker's own log /
@@ -297,31 +297,31 @@ def test_no_docstring_claims_step_timings_reach_the_metrics_page():
     assert "gives the internal metrics page real resolution" not in runner_src, (
         "runner.py again claims per-step timing gives the internal metrics page real resolution — the core "
         "drops stepTimingsSec at its fact allowlist (attempts.ts pickFacts), so /metrics gets "
-        "none (issue #377)"
+        "none"
     )
     # plans.py:69 — ProbeSilence "its cost shows up in `/metrics`".
     assert "its cost shows up in `/metrics`" not in plans_src, (
         "plans.py again claims ProbeSilence's cost shows up in /metrics — the step timing is dropped by the "
-        "core's fact allowlist and never reaches the metrics page (issue #377)"
+        "core's fact allowlist and never reaches the metrics page"
     )
     # plans.py:72 — KeyAndRange "so nothing could see what it cost", implying that as a step something can.
     assert "so nothing could see what it cost" not in plans_src, (
         "plans.py again ends the KeyAndRange rationale with 'so nothing could see what it cost', implying a "
         "step's cost is now observable — it is measured but not surfaced (dropped at the "
-        "allowlist) (issue #377)"
+        "allowlist)"
     )
 
     # ── PRESENCE: the corrected framing must be NAMED, not merely absent, so a revert reds this test ─
     # runner.py must state the timing is for the worker's own job:complete log and that the core drops it.
     assert "job:complete" in runner_src and "the core drops it" in runner_src, (
         "runner.py must state per-step timing rides the job:complete payload for the worker's own log and "
-        "that the core drops it at its fact allowlist (issue #377)"
+        "that the core drops it at its fact allowlist"
     )
     # plans.py must state KeyAndRange's cost is measured but not yet surfaced.
     assert "not yet surfaced" in plans_src, (
         "plans.py must state KeyAndRange's cost is now measured but not yet surfaced anywhere "
         "(the core drops "
-        "it at its fact allowlist) (issue #377)"
+        "it at its fact allowlist)"
     )
 
     # Sanity: the ban regex must actually match the OLD text, and not match the corrected text. Prove it

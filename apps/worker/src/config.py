@@ -225,11 +225,11 @@ class WorkerConfig:
     #: network, where every call would decline anyway and only cost a timeout per cook.
     annotate: bool = True
     #: Retain the RAW caption track (the winning `.vtt`/`.srt`) in durable `derived/` storage for
-    #: post-cook diagnosis of a caption-parsing defect (#670). OFF by default: retaining it puts
+    #: post-cook diagnosis of a caption-parsing defect. OFF by default: retaining it puts
     #: third-party caption text into the media volume for every cook, and #709's core-side change is
     #: what lets the retention cap count and evict it. Parsed at the config boundary like every other
     #: operator boolean — reading it as bare truthiness inside the step (its original form) made
-    #: `ENCORE_KEEP_RAW_CAPTIONS=0` turn it ON, since "0" is a non-empty string (#709).
+    #: `ENCORE_KEEP_RAW_CAPTIONS=0` turn it ON, since "0" is a non-empty string.
     keep_raw_captions: bool = False
     #: Which backend executes a separator engine here: "torch", "mlx", or unset for auto-detect.
     #: Distinct from `device`: the backend is the IMPLEMENTATION, the device is where torch runs.
@@ -316,10 +316,10 @@ class WorkerConfig:
             torch_threads=torch_threads,
             annotate=e.get("ENCORE_ANNOTATE", "1").strip().lower() not in ("0", "false", "no", "off"),
             # Default "0" (OFF) so an absent flag keeps the ordinary-cook footprint; the SAME
-            # false-spelling set annotate uses, so "0"/"false"/"no"/"off" all read as off (#709).
+            # false-spelling set annotate uses, so "0"/"false"/"no"/"off" all read as off.
             # `or "0"` folds an empty / whitespace-only value into the false set: this flag defaults
             # OFF, and `ENCORE_KEEP_RAW_CAPTIONS=` (blank, the .env/compose idiom for "neutralise this")
-            # must stay OFF rather than reading as a non-empty truthy string (#709 A1).
+            # must stay OFF rather than reading as a non-empty truthy string (A1).
             keep_raw_captions=(
                 (e.get("ENCORE_KEEP_RAW_CAPTIONS", "0").strip().lower() or "0")
                 not in ("0", "false", "no", "off")

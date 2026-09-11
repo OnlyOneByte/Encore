@@ -1,6 +1,6 @@
 <!--
-	JoinLanding — the UNJOINED state of `/` (XR-PH-14, issue #834). `/` is the landing page now; there is
-	no separate `/join` route (#834 Q2-A retired it), and this component is what an unjoined visitor sees
+	JoinLanding — the UNJOINED state of `/` (XR-PH-14). `/` is the landing page now; there is
+	no separate `/join` route (Q2-A retired it), and this component is what an unjoined visitor sees
 	instead of the queue.
 
 	TWO PATHS TO ONE ROOM, side by side (never one instead of the other): a SCAN affordance and a TYPED
@@ -38,7 +38,7 @@
 	let submitting = $state(false);
 	let error = $state('');
 
-	// A code carried in on the URL — `/?room=CODE`, what the TV QR now encodes (#834 Q2-A moved it off
+	// A code carried in on the URL — `/?room=CODE`, what the TV QR now encodes (Q2-A moved it off
 	// `/join?room=`). Normalised through the shared filter so a QR's raw value and a hand-typed `?room`
 	// both resolve. Read ONCE: the landing URL is fixed for the life of the page (a scan is a fresh
 	// navigation, not an in-page param change), so this is a plain read, not a reactive derivation.
@@ -114,7 +114,7 @@
 			// from becoming an open redirect, the same guard the old /join route held.
 			const dest = safeNextPath(page.url.searchParams.get('next'));
 			await goto(dest);
-			// The join happens ON `/` now (#834), and the common destination is also `/`. A client-side
+			// The join happens ON `/` now, and the common destination is also `/`. A client-side
 			// `goto('/')` from `/` is a no-op — same route, so the home component never remounts and never
 			// re-fetches /api/me, leaving the guest on the join form they just completed. When the
 			// destination IS the current path, reload so the route re-runs with the new session cookie and
@@ -173,7 +173,7 @@
 	<label class="name-field">
 		<span class="name-label">Your name</span>
 		<!--
-			#913: the `join` variant reproduces this field's box exactly — the sheet's largest comfortable
+			The `join` variant reproduces this field's box exactly — the sheet's largest comfortable
 			padding and type, on `--card`. `maxlength` is a NUMBER here: the DOM coerced the string, but a
 			component prop is typed and would not.
 		-->
@@ -288,7 +288,7 @@
 		color: var(--ink-dim);
 	}
 	/*
-	 * #913: `.name-input` moved into ui/input as its `join` variant. The declarations are unchanged;
+	 * `.name-input` moved into ui/input as its `join` variant. The declarations are unchanged;
 	 * scoped CSS here cannot reach the element the component renders.
 	 */
 	.join-main {

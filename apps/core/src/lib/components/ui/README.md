@@ -50,7 +50,7 @@ from `fill` per stop (13 of 48 differ), which no single minted utility can respe
 
 ## 2. A scoped rule cannot reach an element a child component renders
 
-This is the one that shipped a real bug in #913, so it is first among the mechanics.
+This is the one that shipped a real bug, so it is first among the mechanics.
 
 Svelte compiles `.foo { … }` to `.foo.svelte-<hash>` and puts that hash on elements **this file**
 renders. Hand the class to a child component — `<SliderPrimitive.Root class="foo">` — and the element

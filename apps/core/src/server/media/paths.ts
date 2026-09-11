@@ -128,7 +128,7 @@ export function candidateAudioRefs(mediaId: string): string[] {
 	return [...new Set(KNOWN_AUDIO_EXTS.map((ext) => audioKey(mediaId, ext)))];
 }
 /**
- * Stored stem formats (audio policy, #480). BOTH stems are now lossless FLAC, and both MUST match
+ * Stored stem formats (audio policy). BOTH stems are now lossless FLAC, and both MUST match
  * the worker's processor.py INSTRUMENTAL_EXT / VOCALS_EXT.
  *
  * - **instrumental → FLAC (lossless).** This plays out of the speakers at volume, the one place a
@@ -138,7 +138,7 @@ export function candidateAudioRefs(mediaId: string): string[] {
  *   mixes under the instrumental. Encoding it through the SAME codec/container as the instrumental
  *   means both stems decode to a sample-exact common start. The AAC-in-m4a encoder's priming samples
  *   (~21 ms at 48 kHz) used to shift the vocals start above guide-sync's 15 ms deadband, so the player
- *   trimmed it out at startup (#480); matching codecs remove the NEED for that startup correction. FLAC
+ *   trimmed it out at startup; matching codecs remove the NEED for that startup correction. FLAC
  *   in <audio> is the decode path the instrumental already uses (TvPlayer.svelte).
  *
  * Songs cooked under an earlier policy keep their own (per-media) refs and still play — these helpers
@@ -159,7 +159,7 @@ export function vocalsKey(mediaId: string, ext: string = VOCALS_EXT): string {
 /**
  * Every historical vocals-stem extension, newest first. A cook records its vocals stem under one of
  * these; the extension a given row used depends on the VOCALS_EXT in force when it was cooked (legacy
- * `.wav`, interim `.m4a` before #480, current `.flac`). Retention and the guiding-track backfill both
+ * `.wav`, interim `.m4a`, current `.flac`). Retention and the guiding-track backfill both
  * need to enumerate all of them to find an existing stem whose extension differs from today's constant.
  */
 export const KNOWN_VOCALS_EXTS = ['flac', 'm4a', 'wav'] as const;
@@ -168,10 +168,10 @@ export const KNOWN_VOCALS_EXTS = ['flac', 'm4a', 'wav'] as const;
  * The SINGLE authority for the legacy `-instrumental.` -> `-vocals.` fallback derivation. A song cooked
  * under the older layout has an instrumental ref whose sibling vocals file shares the same name; the
  * only honest fallback (when no vocals ref was stored) is the vocals sibling at EVERY known extension,
- * because the on-disk extension can differ from the instrumental's after VOCALS_EXT changes (#480).
+ * because the on-disk extension can differ from the instrumental's after VOCALS_EXT changes.
  *
  * This replaces the ext-blind single `.replace('-instrumental.', '-vocals.')` that had been copied to
- * three sites and drifted (#496 / f6f8fa7): a `.flac` instrumental swapped ext-blind names only a
+ * three sites and drifted (f6f8fa7): a `.flac` instrumental swapped ext-blind names only a
  * `.flac` vocals stem, so an interim `.m4a` cook became unfindable.
  */
 export function siblingVocalsRef(instrumentalRef: string): string {
@@ -213,7 +213,7 @@ export const CAPTION_KINDS = ['captions', 'auto-captions'] as const;
 export const KNOWN_CAPTION_EXTS = ['vtt', 'srt'] as const;
 
 /**
- * The retained RAW caption track (#670), keyed per media id. MUST agree byte-for-byte with the
+ * The retained RAW caption track, keyed per media id. MUST agree byte-for-byte with the
  * worker's `raw_caption_path` (apps/worker/src/processor.py) — the guard that pins this is in
  * vocabulary-parity.test.ts. Unlike the stems and lyrics keys this is NOT stored as a ref on Media;
  * it is regenerated on demand from (mediaId, kind, ext), which is why retention enumerates the kind/ext

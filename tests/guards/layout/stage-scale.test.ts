@@ -529,7 +529,7 @@ test('the unverified tint overrides variables only — it never re-selects a wor
 });
 
 /*
- * #98 — the typed join address must not be buried under the roster strip on a short panel.
+ * — the typed join address must not be buried under the roster strip on a short panel.
  *
  * THE BUG THIS EXISTS FOR. `.lobby` was `display: flex; align-items/justify-content: center` across
  * its FULL `inset: 0` box, centring the `.stack` — whose last child is the typed join address — over
@@ -604,7 +604,7 @@ test('the lobby shows the whole roster with a chip step-down rule, never a "+N m
 	expect(/max-width:\s*[0-9.]+ch/.test(personBlock)).toBe(true);
 });
 
-test('#98 the lobby centres its stack in the space ABOVE the strip, not across the whole box', () => {
+test('the lobby centres its stack in the space ABOVE the strip, not across the whole box', () => {
 	const lobby = stripComments(TV_LOBBY);
 	// The lobby is a column: the stack region and the strip stack vertically, so the strip's height is
 	// subtracted from the region the stack centres in. A row/absolute lobby would let them overlap.

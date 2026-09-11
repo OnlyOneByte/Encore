@@ -1,15 +1,15 @@
-// #658 One TV per room — the ONE place that answers "which room does THIS TV show, and bind to?".
+// One TV per room — the ONE place that answers "which room does THIS TV show, and bind to?".
 //
-// Before #658 the TV was an unscoped SPECTATOR (room-scope.ts): it carried no roomId, so at the WS
+// Before this resolver the TV was an unscoped SPECTATOR (room-scope.ts): it carried no roomId, so at the WS
 // upgrade subscribeTopicFor(undefined, activeRoomId) always dropped it onto the SERVED room topic.
 // That is fine while a box serves exactly one room, but it means a TV can only ever show
 // app.activeRoomId — it does not RESOLVE which room it is showing, it inherits the singleton. The
-// rooms chain (#655/#656/#657) made playback, the queue and the wire per-room; the last gap is that a
-// TV cannot be pointed at a SPECIFIC party. #658 closes it by giving a TV socket a real room scope.
+// rooms chain that preceded it made playback, the queue and the wire per-room; the last gap is that a
+// TV cannot be pointed at a SPECIFIC party. This resolver closes it by giving a TV socket a real room scope.
 //
-// A phone gets its scope from its session token (a singer maps to exactly one room_id, #656/#657). A
+// A phone gets its scope from its session token (a singer maps to exactly one room_id). A
 // TV has no singer and no cookie, so its scope has to come from somewhere it CAN carry: the join CODE,
-// the same short human-typeable handle the QR already encodes and /join reads (#654). The TV route
+// the same short human-typeable handle the QR already encodes and /join reads. The TV route
 // resolves the code it should show (the served room code, or an explicit ?room=<code>) and passes it
 // on the WS URL; this resolver turns that code into the room id the socket binds to.
 //
@@ -30,7 +30,7 @@
  *
  * Returns the resolved room id: the coded room when the code names a real room, otherwise the served
  * room. Never returns undefined — a TV is always bound to exactly one room (one TV, one room), never
- * left an unscoped spectator once #658 is wired.
+ * left an unscoped spectator once this resolver is wired.
  */
 export function tvRoomId(
 	roomCode: string | null | undefined,

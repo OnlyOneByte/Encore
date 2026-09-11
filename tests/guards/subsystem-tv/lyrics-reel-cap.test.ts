@@ -1,6 +1,6 @@
 // Guard: the lyrics reel's max-height cap must NOT double-charge the safe-area inset.
 //
-// THE DEFECT (issue #99). `.lyrics` already reserves the bottom chrome band via
+// THE DEFECT. `.lyrics` already reserves the bottom chrome band via
 // `top: 0; bottom: var(--tv-chrome-h)`, so the reel box is already `100vh - --tv-chrome-h` tall.
 // The `.viewport` cap then subtracted a FURTHER `- var(--tv-safe-y)` from `100vh`. Because that box
 // is `justify-content: center`, the extra subtraction bought only `--tv-safe-y / 2` of top inset

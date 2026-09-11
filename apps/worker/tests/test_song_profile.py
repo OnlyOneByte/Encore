@@ -108,7 +108,7 @@ def test_silent_vocals_yield_null_range_not_a_failure(tmp_path):
 # ── engine wiring: demucs always publishes songProfile ────────────────────────────────
 def _demucs_fake_runner(tmp_path):
     """A demucs cook fake that writes both stems and emits nothing useful. The acquisition / volumedetect
-    / encode branches live in the shared `fake_cli_runner` (issue #455) — including the volumedetect
+    / encode branches live in the shared `fake_cli_runner` — including the volumedetect
     branch that makes the silence probe real; only the demucs stem writes are here."""
 
     async def demucs_handler(argv):

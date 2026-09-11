@@ -67,7 +67,7 @@ export async function serveThumb(url: string): Promise<Response> {
 	try {
 		const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 		if (!res.ok) {
-			// #872: the upstream status (a deleted video's thumb 404, a 429) is dropped by the bare
+			// the upstream status (a deleted video's thumb 404, a 429) is dropped by the bare
 			// 'upstream error' body, which the <img> element throws away too. Name it so "why are the
 			// thumbnails blank on this box?" has an answer in the log. Still a 502 — degrade unchanged.
 			console.warn(`[thumbs] upstream fetch for ${url} returned ${res.status}; serving 502`);
@@ -83,7 +83,7 @@ export async function serveThumb(url: string): Promise<Response> {
 			}
 		});
 	} catch (err) {
-		// #872: the AbortSignal.timeout(5000) firing is indistinguishable from a DNS/TLS failure once
+		// the AbortSignal.timeout(5000) firing is indistinguishable from a DNS/TLS failure once
 		// collapsed to 'fetch failed'. Bind and name it; still a 502.
 		console.warn(`[thumbs] fetch for ${url} failed (timeout/network); serving 502:`, err);
 		return new Response('fetch failed', { status: 502 });

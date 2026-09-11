@@ -87,7 +87,7 @@ def _run_step(texts, duration_sec, tmp_path):
 
 def test_step_passes_duration_through_so_overcovered_candidate_is_demoted(tmp_path):
     """#851 F1: the pin must BITE. A rival exists whose RAW agreement is LOWER than the over-covered
-    candidate's, so ONLY the #667 overshoot penalty can flip the pick to it. On base the step never
+    candidate's, so ONLY the overshoot penalty can flip the pick to it. On base the step never
     passes a duration, so the penalty never fires and the higher-raw over-covered candidate wins — this
     reds on the variant assertion. The fixture is the discriminating one #816 committed; the overshooter
     is timed to 330s (+23% of 268s) so it clears OVERSHOOT_FRACTION_MAX and its raw lead (0.646 vs 0.506)
@@ -123,16 +123,16 @@ def test_step_reports_overshoot_in_the_cook_log_when_the_published_pick_overshoo
     assert any("overshoot" in n.lower() and "+80s" in n for n in notes), notes
 
 
-# --- #731: the overshoot NOTE was silent when the demotion actually fired, and claimed "demoted"
+# --- the overshoot NOTE was silent when the demotion actually fired, and claimed "demoted"
 # for a pick it published. The report iterated sel.publish (survivors); a candidate demoted for
 # overshoot is not a survivor, so no note fired for it, and the winner's note hardcoded "demoted".
 
 
 def test_a_demoted_overshooting_candidate_still_gets_an_overshoot_note_naming_the_demotion(tmp_path):
     """#851 F1 + F2: across-source, `longer-master` out-scores the fitting rival on RAW agreement, so
-    ONLY the #667 penalty demotes it below `fits-the-audio` — the pick genuinely turns on the demotion.
+    ONLY the penalty demotes it below `fits-the-audio` — the pick genuinely turns on the demotion.
     On base the note loop only visited sel.publish, so the demoted loser produced ZERO overshoot notes,
-    and once the loop was fixed (#731) the verdict hardcoded a false causal "DEMOTED, published X". Head
+    and once the loop was fixed the verdict hardcoded a false causal "DEMOTED, published X". Head
     must emit a note that names the overshooting LOSER, says it was NOT published, and names the winner."""
     over = _timed(SOURCE_LRCLIB, LONGER_MASTER_300, "longer-master", per_word_end=330.0)
     fits = _timed(SOURCE_CAPTIONS, FITS_THIS_RECORDING_265, "fits-the-audio", per_word_end=241.0)
@@ -169,7 +169,7 @@ def test_an_overshooting_published_pick_is_not_reported_as_demoted(tmp_path):
     assert "PUBLISHED anyway" in note, note
 
 
-# --- #851 F2: the DEMOTED arm claimed the overshoot penalty CAUSED the pick, from `is_published`, which
+# --- F2: the DEMOTED arm claimed the overshoot penalty CAUSED the pick, from `is_published`, which
 # cannot say so. A wrong-song candidate loses on AGREEMENT by a margin the comparative penalty never
 # comes near — switch the penalty off and the SAME winner publishes — yet the base note printed the
 # causal "DEMOTED, published X instead". This is the third arm of the ladder #739 corrected the other
@@ -212,7 +212,7 @@ def test_a_demoted_wrong_song_pick_is_not_reported_as_caused_by_the_overshoot_pe
     assert "fits-the-audio" in note, note
 
 
-# --- #739: the verdict ladder PR #733 added (steps/lyrics.py) wrote two claims its one local fact,
+# --- the verdict ladder PR #733 added (steps/lyrics.py) wrote two claims its one local fact,
 # `is_published`, does not carry. F1 asserted "no candidate that fits the audio" from it, which is
 # false whenever the COMPARATIVE overshoot penalty is smaller than the overshooter's score lead. F2
 # dropped `is_published` entirely, so a tolerated overshoot on a REJECTED rival read as one on the

@@ -1,17 +1,17 @@
--- #425: room_settings.tv_background_hue (an ANGLE) becomes tv_background_color (a REAL COLOUR).
+-- room_settings.tv_background_hue (an ANGLE) becomes tv_background_color (a REAL COLOUR).
 --
 -- A real numbered migration (0005, after #728's 0004_rekey_room_settings), NOT an in-place edit of
 -- 0000_baseline.sql: a rewritten baseline is never re-applied to an existing DB (drizzle keys on the
 -- journal `when`, not the file hash), so the new column would never appear on an upgraded box and
 -- `runMigrations()` would throw at boot the first time a reader selected it. That is the exact trap
--- #655 and #669 each hit; 0004's header records it too. This migration replays only on DBs that have
+-- and #669 each hit; 0004's header records it too. This migration replays only on DBs that have
 -- not recorded idx:5.
 --
 -- WHY: the stage used to store a hue angle, quantised to 15 degrees and rendered at a pinned stage
 -- lightness by `stageHueToHex`, so that no room could produce a field bright enough to wash out the
--- word-timed lyric reel it sits behind. The owner retired that bound on #425 and replaced the job it
+-- word-timed lyric reel it sits behind. The owner retired that bound and replaced the job it
 -- was doing with a different mechanism -- the reel now paints its own `-webkit-text-stroke` outline
--- (#750, b764d92), which holds on any field AND over a music video, which a bound on the stage colour
+-- (b764d92), which holds on any field AND over a music video, which a bound on the stage colour
 -- never reached. So the room now names a colour outright.
 --
 -- WHAT HAPPENS TO EXISTING ROWS -- every row keeps the colour it is showing today. The old column is

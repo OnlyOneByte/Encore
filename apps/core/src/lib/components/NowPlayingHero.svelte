@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	/*
-	 * The now-playing HERO — direction A's home screen (docs/DECISIONS.md, issue #832).
+	 * The now-playing HERO — direction A's home screen (docs/DECISIONS.md).
 	 *
 	 * Not a row and not a docked peek. Under direction A the room's queue IS the home screen, so the
 	 * playing song is the one thing on it that is not a list item: it gets its own surface, at the top,
@@ -201,7 +201,7 @@
 	}
 	/* flex: 0 0 auto for the same reason QueueRow's dot carries it: .eyebrow is a flex row, an empty
 	   element's automatic minimum size is 0, and under a long singer name the identity dot otherwise
-	   collapses to 0px and the colour vanishes (issue #89). */
+	   collapses to 0px and the colour vanishes. */
 	.eyebrow .dot {
 		flex: 0 0 auto;
 		width: 10px;
@@ -282,7 +282,7 @@
 	}
 	/* The tool buttons take sizing, radius, surface and glyph size from <Button variant="icon"> in
 	   components/ui/button, which derives its box from var(--tap) — no literal here (XR-PH-01).
-	   `.icon-btn` in app.css was deleted in #913 S1b once all ten of its consumers became that variant;
+	   `.icon-btn` in app.css was deleted S1b once all ten of its consumers became that variant;
 	   the rules below are this file's own layout only. */
 	.tools {
 		margin-top: var(--space-lg);

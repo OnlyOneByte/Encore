@@ -1,7 +1,7 @@
-"""#583: the two remaining missing-key guards in steps/separate.py must classify NON-RETRYABLE.
+"""The two remaining missing-key guards in steps/separate.py must classify NON-RETRYABLE.
 
-Follow-up to #571/#577, which fixed the ProbeSilence (silent instrumental) and Separate (produced no
-instrumental) sites. Two sibling guards, both added by #550 as bare RuntimeError raises, were left
+Follow-up to the earlier fixes for the ProbeSilence (silent instrumental) and Separate (produced no
+instrumental) sites. Two sibling guards, both added as bare RuntimeError raises, were left
 behind:
 
   * DecodeToWav (:61)   — audio.path is empty (AcquireAudio did not run or failed)
@@ -57,7 +57,7 @@ def _ctx(tmp_path) -> Ctx:
 
 
 async def test_decode_to_wav_empty_audio_path_is_classified_non_retryable(tmp_path):
-    """#583: an empty audio.path is a deterministic plan error (AcquireAudio did not run). The raise
+    """An empty audio.path is a deterministic plan error (AcquireAudio did not run). The raise
     must carry a non-retryable classification so the core fails it after one pass instead of three.
     Asserts the CLASSIFICATION, not the type: on base (a bare RuntimeError) the exception still matches
     but is_retryable returns True and this assertion reds."""
@@ -70,7 +70,7 @@ async def test_decode_to_wav_empty_audio_path_is_classified_non_retryable(tmp_pa
 
 
 async def test_publish_stems_missing_instrumental_is_classified_non_retryable(tmp_path):
-    """#583: a missing stems.raw['instrumental'] is a deterministic plan error (Separate did not run).
+    """A missing stems.raw['instrumental'] is a deterministic plan error (Separate did not run).
     Same reasoning and same base-red mechanism as the DecodeToWav guard above."""
     ctx = _ctx(tmp_path)
     ctx.stems.raw = {}  # premise: Separate did not run — no instrumental key

@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The LYRICS RE-SELECT control (#640) — the fallback for when the auto-chosen lyrics are wrong.
+	// The LYRICS RE-SELECT control — the fallback for when the auto-chosen lyrics are wrong.
 	//
 	// Presentational, exactly like GuidingTrack: it owns the disclosure, the candidate list with
 	// provenance, the paste box and the "a better version exists" hint, and reports raw choices up

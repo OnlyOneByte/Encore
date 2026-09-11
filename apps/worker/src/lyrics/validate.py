@@ -71,7 +71,7 @@ class TimingReport:
     #: Seconds the lyrics run PAST the end of the audio. A one-sided metric coverage cannot carry: the
     #: `min(1.0, …)` clamp below makes coverage report a candidate timed for a longer master (a
     #: wrong-version pick) as a flawless 1.0. This is that discarded signal, kept as its own number so
-    #: coverage's thin/MIN_COVERAGE meaning is untouched — they answer different questions (#667).
+    #: coverage's thin/MIN_COVERAGE meaning is untouched — they answer different questions.
     overshoot_sec: float = 0.0
 
     @property
@@ -206,7 +206,7 @@ class RepairReport:
 
 
 def repair_word_spans(doc: dict[str, Any]) -> RepairReport:
-    """ACT on the smears and flashes validate_timing only reports (issue #629, item #2).
+    """ACT on the smears and flashes validate_timing only reports.
 
     validate_timing DIAGNOSES; this REPAIRS, and the split is deliberate — the note stays honest about
     what the aligner produced, and this records what was done about it. Two transforms, both provably
@@ -325,9 +325,9 @@ def line_starts(doc: dict[str, Any]) -> list[float]:
     return [float(ln["start"]) for ln in lines if isinstance(ln.get("start"), (int, float))]
 
 
-# ── placing the LRC on THIS audio's timeline, BEFORE it is aligned (#794) ───────────────────────────
+# ── placing the LRC on THIS audio's timeline, BEFORE it is aligned ───────────────────────────
 #
-# The wrong-version check above (`lrc_fit_notes`) runs AFTER alignment, and #794 showed why that is not
+# The wrong-version check above (`lrc_fit_notes`) runs AFTER alignment, and a defect showed why that is not
 # enough on its own: the aligner is confined to the LRC's own line windows (`steps/lyrics.py` hands it
 # `align_windows`/`segments`, and `whisperx.align` crops the audio per segment), so an upload whose
 # vocal starts LATER than the LRC's master — an added intro, a talk-over, `bad guy`'s quiet whispered
@@ -335,7 +335,7 @@ def line_starts(doc: dict[str, Any]) -> list[float]:
 # post-align fit cannot see it, because it compares the aligner's output against the very windows that
 # bounded that aligner: a self-comparison that manufactures the agreement it reports.
 #
-# Owner ruling 2026 (issue #794, Q1-A): estimate the LRC→audio offset from a series the LRC did NOT
+# Owner ruling 2026 (Q1-A): estimate the LRC→audio offset from a series the LRC did NOT
 # bound — the Whisper baselines `AcquireTexts` measured on THIS audio (the vocals stem and the mix) —
 # and shift the LRC's line windows onto this recording BEFORE handing them to the aligner. Then the
 # aligner searches the right span, and the post-align fit stops being a self-comparison.
@@ -431,7 +431,7 @@ def _pair_lrc_to_baseline(
 def estimate_lrc_shift(
     lrc_lines: list[dict[str, Any]], baseline_lines: list[dict[str, Any]]
 ) -> LrcShift:
-    """Estimate how far the LRC sits from THIS audio, from a baseline measured on this audio (#794).
+    """Estimate how far the LRC sits from THIS audio, from a baseline measured on this audio.
 
     `lrc_lines` are the source's own timed lines ({start, text, ...}); `baseline_lines` are a Whisper
     baseline's segments ({start, text, ...}) measured on the real audio. Fuzzy-pair them by content,
@@ -470,16 +470,16 @@ def shift_segments(segments: list[dict[str, Any]], shift: LrcShift) -> list[dict
     return out
 
 
-# ── the LRC-fit decision, moved out of steps/lyrics.py (#456) ──────────────────────────────────────
+# ── the LRC-fit decision, moved out of steps/lyrics.py ──────────────────────────────────────
 #
 # `TimeTexts.run` used to hold ~45 lines deciding one domain question — does a source's OWN line
 # timing fit THIS recording — even though its two other halves (`fit_lrc_to_aligned`, `line_starts`)
-# already live here. The audit (#456) moved the decision and its two pure pairing helpers into the
+# already live here. The audit moved the decision and its two pure pairing helpers into the
 # domain package so the whole thing is reachable from `tests/test_lyrics_*` and sits under the
 # layering guard, leaving `TimeTexts.run` as align → validate → note → write. Behaviour is unchanged:
 # `lrc_fit_notes` returns exactly the note strings the step used to build inline, and the step still
 # owns computing `windows`/`opens` (via `_opens_for`, whose emitted-map preference is pinned in the
-# step layer by #459) and emitting the notes through `ctx.note`.
+# step layer) and emitting the notes through `ctx.note`.
 def _opening_window_indices(windows: list[dict], segments: list[dict]) -> list[int]:
     """Indices into `windows` of the window that OPENS each human line.
 
@@ -524,8 +524,8 @@ def _pair_openings_to_aligned(
     `line_starts(doc)[k]` for each opening index `k` — is WRONG, because `doc` is `normalize_lyrics`
     output and that function DROPS a segment with neither timed words nor bounds (`artifact.py`), so
     `doc["lines"][k]` is not guaranteed to be the aligned result of `windows[k]`. One dropped line
-    shifts every later positional pairing: a correctly aligned song then reads as slipped (#336) or,
-    once counts diverge, the check goes silently inert on a genuinely different master (#217).
+    shifts every later positional pairing: a correctly aligned song then reads as slipped or,
+    once counts diverge, the check goes silently inert on a genuinely different master.
 
     So recover which window each SURVIVING aligned line came from, rather than trusting position. The
     aligner emits one line per window it was given, in order, and `normalize_lyrics` preserves that
@@ -568,14 +568,14 @@ def lrc_fit_notes(text_source: str, windows: list[dict], opens: list[int], doc: 
     then force-aligned: that gives two independent time series over the same lines, which is exactly
     what the fit needs. The caller (``TimeTexts.run``) guards that condition and computes ``windows`` /
     ``opens`` — the OPENING window index of each human line — so this function stays pure of ``ctx``,
-    the step layer, and the ``_opens_for`` emitted-map preference (pinned in the step layer by #459).
+    the step layer, and the ``_opens_for`` emitted-map preference (pinned in the step layer).
 
     Returns a list of note strings (0 or 1 today) rather than calling ``ctx.note`` itself, so the
     layering direction is preserved: the domain package never reaches into ``steps/``.
 
     The pairing is drop-tolerant and keyed by text, not position — see ``_pair_openings_to_aligned``
     for why (a dropped ``normalize_lyrics`` line would otherwise shift every later positional pair,
-    re-opening #336 and #217).
+    re-opening the two positional-pairing defects).
     """
     lrc_starts, aligned_starts = _pair_openings_to_aligned(windows, opens, doc)
     fit = fit_lrc_to_aligned(lrc_starts, aligned_starts)

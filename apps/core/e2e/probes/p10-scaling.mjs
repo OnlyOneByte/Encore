@@ -33,8 +33,8 @@ import { join } from 'node:path';
 import { SEL } from '../contract.ts';
 
 /**
- * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (issue #558, following
- * the #557 fuzz.mjs pattern). Browser/Page derive from cdp.mjs's own return types (#553); every
+ * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
+ * the fuzz.mjs pattern). Browser/Page derive from cdp.mjs's own return types; every
  * page.evaluate() result is protocol-shaped and stays loose (cdp.mjs types evaluate as Promise<any>),
  * cast at the call site.
  *
@@ -234,7 +234,7 @@ async function measureTv(label, w, h) {
 			})(),
 			// Every direct text descendant of .badqr, so we can see if a child word ran off the box.
 			// The .badqr universal-child read below stays a LITERAL (quarantined in contract.test.ts,
-			// #547 Group E): a bare universal token has no source anchor the SEL-resolution guard can
+			// Group E): a bare universal token has no source anchor the SEL-resolution guard can
 			// model, so it cannot live in SEL. The container itself is SEL.badQr, used two lines down.
 			badqrChildren: [...document.querySelectorAll('.badqr *')].map((el) => {
 				const r = el.getBoundingClientRect();
@@ -267,13 +267,13 @@ async function measureTv(label, w, h) {
 
 	// Also measure contrast on interesting text nodes at THIS size.
 	const contrastPairs = await page.evaluate(`(() => {
-		// Contrast target pairs [foreground, background]. In-scope selectors for #547 (Group E) are
+		// Contrast target pairs [foreground, background]. In-scope selectors for Group E are
 		// interpolated from SEL so the guard reads them from the contract; out-of-scope descendant
 		// selectors (".badqr-b b", ".lower-third .ls-artist/.ls-key", ".attract .brand/.jt-url",
 		// ".corner .t/.u") keep their literals — they carry a space so the guard's shape rule never
 		// flagged them, and they belong to selectors tracked separately, not this group. The attract
-		// instruction line reads SEL.stageHeadline (".phrase-line", the #826 rotating phrase) — repointed
-		// from the pre-#826 ".idle-head", and the typed address from ".idle-url" to the split panel's
+		// instruction line reads SEL.stageHeadline (".phrase-line", the rotating phrase) — repointed
+		// from the earlier ".idle-head", and the typed address from ".idle-url" to the split panel's
 		// ".jt-url".
 		const targets = [
 			[${JSON.stringify(SEL.badQrTitle)}, ${JSON.stringify(SEL.badQrTitle)}],
@@ -424,10 +424,10 @@ async function measureRemote(label, w, h) {
 
 	// Contrast pairs on remote — cover the primary controls and body text.
 	const contrastPairs = await page.evaluate(`(() => {
-		// Remote contrast targets. #547 (Group E) interpolates the two in-scope class hooks from SEL
+		// Remote contrast targets. Group E interpolates the two in-scope class hooks from SEL
 		// (.chip -> SEL.chip, .card -> SEL.dashCard); bare tags (h1/h2/p/a) and descendant selectors
-		// (.searchbox input, .row .*, .qrow .t) are not selector hooks the guard tracks here. #682
-		// repointed the dead '.row .a' to '.row .byline' (SongRow renders <div class="byline">, never .a)
+		// (.searchbox input, .row .*, .qrow .t) are not selector hooks the guard tracks here. A later
+		// repoint moved the dead '.row .a' to '.row .byline' (SongRow renders <div class="byline">, never .a)
 		// and dropped the dead '.filter-chip' and '.b' targets (no component declares either class).
 		const targets = ['h1','h2','.searchbox input','.searchbox button','.row .t','.row .byline','.row .add','.row .sing','.qrow .t',${JSON.stringify(SEL.chip)},${JSON.stringify(SEL.dashCard)},'p','a'];
 		const out = {};

@@ -6,7 +6,7 @@ string, which is fine for pinning an invariant and useless for calibrating a thr
 repetition are properties of real song structure — where a chorus recurs, how many times, how long a
 tail runs — so a number tuned against invented text is tuned against whoever typed it.
 
-Committed under issue **#668**, owner ruling **Q1 = B** (the raw snapshot branch stays as the archive
+Committed under owner ruling **Q1 = B** (the raw snapshot branch stays as the archive
 of record) and **Q2 = C** (a curated subset now, with this README naming the source so more can be
 pulled later).
 
@@ -70,7 +70,7 @@ comment did not have.
 
 ### `SUSPECT_COVERAGE = 0.40` — **not** calibrated by this corpus
 
-`chain.py` says to re-derive this number once #668 lands. It cannot be re-derived from these files,
+`chain.py` says to re-derive this number once a real corpus lands. It cannot be re-derived from these files,
 and that is worth stating plainly rather than quietly shipping a threshold that looks corpus-backed.
 
 A coverage threshold needs real **(candidate, baseline)** pairs, and the archive holds exactly one:
@@ -79,10 +79,10 @@ the Japanese Goblin upload. Its two texts are in different languages, so the mea
 30 distinct tokens against a floor of 12, so it **votes** rather than abstaining, and one extreme
 vote constrains a threshold no better than no vote at all.
 
-Discharging the debt needs the `baselines/` half of #668's revised proposal: machine caption tracks
+Discharging the debt needs the `baselines/` half of the revised proposal: machine caption tracks
 re-fetched per `origin.sourceRef`, which pairs a real baseline with each archived candidate. Note the
 ordering dependency recorded on the issue — those tracks carry rolling scroll-overlap duplication
-(#687), which inflates token counts, so a count-aware metric calibrated on them would be measuring
+, which inflates token counts, so a count-aware metric calibrated on them would be measuring
 YouTube's cue format rather than the song.
 
 `tests/test_lyrics_corpus_668.py` pins the pair count at one, so the day an interior pair is added

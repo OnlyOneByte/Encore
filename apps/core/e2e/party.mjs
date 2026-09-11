@@ -36,7 +36,7 @@ import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
+ * Types for this out-of-program driver (pattern). Browser/Page derive from
  * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
@@ -223,7 +223,7 @@ try {
 		if (hue !== undefined) await page.setRange(SEL.hueSlider, hue);
 		await page.clickByText('Start singing');
 		await page.waitFor(`location.pathname === '/'`);
-		// Home is the QUEUE since #832; searching is a push. openBrowseFromHome waits for the joined home,
+		// Home is the QUEUE; searching is a push. openBrowseFromHome waits for the joined home,
 		// clicks the primary button and waits for the search box, so the caller lands where it used to.
 		await openBrowseFromHome(page);
 		return page;
@@ -286,7 +286,7 @@ try {
 		);
 
 		await maya.click(queueAction);
-		// Back to the QUEUE, which is home since #832 — the rotation rows, the position line and the
+		// Back to the QUEUE, which is home — the rotation rows, the position line and the
 		// transport all live there, and this flow reads all three below. Ada is still on the browse
 		// screen she joined through, so she comes home too before her rotation is compared.
 		await returnHomeFromBrowse(maya);
@@ -304,7 +304,7 @@ try {
 		/*
 		 * The song can be in the rotation in THREE shapes, and the first song of the night is the one
 		 * that is not a row: an idle room auto-starts the add, the entry's status becomes 'playing', and
-		 * `queued` filters a playing entry out — so it renders on the HERO instead (#832). It reads as a
+		 * `queued` filters a playing entry out — so it renders on the HERO instead. It reads as a
 		 * `.qrow` when someone else is already singing, and as `.proc` while it cooks. The invariant is
 		 * "the singer is in the rotation", so all three count; asserting only `.qrow` would report an
 		 * empty rotation for a room whose first song is playing perfectly.

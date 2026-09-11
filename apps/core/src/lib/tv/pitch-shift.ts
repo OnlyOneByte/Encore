@@ -375,7 +375,7 @@ export class PitchShiftGraph {
 	 * rather than each opening its own AudioContext and each calling the irreversible
 	 * createMediaElementSource on the same element — the second of which throws, is swallowed, and
 	 * strands a second context. Cleared once the build settles so a FINISHED failed attempt is still
-	 * retryable (the #527 degraded-retry property).
+	 * retryable (the degraded-retry property).
 	 */
 	#building: Promise<void> | null = null;
 
@@ -420,7 +420,7 @@ export class PitchShiftGraph {
 		// Once the element is routed there is nothing to rebuild — the MediaElementSource is permanent.
 		// `degraded`, however, records only that the LAST attempt could not run a context (no gesture
 		// yet); it must NOT be terminal, or the instrumental never shifts again after the first pre-
-		// gesture press (#527). Clear it here and retry: the irreversible createMediaElementSource stays
+		// gesture press. Clear it here and retry: the irreversible createMediaElementSource stays
 		// behind the confirmed `state === 'running'` check below, so a retry that fails again simply
 		// closes its context and re-arms `degraded`, leaving the element audible on its native output.
 		if (this.routed) return;

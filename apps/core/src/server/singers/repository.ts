@@ -9,7 +9,7 @@ import { singers } from '../db/schema';
 import { ulid, type Singer } from '@encore/shared';
 
 /**
- * A singer AS STORED: the wire {@link Singer} plus the `room_id` scoping key (#656). The server reads
+ * A singer AS STORED: the wire {@link Singer} plus the `room_id` scoping key. The server reads
  * the room off the row to scope the roster and the in-room name-uniqueness check, so the repository's
  * row-returning reads surface it.
  *
@@ -18,7 +18,7 @@ import { ulid, type Singer } from '@encore/shared';
  * SingerRepository.listPublic} drops it because a roster entry of somebody else carries no use for it
  * and the public shape is the wire `Singer`. Any other projection of a `StoredSinger` onto the wire
  * has to drop it too, for the same reason — `/api/me` does, so its `singer:updated` frame matches
- * `PublicSinger` (#797).
+ * `PublicSinger`.
  */
 export type StoredSinger = Singer & { roomId: string };
 
@@ -36,14 +36,14 @@ export class SingerRepository {
 	}
 
 	/**
-	 * Create a singer IN a room, minting id + session token (#656).
+	 * Create a singer IN a room, minting id + session token.
 	 *
 	 * `roomId` is the party this singer belongs to — the room the /api/join resolved (an explicit code
 	 * or the active room). It scopes the roster, the `least-recently-sung` ordering, and the presence
 	 * sweep to one party, so two rooms no longer share one roster. The returned {@link Singer} carries
 	 * no room field: the wire `Singer` contract is unchanged, so the column is a server-side scoping
 	 * key rather than new wire state. The joining phone still learns its own room — /api/join returns
-	 * `roomId` beside the singer (#797).
+	 * `roomId` beside the singer.
 	 */
 	create(displayName: string, color: string, now: number, roomId: string): Singer {
 		const singer: Singer = {
@@ -60,7 +60,7 @@ export class SingerRepository {
 		return singer;
 	}
 
-	/** Resolve the singer behind a session token (from the cookie), or null. Carries `roomId` (#656). */
+	/** Resolve the singer behind a session token (from the cookie), or null. Carries `roomId`. */
 	bySessionToken(token: string | undefined | null): StoredSinger | null {
 		if (!token) return null;
 		const row = this.#db.select().from(singers).where(eq(singers.sessionToken, token)).all()[0];
@@ -97,7 +97,7 @@ export class SingerRepository {
 	}
 
 	/**
-	 * A ROOM's singers, without session tokens (safe to broadcast) (#656).
+	 * A ROOM's singers, without session tokens (safe to broadcast).
 	 *
 	 * Scoped by `room_id`: this feeds the room roster, the `least-recently-sung` ordering input, and
 	 * the in-room name-uniqueness check, none of which may see another party's singers. `room_id` is a

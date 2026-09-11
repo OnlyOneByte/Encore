@@ -1,21 +1,21 @@
 // Shared helpers for the source-scanning guard tests under src/lib and e2e/.
 //
-// Dedup batch (#626, follows #618/#455): the recursive `.svelte` walker below was hand-copied
+// Dedup batch: the recursive `.svelte` walker below was hand-copied
 // verbatim into every guard that scans the component tree (motion, contrast, design-system,
 // icon-centring, settings-scopes, singer-color, touch-targets, tv/stage-scale, …), and the 44px
 // touch-target threshold `TAP` was re-declared in each touch guard. It is single-sourced here — and
-// since #831 it is READ FROM `app.css` rather than hand-written, so the guards and the components
+// it is READ FROM `app.css` rather than hand-written, so the guards and the components
 // resolve the same token instead of two numbers that merely agreed.
 import { join } from 'node:path';
 import { readdirSync, readFileSync } from 'node:fs';
 //
-// SCOPE IS THE POINT (#841, XR-VER-14). Four of the five named scan helpers were still per-file
+// SCOPE IS THE POINT (XR-VER-14). Four of the five named scan helpers were still per-file
 // copies: `styleFiles` in components/motion.test.ts, `markupControls` in touch-targets.test.ts,
 // `allSvelte` and `classPresent` in e2e/contract.test.ts. These helpers decide WHAT A GUARD CAN
 // SEE, so a copy that drifts — a different glob, a missed directory, an extra exclusion — silently
 // narrows one guard's population while the others keep their own answer. The guard still passes, on
 // a smaller surface, and nothing says so. `motion.test.ts` needed its scope widened in isolation
-// (#177) for exactly that reason. They are all defined here now, once, and `test-helpers.test.ts`
+// for exactly that reason. They are all defined here now, once, and `test-helpers.test.ts`
 // reds if any of these five NAMES is declared or called in a consumer without importing it. That
 // guard is name-keyed and does not catch a rival walker under a different name — three consumers
 // carry one today (`tsSources`, `tsFiles`, `allDrivers`), which is a separate, reported issue.
@@ -77,7 +77,7 @@ export function styleFiles(dir: string): string[] {
 export const TAP_FLOOR = 44;
 
 /**
- * The app's minimum interactive touch-target size, in px, READ OUT OF `app.css` (issue #831, XR-PH-01).
+ * The app's minimum interactive touch-target size, in px, READ OUT OF `app.css` (XR-PH-01).
  *
  * It used to be a hand-written `44` here, and the comment above said outright that no production
  * constant existed. That made every touch guard measure against a number the design layer did not
@@ -180,7 +180,7 @@ export function markupControls(src: string): { tags: Set<string>; classes: Set<s
  * a static `class="a b c"` list, a `class:token` directive, or a `.token` rule in <style> — and the
  * flow's `.token` query matches an element that got the class by ANY of them, so all three count.
  *
- * The class="..." arm compares WHOLE tokens, not a `\b…\b` substring (#682). A word boundary treats
+ * The class="..." arm compares WHOLE tokens, not a `\b…\b` substring. A word boundary treats
  * `-` as a break, so `class="badqr-b"` used to resolve the bare token `b`, and a Svelte
  * interpolation `class="pill {a.outcome}"` used to resolve the JS identifier `a` — both are dead
  * classes no element carries, yet the guard whose job is to red on a vanished anchor waved them

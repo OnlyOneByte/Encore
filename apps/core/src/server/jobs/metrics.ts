@@ -113,7 +113,7 @@ export interface CookStats {
 	 * TRUE when this cook straddles the older edge of the read window, so some earlier steps may
 	 * have finished before the window opened and were never fetched. Its span is then UNDER-counted
 	 * (measured from the earliest surviving step) and its completeness cannot be trusted, so it is
-	 * never reported as complete and the aggregate refuses to count it (#472).
+	 * never reported as complete and the aggregate refuses to count it.
 	 */
 	clipped: boolean;
 }
@@ -158,7 +158,7 @@ export function e2e(
 	attempts: JobAttempt[],
 	windowStartMs: number | null = null
 ): { n: number; meanMs: number | null; p50Ms: number | null; p95Ms: number | null } {
-	// A clipped boundary cook is not complete, so it never enters this aggregate (#472).
+	// A clipped boundary cook is not complete, so it never enters this aggregate.
 	const totals = perCook(attempts, windowStartMs)
 		.filter((c) => c.complete)
 		.map((c) => c.totalMs);

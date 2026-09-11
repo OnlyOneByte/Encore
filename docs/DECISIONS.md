@@ -19,7 +19,7 @@ vendoring, and copying with attribution are all open to us — no licence blocke
 | [`flacfetch`](https://github.com/nomadkaraoke/flacfetch) | **Borrow one idea** | Its provider+ranking pattern already landed independently as `lyrics_chain.acquire()` + `pickBestLyrics`. Its stream-quality heuristic has not. → shipped |
 | [`karaoke-gen`](https://github.com/nomadkaraoke/karaoke-gen) | **Ideas only, no dependency** | Mostly scope we do not want (4K render, CDG packaging, YouTube/Dropbox upload). Its **human review stage** is the keeper. → **Deferred** |
 
-**Adopted ALONGSIDE `bs-roformer-infer` — both engines, not one over the other (issue #483, owner
+**Adopted ALONGSIDE `bs-roformer-infer` — both engines, not one over the other (owner
 ruling Q1(b)).** The ruling is settled, and the dependency has **LANDED**: `python-audio-separator` is
 pinned in `apps/worker/requirements.txt` and the `audiosep` engine is wired in
 `apps/worker/src/separation/engines.py` (`engine_for` resolves `demucs`, `roformer` and now
@@ -77,7 +77,7 @@ tier already arrives line-broken by a human, and a splitter can only damage thos
 `textract-py3` drags SpeechRecognition, pdfminer.six, python-pptx, oletools, cryptography, easygui,
 xlrd; all serving `.doc`/`.rtf` ingestion we never call. Unused weight, not a version conflict.
 
-**Partially superseded (2026-09-07, issue #427).** `flacfetch`'s lossless sources (private trackers,
+**Partially superseded (2026-09-07).** `flacfetch`'s lossless sources (private trackers,
 Spotify via `librespot`) would attack the real source-audio ceiling — YouTube gives us ~130–150 kbps
 lossy — but that ACQUISITION path needs a Transmission daemon plus tracker credentials and stays
 **parked** (still the owner's call). What the owner DID adopt is **Spotify as a SEARCH / metadata
@@ -90,7 +90,7 @@ one authority that says so, and every layer that decides whether a cook is possi
 `cookState` answers `not-cookable`, the phone's `canCook` withholds the Sing and Add affordances, and
 `requestMakeKaraoke` declines. (`fetcherFor` does NOT refuse a spotify source — it returns the default
 downloader as a floor. The DECISION here is unchanged; only this sentence describing how it is
-enforced was wrong, which is #742.)
+enforced was wrong, and has been corrected here.)
 Credentials, if the Spotify search API needs them, live in worker/core **env vars**
 (`SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`), matching LRCLIB and every existing knob — this app
 stores no secrets in the DB and this does not become the first. So the librespot ACQUISITION half of
@@ -169,8 +169,8 @@ re-opening a ratified decision.
 **Implementation status, as of 2026-09-09 (this section originally read "nothing here is implemented
 yet", which stopped being true within hours).** The palette, the token scales, the guard layer, the
 phone direction A+B, the drag mode and the authority rulings all shipped. **The two largest
-user-visible items did not:** the TV type floor (#821 — a clamp ladder shipped instead, and
-`--ui-scale` does not exist in code) and the TV states plus the attract phrase system (#826 — the
+user-visible items did not:** the TV type floor (a clamp ladder shipped instead, and
+`--ui-scale` does not exist in code) and the TV states plus the attract phrase system (the
 screens exist in a pre-redesign shape). Both were undispatchable for a labelling reason rather than a
 technical one. Check the issue before assuming a decision below is live in the product.
 
@@ -256,14 +256,14 @@ reports 0 and cannot help. A hardcoded percentage is the only option.
 Chosen because **copy-in puts component CSS in `src/`**, where the source-scan design guards can
 still see and edit it. A headless dependency moves that CSS into `node_modules`, where a 38 px
 button, a 14 px input, a `vh` sheet cap and a `content: '✕'` all become **invisible rather than
-illegal**. **Scope — REVISED 2026-09-09 (#913).** This section previously read *"a library replaces ~1,060 of
+illegal**. **Scope — REVISED 2026-09-09.** This section previously read *"a library replaces ~1,060 of
 ~4,950 hand-written CSS lines (21%); the ~2,404-line TV tree is out of scope; the single clear win is
-`QueueSheet`."* Both halves of that justification are now dead: **#903 deleted `QueueSheet`**, and the
+`QueueSheet`."* Both halves of that justification are now dead: **`QueueSheet` has been deleted**, and the
 copy-in rationale had already been retracted in place for the drawer (see the correction directly
-below). That left a toolchain installed, fenced and guarded since #853 and used by **nothing**.
+below). That left a toolchain installed, fenced and guarded, and used by **nothing**.
 
 The owner's ruling is to **adopt shadcn-svelte for the primitive layer across the app** — 42 buttons,
-21 inputs, 16 selects, 11 range inputs and the alert/disclosure surfaces, sliced S0–S5 in #913. What
+21 inputs, 16 selects, 11 range inputs and the alert/disclosure surfaces, sliced S0–S5. What
 stays hand-rolled is not "not yet" but **not ever, unless something changes**: the whole TV tree (a
 ten-foot surface with its own type ladder has no business borrowing phone primitives), `SongRow`,
 `RangeBar`, and the composites `NowPlayingHero` / `ProcessingCard` / `QueueRow` — whose *primitives*
@@ -286,16 +286,16 @@ Two constraints discovered while building S1, both structural rather than stylis
   illegal sibling. `lib/tailwind-toolchain.test.ts` reds if a colour is ever registered.
 
 **Correction — the rationale above does NOT hold for the drawer, which is the one component this
-decision names as the clear win.** Measured in the #827 spike, on the pinned
+decision names as the clear win.** Measured in the drawer spike, on the pinned
 `vaul-svelte@1.0.0-next.7`: shadcn's drawer copies 12 files with **zero `<style>` blocks**, so
-nothing lands in `src/lib/components/ui/` for a design scan to read even though #853 created that
+nothing lands in `src/lib/components/ui/` for a design scan to read even though the toolchain adoption created that
 directory; the real CSS is a 291-line `<style global>` at
 `node_modules/vaul-svelte/dist/components/drawer/drawer.svelte:92-383`, which `test-helpers.ts`'s
 `SKIP_DIRS` skips by name. Worse, the sheet's **geometry is not CSS at all**: vaul computes each snap
 point's offset in JS (`dist/use-snap-points.svelte.js:44-54`) and writes an inline `transform`, which
 outranks any stylesheet rule, and its motion duration is a hardcoded `TRANSITIONS.DURATION = 0.5`
 with no prop to override it — where the incumbent's own transition is `0.28s`. The decision to adopt
-anyway (Q1 · C on #827: accept the hole, on the record) stands; what is retracted is the claim that
+anyway (Q1 · C on the drawer spike: accept the hole, on the record) stands; what is retracted is the claim that
 adoption costs no guard coverage here. The two named assertions it will red are recorded in advance
 in `tests/guards/meta/non-vacuity-floors.test.ts`'s `PENDING_RULING`. Compounding it from the other
 side: Preflight is off (below), so a copied-in drawer cannot assume the reset ran either — it arrives
@@ -305,7 +305,7 @@ with neither the utilities' reset nor a readable stylesheet of its own.
 no per-family opt-out. Keep `--accent`, `--grad` and the player hues in `:root` and **never
 register them**; use `@theme` for non-colour tokens only.
 
-#### Installed configuration (decided 2026-09-09, #853)
+#### Installed configuration (decided 2026-09-09)
 
 Three questions the adoption above left open, each settled by measurement rather than preference.
 `tests/guards/design-system/tailwind-toolchain.test.ts` pins all three, so none can be reversed silently.
@@ -404,13 +404,13 @@ ships:
   carrying the owner's dated ruling: *"Today every joined singer is a host. That is Angelo's call
   (2026-09-04) … there is no operator to be, and inventing an admin password for a party is worse
   than the exposure."* Gating it later is an edit **there and nowhere else**.
-- **Cross-singer reorder is expressed directly, and pinning is gone** — #856 step 3 deleted pinning
+- **Cross-singer reorder is expressed directly, and pinning is gone** — step 3 of the queue-authority work deleted pinning
   outright: the `move-global` and `unpin` ops, the `pinnedSeq` column, and `rotation.ts:placePins`
   went with it. The queue is now a single stored ordered list and *is* the source of truth, so a
   reorder rewrites that list in place and is durable by construction — there is nothing left to pin.
   `queue:reorder-any` survives as the capability gating a `move` on an entry the actor does not own.
   What remains is wiring the phone arrows and drag to one "move to index" op that rewrites the stored
-  list: that is **#856 step 4**, not yet shipped.
+  list: that is **step 4 of that same work**, not yet shipped.
 - **A rate limit exists** — `MAX_CONCURRENT_COOKS_PER_SINGER = 3`, refused as `over-limit` and
   answered HTTP 429 with a phone-showable reason. The uncapped axis is **queue depth per singer**.
 - **A lost optimistic race is already disclosed** — `hub.ts` emits `op:reject`, the queue store

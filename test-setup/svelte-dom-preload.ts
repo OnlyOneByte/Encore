@@ -1,4 +1,4 @@
-// Test harness for component tests under `bun test` (issue #698, decision B).
+// Test harness for component tests under `bun test` (decision B).
 //
 // Two jobs, both done at preload time so every `*.test.ts` in the suite can `import` a `.svelte`
 // component and mount it:
@@ -12,10 +12,10 @@
 //      `svelte/compiler`. Rune modules are TypeScript here, so bun's transpiler strips the types
 //      before `compileModule` runs.
 //   3. Resolve SvelteKit's `$app/*` and `$env/*` virtual modules to real stub files under
-//      `test-setup/kit/` (issue #822), so a ROUTE component — not just a leaf — can be imported.
+//      `test-setup/kit/`, so a ROUTE component — not just a leaf — can be imported.
 //      SvelteKit synthesises those specifiers at build time and they resolve to nothing under
 //      `bun test`, which is what previously made every route component unmountable.
-//   4. Make the harness's unimplemented geometry APIs FAIL LOUDLY (issue #822, XR-VER-03). happy-dom
+//   4. Make the harness's unimplemented geometry APIs FAIL LOUDLY (XR-VER-03). happy-dom
 //      has NO LAYOUT ENGINE and returns an all-zero `DOMRect`, so the natural guard shape
 //      `if (h > 0) expect(h).toBeGreaterThanOrEqual(44)` is silently vacuous. A geometry API that
 //      cannot measure is made absent-with-a-message rather than wrong-with-a-zero.
@@ -57,7 +57,7 @@ if (typeof g.document === 'undefined') {
 	}
 }
 
-// ── 1b. Unimplemented geometry FAILS LOUDLY (#822, XR-VER-03) ─────────────────────────────────
+// ── 1b. Unimplemented geometry FAILS LOUDLY (XR-VER-03) ─────────────────────────────────
 // happy-dom 20.x has NO LAYOUT ENGINE, so every geometry read is a fabricated zero:
 //   Element.js:795   getBoundingClientRect() { /* TODO: Not full implementation */ return new DOMRect(); }
 //   Element.js:808   getClientRects()  — pushes that same all-zero rect into a list
@@ -111,7 +111,7 @@ for (const proto of rungPrototypes) {
 	}
 }
 
-// ── 3. SvelteKit virtual modules (#822) ───────────────────────────────────────────────────────
+// ── 3. SvelteKit virtual modules ───────────────────────────────────────────────────────
 // The one place a `$app/*` or `$env/*` specifier is mapped. SvelteKit synthesises these at build
 // time, so under `bun test` they resolve to nothing and a ROUTE component fails to load before any
 // effect runs — which is why only leaf components with zero `$app` imports could mount.
@@ -164,7 +164,7 @@ plugin({
 
 // ── 3b. The bare `svelte` specifier, for DEPENDENCIES ────────────────────────────────────────
 //
-// #913 S3. Bits UI — which shadcn's Checkbox, Switch and Slider are built on — ships `.svelte` source
+// S3. Bits UI — which shadcn's Checkbox, Switch and Slider are built on — ships `.svelte` source
 // that imports `getContext`/`setContext` from the bare `svelte` specifier. Under `bun test` that
 // resolves to Svelte's SERVER build (the `default` export condition), whose context stack is not the
 // one a client `mount()` populates. The result is `lifecycle_outside_component: getContext(...) can
@@ -205,7 +205,7 @@ plugin({
 
 // ── 3c. `runed`, for svelte-sonner ────────────────────────────────────────────────────────────
 //
-// #913 S5. svelte-sonner's `dist/internal/ctx.js` imports the bare specifier `runed`. bun installs it
+// S5. svelte-sonner's `dist/internal/ctx.js` imports the bare specifier `runed`. bun installs it
 // — it is a declared dependency of svelte-sonner, present in the store AND linked as a sibling — but
 // under `bun test` the resolution from inside bun's ISOLATED store fails anyway:
 //
@@ -213,7 +213,7 @@ plugin({
 //
 // Declaring it in apps/core AND at the workspace root, and a forced reinstall, all left it failing, so
 // this is the test runtime's module resolution rather than the manifest. The consequence is not
-// cosmetic: the home route imports the Toaster, so WITHOUT this the #822 mount rung cannot load
+// cosmetic: the home route imports the Toaster, so WITHOUT this the mount rung cannot load
 // `routes/+page.svelte` at all.
 //
 // Same mechanism and same reason as the `svelte` alias above — a DEPENDENCY's bare import does go
@@ -263,7 +263,7 @@ if (!RUNED_ENTRY) {
 		"test-setup: could not resolve `runed` from svelte-sonner's own dependency directory.\n" +
 			'svelte-sonner imports the bare specifier `runed`, and bun cannot resolve it out of its isolated\n' +
 			'store at test time, so this preload aliases it. Without the alias no Bits UI component mounts and\n' +
-			'the #822 mount rung cannot load routes/+page.svelte at all.\n' +
+			'the mount rung cannot load routes/+page.svelte at all.\n' +
 			'Run `bun install --frozen-lockfile` from the repo root. If you installed with --linker=hoisted,\n' +
 			'the sibling link this reads does not exist and the resolution needs revisiting.'
 	);

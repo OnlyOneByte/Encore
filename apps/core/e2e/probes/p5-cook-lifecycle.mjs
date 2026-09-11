@@ -21,8 +21,8 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #559, following the
- * #557/#558 pattern). This probe drives raw sockets + HTTP rather than a cdp Page, so its own shapes
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
+ * pattern the other out-of-program drivers use). This probe drives raw sockets + HTTP rather than a cdp Page, so its own shapes
  * are declared here. Every WS frame and JSON endpoint result is protocol-/API-shaped and stays loose
  * (cast at the call site) — the strong typing is on the probe's own control flow.
  *

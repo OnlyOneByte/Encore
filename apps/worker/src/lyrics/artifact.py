@@ -45,7 +45,7 @@ def candidate_key(
     without it the second write of a pair would silently destroy the first — and destroy exactly the
     independence that makes averaging baselines worth doing.
 
-    Moved here from lyrics/chain.py (#456): the artifact key belongs beside the artifact shape this
+    Moved here from lyrics/chain.py: the artifact key belongs beside the artifact shape this
     module owns, not in the acquisition/grading module. It was the second artifact-key builder — the
     first, a dead single-file `lyrics_key`, was removed in the same change.
     """
@@ -105,7 +105,7 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
         if not words and (l_start is None or l_end is None):
             continue
         line: dict[str, Any] = {"start": l_start, "end": l_end, "text": line_text, "words": words}
-        # A romanization is a per-line SECOND SCRIPT the source shipped (issue #431). This pass-through
+        # A romanization is a per-line SECOND SCRIPT the source shipped. This pass-through
         # copies it onto a line ONLY when the input segment already carries it, and it is defensive
         # depth today, NOT a live carrier: the one site that writes ``romanization`` INTO A SEGMENT is
         # ``entries_to_segments`` (``source.py``: ``seg["romanization"] = e.romanization``), fed the
@@ -113,7 +113,7 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
         # path — ``fold_romanization_entries`` itself only sets ``romanization`` on an ``LrcEntry``, never
         # on a segment dict. No producer hands those segments to ``normalize_lyrics``. The two paths that
         # DO surface the second script
-        # each carry it OUTSIDE this function (issue #685):
+        # each carry it OUTSIDE this function:
         #   - the aligned path (the default ``forced`` sync mode) — the aligner rebuilds every segment
         #     and drops the field, so ``_time_one`` re-attaches it by source-line position via
         #     ``_attach_romanizations`` in ``steps/lyrics.py`` AFTER ``normalize_lyrics`` has run;
@@ -123,7 +123,7 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
         # source rebuilds segments with only ``start``/``end``/``text``/``words`` (pinned by
         # ``test_asr_source_segment_keys_are_exactly_start_end_text_words`` — a fifth ``romanization`` key
         # would make this branch live) and this pass-through's copy is itself pinned by
-        # ``test_normalize_lyrics_copies_a_segment_romanization_through`` (issue #716). Never fabricated:
+        # ``test_normalize_lyrics_copies_a_segment_romanization_through``. Never fabricated:
         # absent key → single-script line, unchanged behaviour.
         romanization = seg.get("romanization")
         if isinstance(romanization, str) and romanization.strip():
@@ -149,7 +149,7 @@ def lrclib_to_segments(res: Any, total_duration: float | None) -> list[dict[str,
         return []
     if getattr(res, "has_synced", False):
         # Fold any interleaved second script (pinyin under the characters) into each line before
-        # segmenting, so a Chinese record carries BOTH scripts through to the doc (issue #431).
+        # segmenting, so a Chinese record carries BOTH scripts through to the doc.
         return entries_to_segments(fold_romanization_entries(parse_lrc(res.synced_lyrics)), total_duration)
     if getattr(res, "has_plain", False):
         return plain_lyrics_to_segments(res.plain_lyrics, total_duration)

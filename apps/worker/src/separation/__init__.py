@@ -7,7 +7,7 @@ One engine per module, each behind the same processor seam:
     roughly 50x slower on CPU (measured: ~45 min vs ~50 s for a 2:51 song), so it is a GPU-box choice.
 
 WHAT BELONGS HERE. Producing stems, and the audio policy around them: which container each stem is
-stored in (BOTH stems lossless FLAC since #480 — the instrumental plays aloud and a second lossy
+stored in (BOTH stems lossless FLAC — the instrumental plays aloud and a second lossy
 generation smears a crash cymbal, and the vocals stem is the GUIDING TRACK, a second audio element the TV
 mixes UNDER the instrumental at up to full gain and pitch-shifts with the key, so it too plays aloud. The
 retired rationale for the vocals being lossy AAC was that a guide mixed under a master tolerates

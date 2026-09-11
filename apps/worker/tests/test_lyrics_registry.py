@@ -150,7 +150,7 @@ def test_a_lone_unspecified_top_level_text_is_never_published_by_select_by_basel
     single unspecified text yields nothing to publish, rather than being published as the winner. On
     base (default CANDIDATE) it would have been the sole candidate and published.
 
-    Scope note (#873): this covers the top-level list only. The alternates arrangement — where an
+    Scope note: this covers the top-level list only. The alternates arrangement — where an
     unspecified ALTERNATE of a candidate wins and publishes — is a different reachable path, guarded by
     `test_a_winning_alternate_carries_the_role_the_registry_stamped` below. The old name
     (`..._an_unspecified_text_is_never_published...`) claimed the universal property this test does not
@@ -261,7 +261,7 @@ def test_a_winning_alternate_carries_the_role_the_registry_stamped():
     # NOT-VACUOUS SENTINEL: the ALTERNATE won, not the parent.
     assert sel.publish[0].variant == "Lady Gaga — Telephone (210s, #2)"
     assert sel.publish[0].text_source == SOURCE_LRCLIB
-    # THE PROPERTY (#873): the winning alternate carries the tier the registry stamped, not the
+    # THE PROPERTY: the winning alternate carries the tier the registry stamped, not the
     # fail-closed ROLE_UNSPECIFIED default. RED on base.
     assert sel.publish[0].role == ROLE_CANDIDATE
     assert sel.publish[0].role != ROLE_UNSPECIFIED

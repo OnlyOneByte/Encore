@@ -233,10 +233,10 @@ rather than a threshold, so adjacent wheel stops cannot get wildly different sta
 Raising either tier's lightness regresses the lyrics. Tests assert the bound (white clears 4.5:1, the
 active pink clears 3:1, on all 24 wheel stops) rather than any literal hex.
 
-**The stage tier no longer bounds the room's own colour** (#425). The room used to store a hue angle
+**The stage tier no longer bounds the room's own colour**. The room used to store a hue angle
 and every stage went through `stageHueToHex`, which made the tier an inescapable legibility bound. The
 owner retired that bound and moved the job it was doing onto the thing it protected: the lyric reel
-paints its own `-webkit-text-stroke` outline (#750), which holds on any field *and* over a music video,
+paints its own `-webkit-text-stroke` outline, which holds on any field *and* over a music video,
 which a bound on the stage colour could never reach. So `RoomSettings.tvBackgroundColor` is a real hex
 rendered verbatim — a room may pick white — while the tier still governs every colour nobody chose by
 hand, because an unasked-for bright field has no explanation. `hueOfColor` recovers an angle from the

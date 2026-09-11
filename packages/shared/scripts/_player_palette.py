@@ -54,7 +54,7 @@ L_WINDOW = (0.56, 0.88)     # CHROMATIC clamp: keeps the dot legible and ink ach
 
 AA = 4.5                    # WCAG 1.4.3, body text
 NON_TEXT = 3.0              # WCAG 1.4.11, a dot carries no text
-# Headroom the accent-as-ink role is lifted PAST its floor (#820). It used to stop the moment it
+# Headroom the accent-as-ink role is lifted PAST its floor. It used to stop the moment it
 # touched AA exactly, so `min_ink_card` shipped at 4.500 with ~0.00 to spare and the surface
 # correction below crossed it for six stops. One constant, read by both the lift loop and the gate,
 # so the two can never disagree about what "clears" means. 0.05 is measured, not guessed: it moves
@@ -65,7 +65,7 @@ INK_MARGIN = 0.05
 def css_token(name):
     """Read a `--name: #rrggbb;` declaration out of `app.css`.
 
-    The surfaces are NOT restated here (#820). The generator used to carry its own
+    The surfaces are NOT restated here. The generator used to carry its own
     `#060a18 / #131a2e / #1a2238` — the mockup's surfaces, not the app's — so all 192 measured
     figures described a card the app never paints, and six stops shipped below AA as ink. Reading the
     token means changing `--card` in `app.css` changes what a regeneration produces, which is
@@ -287,7 +287,7 @@ def build(mode):
 
         # The accent used AS INK on a card. Raise L until it clears AA WITH MARGIN; the fill itself
         # is only guaranteed for the non-text dot role. Stopping at bare AA is what shipped six stops
-        # at 4.500 against the mockup card and below 4.5 against the real one (#820).
+        # at 4.500 against the mockup card and below 4.5 against the real one.
         aL, aink = L, fill
         while contrast(aink, CARD) < AA + INK_MARGIN and aL < 0.97:
             aL += 0.005

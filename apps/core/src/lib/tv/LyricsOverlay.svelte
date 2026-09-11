@@ -69,7 +69,7 @@
 		linesAfter?: number;
 		/**
 		 * The CURRENT SINGER's identity colour (`singers.color`), so the highlight that tracks the words
-		 * is painted in the colour of whoever is singing rather than the room-wide accent (#634). Absent
+		 * is painted in the colour of whoever is singing rather than the room-wide accent. Absent
 		 * or null — nobody is up, the roster has not arrived, the gallery — keeps the accent.
 		 *
 		 * Passed as the stored value, NOT pre-validated by the caller: `lyricHighlightColor` is the
@@ -105,7 +105,7 @@
 	// loop below advances for a smooth sweep. Crucially neither is the drawn position — the position is
 	// DERIVED from them by `drawPosition`, which ignores the clock entirely while paused. So a
 	// backgrounded tab (throttled/stopped rAF) has no accumulated position to lose: see lyrics-position.ts
-	// (issue #54). `anchoredAt` is a plain local re-set on each authoritative tick; `now` is $state so
+	//. `anchoredAt` is a plain local re-set on each authoritative tick; `now` is $state so
 	// the derived position tracks it while playing.
 	let anchoredAt = 0;
 	let now = $state(0);
@@ -261,7 +261,7 @@
 	const fontStack = $derived(getLyricsFont(font)?.stack ?? 'inherit');
 	const caseTransform = $derived(getLyricsCase(textCase)?.transform ?? 'none');
 	/*
-	 * WHOSE colour the highlight paints (#634). `null` means "no singer colour applies" — nobody is up,
+	 * WHOSE colour the highlight paints. `null` means "no singer colour applies" — nobody is up,
 	 * the roster has not arrived, or the stored value is not a legible identity colour — and the reel
 	 * keeps `--accent2`, which is what `--reel-singer`'s declaration in the stylesheet already is.
 	 *
@@ -271,7 +271,7 @@
 	 */
 	const singerHighlight = $derived(lyricHighlightColor(singerColor));
 	/*
-	 * WHICH PART colour the current line paints (#692). The worker's diarization (#691) writes an
+	 * WHICH PART colour the current line paints. The worker's diarization writes an
 	 * abstract `part` letter ("A", "B") on each line of a CONFIDENT duet, and NOTHING on a solo or a
 	 * song it could not split. `duetPartColors` maps those letters onto distinct, legible
 	 * `SINGER_COLORS` — the same identity-dot palette #634's singer colour draws from, gated by the
@@ -335,7 +335,7 @@
 						{/if}
 						{#if l.romanization}
 							<!--
-								SECOND SCRIPT (issue #431): a Chinese record ships the pinyin alongside the
+								SECOND SCRIPT: a Chinese record ships the pinyin alongside the
 								characters, so someone who cannot read Hanzi can still sing along. Shown ONLY when
 								the source provided it; a single-script line renders exactly as before. Display-only
 								and dimmer than the original — the characters are the words, this is the aid.
@@ -423,7 +423,7 @@
 		--reel-ahead: rgba(255, 255, 255, 0.66);
 		--reel-done: #fff;
 		/*
-		 * WHOSE colour the highlight is (#634). The DEFAULT is the room accent, and this declaration is
+		 * WHOSE colour the highlight is. The DEFAULT is the room accent, and this declaration is
 		 * the single place that fallback is named: the component appends `--reel-singer` to its inline
 		 * style ONLY when the current singer has a legible identity colour, so an absent roster, an
 		 * empty stage, the dev gallery and an illegible stored value all land here and render exactly
@@ -433,14 +433,14 @@
 		 * keeps the `word` and `line` treatments agreeing about whose colour is showing — the reason
 		 * this is one variable and not two overrides.
 		 *
-		 * Legibility is NOT re-derived here and that is the owner's ruling on #634, not an omission:
+		 * Legibility is NOT re-derived here and that is the owner's ruling, not an omission:
 		 * the hue is kept and the reel's own `-webkit-text-stroke` above carries the words over any
 		 * field, stage colour or video frame alike. The floor a colour must clear to be an identity
 		 * colour at all is enforced upstream by `lyricHighlightColor`.
 		 */
 		--reel-singer: var(--accent2);
 		/*
-		 * WHICH PART's colour the current line paints (#692). Layered ON TOP of `--reel-singer`: the
+		 * WHICH PART's colour the current line paints. Layered ON TOP of `--reel-singer`: the
 		 * component appends `--reel-part` to its inline style ONLY when the current line carries a
 		 * `part` on a confident duet, so an undiarized song, a solo, and the dev gallery all fall
 		 * through to `--reel-singer` (itself `--accent2` unless a singer colour is up) and render
@@ -472,12 +472,12 @@
 	 * comfortably readable rather than merely sensed.
 	 *
 	 * `--reel-now` is deliberately NOT overridden, and #634 did not change that. The active word answers
-	 * WHERE the singer is (and, since #634, WHO is singing), which is a different question from whether
+	 * WHERE the singer is (and,, WHO is singing), which is a different question from whether
 	 * the text is trustworthy — and the marker sitting directly above the word is `--accent2` regardless
 	 * of provenance, so recolouring the word white here left a pink dot over a white word and made the
 	 * two cues disagree. Amber carries the doubt; the active word carries the position. Leaving
 	 * `--reel-now` alone is also what keeps a singer's own colour on the words they are singing on an
-	 * auto-transcribed song, which is the whole point of #634 and would otherwise be the one case that
+	 * auto-transcribed song, which is the whole point and would otherwise be the one case that
 	 * silently lost it.
 	 *
 	 * `--reel-line` IS overridden, for the mirror-image reason: it colours the WHOLE current lyric, so
@@ -536,7 +536,7 @@
 		/*
 		 * Each ramp is one row deep, BUT capped so the two ramps can never eat the whole box: at an extreme
 		 * Text size on a short panel `fadeTop + fadeBot` could exceed the height, leaving no fully-opaque
-		 * plateau for the sung row anywhere (#671 F2). `min(row-h, (100% - row-h) / 2)` guarantees the
+		 * plateau for the sung row anywhere (F2). `min(row-h, (100% - row-h) / 2)` guarantees the
 		 * unmasked window `[fadeTop, height - fadeBot]` always holds at least one row. `100%` is this box`s
 		 * own (post-cap) height, so measureReel mirrors this exact cap in px against clientHeight.
 		 */
@@ -616,7 +616,7 @@
 		color: rgba(255, 255, 255, 0.2); /* already sung — present for continuity, not for reading */
 	}
 	/*
-	 * The romanization sub-row (issue #431): the pinyin under a Chinese line. Smaller and dimmer than
+	 * The romanization sub-row: the pinyin under a Chinese line. Smaller and dimmer than
 	 * the original script above it — the characters are the words being sung, this is a reading aid for
 	 * anyone who cannot read them. It inherits the row's color transition so it fades in step with its
 	 * line (upcoming / current / past) rather than sitting at one fixed brightness.

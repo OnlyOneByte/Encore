@@ -24,7 +24,7 @@ export interface CookAndQueueSteps<T> {
 	 * The singer ALREADY holds a queued turn for this media, so the queue step is SKIPPED and only the
 	 * cook runs.
 	 *
-	 * This is what makes the RETRY the app advertises honest (#741). A cook that dies terminally
+	 * This is what makes the RETRY the app advertises honest. A cook that dies terminally
 	 * settles the media back to un-cooked, so the row goes on offering Sing — and the group header
 	 * says "one didn't work — tap Sing to try again" in as many words. Taking that advice ran both
 	 * steps, so the singer ended up holding TWO queued turns of one song and the room played it twice
@@ -55,7 +55,7 @@ export interface CookAndQueueSteps<T> {
  * cook alone — a caller counting the results can tell a retry from a first tap.
  */
 export function cookAndQueue<T>(steps: CookAndQueueSteps<T>): T[] {
-	// The retry window (#741): a turn for this media is already queued, so adding another would break
+	// The retry window: a turn for this media is already queued, so adding another would break
 	// the app's own one-queued-turn-per-song rule. Cook only. The existing turn is what the cook's
 	// priority is derived from, so nothing is lost by not adding a second one.
 	if (steps.hasQueuedTurn) return [steps.cook()];

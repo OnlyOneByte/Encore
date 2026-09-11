@@ -71,7 +71,7 @@ export interface EncoreApp {
 	/** Room lifecycle: create a party (mint id + join code) and look one up by code. */
 	rooms: RoomRepository;
 	/**
-	 * The id of the party a join lands in when no room code is given — the single room #654 mints.
+	 * The id of the party a join lands in when no room code is given — the single room minted at boot.
 	 * The join path resolves an explicit code against {@link rooms}; this is the fallback identity
 	 * for a bare `/join`, and the room whose code the TV QR advertises.
 	 */
@@ -174,7 +174,7 @@ export function getApp(): EncoreApp {
 	const settings = new SettingsRepository(db);
 	const singers = new SingerRepository(db);
 	const rooms = new RoomRepository(db);
-	// Mint the party's identity on first boot (reuse it on every boot after). Until #654 nothing wrote
+	// Mint the party's identity on first boot (reuse it on every boot after). Until this minting landed nothing wrote
 	// the rooms table, so a fresh box had a real singers/queue/playback state but no room to name it;
 	// this gives the QR a code to advertise and the join path a room to land an unqualified join in.
 	const activeRoomId = rooms.ensureActive(Date.now()).id;
@@ -466,7 +466,7 @@ export function getApp(): EncoreApp {
 	];
 
 	// Detached: boot must not wait on it. Per-pass isolation lives in runBootMaintenance — one pass's
-	// failure is named and does not skip the rest (issue #446 defect 1).
+	// failure is named and does not skip the rest.
 	void runBootMaintenance(bootTasks, (msg) => console.warn(`[core] ${msg}`));
 
 	// The app object is built below; the hub's sinks (toWorker/broadcast) read THROUGH the app so
@@ -566,15 +566,15 @@ export function getApp(): EncoreApp {
 		// A reaper-killed cook (worker box died, attempts exhausted) reaches terminal `failed` without
 		// the worker reporting it, so it never hits #onFailed. The reaper has no catalog, so it hands
 		// the job up and we do here EXACTLY what the reported (#onFailed) and unservable-TTL paths do —
-		// otherwise a reaper-killed cook is completely silent (issue #303): the gate settles but the
+		// otherwise a reaper-killed cook is completely silent: the gate settles but the
 		// room is told nothing, so every phone that watched it cook stays pinned on "Making karaoke… N%"
 		// with no Sing button, for the life of the page (displayReadiness lets the last live event win,
 		// and no user action — not removing the song, not queue:sync — ever clears it).
 		// The reaper has no catalog and no #emitStatus, which is why this hook used to hand-reimplement
-		// the whole epilogue and drift from the two worker-hub copies (issue #303 shipped it SILENT).
-		// It now calls the one shared epilogue directly — settle the gate (#90), tell the room, log one
+		// the whole epilogue and drift from the two worker-hub copies (that reimplementation shipped it SILENT).
+		// It now calls the one shared epilogue directly — settle the gate, tell the room, log one
 		// uniform line, reclaim scratch — with `cause: 'reaper'` so the operator can still grep this
-		// path apart (issue #451).
+		// path apart.
 		onFailed: (job) =>
 			reportTerminalFailure(job, 'reaper', {
 				broadcast: (e) => app.publish(e),
@@ -650,7 +650,7 @@ export interface HubDepsPerFrame {
 	listAway: () => string[];
 	/** Idempotency ledger, RECORD-ON-CHECK — true if already applied, else records it. */
 	seenOp: (clientOpId: string) => boolean;
-	/** NON-RECORDING peek at the same ledger (#490 validation-failure re-ack path). */
+	/** NON-RECORDING peek at the same ledger (the validation-failure re-ack path). */
 	hasOp: (clientOpId: string) => boolean;
 }
 
@@ -658,7 +658,7 @@ export interface HubDepsPerFrame {
  * Assemble a complete {@link HubDeps} for one WS frame from the shared app plus the per-frame inputs.
  *
  * This is the SINGLE place the hub's optional hooks are wired to their live services, replacing the
- * hand-assembled bag that server.ts spelled out per frame (#460 §3). The app-derived hooks —
+ * hand-assembled bag that server.ts spelled out per frame. The app-derived hooks —
  * listSingers -> app.singers, getSettings -> app.settings, onNowPlaying -> app.plays, onSang ->
  * app.singers, recordAdd -> app.popularity, onEntryRemoved -> cancelJobsForMedia, onEntryAdded ->
  * reprioritizeCookForMedia — are filled HERE, so a new optional hook is wired in one place instead of
@@ -692,7 +692,7 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 			}),
 		// The add-side mirror: a cook filed at NO_QUEUE_PRIORITY (make-karaoke POST beat the queue add over
 		// a reconnecting socket) is pulled to the turn's rotation position and dispatch kicked, so it stops
-		// sorting behind the lyrics backfill forever. No-ops with no cook in flight (#135 starvation half).
+		// sorting behind the lyrics backfill forever. No-ops with no cook in flight (the starvation half).
 		onEntryAdded: (mediaId: string, entries: QueueEntry[]) =>
 			reprioritizeCookForMedia(mediaId, {
 				jobs: app.jobs,

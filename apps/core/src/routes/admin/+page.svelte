@@ -1,11 +1,11 @@
 <!--
-  /admin — the server-level admin dashboard (issue #639). Its first action: HARD-DELETE a song from
+  /admin — the server-level admin dashboard. Its first action: HARD-DELETE a song from
   the library entirely, reclaiming its bytes. This is the first IRREVERSIBLE action in the product, so
   every delete goes through a two-step confirm (click Delete -> confirm the named song -> it is gone).
 
   Deliberately NOT on SongRow.svelte (a phone control any guest fat-fingers): a destructive, byte-
   reclaiming delete lives on its own admin surface, reached on purpose. No auth gate on the PAGE yet —
-  every guest is host today (owner ruling #2) — but the endpoint it calls is the seam a host gate slots
+  every guest is host today (an owner ruling) — but the endpoint it calls is the seam a host gate slots
   into later, and this page will sit behind the same gate then.
 -->
 <script lang="ts">
@@ -82,7 +82,7 @@
 <svelte:head><title>Admin · Encore</title></svelte:head>
 
 <!--
-	Wrapper + PageHeader, the shape /settings uses (#644/#749): the header spans the shell and the
+	Wrapper + PageHeader, the shape /settings uses: the header spans the shell and the
 	reading-width <main> carries the content. /admin has no inbound link anywhere in the app — it is
 	reached by typing the URL — so its back target is the remote at `/`, the top of navigation, not a
 	referring page. Without it this page was a dead end on a phone with no browser chrome.

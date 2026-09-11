@@ -1,6 +1,6 @@
 // guard: a cook PROGRESS BAR must scale by OVERALL cook completion, not the current step's own pct.
 //
-// THE DEFECT (#80, the second surface of #51). `overallCookPct(status, pct)` in @encore/shared
+// THE DEFECT (the second surface). `overallCookPct(status, pct)` in @encore/shared
 // maps the worker's per-step 0-100 into weighted per-stage bands over MEDIA_STAGES, so a bar reads how
 // far through the whole cook a song is — reaching 100% only at `ready` and never jumping backward when
 // the next step resets its own pct. That function was written and unit-proven for ProcessingCard, but
@@ -31,7 +31,7 @@ const COOK_BAR_COMPONENTS = ['SongRow.svelte', 'ProcessingCard.svelte'];
 // all fine — only the literal per-step `pct` divided by 100 in a transform is the bug.
 const RAW_PER_STEP_BAR = /scaleX\(\s*\{?\s*pct\s*\/\s*100\s*\}?\s*\)/;
 
-test('no cook-bar component scales its fill by the raw per-step pct (#80)', () => {
+test('no cook-bar component scales its fill by the raw per-step pct', () => {
 	const offenders: string[] = [];
 	for (const name of COOK_BAR_COMPONENTS) {
 		const src = readFileSync(join(COMPONENTS, name), 'utf8');
@@ -40,11 +40,11 @@ test('no cook-bar component scales its fill by the raw per-step pct (#80)', () =
 	expect(
 		offenders,
 		`these cook-bar components still render scaleX(pct / 100) — route the bar through ` +
-			`overallCookPct(status, pct) instead so it reads overall cook completion (#80): ${offenders.join(', ')}`
+			`overallCookPct(status, pct) instead so it reads overall cook completion: ${offenders.join(', ')}`
 	).toEqual([]);
 });
 
-test('SongRow derives its cook bar from overallCookPct (#80)', () => {
+test('SongRow derives its cook bar from overallCookPct', () => {
 	const src = readFileSync(join(COMPONENTS, 'SongRow.svelte'), 'utf8');
 	// It must import the shared helper …
 	expect(src).toContain('overallCookPct');
@@ -54,11 +54,11 @@ test('SongRow derives its cook bar from overallCookPct (#80)', () => {
 	 * S6: the bar is <Progress value={barPct}>, so the helper's output is handed over as a value
 	 * rather than baked into a scaleX at the call site. The claim is the same and still the point: the
 	 * BAR takes the unrounded float — Progress translates by it, so a smooth fill needs the precision —
-	 * and only the guest-facing readout rounds, or it prints "31.200000000000003%" (#80).
+	 * and only the guest-facing readout rounds, or it prints "31.200000000000003%".
 	 */
 	expect(src).toMatch(/<Progress\s+value=\{barPct\}/);
 	// … and ROUND barPct where it feeds the guest-facing readout. overallCookPct returns a
-	// band-interpolated float, so an unrounded readout prints "31.200000000000003%" (#80). The bar
+	// band-interpolated float, so an unrounded readout prints "31.200000000000003%". The bar
 	// scaleX stays unrounded (asserted above) for a smooth transition; only the label rounds. This
 	// pins the COMPONENT's own composition — a value test on the helpers would round itself and pass
 	// with this hunk reverted, so it must scan SongRow's source, matching ProcessingCard's convention.
@@ -67,11 +67,11 @@ test('SongRow derives its cook bar from overallCookPct (#80)', () => {
 
 // The CALLER side of the same wiring. SongRow only reads overall cook completion when its parent
 // passes the live `status`; a call site that passes `pct=` but drops `status=` silently falls back to
-// the raw per-step pct — the #80 bug, fully restored, with the callee still compliant. pr-bot showed
+// the raw per-step pct — the bug, fully restored, with the callee still compliant. pr-bot showed
 // the earlier guard passed 2/2 even after all four `status=` props were dropped from +page.svelte, so
 // the guard must cover the caller too. Scan every <SongRow …> element and require: if it passes pct=,
 // it passes status=. This is the repo's most-repeated defect shape (a caller that stops calling).
-test('every +page.svelte SongRow that passes pct also passes status (#80)', () => {
+test('every +page.svelte SongRow that passes pct also passes status', () => {
 	const src = readFileSync(at('apps/core/src/routes/+page.svelte'), 'utf8');
 	// Each <SongRow …> element, self-closing or not, across newlines.
 	const elements = src.match(/<SongRow\b[\s\S]*?\/?>/g) ?? [];

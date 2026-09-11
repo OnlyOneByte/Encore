@@ -97,14 +97,14 @@
 
 	/**
 	 * What the unconfirmed marker SAYS. An optimistic reorder used to borrow the add path's word and
-	 * announce "adding…" on a row that was already in the queue (XR-PH-10, issue #832). One expression,
+	 * announce "adding…" on a row that was already in the queue (XR-PH-10). One expression,
 	 * so the two states cannot drift into saying the same thing again.
 	 */
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
 </script>
 
 <!--
-	#913 S8: <Item.Root> supplies the row GRAMMAR — the `group/item` context its parts read — while this
+	<Item.Root> supplies the row GRAMMAR — the `group/item` context its parts read — while this
 	file keeps the row ELEMENT through Item's own `child` snippet. That is load-bearing: the root carries
 	five conditional state classes and the drag offset as a custom property, and a `class:` directive is
 	not valid on a component while a class handed to one is scoped to the caller and stripped there.
@@ -157,7 +157,7 @@
 				>
 			{/if}
 			<!--
-				THE GRIP (XR-PH-17, issue #836). It renders under `grip` ALONE, as a SIBLING of the button
+				THE GRIP (XR-PH-17). It renders under `grip` ALONE, as a SIBLING of the button
 				pair above — never as a wrapper around it and never in an `{:else}` against it. That shape
 				is the requirement, not a style choice: XR-PH-20 is a WCAG 2.5.7 conformance row, so the
 				single-pointer alternative must stay present and operable *while the mode is open*, and a
@@ -188,7 +188,7 @@
 
 <style>
 	/*
-	 * #913 S8: `.seq`, `.meta` and `.actions` moved to ui/item as Encore's shared ROW GRAMMAR — `.seq`
+	 * S8: `.seq`, `.meta` and `.actions` moved to ui/item as Encore's shared ROW GRAMMAR — `.seq`
 	 * and `.actions` were verbatim duplicates of ProcessingCard's. `.t` and `.who` STAY, because their
 	 * descendants do: the subtitle line holds a singer identity dot whose rule two contrast guards read
 	 * directly, and a descendant rule cannot follow its ancestor into a component with no `child` snippet.
@@ -196,12 +196,12 @@
 	/* Geometry comes from .list-row in app.css, shared with the search row and the cooking card.
 	   The entry animation is app.css's .pop-in helper (added to the root class list above), which
 	   is wrapped in @media (prefers-reduced-motion: no-preference) so it honours Reduce Motion.
-	   Do NOT re-declare a local @keyframes pop here: that copy was unguarded (issue #148). */
+	   Do NOT re-declare a local @keyframes pop here: that copy was unguarded. */
 	.mine {
 		border-color: var(--line-tint);
 		background: linear-gradient(var(--card), var(--card-tint));
 	}
-	/* Optimistic-add marker (#304), signalled on the SURFACE and not with opacity (#735). The dim this
+	/* Optimistic-add marker, signalled on the SURFACE and not with opacity. The dim this
 	   replaces was `opacity: 0.55` on this root, which flattened the whole subtree and composited it
 	   against --bg: `adding…` -- the entire explanation for why the row is greyed out and has lost its
 	   remove button -- rendered at 3.77:1 against a 4.5:1 floor, the byline at 2.68:1, and the singer
@@ -217,7 +217,7 @@
 		border-color: var(--warn-line);
 	}
 	/*
-	 * #913 S8: `.seq` STAYS here, inside <Item.Media>. It sets both a colour and a background, which is
+	 * S8: `.seq` STAYS here, inside <Item.Media>. It sets both a colour and a background, which is
 	 * exactly the shape contrast.test.ts's exclusion list names by name ("the .seq bubble") when
 	 * reasoning about what surface this row's subtree paints on. Moving it into ui/item changed that
 	 * model and the dimming guard fired. ui/item carries the BOX (`flex: 0 0 auto`); the colours stay
@@ -261,7 +261,7 @@
 	}
 	/* flex: 0 0 auto so the identity dot never shrinks: .who is a nowrap/overflow flex container,
 	   and an empty element's automatic minimum size is 0, so under a long name the dot collapsed to 0px
-	   and the singer's colour vanished from their own row (issue #89). Same protection .seq/.actions carry. */
+	   and the singer's colour vanished from their own row. Same protection .seq/.actions carry. */
 	.who i {
 		flex: 0 0 auto;
 		width: 10px;
@@ -282,7 +282,7 @@
 		color: var(--warn);
 	}
 	/* Sizing, radius, surface and glyph size come from <Button variant="icon"> in components/ui/button.
-	   `.icon-btn` in app.css was deleted in #913 S1b when its ten consumers became that variant; this
+	   `.icon-btn` in app.css was deleted when its ten consumers became that variant; this
 	   block and ProcessingCard's were byte-identical, each with its own copy of the same rationale. */
 	/*
 	 * XR-PH-18 — another guest's row while the reorder mode is open: not a legal drop target, so it is
@@ -307,7 +307,7 @@
 	 * The dragged row follows the finger. `--drag-y` is written by the page from the live pointer
 	 * offset and read HERE, so the movement is a CSS transform of a GPU-composited property — the
 	 * `--drag` idiom the reorder mode uses for every drag on this screen (the queue sheet's pull used
-	 * it too, before that surface was deleted in #903).
+	 * it too, before that surface was deleted).
 	 *
 	 * There is deliberately NO `transition` and no keyframe on this rule, which is what makes XR-PH-06
 	 * hold by construction rather than by a media query: nothing is interpolated over time, so there is
@@ -323,7 +323,7 @@
 		position: relative;
 		z-index: var(--z-row-lifted);
 		/*
-		 * `var(--accent)`, not the retired `--accent-strong` (#840, XR-COL-11): the fill IS the strong
+		 * `var(--accent)`, not the retired `--accent-strong` (XR-COL-11): the fill IS the strong
 		 * value now that the accent is registry stop 41, and this is a BORDER — non-text, so the 3:1
 		 * floor applies and stop 41 clears it on both dark surfaces.
 		 */

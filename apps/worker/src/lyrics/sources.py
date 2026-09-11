@@ -1,6 +1,6 @@
 """Lyrics SOURCES: the four places a song's text can come from.
 
-Extracted from lyrics/chain.py (#456). chain.py was the union of five concerns; this is the
+Extracted from lyrics/chain.py. chain.py was the union of five concerns; this is the
 ``sources/*`` seam of the declared split (see lyrics/__init__.py). Each source is a small,
 independently testable adapter that yields a ``LyricsText`` plus its provenance; the roles, the
 request/text model and the grading all stay in chain.py for now.

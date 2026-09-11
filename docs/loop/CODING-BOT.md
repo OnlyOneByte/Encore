@@ -113,7 +113,7 @@ block, and the report says so rather than pretending you have per-site proof.
   rounded. Assert against a hard-coded or independently-computed expectation — always for rounding,
   formatting, and numeric transforms.
 - **Trace that the fixed code is reached on the path the issue describes.** A correct clause on a
-  branch that is dead in the reported window fixes nothing (#190). Name the call chain from the
+  branch that is dead in the reported window fixes nothing. Name the call chain from the
   user action to your hunk.
 - **Name the failing assertion per hunk in the PR body**, not one blanket "tests added".
 
@@ -143,7 +143,7 @@ bun run gate:measured                   # expect exit 0 — the layout rung, AFT
 **The full suite is cheap here** — a few seconds for the core suite, a few more for the worker's.
 Run all five every pass; do not narrow them.
 
-`bun run gate:measured` is the fifth gate (issue #823, owner ruling Q1 = A). It boots its own
+`bun run gate:measured` is the fifth gate (owner ruling Q1 = A). It boots its own
 ephemeral server and its own headless Chromium and measures the four design claims no source scan can
 decide. Two things to know before you meet it red:
 
@@ -193,7 +193,7 @@ you did not open is not evidence.
 
 Then `PR: <full URL>` and add `review:pending` to the PR. That label is **board state, not a trigger**:
 the review lane polls every open PR and buckets on "no verdict at the current head", so your PR is
-reviewed whether or not the label is set (measured on #781). Set it anyway — it is what tells the board,
+reviewed whether or not the label is set. Set it anyway — it is what tells the board,
 and the conductor, that this PR is waiting on review. See
 [`LABELS.md`](LABELS.md#labels-still-doing-trigger-duty).
 

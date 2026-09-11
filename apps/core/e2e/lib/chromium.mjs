@@ -2,7 +2,7 @@
  * CANONICAL Chromium discovery for every e2e driver.
  *
  * `findChromium()` was copy-pasted into 15 drivers under apps/core/e2e and drifted three ways
- * (issue #617, follow-up to #455): only two copies validated PW_CHROMIUM, one hardcoded a personal
+ *: only two copies validated PW_CHROMIUM, one hardcoded a personal
  * home path, and the 4-line variants dropped the /usr/bin fallback. This is the single source of
  * truth so that drift is inexpressible — a source-scan guard in bun test (see lib/chromium.test.ts)
  * asserts no other .mjs under e2e/ redefines it.

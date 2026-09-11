@@ -706,7 +706,7 @@ test('the colour picker has exactly one name per shared preset colour', () => {
 });
 
 test('the colour picker wires its swatch tabindex to presetTabStopIndex', () => {
-	// THE BUG THIS BOUNDS (#88, pr-bot BLOCKED verdict on the first cut). The tab-stop DECISION was
+	// THE BUG THIS BOUNDS (pr-bot BLOCKED verdict on the first cut). The tab-stop DECISION was
 	// extracted to the pure, unit-tested presetTabStopIndex in @encore/shared so a guard could exercise
 	// production logic instead of a reconstructed predicate -- but that closed only the *reconstruction*
 	// hazard. It left the *reversion* hazard open: the one line that actually READS the function is a
@@ -954,7 +954,7 @@ test('the phone header truncates a long display name instead of growing the row'
 });
 
 test('every identity-dot rule declares a non-shrinking flex basis', () => {
-	// THE BUG THIS EXISTS FOR (issue #89). The singer identity dot (`.who i`) lives inside `.who`, a
+	// THE BUG THIS EXISTS FOR. The singer identity dot (`.who i`) lives inside `.who`, a
 	// flex container that QueueRow deliberately makes overflowable (nowrap + overflow:hidden so a long
 	// name plus an away/adding badge can't wrap and change the row's height). A dot is an empty element,
 	// whose automatic minimum size is 0, so as a shrinkable flex item it collapsed to 0px under a

@@ -1,4 +1,4 @@
-// Reactive props for the #698 matrix. A `.svelte.js` rune module because runes ($state) are illegal
+// Reactive props for the matrix. A `.svelte.js` rune module because runes ($state) are illegal
 // in a plain `.test.ts`; the matrix mutates the returned object and the mounted TvPlayer's effects
 // re-run on the change, which is the whole point of the decision-B test (drive the real effects, not
 // a source scan). Compiled by the test-setup Svelte loader.

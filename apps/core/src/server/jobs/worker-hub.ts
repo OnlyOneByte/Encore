@@ -160,7 +160,7 @@ export class WorkerHub {
 	constructor(deps: WorkerHubDeps) {
 		this.#d = deps;
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
-		// Slot accounting rides the job machine (#524 step 3). The hub owns the registry, so it wires
+		// Slot accounting rides the job machine. The hub owns the registry, so it wires
 		// the repository's slot-release action here: a job leaving a worker's hands via a worker-reported
 		// event (REJECT/COMPLETE/FAIL) frees that worker's concurrency slot from ONE place inside
 		// `transition`, retiring the three hand-paired registry.releaseSlot() calls the handlers used to
@@ -230,7 +230,7 @@ export class WorkerHub {
 			// refreshes this lease (leases.ts progressLeaseMs), so a worker honouring the advertised
 			// interval must have room for a dropped/late tick: at the full lease one missed tick breaches
 			// the deadline and the reaper requeues a healthy cook as `progress-lease-expired`. This is the
-			// same margin PR #300 pins on the worker side (LEASE_KEEPALIVE_SEC < progressLeaseMs / 2).
+			// same margin the worker side pins (LEASE_KEEPALIVE_SEC < progressLeaseMs / 2).
 			heartbeatIntervalSec: Math.floor(this.#config.progressLeaseMs / 1000 / 2),
 			ackTimeoutSec: Math.floor(this.#config.ackTimeoutMs / 1000),
 			mediaStore: this.#d.mediaStore ?? { kind: 'local' }
@@ -254,7 +254,7 @@ export class WorkerHub {
 	#onReject(msg: Extract<WorkerMessage, { type: 'job:reject' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'assigned' || job.workerId !== msg.workerId) return;
-		// requeue via REJECT frees the worker's slot through the machine's slot-release hook (#524);
+		// requeue via REJECT frees the worker's slot through the machine's slot-release hook;
 		// it reads the owner off the pre-write row, so the release still fires though the patch clears workerId.
 		this.#d.jobs.requeue(msg.jobId, job.attempts, this.#d.now(), 'REJECT'); // worker declined; no attempt burned (never ran)
 		this.dispatch();
@@ -328,7 +328,7 @@ export class WorkerHub {
 				// mocked its own shape.
 				setMediaSongProfile(job.mediaId, msg.artifacts?.songProfile, this.#d.mediaById);
 				// The same separation ALSO measured how far the vocals stem sits from the instrumental — the
-				// guide-alignment offset (#766), reported as a top-level sibling of `stems`/`songProfile`
+				// guide-alignment offset, reported as a top-level sibling of `stems`/`songProfile`
 				// exactly like the profile is. Value-or-nothing, unlike the profile: the worker only sends a
 				// number when it measured one confidently, and setMediaGuideOffset drops a non-number, so an
 				// absent field leaves the offset unset (→ the client holds the guide as today) and a refused
@@ -351,7 +351,7 @@ export class WorkerHub {
 		// Persist the cooked media NOW (stems key + lyrics) so a restart finds the separated
 		// song in the library instead of re-cooking it.
 		this.#d.persistMedia?.(job.mediaId);
-		// The worker's slot is freed by the machine's slot-release hook off the COMPLETE event (#524).
+		// The worker's slot is freed by the machine's slot-release hook off the COMPLETE event.
 		// Job scratch is transient by contract — the intermediate WAVs in work/<jobId> are large
 		// (a decoded source plus both separated stems) and nothing reads them after this point. Leaving
 		// them is how 432MB accumulated under the old layout.
@@ -395,7 +395,7 @@ export class WorkerHub {
 			// immediate redispatch needs it back. The machine's slot-release hook deliberately does NOT
 			// fire for FAIL (or for this requeue's LEASE_EXPIRED): the reaper's dead-worker fail/requeue
 			// share those events and must not double-free a slot the registry reclaims on the next
-			// heartbeat (issue #555). This RETRYABLE requeue rides `LEASE_EXPIRED`; the release stays at
+			// heartbeat. This RETRYABLE requeue rides `LEASE_EXPIRED`; the release stays at
 			// the call site.
 			this.#d.registry.releaseSlot(msg.workerId);
 			this.#d.jobs.requeue(msg.jobId, attempts, this.#d.now());
@@ -403,7 +403,7 @@ export class WorkerHub {
 		} else {
 			// Terminal worker-reported failure: free the slot explicitly, for the same reason as the
 			// retryable branch — FAIL is not exclusively worker-reported (the reaper and unservable-TTL
-			// paths also call fail()), so the machine no longer releases off the FAIL event (#555). The
+			// paths also call fail()), so the machine no longer releases off the FAIL event. The
 			// `workerId === msg.workerId` guard proves this failure IS the live owner's own report.
 			this.#d.registry.releaseSlot(msg.workerId);
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
@@ -412,8 +412,8 @@ export class WorkerHub {
 			// model that will not load — makes the song unsingable forever, with no way out but a manual
 			// DB edit. The terminal-failure epilogue (settle the right gate, tell the room, log one line,
 			// reclaim scratch) is the SAME on all three fail paths (this one, the unservable-TTL branch,
-			// and the reaper hook in app.ts), so it lives in ONE place — reportTerminalFailure (issue
-			// #451). settleGatesForFailedJob (#90) is step 1 of it; a fourth fail path cannot reopen the
+			// and the reaper hook in app.ts), so it lives in ONE place — reportTerminalFailure.
+			// settleGatesForFailedJob is step 1 of it; a fourth fail path cannot reopen the
 			// hole because there is no longer a fourth copy to drift.
 			reportTerminalFailure(updated, 'worker', {
 				broadcast: (e) => this.#d.broadcast(e),
@@ -462,8 +462,8 @@ export class WorkerHub {
 					this.#unservableSince.delete(job.id); // terminal now — prune so the id cannot leak
 					// Same terminal-failure epilogue as #onFailed and the reaper hook: settle the gate (else an
 					// unservable align/fetch/stems leaves its gate mid-flight forever so readyToSing never
-					// flips, #90), tell the room, log one uniform line (the capability rides in the job's
-					// `reason`), and reclaim scratch — which this branch used to OMIT (issue #451).
+					// flips), tell the room, log one uniform line (the capability rides in the job's
+					// `reason`), and reclaim scratch — which this branch used to OMIT.
 					reportTerminalFailure(updated, 'unservable', {
 						broadcast: (e) => this.#d.broadcast(e),
 						mediaById: this.#d.mediaById,
@@ -515,7 +515,7 @@ export class WorkerHub {
 				type: 'job:assign',
 				jobId: job.id,
 				// The cook this job belongs to, so the worker can tag its own logs and notes with the
-				// same trace id the operator sees on /metrics/<mediaId> (#472). jobId is the span id;
+				// same trace id the operator sees on /metrics/<mediaId>. jobId is the span id;
 				// cookId is the trace id across a chained fetch->stems->align run.
 				cookId: job.cookId,
 				mediaId: job.mediaId,

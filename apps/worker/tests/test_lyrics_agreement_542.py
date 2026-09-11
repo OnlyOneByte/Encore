@@ -245,7 +245,7 @@ _BRIDGE = (
 
 #: The song, as an authored lyrics candidate would carry it.
 SONG = " ".join([_VERSE_A, _CHORUS, _VERSE_B, _CHORUS])
-#: THE SAME SONG'S LONGER MASTER — the #542 report's shape: an extra section and extra chorus repeats.
+#: THE SAME SONG'S LONGER MASTER — the report's shape: an extra section and extra chorus repeats.
 SONG_LONG = " ".join([_VERSE_A, _CHORUS, _VERSE_B, _CHORUS, _BRIDGE, _CHORUS, _CHORUS])
 #: An unrelated song. Written function-word-heavy on purpose, because shared "the/and/i/it" is what
 #: pushes a different song's coverage UP, and the threshold has to survive the adversarial case.

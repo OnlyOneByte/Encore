@@ -1,4 +1,4 @@
-// unit: the one place a test says WHERE a file is, so no test has to say where it ITSELF is (#775).
+// unit: the one place a test says WHERE a file is, so no test has to say where it ITSELF is.
 //
 // THE PROBLEM THIS EXISTS TO DELETE. 130 test files reach their subject by counting `../` from their own
 // location — `join(import.meta.dir, '..', '..', 'routes', 'tv', '+page.svelte')` and 207 siblings like it,

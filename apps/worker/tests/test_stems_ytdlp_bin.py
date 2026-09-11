@@ -10,7 +10,7 @@ a stems job that needed to acquire would silently regress to a bare "yt-dlp" fro
 Three tests:
   * the real `stems_runner` path — the download argv reaches the configured binary;
   * the composition-root wiring seam — `_build_processor` threads `cfg.ytdlp_bin` into the stems runner
-    (driving the runner factory directly does NOT pin the cfg-reading call site, per #192);
+    (driving the runner factory directly does NOT pin the cfg-reading call site,);
   * the CLASS guard — for EVERY registered plan, every step carrying a `*_bin` attribute holds the
     configured value rather than the module default, so the next binary threaded into two-of-three plans
     is caught here rather than shipped.
@@ -86,7 +86,7 @@ async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_stems_plan(tmp_
     `cfg.ytdlp_bin` must reach the AcquireAudio step the stems plan runs, not stop at the capability
     probe. Before the fix `_build_processor` passed no yt-dlp argument to `stems_runner` (it had no such
     parameter), so a stems acquire ran a bare "yt-dlp" from PATH regardless of what the operator
-    configured. Driving `stems_runner` directly does NOT cover this cfg-reading call site (#192).
+    configured. Driving `stems_runner` directly does NOT cover this cfg-reading call site.
     """
     from src.config import WorkerConfig
     from src.dial_home import _build_processor
@@ -158,5 +158,5 @@ def test_every_plan_step_holds_the_configured_bin_not_the_default():
     assert bin_attrs_seen >= 4, f"expected several *_bin-bearing steps across plans, saw {bin_attrs_seen}"
     assert offenders == [], (
         "a plan withholds a configured binary from one of its steps, so it silently runs the PATH "
-        "default — the exact #313/#316 shape:\n  " + "\n  ".join(offenders)
+        "default — the exact shape:\n  " + "\n  ".join(offenders)
     )

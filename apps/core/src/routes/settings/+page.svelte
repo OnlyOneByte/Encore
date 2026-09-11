@@ -124,7 +124,7 @@
 	}
 
 	/*
-	 * #913 S4: `onTabKey` was deleted here. It implemented ArrowLeft/Right with wraparound, Home, End,
+	 * S4: `onTabKey` was deleted here. It implemented ArrowLeft/Right with wraparound, Home, End,
 	 * and moved focus to follow the selection — all of which Bits UI's tablist does, verified by a real
 	 * mount rather than assumed. `showTab` below is what remains Encore's: the URL sync.
 	 */
@@ -417,7 +417,7 @@
 	async function leaveRoom() {
 		leaving = true;
 		await fetch('/api/leave', { method: 'POST' });
-		// The cookie is gone, so `/` — the landing/join page (#834 Q2-A) — is the only honest destination,
+		// The cookie is gone, so `/` — the landing/join page (Q2-A) — is the only honest destination,
 		// and a reload here would 401 into the same place with a flash of an empty page on the way.
 		await goto('/');
 	}
@@ -683,7 +683,7 @@
 							<!--
 							A real colour input, not the hue slider this was until #425: the room names a colour
 							outright now rather than an angle rendered at a pinned lightness. oninput/onchange are
-							split for the same reason every slider here splits them (#134) — the native picker fires
+							split for the same reason every slider here splits them — the native picker fires
 							`input` continuously while you drag inside it, so the swatch has to track live, while only
 							the committed `change` writes and broadcasts room-wide.
 						-->
@@ -700,8 +700,8 @@
 								Dim · {Math.round(settings.room.tvBackgroundDim * 100)}%
 							</Field.Label>
 							<!--
-							Dims the stage colour toward black (#782, owner ruling Q2 = A) — a lightness control, not
-							a layer over the video. Split oninput/onchange like every other slider here (#134): the
+							Dims the stage colour toward black (owner ruling Q2 = A) — a lightness control, not
+							a layer over the video. Split oninput/onchange like every other slider here: the
 							readout above is the only display of the value, so it must track the thumb live, while
 							only the committed `change` writes and broadcasts. Stored 0..1, shown as a percent; the
 							range spans the full 0..100 the server clamp accepts.
@@ -1171,10 +1171,10 @@
 
 	/* ── the scope tabs ─────────────────────────────────────────────────── */
 	/*
-	 * #913 S4: `.seg`, `.tab` and `.tab.on` left this file. Their appearance is ui/tabs's now, keyed on
+	 * S4: `.seg`, `.tab` and `.tab.on` left this file. Their appearance is ui/tabs's now, keyed on
 	 * shadcn's `data-slot` — scoped CSS cannot reach an element a child component renders. Both guarded
 	 * facts moved with it verbatim: `min-height: var(--tap)` (XR-PH-01) and the certified
-	 * --accent/--on-accent pair at 5.09:1 (#840, XR-COL-12).
+	 * --accent/--on-accent pair at 5.09:1 (XR-COL-12).
 	 */
 
 	/* ── cards ──────────────────────────────────────────────────────────── */
@@ -1183,7 +1183,7 @@
 	 * application. The uppercase head matches the remote's `.grouphead` treatment.
 	 */
 	/*
-	 * #913 S4: `.card`, `.cardhead` and `.cardbody` left this file for ui/card. The visual change is
+	 * S4: `.card`, `.cardhead` and `.cardbody` left this file for ui/card. The visual change is
 	 * accepted deliberately — shadcn's card is a ring rather than a border, with its own spacing scale
 	 * and a normal-weight title where Encore's was small uppercase tracking. What it buys is the
 	 * Header/Title/Content structure this page was already hand-rolling eleven times.
@@ -1219,7 +1219,7 @@
 	}
 
 	/*
-	 * #913 S4: `.field`, `.field-swatch`, `.hint` and the `.dim` label state left this file for
+	 * S4: `.field`, `.field-swatch`, `.hint` and the `.dim` label state left this file for
 	 * ui/field. The vertical rhythm they carried moved with them, because the registry's label has no
 	 * margins and 27 stacked fields would otherwise collapse against each other.
 	 */
@@ -1227,20 +1227,20 @@
 	/* A trailing 1em swatch after flowing text can wrap onto its own line at 320px, reading as an orphan
 	   dot. A flex row keeps text and swatch together and lets them wrap as a unit if ever needed. */
 	/*
-	 * #913 S2: `select`, `.text` and `.name-input` left this rule — their appearance moved INTO
+	 * S2: `select`, `.text` and `.name-input` left this rule — their appearance moved INTO
 	 * ui/input and ui/native-select, because Svelte's scoped CSS cannot reach an element inside a child
 	 * component and a call-site utility is minted by nothing under `source(none)`. The range stays
 	 * native until its Slider rebuild, so it keeps the rule.
 	 */
 	/*
-	 * #913 S3: the range sliders are <Slider> now. Their geometry — a 28px thumb on a 6px --track-bg
+	 * S3: the range sliders are <Slider> now. Their geometry — a 28px thumb on a 6px --track-bg
 	 * rail at var(--tap) — moved into ui/slider, and with it the two parallel ::-webkit-slider-* and
 	 * ::-moz-range-* rule sets a native range needed. Bits UI builds the control from real elements, so
 	 * one set of rules replaces both. Width comes from the component too.
 	 */
 	/*
 	 * A live swatch beside the label, so the choice is visible without walking to the TV. It carries no
-	 * text, so it needs no contrast bar of its own — and since #425 there is no bar on the stage colour
+	 * text, so it needs no contrast bar of its own — and there is no bar on the stage colour
 	 * either: the bar that matters is the lyrics ON the stage, and the reel enforces it itself with a
 	 * stroked outline rather than the stage being restricted to spare it.
 	 */
@@ -1254,10 +1254,10 @@
 		vertical-align: -0.15em;
 	}
 	/*
-	 * The stage colour input. A native `type="color"` — the whole point of #425 is that any colour is
+	 * The stage colour input. A native `type="color"` — the whole point is that any colour is
 	 * now reachable, so a bespoke control would only narrow what the platform already offers (including
 	 * eyedroppers and OS palettes). Sized to the project's --tap (44px) minimum for the same reason the
-	 * ranges are (#133): the browser's default colour swatch is well under a thumb's worth of target.
+	 * ranges are: the browser's default colour swatch is well under a thumb's worth of target.
 	 */
 	input[type='color'].colour {
 		width: 100%;
@@ -1319,7 +1319,7 @@
 		font-size: 0.86rem;
 	}
 	/*
-	 * #913 S3: was `.check input { width: 18px; height: 18px }`. The glyph is now <Checkbox>, which
+	 * S3: was `.check input { width: 18px; height: 18px }`. The glyph is now <Checkbox>, which
 	 * carries its own `size-[18px]` — scoped CSS cannot reach inside a child component, so the size had
 	 * to move with it. The TAP TARGET is unchanged and still this label's `min-height: var(--tap)`,
 	 * which is what #863 settled and what touch-targets.test.ts examines.
@@ -1372,7 +1372,7 @@
 	}
 	/* Save IS accent, because it is the one thing on this page that does not happen without a tap. */
 	/*
-	 * PAGE LAYOUT ONLY (#913 S1). Width, min-height, padding, type and the disabled opacity moved
+	 * PAGE LAYOUT ONLY (S1). Width, min-height, padding, type and the disabled opacity moved
 	 * into <Button size="block">. What is left is where the button sits in this column, which is this
 	 * page's business and not the component's. It lives on a wrapper because Tailwind is scoped to
 	 * `@source ui/**` — a utility written here would be minted by nothing — and Svelte's scoped CSS

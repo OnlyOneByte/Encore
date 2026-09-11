@@ -114,7 +114,7 @@ export interface SongProfile {
 	 * `analysis/loudness.py`) off the same scratch WAV. The instrumental rather than the vocals on
 	 * purpose: the instrumental is the file that plays in the room, and the guide-vocal knob is a
 	 * fraction of it, so levelling the instrumental is also what makes a guide set to 15% mean the
-	 * same thing on the next song (#462).
+	 * same thing on the next song.
 	 *
 	 * A negative float; mastered music sits around -8 to -20 LUFS. `null` means "not normalizable",
 	 * and the only safe reading of that is to leave the song's level alone — never to substitute a

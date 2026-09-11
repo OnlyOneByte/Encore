@@ -37,8 +37,8 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #561, following the
- * #557/#558/#559/#560 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so they
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json, following the same
+ * pattern as the sibling probes. Browser/Page are derived from cdp.mjs's own return types so they
  * cannot drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped
  * results are cast at the call site.
  *
@@ -269,7 +269,7 @@ try {
 	await phone1.viewport(390, 844);
 	await withCookie(phone1, alice.cookie);
 	await phone1.goto(`${base}/`);
-	// Home is the queue since #832 — reach the search box through the browse push.
+	// Home is the queue under direction A — reach the search box through the browse push.
 	await openBrowseFromHome(phone1);
 
 	phone2 = await browser.newPage();
@@ -288,7 +288,7 @@ try {
 
 	// Bob queues song 2. Between his join and this add, the server has already autostarted playback of
 	// song 1 (reconcileOnReady), so Bob's add lands as UP-NEXT.
-	await openBrowseFromHome(phone2); // #832: search lives behind the browse push
+	await openBrowseFromHome(phone2); // search lives behind the browse push
 	await phone2.fill(SEL.search, 'believin');
 	await phone2.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const has2 = await phone2.count(SEL.addTurn);

@@ -26,7 +26,7 @@ export interface AuditAttempt {
 		syncMode: string | null;
 	};
 	stages: { stage: string; ms: number }[];
-	// WHY this lyric won, when the attempt recorded it (#669). Null on every non-align attempt.
+	// WHY this lyric won, when the attempt recorded it. Null on every non-align attempt.
 	selection: SelectionRecord | null;
 }
 

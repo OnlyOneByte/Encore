@@ -46,8 +46,8 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #562, following the
- * #557/#558/#559/#560/#561 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
+ * same pattern as the other e2e drivers). Browser/Page are derived from cdp.mjs's own return types so
  * they cannot drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped
  * results are cast at the call site.
  *
@@ -802,7 +802,7 @@ try {
 			// The second song is already ready-cooked (see ensureSecondReady above). The phone's search
 			// field still has 'caroline' from earlier, so first change it to a term that finds the second
 			// song. Then click .add on its row.
-			await openBrowseFromHome(phone); // #832: search lives behind the browse push
+			await openBrowseFromHome(phone); // search lives behind the browse push
 			await phone.fill(SEL.search, secondReady.title.split(' ')[0].toLowerCase());
 			await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 			await phone.evaluate(`

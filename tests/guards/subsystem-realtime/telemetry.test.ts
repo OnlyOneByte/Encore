@@ -144,7 +144,7 @@ test('reconcileOnReady: something already playing → only re-emits nowplaying (
 	expect(published.some((e) => e.type === 'nowplaying:changed')).toBe(true);
 });
 
-test('two ended frames do not double-advance: the stale ended for a no-longer-current entry is ignored (#70)', () => {
+test('two ended frames do not double-advance: the stale ended for a no-longer-current entry is ignored', () => {
 	// Queue Alice, Bob, Cara. Alice plays, ends. A SECOND `ended` (a duplicate send, a second TV,
 	// or a reconnecting TV replaying its last frame) must not consume Bob's turn too.
 	const { state, deps } = harness();
@@ -166,7 +166,7 @@ test('two ended frames do not double-advance: the stale ended for a no-longer-cu
 	expect(state.entries.find((e) => e.id === 'q3')).toBeDefined(); // Cara still queued, not skipped
 });
 
-test('a genuine ended whose id matches the current entry advances as before (#70)', () => {
+test('a genuine ended whose id matches the current entry advances as before', () => {
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
@@ -175,7 +175,7 @@ test('a genuine ended whose id matches the current entry advances as before (#70
 	expect(state.playback.currentEntryId).toBe('q2');
 });
 
-test('an ended with no entry id keeps legacy behaviour (backward compatible with an older TV) (#70)', () => {
+test('an ended with no entry id keeps legacy behaviour (backward compatible with an older TV)', () => {
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });

@@ -1,5 +1,5 @@
 {
-	// The tests tree's own resolution context (#775).
+	// The tests tree's own resolution context.
 	//
 	// WHY THIS FILE EXISTS. bun resolves path aliases from the NEAREST tsconfig walking up from the
 	// importing file. Tests currently living under `apps/core/src` inherit

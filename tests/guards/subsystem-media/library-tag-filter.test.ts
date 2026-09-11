@@ -271,7 +271,9 @@ test("readyTagged's docstring says BOTH sides narrow, and names the empty-case t
 	const doc = docAbove('readyTagged');
 	// The media half of the claim — absent on base, where the doc discussed only the tag rows.
 	expect(doc).toMatch(/BOTH sides narrow in SQL/);
-	expect(doc).toMatch(/#798/);
+	// The measured evidence the push-down rests on; it wraps mid-line, so match each half.
+	expect(doc).toMatch(/900 rows read at/);
+	expect(doc).toMatch(/versus 1 row at 0\.39 ms/);
 	// And the trap, spelled out because "guarding" the empty case is what reintroduces the defect.
 	expect(doc).toMatch(/inArray\(media\.id, \[\]\)/);
 	expect(doc).toMatch(/SKIPPING the `extra`/);

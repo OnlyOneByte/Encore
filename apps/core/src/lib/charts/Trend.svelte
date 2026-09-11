@@ -91,7 +91,7 @@
 		height: 96px;
 		/*
 		 * 31 days at a phone's width squeezed each column to ~9px — a real button too narrow to tap,
-		 * with five days under one fingertip (#144). Each column now claims a full 44px tap target
+		 * with five days under one fingertip. Each column now claims a full 44px tap target
 		 * (see .col), so the row overflows a narrow viewport on purpose; scroll it horizontally
 		 * rather than shrink the days below a tappable size. -webkit-overflow-scrolling keeps the
 		 * momentum flick a phone expects.
@@ -181,5 +181,5 @@
 		margin: 0.4rem 0 0;
 		font-variant-numeric: tabular-nums;
 	}
-	/* #913 S7: `.empty` is ui/empty's now. */
+	/* S7: `.empty` is ui/empty's now. */
 </style>

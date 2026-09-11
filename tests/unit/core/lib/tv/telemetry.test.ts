@@ -1,4 +1,4 @@
-// The TV telemetry FRAME — the client half of #70 and the per-frame stamp. This half had no assertion anywhere;
+// The TV telemetry FRAME — the client half and the per-frame stamp. This half had no assertion anywhere;
 // the server's `t.entryId !== undefined && …` guard is INERT on an id-less frame, so a TV that stops
 // stamping silently re-opens both bugs while the whole suite stays green. These run the real stamping
 // code and pin its output, so a refactor that drops the stamp reddens a test that EXECUTED it.
@@ -9,8 +9,8 @@ const entry = { id: 'q7' };
 
 test('telemetryFrame stamps the current entry on every frame: an `ended` frame carries current.id — the frame #70 drops when it is stale', () => {
 	const f = telemetryFrame('ended', entry, 100);
-	// The stamp is what makes the server's #70 drop reachable; without it the ended branch
-	// falls back to the pre-#70 unconditional advance.
+	// The stamp is what makes the server's drop reachable; without it the ended branch
+	// falls back to the pre-change unconditional advance.
 	expect(f.entryId).toBe('q7');
 	expect(f.status).toBe('ended');
 	expect(f.type).toBe('tv:telemetry');

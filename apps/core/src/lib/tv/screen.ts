@@ -68,7 +68,7 @@ export function tvScreen(input: TvScreenInput): TvScreen {
  *     the pause-from-the-phone case (Bug B): a paused song is still `current`, so the screen stays
  *     `playing`, and without this the reel scrolled with the audio frozen.
  *   • `elementAdvancing` is whether the MASTER ELEMENT is actually running — the honest signal the
- *     page reports up from the <audio>'s own play/pause (#393). The room can INTEND to play while the
+ *     page reports up from the <audio>'s own play/pause. The room can INTEND to play while the
  *     element is not: a TV wall's autoplay is refused (`NotAllowedError`, the room silent behind the
  *     "tap to start" hint), or the current entry's media is not playable / its src has not landed
  *     (`transportFor` returns `idle`), and the server still says `isPlaying: true`. In every one of
@@ -161,7 +161,7 @@ export function isUnreachableJoinOrigin(origin: string | null | undefined): bool
 }
 
 /**
- * The three guest-facing steps of the still-cooking takeover (issue #826, XR-TV-15).
+ * The three guest-facing steps of the still-cooking takeover (XR-TV-15).
  *
  * The media model has FIVE stages (`MEDIA_STAGES`) but the takeover shows THREE, so the collapse is a
  * real mapping — and if the TV hand-wrote it, the wall and the phone could describe the same song

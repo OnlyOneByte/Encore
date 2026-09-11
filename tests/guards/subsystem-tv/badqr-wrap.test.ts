@@ -1,4 +1,4 @@
-// The "Join QR unavailable" card, pinned so it stays prose and not a QR-shaped column (#62).
+// The "Join QR unavailable" card, pinned so it stays prose and not a QR-shaped column.
 //
 // THE BUG. This is the first-run failure message (role="alert"), read across a room by an operator who
 // is already confused, so its legibility carries more weight than a normal layout nit. It rendered as

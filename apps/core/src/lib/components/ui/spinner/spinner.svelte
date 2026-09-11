@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S7) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S7) ───────────────────────────────────────────────────────────────────
   Rewritten from the registry's `<Loader2Icon class="animate-spin" />` to Encore's own spinner, for
   two reasons that are both rules rather than taste:
 
@@ -37,7 +37,7 @@
 		border: 2px solid var(--line);
 		border-top-color: var(--accent2);
 	}
-	/* Motion is OPT-IN (#148). A static ring is a fine resting state while a search runs. */
+	/* Motion is OPT-IN. A static ring is a fine resting state while a search runs. */
 	@media (prefers-reduced-motion: no-preference) {
 		.encore-spinner {
 			animation: spin 0.8s linear infinite;

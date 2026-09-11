@@ -17,7 +17,7 @@ from typing import Protocol
 from . import protocol
 from .ffmpeg import ffmpeg_argv
 
-# Stored stem formats — BOTH stems are lossless FLAC (#480):
+# Stored stem formats — BOTH stems are lossless FLAC:
 #   instrumental -> FLAC (lossless). It comes out of the speakers at volume, and it is the one place
 #     a second lossy generation is audible: AAC smears high-frequency transients (a crash cymbal).
 #   vocals -> FLAC (lossless). It IS played aloud — the guiding track is a second <audio> the TV
@@ -51,7 +51,7 @@ class CompleteResult:
     # empty so a processor that reports nothing simply leaves the core's dispatched values standing.
     facts: dict = field(default_factory=dict)
     # WHY the published lyric won over the rejected candidates: per-candidate label + composite score
-    # + decided_by + baseline vote count (#669). Distinct from `artifacts` (the winner's sidecar
+    # + decided_by + baseline vote count. Distinct from `artifacts` (the winner's sidecar
     # entry, library identity) — this is run history and lands in the job_attempts audit trail. None
     # on any job that made no lyrics selection.
     selection: dict | None = None
@@ -68,7 +68,7 @@ class JobSpec:
     media_dir: str
     # The cook this job belongs to: the trace id the core mints (repository.ts) and threads through a
     # chained run, so the worker can correlate its own logs to the cook the operator sees on
-    # /metrics/<mediaId> (#472). Empty for a core that predates carrying it on the assign frame; a
+    # /metrics/<mediaId>. Empty for a core that predates carrying it on the assign frame; a
     # trailing default so it does not disturb the positional constructors in the test suite.
     cook_id: str = ""
 
@@ -133,11 +133,11 @@ def vocals_path(media_dir: str, media_id: str) -> str:
 
 
 def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt") -> str:
-    """Deterministic key for a media's RAW caption track, retained for post-cook diagnosis (#670).
+    """Deterministic key for a media's RAW caption track, retained for post-cook diagnosis.
 
     Under the `derived/` storage class so it is "safe to delete, regenerable, first to evict" -- a
     `.vtt` is tens of kilobytes of text, unlike the hundreds of megabytes of decoded audio that made
-    `work/` need cleaning (#469). Eviction here is REF-DRIVEN, not directory-driven, so a `derived/`
+    `work/` need cleaning. Eviction here is REF-DRIVEN, not directory-driven, so a `derived/`
     file is only bounded by the `ENCORE_MEDIA_MAX_GB` cap once its key is enumerated in the core's
     `derivedRefsOf`; #709 added that enumeration (this path is keyed per media id, so `derivedRefsOf`
     reconstructs it from CAPTION_KINDS x KNOWN_CAPTION_EXTS via `rawCaptionKey` in paths.ts). Before

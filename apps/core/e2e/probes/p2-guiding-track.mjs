@@ -33,8 +33,8 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #561, following the
- * #557/#558/#559/#560 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so they
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
+ * /pattern). Browser/Page are derived from cdp.mjs's own return types so they
  * cannot drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped
  * results are cast at the call site.
  *

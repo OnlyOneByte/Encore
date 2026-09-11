@@ -15,10 +15,10 @@
 //   3. unlink the sidecar FIRST (kills the source of truth so a rescan cannot bring it back)
 //   4. then the raw audio at EVERY extension it could be under, then every derived artifact — both
 //      enumerations delegate rather than re-implement (paths.ts candidateAudioRefs, retention.ts
-//      derivedRefsOf), because the hand-written versions of both had already drifted narrow (#762)
+//      derivedRefsOf), because the hand-written versions of both had already drifted narrow
 //   5. then the media row + its tags from the index
 //   6. then broadcast — the queue snapshot, the advertised next, and the per-media status — so every
-//      surface drops the song at once instead of one surface at a time (#762 F3)
+//      surface drops the song at once instead of one surface at a time (F3)
 //
 // A SERVER op with no QueueOp — packages/shared is untouched — so it lives beside the media modules.
 
@@ -79,7 +79,7 @@ function realDeleteFile(ref: string): void {
  * everything a media STORED (instrumental, vocals at any historical ext, the chosen lyrics JSON, every
  * other lyrics candidate's JSON, the retained raw caption matrix) — this used to re-implement that list
  * and drifted immediately: it named `lyricsKey` + `m.lyricsRef` and stopped, so every non-chosen lyrics
- * candidate was orphaned on disk forever (#762 F2, the same undercount #496/#442 closed for retention).
+ * candidate was orphaned on disk forever (F2, the same undercount #496/#442 closed for retention).
  * Delegating removes the possibility of drifting again; a one-line `lyricsCandidates` patch here would
  * have closed today's symptom and left the next divergence free.
  *
@@ -128,14 +128,14 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 	const wasPlaying = doomed.some((e: QueueEntry) => e.id === hub.state.playback.currentEntryId);
 	for (const e of doomed) hub.state.applyQueueOp({ op: 'remove', id: e.id });
 	if (wasPlaying) reconcileOnReady(hub);
-	// #636: deleting a NON-playing entry still mutates the queue, so "who plays next" can change —
+	// deleting a NON-playing entry still mutates the queue, so "who plays next" can change —
 	// the deleted song may have been the advertised upNext, or removing it may promote a different
 	// singer's entry. reconcileOnReady only fires on the wasPlaying path (a dangling current), so the
 	// far more common non-playing delete published queue:removed with no nowplaying:changed and the TV
 	// kept naming the deleted song. Re-derive and re-broadcast the advertised next here too;
 	// emitNowPlaying is idempotent, so the `else` only avoids the double emit reconcileOnReady already does.
 	//
-	// #762 F3: and re-broadcast the QUEUE ITSELF, which neither of them did. applyQueueOp publishes
+	// F3: and re-broadcast the QUEUE ITSELF, which neither of them did. applyQueueOp publishes
 	// nothing, and on this branch the only broadcast was step 6's `media:status canceled`, which no
 	// client turns into a queue mutation — so every phone and the TV kept the removed turn, and the
 	// singer whose turn it was still saw themselves queued. `publishQueue` is player.ts's own, made
@@ -162,7 +162,7 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 		unlinked.push(ref);
 	};
 	unlink(metaKey(mediaId)); // 3. the authoritative record — FIRST
-	// 4a. the one unrecoverable class. EXT-BLIND (#762 F1): this was `unlink(audioKey(mediaId))`, and
+	// 4a. the one unrecoverable class. EXT-BLIND (F1): this was `unlink(audioKey(mediaId))`, and
 	// `audioKey`'s default ext is `wav` — the LEGACY mislabelled name. The worker downloads to
 	// `audio/<id>.%(ext)s` and discovers the real name with a `<id>.*` glob because the extension is
 	// whatever YouTube served, so for every song cooked since 2981662 the file is `audio/<id>.m4a` or

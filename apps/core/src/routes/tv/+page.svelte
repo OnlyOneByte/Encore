@@ -76,11 +76,11 @@
 	// The instrumental refused to start with an error NO gesture can lift (decode failure, AbortError) —
 	// distinct from `autoplayBlocked`, which a tap recovers. There is no recovery here, so the page must
 	// SAY the room is silent on screen rather than leave the only trace in the TV's devtools console
-	// (#473). Cleared when a fresh song loads (onready) or the element actually starts advancing, so a
+	//. Cleared when a fresh song loads (onready) or the element actually starts advancing, so a
 	// later good song retracts the panel. Holds the error name for the on-screen detail.
 	let playbackFailedReason: string | null = $state(null);
 	// Whether the MASTER element is actually running, reported up from the active+visible
-	// TvPlayer's own play/pause/ended (#393). The honest counterpart to `isPlaying`, which is the
+	// TvPlayer's own play/pause/ended. The honest counterpart to `isPlaying`, which is the
 	// ROOM'S INTENT from the server: the room can intend to play while the element does not (a TV
 	// wall whose autoplay was refused, or a current entry whose media is not playable), and the
 	// lyrics reel must freeze in exactly those cases rather than sweep over a silent stage. Starts
@@ -91,11 +91,11 @@
 	// settings:changed needs no per-field assignment here.
 	let tvBackgroundStyle = $derived(settings.room.tvBackgroundStyle);
 	let tvBackgroundColor = $derived(settings.room.tvBackgroundColor);
-	// The room's 0..1 stage dimmer (#782). Handed to stageBackgroundCss, which darkens the resolved
+	// The room's 0..1 stage dimmer. Handed to stageBackgroundCss, which darkens the resolved
 	// stage colour toward black by this fraction — a lightness control, no layer over the video.
 	let tvBackgroundDim = $derived(settings.room.tvBackgroundDim);
 	// The visualizers build their palette by hue ARITHMETIC around the room's colour
-	// (`stageHueToHex(hue + deg)`), so they need an ANGLE and the stored value is a hex since #425.
+	// (`stageHueToHex(hue + deg)`), so they need an ANGLE and the stored value is a hex.
 	// `hueOfColor` is the atan2 of the OKLab chromatic axes — scale-free, so it recovers the hue of a
 	// dark stage colour that `nearestSingerHue` would snap to the wrong wheel stop.
 	let tvBackgroundHue = $derived(hueOfColor(tvBackgroundColor));
@@ -106,7 +106,7 @@
 	let seekSec = $state(0);
 	// Server `rev` from the last `playback:state`. Bumped by every playback command (restart, pause,
 	// seek, key…) but never by position telemetry, so the player's seek effect can track it to
-	// re-take its decision on a restart whose position equals the last one (#95).
+	// re-take its decision on a restart whose position equals the last one.
 	let seekRev = $state(0);
 	// Per-song background override from playback:state. null = use the room default (the resting state).
 	let backgroundOverride = $state<TvBackgroundStyle | null>(null);
@@ -120,7 +120,7 @@
 	// player shifts pitch in the browser (see pitch-shift.ts), so there is no pre-rendered variant to
 	// 404 on — which is why it was ignored before.
 	let keyShift = $state(0);
-	// THE SNAPSHOT SEAM (#396). The slots hold immutable `PlaybackSnapshot`s, not live catalog records:
+	// THE SNAPSHOT SEAM. The slots hold immutable `PlaybackSnapshot`s, not live catalog records:
 	// a `Media` is not assignable here, so the only way a song reaches the player is through
 	// `snapshot()` in `syncSlots()` — i.e. on an explicit playback transition. A cook event cannot
 	// reach a playing song even if it churns the catalog, because there is no longer a path from the
@@ -129,13 +129,13 @@
 		A: null,
 		B: null
 	});
-	// The QUEUE-ENTRY id playing in each slot, parallel to `slotMedia` (#701). A song queued twice
+	// The QUEUE-ENTRY id playing in each slot, parallel to `slotMedia`. A song queued twice
 	// snapshots to the byte-identical media in both turns, so the media id and resolved src cannot tell
 	// the second turn from the first; the entry id can, and the player re-arms its transport on it. Set
 	// only in `syncSlots`, the same explicit-transition seam that re-snapshots the media.
 	let slotEntryId = $state<{ A: string | null; B: string | null }>({ A: null, B: null });
 
-	// ── loudness normalization (#462, PR3) ──────────────────────────────────────────────────────────
+	// ── loudness normalization (PR3) ──────────────────────────────────────────────────────────
 	// The decision happens HERE, at playback, not in the worker: the master pulldown for a song depends
 	// on the LIVE library median, which is a property of the room's whole catalog at play time, not of
 	// the song's cook. The route owns both facts — the full `mediaCatalog` and the room's setting — so
@@ -198,7 +198,7 @@
 		const curMedia = snapshot(mediaOf(current));
 		const nextMedia = snapshot(mediaOf(upNext));
 		// The entry id travels with its snapshot into the SAME slot, so the player's per-entry transport
-		// re-arm (#701) sees a distinct id for the second turn of a same-song queue even though the media
+		// re-arm sees a distinct id for the second turn of a same-song queue even though the media
 		// snapshot is byte-identical.
 		const curEntryId = current?.id ?? null;
 		const nextEntryId = upNext?.id ?? null;
@@ -250,7 +250,7 @@
 	 * a progress bar that jumps to the beginning on pause. See lib/ws/send.ts.
 	 */
 	function sendTelemetry(status: string, positionSec = 0) {
-		// The frame — including the entry stamp the server's #70/#125 guard needs on EVERY frame — is
+		// The frame — including the entry stamp the server's guard needs on EVERY frame — is
 		// built by the pure `telemetryFrame()` in $lib/tv/telemetry.ts, so the stamp is unit-tested
 		// behaviourally rather than only by scanning this .svelte source for a literal.
 		// SILENT drop when the socket is not open (~4 Hz stream) — `quiet` suppresses WsClient's
@@ -265,7 +265,7 @@
 		skipNotice = 'Skipping — that track would not play';
 		setTimeout(() => (skipNotice = ''), 4000);
 		// onVisibleEnded() already sends the single `ended` frame; sending it here too made the
-		// server advance twice and eat the next singer's turn (#70).
+		// server advance twice and eat the next singer's turn.
 		onVisibleEnded();
 	}
 
@@ -360,7 +360,7 @@
 			keyShift = e.state.keyShift;
 		}
 		/*
-		 * COOK LIFECYCLE — and note what is NOT here any more (#396).
+		 * COOK LIFECYCLE — and note what is NOT here any more.
 		 *
 		 * This handler used to write the catalog: `new Map(mediaCatalog).set(id, {...m, stemStatus})`,
 		 * on EVERY progress tick, minting a fresh Media identity and inventing a `stemStatus` the
@@ -393,7 +393,7 @@
 				const who = singerName(current.singerId);
 				skipNotice = `Couldn't make the karaoke for ${who}'s song — skipping`;
 				setTimeout(() => (skipNotice = ''), 4000);
-				// onVisibleEnded() already sends the single `ended` frame (#70).
+				// onVisibleEnded() already sends the single `ended` frame.
 				onVisibleEnded();
 			}
 		}
@@ -411,9 +411,9 @@
 
 	onMount(() => {
 		ws = new WsClient({
-			// #658 one-TV-per-room: bind this TV socket to the room the loader resolved (data.roomCode) by
+			// one-TV-per-room: bind this TV socket to the room the loader resolved (data.roomCode) by
 			// passing it on the WS URL. The server's tvRoomId turns the code into the room id the socket is
-			// scoped to, so the TV is IN-ROOM for that party (subscribeTopicFor, #657) rather than an
+			// scoped to, so the TV is IN-ROOM for that party (subscribeTopicFor) rather than an
 			// unscoped spectator of the served room. A code-less loader (prerender/unavailable app) omits
 			// the param and the server falls back to the served room — unchanged from before #658.
 			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=tv${data.roomCode ? `&room=${encodeURIComponent(data.roomCode)}` : ''}`,
@@ -469,7 +469,7 @@
 	);
 
 	/*
-	 * Measure the top-right "Up next" block the same way (#889). `.fs-btn` and `.upnext` both pin to
+	 * Measure the top-right "Up next" block the same way. `.fs-btn` and `.upnext` both pin to
 	 * the top-right at z-tier 7, so the fullscreen button must sit BELOW the whole Up-next block, not
 	 * below a guessed height — the block grows when the next title wraps. A ResizeObserver on the real
 	 * element publishes its rendered height as `--tv-upnext-h` on `.tv`; the button offsets by
@@ -522,13 +522,13 @@
 		}).length
 	);
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
-	// #826/XR-TV-14: the lobby shows the WHOLE roster with no "+N more" — the reason to show it is that
+	// /XR-TV-14: the lobby shows the WHOLE roster with no "+N more" — the reason to show it is that
 	// it must not degrade as the party grows, so it is never truncated. Pass Infinity so nothing is
 	// capped; TvLobby renders every chip and steps the chip size down above a threshold instead.
 	const roster = $derived(lobbyRoster(online, away, singers, Infinity));
 
 	/*
-	 * KEEP THE TV AWAKE while a song is on stage (#478).
+	 * KEEP THE TV AWAKE while a song is on stage.
 	 *
 	 * Nothing here held the screen on, so the OS screensaver blanked the room mid-song — a long
 	 * instrumental break with no input was enough to lose the lyrics. This takes a Screen Wake Lock for
@@ -603,7 +603,7 @@
 	});
 
 	/*
-	 * FULL SCREEN on the TV page (#424, owner ruling C).
+	 * FULL SCREEN on the TV page (owner ruling C).
 	 *
 	 * `/tv` is already `position: fixed; inset: 0`, so it owns the whole VIEWPORT — what it cannot claim
 	 * on its own is the browser's own chrome (URL bar, tab strip) eating the top of an HDMI-plugged
@@ -713,7 +713,7 @@
 	// dimensions — the room INTENDS to play (`isPlaying`, from the server) AND the master element is
 	// actually running (`masterAdvancing`, reported up from the <audio>'s own play/pause). `isPlaying`
 	// alone stayed true through a phone pause (Bug B) and ALSO through an autoplay refusal or an
-	// unplayable entry (#393) — the room silent while the reel swept forward on wall-clock. Feeding
+	// unplayable entry — the room silent while the reel swept forward on wall-clock. Feeding
 	// the element's honest state freezes the words with the sound in every one of those. Visibility
 	// still rides `lyricsActive` — the overlay stays on screen, just frozen mid-line.
 	const lyricsPlaying = $derived(lyricsAdvancing(screen, tvState, isPlaying, masterAdvancing));
@@ -737,7 +737,7 @@
 	 */
 	const lyricsUnverified = $derived(isAutoTranscribed(lyricsProvenance));
 	/*
-	 * The provenance TAG shown on the now-playing card (issue #635): names the source of the words
+	 * The provenance TAG shown on the now-playing card: names the source of the words
 	 * for EVERY kind, not just ASR. `null` for a pre-candidate artifact, so the card says nothing.
 	 */
 	const lyricsSourceLabel = $derived(provenanceLabel(lyricsProvenance));
@@ -807,7 +807,7 @@
 	const loadingDisplay = $derived(songDisplay(mediaOf(current)));
 
 	/*
-	 * THE ATTRACT PHRASE (issue #826, XR-TV-16/17/18). A fixed `Karaoke` label with one of seven phrases
+	 * THE ATTRACT PHRASE (XR-TV-16/17/18). A fixed `Karaoke` label with one of seven phrases
 	 * rotating beneath it in a fixed two-line box. The order is a shuffled bag reseeded per room
 	 * (phrases.ts), advanced every 8s, with no repeat until the whole set has shown.
 	 *
@@ -976,7 +976,7 @@
 
 	{#if screen === 'attract'}
 		<!--
-			NOBODY HAS JOINED — the ratified split panel (issue #826, A2). Left column at the title-safe x:
+			NOBODY HAS JOINED — the ratified split panel (A2). Left column at the title-safe x:
 			a FIXED `Karaoke` label above a rotating phrase in a fixed two-line box, so the label always
 			tells a stranger what they are looking at and the rotation never shifts the column. Right
 			column: a flat-filled panel carrying the join block, with the ROOM CODE as the largest element
@@ -1132,7 +1132,7 @@
 	{#if transient === 'next' && introEntry}
 		{@const m = mediaOf(introEntry)}
 		{@const d = songDisplay(m)}
-		<!-- Next up (issue #826, T1a) — accent family. The SINGER is the hero at --tv-takeover-name
+		<!-- Next up (T1a) — accent family. The SINGER is the hero at --tv-takeover-name
 		     (132px): the one thing the room needs to know is who to look at; the song is secondary. -->
 		<div class="interstitial takeover state-next">
 			<!-- "Now singing" for the opener; "Next up" once the night is under way. Saying "Next up" for
@@ -1146,7 +1146,7 @@
 			</div>
 		</div>
 	{:else if transient === 'error'}
-		<!-- Skipping (issue #826, T1c) — danger family. Names what is GOING and what REPLACES it in the
+		<!-- Skipping (T1c) — danger family. Names what is GOING and what REPLACES it in the
 		     same breath, so the room is never left wondering whose turn it now is. --danger exists
 		     precisely so this cannot be mistaken for an affirmative event. -->
 		<div class="interstitial takeover state-error" role="alert">
@@ -1160,7 +1160,7 @@
 			{/if}
 		</div>
 	{:else if transient === 'waiting'}
-		<!-- Still cooking (issue #826, T1b) — warn family. A wait, not a failure: the song title is the
+		<!-- Still cooking (T1b) — warn family. A wait, not a failure: the song title is the
 		     hero and a bounded 3-step progress names the current step, so the wait reads as finite. The
 		     words come from cook-phrasing (the ONE guest-facing cook vocabulary, shared with the phone).
 		     THE TV KNOWS ONLY A COARSE "cooking" STATE: #396 deliberately stripped per-media cook tracking
@@ -1205,7 +1205,7 @@
 	{/if}
 
 	<!--
-		THE JOIN BLOCK SURVIVES EVERY TAKEOVER (issue #826, XR-TV-13), dimmed to 72%, in the same
+		THE JOIN BLOCK SURVIVES EVERY TAKEOVER (XR-TV-13), dimmed to 72%, in the same
 		bottom-right slot as during playback. A song change is exactly when a new guest looks up, so
 		blanking the code then would lose the join path precisely when it is most wanted. Rendered
 		whenever a takeover is up (`transient` set) — the corner treatment is the identical component the
@@ -1227,7 +1227,7 @@
 		will do; it is also click-dismissable so a viewer who preferred silence can put it away.
 
 		ALSO GATED ON `!isAttract` — the SAME flag the player slots, the stage background and the wake lock
-		use (#736). The latch has only two writers, both per-slot props, so when the room DRAINS (a skip at
+		use. The latch has only two writers, both per-slot props, so when the room DRAINS (a skip at
 		the last entry: player.ts advance() finds no nextPlayable and sets currentEntryId null / isPlaying
 		false) both players unmount and NEITHER onautoplayblocked NOR onautoplayrecovered can fire again.
 		Without this term the 82%-opaque full-viewport scrim sat over the lobby of an empty room for good,
@@ -1245,7 +1245,7 @@
 			type="button"
 			class="autoplay-hint"
 			onclick={() => {
-				// FREE RIDER (#424, ruling C): this tap is a real gesture in the TV's own document, so it
+				// FREE RIDER (ruling C): this tap is a real gesture in the TV's own document, so it
 				// carries the activation `requestFullscreen()` needs. Ask for fullscreen alongside clearing
 				// the hint — best-effort, and it never blocks the music recovery, which TvPlayer's own
 				// document-wide gesture listener performs. It only fires when autoplay was refused, which is
@@ -1265,7 +1265,7 @@
 		PLAYBACK FAILED — the instrumental refused to start with an error a tap CANNOT lift (a decode
 		failure, an AbortError). Unlike the autoplay block above there is no gesture recovery, so this is
 		NOT a button: it is a plain on-screen SAY that the room is silent, the only operator-visible trace
-		of a failure whose sole prior signal was a TV-console warn nobody at a party reads (#473). It sits
+		of a failure whose sole prior signal was a TV-console warn nobody at a party reads. It sits
 		at z 8 (the transient-overlay tier) so a genuinely gesture-liftable block (z 10) always wins if both
 		somehow raise. Cleared when a fresh song loads or the element starts advancing again.
 	-->
@@ -1280,12 +1280,12 @@
 	{/if}
 
 	<!--
-		FULLSCREEN corner button (#424). Self-hides after a few seconds of no input (`controlsVisible`), so
+		FULLSCREEN corner button. Self-hides after a few seconds of no input (`controlsVisible`), so
 		it is not permanent chrome on a wall. z-tier 7 (see the z-scheme below), the persistent-chrome tier:
 		ABOVE the lyrics reel (6) and the player slots so it stays tappable during a song, and BELOW the
 		transient full-screen overlays (8) and the autoplay hint (10) so those always cover it. It shares
 		tier 7 with the lower-third (bottom-left), the join QR (bottom-right) and the Up-next block
-		(top-right), so it is pinned TOP-right BELOW the whole Up-next block (#889) to overlap none;
+		(top-right), so it is pinned TOP-right BELOW the whole Up-next block to overlap none;
 		inset with the safe-area tokens so a television's overscan cannot crop it.
 
 		The mark is an INLINE SVG, not a Unicode codepoint: icons.test.ts bans a functional control whose
@@ -1319,7 +1319,7 @@
 
 <style>
 	/*
-	 * THE TV TYPE FLOOR — THE ONE DECLARATION (issue #821, XR-TV-01). Every --tv-* type tier in app.css
+	 * THE TV TYPE FLOOR — THE ONE DECLARATION (XR-TV-01). Every --tv-* type tier in app.css
 	 * is a `rem` multiple of THIS root, so the floor is defined in exactly one place. It MUST live on
 	 * `:root` (the document root), NOT on `.tv`: `rem` resolves against the document root font-size
 	 * unconditionally, so a `font-size` on `.tv` would not re-root `rem` for its descendants.
@@ -1344,7 +1344,7 @@
 	 */
 	/*
 	 * --ui-scale registered as a typed custom property (XR-TV-07 default + the reviewer's non-numeric
-	 * advisory on #907). `@property` with `syntax: '<number>'` means a non-numeric write (e.g.
+	 * advisory). `@property` with `syntax: '<number>'` means a non-numeric write (e.g.
 	 * `--ui-scale: banana`) is rejected at parse time and FALLS BACK to `initial-value: 1`, instead of
 	 * poisoning the clamp() and dropping the whole font-size declaration — which would silently remove
 	 * the floor. The clamp() below still bounds a numeric out-of-range value to 0.8–1.6. `inherits: true`
@@ -1373,7 +1373,7 @@
 	 *   7  persistent chrome that must sit ABOVE the reel and the video: lower-third (bottom-left),
 	 *      brand-float, progress bar (TvProgress), join corner/badqr (JoinBadge, bottom-right),
 	 *      fullscreen button (.fs-btn, #424 — shares this tier but pinned TOP-right BELOW the whole
-	 *      "Up next" block since #889, so it overlaps none of them; a transient overlay at 8 and the
+	 *      "Up next" block, so it overlaps none of them; a transient overlay at 8 and the
 	 *      autoplay hint at 10 correctly cover it)
 	 *   8  transient full-screen overlays: interstitial / error / waiting / loading (.interstitial) —
 	 *      must cover ALL chrome, which the old shared 7 did only by DOM luck
@@ -1415,7 +1415,7 @@
 		opacity: 1;
 	}
 	/*
-	 * THE ATTRACT SPLIT PANEL (issue #826, A2). A left column at the title-safe x carrying the fixed
+	 * THE ATTRACT SPLIT PANEL (A2). A left column at the title-safe x carrying the fixed
 	 * `Karaoke` label + rotating phrase, and a flat-filled right panel carrying the join block. Two
 	 * columns, not a centred stack, so the phrase can be a large left-aligned statement and the join
 	 * block a self-contained panel a guest scans or transcribes from.
@@ -1581,7 +1581,7 @@
 		 * comment for why. Legibility comes from BOTH a blurred text-shadow AND a text-stroke, the same
 		 * pair the lyrics reel uses (LyricsOverlay.svelte:346), and both work on every TV browser.
 		 *
-		 * #425: the stroke is load-bearing, not decoration. Before #425 the stage was pinned dark, so a
+		 * the stroke is load-bearing, not decoration. Before #425 the stage was pinned dark, so a
 		 * shadow tuned against black was enough. #425 lets a room pick ANY stage colour — including
 		 * white — and a blurred dark shadow disappears against a bright field of similar luminance, so
 		 * the singer name measured 1.10:1 on white (the retired stage pin used to prevent exactly this).
@@ -1640,7 +1640,7 @@
 	 * ellipsis is ever painted), while white-space: nowrap DOES apply and turns a long joined credit
 	 * (e.g. "Queen feat. David Bowie") into one unbreakable run that overflows .lower-third's 46vw and
 	 * gets hard-clipped mid-word with no ellipsis. Truncation belongs to .ls-song's 2-line
-	 * -webkit-line-clamp, which absorbs an over-long credit WITH an ellipsis — see #127.
+	 * -webkit-line-clamp, which absorbs an over-long credit WITH an ellipsis —.
 	 */
 	.ls-artist {
 		font-size: var(--tv-body);
@@ -1657,7 +1657,7 @@
 		margin-top: var(--space-3xs);
 	}
 	/*
-	 * The provenance label naming WHERE the words came from (#635). Neutral dim by default -- it is a
+	 * The provenance label naming WHERE the words came from. Neutral dim by default -- it is a
 	 * source tag, not a warning, so a trustworthy source (LRCLIB, hand-pasted) must not read as one.
 	 * Not uppercase and not letter-spaced: a short label read once; the tracked-out version of this
 	 * string is precisely what read as debris before.
@@ -1782,7 +1782,7 @@
 	}
 
 	/*
-	 * ── FULL-SCREEN TAKEOVERS (issue #826, T1) ─────────────────────────────────────────────────────
+	 * ── FULL-SCREEN TAKEOVERS (T1) ─────────────────────────────────────────────────────
 	 * The three transient states are full-screen takeovers that cannot be confused: one colour family
 	 * each, drawn as a 14px LEFT BORDER in the family colour plus a same-direction gradient. Left-aligned
 	 * from the title-safe x (the border lives just outside it, so the text still starts at title-safe),
@@ -1921,7 +1921,7 @@
 	}
 
 	/*
-	 * The fullscreen corner button (#424). Fades between states on opacity so the self-hide is a soft
+	 * The fullscreen corner button. Fades between states on opacity so the self-hide is a soft
 	 * dissolve rather than a pop. Sits at z 7 — the documented persistent-chrome tier: ABOVE the lyrics
 	 * reel (6) and the player slots (1/2) so it stays tappable during a song, and BELOW the transient
 	 * full-screen overlays (8) and the autoplay hint (10) so those always cover it. It shares the tier
@@ -1932,14 +1932,14 @@
 	 * drops with the fade so a hidden button can never eat a tap meant for the stage.
 	 *
 	 * The clamp's floor is var(--tap) — app.css's own tap-target minimum, named rather than restated
-	 * (XR-PH-01, issue #831). A TV remote's pointer needs that floor as much as a thumb does, and this
+	 * (XR-PH-01). A TV remote's pointer needs that floor as much as a thumb does, and this
 	 * comment used to CLAIM the binding while the code held a bare `44px`: the one control whose stated
 	 * reason for its size was a token it did not read.
 	 */
 	.fs-btn {
 		position: absolute;
 		right: var(--tv-safe-x);
-		/* TOP-right, tucked BELOW the whole "Up next" block (#889). The bottom-right corner is owned by
+		/* TOP-right, tucked BELOW the whole "Up next" block. The bottom-right corner is owned by
 		   the join QR (JoinBadge `.corner`) and the bottom-LEFT by the lower-third — both z-tier 7. The
 		   top-right holds the status dot (16px, tier 9) AND `.upnext` (tier 7, right:var(--tv-safe-x),
 		   top:calc(var(--tv-safe-y) + 2.6vh)). `.upnext` is the same right edge and same z-tier, and

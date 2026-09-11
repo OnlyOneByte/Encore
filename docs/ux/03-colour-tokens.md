@@ -14,7 +14,7 @@ WCAG criteria cited throughout:
 
 ## Finding that precedes the contrast rows — the measured figures were taken against different surfaces
 
-> **Corrected in #820.** The generator and the registry now live in the repo —
+> **Corrected.** The generator and the registry now live in the repo —
 > `packages/shared/scripts/_player_palette.py` and `packages/shared/src/presentation/player-palette-48.json` —
 > and the generator READS `--bg`, `--card` and `--card2` out of `app.css` instead of carrying its own
 > copy, so the figures below are the pre-fix state. The regenerated registry clears every floor with
@@ -141,7 +141,7 @@ is not a checkable statement, "stop 39 passes role 4" is.
 | **Surfaces** | Phone, operator dashboards |
 | **Rationale** | `ink` differs from `fill` for **13 of 48** (Redline, Scarlet, Cerulean, Cobalt, Denim, Periwinkle, Iris, Violet, Magenta, Fuchsia, Orchid, Rose, Hibiscus) — the deep stops cannot be their own card ink. |
 | **Source** | [WCAG 2.2 SC 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html); the 13-stop list from handoff §2. |
-| **Acceptance** | **Given** the 48 stops, **When** each `ink` is measured against `--card` as read from `app.css`, **Then** every stop is ≥ 4.5. **Was falsified for six stops** — Cobalt 4.47, Denim 4.48, Magenta 4.48, Orchid 4.48, Rose 4.48, Fuchsia 4.49 (`DERIVED`, model above) — **fixed in #820** by regenerating against the real surfaces with a declared 0.05 margin; worst is now 4.56. |
+| **Acceptance** | **Given** the 48 stops, **When** each `ink` is measured against `--card` as read from `app.css`, **Then** every stop is ≥ 4.5. **Was falsified for six stops** — Cobalt 4.47, Denim 4.48, Magenta 4.48, Orchid 4.48, Rose 4.48, Fuchsia 4.49 (`DERIVED`, model above) — **fixed** by regenerating against the real surfaces with a declared 0.05 margin; worst is now 4.56. |
 | **Check** | Unit test per stop; the six named stops are the regression fixture. |
 | **Priority** | **Blocking.** |
 

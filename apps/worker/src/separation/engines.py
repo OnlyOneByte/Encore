@@ -82,7 +82,7 @@ class DemucsEngine:
         # `backend` is the RESOLVED hardware backend this cook runs through (backends.resolve_backend),
         # recorded into facts so the ledger matches the startup log — not a hardcoded class constant. The
         # torch CLI is the only demucs backend actually implemented here; MLX resolves to MlxDemucsEngine,
-        # which refuses at construction rather than reaching this class under an "mlx" label (#119).
+        # which refuses at construction rather than reaching this class under an "mlx" label.
         self.backend = backend
 
     def resolve_model(self, params: dict) -> str:
@@ -127,11 +127,11 @@ class MlxDemucsEngine:
     checkpoints, selected by `backends.resolve_backend` when MLX is available (Apple Silicon + the
     `demucs_mlx` package importable). #595.
 
-    The backend selection is genuinely wired (#119): a Mac that resolves `mlx` builds THIS engine
+    The backend selection is genuinely wired: a Mac that resolves `mlx` builds THIS engine
     rather than silently building `DemucsEngine` under an "mlx" label, so `facts.backend` matches the
     startup log instead of announcing `mlx` while recording `torch`.
 
-    THE CLI CONTRACT, measured, is CASE C (owner ruling on #595): `demucs-mlx` has NO `--two-stems` and
+    THE CLI CONTRACT, measured, is CASE C (owner ruling): `demucs-mlx` has NO `--two-stems` and
     NO `--filename` flag, so it emits every source the model carries (4 for htdemucs/_ft, 6 for
     htdemucs_6s) into the demucs-native nested layout `<out>/<track-stem>/<source>.wav`, and there is no
     instrumental file. The instrumental is DERIVED by an ffmpeg mix-minus pass that sums the non-vocal
@@ -339,10 +339,10 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
 
     `backend` is the hardware backend `backends.resolve_backend` picked for THIS worker (torch/mlx). It
     selects WHICH demucs implementation runs and is recorded into `facts.backend`, so the ledger matches
-    the backend the startup log announced (#119). Before this it reached nothing but a print, so a Mac
+    the backend the startup log announced. Before this it reached nothing but a print, so a Mac
     resolving `mlx` still built the torch `DemucsEngine` and recorded `torch` — the log lied. `mlx` now
     builds `MlxDemucsEngine`, which runs the demucs-mlx CLI and derives the instrumental via a mix-minus
-    ffmpeg pass (#595); `torch` (or None, the portable default) builds the real `DemucsEngine`. Roformer
+    ffmpeg pass; `torch` (or None, the portable default) builds the real `DemucsEngine`. Roformer
     runs only through its own CLI, so a backend other than that impl is not applicable to it.
 
     None-valued kwargs are DROPPED, not forwarded. A caller that has no opinion about `jobs` or a model
@@ -357,7 +357,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
     checkpoint). Keeping the names engine-specific makes that cross-wiring inexpressible. `audiosep_model`
     follows the same rule: it maps only to `AudioSepEngine`.
 
-    `audiosep` (python-audio-separator) is the mel-band RoFormer engine (#483), run through its own
+    `audiosep` (python-audio-separator) is the mel-band RoFormer engine, run through its own
     `audio-separator` CLI. Like roformer it is not a demucs backend — it is a distinct engine id with its
     own capability (`stems:audiosep`), so a `backend` other than its own CLI is not applicable to it.
 
@@ -382,8 +382,8 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
     if name == DemucsEngine.id:
         if backend == "mlx":
             # Wired, not silent: an mlx-resolved cook builds the MLX engine, which runs demucs-mlx and
-            # derives the instrumental (#595). This is what makes facts.backend honest — a torch
-            # DemucsEngine can never be built under an "mlx" label (#119).
+            # derives the instrumental. This is what makes facts.backend honest — a torch
+            # DemucsEngine can never be built under an "mlx" label.
             allowed = {"overlap", "segment", "shifts"}
             kw = {k: v for k, v in given.items() if k in allowed}
             if "demucs_model" in given:
@@ -407,7 +407,7 @@ def demucs_engine_backed_by(backend: str | None) -> bool:
     The single source of truth for "does this backend have a demucs engine implementation", read by
     the capability-declaration site so the worker never advertises `stems` on a box whose resolved
     backend cannot build one. `torch` (and None, the portable default) build the real `DemucsEngine`;
-    `mlx` builds `MlxDemucsEngine`, which runs the demucs-mlx CLI and derives the instrumental (#595),
+    `mlx` builds `MlxDemucsEngine`, which runs the demucs-mlx CLI and derives the instrumental,
     so it IS backed. Any other/unknown backend is not backed.
 
     A box only ever resolves to `mlx` after passing `backends.backend_available(MLX)` — Apple Silicon

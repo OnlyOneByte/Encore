@@ -31,15 +31,15 @@ export const singers = sqliteTable(
 		// of everyone who has sung. Stored here rather than in `plays` because that table deliberately
 		// carries no singer id (see its comment): this records THAT someone sang and when, never what.
 		lastSungAt: integer('last_sung_at'),
-		// The party this singer belongs to (#656). Rotation, ordering and presence used to be
+		// The party this singer belongs to. Rotation, ordering and presence used to be
 		// deployment-wide because a singer carried no room — two rooms shared one roster. `room_id`
-		// scopes the roster to a room, mirroring how #655 keyed playback: the repository reads/writes
+		// scopes the roster to a room, mirroring how playback was keyed by room: the repository reads/writes
 		// only THIS room's singers, so `least-recently-sung` ranks the right party and the presence
 		// sweep never mixes two rooms. Minted from the room `doJoin` resolved for that request (an
 		// explicit join code, else the active room) — see singers/join.ts, not a cookie: the room cookie
-		// #654 planned for this never had a reader and #797 deleted it. NOT NULL: every singer belongs to
+		// planned for this never had a reader and was deleted. NOT NULL: every singer belongs to
 		// exactly one room; the migration re-keys existing rows onto the active room. Which room a socket
-		// is scoped to at the wire is #657.
+		// is scoped to at the wire is tracked separately.
 		roomId: text('room_id').notNull()
 	},
 	// Finding #3: session_token is the auth lookup key (bySessionToken on every authed request).
@@ -47,14 +47,14 @@ export const singers = sqliteTable(
 	// but catastrophic) token collision from mapping two singers to one session.
 	(t) => ({
 		sessionTokenIdx: uniqueIndex('singers_session_token_idx').on(t.sessionToken),
-		// The room roster read (#656): listing a room's singers is the ordering/presence hot path.
+		// The room roster read: listing a room's singers is the ordering/presence hot path.
 		roomIdx: index('singers_room_idx').on(t.roomId)
 	})
 );
 
 export const media = sqliteTable('media', {
 	id: text('id').primaryKey(),
-	// 'spotify' is a SEARCH / metadata source only (issue #427); its bytes are never fetched. The
+	// 'spotify' is a SEARCH / metadata source only; its bytes are never fetched. The
 	// underlying column is plain TEXT with no SQL CHECK, so widening this Drizzle enum needs no
 	// migration — it only teaches the type the value that can already be stored.
 	source: text('source', { enum: ['youtube', 'local', 'spotify'] }).notNull(),
@@ -83,7 +83,7 @@ export const media = sqliteTable('media', {
 	// feature survive a restart instead of silently vanishing from a library song. Nullable: absent
 	// means no guide is offered (never separated, or the stem came back silent).
 	vocalsRef: text('vocals_ref'),
-	// Signed millisecond offset of the vocals stem against the instrumental, measured at cook time (#766).
+	// Signed millisecond offset of the vocals stem against the instrumental, measured at cook time.
 	// INTEGER (whole ms is all the alignment ever needs — the client divides by 1000), and NULLABLE with a
 	// meaningful null: null ⇔ "never measured / row predates the feature", which guideOffsetSec() maps to 0
 	// so the song is held exactly as today. It is deliberately NOT `.notNull().default(0)` — a stored 0 and
@@ -108,7 +108,7 @@ export const media = sqliteTable('media', {
 	// would show auto-transcribed words unlabelled until the async sidecar pass caught up. Nothing
 	// queries inside it, so one JSON column beats a candidates table.
 	lyricsCandidates: text('lyrics_candidates'),
-	// A human's explicit lyrics pick, by candidate ref (#640). The sidecar is authoritative; this is the
+	// A human's explicit lyrics pick, by candidate ref. The sidecar is authoritative; this is the
 	// index copy so a hydrate that has not read meta/ yet still honours the override. Nullable: NULL means
 	// no override and the ranking decides, exactly as before this feature.
 	lyricsOverrideRef: text('lyrics_override_ref'),
@@ -178,23 +178,23 @@ export const queueEntries = sqliteTable(
 			.default('queued'),
 		rotationSeq: integer('rotation_seq').notNull(),
 		addedAt: integer('added_at').notNull(),
-		// The party this queue entry belongs to (#656). `queue_entries` carried no room, so the queue
+		// The party this queue entry belongs to. `queue_entries` carried no room, so the queue
 		// and its round-robin rotation were deployment-wide — a song queued in one room appeared in
-		// every room and shared one rotation. `room_id` keys the queue by room, mirroring #655's
+		// every room and shared one rotation. `room_id` keys the queue by room, as was already done for
 		// per-room playback: the write-behind sink deletes and re-inserts only THIS room's rows, and
 		// boot-hydrate reads only THIS room's queue, so two rooms hold independent queues + rotations.
 		// NOT NULL: every entry lives in exactly one room; the migration re-keys existing rows onto the
-		// active room. The single authoritative store persists to the active room today (#655's seam);
-		// threading a room per socket at the wire is #657.
+		// active room. The single authoritative store persists to the active room today (the seam the
+		// playback keying left open); threading a room per socket at the wire is tracked separately.
 		roomId: text('room_id').notNull()
 	},
 	(t) => ({
-		// The per-room queue read (#656): hydrate and the write-behind replace both scope by room.
+		// The per-room queue read: hydrate and the write-behind replace both scope by room.
 		roomIdx: index('queue_entries_room_idx').on(t.roomId)
 	})
 );
 
-// Authoritative playback, KEYED BY ROOM (#655). Was a single-row table whose `id` defaulted to the
+// Authoritative playback, KEYED BY ROOM. Was a single-row table whose `id` defaulted to the
 // literal 'singleton' — one now-playing / position / key-shift / background per DEPLOYMENT, so two
 // rooms could never each be playing. `room_id` is the primary key now: one row per room, minted
 // alongside the room (rooms.id), so concurrent parties hold independent playback. Mirrors
@@ -264,16 +264,16 @@ export const roomSettings = sqliteTable('room_settings', {
 		.notNull()
 		.default('off'),
 	// The stage's COLOUR, as canonical 6-digit lowercase hex. Text, not the integer hue angle this was
-	// until #425: the room now names a colour outright instead of naming an angle that `stageHueToHex`
+	// until the stage-colour change: the room now names a colour outright instead of naming an angle that `stageHueToHex`
 	// rendered at a pinned lightness. The pin existed to stop a room washing out the word-timed lyric
-	// reel; the reel now carries its own stroked outline (#750), which protects it on any field — so the
+	// reel; the reel now carries its own stroked outline, which protects it on any field — so the
 	// bound moved rather than being dropped. Read when the style is `solid` (verbatim) or `visualizer`
 	// (as the palette's hue, via `hueOfColor`).
 	// Migration 0005 backfills each existing row by mapping its old quantised hue through the same
 	// stage tier, so a configured box renders identically after the upgrade; the default below is
 	// `stageHueToHex(240)`, what the old `DEFAULT 240` rendered as.
 	tvBackgroundColor: text('tv_background_color').notNull().default('#001d31'),
-	// How far the stage colour is dimmed toward black, 0..1 (#782, piece 3 of #425). REAL for the same
+	// How far the stage colour is dimmed toward black, 0..1 (piece 3 of the same stage-colour change). REAL for the same
 	// reason as guide_level_default — it is a fraction, and an integer column would round every value to
 	// 0 or 1. NOT NULL default 0 so an existing room upgrades to today's behaviour (no dim) rather than
 	// to a darkened stage. A lightness control, not an opacity layer: the stage sits behind the video on
@@ -314,7 +314,7 @@ export const roomSettings = sqliteTable('room_settings', {
 	// it is a fraction. NOT NULL default 0 so an existing room upgrades to today's behaviour
 	// (pure karaoke) rather than to an unexpected mix.
 	guideLevelDefault: real('guide_level_default').notNull().default(0),
-	// Whether this room pulls loud outlier songs down at playback (#462). Boolean like
+	// Whether this room pulls loud outlier songs down at playback. Boolean like
 	// song_intro_enabled. NOT NULL default false (0) so an existing room upgrades to today's behaviour
 	// — every song at unity — rather than silently changing its levels.
 	loudnessNormalization: integer('loudness_normalization', { mode: 'boolean' }).notNull().default(false),
@@ -417,7 +417,7 @@ export const jobAttempts = sqliteTable(
 		// would buy a join and a migration for no query it enables.
 		stages: text('stages'),
 		// WHY the published lyric was chosen, as JSON: rejected labels + composite scores + decided_by +
-		// baseline vote count (#669). One JSON column on the SAME reasoning as `stages` above: read whole
+		// baseline vote count. One JSON column on the SAME reasoning as `stages` above: read whole
 		// to explain one align attempt, never queried inside, so a table would buy a join and a migration
 		// for no query. Null on every non-align attempt and on an align that made no pick. See SelectionRecord.
 		selection: text('selection')

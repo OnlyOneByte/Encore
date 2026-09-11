@@ -1,10 +1,10 @@
-// The TV's telemetry FRAME, as a pure function — the half of #70/#125 that lives on the client.
+// The TV's telemetry FRAME, as a pure function — the half that lives on the client.
 //
 // WHY THIS EXISTS. #70 and #125 are one fix split across the wire: the server (player.ts) drops a
 // telemetry frame whose `entryId` is no longer the current entry, so a stale/duplicate `ended` can no
-// longer double-advance (#70) and an outgoing song's late position frame can no longer overwrite the
-// incoming singer's playhead (#125). That guard is written `t.entryId !== undefined && …`, so it does
-// nothing at all on a frame that carries NO id — it silently falls back to the pre-#70 unconditional
+// longer double-advance and an outgoing song's late position frame can no longer overwrite the
+// incoming singer's playhead. That guard is written `t.entryId !== undefined && …`, so it does
+// nothing at all on a frame that carries NO id — it silently falls back to the pre-change unconditional
 // behaviour. The guard therefore only bites when the TV actually STAMPS the entry on every frame.
 //
 // The server half has real tests. The client half — the stamp — used to live inline in
@@ -27,8 +27,8 @@ export interface TelemetryFrame {
 	status: string;
 	/**
 	 * The entry the TV was playing when this frame was produced — stamped on EVERY frame, not just
-	 * `ended`, because the server's drop fires on both the `ended` path (#70) and the position path
-	 * (#125) and both need to tell a live frame from a stale one. `undefined` when nothing is playing;
+	 * `ended`, because the server's drop fires on both the `ended` path and the position path
+	 * and both need to tell a live frame from a stale one. `undefined` when nothing is playing;
 	 * an id-less frame keeps the server's legacy behaviour so an older cached TV is unaffected.
 	 */
 	entryId?: string;

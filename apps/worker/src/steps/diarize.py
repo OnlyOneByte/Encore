@@ -1,4 +1,4 @@
-"""The diarize step: attribute a `part` to each lyric line from the vocals stem (#691).
+"""The diarize step: attribute a `part` to each lyric line from the vocals stem.
 
 Where it sits and why. This runs in the ALIGN plan, AFTER TimeTexts has written the word-timed
 candidate docs to disk, and BEFORE PublishLyrics points the result at one. That order is forced by
@@ -6,9 +6,9 @@ what it needs: attribution is a mapping from speaker turns onto TIMED lyric line
 have to exist first, and it must be applied before the artifact is pointed at. It reads the same
 isolated vocals stem the aligner used (`ctx.audio.vocals_path`).
 
-It is the SOURCE half of the duet feature the owner ruled for on #632 ("diarize in the worker"); the
-render half (#692) reads the `part` this writes. On its own it changes nothing a singer sees — that is
-#691's `internal` label — so every failure mode here is a silent fall-back to one colour, never a job
+It is the SOURCE half of the duet feature the owner ruled for ("diarize in the worker"); the
+render half reads the `part` this writes. On its own it changes nothing a singer sees — that is what
+the `internal` label records — so every failure mode here is a silent fall-back to one colour, never a job
 failure: a box that cannot diarize, a stem that will not diarize, or a song that is not a confident
 duet all publish exactly today's single-colour artifact.
 """
@@ -33,7 +33,7 @@ class Diarize(Step):
 
     Reads the published candidates TimeTexts wrote (`out.artifacts.lyrics.candidates`) and re-writes the
     word-timed ones on disk with parts added. Only word-timed docs: a line-synced fallback has no
-    per-line words for the render layer to colour per part, and #632's precedent (`romanization`) is
+    per-line words for the render layer to colour per part, and the same feature's precedent (`romanization`) is
     likewise carried only where the timing supports it.
 
     Best-effort throughout. No vocals stem, no diarizer on this box, a diarizer that raises, or a song

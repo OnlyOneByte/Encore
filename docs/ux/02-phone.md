@@ -12,9 +12,9 @@ Two repo facts these rows lean on, verified in this pass and worth stating once:
   `move`'s `toSeq` to the singer's own QUEUED picks. Crossing singers is now a **direct rewrite of the
   stored ordered list** — the list is the source of truth, so a placement is durable by construction and
   there is no pin: pinning (`move-global`/`unpin`, `pinnedSeq`, `placePins`, and the client's
-  `pinEntry`/`unpinEntry`/`moveGlobal`/`canHostReorder`) was DELETED in #856 step 3. `queue:reorder-any`
+  `pinEntry`/`unpinEntry`/`moveGlobal`/`canHostReorder`) was DELETED in the stored-list migration's step 3. `queue:reorder-any`
   survives and gates `move` on an entry the actor does not own. Wiring the arrows and the drag to a
-  single "move to index" op is #856 **step 4** and is not yet shipped, so "the operation cannot express
+  single "move to index" op is that migration's **step 4** and is not yet shipped, so "the operation cannot express
   crossing singers" still describes today's **guest** path. Every drag row below is written for the
   guest path and says so.
 - **`move` is a legal no-op under one ordering.** `queue-order.ts` marks `shuffle` as
@@ -71,7 +71,7 @@ When these rows were written, six dimensions had **zero** tokens and ~391 litera
 guard cannot compare against a token that does not exist. The four rows below cover all six dimensions
 and close the hole each one leaves.
 
-**Status:** five of the six shipped (#829/#875, plus breakpoints via #852) — `--space-*` ×10, `--lh-*`
+**Status:** five of the six shipped (breakpoints arriving separately) — `--space-*` ×10, `--lh-*`
 ×5, `--z-*` ×14, `--duration-*` ×4, `--bp-*` ×5. Still open: **`font-family`** (never tokenised; raw
 literal at `app.css:782`) and **easing** (motion shipped duration only). The literal counts below are
 the pre-migration figures and are kept as the rationale that justified the work, not as current state.
@@ -116,7 +116,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 
 | | |
 |---|---|
-| **Statement** | The product declares one canonical breakpoint set, and every `@media` width literal in source is a **member** of it. The reviewer checklist's widths (390 / 820 / 1440 px) are a separate, eyeballing list and are deliberately not required to match — the two are different things (owner #831 Q1-C). |
+| **Statement** | The product declares one canonical breakpoint set, and every `@media` width literal in source is a **member** of it. The reviewer checklist's widths (390 / 820 / 1440 px) are a separate, eyeballing list and are deliberately not required to match — the two are different things (owner ruling Q1-C). |
 | **Surfaces** | Phone, Ops, TV |
 | **Rationale** | `REVIEW.md` tells reviewers to check 390 / 820 / 1440px; the only widths in source are 380 / 520 / 768 / 1200px. The two lists mean different things — widths eyeballed vs widths switched at — but until a declaration existed, **nothing** pinned the switch widths, so a new `@media` could branch at a width no token and no reviewer knew about. |
 | **Source** | `DERIVED` — model: membership of every source `@media` width literal in the declared `--bp-*` set, read from `app.css`. The reviewer list is left as-is and not compared for equality. |
@@ -185,7 +185,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Rationale** | The mockup's own home frame demonstrates the failure — the docked CTA occludes queue row 5 because a disclosure grew inside a fixed shell — and an absolutely-positioned CTA that visually sits last while appearing first in the DOM also breaks the tab sequence. |
 | **Source** | [SC 2.4.3 Focus Order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html) (A) for the sequence. The reserve-in-flow half is `DERIVED` — model: content occluded by a fixed band cannot be reached by scrolling, so it is content loss under [SC 1.4.10 Reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html) regardless of the focus question. |
 | **Acceptance** | Given home with enough rows to scroll, When the list is scrolled to its end, Then the last row's rect does not intersect the docked band's rect; and When Tab is pressed from the header, Then focus visits controls in top-to-bottom visual order. |
-| **Check** | Driven browser: `getBoundingClientRect` intersection plus real `Tab` key events reading `document.activeElement`. The `--dock-h` custom-property idiom is the working precedent for reserving a docked band's height (it succeeded `--peek-h`, retired with the drawer surface in #903). |
+| **Check** | Driven browser: `getBoundingClientRect` intersection plus real `Tab` key events reading `document.activeElement`. The `--dock-h` custom-property idiom is the working precedent for reserving a docked band's height (it succeeded `--peek-h`, retired with the drawer surface). |
 | **Priority** | Must. |
 
 ### XR-PH-13 — Announcement inventory: what is announced, and when
@@ -204,7 +204,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 
 | | |
 |---|---|
-| **Statement** | The unjoined landing state offers both a scan path and a typed path to the same room. The typed path is six segmented single-character inputs; input is normalised to upper case; characters outside `ABCDEFGHJKMNPQRSTUVWXYZ23456789` are rejected at the keystroke with a stated reason; a 6-character paste fills all six; and Continue stays disabled until six are present, with the reason stated in text rather than by disabled state alone. A guest arriving with the code already resolved is shown the room **confirmed in words** — how many people are present, and a couple of their names — and never the code as an input they cannot act on. (Rooms carry no name in the data model, so #834 Q1-B confirms by presence, not a room name; there is no expiry column either, so a code either resolves or does not.) |
+| **Statement** | The unjoined landing state offers both a scan path and a typed path to the same room. The typed path is six segmented single-character inputs; input is normalised to upper case; characters outside `ABCDEFGHJKMNPQRSTUVWXYZ23456789` are rejected at the keystroke with a stated reason; a 6-character paste fills all six; and Continue stays disabled until six are present, with the reason stated in text rather than by disabled state alone. A guest arriving with the code already resolved is shown the room **confirmed in words** — how many people are present, and a couple of their names — and never the code as an input they cannot act on. (Rooms carry no name in the data model, so the owner's Q1-B ruling confirms by presence, not a room name; there is no expiry column either, so a code either resolves or does not.) |
 | **Surfaces** | Phone |
 | **Rationale** | A typed code alone is a cognitive-function test, so the scan route is what makes the screen conformant; the segment count teaches the format without an instruction; the alphabet already excludes O/I/L/0/1 server-side, so accepting an `O` and failing later discards the whole point of the restriction; and once transcription has happened the code has no remaining function, so what remains is confirmation. |
 | **Source** | [SC 3.3.8 Accessible Authentication (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/accessible-authentication-minimum.html) (AA) for scan-alongside-type; [SC 3.3.2 Labels or Instructions](https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html) (A) and [SC 3.3.1 Error Identification](https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html) (A) for the disabled-Continue reason. Alphabet from `mintRoomCode()` in `apps/core/src/server/rooms/repository.ts`, whose comment frames the code as what a phone enters **or a QR encodes**; the resolved-code path already exists at `routes/join/+page.svelte:11` (`/join?room=CODE`). |
@@ -261,7 +261,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Rationale** | `move`'s `toSeq` is an index into the singer's own queued picks, so a drop that appears to cross singers cannot be expressed and would snap back — which reads as a bug rather than as a rule. The guest's picks are **not adjacent** in a flat list, which is why the mode must draw the slots rather than let the list imply them. |
 | **Source** | Repo: `packages/shared/src/core/ops.ts:12`; `reorderWithinSinger` at `packages/shared/src/queue/rotation.ts:127`, which indexes queued picks only and clamps an out-of-range target. |
 | **Acceptance** | Given 6 queued entries of which 2 are the guest's, When the mode is entered, Then exactly 2 drop targets render and the other 4 rows expose no pointer or keyboard interaction; When a row is released over a non-target, Then no `move` op is emitted. |
-| **Check** | Driven browser for the target count and release behaviour; a unit test asserts the count derives from the guest's queued picks, not from the visible list length. Cross-singer placement is now a **direct rewrite of the stored ordered list** (no pin — pinning was deleted in #856 step 3), wired to the arrows and the drag in #856 step 4, and is out of scope for this within-singer row. |
+| **Check** | Driven browser for the target count and release behaviour; a unit test asserts the count derives from the guest's queued picks, not from the visible list length. Cross-singer placement is now a **direct rewrite of the stored ordered list** (no pin — pinning was deleted in the stored-list migration's step 3), wired to the arrows and the drag in its step 4, and is out of scope for this within-singer row. |
 | **Priority** | Must. |
 
 ### XR-PH-19 — Exiting the mode, and what happens when the queue moves underneath it
@@ -333,7 +333,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
   drag library's JS-driven motion and Tailwind's `transition-*` utilities, both outside that matcher —
   which is XR-PH-06.
 - **A cross-singer drag requirement.** `move` expresses a within-singer reorder only; a cross-singer drag
-  rewrites the stored ordered list through the "move to index" op that #856 step 4 introduces, so
+  rewrites the stored ordered list through the "move to index" op that the migration's step 4 introduces, so
   specifying a guest-facing version here would front-run that step.
 - **Search and filter behaviour on the browse screen beyond the deletion.** The direction deletes the four
   filter mechanisms and leaves typing as the only filter; ranking, debounce and result-set semantics are a

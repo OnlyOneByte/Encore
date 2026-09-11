@@ -164,7 +164,7 @@ it('seekPlan uses the jump threshold as its boundary, so telemetry never seeks �
 	expect(seekPlan(10, 10, 10 + SEEK_JUMP_SEC + 0.01).master).toBe(true);
 });
 
-it('seekPlan restarts a song playing under the jump threshold — the target-0 rewind is not telemetry (#95) — whenever the master jumps, the guide goes with it', () => {
+it('seekPlan restarts a song playing under the jump threshold — the target-0 rewind is not telemetry — whenever the master jumps, the guide goes with it', () => {
 	// A `restart` sets the reported position to 0 while the song plays on. From a currentTime UNDER
 	// SEEK_JUMP_SEC the move |masterSec - 0| is below the telemetry threshold, so the plain distance
 	// test never rewinds and the restart does nothing — the master playhead does not move. Positions
@@ -182,7 +182,7 @@ it('seekPlan restarts a song playing under the jump threshold — the target-0 r
 	expect(seekPlan(SEEK_JUMP_SEC / 2, 0, 0)).toEqual({ master: true, guide: false });
 });
 
-it('seekPlan does not read ordinary telemetry as a restart just because 0 is nearby (#95) — whenever the master jumps, the guide goes with it', () => {
+it('seekPlan does not read ordinary telemetry as a restart just because 0 is nearby — whenever the master jumps, the guide goes with it', () => {
 	// Telemetry can only report a target of 0 when the song is genuinely at ~0, in which case the
 	// master is already there and the target-0 clause must NOT fire (moving is a no-op, but the
 	// clause keys on masterSec > GUIDE_PREROLL_ALIGN_SEC precisely so it stays a plain no-move).
@@ -312,7 +312,7 @@ it('TvPlayer applies the seek plan to BOTH elements: aligns the guide to the fix
  * rev alone and does not broadcast), so tracking it re-takes the seek decision on an equal-position
  * restart WITHOUT reopening telemetry-chasing. This guard fails if that tracked read is removed.
  */
-it('TvPlayer applies the seek plan to BOTH elements: re-runs the seek effect on every playback:state via a tracked seekRev, so an equal-position restart still fires (#95)', () => {
+it('TvPlayer applies the seek plan to BOTH elements: re-runs the seek effect on every playback:state via a tracked seekRev, so an equal-position restart still fires', () => {
 	expect(seekTrigger).not.toBe('');
 	// Strip comments before asserting: a `seekRev` mentioned only in a comment does NOT register a
 	// reactive dependency, so a guard that matched comment text would be mutation-blind (it would
@@ -474,7 +474,7 @@ it('TvPlayer mounts the guide on mount-worthiness, gates readiness on the level:
 	expect(tvForMountGate).not.toContain('{#if wantsGuide && guideRef}');
 });
 
-it('TvPlayer mounts the guide on mount-worthiness, gates readiness on the level: the level gate stays on effectiveGuide > 0 and still guards the ready-report (trap #1)', () => {
+it('TvPlayer mounts the guide on mount-worthiness, gates readiness on the level: the level gate stays on effectiveGuide > 0 and still guards the ready-report', () => {
 	// wantsGuide keeps its level meaning...
 	const wg = tvForMountGate.split('const wantsGuide = $derived(')[1]?.split(');')[0] ?? '';
 	expect(wg).not.toBe('');

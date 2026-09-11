@@ -125,9 +125,9 @@ test('onReaped fires once per tick that changed ≥1 job, and not on a no-op', (
 	expect(calls).toBe(1);
 });
 
-// ── #90: a reaper-killed cook must settle its readiness gate ──────────────────────
+// ── a reaper-killed cook must settle its readiness gate ───────────────────────────
 // The worker box died mid-cook, so the failure reaches terminal `failed` via the reaper's own
-// attempts-exhaustion path — never through #onFailed. Before #90 the gate stayed mid-flight
+// attempts-exhaustion path — never through #onFailed. Before this wiring the gate stayed mid-flight
 // forever: readyToSing never flipped and rotation held the queue entry on every pass, even with the
 // instrumental on disk. The reaper has no catalog, so app.ts wires its onFailed hook to
 // settleGatesForFailedJob(job, mediaById) — this test drives that live wiring, not a reimplementation.
@@ -165,15 +165,15 @@ function exhaustToFailed(jobType: 'stems' | 'align', over: Partial<Media> = {}) 
 	return { jobs, mediaById, job };
 }
 
-test('#90 reaper: a dead stems cook settles the STEMS gate back to un-cooked', () => {
+test('reaper: a dead stems cook settles the STEMS gate back to un-cooked', () => {
 	// stemStatus 'queued' (separation in flight) → the box dies → reaper exhausts attempts.
 	const { jobs, mediaById, job } = exhaustToFailed('stems', { stemStatus: 'queued' });
 	expect(jobs.byId(job.id)!.status).toBe('failed'); // reaper path, not #onFailed
-	// The regression: before #90 this stayed 'queued' forever → isCooking true → rotation holds it.
+	// The regression: without that settle this stayed 'queued' forever → isCooking true → rotation holds it.
 	expect(mediaById.get('m1')!.stemStatus).toBe('none');
 });
 
-test('#90 reaper: a dead align cook settles the LYRICS gate so the playable song can be sung', () => {
+test('reaper: a dead align cook settles the LYRICS gate so the playable song can be sung', () => {
 	// The song already has its instrumental and plays; only lyrics were pending → align dies.
 	const { jobs, mediaById, job } = exhaustToFailed('align', {
 		stemStatus: 'ready',

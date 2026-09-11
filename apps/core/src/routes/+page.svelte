@@ -62,8 +62,8 @@
 	let entries = $state<QueueEntry[]>([]);
 	// What each row is still waiting on ('add' | 'move'), republished on every store emit so the
 	// QueueRow/ProcessingCard `pending` affordance reflects the real pending map instead of the
-	// placeholder rotationSeq that applyAndReseq overwrites in the same frame (issue #304). A KIND
-	// rather than a set of ids since #832: a pending REORDER is marked too (XR-PH-10), and it must not
+	// placeholder rotationSeq that applyAndReseq overwrites in the same frame. A KIND
+	// rather than a set of ids: a pending REORDER is marked too (XR-PH-10), and it must not
 	// borrow the add path's "adding…" word.
 	let pendingKind = $state<Map<string, 'add' | 'move'>>(new Map());
 	let singers = $state<Map<string, PublicSinger>>(new Map());
@@ -87,13 +87,13 @@
 	// live make-karaoke progress per mediaId — driven by media:status broadcasts AND seeded
 	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
-	// Failed-cook scars (#68) captured once on mount from localStorage. Held so they can be re-merged
+	// Failed-cook scars captured once on mount from localStorage. Held so they can be re-merged
 	// into the catalog after a queue:sync REPLACES it — otherwise the room's first sync wipes the
 	// scarred (failed, so server-unknown) media and its row vanishes again on the very reload the
 	// scar exists to survive.
 	let scarredMedia: Media[] = [];
 	/*
-	 * DIRECTION A + the 2026-09-09 owner correction (docs/DECISIONS.md, issues #832/#902): the room's
+	 * DIRECTION A + the 2026-09-09 owner correction (docs/DECISIONS.md): the room's
 	 * queue IS the home screen, and the search box is docked at the bottom of it AT ALL TIMES for a
 	 * joined singer — it is the add affordance, so there is no `+ Add a turn` push and no browse MODE.
 	 * Typing expands the results UPWARD IN PLACE over the queue (direction B's layout), so there is no
@@ -155,12 +155,12 @@
 	// an input to the optimistic reducer, so an add can only land in its real position if this is
 	// current. Defaults until the first sync, which is fair rotation — the pre-setting behaviour.
 	let settings = $state<EffectiveSettings>(DEFAULT_EFFECTIVE_SETTINGS);
-	// A reorder is ALWAYS meaningful now (#856): the queue is a stored ordered list and a move rewrites
+	// A reorder is ALWAYS meaningful now: the queue is a stored ordered list and a move rewrites
 	// it, so there is no policy that can discard the move. This used to be false under `shuffle`, whose
 	// rank came from the entry id and re-derived over any reorder — nothing re-derives a position now,
 	// so a drag on a shuffled list simply rearranges the stored list like anywhere else.
 	const canReorder = true;
-	// HOST reorder (issue #638): a host can drag ANY song to any global slot, not just reorder their
+	// HOST reorder: a host can drag ANY song to any global slot, not just reorder their
 	// The list heading named the order "rotation" unconditionally, which stops being true the moment
 	// the room picks anything else. Eyes-on: it still said ROTATION with the room on first-come-first-served.
 	const orderLabel = $derived(queueOrderLabel(settings.room.queueOrder));
@@ -203,7 +203,7 @@
 		(async () => {
 			const res = await fetch('/api/me');
 			if (!res.ok) {
-				// Unjoined. `/` is the landing page now (#834 Q2-A retired /join), so the template renders
+				// Unjoined. `/` is the landing page now (Q2-A retired /join), so the template renders
 				// the JoinLanding state below rather than bouncing. Leave `me` null and stop: no store, no
 				// socket for a guest who has not joined.
 				return;
@@ -236,7 +236,7 @@
 						// Re-apply failed-cook scars: a queue:sync REPLACES the catalog, and a failed song is
 						// not in the room's media (it settled to un-cooked server-side), so without this the
 						// scarred row is wiped by the very first sync. A real entry for the id (already added
-						// above) wins; this only fills a gap. (#68)
+						// above) wins; this only fills a gap.
 						if (scarredMedia.length) mergeMissingMedia(scarredMedia);
 						// The room's guiding-track default — needed to LABEL the control, since a null
 						// per-song override means "inherit" and the phone would otherwise show 0%.
@@ -308,7 +308,7 @@
 				}
 			});
 			// Re-surface failed cooks that a reload would otherwise have erased: the live `mediaStatus`
-			// map is in-memory only, so a persisted scar (Encore #68) is seeded back as a synthetic
+			// map is in-memory only, so a persisted scar is seeded back as a synthetic
 			// `failed` live status. This flows through liveOf -> displayReadiness -> cookingRows to the
 			// same red-chip + Sing row a live failure renders, with no extra UI. A fresher live broadcast
 			// always wins (checked below), and any scar cleared by a later `ready` is already gone.
@@ -347,7 +347,7 @@
 	 * NO_QUEUE_PRIORITY — behind the lyrics backfill — while a singer stands there waiting. See
 	 * $lib/cook-and-queue.ts for the full reasoning and its test.
 	 *
-	 * `hasQueuedTurn` is the RETRY case (#741) and it is not an optimisation: a dead cook keeps
+	 * `hasQueuedTurn` is the RETRY case and it is not an optimisation: a dead cook keeps
 	 * offering Sing (the group header literally says "tap Sing to try again"), so without it the second
 	 * tap booked the singer a second turn of the same song and the room played it twice in a row. The
 	 * cook step still runs — the retry must stay reachable, per readiness.ts's `canCook('failed')`.
@@ -386,7 +386,7 @@
 		}
 	}
 
-	/** Re-pick a song's lyrics (#640): pick a stored candidate by ref, or paste new words. Either way
+	/** Re-pick a song's lyrics: pick a stored candidate by ref, or paste new words. Either way
 	 *  the server pins the choice and re-times it; the live media:status broadcasts drive the row. Like
 	 *  makeKaraoke, the network call lives here and the LyricsReselect control just reports the choice. */
 	async function reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }) {
@@ -410,7 +410,7 @@
 	// One axis, three states: ready (stems on disk, sing now), cooking (stems in flight, still
 	// queueable because rotation holds its slot), raw (plays with the original vocals).
 	//
-	// It is no longer a FILTER. Direction B (issue #833) deleted the four concurrent ways to narrow
+	// It is no longer a FILTER. Direction B deleted the four concurrent ways to narrow
 	// one list — the three readiness chips, the artist rail, the genre rail, and the group headings
 	// that re-announced this axis in prose — leaving typing in the docked search box as the only one.
 	// So there is no `filter` state and no `showReady`/`showCooking`/`showRaw` gate: every group
@@ -459,7 +459,7 @@
 	 * guaranteed to be visible, so a song you kicked off then went idle from must not disappear while
 	 * it works. WHEN SEARCHING it is scoped to the query via `cookingResults`, the server's
 	 * query-matched cooking group: a song someone else is cooking that does not match your search must
-	 * NOT appear under it (#252). The id-selection lives in the pure `cookingGroupIds` helper so it is
+	 * NOT appear under it. The id-selection lives in the pure `cookingGroupIds` helper so it is
 	 * unit-testable; `failed` is included and `ready`/`canceled` excluded, all inside that helper.
 	 */
 	const cookingRows = $derived.by(() => {
@@ -488,7 +488,7 @@
 	 * queued) must subtract it — otherwise a cooked song shows up three times on one screen, once per
 	 * list, which is precisely the confusion the source tabs used to cause.
 	 *
-	 * Unconditional since #833: with the readiness chips gone, the ready and cooking groups always
+	 * Unconditional: with the readiness chips gone, the ready and cooking groups always
 	 * render, so they always account for their songs.
 	 */
 	const accountedFor = $derived.by(() => {
@@ -506,7 +506,7 @@
 	let readyResults = $state<Media[]>([]);
 	let rawResults = $state<Media[]>([]);
 	// The server's query-matched cooking group. Held so `cookingRows` can scope to the query while a
-	// search is active instead of re-deriving from the whole catalog (#252). Cleared with the box.
+	// search is active instead of re-deriving from the whole catalog. Cleared with the box.
 	let cookingResults = $state<Media[]>([]);
 	let searching = $state(false);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -560,7 +560,7 @@
 	}
 
 	/*
-	 * TOASTS ARE SONNER'S NOW (#913 S5).
+	 * TOASTS ARE SONNER'S NOW (S5).
 	 *
 	 * What this replaced: two hand-rolled fixed-position surfaces, two `setTimeout` timers, a
 	 * `bind:clientHeight` measurement of the undo toast, and an `$effect` publishing `--undo-h` to
@@ -610,11 +610,11 @@
 	// the saved-karaoke library + whatever is cooking, for a client that just loaded
 	let library = $state<Media[]>([]);
 	// A song's descriptive tags, mediaId → its 'tag'-kind values, arriving beside `library` from
-	// /api/library (#689). A parallel map rather than a field on Media because tags live in their own
+	// /api/library. A parallel map rather than a field on Media because tags live in their own
 	// table and Media is the origin identity; the row reads its own song's entry, absent = no chips.
 	let libraryTags = $state<Record<string, string[]>>({});
 	/*
-	 * DELETED HERE (#833, direction B): the browse disclosure and the two facet rails it hid — the
+	 * DELETED HERE (direction B): the browse disclosure and the two facet rails it hid — the
 	 * `facets` state, the `browseFilter` that held one artist OR one tag, `browseOpen`, `setBrowse`,
 	 * and the `?artist=`/`?tag=` query this page sent. They were mechanisms 2 and 3 of the four
 	 * concurrent ways to narrow one list, and the ruling was to delete them rather than tidy them.
@@ -649,7 +649,7 @@
 	const myPicks = $derived(queued.filter((e) => e.singerId === me?.id));
 
 	/*
-	 * DIRECTION B (docs/DECISIONS.md, issue #833): on the browse screen the search box is docked in the
+	 * DIRECTION B (docs/DECISIONS.md): on the browse screen the search box is docked in the
 	 * thumb zone and the results stack UPWARD from it, so the highest-ranked row is the one nearest the
 	 * thumb — which is the whole reason to dock the box at the bottom rather than the top. Every list
 	 * below is therefore emitted in reverse, and the column is bottom-anchored in CSS.
@@ -728,7 +728,7 @@
 		return queued.findIndex((e) => e.id === id);
 	}
 	/**
-	 * Cross-singer reorder (#856 step 4, #828 Q4-A): shift the entry one slot up/down across the WHOLE
+	 * Cross-singer reorder (step 4, #828 Q4-A): shift the entry one slot up/down across the WHOLE
 	 * queue, jumping other singers — which the own-picks `move` op cannot express. Emits `move-to-index`,
 	 * which rewrites the stored list, so the move sticks with no pin. Every joined singer may do it; the
 	 * server gates a NON-owner entry on `queue:reorder-any`. (The reorder-mode drag below still commits
@@ -742,7 +742,7 @@
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
 
-	/* ── THE OWN-PICKS REORDER MODE (XR-PH-17 … XR-PH-20, issue #836) ──────────────────────────────
+	/* ── THE OWN-PICKS REORDER MODE (XR-PH-17 … XR-PH-20) ──────────────────────────────
 	 *
 	 * A drag, not a list sort. `move`'s toSeq indexes the singer's OWN queued picks, so the op cannot
 	 * express "above someone else's song" — and the guest's picks are not adjacent in this flat list.
@@ -753,7 +753,7 @@
 	/**
 	 * Travel below which a press-and-release is a TAP rather than a drop, in px. 6px is the reorder
 	 * mode's OWN threshold and this is now its only definition — it was shared with the queue sheet's
-	 * pull until that surface was deleted (#903), so the value is inherited, not arbitrary: it is the
+	 * pull until that surface was deleted, so the value is inherited, not arbitrary: it is the
 	 * travel a thumb produces incidentally while pressing, below which treating the release as a drop
 	 * dissolves the mode the guest was trying to open. Raising it makes short deliberate drags read as
 	 * taps; lowering it makes a steady press read as a drop. `reorder-mode-source-836.test.ts` pins the
@@ -865,7 +865,7 @@
 	 * The pointer drag. The idiom: capture the pointer on the control that was pressed, publish the
 	 * offset as a CSS custom property, and let a CSS transform do the moving — so no position is ever
 	 * interpolated in JS (XR-PH-06). The queue sheet's pull used the same idiom before it was deleted
-	 * (#903); this is the only drag on the phone now.
+	 *; this is the only drag on the phone now.
 	 *
 	 * The slot under the finger is read by hit-testing rather than computed from row heights: rows can
 	 * change height while the mode is open (a byline gains an `away` badge, another guest queues a
@@ -1072,7 +1072,7 @@
 	});
 	const nowDurationSec = $derived(nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0);
 
-	// ── the guest's own place in the rotation, in WORDS (XR-PH-09, issue #832) ──────────────
+	// ── the guest's own place in the rotation, in WORDS (XR-PH-09) ──────────────
 	// My soonest queued pick, and where it sits in the room's order.
 	const myNextEntry = $derived(
 		entries
@@ -1150,7 +1150,7 @@
 	});
 
 	/**
-	 * XR-PH-15's honest degradation, as ruled on #835 Q1-D: when the playing song has no isolated
+	 * XR-PH-15's honest degradation, as ruled Q1-D: when the playing song has no isolated
 	 * vocals stem the guide control renders DISABLED rather than vanishing, and this sentence — on the
 	 * hero, beside the control group — says why and what still works. #253 deleted the equivalent line
 	 * from inside `GuidingTrack.svelte` and `drawer-ui-cleanup-253.test.ts` pins its absence there, so
@@ -1215,14 +1215,14 @@
 	{#if me}
 	{#if !searchActive}
 		<!--
-			HOME IS THE QUEUE (direction A, issue #832). The playing song is the one thing on this screen
+			HOME IS THE QUEUE (direction A). The playing song is the one thing on this screen
 			that is not a list item, so it gets a HERO rather than the docked peek row it used to share with
 			the rotation; the bottom of the screen belongs to the one primary button instead.
 
 			The live singing controls come with it, in the hero's disclosure BODY (XR-PH-15) — they are
 			controls for the song playing NOW, and the sheet that used to hold them is gone from this route.
 			A song with no isolated vocals stem keeps the guide row, disabled, and gets `controlsNote`
-			beside the group saying why and what still works (#835 Q1-D). Who may operate the controls
+			beside the group saying why and what still works (Q1-D). Who may operate the controls
 			mid-song is a separate, still-open policy row (XR-PH-16); nothing about that changes here.
 		-->
 		<NowPlayingHero
@@ -1295,7 +1295,7 @@
 				-->
 				{#if hasRange}
 					<div class="range">
-						<!-- #913 S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> stays
+						<!-- S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> stays
 							here via Bits UI's `child` snippet, so its scoped class in this file still applies. -->
 						<Collapsible.Root bind:open={rangeOpen}>
 							<Collapsible.Trigger>
@@ -1333,7 +1333,7 @@
 				-->
 
 				<!--
-					Lyrics re-select (#640): the per-song fallback for wrong / wrongly-chosen lyrics. Any joined
+					Lyrics re-select: the per-song fallback for wrong / wrongly-chosen lyrics. Any joined
 					singer may re-pick (Q1=A). Only shown once the song has candidates on disk; the control itself
 					hides when there is nothing to choose. The pick is re-timed server-side from the retained vocals.
 				-->
@@ -1465,8 +1465,8 @@
 	{/if}
 
 	<!--
-		THE RESULTS VIEW — direction A's queue-home (issue #832), direction B's layout (issue #833), and
-		the 2026-09-09 owner correction (issue #902): it renders IN PLACE over the queue while the box
+		THE RESULTS VIEW — direction A's queue-home, direction B's layout, and
+		the 2026-09-09 owner correction: it renders IN PLACE over the queue while the box
 		has a query (`searchActive`), with NO navigation. There is no browse mode any more.
 
 		The search box is NOT in here. It is docked in the thumb zone below this column AT ALL TIMES, and
@@ -1482,7 +1482,7 @@
 		the readiness axis in prose. Typing in the docked box is the only way to narrow the list. Four
 		ways to narrow one list was the defect; a tidier four would still have been the defect.
 
-		The empty-box shortcuts (Popular / Recently) are GONE from here too (#902): with an empty box the
+		The empty-box shortcuts (Popular / Recently) are GONE from here too: with an empty box the
 		screen is the live QUEUE, not a shortcut list, so this whole block renders ONLY while a query is
 		present.
 
@@ -1499,7 +1499,7 @@
 
 	<!--
 		FURTHEST FROM THE THUMB: songs that still need karaoke made. Recently queued sits above Popular
-		tonight — but only ever as search results now; the empty-box shortcut lists were dropped in #902
+		tonight — but only ever as search results now; the empty-box shortcut lists were dropped
 		in favour of showing the live queue.
 	-->
 	{#if searchActive}
@@ -1599,7 +1599,7 @@
 		{/if}
 	{/if}
 	{:else}
-		<!-- UNJOINED (#834): `/` is the landing page. Both a scan affordance and a six-segment code entry,
+		<!-- UNJOINED: `/` is the landing page. Both a scan affordance and a six-segment code entry,
 		     or — when a QR was scanned (`/?room=CODE`) — the room confirmed in words. -->
 		<JoinLanding />
 	{/if}
@@ -1612,7 +1612,7 @@
 	Typing is the only filter.
 
 	It is docked in the thumb zone AT ALL TIMES for a joined singer — it IS the add affordance, which is
-	why the old `+ Add a turn` CTA (and its `.cta-dock`) are gone (#902). With an empty box the queue
+	why the old `+ Add a turn` CTA (and its `.cta-dock`) are gone. With an empty box the queue
 	shows above it; typing expands results upward in place. It is the ONE docked band on this route, so
 	`main` pads by the `--dock-h` this element measures and the safe-area inset lives HERE and nowhere
 	above it (XR-PH-12). LAST in the DOM, after the content it sits below.
@@ -1676,7 +1676,7 @@
 		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	/*
-	 * THE BOTTOM-ANCHORED RESULTS STACK (direction B, issue #833). Results grow UPWARD from the docked
+	 * THE BOTTOM-ANCHORED RESULTS STACK (direction B). Results grow UPWARD from the docked
 	 * search box, so the column's content sits at its bottom edge rather than its top: with one line of
 	 * content, that line is beside the thumb instead of stranded at the top of an empty screen.
 	 *
@@ -1699,7 +1699,7 @@
 	main:has(> .backrow) > .backrow {
 		margin-bottom: auto;
 	}
-	/* The way back to the queue from the results view — it clears the search (#902). First in the DOM
+	/* The way back to the queue from the results view — it clears the search. First in the DOM
 	   because it is first visually (XR-PH-12). */
 	.backrow {
 		display: flex;
@@ -1737,7 +1737,7 @@
 	}
 
 	/*
-	 * THE REORDER MODE's own chrome (issue #836).
+	 * THE REORDER MODE's own chrome.
 	 *
 	 * No transition and no keyframe anywhere in this block. The mode appears and disappears on a state
 	 * change, and the dragged row's movement is a CSS transform reading a var the pointer writes (see
@@ -1787,7 +1787,7 @@
 		justify-content: center;
 		width: 100%;
 		/*
-		 * The TOKEN, not the number (#831). `--tap` is the standard; a bare `44px` merely agrees with it
+		 * The TOKEN, not the number. `--tap` is the standard; a bare `44px` merely agrees with it
 		 * today, so raising the standard in `app.css` would leave this control behind while every touch
 		 * guard stayed green. `expressesTap` in `test-helpers.ts` asks for the token for that reason.
 		 */
@@ -1802,7 +1802,7 @@
 		cursor: pointer;
 	}
 	.dropslot.hot {
-		/* var(--accent), not the retired --accent-strong (#840, XR-COL-11) — a non-text border. */
+		/* var(--accent), not the retired --accent-strong (XR-COL-11) — a non-text border. */
 		border-color: var(--accent);
 		background: var(--card-tint2);
 		color: var(--ink);
@@ -1848,7 +1848,7 @@
 	/* The one child of the header whose width is user-supplied. A single unbroken token has a
 	   min-content width equal to its full rendered width, so with automatic minimum sizing flex-shrink
 	   cannot take it below that and the row grows the document — carrying the settings gear off the
-	   viewport (#109). Truncate it instead: text-overflow only fires on a block box, so this is a
+	   viewport. Truncate it instead: text-overflow only fires on a block box, so this is a
 	   styled span (block), and min-width:0 must exist up the whole chain (.me-cluster, .me-btn) for it
 	   to actually shrink. The dot (flex:0 0 auto) and the gear (min-width:44px) stay unshrinkable so
 	   the 44px target survives. */
@@ -1908,7 +1908,7 @@
 		}
 	}
 	/*
-	 * THE SEARCH DOCK (direction B #833; the SOLE home dock since #902). `position: fixed` is what keeps
+	 * THE SEARCH DOCK (direction B #833; the SOLE home dock). `position: fixed` is what keeps
 	 * the box reachable with one thumb wherever the stack is scrolled to, and it does not overlap content
 	 * because `main` pads by this element's own measured height (--dock-h) rather than by a guess. The
 	 * safe-area inset lives HERE, on the band that actually sits at the bottom of the screen, and reaches
@@ -1927,7 +1927,7 @@
 		border-top: 1px solid var(--line);
 	}
 	/*
-	 * #913 S4: the dock carries the card SURFACE itself rather than the global `.card` class, and is
+	 * S4: the dock carries the card SURFACE itself rather than the global `.card` class, and is
 	 * deliberately NOT a <Card.Root>. It is a composed control — mark, input, spinner in a row — and its
 	 * children are styled from this file by descendant selectors like `.searchbox input`. Moving the
 	 * container into a component would leave those selectors with no matching ancestor, because Svelte
@@ -1957,13 +1957,13 @@
 		 * from its character size, so as a flex item with the default `min-width: auto` it refuses to
 		 * shrink below roughly 20 characters — which at 200% text on a 320px viewport pushes the row
 		 * wider than the screen and forces horizontal scrolling (SC 1.4.10). That is the exact shape
-		 * #857 measured at 436px against 320px on the chip row this dock replaces.
+		 * measured at 436px against 320px on the chip row this dock replaces.
 		 */
 		flex: 1;
 		min-width: 0;
 		/*
 		 * The input, not the wrapper, is the tap target: `.searchbox` is a div, so tapping its padding
-		 * focuses nothing (#863). Give the input the full tap floor so the hit extent at its centre is
+		 * focuses nothing. Give the input the full tap floor so the hit extent at its centre is
 		 * var(--tap), not the bare 22px text line. The wrapper's own min-height (52px here, raised from
 		 * 42px at the narrow breakpoint below) already absorbs it.
 		 */
@@ -1972,9 +1972,9 @@
 	.chip {
 		/* var(--tap), matching the queue actions and the row buttons. The readiness chips this was
 		   written for were ~30px — above the 24px WCAG floor, but below the threshold this app had
-		   already set for itself everywhere else. Those chips are deleted (#833); the rule stays because
+		   already set for itself everywhere else. Those chips are deleted; the rule stays because
 		   the way back out of a non-matching search ("Show all N") is a `chip ok chip-icon` and is just
-		   as tappable. The TOKEN, never the number (#831): the control has to move with `--tap`. */
+		   as tappable. The TOKEN, never the number: the control has to move with `--tap`. */
 		min-height: var(--tap);
 		display: inline-flex;
 		align-items: center;
@@ -2045,7 +2045,7 @@
 		/*
 		 * `1 1 40%`, not `1`: at 200% text a nowrap `flex: 1` pair could not shrink below the
 		 * min-content width of "semitone" (~172px each), so the two buttons plus the label forced the
-		 * row — and the sheet around it — past 320px (#857). A 40% basis lets both sit two-up when they
+		 * row — and the sheet around it — past 320px. A 40% basis lets both sit two-up when they
 		 * fit and wrap to their own rows when they cannot; `min-width: 0` frees the flex minimum so the
 		 * shrink is allowed at all, and `.key-btn`'s `overflow-wrap` breaks the single word if even a
 		 * full-width button is too narrow for it. The row's own `flex-wrap` (above) is what catches them.
@@ -2069,7 +2069,7 @@
 		justify-content: center;
 		gap: var(--space-xs);
 		/* "semitone" is one unbreakable token; at 200% text a full-width button can still be narrower
-		   than it, so allow the word to break rather than force the row wider than the viewport (#857). */
+		   than it, so allow the word to break rather than force the row wider than the viewport. */
 		overflow-wrap: anywhere;
 	}
 	.key:not(.disabled) button:not(:disabled) {
@@ -2284,11 +2284,11 @@
 	}
 
 	/*
-	 * #913 S7: this file's reduce arm is GONE, because the two animations it covered left with their
+	 * S7: this file's reduce arm is GONE, because the two animations it covered left with their
 	 * elements — the search spinner to ui/spinner and the skeleton shimmer to ui/skeleton. Both are
 	 * now declared inside a `prefers-reduced-motion: no-preference` block in those components, which
 	 * makes motion OPT-IN rather than declared-then-reset: there is no reset left to lose the cascade
-	 * to a later rule (#337). Nothing in this file animates any more.
+	 * to a later rule. Nothing in this file animates any more.
 	 */
 
 	/*
@@ -2309,7 +2309,7 @@
 			padding-top: var(--space-3xs);
 		}
 		.searchbox {
-			/* rise to hold the 44px input added in #863 — 42px would clip its tap target */
+			/* rise to hold the 44px input added — 42px would clip its tap target */
 			min-height: var(--tap);
 			padding: var(--space-sm) var(--space-xl);
 		}

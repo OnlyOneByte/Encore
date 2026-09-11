@@ -267,7 +267,7 @@ def test_the_overshoot_demotion_flips_a_real_wrong_version_pick_against_a_real_c
 
 
 def test_the_only_real_same_audio_pair_votes_at_coverage_zero_and_cannot_calibrate_the_threshold() -> None:
-    """`SUSPECT_COVERAGE` still needs the `baselines/` half of #668, and this is the proof.
+    """`SUSPECT_COVERAGE` still needs the `baselines/` half, and this is the proof.
 
     `chain.py` says to re-derive the constant once this corpus lands. It cannot be re-derived from these
     files: a coverage threshold needs real (candidate, baseline) pairs and the archive holds exactly one,

@@ -76,7 +76,7 @@ export async function ytDlpAvailable(spawn = Bun.spawn, now: () => number = Date
 		const r = await runCapturing(['yt-dlp', '--version'], AVAILABLE_TIMEOUT_MS, spawn);
 		_available = !r.timedOut && r.code === 0;
 	} catch (err) {
-		// #767 §3: an UNBOUND catch here is the whole reason "why is YouTube search empty?" is
+		// §3: an UNBOUND catch here is the whole reason "why is YouTube search empty?" is
 		// answerable only from docs/HANDOFF.md:68 ("yt-dlp is invoked by name via PATH, so that
 		// directory must be on PATH or YouTube search silently returns empty"). Bind the reason and
 		// warn, the shape this directory already adopted for the same defect class (retention.ts:277,
@@ -92,7 +92,7 @@ export async function ytDlpAvailable(spawn = Bun.spawn, now: () => number = Date
 const SEARCH_TIMEOUT_MS = 10_000; // Finding #5c: a hung yt-dlp must not hold the request open
 
 /**
- * Injectable seams for `ytDlpSearch`, so each of its exits is reachable from a test (#767). Before
+ * Injectable seams for `ytDlpSearch`, so each of its exits is reachable from a test. Before
  * this, the function took no dependencies at all, which is why its only test could assert nothing
  * beyond `Array.isArray` on whatever the real binary happened to return.
  */
@@ -111,12 +111,12 @@ export interface YtDlpSearchDeps {
 /**
  * YtSearchBackend: run `yt-dlp ytsearchN:<query> --dump-json --flat-playlist`.
  *
- * ATTRIBUTABLE EMPTY (#767). The graceful degrade is deliberately UNCHANGED — an absent yt-dlp still
+ * ATTRIBUTABLE EMPTY. The graceful degrade is deliberately UNCHANGED — an absent yt-dlp still
  * yields `[]` rather than throwing (file header, docs/HANDOFF.md:68). What changes is that an empty
  * page is no longer anonymous:
  *
  *  - a KILLED search is reported, because the timeout is now owned by the shared `runCapturing`
- *    boundary (`spawn-capture.ts`, extracted from this very function by #446 and never folded back
+ *    boundary (`spawn-capture.ts`, extracted from this very function earlier and never folded back
  *    in) instead of a hand-rolled `setTimeout(kill)` that discarded its own `timedOut`. That mattered
  *    because `parseSearchJson` silently drops the truncated trailing line of a killed run, so a
  *    killed search was byte-indistinguishable from a complete short one — and `YouTubeResolver` then

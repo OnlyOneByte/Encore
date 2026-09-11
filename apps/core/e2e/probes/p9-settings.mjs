@@ -322,7 +322,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 			expect: baseline.room.tvProgressStyle
 		},
 		{
-			// #425: a colour now, not an angle. `NaN` is no longer the interesting junk — an unparseable
+			// a colour now, not an angle. `NaN` is no longer the interesting junk — an unparseable
 			// colour string is, because the field is text and a bad one would reach a style attribute.
 			scope: 'room',
 			body: { tvBackgroundColor: 'rebeccapurple' },

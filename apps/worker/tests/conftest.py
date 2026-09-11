@@ -1,6 +1,6 @@
 """Shared worker-test helpers, auto-loaded by pytest for apps/worker/tests.
 
-Batch 2 of the test-suite dedup (#626, follows #618/#455): `drain()` was hand-copied
+Batch 2 of the test-suite dedup: `drain()` was hand-copied
 into SEVEN test files in two spellings of the same operation — consume a PlanRunner/processor's
 async event stream into a list. Six were live callers, now routed here (test_align_plan,
 test_demucs, test_fetch, test_runtime, test_roformer, test_song_profile); the seventh copy, in

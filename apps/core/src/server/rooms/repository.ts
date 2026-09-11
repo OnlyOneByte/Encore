@@ -3,8 +3,8 @@
 // A room is one party: it owns an `id` (the internal handle the rest of the rooms chain scopes
 // playback/queue/singers to) and a `code` (the short, human-typeable join code a phone enters or a
 // QR encodes). This layer is deliberately minimal and foundational — it creates a room and looks
-// one up by its code. It decides NOTHING about how a phone joins one (that is #654), nor about
-// per-room playback/queue/singer scoping (#655/#656): those build ON this table being real.
+// one up by its code. It decides NOTHING about how a phone joins one, nor about
+// per-room playback/queue/singer scoping: those build ON this table being real.
 //
 // Kept in apps/core (not @encore/shared) on purpose: the wire contract carries no Room today, and
 // #652 is explicitly scoped not to cross the shared package.
@@ -16,7 +16,7 @@ import { rooms } from '../db/schema';
 import { ulid, CODE_ALPHABET, CODE_LENGTH } from '@encore/shared';
 
 // The join-code vocabulary now lives in @encore/shared/room-code so the phone's six-segment entry
-// (XR-PH-14) rejects exactly the characters this server rejects, with no second copy to drift (#834).
+// (XR-PH-14) rejects exactly the characters this server rejects, with no second copy to drift.
 // Re-exported here so this module's existing importers keep their import site.
 export { CODE_ALPHABET, CODE_LENGTH } from '@encore/shared';
 

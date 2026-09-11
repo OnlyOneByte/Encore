@@ -75,7 +75,7 @@ def build_song_profile(
 
     # ── loudness (instrumental) ─────────────────────────────────────────────────────
     # Its OWN half of the profile, measured off the same WAV the key came from but independent of it:
-    # an unreadable chromagram must not throw away a good level, nor the reverse (issue #462). The
+    # an unreadable chromagram must not throw away a good level, nor the reverse. The
     # INSTRUMENTAL is the file that plays in the room, and the guide-vocal knob is a fraction of it, so
     # levelling the instrumental is also what makes a guide set to 15% mean the same on the next song.
     #

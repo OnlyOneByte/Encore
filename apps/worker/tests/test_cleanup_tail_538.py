@@ -1,5 +1,5 @@
-"""Regression pins for the #538 worker-cleanup tail (the lower-consequence behavior fixes deferred
-from #459). Each test fails when its production hunk is reverted to the pre-#538 form, so the fix is
+"""Regression pins for the worker-cleanup tail (the lower-consequence behavior fixes deferred
+from #459). Each test fails when its production hunk is reverted to the pre-change form, so the fix is
 mutation-provable rather than asserted.
 
   #1  resolve_engines parses `engine` at the boundary (unknown -> BoundaryError), like asrModel/syncMode
@@ -30,9 +30,9 @@ from src.runtime.ctx import ResolvedEngines  # noqa: E402
 from src.steps.separate import DecodeToWav, PublishStems  # noqa: E402
 
 
-# ── #1 engine parsed at the boundary ────────────────────────────────────────────────
+# ── engine parsed at the boundary ────────────────────────────────────────────────
 def test_resolve_engines_raises_on_an_unknown_engine_at_the_boundary():
-    """MUTATION PIN for #1. The pre-#538 `separator=str(params.get("engine") or base.separator)`
+    """MUTATION PIN for #1. The pre-change `separator=str(params.get("engine") or base.separator)`
     silently carried an unknown token through resolve_engines; the value only failed LATER at
     engine_for with a different exception type. Now `engine` is parsed at the same boundary as
     asrModel/syncMode, so a de-whitelisted value RAISES a BoundaryError here. Reverting the parse_engine
@@ -62,7 +62,7 @@ def test_resolve_engines_docstring_no_longer_claims_a_false_fallback():
     assert "RAISES" in doc
 
 
-# ── #4 heartbeat_loop body is wrapped ────────────────────────────────────────────────
+# ── heartbeat_loop body is wrapped ────────────────────────────────────────────────
 def _func_ast(module_path: Path, func_name: str) -> ast.AST:
     tree = ast.parse(module_path.read_text())
     for node in ast.walk(tree):
@@ -74,7 +74,7 @@ def _func_ast(module_path: Path, func_name: str) -> ast.AST:
 def test_heartbeat_loop_wraps_its_body_in_a_try_that_contains_a_send_failure():
     """MUTATION PIN for #4. Source-level guard: heartbeat_loop's `while` body must contain a Try that
     (a) calls self.send_heartbeat() inside its `try`, and (b) has an except handler catching Exception.
-    Deleting the try/except (the pre-#538 bare `await self.send_heartbeat()`) makes this RED. A
+    Deleting the try/except (the pre-change bare `await self.send_heartbeat()`) makes this RED. A
     behavioural test cannot see the difference — the unretrieved-exception warning only surfaces at GC."""
     dial = ROOT / "src" / "dial_home.py"
     fn = _func_ast(dial, "heartbeat_loop")
@@ -103,7 +103,7 @@ def test_heartbeat_loop_wraps_its_body_in_a_try_that_contains_a_send_failure():
     )
 
 
-# ── #5 no import-time CONFIG snapshots; resolved on __init__ ──────────────────────────
+# ── no import-time CONFIG snapshots; resolved on __init__ ──────────────────────────
 def test_dial_home_has_no_dead_config_snapshot_globals():
     """MUTATION PIN for #5. The five module globals (WORKER_ID/CONCURRENCY/CAPABILITIES/MEDIA_DIR/
     VERSION) captured CONFIG at import — contradicting the "config read ON CALL" rule, and CAPABILITIES
@@ -143,7 +143,7 @@ def test_worker_client_resolves_config_on_call_when_kwargs_omitted():
     assert client.state.capabilities == list(dial_home.CONFIG.capabilities)
 
 
-# ── #9 raise-with-key-name instead of `or ""` ────────────────────────────────────────
+# ── raise-with-key-name instead of `or ""` ────────────────────────────────────────
 def _ctx(job_params=None, audio_path=None):
     async def runner(argv) -> AsyncIterator[str]:  # pragma: no cover - not reached when we raise first
         return
@@ -188,7 +188,7 @@ async def test_publish_stems_raises_named_error_when_instrumental_is_missing():
             pass
 
 
-# ── #3 init: true in the three compose files ─────────────────────────────────────────
+# ── init: true in the three compose files ─────────────────────────────────────────
 @pytest.mark.parametrize(
     "rel",
     [

@@ -61,7 +61,7 @@ class DecodeToWav(Step):
             # "ffmpeg: : No such file or directory"; name the missing key instead.
             # PermanentError (retryable=False): a step running out of order with no audio.path is a
             # deterministic plan error — every retry re-runs the same passes and fails identically, so
-            # it must fail fast rather than burn three attempts (#583, same class as #571).
+            # it must fail fast rather than burn three attempts (same class as #571).
             raise PermanentError("decode-to-wav: audio.path is empty (AcquireAudio did not run or failed)")
         await run_quiet(ctx.runner, decode_argv(ctx.audio.path, out, self._ffmpeg))
         ctx.audio.decoded_wav = out
@@ -102,7 +102,7 @@ class Separate(Step):
         # Some engines' CLIs do not themselves write the 2-stem {no_vocals,vocals} layout the pipeline
         # reads. The MLX engine (demucs-mlx) emits four/six stems and derives the instrumental with a
         # mix-minus ffmpeg pass declared here; demucs and roformer return no derivation. Each runs
-        # quietly through the same runner, in order, before outputs are located. (#595)
+        # quietly through the same runner, in order, before outputs are located.
         for derive_argv in engine.derive_argvs(ctx.audio.decoded_wav or "", out_dir, model):
             await run_quiet(ctx.runner, derive_argv)
 
@@ -181,7 +181,7 @@ class ProbeSilence(Step):
 class PublishStems(Step):
     """Encode and publish the stems.
 
-    Both stems to LOSSLESS FLAC (#480). The instrumental plays at volume as the master and a second lossy
+    Both stems to LOSSLESS FLAC. The instrumental plays at volume as the master and a second lossy
     generation is audible on high-frequency transients — a crash cymbal especially. The vocals stem is the
     GUIDING TRACK — a second audio element the TV mixes under the instrumental and pitch-shifts with the key
     (apps/core/src/lib/tv/TvPlayer.svelte) — so it plays aloud too, and it also feeds pitch extraction and
@@ -213,7 +213,7 @@ class PublishStems(Step):
             # empty path into "ffmpeg: : No such file or directory"; name the missing key instead.
             # PermanentError (retryable=False): a missing instrumental key is a deterministic plan
             # error — every retry re-runs the same passes and fails identically, so it must fail fast
-            # rather than burn three attempts (#583, same class as #571).
+            # rather than burn three attempts (same class as #571).
             raise PermanentError("publish-stems: stems.raw['instrumental'] is missing (Separate did not run)")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)
@@ -230,20 +230,20 @@ class PublishStems(Step):
                 ctx.note("vocals encode failed (non-fatal) — publishing the instrumental alone")
 
         # Measure the guide's OFFSET against the instrumental, from the RAW scratch WAVs — the guide-
-        # alignment half of the guide feature made observable (#766). Read the raw stems, not the encoded
+        # alignment half of the guide feature made observable. Read the raw stems, not the encoded
         # ones: they are the same PCM measure_guide_offset_ms reads, and doing it here means no re-decode.
         # BEST-EFFORT and TRI-STATE, exactly like the vocals encode above: only measured when a vocals stem
         # was actually published (a silent/absent guide has nothing to align), never fatal, and a decline
         # reports None → the core stores null → the client holds the guide exactly as today. A freshly-cooked
         # song's two FLAC stems decode to a common start, so this is ~0 for the whole library; the non-zero
-        # case is a legacy pre-#480 .m4a vocals stem or a deliberately shifted one.
+        # case is a legacy pre-change .m4a vocals stem or a deliberately shifted one.
         guide_offset_ms: int | None = None
         if ctx.stems.published.get("vocals"):
             try:
                 guide_offset_ms = measure_guide_offset_ms(raw_vox, raw_inst)
             except Exception:  # noqa: BLE001 — a measurement must never fail the load-bearing instrumental
                 ctx.note("guide-offset measurement failed (non-fatal) — offset left unmeasured")
-            # Log it so a wrong measurement is diagnosable WITHOUT the party box (#766 DoD): a silent
+            # Log it so a wrong measurement is diagnosable WITHOUT the party box (DoD): a silent
             # correction is its own defect class, so the number is always emitted, None included.
             ctx.note(
                 f"guide offset: {'unmeasured' if guide_offset_ms is None else f'{guide_offset_ms} ms'}"

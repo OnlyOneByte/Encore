@@ -1,10 +1,10 @@
 /*
- * THE FIFTH GATE — the four measurement claims, measured on real headless Chromium (issue #823).
+ * THE FIFTH GATE — the four measurement claims, measured on real headless Chromium.
  *
  *   bun run gate:measured        # from the repo root, after `bun run build`
  *
  * Exit 0 every check passed · exit 1 anything else. THERE IS NO SKIP PATH, and that is the whole
- * point of it. Owner ruling on #823 Q1 was **A**: a fifth gate every lane runs beside `bun test`,
+ * point of it. Owner ruling Q1 was **A**: a fifth gate every lane runs beside `bun test`,
  * and "a missing browser is a red gate, not a green one". Option B — skipping when no server or
  * Chromium is present — was rejected by name, because `e2e/contract.test.ts:23` had already ruled
  * that "a permanently-skipped test is indistinguishable from the silent rot it was supposed to
@@ -127,7 +127,7 @@ function sweepExpr(scope) {
 			// A checkbox/radio has no accessible box of its own worth tapping — its tap target is
 			// DELEGATED to the wrapping <label> (the pattern touch-targets.test.ts documents: the .check
 			// label in settings carries min-height: var(--tap)). So the box we measure for a glyph input
-			// is that label, and a hit anywhere on the label counts as reaching the control (#863).
+			// is that label, and a hit anywhere on the label counts as reaching the control.
 			// Without this, the sweep saw only the 18px glyph and read a 44px label as an 18px false floor.
 			const type = (el.getAttribute('type') || '').toLowerCase();
 			const glyph = el.tagName === 'INPUT' && (type === 'checkbox' || type === 'radio');
@@ -314,13 +314,13 @@ try {
 	await page.viewport(VIEWPORTS[0].w, VIEWPORTS[0].h);
 
 	// ── join once; every phone surface below is behind a session ───────────────────────────────
-	// `/join` was retired (#834 Q2-A): the join form is the unjoined state of `/`. An unjoined visitor
+	// `/join` was retired (Q2-A): the join form is the unjoined state of `/`. An unjoined visitor
 	// to `/` gets the name field + code entry; joining navigates back to `/` (now the joined queue).
 	await page.goto(`${base}/`);
 	const joinSweep = /** @type {Reading[]} */ (await page.evaluate(sweepExpr()));
 	await page.fill(SEL.nameInput, `Gate${Date.now() % 1000000}`);
 	await page.clickByText('Start singing');
-	// Joining lands on the QUEUE since #832 — the search box is a screen further in. `homeReady` is the
+	// Joining lands on the QUEUE — the search box is a screen further in. `homeReady` is the
 	// joined-home signal, and the shared step leaves the page on the browse screen the sweep below types
 	// into. Both selectors and the step come from the contract, so this does not re-spell the sequence.
 	await page.waitFor(`location.pathname === '/'`, { timeout: 20000 });
@@ -382,7 +382,7 @@ try {
 	for (const vp of VIEWPORTS) {
 		await page.viewport(vp.w, vp.h);
 		/*
-		 * TWO phone surfaces since #832, not one. `/` is the queue — the hero's transport, the position
+		 * TWO phone surfaces, not one. `/` is the queue — the hero's transport, the position
 		 * card and the docked primary button, none of which existed when this gate was written and all of
 		 * which are controls these claims are about. The library rows it used to measure here are a screen
 		 * further in, so they get their own surface rather than being lost: measuring only `/` would have
@@ -438,12 +438,12 @@ try {
 	 *
 	 * WHERE THIS IS MEASURED CHANGED WITH #832 and again with #902, and the claim did not. Direction A
 	 * made the queue the home screen, so `/` no longer mounts QueueSheet; the 2026-09-09 owner correction
-	 * (#902) then made the docked band at the bottom of the phone the SEARCH DOCK (the `+ Add a turn`
+	 * then made the docked band at the bottom of the phone the SEARCH DOCK (the `+ Add a turn`
 	 * button is gone), present on home for a joined singer. The "published height equals the real
 	 * rendered height, and the safe-area inset arrives THROUGH that token" contract moved with it from
 	 * `--peek-h`/`.peek` to `--dock-h`/`.search-dock`.
 	 *
-	 * #903 then deleted the drawer surface entirely, so the second half of this section — the sheet's
+	 * then deleted the drawer surface entirely, so the second half of this section — the sheet's
 	 * own cap and peek geometry, measured on `/components` where the component used to render — was
 	 * removed with it, and `SHEET_CAP_FRACTION` retired from the register (its reason is recorded
 	 * there). Nothing docked caps itself in a viewport fraction now; the band is sized by its content.
@@ -505,10 +505,10 @@ try {
 	}
 
 	/*
-	 * ── CLAIM 3, THE SEARCH DOCK measured with results showing (#833; sole band since #902) ──────
+	 * ── CLAIM 3, THE SEARCH DOCK measured with results showing (#833; sole band) ──────
 	 *
 	 * Direction B docks search in the thumb zone and stacks the results UPWARD from it. Since the owner
-	 * correction (#902) it is the SOLE docked band on this route — the `+ Add a turn` button that used to
+	 * correction it is the SOLE docked band on this route — the `+ Add a turn` button that used to
 	 * be home's band is gone — and results render IN PLACE (no `?browse=1` mode), so this measures the
 	 * one band with a query typed and its results on screen. The band contract still has to hold, which
 	 * is the whole reason `--dock-h` is measured rather than written.
@@ -522,7 +522,7 @@ try {
 	 *   - whether any result row is occluded by the band it stacks up from.
 	 *
 	 * The reflow half of the results screen (320px at 200% text) is deliberately NOT re-asserted here:
-	 * `src/lib/phone-inventory.test.ts` owns XR-PH-02 since #837, and two independent geometry checks of
+	 * `src/lib/phone-inventory.test.ts` owns XR-PH-02, and two independent geometry checks of
 	 * one criterion is the duplicated-vocabulary shape the spec warns about.
 	 */
 	await page.viewport(390, 844);
@@ -581,10 +581,10 @@ try {
 			browse.mainPadBottom >= browse.dockClientHeight,
 			`main padding-bottom ${browse.mainPadBottom}px against a ${browse.dockClientHeight}px band`
 		);
-		// Thumb reach is the POINT of docking it (issue #833 acceptance 1): the bottom third of a 390x844
+		// Thumb reach is the POINT of docking it (acceptance 1): the bottom third of a 390x844
 		// phone is the region a thumb covers without regripping. A box merely below the list fails this.
 		check(
-			'CLAIM 3 the search input sits in the thumb zone — the bottom third of the viewport (#833)',
+			'CLAIM 3 the search input sits in the thumb zone — the bottom third of the viewport',
 			browse.fieldCentreY > (browse.innerHeight * 2) / 3,
 			`input centre at y=${browse.fieldCentreY.toFixed(1)} of ${browse.innerHeight}px; thumb zone starts at ${((browse.innerHeight * 2) / 3).toFixed(1)}`
 		);
@@ -595,7 +595,7 @@ try {
 			`${browse.rowCount} rows rendered for the query "a"`
 		);
 		check(
-			'CLAIM 3 no result row is occluded by the band it stacks up from (#833 acceptance 3)',
+			'CLAIM 3 no result row is occluded by the band it stacks up from (acceptance 3)',
 			browse.occludedRows === 0,
 			`${browse.occludedRows} of ${browse.rowCount} rows intersect the band at ${browse.dockTop.toFixed(1)}..${browse.dockBottom.toFixed(1)}`
 		);
@@ -604,7 +604,7 @@ try {
 		// scroll-to-bottom is dropped, and neither is visible in any declaration.
 		const gap = browse.lastRowBottom === null ? null : browse.dockTop - browse.lastRowBottom;
 		check(
-			'CLAIM 3 the stack ENDS at the dock — the top-ranked row is the one beside the thumb (#833 acceptance 1)',
+			'CLAIM 3 the stack ENDS at the dock — the top-ranked row is the one beside the thumb (acceptance 1)',
 			gap !== null && gap >= 0 && gap <= 72,
 			`last row's bottom is ${gap === null ? 'n/a' : gap.toFixed(1)}px above the band (0..72 expected: main reserves the band + 28px)`
 		);
@@ -652,7 +652,7 @@ try {
 		);
 		const shortGap = short.dockTop - short.emptyBottom;
 		check(
-			'CLAIM 3 one line of content is anchored beside the thumb, not stranded at the top (#833)',
+			'CLAIM 3 one line of content is anchored beside the thumb, not stranded at the top',
 			shortGap >= 0 && shortGap <= 72,
 			`empty-state line's bottom is ${shortGap.toFixed(1)}px above the band (0..72 expected; unanchored it would be ~700px)`
 		);
@@ -727,9 +727,9 @@ try {
 	);
 
 	/*
-	 * ── CLAIM 5 (XR-TV-01/02, issue #821): the TV type floor is ONE declaration and the ladder is rem ─
+	 * ── CLAIM 5 (XR-TV-01/02): the TV type floor is ONE declaration and the ladder is rem ─
 	 *
-	 * This is the measured half of #821 — the source-scan half (no px literal, tokens are rem, no
+	 * This is the measured half — the source-scan half (no px literal, tokens are rem, no
 	 * per-token viewport term) lives in stage-scale.test.ts and CANNOT make a computed claim. What only a
 	 * render can settle: that `.tv { font-size: calc(max(2.7vh, 20px) * clamp(0.8, --ui-scale, 1.6)) }`
 	 * actually RESOLVES to 29.16px at a 1920×1080 CSS viewport, that every rem tier multiplies THAT root
@@ -778,7 +778,7 @@ try {
 	const tv1 = await page.evaluate(tvProbe);
 	if (!tv1) {
 		check(
-			'CLAIM 5 (#821) the /tv document mounts .tv so the root floor is measurable',
+			'CLAIM 5 the /tv document mounts .tv so the root floor is measurable',
 			false,
 			'no .tv element found on /tv'
 		);
@@ -830,7 +830,7 @@ try {
 		await sleep(200);
 		const tvBad = await page.evaluate(tvProbe);
 		check(
-			'CLAIM 5 (#907 advisory) a non-numeric --ui-scale falls back to 1 via @property — the floor is not dropped',
+			'CLAIM 5 (advisory) a non-numeric --ui-scale falls back to 1 via @property — the floor is not dropped',
 			tvBad !== null && Math.abs(tvBad.rootPx - 29.16) <= 0.5,
 			`.tv root with --ui-scale: banana computed to ${tvBad?.rootPx}px (expected 29.16 — @property <number> should reject the non-numeric value)`
 		);
@@ -853,7 +853,7 @@ try {
 	/*
 	 * ── CLAIM 5b (XR-TV-889): .fs-btn overlaps NO z-tier-7 chrome box, on the RENDER ─────────────────
 	 *
-	 * #889: the fullscreen button and the corner chrome (join QR, lower-third, Up-next) all sit at
+	 * the fullscreen button and the corner chrome (join QR, lower-third, Up-next) all sit at
 	 * z-tier 7. Whichever is later in the DOM paints on top at equal z, so a shared anchor is a silent
 	 * occlusion a source scan cannot see. The first #889 fix moved the button off the join QR and onto
 	 * `.upnext` — a string-inequality guard on ONE anchor pair stayed green while the button still
@@ -962,7 +962,7 @@ try {
 	await page.viewport(1920, 1080);
 
 	/*
-	 * ── CLAIM 6 (issue #826, XR-TV-14 / XR-TV-19): the ratified TV states measured on the render ──────
+	 * ── CLAIM 6 (XR-TV-14 / XR-TV-19): the ratified TV states measured on the render ──────
 	 *
 	 * The source-scan half (room-code-is-largest, the CSS-gated crossfade, the family borders) lives in
 	 * routes/tv/tv-ratified-states.test.ts and CANNOT make a measured claim. What only a render settles,

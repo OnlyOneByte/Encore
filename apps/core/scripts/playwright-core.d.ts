@@ -3,7 +3,7 @@
 // playwright-core is intentionally NOT a dependency of this package (see e2e/cdp.mjs's header:
 // the e2e flow speaks CDP directly precisely to avoid an undeclared playwright-core). shot.mjs
 // is a standalone eyes-on screenshot helper that drives the cached toolbox chromium; it is never
-// imported by the app or the test suite. This declaration lets the #553 type gate cover shot.mjs
+// imported by the app or the test suite. This declaration lets the type gate cover shot.mjs
 // without adding a runtime dependency, a lockfile entry, or a version to drift.
 declare module 'playwright-core' {
 	interface Page {

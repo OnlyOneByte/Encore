@@ -16,15 +16,15 @@ export interface LyricLine {
 	words: LyricWord[];
 	/**
 	 * A second-script rendering of this line the source shipped alongside the original — the pinyin
-	 * under a Chinese line (issue #431). Present ONLY when the LRCLIB record interleaved one; a
+	 * under a Chinese line. Present ONLY when the LRCLIB record interleaved one; a
 	 * single-script line leaves it undefined. Display-only: it carries no timings and drives no ball.
 	 */
 	romanization?: string;
 	/**
-	 * Which abstract duet PART sings this line — `"A"`, `"B"`, … (issue #691). The worker's diarization
+	 * Which abstract duet PART sings this line — `"A"`, `"B"`, …. The worker's diarization
 	 * pass writes it, and only when it is CONFIDENT the song is a duet; an undiarized song, a solo, or a
 	 * low-confidence result leaves it undefined, which reads as a single colour for the whole song (the
-	 * owner's fallback ruling on #632). Abstract on purpose — never a singer identity — so #692 can map
+	 * owner's fallback ruling). Abstract on purpose — never a singer identity — so #692 can map
 	 * "same part → same colour" without naming anyone. Display-only: it carries no timings and drives no
 	 * ball, exactly like `romanization`.
 	 */
@@ -110,7 +110,7 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
  * where the words actually are, and this is a presentation preference that can be retuned per room
  * without recomputing anything.
  *
- * DEFAULT IS 0 (issue #629): a single global lead is a band-aid — it cannot be right for both a slow
+ * DEFAULT IS 0: a single global lead is a band-aid — it cannot be right for both a slow
  * ballad and a fast rap line, and it masks per-song text/audio mismatch rather than fixing it. The
  * per-room `lyricsLeadMs` setting stays as the opt-in for a room that still wants a lead.
  */
@@ -183,7 +183,7 @@ export function resegmentLine(
 		cur.push(w);
 	}
 	if (cur.length) out.push(lineFromWords(cur));
-	// A duet PART is a property of the whole source line (issue #691), so every row it splits into keeps
+	// A duet PART is a property of the whole source line, so every row it splits into keeps
 	// it — otherwise resegmenting a long duet line would drop the colour on all but nothing. `part` rides
 	// through here even though `romanization` does not, because `romanization` only appears on line-synced
 	// docs (never resegmented) while `part` lands on the word-timed docs this split actually fires on.
@@ -292,7 +292,7 @@ export function isAutoTranscribed(p: LyricsProvenance | null | undefined): boole
 
 /**
  * The provenance TAG for the now-playing card -- names WHERE the words came from, so "these lyrics
- * are wrong" and "these lyrics are a guess" stop looking the same (issue #635, owner ruling (a):
+ * are wrong" and "these lyrics are a guess" stop looking the same (owner ruling (a):
  * provenance only, never a confidence/quality score, never interactive).
  *
  * `textSource` is the whole answer: LRCLIB and hand-pasted text are authored records, captions and

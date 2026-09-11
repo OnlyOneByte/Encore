@@ -43,7 +43,7 @@ from ..retry_policy import BoundaryError
 #: among them, so this token cannot currently be pointed at the approved model through this package.
 #: Deliberately NOT silently repointed to some other slug: swapping the cooked model without a
 #: listening test is the failure this comment exists to prevent. The engine-package decision
-#: (adopt python-audio-separator ALONGSIDE bs-roformer-infer — both engines, issue #483 owner ruling
+#: (adopt python-audio-separator ALONGSIDE bs-roformer-infer — both engines, owner ruling
 #: Q1(b)) is recorded in docs/DECISIONS.md, and the dependency pin carries the same reason in
 #: apps/worker/requirements.txt. Both are named on purpose: a single pointer orphans the claim the
 #: moment either file is reorganised, which is how this comment came to cite a register that did not
@@ -119,7 +119,7 @@ def resolve_roformer_slug(params: dict, default: str = DEFAULT_ROFORMER_MODEL) -
         # but carries the shared structured retryable = False, so an unknown roformer
         # model fails fast via retry_policy instead of burning three cook attempts on a
         # token that can never resolve — the identical treatment demucs.resolve_demucs_model
-        # got in #497, which the docstring above already claims (#651).
+        # already has, which the docstring above already claims.
         raise BoundaryError(f"unknown roformer model {token!r}; expected one of {sorted(ROFORMER_MODELS)}")
     return slug
 
@@ -130,7 +130,7 @@ def _find_roformer_stem(store_dir: str, marker: str) -> str | None:
     `"instrumental"` / `"vocal"` substring: the resolved model slug is part of the filename and six of
     the ten registry slugs themselves contain `vocals`/`instrumental` (e.g.
     `roformer-model-bs-roformer-vocals-by-gabox`), so a bare substring test lets the instrumental file
-    satisfy the vocals search and vice-versa (#445). The marker sits before the slug and is unaffected
+    satisfy the vocals search and vice-versa. The marker sits before the slug and is unaffected
     by it. Listing is sorted so the pick is deterministic — os.listdir order is unspecified, matching the
     deliberate sort in acquisition/fetch.py:find_downloaded. Matched case-insensitively so an upstream
     output-naming tweak does not silently break the pickup (the exact template is confirmed by a cook)."""

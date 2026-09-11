@@ -70,7 +70,7 @@ def _py_files(*rel: str) -> list[Path]:
     for r in rel:
         root = SRC / r
         files.extend(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
-    # Non-vacuity floor (issue #453): every intended call names a real, populated subtree, so an
+    # Non-vacuity floor: every intended call names a real, populated subtree, so an
     # empty result means SRC is wrong or the tree moved -- which would make the layering scans that
     # iterate this pass while guarding nothing. Fail loudly instead.
     assert files, f"_py_files({rel!r}) found no .py files under {SRC} -- the guard has stopped guarding"
@@ -136,7 +136,7 @@ def test_there_is_exactly_ONE_thing_that_executes_a_plan():
             methods = {n.name for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
             if "process" in methods:
                 found[node.name] = str(path.relative_to(SRC))
-    # Non-vacuity floor (issue #453): a broken AST walk finding zero process() classes leaves
+    # Non-vacuity floor: a broken AST walk finding zero process() classes leaves
     # `unexpected` empty and passes without proving the one-runner rule. There is always at least
     # the PlanRunner; assert we found the canonical implementations.
     assert found, "no class with a process() method found -- the one-runner guard has stopped guarding"
@@ -189,7 +189,7 @@ def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
                 bad.extend(f"from . import {a.name}" for a in node.names if a.name == "acquisition")
         if bad:
             offenders[rel] = bad
-    # Non-vacuity floor (issue #453): an empty scan leaves `offenders` empty and passes without
+    # Non-vacuity floor: an empty scan leaves `offenders` empty and passes without
     # inspecting a single import edge.
     assert scanned > 10, (
         f"only {scanned} modules scanned -- the acquisition-caller guard has stopped guarding"
@@ -366,7 +366,7 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
     above says `role=` twice. The np.correlate guard learned this the same way: a text search over source
     passes on a comment that says the right thing while the code does the wrong one.
 
-    Scans the WHOLE `src/lyrics` package, not one hardcoded file (#628): `b026147` (#456) moved the source
+    Scans the WHOLE `src/lyrics` package, not one hardcoded file: `b026147` moved the source
     classes out of `chain.py` into `sources.py`, so a guard pinned to `chain.py` scanned a file with zero
     `LyricsText(...)` constructions and could never fire. The non-vacuity floor below fails loudly if the
     package ever stops constructing LyricsText where this guard can see it, so the scan cannot silently
@@ -392,7 +392,7 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
 
     assert constructions, (
         "no LyricsText(...) construction found under src/lyrics — the tier guard has stopped guarding "
-        "(the sources moved and this scan no longer reaches them, exactly the #628 regression)"
+        "(the sources moved and this scan no longer reaches them — the vacuity regression this floor exists to catch)"
     )
     assert not offenders, (
         "a lyrics source is deciding its own tier again — that belongs to its SourceSpec in "
@@ -400,11 +400,11 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
     )
 
 
-# ── E9b: a step never mutates a domain dataclass attribute in place (#605) ─────────
+# ── E9b: a step never mutates a domain dataclass attribute in place ─────────
 
 
 def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
-    """#605: the step layer must not reach into a domain LyricsText and rewrite a field on the caller's
+    """The step layer must not reach into a domain LyricsText and rewrite a field on the caller's
     object — it publishes copies via dataclasses.replace instead.
 
     The specific offender this pins: `sel.publish[0].text_confidence = "low"` in GradeAndSelect, which
@@ -412,7 +412,7 @@ def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
     of a caller-owned domain dataclass.
 
     Recognises the reaching-in write by its TARGET, in any of the spellings that share the blind spot
-    (#628 — the original guard saw only `<subscript>.attr`, so `x = sel.publish[0]; x.text_confidence =
+    (the original guard saw only `<subscript>.attr`, so `x = sel.publish[0]; x.text_confidence =
     ...` walked straight past it): any assignment whose target is `<expr>.<field>` where `<field>` is a
     real LyricsText field name and `<expr>` is NOT a bare `self`. `self.<x> = ...` is a step owning its
     OWN attribute in a constructor and is allowed; every other object bearing a LyricsText field in a step
@@ -420,7 +420,7 @@ def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
     LyricsText dataclass itself so this cannot drift as fields are added. AST, not a substring scan,
     because these names appear all over the module in reads and in `replace(..., text_confidence=...)`.
 
-    Scans ALL of `src/steps` via `_py_files` (which carries its own #453 non-vacuity floor), not one
+    Scans ALL of `src/steps` via `_py_files` (which carries its own non-vacuity floor), not one
     hardcoded file, so a step added elsewhere in the layer is covered too.
     """
     from src.lyrics.chain import LyricsText
@@ -522,7 +522,7 @@ def _blocking_offenders_in(path: Path) -> list[str]:
 def test_no_step_reaches_blocking_work_outside_run_blocking_or_run_stage():
     """The lease keepalive only fires if a step ROUTES through `run_blocking` / `run_stage`; nothing
     stopped a new step from calling torch, whisperx or a blocking HTTP client directly, freezing the loop
-    and getting its healthy job reaped at the 30 s progress lease (issue #470). This is the repo's
+    and getting its healthy job reaped at the 30 s progress lease. This is the repo's
     characteristic failure mode — a mechanism that exists, is tested, and can be silently bypassed — so
     it is ENFORCED, not trusted.
 
@@ -539,7 +539,7 @@ def test_no_step_reaches_blocking_work_outside_run_blocking_or_run_stage():
     assert not offenders, (
         "a step reaches blocking work directly instead of through run_blocking / run_stage, so its "
         "keepalive never fires and a healthy cook is reaped at the 30 s progress lease "
-        "(docs/ARCHITECTURE.md §7.1; issue #470): "
+        "(docs/ARCHITECTURE.md §7.1): "
         + "; ".join(f"{rel} -> {found}" for rel, found in sorted(offenders.items()))
     )
 
@@ -598,7 +598,7 @@ def _run_stage_class_methods(source: str) -> list[str]:
 def test_run_stage_is_defined_once_and_only_as_a_free_function():
     """`runtime/runner.py`'s header (`:3-10`) promises `run_stage` "lives here and nowhere else" — one
     implementation for the four actions that used to hand-roll their own copies (demucs/whisperx/roformer,
-    the S0-S6 refactor). Issue #650: it shipped TWO — the real module-level free function AND a callerless
+    the S0-S6 refactor). In practice it shipped TWO — the real module-level free function AND a callerless
     `PlanRunner.run_stage` shim, re-opening the "which run_stage do I call?" ambiguity the file exists to
     kill (the drift that once double-fired a stage's completion event).
 
@@ -611,7 +611,7 @@ def test_run_stage_is_defined_once_and_only_as_a_free_function():
     assert not twins, (
         "run_stage is defined more than once in runner.py — a class defines it as a method alongside the "
         "canonical module-level free function, re-opening the ambiguity runner.py exists to end "
-        "(issue #650): " + "; ".join(twins)
+        ": " + "; ".join(twins)
     )
 
 

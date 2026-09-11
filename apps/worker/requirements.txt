@@ -31,7 +31,7 @@ soundfile>=0.13
 # use its wav2vec2 align() to produce WORD timings, rather than trusting ASR to transcribe sung
 # vocals. 3.8.6 is the modern line that installs on py3.12 and matches faster-whisper 1.2's API.
 whisperx==3.8.6
-# pyannote.audio — SPEAKER DIARIZATION for duet part attribution (issue #691). It already arrives
+# pyannote.audio — SPEAKER DIARIZATION for duet part attribution. It already arrives
 # TRANSITIVELY via whisperx 3.8.6 (which pins pyannote-audio>=4, see the coupled version-set note
 # above); pinned EXPLICITLY here — the soundfile precedent — because the `diarize` capability now
 # depends on it directly, so its version is ours to control, not an incidental of whisperx's resolver.
@@ -40,7 +40,7 @@ whisperx==3.8.6
 # pinned torch 2.8 / py3.12 stack — do NOT re-pin without re-resolving the whole ML set.
 pyannote.audio==4.0.0
 # BS-RoFormer separation engine, inference-only. Adopted ALONGSIDE python-audio-separator (issue
-# #483, owner ruling Q1(b): both engines, not one over the other) — kept for its load/infer/release
+# , owner ruling Q1(b): both engines, not one over the other) — kept for its load/infer/release
 # session lifecycle (load the ~700MB checkpoint ONCE per long-lived worker, not per cook) and its
 # repointable sha256-verified checkpoint registry. Resolves in 8 small pure-Python deps on the pinned
 # torch 2.8 stack — it rides the existing torch, adds no numpy rebuild. Only a worker that advertises
@@ -49,7 +49,7 @@ pyannote.audio==4.0.0
 bs-roformer-infer==0.1.5
 
 # python-audio-separator — the MEL-BAND RoFormer engine, adopted ALONGSIDE bs-roformer-infer (issue
-# #483, owner ruling Q1(b): both engines, not one over the other — docs/DECISIONS.md). It reaches the
+# , owner ruling Q1(b): both engines, not one over the other — docs/DECISIONS.md). It reaches the
 # fast mel-band checkpoints bs-roformer-infer cannot (bs_roformer's get_model_from_config implements
 # only model_type=='bs_roformer' and ships no mel_band module), running them as a first-class MDXC path.
 # The win is large and measured: `mel instrumental_becruily` benchmarks rt 1.28 vs bs_roformer-1297's
@@ -82,7 +82,7 @@ pyperclip==1.11.0
 docx2txt==0.9
 striprtf==0.0.33
 
-# ── loudness analysis (issue #462) ──────────────────────────────────────────────────────
+# ── loudness analysis ──────────────────────────────────────────────────────
 # pyloudnorm is a small, standard MIT implementation of EBU R128 / ITU-R BS.1770-4 integrated
 # loudness. It runs over the mono float64 array analysis/wav.py already decodes (numpy in, a number
 # out — no ffmpeg, no torch), honouring analysis/__init__.py's "numpy in, dict out, no subprocess"

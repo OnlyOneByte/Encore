@@ -1,4 +1,4 @@
-// Test stub for SvelteKit's `$app/navigation` virtual module (issue #822, rung M).
+// Test stub for SvelteKit's `$app/navigation` virtual module (rung M).
 //
 // SvelteKit synthesises `$app/*` at build time, so under `bun test` the specifier resolves to
 // nothing and a component that imports it fails to load before any effect runs. The preload

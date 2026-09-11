@@ -28,7 +28,7 @@ import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
+ * Types for this out-of-program driver (pattern). Browser/Page derive from
  * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
@@ -117,7 +117,7 @@ try {
 	const hasAdd = await phone.count(SEL.addTurn);
 	check('the cooked song offers a queue action', hasAdd > 0, `found ${hasAdd} .add buttons`);
 	await phone.click(hasAdd > 0 ? SEL.addTurn : SEL.sing);
-	await returnHomeFromBrowse(phone); // the rotation is on home (#832)
+	await returnHomeFromBrowse(phone); // the rotation is on home
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 	check('the song lands in the queue', true);
 

@@ -1,7 +1,7 @@
 /*
  * P13 - TAP TO START: the one route out of a silent television, gestureless.
  *
- * #64 shipped the recovery for a TV that autoplay blocked: TvPlayer.svelte arms a document-wide
+ * Encore ships a recovery for a TV that autoplay blocked: TvPlayer.svelte arms a document-wide
  * pointerdown/keydown listener and routes/tv/+page.svelte renders a full-screen .autoplay-hint
  * card telling the viewer to tap. That listener is the ONLY path from a fresh TV to audible sound.
  * HARNESS.md and fuzz.mjs are both correct that granting --autoplay-policy=no-user-gesture-required
@@ -20,7 +20,7 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
+ * Types for this out-of-program driver. Browser/Page derive from
  * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
@@ -131,7 +131,7 @@ try {
 	check(
 		'the tap-to-start hint is rendered before any gesture',
 		blocked.hint === true,
-		`hint=${blocked.hint} - the .autoplay-hint card is the #64 affordance; without it there is no route out of silence`
+		`hint=${blocked.hint} - the .autoplay-hint card is the tap-to-start affordance; without it there is no route out of silence`
 	);
 	check(
 		'the master is stalled at the preload floor before any gesture (paused, t=0, some decoded bytes)',
@@ -164,7 +164,7 @@ try {
 			'a single real tap unblocks autoplay - decoded byte count climbs',
 			dDecoded > 0,
 			`decoded went ${a.decoded} -> ${b.decoded} (+${dDecoded}) over 3s. Zero means the trusted gesture ` +
-				`never reached the #64 listener - a real TV stays permanently silent.`
+				`never reached the document-wide gesture listener - a real TV stays permanently silent.`
 		);
 		check(
 			'the playhead advances against the wall clock after the tap',
@@ -175,7 +175,7 @@ try {
 		check(
 			'the tap-to-start hint clears once audio is genuinely playing',
 			(await tv.evaluate(probe)).hint === false,
-			'the #64 recovery clears the card only after autoplay actually recovers'
+			'the tap-to-start recovery clears the card only after autoplay actually recovers'
 		);
 	}
 } catch (err) {

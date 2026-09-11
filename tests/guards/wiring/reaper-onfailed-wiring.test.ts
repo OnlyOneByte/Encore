@@ -40,7 +40,7 @@ test('app.ts imports reportTerminalFailure — the one shared terminal-fail epil
 
 test('app.ts wires the JobReaper onFailed hook through reportTerminalFailure over mediaById + publish', () => {
 	// An unwired onFailed means a reaper-killed cook never settles its gate → readyToSing never flips
-	// → rotation holds the queue entry forever (#90), AND stays silent. Isolate the onFailed
+	// → rotation holds the queue entry forever, AND stays silent. Isolate the onFailed
 	// hook and pin that it delegates to the shared epilogue with the reaper cause and both deps.
 	const start = APP.indexOf('onFailed:');
 	expect(start).toBeGreaterThanOrEqual(0);
@@ -77,7 +77,7 @@ test('reportTerminalFailure performs all four terminal-fail epilogue steps', () 
 	}
 	expect(end).toBeGreaterThan(open);
 	const fn = MK.slice(open, end + 1);
-	// (1) settle the #90 gate — the epilogue's first act, so the previously-working half cannot be
+	// (1) settle the readiness gate — the epilogue's first act, so the previously-working half cannot be
 	//     dropped or dead-wrapped while the room-facing half still broadcasts.
 	const fnBody = fn.slice(fn.indexOf('{') + 1);
 	expect(fnBody).toMatch(/^\s*const\s+settled\s*=\s*settleGatesForFailedJob\(job,\s*deps\.mediaById\);/);

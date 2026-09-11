@@ -1,7 +1,7 @@
-"""Pure attribution tests: diarization segments → a `part` label on each lyric line (#691).
+"""Pure attribution tests: diarization segments → a `part` label on each lyric line.
 
 Every test here reds without `src/diarize/attribution.py`. The module's whole job is the owner's
-"multiple layers of checks to see if it is [a duet]" ruling (#632, 2026-09-07): a confident duet gets
+"multiple layers of checks to see if it is [a duet]" ruling (2026-09-07): a confident duet gets
 abstract `part` letters on its lines; everything else — solo, sparse, lopsided, over-segmented —
 falls back to NO attribution, which the render layer reads as one colour. These pin both directions.
 """

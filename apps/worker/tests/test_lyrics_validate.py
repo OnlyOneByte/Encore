@@ -51,7 +51,7 @@ def test_clean_timing_is_usable():
 def test_a_smeared_word_is_reported_but_not_disqualifying():
     # Measured worst case when aligning against the mix: one word held 5.7s. validate_timing still
     # DETECTS and REPORTS the smear and still does not disqualify on it (order is the only disqualifier).
-    # #629 item #2 reversed what happens NEXT: the smear is no longer LEFT as-is — repair_word_spans
+    # The repair decision reversed what happens NEXT: the smear is no longer LEFT as-is — repair_word_spans
     # clamps it downstream (see test_repair_clamps_a_smeared_word). Detection lives here; the repair is
     # a separate function so this diagnostic assertion is unchanged.
     d = doc([("ugly", 10.0, 15.71), ("How", 15.8, 16.0), ("can", 16.0, 16.2)])
@@ -87,7 +87,7 @@ def test_out_of_order_words_are_DISQUALIFYING():
     assert not rep.usable
 
 
-# ── repair (issue #629 item #2 — act on smears/flashes, do not merely report them) ───────────────
+# ── repair (act on smears/flashes, do not merely report them) ────────────────────────────────────
 
 
 def test_repair_clamps_a_smeared_word():
@@ -257,7 +257,7 @@ def test_line_starts_reads_both_doc_shapes():
     assert line_starts({"segments": [{"start": 3.0}, {"start": 4.0}]}) == [3.0, 4.0]
 
 
-# ── overshoot: lyrics timed PAST the end of the audio (#667) ──────────────────────────────────────
+# ── overshoot: lyrics timed PAST the end of the audio ──────────────────────────────────────
 #
 # The clamp at validate.py:161 makes `coverage` one-sided: under-coverage shows, over-coverage reads as
 # a flawless 1.0. These pin the OTHER side as its own number, `overshoot_sec`, leaving coverage's clamp
@@ -299,7 +299,7 @@ def test_overshoot_is_named_in_the_summary():
     assert "+106s" in rep.summary()
 
 
-# ── #794: placing the LRC on THIS audio's timeline BEFORE aligning ─────────────────────────────────
+# ── placing the LRC on THIS audio's timeline BEFORE aligning ───────────────────────────────────────
 
 
 def _lrc(*pairs):

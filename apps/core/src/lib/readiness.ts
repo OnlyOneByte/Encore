@@ -46,7 +46,7 @@ export function displayReadiness(m: Media, live?: { status: MediaStatus }): Read
 /**
  * Which card an entry in the ROTATION gets — the singer's own queue slot, not a search row.
  *
- * The bug this fixes (#741): the phone chose between the cook-progress card and a plain queue row on
+ * The bug this fixes: the phone chose between the cook-progress card and a plain queue row on
  * an "is it in flight" test, and a terminally failed cook is not in flight — so a dead turn rendered
  * byte-for-byte as an ordinary waiting turn. No progress bar, no chip, no sparkle, nothing that said
  * the cook had died, while `nextPlayable` held its slot on every pass and it never played. The
@@ -81,7 +81,7 @@ export function queueCardKind(media: Media | undefined, live?: { status: MediaSt
  * un-cooked server-side, so a retry is a real action rather than a button that answers "already
  * cooked".
  *
- * IT TAKES THE MEDIA, not just its readiness, and that is the fix for #742. Readiness alone cannot
+ * IT TAKES THE MEDIA, not just its readiness, and that is the fix. Readiness alone cannot
  * answer this: it is derived from the cook gates, so a metadata-only Spotify hit — which can never be
  * cooked by anyone — reads as `'unacquired'` exactly like a fresh YouTube upload, and the row offered
  * Sing. Tapping it took the singer's turn (`cookAndQueue` queues first, by design) and only then did
@@ -185,7 +185,7 @@ export function nextPlayableEntryId<E extends { id: string; mediaId: string }>(
  * The bug this fixes: with a search active, the group was re-derived from the WHOLE live status map
  * and the WHOLE catalog, ignoring the query. So a song someone else was cooking ("I want it that
  * way") showed up under an unrelated search ("never gonna give you up") — a cooking song bypassing
- * the search-match filter (#252). The server already returns a query-scoped `cooking` group
+ * the search-match filter. The server already returns a query-scoped `cooking` group
  * (partitionSearch filters it through matchesQuery exactly like ready/raw); the phone was throwing
  * it away and rebuilding from scratch.
  *

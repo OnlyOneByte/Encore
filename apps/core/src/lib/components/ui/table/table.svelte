@@ -1,5 +1,5 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S8) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S8) ───────────────────────────────────────────────────────────────────
   Encore's metrics table, replacing the registry's `caption-bottom text-sm`. All of it is `:global`
   because a table's appearance is inherently DESCENDANT — the cells are rendered by sibling
   components (Table.Cell, Table.Head), which Svelte's scoped CSS cannot reach — and keyed on shadcn's

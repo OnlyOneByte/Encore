@@ -1,6 +1,6 @@
-// guard: the failed-cook scar (#68) is WIRED into the phone page on all three seams it needs.
+// guard: the failed-cook scar is WIRED into the phone page on all three seams it needs.
 //
-// THE DEFECT (#68). A failed cook is a live-only signal — the catalog Media records no failure (a dead
+// THE DEFECT. A failed cook is a live-only signal — the catalog Media records no failure (a dead
 // cook settles back to un-cooked via settleStemsGate), and the in-memory `mediaStatus` map that carries
 // the live `failed` status is lost on reload. So a guest who reloads sees the song as plain un-cooked,
 // with no trace it broke. The fix persists a per-device scar (the owner's ruling over a server column
@@ -29,7 +29,7 @@ function stripComments(src: string): string {
 // apps/core/src/routes, so it is now named from the repo root.
 const PAGE = stripComments(read('apps/core/src/routes/+page.svelte'));
 
-test('the page imports the scar helpers it wires (#68)', () => {
+test('the page imports the scar helpers it wires', () => {
 	// All three must be imported — a partial import would fail typecheck, but pinning it here means the
 	// guard reds first and names the feature rather than surfacing as an opaque undefined-symbol build error.
 	expect(PAGE).toMatch(/import\s*\{[^}]*\bactiveScars\b[^}]*\}\s*from\s*'\$lib\/stores\/cook-scars'/);
@@ -37,14 +37,14 @@ test('the page imports the scar helpers it wires (#68)', () => {
 	expect(PAGE).toMatch(/import\s*\{[^}]*\bclearScar\b[^}]*\}\s*from\s*'\$lib\/stores\/cook-scars'/);
 });
 
-test('a failed media:status records a scar (#68)', () => {
+test('a failed media:status records a scar', () => {
 	// The scar is written from the failure branch of the ws handler, snapshotting the catalog media.
 	// Without this, a reload after a failure shows the song back as plain un-cooked (the reported bug).
 	expect(PAGE).toMatch(/status === 'failed'/);
 	expect(PAGE).toMatch(/recordScar\(\s*failedMedia\s*\)/);
 });
 
-test('a successful re-cook clears the scar (#68)', () => {
+test('a successful re-cook clears the scar', () => {
 	// The owner's second ruling: a later `ready` for the same media clears its scar immediately, so a
 	// row cannot read `failed` while the song is sitting there ready.
 	expect(PAGE).toMatch(/clearScar\(\s*e\.mediaId\s*\)/);
@@ -52,7 +52,7 @@ test('a successful re-cook clears the scar (#68)', () => {
 	expect(PAGE).toMatch(/status === 'ready'\)\s*\{[\s\S]{0,120}clearScar\(/);
 });
 
-test('mount re-surfaces active scars into the live status map (#68)', () => {
+test('mount re-surfaces active scars into the live status map', () => {
 	// The heart of the fix: on load, seed the persisted failures back. `mergeMedia` puts the scar's
 	// snapshot into the catalog (GET /api/library omits a failed song, so it would otherwise not render),
 	// then each scarred id is marked `failed` in the live map — flowing through the SAME liveOf ->
@@ -67,7 +67,7 @@ test('mount re-surfaces active scars into the live status map (#68)', () => {
 	expect(PAGE).toMatch(/if\s*\(!withScars\.has\(m\.id\)\)\s*withScars\.set\(\s*m\.id\s*,\s*\{\s*status:\s*'failed'/);
 });
 
-test('a queue:sync re-applies the scars it would otherwise wipe (#68)', () => {
+test('a queue:sync re-applies the scars it would otherwise wipe', () => {
 	// The ordering trap: queue:sync REPLACES mediaCatalog wholesale, and a failed song is not in the
 	// room's media (it settled to un-cooked server-side), so the room's first sync wipes the scarred
 	// row — on the very reload the scar exists to survive. The handler must re-apply the captured

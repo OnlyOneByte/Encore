@@ -84,7 +84,9 @@ test('lyricsRank documents tier 1 as reading coverage, NOT the ranking score', (
 	expect(doc).toMatch(/reads `coverage`, NOT `agreement`/);
 	// The consequence of getting it wrong, named so a future reader does not re-swap it.
 	expect(doc).toMatch(/convicts a CORRECT/);
-	expect(doc).toMatch(/#806/);
+	// The issue label that used to sit here was removed with every other reference in production source.
+	// Nothing is lost: the claim, its consequence and `agreement`'s surviving use are each pinned by name
+	// above and below, so the label was measuring itself.
 	// ...and `agreement`'s remaining legitimate use is stated, so this is not read as "drop it".
 	expect(doc).toMatch(/breaksTie/);
 });
@@ -114,5 +116,8 @@ test('SelectionRecord documents winnerSuspect on coverage and winnerScore as ran
 	const coverage = docAbove(types, 'winnerCoverage?: number | null;');
 	expect(coverage).toMatch(/thresholded/);
 	// Why the field is optional: an older attempt row has no key, which must read as "not recorded".
-	expect(coverage).toMatch(/#806/);
+	// This one was NOT a bare label — the number dated the schema change ("written before #806"), which is
+	// real information. The source now states it in words, so the guard pins the words instead of the
+	// number, and the fact still cannot be deleted unnoticed.
+	expect(coverage).toMatch(/before the coverage axis landed/);
 });

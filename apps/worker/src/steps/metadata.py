@@ -48,7 +48,7 @@ class Annotate(Step):
         credit = ctx.audio.youtube_credit
 
         # YouTube's OWN declared credit is a citation, so it is PREFERRED over the title parser and
-        # published up front (#672). MusicBrainz can still upgrade it — a match adds an MBID and
+        # published up front. MusicBrainz can still upgrade it — a match adds an MBID and
         # duration corroboration — so it is not the end of the story, just the floor. When present it
         # also becomes the MusicBrainz QUERY KEY: the bad-title-parse that used to defeat the lookup
         # ("No Vocal", "American Idol 2024") is exactly what the citation replaces, so querying with the

@@ -28,9 +28,9 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 		secure: publicOriginIsHttps(request, url),
 		maxAge: 60 * 60 * 24 * 30
 	});
-	// ONE cookie, deliberately. #654 also set a second one naming the room this join landed in, on the
-	// plan that the room-scoping chain would read it; #657 then chose a different mechanism and the
-	// room cookie was left with no reader at all (#797 deleted it). The scope token IS the session
+	// ONE cookie, deliberately. An earlier design also set a second one naming the room this join landed in, on the
+	// plan that the room-scoping chain would read it; that chain then chose a different mechanism and the
+	// room cookie was left with no reader at all (and was later deleted). The scope token IS the session
 	// token: it resolves through the singers row to exactly one `room_id`, which is why a room may not
 	// be read from a client-supplied value — see $server/realtime/room-scope. The phone gets its own
 	// room id from the response body below, which is all it needs.

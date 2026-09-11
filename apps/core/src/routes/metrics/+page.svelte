@@ -398,7 +398,7 @@
 	 * gesture. The first column stays put so a scrolled row is still identifiable.
 	 */
 	/*
-	 * #913 S8: the table's own rules moved to ui/table — including the two that are behaviour rather
+	 * S8: the table's own rules moved to ui/table — including the two that are behaviour rather
 	 * than decoration: the 34rem minimum that makes eight numeric columns scroll instead of crushing,
 	 * and the sticky first column that keeps the step name beside its numbers while they do. `.scroller`
 	 * stays HERE because it is this page's layout, and the component's rules key off it as an ancestor.
@@ -410,7 +410,7 @@
 	}
 	/* .card in app.css has no padding — see the note in routes/stats/+page.svelte. */
 	/*
-	 * #913 S4: `.card`'s local padding left this file — shadcn's Card owns its spacing through
+	 * S4: `.card`'s local padding left this file — shadcn's Card owns its spacing through
 	 * `--card-spacing`. The visual change is accepted deliberately (a ring rather than a border, its
 	 * own scale). Layout classes that must apply to the GRID ITEM stay on a wrapper element, because a
 	 * scoped rule cannot reach an element a child component renders.
@@ -418,7 +418,7 @@
 	/* Full-strength ink and a rule beneath, so a section title out-ranks the dim column headers
 	   directly below it. Both were --ink-dim uppercase, which made them compete. */
 	/*
-	 * #913 S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
+	 * S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
 	 * title where this was hand-styled, which is part of the visual change accepted for S4.
 	 */
 	/* Stopped, not merely slow — the one state that invalidates every number below it. --warn-bg gives
@@ -440,7 +440,7 @@
 	 * left-aligned cells still put "9.0s" and "2m 34s" on different right edges, so a reader cannot run
 	 * an eye down a column and compare.
 	 *
-	 * #913 S8: both halves moved to ui/table, keyed on shadcn's data-slot attributes — a table's
+	 * S8: both halves moved to ui/table, keyed on shadcn's data-slot attributes — a table's
 	 * appearance is inherently descendant, and the cells are rendered by sibling components that a
 	 * scoped rule here cannot reach. What stays below is this page's own MEANING, not table styling.
 	 */
@@ -518,7 +518,7 @@
 		display: inline-flex;
 		align-items: center;
 		/* 44px tap target — this is the only route into the per-song audit and was 32px, under the
-		   ratified floor (issue #140). No literal-string pin like settings/.back, so the token is fine. */
+		   ratified floor. No literal-string pin like settings/.back, so the token is fine. */
 		min-height: var(--tap);
 		/* A title-less song shows its raw media id; an unbroken id would push the 320px layout wide. */
 		overflow-wrap: anywhere;

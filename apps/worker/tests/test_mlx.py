@@ -1,6 +1,6 @@
 """Unit tests for the demucs-mlx pure helpers (src/separation/mlx.py).
 
-These pin the MEASURED demucs-mlx CLI contract (#595): its argv has no --two-stems / --filename, its
+These pin the MEASURED demucs-mlx CLI contract: its argv has no --two-stems / --filename, its
 output lands in the demucs-native <out>/<input-stem>/<source>.wav layout, and the instrumental is
 DERIVED by summing the non-vocal stems with amix normalize=0 (a true sum, not the level-halving
 default). The engine adapter and the end-to-end wire live in test_demucs.py; this file is the argv/path

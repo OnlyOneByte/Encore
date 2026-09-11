@@ -49,8 +49,8 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #562, following the
- * #557/#558/#559/#560/#561 pattern). Browser/Page are derived from cdp.mjs's own return types (#553).
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json, following the same
+ * pattern as the sibling probes. Browser/Page are derived from cdp.mjs's own return types.
  * fetch().json() and page.evaluate() are Promise<any>, so API-shaped results are typed via the Media
  * row shape and the SearchBody/LibraryBody response shapes below, cast at the call site.
  *
@@ -954,7 +954,7 @@ if (!chromium) {
 		await phone.clickByLabel(SEL.swatch('pink').name);
 		await phone.clickByText('Start singing');
 		await phone.waitFor(`location.pathname === '/'`);
-		// #832: the search box moved behind the browse push, so joining lands on the queue.
+		// the search box moved behind the browse push, so joining lands on the queue.
 		await openBrowseFromHome(phone);
 
 		// Search for something we know is cooked (Sweet Caroline is ready from S1).
@@ -995,7 +995,7 @@ if (!chromium) {
 		);
 
 		// Zero-result copy: search a garbage string and read the rendered text.
-		await openBrowseFromHome(phone); // #832: search lives behind the browse push
+		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'zzzzzzznotasongzzzzzz');
 		await sleep(600); // debounce is 150ms; give the search a fair moment
 		const noResultsText = await phone
@@ -1012,9 +1012,9 @@ if (!chromium) {
 
 		// Empty-state for a query the ready library cannot answer: this is where readyEmptyState fires
 		// the "None of your N karaoke songs match X" copy + "Show all" button. It used to need a click on
-		// the Ready readiness chip; #833 deleted the chips, and the state is now reached by the condition
+		// the Ready readiness chip; direction B deleted the chips, and the state is now reached by the condition
 		// it was always really about — a non-matching query against a non-empty library.
-		await openBrowseFromHome(phone); // #832: search lives behind the browse push
+		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'xyznotasongxyz');
 		await sleep(600);
 		const readyEmpty = await phone.evaluate(

@@ -31,8 +31,8 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #563, following the
- * #553/#557/#558/#559/#560/#561/#562 pattern). This probe grows its OWN thin CDP client (Cdp/CdpPage)
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
+ * /pattern). This probe grows its OWN thin CDP client (Cdp/CdpPage)
  * rather than reusing cdp.mjs's Page, so the types are declared on those classes directly. page.evaluate()
  * returns Promise<any>, so DOM-shaped reads are cast at the call site via the domain typedefs below.
  *
@@ -341,7 +341,7 @@ async function joinPhone(cdp, name, colourName = PRESET_COLOUR_NAMES[0]) {
 		})()`
 	);
 	// A well-formed join lands on / with the joined home rendered — the DOCKED BAND, not the search box:
-	// since #832 search lives on the browse screen, so testing for it here would mean "browsing", not
+	// search lives on the browse screen, so testing for it here would mean "browsing", not
 	// "joined". A duplicate-name join sits on /join with a `.err[role=alert]` — differentiate here so the
 	// caller can react.
 	const outcome = await page.waitFor(
@@ -391,7 +391,7 @@ const SEARCH_TERM = process.env.P8_SEARCH ?? 'bohemian';
 
 /** @param {CdpPage} page @param {string} [term] */
 async function searchAndQueue(page, term = SEARCH_TERM) {
-	// The search box is on the browse screen (#832), so get there first. A no-op when already there.
+	// The search box is on the browse screen, so get there first. A no-op when already there.
 	await openBrowseFromHome(page);
 	await page.evaluate(
 		`(() => {
@@ -1112,14 +1112,14 @@ async function main() {
 				);
 			}
 			// Note the design observation: the command envelope carries NO revision context — the
-			// former baseRev field was deleted (#348/#409) because nothing on the server ever read it.
+			// former baseRev field was deleted because nothing on the server ever read it.
 			// Concurrency is therefore the whole clientOpId-dedupe story: replays of the same op are
 			// idempotent, and there is no revision-based rejection to count on. This is deliberate.
 			report(
 				'PASS',
 				'concurrency reduces to clientOpId dedupe — no revision context in the envelope',
 				'apps/core/src/server/realtime/hub.ts validateCommand has no revision check; the envelope carries clientOpId + op only, so duplicate-op replays are the only conflict shape and they dedupe idempotently.',
-				`packages/shared/src/core/ops.ts ClientCommand (clientOpId + op; the dead baseRev field was removed in #348)`
+				`packages/shared/src/core/ops.ts ClientCommand (clientOpId + op; the dead baseRev field was removed)`
 			);
 		}
 	} catch (err) {

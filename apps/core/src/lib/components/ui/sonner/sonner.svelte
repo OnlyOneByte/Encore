@@ -1,8 +1,8 @@
 <!--
-  ── ENCORE DEVIATIONS (#913 S5) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS ─────────────────────────────────────────────────────────────────────────────
 
   1. `theme={mode.current}` and its `mode-watcher` import are GONE. Encore has one theme; a light/dark
-     watcher is a dependency for a feature this app does not have, and #903's rule is that a
+     watcher is a dependency for a feature this app does not have, and the standing rule is that a
      dependency stays only while something imports it. `theme="dark"` states the fact directly.
 
   2. The style block read `var(--color-popover)`, `var(--color-popover-foreground)` and
@@ -27,7 +27,7 @@
      `routes/page.test.ts`'s "Undo toast control reaches the tap floor" arm, which followed the control
      into this file; it is mutation-proved (a 32px button reds it). Note that `touch-targets.test.ts`'s
      generic `controlRules()` derivation could NOT see it — a vendored component renders no bare
-     `button` tag for that scan to find, which is the same blind spot #913 S4 recorded for the tabs.
+     `button` tag for that scan to find, which is the same blind spot recorded for the tabs.
 -->
 <script lang="ts">
 	import { Toaster as Sonner, type ToasterProps as SonnerProps } from 'svelte-sonner';

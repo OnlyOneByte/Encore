@@ -29,7 +29,7 @@ const toRow = (m: Media): MediaRow => ({
 	annotationConfidence: m.annotation?.confidence ?? null,
 	instrumentalRef: m.instrumentalRef ?? null,
 	vocalsRef: m.vocalsRef ?? null,
-	// The measured guide/instrumental offset in signed ms, or null when never measured (#766). Null and a
+	// The measured guide/instrumental offset in signed ms, or null when never measured. Null and a
 	// stored 0 mean the same to the client (guideOffsetSec maps both to 0), but they are kept distinct so
 	// the operator surface can tell "measured, aligned" from "never measured".
 	guideOffsetMs: m.guideOffsetMs ?? null,
@@ -51,7 +51,7 @@ const toRow = (m: Media): MediaRow => ({
  * Tally values into browse-rail order: most songs first, ties alphabetical.
  *
  * The rails used to order in SQL (`ORDER BY count(*) DESC, value ASC`). They cannot any more, because
- * the count must be taken over the gate-filtered set and SQL cannot consult the gate table (#763), so
+ * the count must be taken over the gate-filtered set and SQL cannot consult the gate table, so
  * the ordering moves here with it. Ties break on a plain byte comparison rather than `localeCompare`
  * to match SQLite's default BINARY collation — the rail's order is unchanged by the move.
  */
@@ -255,7 +255,7 @@ export class MediaRepository {
 	 *
 	 * Deliberately a one-liner over `readySongs`: "finished" is defined in exactly one place for every
 	 * reader that lists or counts browsable songs, so the library, the browse filters and the browse
-	 * rails cannot disagree about the same song (#763).
+	 * rails cannot disagree about the same song.
 	 */
 	listReady(): Media[] {
 		return readySongs(this.#db);
@@ -322,7 +322,7 @@ export class MediaRepository {
 	 *  low-confidence parse) are excluded — an "Unknown" bucket of 40 songs is not a useful heading.
 	 *  Counts the READY set rather than `count(*)` in SQL: a SQL count cannot consult the gate table,
 	 *  and one that counted the narrowing instead printed `The Band 2` above a list holding one song
-	 *  (#763). The chip's number is now the length of the list it opens. */
+	 *. The chip's number is now the length of the list it opens. */
 	artistFacets(): Array<{ artist: string; count: number }> {
 		const artists = readySongs(this.#db, isNotNull(media.artistCanonical))
 			.map((m) => m.artistCanonical)

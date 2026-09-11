@@ -1,13 +1,13 @@
 
 <!--
-  ── ENCORE DEVIATIONS (#913 S2) ───────────────────────────────────────────────────────────────────
+  ── ENCORE DEVIATIONS (S2) ───────────────────────────────────────────────────────────────────
   The registry's appearance is REPLACED by Encore's field look, not layered over it. Every reason is a
   measured constraint this app already settled, and each names the test that holds it:
 
   1. `h-9` (36px) is under this app's 44px `--tap` floor. #863 established that floor for every
      settings field after a native select measured 41px and a text box 35px; `gate:measured` verifies
      it on a real render because a select's box is browser-owned. `min-height: var(--tap)` reads the
-     token rather than restating 44px, which `touch-targets.test.ts` (#831) requires.
+     token rather than restating 44px, which `touch-targets.test.ts` requires.
   2. `text-base md:text-sm` drops to 14.4px on a phone. iOS Safari auto-zooms on focusing any control
      under 16px and never zooms back out, leaving the operator stuck at 1.3x for the session. So the
      size is `var(--ph-text-base)`, pinned at 16px.

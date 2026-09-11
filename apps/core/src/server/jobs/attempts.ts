@@ -33,7 +33,7 @@ export interface AttemptFacts {
 	audioSec?: number | null;
 	/** Per-stage breakdown, serialized. Set from the worker's `job:complete`. */
 	stages?: string | null;
-	/** Variant-pick provenance, serialized. Set from the worker's `job:complete` on align (#669). */
+	/** Variant-pick provenance, serialized. Set from the worker's `job:complete` on align. */
 	selection?: string | null;
 }
 
@@ -145,7 +145,7 @@ export class AttemptLedger {
 	 * Sealed attempts finished at or after `sinceMs`, newest first, capped at `limit`. A TIME window
 	 * rather than a bare row count: the row-count window (`allFinished`) silently dropped a cook's
 	 * older steps at the cap, so the cook straddling the boundary reported `complete: true` and
-	 * measured its span from only the surviving rows — understating that cook's duration (#472). The
+	 * measured its span from only the surviving rows — understating that cook's duration. The
 	 * caller pairs the window edge (`sinceMs`) with `perCook(rows, sinceMs)` so a boundary-straddling
 	 * cook is flagged `clipped` and excluded rather than counted low.
 	 */

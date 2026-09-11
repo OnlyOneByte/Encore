@@ -5,7 +5,7 @@
 // and imports, no-undef in the .mjs scripts and e2e probes that no type gate covers, and
 // eslint-plugin-svelte's reactivity/a11y rules.
 //
-// CALIBRATION (see issue #438): introducing a linter to a mature, previously-unlinted 300-file tree
+// CALIBRATION: introducing a linter to a mature, previously-unlinted 300-file tree
 // surfaces a large tail of pre-existing findings. High-value STRUCTURAL rules are errors and their
 // violations are fixed in this change. Rules that are pervasive and stylistic (empty catch blocks
 // that are intentional here, a batch of opinionated svelte/* suggestions) are set to `warn` so the
@@ -48,7 +48,7 @@ export default tseslint.config(
 	},
 
 	// Out-of-tsconfig TypeScript (e2e/**, scripts/**, *.config.ts). Syntactic + unused rules only;
-	// no type-aware rules because there is no program for these files (see #438 follow-up).
+	// no type-aware rules because there is no program for these files (follow-up work).
 	{
 		files: ['apps/core/e2e/**/*.ts', 'apps/core/scripts/**/*.ts', 'apps/core/*.config.ts'],
 		languageOptions: {

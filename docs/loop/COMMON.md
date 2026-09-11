@@ -69,7 +69,7 @@ bun run typecheck                       # expect exit 0, 0 errors, 0 warnings
 bun run gate:measured                   # expect exit 0 — the layout rung, AFTER build
 ```
 
-`gate:measured` is the fifth gate (issue #823, owner ruling Q1 = A). It boots its own ephemeral
+`gate:measured` is the fifth gate (owner ruling Q1 = A). It boots its own ephemeral
 server and its own headless Chromium and MEASURES the four claims a source scan cannot decide —
 rendered control heights, computed field font size, the drawer's viewport cap and safe-area term, and
 the focus ring's painted form. **It has no skip path**: a missing Chromium, an unbuilt app or a
@@ -107,7 +107,7 @@ closed by PR #73. Any error is now a regression, and fixing it outranks the assi
 ## Proof — a fix is not done until the test bites
 
 A regression test must be **red on base** and **per-hunk mutation-proven**. Union-reverting all hunks
-proves nothing about any individual hunk: measured on #224, a union revert reddened 3 tests while
+proves nothing about any individual hunk: measured, a union revert reddened 3 tests while
 reverting `server.ts` alone left 1398 pass / 0 fail.
 
 The harness is `.kiro/autoloop/scripts/prove_per_hunk.py` *(the one remaining uncommitted dependency —
@@ -119,8 +119,8 @@ that reads the real production file.
 
 Three things the harness cannot check, all of which have shipped bugs:
 
-- Never derive an expected value with the same operation the code performs (#165).
-- Trace that the fixed code is actually **reached** on the issue's path (#190).
+- Never derive an expected value with the same operation the code performs.
+- Trace that the fixed code is actually **reached** on the issue's path.
 - Name the failing assertion per hunk.
 
 ## Merge safety

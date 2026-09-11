@@ -1,4 +1,4 @@
-"""#751 — a comment asserted the #483 ruling was recorded in the ratified-decisions register, and it
+"""#751 — a comment asserted the ruling was recorded in the ratified-decisions register, and it
 was not.
 
 THE DEFECT. `roformer.py`'s `ROFORMER_MODELS` block told the reader that the engine-package ruling
@@ -8,7 +8,7 @@ Q1(b) — "is recorded in docs/DECISIONS.md". Measured on `c23ba69`, that regist
 as a comment in `requirements.txt`. Worse, the register read the other way: `python-audio-separator`
 under "**Adopt as a dependency**", headed "Why the separator **swap** is the highest-value change" —
 and the plain reading of *swap* is replacement. So following the pointer landed a reader on text that
-contradicted the ruling it was sent to confirm. The pointer was true before `a7b9f9c` (PR #746), which
+contradicted the ruling it was sent to confirm. The pointer was true before `a7b9f9c`, which
 enriched the parenthetical to assert the alongside/both-engines/Q1(b) ruling while touching only
 `roformer.py` and `requirements.txt` — a regression, not a long-standing wart.
 
@@ -27,7 +27,7 @@ words — that would be satisfied by the very text that shipped the defect. It e
 comment NAMES as recording the ruling and requires each named file to actually contain it, so a
 pointer at a register that does not hold the claim reds no matter how it is worded. Comment stripping
 is INVERTED on purpose (the source side is read as comment text, never stripped) because the defect
-lives IN a comment; precedent is `packages/shared/src/doc-pointer-accuracy.test.ts` (#622) and
+lives IN a comment; precedent is `packages/shared/src/doc-pointer-accuracy.test.ts` and
 `apps/core/src/routes/api/leave/doc-accuracy.test.ts`.
 
 Every arm carries a non-vacuity sentinel anchored on text that IS in the register, so an emptied,
@@ -60,7 +60,10 @@ RULING_MARKERS = (
     "bs-roformer-infer",
     "alongside",
     "both engines",
-    "#483",
+    # `#483` was a sixth marker here. It went when issue references were cleared from source and
+    # docs: the five remaining markers name the ruling by its CONTENT — both engine names, the
+    # word "alongside", the phrase "both engines" and the question id — which is a stronger
+    # identification than the number ever was.
     "Q1(b)",
 )
 
@@ -145,7 +148,7 @@ def test_the_decisions_register_records_the_483_both_engines_ruling():
 
     missing = [m for m in RULING_MARKERS if m.lower() not in text.lower()]
     assert not missing, (
-        "docs/DECISIONS.md does not record the #483 both-engines ruling; missing "
+        "docs/DECISIONS.md does not record the both-engines ruling; missing "
         f"{missing}. The ruling is settled — quote it, do not re-derive it "
         "(apps/worker/requirements.txt carries it verbatim)."
     )
@@ -255,5 +258,5 @@ def test_every_file_the_roformer_ruling_comment_cites_actually_records_the_rulin
             offenders.append(f"{rel} (cited but does not exist)")
             continue
         if not _records_ruling(target.read_text(encoding="utf-8")):
-            offenders.append(f"{rel} (cited but does not record the #483 ruling)")
+            offenders.append(f"{rel} (cited but does not record the ruling)")
     assert not offenders, "roformer.py's ruling comment points at " + "; ".join(offenders)

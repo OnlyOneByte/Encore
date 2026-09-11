@@ -109,7 +109,7 @@ class AcquireAudio(Step):
         self._capture_youtube_credit(ctx, audio_dir)
 
     def _capture_youtube_credit(self, ctx: Ctx, audio_dir: str) -> None:
-        """Read the download's `.info.json` and stash YouTube's OWN declared credit on the ctx (#672).
+        """Read the download's `.info.json` and stash YouTube's OWN declared credit on the ctx.
 
         Best-effort and silent on absence: a legacy audio file that predates `--write-info-json` has no
         sidecar, and a video with no music-panel metadata has no `track`/`artist` — both leave
@@ -131,12 +131,12 @@ def _existing_vocals(ctx: Ctx) -> str | None:
     while a failing one looks like a broken worker.
 
     Extension-blind, exactly as `find_downloaded` is for the retained original above. `VOCALS_EXT`
-    switched from `m4a` to `flac` in #480 for NEW cooks, but the worker re-derives this path on every
+    switched from `m4a` to `flac` for NEW cooks, but the worker re-derives this path on every
     align job from the CURRENT `VOCALS_EXT` — it is never sent the stored ref — so an interim-era song
     (instrumental `.flac` + vocals `.m4a`, the whole library up to that commit) has a real stem on disk
     under an unexpected name. Nothing migrates those files. Glob `<id>-vocals.*`, prefer the current
     extension when several exist so a fresh re-cook wins, and fall back to the legacy file otherwise.
-    No transcode: AAC → FLAC recovers nothing, which #480 already ruled — align just has to LOOK.
+    No transcode: AAC → FLAC recovers nothing, which was already ruled — align just has to LOOK.
     """
     from ..processor import VOCALS_EXT, vocals_path
 

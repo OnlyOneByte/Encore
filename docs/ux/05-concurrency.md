@@ -15,7 +15,7 @@ because a reader who trusts the brief will write the wrong requirement.
 | Brief says | `main` actually has | Consequence |
 |---|---|---|
 | "There is no host concept in the product yet, so introducing one is itself a product decision" | `apps/core/src/server/auth/capabilities.ts` — a five-member `Capability` union, an `Actor` type, and `can(actor, cap)` as "the ONE place that answers *is this actor allowed to do that?*" | The **mechanism** exists and is centralised. What is open is only the **policy content** per capability. Introducing a host is now an edit to one function, which is much cheaper than the brief assumes. |
-| "reorder is within-singer only … not to be reopened" | The queue is a single **stored ordered list** and a reorder rewrites it in place (`rotation.ts` `storedOrder`/`assignSeqs`); #856 step 3 deleted pinning (`move-global`, `unpin`, `pinnedSeq`, `placePins`) | A **cross-singer reorder is expressible without a pin** — it rewrites the stored list directly, durable by construction, gated on `queue:reorder-any`. The within-singer rule still holds for the `move` op, but the product is no longer within-singer only; wiring the arrows/drag to a "move to index" op is #856 step 4. |
+| "reorder is within-singer only … not to be reopened" | The queue is a single **stored ordered list** and a reorder rewrites it in place (`rotation.ts` `storedOrder`/`assignSeqs`); pinning was deleted (`move-global`, `unpin`, `pinnedSeq`, `placePins`) | A **cross-singer reorder is expressible without a pin** — it rewrites the stored list directly, durable by construction, gated on `queue:reorder-any`. The within-singer rule still holds for the `move` op, but the product is no longer within-singer only; wiring the arrows/drag to a "move to index" op is still unshipped. |
 | "Rate limits — none exist" | `MAX_CONCURRENT_COOKS_PER_SINGER = 3` (`apps/core/src/server/jobs/make-karaoke.ts:53`), refused as `over-limit` and answered **HTTP 429** with a phone-showable reason (`routes/api/make-karaoke/+server.ts:45-53`) | One limit exists, on the **expensive** axis (worker fleet). The **cheap** axis — queue depth per singer — is uncapped: `validateCommand`'s `add` arm has no depth check. |
 | "whether a guest whose optimistic action lost a race is **told**, or the UI silently reverts" | It is told. `hub.ts:335` emits `op:reject`; `lib/stores/queue.ts:280` rolls back to the pre-op snapshot and calls `onReject`; `routes/+page.svelte:177` wires that to `showError`, rendered as `.error-toast` with `role="alert"` (`+page.svelte:1294`) | The **channel is built**. What is undecided is the **policy**: which rejects deserve disclosure, in whose words, and on which surface. |
 
@@ -40,7 +40,7 @@ lives in a source comment, which is the gap `XR-CON-06` addresses.
 
 ---
 
-## Owner rulings — CONFIRMED 2026-09-09 (issue #828)
+## Owner rulings — CONFIRMED 2026-09-09
 
 This is the **published, non-source statement of record** for the five authority questions. It exists
 because a ruling in a source comment is not discoverable by the person it constrains (`XR-CON-06`).
@@ -53,11 +53,11 @@ enforces it, so this document and `can()` disagree detectably if either drifts.
 | Q1 | Skip a currently-playing song | **A — any joined singer** (status quo; no change to who can skip) | Any joined singer | `player:control` — `apps/core/server.ts:379` gates the `player:command {cmd:'skip'}` frame | Angelo, 2026-09-09 |
 | Q2 | Live singing controls (guide level, pitch ±, range viz on the now-playing hero) | **A — any joined singer** (ratify; status quo by inheritance, no new capability) | Any joined singer | `player:control` — the same gate; `handlePlayerCommand`'s `key` / `guide` arms | Angelo, 2026-09-09 |
 | Q3 | Deployment-scoped settings (`PUT /api/settings`) | **A — ratify open, accepted** (no split, no gate; consistent with the 2026-09-04 ruling; and fix the stale source comment to match — `packages/shared/src/core/settings.ts`) | Any joined singer | `settings:write-global` — `routes/api/settings/+server.ts:24`; room-scoped stays `settings:write-room` | Angelo, 2026-09-09 |
-| Q4 | Cross-singer reorder | **A — keep open to everyone** (status quo). #828 rules only the policy: `queue:reorder-any` stays open to any joined singer. Pinning-removal (so `queue:reorder-any` effectively becomes "anyone") is a separate ruling attributed to **#856 (Q1-B, 2026-09-09T02:58Z)**, superseded by the insert-only stored-list re-scope (#856, 2026-09-09) | Any joined singer | `queue:reorder-any` — `hub.ts` `move` arm (the `move-global`/`unpin` arms were deleted with pinning in #856 step 3). Stored-list reorder mechanics are #856; this doc + `capabilities.ts` own only the policy side | Angelo, 2026-09-09 |
+| Q4 | Cross-singer reorder | **A — keep open to everyone** (status quo). This ruling covers only the policy: `queue:reorder-any` stays open to any joined singer. Pinning-removal (so `queue:reorder-any` effectively becomes "anyone") is a separate ruling (**Q1-B, 2026-09-09T02:58Z**), superseded by the insert-only stored-list re-scope (2026-09-09) | Any joined singer | `queue:reorder-any` — `hub.ts` `move` arm (the `move-global`/`unpin` arms were deleted with pinning). Stored-list reorder mechanics live elsewhere; this doc + `capabilities.ts` own only the policy side | Angelo, 2026-09-09 |
 | Q5 | Per-singer queue-depth limit | **A — no cap** (status quo). `validateCommand`'s `add` arm stays uncapped | Any joined singer | Not a capability. The unrelated cook cap `MAX_CONCURRENT_COOKS_PER_SINGER = 3` is kept | Angelo, 2026-09-09 |
 
 **Every `Capability` union member is covered above.** `queue:remove-any` (removing someone else's
-entry) is not one of the five #828 questions and is unchanged: it stays open to any joined singer.
+entry) is not one of the five questions ruled on above and is unchanged: it stays open to any joined singer.
 
 ### Reorder contention: last-write-wins is not a refusal
 
@@ -140,7 +140,7 @@ any other refusal a guest caused are still surfaced on that guest's phone in the
 | **Statement** | The product has a **stated policy** for who may reorder the queue **across** singers, documented at a location outside source comments, distinguishing it from the within-singer reorder that every guest holds over their own picks. |
 | **Surfaces** | Phone (the only reorder surface); TV (renders the resulting order). |
 | **Rationale** | A cross-singer reorder overrides the fairness policy the room chose, so it is a different act from permuting one's own picks and cannot inherit the same permission by default. |
-| **Source** | `UNSOURCED` for the policy. The **model** is documented: the queue is a single **stored ordered list** and *is* the source of truth (`rotation.ts` `storedOrder`/`assignSeqs` renumber the stored positions; nothing re-derives the order from entry fields). A reorder rewrites that list in place, so it is durable by construction — there is no durable pin. #856 step 3 deleted pinning outright: `move-global`, `unpin`, the `pinnedSeq` column/field, and `rotation.ts:placePins` are gone. `queue:reorder-any` survives and gates a `move` on an entry the actor does not own (`hub.ts` `move` arm). `routes/+page.svelte` records the client-side mirror: *"Every joined singer is a host today."* Wiring the phone arrows and drag to one "move to index" op that rewrites the stored list is **#856 step 4** and is not yet shipped, so today's cross-singer reorder is the own-picks `move` path only. |
+| **Source** | `UNSOURCED` for the policy. The **model** is documented: the queue is a single **stored ordered list** and *is* the source of truth (`rotation.ts` `storedOrder`/`assignSeqs` renumber the stored positions; nothing re-derives the order from entry fields). A reorder rewrites that list in place, so it is durable by construction — there is no durable pin. Pinning was deleted outright: `move-global`, `unpin`, the `pinnedSeq` column/field, and `rotation.ts:placePins` are gone. `queue:reorder-any` survives and gates a `move` on an entry the actor does not own (`hub.ts` `move` arm). `routes/+page.svelte` records the client-side mirror: *"Every joined singer is a host today."* Wiring the phone arrows and drag to one "move to index" op that rewrites the stored list is **not yet shipped**, so today's cross-singer reorder is the own-picks `move` path only. |
 | **Acceptance** | **Given** the policy document, **when** a reader asks whether a guest may move another guest's song across singers, **then** they find one unambiguous answer; **and given** an actor the policy excludes, **when** they send a cross-singer `move` (once step 4 wires it), **then** it is refused with a reason and the stored order is unchanged. |
 | **Check** | Arm-scoped `capability-wiring` assertion on the `move` arm's `queue:reorder-any` gate. Behavioural: a cross-singer reorder by an excluded actor leaves the stored order unchanged after the op. |
 | **Priority** | **Ship-blocking.** A reorder rewrites the authoritative stored list, so an unauthorised one silently distorts the rest of the party. |
@@ -192,10 +192,10 @@ any other refusal a guest caused are still surfaced on that guest's phone in the
 |---|---|
 | **Statement** | Every member of the `Capability` union has at least one enforcement call site, and each call site is pinned by a guard scoped to **that** site — so narrowing `can()` cannot silently leave an operation open. Named exemptions: none. |
 | **Surfaces** | None (project artefact). |
-| **Rationale** | `capabilities.ts:9-11` promises that gating a capability later is "an edit HERE and nowhere else"; that promise was already found false once for two capabilities (issue #106), and it is currently false again for three. |
-| **Source** | `DERIVED` by enumeration against `main`. **Model:** the union has five members; `tests/guards/wiring/capability-wiring.test.ts` asserts arm-scoped gates for exactly two (`remove`→`queue:remove-any`, `move`→`queue:reorder-any`) and scans `hub.ts` only. Unguarded: **`player:control`** (real site `apps/core/server.ts:379`, a different file the guard never reads), **`settings:write-room`** (`routes/api/settings/room/+server.ts:19`), and **`settings:write-global`** (`routes/api/settings/+server.ts:24`). (The `move-global` and `unpin` arms this row previously named were deleted with pinning in #856 step 3; `queue:reorder-any` is now reached only through the `move` arm.) |
+| **Rationale** | `capabilities.ts:9-11` promises that gating a capability later is "an edit HERE and nowhere else"; that promise was already found false once for two capabilities, and it is currently false again for three. |
+| **Source** | `DERIVED` by enumeration against `main`. **Model:** the union has five members; `tests/guards/wiring/capability-wiring.test.ts` asserts arm-scoped gates for exactly two (`remove`→`queue:remove-any`, `move`→`queue:reorder-any`) and scans `hub.ts` only. Unguarded: **`player:control`** (real site `apps/core/server.ts:379`, a different file the guard never reads), **`settings:write-room`** (`routes/api/settings/room/+server.ts:19`), and **`settings:write-global`** (`routes/api/settings/+server.ts:24`). (The `move-global` and `unpin` arms this row previously named were deleted with pinning; `queue:reorder-any` is now reached only through the `move` arm.) |
 | **Acceptance** | **Given** each capability, **when** its gate is deleted, inverted, moved to a sibling arm, or given a `return null` consequent, **then** a test fails naming that capability. **Given** a new capability added to the union, **then** a test fails until it has a pinned call site. |
-| **Check** | Extend `capability-wiring.test.ts` with the same four mutations it already defends against (#220's M1/M2/M3 plus the `return null` consequent), applied per capability rather than per `hub.ts` arm — and drive it off the union so a sixth capability cannot be added silently. |
+| **Check** | Extend `capability-wiring.test.ts` with the same four mutations it already defends against (the existing M1/M2/M3 plus the `return null` consequent), applied per capability rather than per `hub.ts` arm — and drive it off the union so a sixth capability cannot be added silently. |
 | **Priority** | **Ship-blocking.** Every row in Group A resolves to *narrow one capability*, and this is the guard that makes such a narrowing actually hold. |
 
 ---
@@ -216,8 +216,8 @@ any other refusal a guest caused are still surfaced on that guest's phone in the
 
 > Two existing behaviours already serve this and should be **referenced, not rewritten**: the
 > `queueOrder` write re-derives the queue and re-emits `nowplaying:changed` because a stored
-> `rotationSeq` would otherwise leave the TV naming the pre-reorder next (`api/settings/room/+server.ts`,
-> issue #636); and `routes/+page.svelte:116-131` deliberately withholds "You're up next!" for a
+> `rotationSeq` would otherwise leave the TV naming the pre-reorder next (`api/settings/room/+server.ts`);
+> and `routes/+page.svelte:116-131` deliberately withholds "You're up next!" for a
 > still-cooking song *"contradicting the playable-aware badge"* — i.e. the phone is already built to
 > avoid contradicting the TV. This row generalises those two fixes into the rule they are instances of.
 
@@ -392,7 +392,7 @@ changes its severity independently of its technical impact.
    the authoritative path *"so every client converges the same way it would on a hand-tapped remove"*,
    special-cases the playing entry via `keptPlaying`, and exposes `removableOnLeave` explicitly *"so
    the phone can name the cost before asking"*. Stated, enforced, and better than a new row.
-7. **Idempotency and reconnect resend.** `#490`'s ledger-before-reject rule and `resendPending` are
+7. **Idempotency and reconnect resend.** The ledger-before-reject rule and `resendPending` are
    both implemented and carry unusually complete rationale, including the non-obvious requirement to
    use the non-recording `hasOp` rather than `seenOp`. Nothing here is at risk.
 8. **Presence grace windows.** `DEFAULT/MIN/MAX_PRESENCE_GRACE_MINUTES` exist in
@@ -406,7 +406,7 @@ changes its severity independently of its technical impact.
 
 ---
 
-## (b) OPEN QUESTIONS FOR THE OWNER — RESOLVED 2026-09-09 (issue #828)
+## (b) OPEN QUESTIONS FOR THE OWNER — RESOLVED 2026-09-09
 
 **All five are now ruled.** See § "Owner rulings — CONFIRMED 2026-09-09" above for the statement of
 record; the outcome was **the status-quo option (A) for every question** (Q1-A, Q2-A, Q3-A, Q4-A

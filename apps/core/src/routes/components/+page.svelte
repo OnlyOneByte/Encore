@@ -33,7 +33,7 @@
 	const PINK = SINGER_COLORS[1];
 	const GREEN = SINGER_COLORS[2];
 	/*
-	 * Named for the #634 highlight cards. Mint is the pick there rather than another violet because the
+	 * Named for the highlight cards. Mint is the pick there rather than another violet because the
 	 * cards need a singer colour that can be COLLIDED with a stage colour convincingly — a mid-tone teal
 	 * field reads as a plausible room choice, where a mid-tone violet field does not.
 	 */
@@ -292,7 +292,7 @@
 		words: []
 	};
 	/*
-	 * A CONFIDENT DUET (#692), as the worker's diarization (#691) would write it: alternating lines
+	 * A CONFIDENT DUET, as the worker's diarization would write it: alternating lines
 	 * carry an abstract `part` letter ("A"/"B"). The overlay maps the two parts onto two DISTINCT
 	 * legible SINGER_COLORS through `duetPartColors`, so the two frames below show line 0 (part A) and
 	 * line 1 (part B) painted in different colours. An undiarized song has no `part` on any line and
@@ -542,7 +542,7 @@
 		The wait is `null` here because one entry ahead has no resolvable length — the reachable unknown,
 		since Media.durationSec is required and absence from the catalog is what produces it.
 	-->
-	<h2 class="section">NowPlayingHero · MyPositionCard (#832)</h2>
+	<h2 class="section">NowPlayingHero · MyPositionCard</h2>
 	<NowPlayingHero
 		title="Livin' on a Prayer"
 		singerName="Maya"
@@ -574,7 +574,7 @@
 	<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
 	<QueueRow seq={4} title="Sweet Caroline" singerName="Liam" singerColor="#5cb8ff" />
 	<QueueRow seq={5} title="Wonderwall" singerName="You" singerColor={PINK} mine pending="add" />
-	<!-- #832 / XR-PH-10: the unconfirmed REORDER, which had no fixture because the state did not exist —
+	<!-- / XR-PH-10: the unconfirmed REORDER, which had no fixture because the state did not exist —
 	     a pending move was indistinguishable from a landed one. Paired directly below its `pending="add"`
 	     twin so the only difference under review is the WORD: a row already in the queue must say
 	     "moving…", never "adding…". Both share the warn surface, which is the state signal (never
@@ -595,7 +595,7 @@
 	<h2 class="section">ProcessingCard</h2>
 	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />
 
-	<!-- #735: the pending ProcessingCard, which had no fixture at all — the only `pending` surface in
+	<!-- : the pending ProcessingCard, which had no fixture at all — the only `pending` surface in
 	     the gallery was the QueueRow above, so the cooking card's unconfirmed state (the one that
 	     actually renders during the primary ✨ Sing flow) had never been eyes-on anywhere. Paired
 	     immediately below its non-pending twin so the state signal is judged as a DIFFERENCE: the warn
@@ -641,7 +641,7 @@
 		onup={() => {}}
 		ondown={() => {}}
 	/>
-	<!-- Coverage gap closed (issues #216, #335): the only long-name fixture used to be a QueueRow, so
+	<!-- Coverage gap closed: the only long-name fixture used to be a QueueRow, so
 	     the narrower `.who` on a cooking card WITH its queue controls was never eyes-on. This is the
 	     reachable-collapse case — actions cluster present, name at the 32-char profile maxlength. The
 	     name is a single UNBROKEN token (no space, so it cannot wrap): dropping the `.who i { flex: 0 0
@@ -741,7 +741,7 @@
 
 	<!--
 		QueueSheet's and QueueSheetDrawer's demos lived here. Both were retired with the drawer surface
-		itself (#903): the ratified phone design has no drawer, #832 built the inline-rows/hero/docked-band
+		itself: the ratified phone design has no drawer, #832 built the inline-rows/hero/docked-band
 		home instead, and the gallery was the only place either component still rendered — so a fix landed
 		here reached no guest. The band contract they carried now lives on .cta-dock / .search-dock in
 		routes/+page.svelte, which publish --dock-h; see docs/research/827-queuesheet-drawer-spike.md for
@@ -924,7 +924,7 @@
 		Card 3 puts a mint singer on a mid-tone teal stage (a realistic collision); card 4 is the
 		pathological floor, the stage set to the singer's colour EXACTLY, so the fill has 1:1 contrast
 		against the field behind it and the ONLY thing separating the glyphs from the background is the
-		reel's own `-webkit-text-stroke` (#750). If the words are still readable in card 4, the ruling
+		reel's own `-webkit-text-stroke`. If the words are still readable in card 4, the ruling
 		("keep the hue, rely on the stroke") holds for every less-extreme case by construction. No second
 		stroke is added for these — `lyrics-stroke.test.ts` asserts there is exactly one, and one is what
 		this leans on.
@@ -946,8 +946,8 @@
 	{/each}
 
 	<!--
-		DUET PARTS IN TWO COLOURS (#692) — the visible half of the duet feature. The worker's
-		diarization (#691) writes an abstract `part` letter on each line of a confident duet; the reel
+		DUET PARTS IN TWO COLOURS — the visible half of the duet feature. The worker's
+		diarization writes an abstract `part` letter on each line of a confident duet; the reel
 		maps the parts onto two DISTINCT legible SINGER_COLORS (the same palette + `isLegibleSingerColor`
 		floor the singer colour above uses — a hard-coded second colour is rejected because it would skip
 		that floor). The two cards are the SAME duet doc at two positions: the first frame's current line

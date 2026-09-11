@@ -1,6 +1,6 @@
 <script lang="ts">
 	/*
-	 * Test harness for NowPlayingHero's live-controls disclosure (issue #832).
+	 * Test harness for NowPlayingHero's live-controls disclosure.
 	 *
 	 * It exists because the thing under test is a SNIPPET prop, and the route passes it as a
 	 * `{#snippet}` block in markup. Building one in the test file instead would exercise a different

@@ -174,7 +174,7 @@ test('unknown job id throws', () => {
 // It walks the cook chain fetch → stems → align in order and returns the first step that is NOT
 // `ready` (in flight or waiting), skips finished/never-enqueued steps, and excludes stems-upgrade
 // (background work on an already-singable song). A silent regression here snaps the phone's
-// progress strip back to queued/0% on reload while a song is mid-cook (issue #83).
+// progress strip back to queued/0% on reload while a song is mid-cook.
 
 /** Drive a fresh job to `running` (queued → assigned → running). Returns its id. */
 function runningJob(repo: JobRepository, mediaId: string, jobType: JobType, at = T0): string {

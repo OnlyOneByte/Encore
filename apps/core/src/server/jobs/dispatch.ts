@@ -101,7 +101,7 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 		asrModel: settings?.asrModel ?? DEFAULT_ASR_MODEL,
 		syncMode: settings?.syncMode ?? DEFAULT_SYNC_MODE,
 		...lookupKeys(media),
-		// A HUMAN re-pick (#640): when the song carries a lyrics override, an align job must RE-TIME that
+		// A HUMAN re-pick: when the song carries a lyrics override, an align job must RE-TIME that
 		// exact candidate rather than run its own comparative selection — otherwise the re-time would
 		// re-pick and could discard the very candidate the user chose. Absent on every normal cook, where
 		// no override is set and the worker selects comparatively as before.
