@@ -137,6 +137,8 @@
 		   sticky header's background then covers the whole column width as content scrolls under it. */
 		max-width: 44rem;
 		margin: 0 auto;
+		/* Header and content share this measure via the PageHeader --page-measure cap. */
+		--page-measure: 44rem;
 		/* .app-shell is a centred flex column, so a cap alone takes width off the right only; width:100%
 		   keeps the stretch so margin:auto re-centres the capped block. Same reason as /stats. */
 		width: 100%;

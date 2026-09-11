@@ -285,6 +285,9 @@
 		gap: 1rem;
 		padding: 1rem 0 3rem;
 		max-width: 760px;
+		/* Match the PageHeader's --page-measure cap to this block's width (header and content share one
+		   measure; header does not cap below 760 when --max-w steps down in the 768–1200 band). */
+		--page-measure: 760px;
 		/* The cap takes width off the right only on a flex child (.app-shell is a
 		   centered flex column); width:100% keeps the stretch so margin-inline:auto
 		   re-centres the full capped block instead of collapsing it to content width. */

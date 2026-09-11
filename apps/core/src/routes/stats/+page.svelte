@@ -161,6 +161,10 @@
 		gap: 1rem;
 		padding: 1rem 0 3rem;
 		max-width: 720px;
+		/* The PageHeader inside this block caps on --page-measure; match it to the content width so the
+		   header and the content share one measure at every viewport (and the header never caps below
+		   the block it sits in when --max-w steps down in the 768–1200 band). */
+		--page-measure: 720px;
 		/* The cap takes width off the right only on a flex child (.app-shell is a
 		   centered flex column); width:100% keeps the stretch so margin-inline:auto
 		   re-centres the full capped block instead of collapsing it to content width. */

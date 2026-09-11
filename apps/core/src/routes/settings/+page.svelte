@@ -1156,18 +1156,24 @@
 
 <style>
 	/*
-	 * The app shell caps every phone surface at --max-w. Settings opts out and sets its own cap: one
-	 * scope at a time is a single column, so the useful width is a readable measure, not the whole
-	 * monitor. The old two-column grid put Global beside This room, which stops making sense once the
-	 * scopes are tabs.
+	 * The app shell caps every phone surface at --max-w. Settings opts out so its own column can be
+	 * WIDER than the 480px phone cap (the paired controls need room) — but the opt-out removed the cap
+	 * from the whole shell, so the PageHeader (a child of .settings-page, above <main>) spanned the
+	 * ENTIRE viewport while <main> sat at 560px: on a wide monitor the h1 was hundreds of px left of the
+	 * text it introduces. Fix: --page-measure caps the header on the SAME 560px measure as <main>, so
+	 * the two share one column, while the shell stays uncapped so nothing else is constrained.
 	 */
+	.settings-page {
+		--page-measure: 560px;
+	}
 	:global(.app-shell:has(.settings-page)) {
 		max-width: none;
 	}
 
 	main {
 		/* A single readable column. Wider than the 480px phone cap so a desktop operator gets room for
-		   the paired controls, narrower than the shell's 1080px so a select never spans a monitor. */
+		   the paired controls, narrower than the shell's 1080px so a select never spans a monitor.
+		   Kept in sync with --page-measure above so the header aligns with this column. */
 		max-width: 560px;
 		margin: 0 auto;
 		padding: var(--space-md) var(--space-3xl) calc(28px + env(safe-area-inset-bottom, 0px));

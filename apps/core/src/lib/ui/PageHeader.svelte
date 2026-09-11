@@ -47,9 +47,22 @@
 		padding: var(--space-2xl) var(--space-3xl) var(--space-md);
 		border-bottom: 1px solid var(--line);
 		position: sticky;
-		top: 0;
+		/* Stick below the notch, not under it. .app-shell carries the top safe-area inset as PADDING
+		   (app.css), but a sticky offset is measured from the scrollport, so `top: 0` rode up into the
+		   inset once scrolled and sat under the status bar on a notched PWA (viewport-fit=cover +
+		   apple-mobile-web-app-status-bar-style=black-translucent are both set in app.html). */
+		top: env(safe-area-inset-top, 0px);
 		background: var(--bg);
 		z-index: var(--z-header);
+		/* The header caps and centres on the SAME measure as the route's content column, so the two share
+		   one width instead of the header spanning the whole shell while the body sits in a narrow column
+		   (the five-different-header-widths bug). Each route sets --page-measure to its own reading width;
+		   the fallback is the shell cap for a route that sets none. margin-inline:auto centres it; the
+		   width:100% keeps the stretch so the cap takes width off both sides rather than hanging left. */
+		width: 100%;
+		max-width: var(--page-measure, var(--max-w));
+		margin-inline: auto;
+		box-sizing: border-box;
 	}
 	.back {
 		color: var(--ink-dim);
