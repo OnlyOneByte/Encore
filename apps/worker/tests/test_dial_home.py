@@ -955,7 +955,7 @@ def test_run_forever_finally_cancels_in_flight_synchronously_and_does_NOT_await_
     )
     assert not awaits_drain_inline, (
         "_run_forever's finally awaits client.drain(...) INLINE — that is exactly the base defect "
-        "#459 fixed: the reconnect loop is held for a full align while the reaper has requeued the job. "
+        "an earlier change fixed: the reconnect loop is held for a full align while the reaper has requeued the job. "
         "The drain must be DETACHED (scheduled, not awaited) so redial is concurrent with the settle"
     )
 

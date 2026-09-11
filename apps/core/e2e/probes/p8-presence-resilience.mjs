@@ -191,7 +191,7 @@ class CdpPage {
 		await this.waitFor(`document.readyState === "complete"`, 15_000);
 	}
 	/**
-	 * Click a selector. Added for #832: the shared `openBrowseFromHome` step needs it, and this thin
+	 * Click a selector. Added: the shared `openBrowseFromHome` step needs it, and this thin
 	 * client had no click at all — every earlier interaction here was an `evaluate` that dispatched its
 	 * own events. Implemented the same way, so it adds no new mechanism.
 	 * @param {string} selector

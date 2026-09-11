@@ -9,7 +9,7 @@
 //
 // That fact used to be an ARGUMENT FOR A BOUND: every stage was generated at the pinned stage tier
 // (`stageHueToHex`) from a stored hue angle, precisely so no option could produce a field bright
-// enough to wash those lyrics out. #425 retired the bound and kept the concern, by moving the defence
+// enough to wash those lyrics out. An earlier change retired the bound and kept the concern, by moving the defence
 // onto the thing being defended: the reel now paints its own `-webkit-text-stroke` outline (
 // `b764d92`), so the words hold against any field. That is strictly stronger, because a stage bound
 // only ever protected the make-karaoke case — over a real music video the reel sat on frames nothing

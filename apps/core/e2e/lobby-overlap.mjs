@@ -1,5 +1,5 @@
 /*
- * Property proof for #98: on a short TV panel the lobby's typed join address must never be
+ * Property proof: on a short TV panel the lobby's typed join address must never be
  * intersected — let alone painted over — by the roster strip, at any roster size the real path can
  * produce.
  *

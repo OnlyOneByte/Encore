@@ -146,7 +146,7 @@ class MlxDemucsEngine:
     box advertises `stems` (`capabilities.narrow_for_backend` reads `demucs_engine_backed_by("mlx")`,
     now True). A box without MLX either resolves to `torch` (never builds this) or, if `mlx` was
     explicitly configured on unsupported hardware, `resolve_backend` raises at worker startup before any
-    engine is built. So the honest-degradation contract #119 established is preserved: an `mlx` label
+    engine is built. So the honest-degradation contract an earlier change established is preserved: an `mlx` label
     never runs a torch cook, and unavailable MLX fails loud rather than downgrading silently.
 
     `input_wav` is stashed on the instance at `separate_argv` time so `derive_argvs` and `find_outputs`

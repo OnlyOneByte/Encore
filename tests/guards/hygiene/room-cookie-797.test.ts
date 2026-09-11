@@ -91,7 +91,7 @@ test('F1 no production source names the room cookie in CODE', () => {
 test('F1 the stripper DISCRIMINATES — a comment mention passes, real code does not', () => {
 	// The load-bearing control. Without it the ban above could be green because the stripper eats
 	// everything, and the honest explanatory prose could not be told apart from a re-added cookie.
-	const inAComment = "// the room cookie #654 set (ROOM_COOKIE = 'encore_room') had no reader";
+	const inAComment = "// the room cookie an earlier change set (ROOM_COOKIE = 'encore_room') had no reader";
 	const inABlockComment = "/* ROOM_COOKIE = 'encore_room' */\nconst x = 1;";
 	const inCode = "export const ROOM_COOKIE = 'encore_room';";
 	expect(NAMES_THE_COOKIE.test(inAComment)).toBe(true); // raw: matches
@@ -160,7 +160,7 @@ test('F1 the prose ban DISCRIMINATES — it still flags the exact sentences that
 	}
 	// ...and the honest correction survives it
 	const corrected =
-		'#654 also set a second cookie naming the room; #657 chose a different mechanism and the room cookie was left with no reader at all.';
+		'#654 also set a second cookie naming the room; an earlier change chose a different mechanism and the room cookie was left with no reader at all.';
 	expect(readingWindows(corrected).filter((w) => !isDenial(w))).toEqual([]);
 });
 

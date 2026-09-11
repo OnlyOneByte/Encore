@@ -4,7 +4,7 @@
  * ── WHY THIS PROBE EXISTS ──────────────────────────────────────────────────────────────────────
  *
  * These four claims used to be `bun test` mount-rung tests in
- * `apps/core/src/lib/components/hero-live-controls-835.test.ts`. #913 moved GuidingTrack's control
+ * `apps/core/src/lib/components/hero-live-controls-835.test.ts`. An earlier change moved GuidingTrack's control
  * onto shadcn's <Slider>, which is built on Bits UI, and Bits UI's slider needs a LAYOUT
  * ENVIRONMENT to exist at all:
  *
@@ -311,7 +311,7 @@ const STATE_EXPR = `(() => {
 })()`;
 
 /**
- * Read the disclosure while it is still CLOSED. Ported from phone-home-832's mount test by #913 S5:
+ * Read the disclosure while it is still CLOSED. Ported from phone-home-832's mount test by S5:
  * the hero's disclosure is a Bits UI Collapsible now, which reads `getBoundingClientRect()` for its
  * height, and the mount rung replaces that with a throw (XR-VER-03). So the claim moved to the rung
  * where the hero can actually render.
@@ -442,7 +442,7 @@ async function main() {
 	 * looked filled in. The control itself is found by accessible text rather than position, because the
 	 * colour swatches are buttons too and they come first in document order.
 	 */
-	// #834 replaced the standalone /join route with the landing surface at `/`, which renders the join
+	// An earlier change replaced the standalone /join route with the landing surface at `/`, which renders the join
 	// form while unjoined. Going to the old path would 404 and the probe would time out on a page that
 	// never had a name field.
 	await phone.goto(`${BASE}/`);

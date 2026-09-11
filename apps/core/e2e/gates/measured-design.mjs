@@ -436,7 +436,7 @@ try {
 	/*
 	 * ── CLAIM 3 (XR-VER-11): the docked band's published height and its safe-area term ──────────
 	 *
-	 * WHERE THIS IS MEASURED CHANGED WITH #832 and again with #902, and the claim did not. Direction A
+	 * WHERE THIS IS MEASURED CHANGED WITH #832, and the claim did not. Direction A
 	 * made the queue the home screen, so `/` no longer mounts QueueSheet; the 2026-09-09 owner correction
 	 * then made the docked band at the bottom of the phone the SEARCH DOCK (the `+ Add a turn`
 	 * button is gone), present on home for a joined singer. The "published height equals the real

@@ -4,7 +4,7 @@
   The registry's appearance is REPLACED by Encore's field look, not layered over it. Every reason is a
   measured constraint this app already settled, and each names the test that holds it:
 
-  1. `h-9` (36px) is under this app's 44px `--tap` floor. #863 established that floor for every
+  1. `h-9` (36px) is under this app's 44px `--tap` floor. An earlier change established that floor for every
      settings field after a native select measured 41px and a text box 35px; `gate:measured` verifies
      it on a real render because a select's box is browser-owned. `min-height: var(--tap)` reads the
      token rather than restating 44px, which `touch-targets.test.ts` requires.

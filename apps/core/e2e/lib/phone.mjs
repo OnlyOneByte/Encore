@@ -18,7 +18,7 @@ const DEFAULT_TIMEOUT = 15_000;
 /**
  * From the JOINED home screen, reach the search box.
  *
- * Since #902 the box is docked on home unconditionally, so there is nothing to click and no navigation:
+ * the box is docked on home unconditionally, so there is nothing to click and no navigation:
  * this waits for the joined home to render (`homeReady`, the docked band) and then for the box itself
  * (`search`). The two waits are kept distinct so a driver can tell "home never rendered" from "the box
  * never appeared", even though today the band and the box arrive together.
@@ -46,7 +46,7 @@ export async function openBrowseFromHome(page, { timeout = DEFAULT_TIMEOUT } = {
  *
  * The rotation rows, the position line and the transport are all on home — a driver that
  * searched and then counted `.qrow` was reading the results view, where the rotation is not rendered.
- * Since #902 there is no browse mode to leave: the "← Queue" control (`backToQueue`) CLEARS the search,
+ * there is no browse mode to leave: the "← Queue" control (`backToQueue`) CLEARS the search,
  * and clearing it brings the queue back in place. This clicks it only when the hero is not already
  * showing (an empty box already shows the queue), so it is the mirror of `openBrowseFromHome`.
  *

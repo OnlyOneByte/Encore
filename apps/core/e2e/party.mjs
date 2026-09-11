@@ -245,7 +245,7 @@ try {
 	// ── search and queue, through the one unified box ────────────────────────
 	// A real multi-character term: the remote does not search on a single character, so 'a' returns
 	// nothing and looks exactly like a broken UI. It is not.
-	await openBrowseFromHome(maya); // #832: search lives behind the browse push
+	await openBrowseFromHome(maya); // search lives behind the browse push
 	await maya.fill(SEL.search, 'caroline');
 	/*
 	 * Poll for rows instead of sleeping. Search is debounced and then hits yt-dlp, so its latency is not

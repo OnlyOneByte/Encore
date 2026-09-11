@@ -263,7 +263,7 @@
 	same song twice (Enter on the row, then Tab-Enter on the button). The two buttons carry the actions.
 -->
 <!--
-	#913 S8: <Item.Root> supplies the row grammar via Item's own `child` snippet, so this file keeps the
+	S8: <Item.Root> supplies the row grammar via Item's own `child` snippet, so this file keeps the
 	row element and its readiness state classes — a `class:` directive is not valid on a component. The
 	class attribute stays STATIC, because contrast.test.ts splits it on whitespace to derive the row's
 	classes. `bare`: `.card` paints the row, `.list-row` lays it out.

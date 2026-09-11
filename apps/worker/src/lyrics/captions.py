@@ -201,7 +201,7 @@ def parse_vtt(text: str) -> list[dict[str, Any]]:
     no longer a growing prefix of the one before — its HEAD instead repeats the previous line's TAIL, and
     neither fold arm above fires. That residual is trimmed in a separate pass by `_collapse_scroll_overlap`
     (applied to the returned segments) rather than in this loop, so the held/prefix collapse stays exactly
-    as #539/#686 shipped it.
+    as an earlier change shipped it.
 
     Both mechanisms are bounded by TIME-ADJACENCY — the new cue must begin at or before the running line's
     end plus a small slack — so a chorus line that genuinely recurs later in the song, separated in time,

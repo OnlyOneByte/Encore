@@ -244,7 +244,7 @@ export class QueueStore {
 	 * then (2) re-apply the op through the shared reducer so the next op — and the returned view —
 	 * sits on top of it. The refresh is the invariant: every pending op's `snapshot` must be the
 	 * pre-op state ON CURRENT SERVER TRUTH, so a later `op:reject` rolls back to the world as it is
-	 * now, not to a stale one frozen at op-issue time (the regression PR #168 fixed).
+	 * now, not to a stale one frozen at op-issue time (the regression PR an earlier change fixed).
 	 *
 	 * All three writers that move truth — `#onPatch`, `#onSync`, `#onReject` — rebase through here so
 	 * the invariant is stated ONCE rather than copied into three loops that can drift (the two hotter

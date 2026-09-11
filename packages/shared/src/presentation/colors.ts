@@ -280,7 +280,7 @@ export const DEFAULT_STAGE_COLOR = '#001d31';
  * The hue angle of an arbitrary colour, in degrees (0–359): the direction of its OKLab chromatic
  * vector, independent of lightness and chroma. Greys have no direction, so they return 0.
  *
- * Needed because #425 made the room's stored stage value a real colour while the VISUALIZERS still
+ * Needed because an earlier change made the room's stored stage value a real colour while the VISUALIZERS still
  * need an ANGLE: every renderer in `apps/core/src/lib/tv/visualizers.ts` builds its palette by hue
  * ARITHMETIC (`stageHueToHex(hue + deg)`) around the room's colour, which a hex cannot express.
  *

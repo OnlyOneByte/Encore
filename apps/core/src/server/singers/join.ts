@@ -111,7 +111,7 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 	const singer = app.singers.create(name, color, app.now(), room.id);
 
 	// Register the new singer with presence RIGHT NOW, in an away-ish state, so their name is held
-	// through the gap between this HTTP response and their WebSocket actually opening. PR #19 left that
+	// through the gap between this HTTP response and their WebSocket actually opening. PR an earlier change left that
 	// gap open: `create` writes the DB row, but the ONLY thing that registered a singer with the
 	// PresenceTracker was the WS `open` handler — so `presence.stateOf` returned 'gone' for a singer who
 	// had joined but whose socket had not landed, and a second phone could claim the identical name in

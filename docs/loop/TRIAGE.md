@@ -429,7 +429,7 @@ sweep is cheap precisely because it is bounded, and this pass already does a lot
 **A closed issue in a pair is a decision, not a duplicate.** If the pair says `#N is CLOSED`, read
 why it closed: something closed as not planned is a ruling, and an open issue that re-opens it needs
 `needs-decision`, not a `duplicate` label. **A closed issue that shipped a fix is not a blanket ruling
-either** — #82 closed as fixed by a merged PR whose landed guard does not cover #131 at all, and #59's
+either** — an earlier change closed as fixed by a merged PR whose landed guard does not cover #131 at all, and #59's
 own fix is what *introduced* #92. Check what the fix actually asserts before treating it as covering
 anything.
 

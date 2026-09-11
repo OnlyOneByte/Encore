@@ -305,7 +305,7 @@ async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path
     # leak into progress — the only NON-terminal pct run_stage may emit for this stage is a time-based
     # keepalive, and roformer's is held at 0 (its last-known pct) so the bar never moves off 0 until the
     # closing 100. The invariant is therefore: no INTERMEDIATE (0 < pct < 100) value ever appears. This
-    # does NOT pin the event COUNT — pinning [0, 100] would forbid the keepalive that #435 added to keep
+    # does NOT pin the event COUNT — pinning [0, 100] would forbid the keepalive that an earlier change added to keep
     # a 45-minute pass from being reaped at the 30 s lease.
     seps = [e.pct for e in events if isinstance(e, ProgressEvent) and e.stage == "separating"]
     assert 0 in seps and 100 in seps
@@ -347,7 +347,7 @@ async def test_a_roformer_cook_missing_vocals_is_best_effort_still_publishes_ins
     The cook must still complete best-effort and publish the load-bearing instrumental, with the vocals
     key simply ABSENT — not a None value. Without this, a roformer cook could silently drop its guiding
     track on the best-effort path and every worker test stayed green (the half that
-    #333 left open). Mirrors the demucs sibling's `"vocals" not in stems` shape, NOT
+    an earlier change left open). Mirrors the demucs sibling's `"vocals" not in stems` shape, NOT
     `stems["vocals"] is None`."""
     runner, _ = _roformer_fake_runner(write_vocals=False)  # instrumental written, vocals output absent
     proc = plans.stems_runner(runner=runner)  # no engine= override → real RoformerEngine from params

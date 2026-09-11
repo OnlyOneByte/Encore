@@ -212,7 +212,7 @@ def test_a_demoted_wrong_song_pick_is_not_reported_as_caused_by_the_overshoot_pe
     assert "fits-the-audio" in note, note
 
 
-# --- the verdict ladder PR #733 added (steps/lyrics.py) wrote two claims its one local fact,
+# --- the verdict ladder PR an earlier change added (steps/lyrics.py) wrote two claims its one local fact,
 # `is_published`, does not carry. F1 asserted "no candidate that fits the audio" from it, which is
 # false whenever the COMPARATIVE overshoot penalty is smaller than the overshooter's score lead. F2
 # dropped `is_published` entirely, so a tolerated overshoot on a REJECTED rival read as one on the

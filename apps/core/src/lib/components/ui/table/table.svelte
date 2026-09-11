@@ -60,7 +60,7 @@
 	/*
 	 * A cell that opts out of the numeric right-alignment by name.
 	 *
-	 * #913 deleted the page's `td.name { text-align: left }` after migrating to <Table.Cell>, and three of
+	 * An earlier change deleted the page's `td.name { text-align: left }` after migrating to <Table.Cell>, and three of
 	 * main's four `class="name"` cells were `:first-child` and so already covered by the rule above. The
 	 * fourth — the ASR table's syncMode column, which is SECOND — silently became right-aligned: a word
 	 * in a column of numbers, ranged the wrong way.

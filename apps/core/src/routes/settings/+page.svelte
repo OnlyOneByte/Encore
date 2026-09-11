@@ -226,7 +226,7 @@
 	let tvProgressNote = $derived(getTvProgressStyle(settings.room.tvProgressStyle)?.note ?? '');
 
 	let tvBackgroundNote = $derived(getTvBackgroundStyle(settings.room.tvBackgroundStyle)?.note ?? '');
-	// The swatch and the input both show the room's stored colour directly. Since #425 there is no
+	// The swatch and the input both show the room's stored colour directly. there is no
 	// generator between the choice and the render — the phone cannot promise a colour the TV then
 	// renders differently, because they are the same string.
 	let tvBackgroundPreview = $derived(settings.room.tvBackgroundColor);
@@ -235,7 +235,7 @@
 	 * The stage picker no longer needs a painted track. It was a hue slider whose gradient had to be
 	 * generated from stageHueToHex — "what you drag through is what you can get" — precisely because a
 	 * hue angle was not the colour you got: the stage tier darkened hues near the active-word pink, so
-	 * hardcoded stops would have lied where the guard bit. #425 removed the generator, so the control is
+	 * hardcoded stops would have lied where the guard bit. An earlier change removed the generator, so the control is
 	 * a plain colour input whose own swatch IS the stored value and cannot disagree with the TV.
 	 */
 
@@ -456,7 +456,7 @@
 		fix that survives adding a fourth room control is to stop rendering them together.
 	-->
 		<!--
-		#913 S4: a Bits UI tablist. The roving tabindex, ArrowLeft/Right, Home and End that used to live
+		S4: a Bits UI tablist. The roving tabindex, ArrowLeft/Right, Home and End that used to live
 		in `onTabKey` are the primitive's now — verified by mounting it rather than trusted: ArrowRight,
 		End and Home each move BOTH `aria-selected` and the tabindex, which is the pairing the old
 		handler had to remember to do by hand ("move focus with the selection, or the ring is left behind
@@ -1069,7 +1069,7 @@
 				<Card.Root>
 	<Card.Content>
 					<!--
-						#913 S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> STAYS
+						S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> STAYS
 						here via Bits UI's `child` snippet — `.disclose` is scoped CSS in this file, and a class handed
 						to a component is scoped to the CALLER and stripped there as unused.
 					-->

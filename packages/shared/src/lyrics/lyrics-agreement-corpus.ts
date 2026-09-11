@@ -34,7 +34,7 @@ export interface AgreementParityCase {
 	readonly fidelity: CountRatio;
 	/** shared adjacent pairs (multiset) / adjacent pairs of the LONGER side. */
 	readonly sequence: CountRatio;
-	/** What symmetric set Jaccard — the metric #542 replaced — scored this pair. For contrast only. */
+	/** What symmetric set Jaccard — the metric an earlier change replaced — scored this pair. For contrast only. */
 	readonly oldSetJaccard: CountRatio;
 }
 

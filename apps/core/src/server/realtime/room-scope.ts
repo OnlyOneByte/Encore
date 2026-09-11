@@ -9,7 +9,7 @@
 // closes, and it is security-relevant: a room is a tenancy boundary, not a decorative label.
 //
 // The SCOPE TOKEN is the session token a phone already carries (singers.session_token). It is not a
-// new credential: it resolves — via the singers row — to exactly one room_id (#656 made room_id NOT
+// new credential: it resolves — via the singers row — to exactly one room_id (an earlier change made room_id NOT
 // NULL on every singer), so the token a socket presents at the WS upgrade binds that socket to one
 // room and one only. This module turns that binding into the decisions the wire layer needs.
 //

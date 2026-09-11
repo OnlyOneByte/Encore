@@ -468,7 +468,7 @@
 	 * only real claim here is the one that matters — lifted sits above list siblings and below the
 	 * dock and toasts.
 	 *
-	 * --z-sheet-scrim (9) and --z-sheet (10) sat between them until #903 deleted the drawer surface
+	 * --z-sheet-scrim (9) and --z-sheet (10) sat between them until an earlier change deleted the drawer surface
 	 * that was their only reader; the phone ladder is three rungs now, not five.
 	 */
 	--z-row-lifted: 2;
@@ -765,14 +765,14 @@
  * THREE NAMESPACES WERE DELIBERATELY ABSENT WHEN THIS BLOCK WAS WRITTEN. Two are now filled, and the
  * reasons the others stay out have not changed.
  *   - motion (`--duration-*`), and the spacing / type / line-height scales: FILLED by #829, which
- *     declared them in `:root` above and bridges them below. #853 left this seam open rather than
+ *     declared them in `:root` above and bridges them below. An earlier change left this seam open rather than
  *     inventing values for it, which is why every bridge entry added for them carries no number of its
  *     own -- each is a `var()` back to the single declaration in `:root`.
  *   - easing (`--ease-*`): still absent. #829 states why at its motion block above -- every curve in
  *     the tree is bespoke to one gesture, so there is no shared scale to name.
  *   - z-index: absent because Tailwind HAS no z-index theme namespace -- `z-10` is a bare-value
  *     utility computed from the class name, so there is no key to register a tier under. The two
- *     ladders #829 added therefore live in `:root` only, and that is the whole mechanism.
+ *     ladders an earlier change added therefore live in `:root` only, and that is the whole mechanism.
  *
  * THAT SELF-REFERENCE TRAP IS WHY EVERY BRIDGE KEY BELOW IS SPELLED DIFFERENTLY FROM ITS `:root`
  * TOKEN (`--spacing-sm: var(--space-sm)`, never `var(--spacing-sm)`). A bridge entry that names itself

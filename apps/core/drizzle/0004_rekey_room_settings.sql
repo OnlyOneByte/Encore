@@ -7,7 +7,7 @@
 -- not recorded idx:4.
 --
 -- WHY: before #728 SettingsRepository defaulted every reader AND the writer route to DEFAULT_ROOM_ID
--- ('main'), so a configured box wrote its room_settings row under 'main'. #728 moved every reader
+-- ('main'), so a configured box wrote its room_settings row under 'main'. An earlier change moved every reader
 -- (and the writer fallback) onto app.activeRoomId -- a minted ULID (RoomRepository.ensureActive =
 -- ORDER BY created_at ASC), NOT 'main'. Without this re-key the readers would look up the active room
 -- and find no row, silently serving defaults; the operator's persisted choices would vanish.

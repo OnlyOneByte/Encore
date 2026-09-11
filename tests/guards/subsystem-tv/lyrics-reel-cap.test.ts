@@ -50,7 +50,7 @@ test('the .viewport max-height cap equals the parent chrome band, with no extra 
 	expect(cap).toContain('100vh');
 	expect(cap).toContain('var(--tv-chrome-h)');
 
-	// …and must NOT subtract a second safe-area inset — that is the double-charge issue #99 removed.
+	// …and must NOT subtract a second safe-area inset — that is the double-charge issue an earlier change removed.
 	// The band `--tv-chrome-h` already contains one `--tv-safe-y`; a second one here clips the reel.
 	expect(cap).not.toContain('--tv-safe-y');
 

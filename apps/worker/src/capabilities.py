@@ -216,7 +216,7 @@ def narrow_for_backend(
     resolving it eagerly for a fetch-only box would be work that box never needs).
 
     Why it is needed at all: `resolve` proves `stems` from `_either("demucs", demucs_bin)` — the
-    module or CLI is present — but #119 made the resolved backend DRIVE which demucs engine runs, and
+    module or CLI is present — but an earlier change made the resolved backend DRIVE which demucs engine runs, and
     only `torch` has an implementation. So an Apple-Silicon box with `demucs` importable AND
     `demucs-mlx` importable proves `stems`, AUTO-resolves the backend to `mlx`, and advertises `stems`
     anyway — then kills every cook it is handed when `engine_for("demucs", backend="mlx")` raises at

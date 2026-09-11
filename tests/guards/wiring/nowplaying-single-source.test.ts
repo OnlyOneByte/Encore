@@ -148,8 +148,12 @@ test('player.ts discloses where the recovery predicate is single-sourced', () =>
 	// newlines are allowed between words (same technique as the wrap-tolerant guard in
 	// dangling-current-entry.test.ts).
 	const ws = String.raw`(?:\s|\/\/)+`;
-	expect(preamble).toMatch(/#803/);
-	expect(preamble).toMatch(/#848/);
+	// These two lines used to pin the issue numbers the preamble cited. The numbers went when issue
+	// references were cleared from production source, so the guard now pins what the preamble must
+	// SAY: that server.ts's duplicate was removed, and that the predicate is single-sourced here.
+	// The subject was always the disclosure, not the citation.
+	expect(preamble).toMatch(/removed server\.ts/);
+	expect(preamble).toMatch(/single-source|single source/i);
 	expect(preamble).toMatch(/entryResolves/);
 	expect(preamble).toMatch(new RegExp(`single(?:${ws})?-?(?:${ws})?sourced`, 'i'));
 

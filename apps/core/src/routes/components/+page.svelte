@@ -919,7 +919,7 @@
 		Pinned at 0.8s with `playing={false}` for the same reason the marker cards are: the active word's
 		colour is the entire observable, and a running clock makes two frames incomparable.
 
-		The last two cards are the case the owner's ruling turns on. #425 removed the pinned stage tier,
+		The last two cards are the case the owner's ruling turns on. An earlier change removed the pinned stage tier,
 		so a room may now paint the field ANY colour — including one that lands on top of the singer's.
 		Card 3 puts a mint singer on a mid-tone teal stage (a realistic collision); card 4 is the
 		pathological floor, the stage set to the singer's colour EXACTLY, so the fill has 1:1 contrast

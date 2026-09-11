@@ -110,7 +110,7 @@ try {
 	await openBrowseFromHome(phone);
 	check('a singer can join and reach the remote', true);
 
-	await openBrowseFromHome(phone); // #832: search lives behind the browse push
+	await openBrowseFromHome(phone); // search lives behind the browse push
 	await phone.fill(SEL.search, 'caroline');
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	// A ready song offers "add" (queue it now); a raw one offers "sing" (queue + cook).

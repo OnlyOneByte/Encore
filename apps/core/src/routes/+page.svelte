@@ -113,7 +113,7 @@
 	/**
 	 * THE BAND CONTRACT. The docked search band's REAL rendered height, published to documentElement so
 	 * the scrolling column can reserve its band in normal flow (XR-PH-12) instead of having the band
-	 * float over the last queue row. Since #902 the search dock IS this band — docked on home for a
+	 * float over the last queue row. the search dock IS this band — docked on home for a
 	 * joined singer at all times, the `+ Add a turn` button it replaced is gone — so there is exactly
 	 * one band, present in both the queue and results views.
 	 *
@@ -1152,7 +1152,7 @@
 	/**
 	 * XR-PH-15's honest degradation, as ruled Q1-D: when the playing song has no isolated
 	 * vocals stem the guide control renders DISABLED rather than vanishing, and this sentence — on the
-	 * hero, beside the control group — says why and what still works. #253 deleted the equivalent line
+	 * hero, beside the control group — says why and what still works. An earlier change deleted the equivalent line
 	 * from inside `GuidingTrack.svelte` and `drawer-ui-cleanup-253.test.ts` pins its absence there, so
 	 * arm D is what satisfies both rulings: the component and its guard stay untouched.
 	 *
@@ -1668,7 +1668,7 @@
 	 * (XR-PH-12): the padding reserves the band's MEASURED height (--dock-h), which is what keeps the
 	 * last queue row (empty box) or the top-ranked result (searching) reachable at every scroll position
 	 * instead of parked under the band. The fallback covers the first frame before the effect publishes
-	 * a measurement. Since #902 there is exactly ONE band on this route — the search dock, present in
+	 * a measurement. there is exactly ONE band on this route — the search dock, present in
 	 * both views — so this one rule reserves the only band there is.
 	 */
 	main {

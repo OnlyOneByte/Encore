@@ -129,7 +129,7 @@ export function reconcileOnReady(deps: HubDeps): void {
 	// here, at the recovery entry point, by treating a dangling id exactly like a null one.
 	//
 	// recovery predicate, now single-sourced: `entryResolves` (state/store.ts) is the ONE
-	// production statement of "does currentEntryId name a live entry?". #803 removed server.ts's
+	// production statement of "does currentEntryId name a live entry?". An earlier change removed server.ts's
 	// copy that decided whether to CALL this function, but left two copies of the predicate itself —
 	// this runtime recovery and store.ts's boot self-heal — byte-identical modulo the receiver, which
 	// is the drift #848 closed by extracting the shared helper both askers call. Callers now call

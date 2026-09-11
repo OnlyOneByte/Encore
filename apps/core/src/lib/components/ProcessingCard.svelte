@@ -87,7 +87,7 @@
 </script>
 
 <!--
-	#913 S8: <Item.Root> supplies the row grammar through Item's own `child` snippet, so this file keeps
+	S8: <Item.Root> supplies the row grammar through Item's own `child` snippet, so this file keeps
 	the row ELEMENT — its conditional state classes cannot become a component's props, because a `class:`
 	directive is not valid on a component and a class handed to one is scoped to the caller. `bare`
 	because `.card` paints the row and `.list-row` lays it out.
