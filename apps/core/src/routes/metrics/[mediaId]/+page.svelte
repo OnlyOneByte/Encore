@@ -159,12 +159,12 @@
 
 		{#if !audit.hasHistory}
 			<Card.Root>
-	<Card.Content>
-				<p class="note">
-					No history for this song — it was processed before this page existed, so its timings were never recorded.
-				</p>
-	</Card.Content>
-</Card.Root>
+				<Card.Content>
+					<p class="note">
+						No history for this song — it was processed before this page existed, so its timings were never recorded.
+					</p>
+				</Card.Content>
+			</Card.Root>
 		{:else}
 			<p class="note">
 				Each <strong>run</strong> below is one attempt at making a karaoke track. A run has several steps, and a step can
@@ -174,92 +174,103 @@
 
 		{#each audit.processes as process, i (process.processingId)}
 			<Card.Root>
-	<Card.Header>
-		<Card.Title>Run {i + 1}</Card.Title>
-	</Card.Header>
-	<Card.Content>
-				<header>
-					
-					<Badge variant={process.outcome === 'ready' ? 'ok' : process.outcome === 'failed' || process.outcome === 'abandoned' ? 'bad' : 'warn'}>{outcomeLabel(process.outcome)}</Badge>
-				</header>
-				<p class="note">
-					{stamp(process.startedAt)}{#if process.totalMs !== null}{' · took '}{dur(
-							process.totalMs
-						)}{:else}{' · still going'}{/if}
-				</p>
+				<Card.Header>
+					<Card.Title>Run {i + 1}</Card.Title>
+				</Card.Header>
+				<Card.Content>
+					<header>
+						<Badge
+							variant={process.outcome === 'ready'
+								? 'ok'
+								: process.outcome === 'failed' || process.outcome === 'abandoned'
+									? 'bad'
+									: 'warn'}>{outcomeLabel(process.outcome)}</Badge
+						>
+					</header>
+					<p class="note">
+						{stamp(process.startedAt)}{#if process.totalMs !== null}{' · took '}{dur(
+								process.totalMs
+							)}{:else}{' · still going'}{/if}
+					</p>
 
-				<ol class="steps">
-					{#each process.attempts as a (a.id)}
-						<li class:failed={a.outcome === 'failed'} class:abandoned={a.outcome === 'abandoned'}>
-							<div class="row">
-								<strong>{stepLabel(a.jobType)}</strong>
-								{#if a.attempt > 1}<span class="retry">try {a.attempt}</span>{/if}
-								<Badge variant={a.outcome === 'ready' ? 'ok' : a.outcome === 'failed' || a.outcome === 'abandoned' ? 'bad' : 'warn'}>{outcomeLabel(a.outcome)}</Badge>
-							</div>
-							<div class="metrics-row">
-								<span class="ran">{dur(a.processingMs)}</span>
-								<span class="secondary">waited {dur(a.queueWaitMs)}</span>
-								{#if a.rtFactor !== null}<span class="secondary">{rate(a.rtFactor)} song length</span>{/if}
-								{#if a.workerId}<span class="secondary">on {a.workerId}</span>{/if}
-							</div>
-							{#if usedModels(a.models).length}
-								<dl class="facts">
-									{#each usedModels(a.models) as [k, v] (k)}
-										<div>
-											<dt>{factLabel(k)}</dt>
-											<dd>{v}</dd>
-										</div>
-									{/each}
-								</dl>
-							{/if}
-							{#if a.stages.length}
+					<ol class="steps">
+						{#each process.attempts as a (a.id)}
+							<li class:failed={a.outcome === 'failed'} class:abandoned={a.outcome === 'abandoned'}>
+								<div class="row">
+									<strong>{stepLabel(a.jobType)}</strong>
+									{#if a.attempt > 1}<span class="retry">try {a.attempt}</span>{/if}
+									<Badge
+										variant={a.outcome === 'ready'
+											? 'ok'
+											: a.outcome === 'failed' || a.outcome === 'abandoned'
+												? 'bad'
+												: 'warn'}>{outcomeLabel(a.outcome)}</Badge
+									>
+								</div>
 								<div class="metrics-row">
-									{#each a.stages as s (s.stage)}<span class="secondary">{stageLabel(s.stage)} {dur(s.ms)}</span>{/each}
+									<span class="ran">{dur(a.processingMs)}</span>
+									<span class="secondary">waited {dur(a.queueWaitMs)}</span>
+									{#if a.rtFactor !== null}<span class="secondary">{rate(a.rtFactor)} song length</span>{/if}
+									{#if a.workerId}<span class="secondary">on {a.workerId}</span>{/if}
 								</div>
-							{/if}
-							{#if a.selection}
-								<div class="selection">
-									{#each a.selection.choices as c (c.textSource)}
-										<div class="pick">
-											<span class="kept"
-												>kept <strong>{c.chosen ?? '?'}</strong>{#if c.chosenScore !== null}
-													({score(c.chosenScore)} from {c.votes} baseline{c.votes === 1 ? '' : 's'}){/if}</span
-											>
-											<span class="secondary">{decidedLabel(c.decidedBy)}</span>
-											{#if c.rejected.length}
-												<span class="secondary"
-													>over {#each c.rejected as r, i (r.label ?? i)}{r.label ?? '?'}
-														{score(r.score)}{#if i < c.rejected.length - 1},
-														{/if}{/each}</span
+								{#if usedModels(a.models).length}
+									<dl class="facts">
+										{#each usedModels(a.models) as [k, v] (k)}
+											<div>
+												<dt>{factLabel(k)}</dt>
+												<dd>{v}</dd>
+											</div>
+										{/each}
+									</dl>
+								{/if}
+								{#if a.stages.length}
+									<div class="metrics-row">
+										{#each a.stages as s (s.stage)}<span class="secondary">{stageLabel(s.stage)} {dur(s.ms)}</span
+											>{/each}
+									</div>
+								{/if}
+								{#if a.selection}
+									<div class="selection">
+										{#each a.selection.choices as c (c.textSource)}
+											<div class="pick">
+												<span class="kept"
+													>kept <strong>{c.chosen ?? '?'}</strong>{#if c.chosenScore !== null}
+														({score(c.chosenScore)} from {c.votes} baseline{c.votes === 1 ? '' : 's'}){/if}</span
 												>
-											{/if}
-										</div>
-									{/each}
-									{#if a.selection.winnerSuspect}<span class="secondary suspect"
-											>winner disagreed with every baseline — probably the wrong song</span
-										>{/if}
-								</div>
-							{/if}
-							{#if a.error}<p class="err">{a.error}</p>{/if}
-						</li>
-					{/each}
-				</ol>
-	</Card.Content>
-</Card.Root>
+												<span class="secondary">{decidedLabel(c.decidedBy)}</span>
+												{#if c.rejected.length}
+													<span class="secondary"
+														>over {#each c.rejected as r, i (r.label ?? i)}{r.label ?? '?'}
+															{score(r.score)}{#if i < c.rejected.length - 1},
+															{/if}{/each}</span
+													>
+												{/if}
+											</div>
+										{/each}
+										{#if a.selection.winnerSuspect}<span class="secondary suspect"
+												>winner disagreed with every baseline — probably the wrong song</span
+											>{/if}
+									</div>
+								{/if}
+								{#if a.error}<p class="err">{a.error}</p>{/if}
+							</li>
+						{/each}
+					</ol>
+				</Card.Content>
+			</Card.Root>
 		{/each}
 
 		{#if audit.plays.length}
 			<Card.Root>
-	<Card.Header>
-		<Card.Title>Sung</Card.Title>
-	</Card.Header>
-	<Card.Content>
-				
-				<ul class="plays">
-					{#each audit.plays as p (p.entryId)}<li>{stamp(p.at)}</li>{/each}
-				</ul>
-	</Card.Content>
-</Card.Root>
+				<Card.Header>
+					<Card.Title>Sung</Card.Title>
+				</Card.Header>
+				<Card.Content>
+					<ul class="plays">
+						{#each audit.plays as p (p.entryId)}<li>{stamp(p.at)}</li>{/each}
+					</ul>
+				</Card.Content>
+			</Card.Root>
 		{/if}
 	{/if}
 </section>

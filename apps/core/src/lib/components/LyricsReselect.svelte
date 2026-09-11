@@ -48,9 +48,7 @@
 	// Only worth showing when there is a real choice: more than one candidate, or a paste path. A song
 	// with a single candidate still offers paste (the auto text may simply be wrong).
 	const hasChoice = $derived(candidates.length > 0);
-	const peek = $derived(
-		newerExists ? 'A better match is available' : overrideRef ? 'Your pick' : 'Auto-selected'
-	);
+	const peek = $derived(newerExists ? 'A better match is available' : overrideRef ? 'Your pick' : 'Auto-selected');
 
 	function submitPaste() {
 		const text = draft.trim();
@@ -96,8 +94,7 @@
 							bind:value={draft}
 							rows="5"
 							placeholder="Paste the correct lyrics, one line per line…"
-							aria-label="Paste lyrics"
-						></textarea>
+							aria-label="Paste lyrics"></textarea>
 						<div class="reselect-acts">
 							<button class="chip" disabled={!draft.trim()} onclick={submitPaste}>Use these lyrics</button>
 							<button class="chip ghost" onclick={() => (pasting = false)}>Cancel</button>

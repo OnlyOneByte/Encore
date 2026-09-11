@@ -276,72 +276,88 @@
 			class:ready={readiness === 'ready'}
 			class:processing={readiness === 'processing'}
 		>
-			<Item.Media data-media="thumb"><div class="thumb">
-		{#if thumbSrc}
-			<!--
+			<Item.Media data-media="thumb"
+				><div class="thumb">
+					{#if thumbSrc}
+						<!--
 				alt="" on purpose: the title sits immediately beside it, so a described thumbnail would make
 				a screen reader announce the same song twice. `loading="lazy"` because a search renders up
 				to 12 of these and only the first few are ever on screen.
 			-->
-			<img src={thumbSrc} alt="" loading="lazy" decoding="async" width="84" height="47" />
-		{:else}
-			<!-- No thumbnail (a local library file, or a resolver that reports none) — keep the mark. -->
-			<span class="ph"><Icon name="play" /></span>
-		{/if}
-		{#if duration}
-			<span class="dur" class:odd={oddDuration}>{duration}</span>
-		{/if}
-	</div></Item.Media>
+						<img src={thumbSrc} alt="" loading="lazy" decoding="async" width="84" height="47" />
+					{:else}
+						<!-- No thumbnail (a local library file, or a resolver that reports none) — keep the mark. -->
+						<span class="ph"><Icon name="play" /></span>
+					{/if}
+					{#if duration}
+						<span class="dur" class:odd={oddDuration}>{duration}</span>
+					{/if}
+				</div></Item.Media
+			>
 
 			<Item.Content>
-		<!--
+				<!--
 			The title and the processing mark share a flex line so the mark is a SIBLING of .t, not a child of it.
 			.t clamps to two lines with overflow:hidden; a mark rendered INSIDE that box is laid out on the
 			discarded third line and never paints on a phone (issue #194). As a flex:0 0 auto sibling it always
 			paints and no longer competes with the title for the last line's characters.
 		-->
-		<div class="title-line">
-			<span class="t">{title}</span>
-			{#if readiness === 'processing'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
-		</div>
-		{#if byline}<div class="byline">{byline}</div>{/if}
-		{#if kindLabel || stateChip || views || durationNote || showKey || showTags}
-			<div class="chips">
-				{#if stateChip}
-					<!--
+				<div class="title-line">
+					<span class="t">{title}</span>
+					{#if readiness === 'processing'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
+				</div>
+				{#if byline}<div class="byline">{byline}</div>{/if}
+				{#if kindLabel || stateChip || views || durationNote || showKey || showTags}
+					<div class="chips">
+						{#if stateChip}
+							<!--
 						The readiness tone is chosen HERE and passed as a variant, because the tone IS the meaning:
 						each one is a certified surface+border+ink triple in ui/badge, set together and never
 						separately. `wrap` because this chip carries a phrase rather than a token (#857).
 					-->
-					<Badge
-						variant={readiness === 'ready' ? 'ok' : readiness === 'processing' ? 'warn' : readiness === 'failed' ? 'bad' : 'neutral'}
-						wrap
-						aria-live="polite">{stateChip}</Badge
-					>
-				{/if}
-				{#if kindLabel}<Badge
-						variant={kind === 'official' ? 'ok' : kind === 'lyric' ? 'accent' : kind === 'live' ? 'warn' : kind === 'suspect' ? 'bad' : 'neutral'}
-					>{kindLabel}</Badge>{/if}
-				<!-- The detected key. A bare chip (no colour family) — it is a neutral musical fact, not a
+							<Badge
+								variant={readiness === 'ready'
+									? 'ok'
+									: readiness === 'processing'
+										? 'warn'
+										: readiness === 'failed'
+											? 'bad'
+											: 'neutral'}
+								wrap
+								aria-live="polite">{stateChip}</Badge
+							>
+						{/if}
+						{#if kindLabel}<Badge
+								variant={kind === 'official'
+									? 'ok'
+									: kind === 'lyric'
+										? 'accent'
+										: kind === 'live'
+											? 'warn'
+											: kind === 'suspect'
+												? 'bad'
+												: 'neutral'}>{kindLabel}</Badge
+							>{/if}
+						<!-- The detected key. A bare chip (no colour family) — it is a neutral musical fact, not a
 				     status or a warning, so it must not borrow the semantic tints. ASCII label only. -->
-				{#if showKey}<Badge>{keyName}</Badge>{/if}
-				<!-- The red badge, said out loud. Ordered after the kind so "Live · Longer than a song"
+						{#if showKey}<Badge>{keyName}</Badge>{/if}
+						<!-- The red badge, said out loud. Ordered after the kind so "Live · Longer than a song"
 				     reads as one thought about the same recording. -->
-				{#if durationNote}<Badge variant="bad" wrap>{durationNote}</Badge>{/if}
-				{#if views}<Badge>{views} views</Badge>{/if}
-				<!-- Descriptive tags for a library song. A neutral chip family (no semantic tint) — a tag is a
+						{#if durationNote}<Badge variant="bad" wrap>{durationNote}</Badge>{/if}
+						{#if views}<Badge>{views} views</Badge>{/if}
+						<!-- Descriptive tags for a library song. A neutral chip family (no semantic tint) — a tag is a
 				     fact about the song, not a status or a warning. Keyed by value so Svelte can re-use nodes. -->
-				{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
-			</div>
-		{/if}
-		{#if readiness === 'processing'}
-			<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
-			<div class="bar-slot"><Progress value={barPct} size="sm" aria-label="Process progress" /></div>
-		{/if}
-				</Item.Content>
+						{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
+					</div>
+				{/if}
+				{#if readiness === 'processing'}
+					<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
+					<div class="bar-slot"><Progress value={barPct} size="sm" aria-label="Process progress" /></div>
+				{/if}
+			</Item.Content>
 
-	{#if onmake}
-		<!--
+			{#if onmake}
+				<!--
 			ONE action, not two. A raw row used to offer `Karaoke` and `Turn` side by side at equal
 			weight, and either one alone was a dead end: queueing without processing held a rotation slot
 			that could never become ready (silently skipped every pass, forever), and processing without
@@ -356,32 +372,32 @@
 			minute-long action wearing the same clothes as a free instant one. The words survive as the
 			`aria-label`, so nothing is lost to a screen reader.
 		-->
-		<button
-			class="sing"
-			class:retry={retryProcess}
-			aria-label={actionLabel}
-			title={retryProcess
-				? 'Try the karaoke again — you keep the turn you already have'
-				: 'Take a turn now and strip the vocals — you keep your place in line while it processes'}
-			onclick={() => onmake?.()}><Icon name="sparkle" /></button
-		>
-	{:else}
-		<button
-			class="add"
-			class:queued={inQueue}
-			class:unavailable={!processable}
-			aria-label={actionLabel}
-			title={!processable
-				? 'Can’t sing this one — it’s a name match only. Search for the song to make karaoke.'
-				: inQueue
-					? 'Already in the queue'
-					: 'Add a turn'}
-			disabled={inQueue || !processable}
-			onclick={() => onadd?.()}
-			>{#if inQueue}<Icon name="check" />{:else}<Icon name="plus" />{/if}</button
-		>
-	{/if}
-</div>
+				<button
+					class="sing"
+					class:retry={retryProcess}
+					aria-label={actionLabel}
+					title={retryProcess
+						? 'Try the karaoke again — you keep the turn you already have'
+						: 'Take a turn now and strip the vocals — you keep your place in line while it processes'}
+					onclick={() => onmake?.()}><Icon name="sparkle" /></button
+				>
+			{:else}
+				<button
+					class="add"
+					class:queued={inQueue}
+					class:unavailable={!processable}
+					aria-label={actionLabel}
+					title={!processable
+						? 'Can’t sing this one — it’s a name match only. Search for the song to make karaoke.'
+						: inQueue
+							? 'Already in the queue'
+							: 'Add a turn'}
+					disabled={inQueue || !processable}
+					onclick={() => onadd?.()}
+					>{#if inQueue}<Icon name="check" />{:else}<Icon name="plus" />{/if}</button
+				>
+			{/if}
+		</div>
 	{/snippet}
 </Item.Root>
 

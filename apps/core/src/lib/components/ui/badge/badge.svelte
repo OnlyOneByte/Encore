@@ -14,10 +14,10 @@
      variant, taken from #857.
 -->
 <script lang="ts" module>
-	import { type VariantProps, tv } from "tailwind-variants";
+	import { type VariantProps, tv } from 'tailwind-variants';
 
 	export const badgeVariants = tv({
-		base: "encore-chip",
+		base: 'encore-chip',
 		variants: {
 			variant: {
 				/*
@@ -25,12 +25,12 @@
 				 * CERTIFIED triple — surface, border and ink set together, never separately — lifted
 				 * verbatim from SongRow's chip rules so the migration changes no colour.
 				 */
-				neutral: "",
-				ok: "encore-chip-ok",
-				warn: "encore-chip-warn",
-				bad: "encore-chip-bad",
-				accent: "encore-chip-accent",
-				tag: "encore-chip-accent encore-chip-tag",
+				neutral: '',
+				ok: 'encore-chip-ok',
+				warn: 'encore-chip-warn',
+				bad: 'encore-chip-bad',
+				accent: 'encore-chip-accent',
+				tag: 'encore-chip-accent encore-chip-tag'
 			},
 			/*
 			 * A chip that carries a PHRASE rather than a token must wrap (#857). Every other chip here is
@@ -39,28 +39,28 @@
 			 * width — so it could not shrink and pushed the browse page past a 320px viewport.
 			 */
 			wrap: {
-				true: "encore-chip-wrap",
-				false: "",
-			},
+				true: 'encore-chip-wrap',
+				false: ''
+			}
 		},
 		defaultVariants: {
-			variant: "neutral",
-			wrap: false,
-		},
+			variant: 'neutral',
+			wrap: false
+		}
 	});
 
-	export type BadgeVariant = VariantProps<typeof badgeVariants>["variant"];
+	export type BadgeVariant = VariantProps<typeof badgeVariants>['variant'];
 </script>
 
 <script lang="ts">
-	import { cn, type WithElementRef } from "$lib/utils.js";
-	import type { HTMLAnchorAttributes } from "svelte/elements";
+	import { cn, type WithElementRef } from '$lib/utils.js';
+	import type { HTMLAnchorAttributes } from 'svelte/elements';
 
 	let {
 		ref = $bindable(null),
 		href,
 		class: className,
-		variant = "neutral",
+		variant = 'neutral',
 		wrap = false,
 		children,
 		...restProps
@@ -71,10 +71,10 @@
 </script>
 
 <svelte:element
-	this={href ? "a" : "span"}
+	this={href ? 'a' : 'span'}
 	bind:this={ref}
 	data-slot="badge"
-	{href}
+	href={href}
 	class={cn(badgeVariants({ variant, wrap }), className)}
 	{...restProps}
 >

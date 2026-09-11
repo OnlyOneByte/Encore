@@ -117,7 +117,14 @@ export class JobRepository {
 	 * (`countLiveProcessesForSinger`). Omitted by internal callers that impose no cap; a REUSED live job
 	 * keeps its original requester rather than being re-attributed to whoever tapped second.
 	 */
-	enqueue(mediaId: string, jobType: JobType, priority: number, now: number, processingId?: string, singerId?: string): Job {
+	enqueue(
+		mediaId: string,
+		jobType: JobType,
+		priority: number,
+		now: number,
+		processingId?: string,
+		singerId?: string
+	): Job {
 		const existing = this.findLive(mediaId, jobType);
 		if (existing) return existing;
 

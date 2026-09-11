@@ -132,237 +132,231 @@
 		</p>
 
 		<Card.Root>
-	<Card.Header>
-		<Card.Title>Start to finish</Card.Title>
-	</Card.Header>
-	<Card.Content>
-			
-			<div class="kv">
-				<div><span class="k">typical</span><span class="v">{dur(m.e2e.p50Ms)}</span></div>
-				<div><span class="k">average</span><span class="v">{dur(m.e2e.meanMs)}</span></div>
-				<div><span class="k">worst</span><span class="v">{dur(m.e2e.p95Ms)}</span></div>
-				<div><span class="k">songs</span><span class="v">{m.e2e.n}</span></div>
-			</div>
-			<p class="note">From asking for a song to it being ready to sing, waiting included.</p>
-	</Card.Content>
-</Card.Root>
+			<Card.Header>
+				<Card.Title>Start to finish</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				<div class="kv">
+					<div><span class="k">typical</span><span class="v">{dur(m.e2e.p50Ms)}</span></div>
+					<div><span class="k">average</span><span class="v">{dur(m.e2e.meanMs)}</span></div>
+					<div><span class="k">worst</span><span class="v">{dur(m.e2e.p95Ms)}</span></div>
+					<div><span class="k">songs</span><span class="v">{m.e2e.n}</span></div>
+				</div>
+				<p class="note">From asking for a song to it being ready to sing, waiting included.</p>
+			</Card.Content>
+		</Card.Root>
 
 		<Card.Root>
-	<Card.Header>
-		<Card.Title>Each step</Card.Title>
-	</Card.Header>
-	<Card.Content>
-			
-			{#if m.steps.length === 0}
-				<p class="note">Nothing processed yet.</p>
-			{:else}
-				<div class="scroller">
-					<Table.Root>
-						<Table.Header>
-							<Table.Row>
-								<Table.Head scope="col">step</Table.Head>
-								<Table.Head scope="col">runs</Table.Head>
-								<Table.Head scope="col">average</Table.Head>
-								<Table.Head scope="col">typical</Table.Head>
-								<Table.Head scope="col">worst</Table.Head>
-								<Table.Head scope="col">waited</Table.Head>
-								<Table.Head scope="col">speed</Table.Head>
-								<Table.Head scope="col">failed</Table.Head>
-							</Table.Row>
-						</Table.Header>
-						<Table.Body>
-							{#each m.steps as s (s.jobType)}
+			<Card.Header>
+				<Card.Title>Each step</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				{#if m.steps.length === 0}
+					<p class="note">Nothing processed yet.</p>
+				{:else}
+					<div class="scroller">
+						<Table.Root>
+							<Table.Header>
 								<Table.Row>
-									<Table.Cell
-										>{stepLabel(s.jobType)}{#if s.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
-									>
-									<Table.Cell>{s.n}</Table.Cell>
-									<Table.Cell><span class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</span></Table.Cell>
-									<Table.Cell>{dur(s.p50Ms)}</Table.Cell>
-									<Table.Cell>{dur(s.p95Ms)}</Table.Cell>
-									<Table.Cell>{dur(s.meanQueueWaitMs)}</Table.Cell>
-									<Table.Cell>{rate(s.meanRtFactor)}</Table.Cell>
-									<Table.Cell>{s.failed + s.abandoned}</Table.Cell>
+									<Table.Head scope="col">step</Table.Head>
+									<Table.Head scope="col">runs</Table.Head>
+									<Table.Head scope="col">average</Table.Head>
+									<Table.Head scope="col">typical</Table.Head>
+									<Table.Head scope="col">worst</Table.Head>
+									<Table.Head scope="col">waited</Table.Head>
+									<Table.Head scope="col">speed</Table.Head>
+									<Table.Head scope="col">failed</Table.Head>
 								</Table.Row>
-							{/each}
-						</Table.Body>
-					</Table.Root>
-				</div>
-				<p class="note">
-					Times are work only — <strong>waited</strong> is time sitting in the queue.
-					<strong>speed</strong> is computer time per second of song, so 0.5× means twice as fast as the music.
-					<strong>failed</strong> runs are left out of the averages.
-				</p>
-			{/if}
-	</Card.Content>
-</Card.Root>
+							</Table.Header>
+							<Table.Body>
+								{#each m.steps as s (s.jobType)}
+									<Table.Row>
+										<Table.Cell
+											>{stepLabel(s.jobType)}{#if s.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
+										>
+										<Table.Cell>{s.n}</Table.Cell>
+										<Table.Cell><span class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</span></Table.Cell>
+										<Table.Cell>{dur(s.p50Ms)}</Table.Cell>
+										<Table.Cell>{dur(s.p95Ms)}</Table.Cell>
+										<Table.Cell>{dur(s.meanQueueWaitMs)}</Table.Cell>
+										<Table.Cell>{rate(s.meanRtFactor)}</Table.Cell>
+										<Table.Cell>{s.failed + s.abandoned}</Table.Cell>
+									</Table.Row>
+								{/each}
+							</Table.Body>
+						</Table.Root>
+					</div>
+					<p class="note">
+						Times are work only — <strong>waited</strong> is time sitting in the queue.
+						<strong>speed</strong> is computer time per second of song, so 0.5× means twice as fast as the music.
+						<strong>failed</strong> runs are left out of the averages.
+					</p>
+				{/if}
+			</Card.Content>
+		</Card.Root>
 
 		<Card.Root>
-	<Card.Header>
-		<Card.Title>Vocal removal — this machine vs the benchmark</Card.Title>
-	</Card.Header>
-	<Card.Content>
-			
-			{#if m.models.length === 0}
-				<p class="note">No vocals removed yet.</p>
-			{:else}
-				<div class="scroller">
-					<Table.Root>
-						<Table.Header>
-							<Table.Row>
-								<Table.Head scope="col">model</Table.Head>
-								<Table.Head scope="col">runs</Table.Head>
-								<Table.Head scope="col">here</Table.Head>
-								<Table.Head scope="col">benchmark</Table.Head>
-								<Table.Head scope="col">vs</Table.Head>
-							</Table.Row>
-						</Table.Header>
-						<Table.Body>
-							{#each m.models as r (String(r.engine) + String(r.model))}
+			<Card.Header>
+				<Card.Title>Vocal removal — this machine vs the benchmark</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				{#if m.models.length === 0}
+					<p class="note">No vocals removed yet.</p>
+				{:else}
+					<div class="scroller">
+						<Table.Root>
+							<Table.Header>
 								<Table.Row>
-									<Table.Cell
-										>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
-									>
-									<Table.Cell>{r.n}</Table.Cell>
-									<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
-									<Table.Cell>{rate(r.declared?.rtFactor ?? null)}</Table.Cell>
-									<Table.Cell
-										><span
-											class:slower={(r.ratioToDeclared ?? 1) > 1.5}
-											class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
-											>{rate(r.ratioToDeclared)}</span
-										></Table.Cell
-									>
+									<Table.Head scope="col">model</Table.Head>
+									<Table.Head scope="col">runs</Table.Head>
+									<Table.Head scope="col">here</Table.Head>
+									<Table.Head scope="col">benchmark</Table.Head>
+									<Table.Head scope="col">vs</Table.Head>
 								</Table.Row>
-							{/each}
-						</Table.Body>
-					</Table.Root>
-				</div>
-				<p class="note">
-					<strong>benchmark</strong> is the speed this model was timed at once, on a different machine.
-					<strong>vs</strong> compares it to here: 1.0× matches, <span class="slower">over 1.5×</span> is slower here,
-					<span class="faster">under 0.67×</span> means the benchmark was too pessimistic. Use it to plan, not to pass or
-					fail.
-				</p>
-			{/if}
-	</Card.Content>
-</Card.Root>
+							</Table.Header>
+							<Table.Body>
+								{#each m.models as r (String(r.engine) + String(r.model))}
+									<Table.Row>
+										<Table.Cell
+											>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span
+												>{/if}</Table.Cell
+										>
+										<Table.Cell>{r.n}</Table.Cell>
+										<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
+										<Table.Cell>{rate(r.declared?.rtFactor ?? null)}</Table.Cell>
+										<Table.Cell
+											><span
+												class:slower={(r.ratioToDeclared ?? 1) > 1.5}
+												class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
+												>{rate(r.ratioToDeclared)}</span
+											></Table.Cell
+										>
+									</Table.Row>
+								{/each}
+							</Table.Body>
+						</Table.Root>
+					</div>
+					<p class="note">
+						<strong>benchmark</strong> is the speed this model was timed at once, on a different machine.
+						<strong>vs</strong> compares it to here: 1.0× matches, <span class="slower">over 1.5×</span> is slower here,
+						<span class="faster">under 0.67×</span> means the benchmark was too pessimistic. Use it to plan, not to pass or
+						fail.
+					</p>
+				{/if}
+			</Card.Content>
+		</Card.Root>
 
 		<Card.Root>
-	<Card.Header>
-		<Card.Title>Lyrics transcription</Card.Title>
-	</Card.Header>
-	<Card.Content>
-			
-			{#if m.asr.length === 0}
-				<p class="note">No lyrics timed yet.</p>
-			{:else}
-				<div class="scroller">
-					<Table.Root>
-						<Table.Header>
-							<Table.Row>
-								<Table.Head scope="col">model</Table.Head>
-								<Table.Head scope="col">timing</Table.Head>
-								<Table.Head scope="col">runs</Table.Head>
-								<Table.Head scope="col">average</Table.Head>
-								<Table.Head scope="col">speed</Table.Head>
-							</Table.Row>
-						</Table.Header>
-						<Table.Body>
-							{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
+			<Card.Header>
+				<Card.Title>Lyrics transcription</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				{#if m.asr.length === 0}
+					<p class="note">No lyrics timed yet.</p>
+				{:else}
+					<div class="scroller">
+						<Table.Root>
+							<Table.Header>
 								<Table.Row>
-									<Table.Cell
-										>{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
-									>
-									<Table.Cell class="name">{r.syncMode ?? '—'}</Table.Cell>
-									<Table.Cell>{r.n}</Table.Cell>
-									<Table.Cell>{dur(r.meanMs)}</Table.Cell>
-									<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
+									<Table.Head scope="col">model</Table.Head>
+									<Table.Head scope="col">timing</Table.Head>
+									<Table.Head scope="col">runs</Table.Head>
+									<Table.Head scope="col">average</Table.Head>
+									<Table.Head scope="col">speed</Table.Head>
 								</Table.Row>
-							{/each}
-						</Table.Body>
-					</Table.Root>
-				</div>
-				<p class="note">
-					These models have never been timed anywhere, so there is no benchmark to compare against. This is the first
-					measurement.
-				</p>
-			{/if}
-	</Card.Content>
-</Card.Root>
+							</Table.Header>
+							<Table.Body>
+								{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
+									<Table.Row>
+										<Table.Cell
+											>{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
+										>
+										<Table.Cell class="name">{r.syncMode ?? '—'}</Table.Cell>
+										<Table.Cell>{r.n}</Table.Cell>
+										<Table.Cell>{dur(r.meanMs)}</Table.Cell>
+										<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
+									</Table.Row>
+								{/each}
+							</Table.Body>
+						</Table.Root>
+					</div>
+					<p class="note">
+						These models have never been timed anywhere, so there is no benchmark to compare against. This is the first
+						measurement.
+					</p>
+				{/if}
+			</Card.Content>
+		</Card.Root>
 
 		{#if m.stages.length}
 			<Card.Root>
-	<Card.Header>
-		<Card.Title>Where the time goes</Card.Title>
-	</Card.Header>
-	<Card.Content>
-				
-				<Bars
-					rows={m.stages.map((s) => ({
-						label: stageLabel(s.stage),
-						value: Math.round((s.meanMs ?? 0) / 1000),
-						hint: `${s.n} runs`
-					}))}
-					unit="s avg"
-				/>
-				<p class="note">Measured by the worker inside each step.</p>
-	</Card.Content>
-</Card.Root>
+				<Card.Header>
+					<Card.Title>Where the time goes</Card.Title>
+				</Card.Header>
+				<Card.Content>
+					<Bars
+						rows={m.stages.map((s) => ({
+							label: stageLabel(s.stage),
+							value: Math.round((s.meanMs ?? 0) / 1000),
+							hint: `${s.n} runs`
+						}))}
+						unit="s avg"
+					/>
+					<p class="note">Measured by the worker inside each step.</p>
+				</Card.Content>
+			</Card.Root>
 		{/if}
 
 		{#if m.slowestProcesses.length}
 			<Card.Root>
-	<Card.Header>
-		<Card.Title>Slowest songs</Card.Title>
-	</Card.Header>
-	<Card.Content>
-				
-				<ol class="processes">
-					{#each m.slowestProcesses as c (c.processingId)}
-						<li>
-							<a href="/metrics/{c.mediaId}">{c.title ?? c.mediaId}</a>
-							<span class="v">{dur(c.totalMs)}</span>
-							<span class="note">{dur(c.workMs)} working, {c.steps} steps</span>
-						</li>
-					{/each}
-				</ol>
-				<p class="note">The gap between the two numbers was spent waiting for a free worker.</p>
-	</Card.Content>
-</Card.Root>
+				<Card.Header>
+					<Card.Title>Slowest songs</Card.Title>
+				</Card.Header>
+				<Card.Content>
+					<ol class="processes">
+						{#each m.slowestProcesses as c (c.processingId)}
+							<li>
+								<a href="/metrics/{c.mediaId}">{c.title ?? c.mediaId}</a>
+								<span class="v">{dur(c.totalMs)}</span>
+								<span class="note">{dur(c.workMs)} working, {c.steps} steps</span>
+							</li>
+						{/each}
+					</ol>
+					<p class="note">The gap between the two numbers was spent waiting for a free worker.</p>
+				</Card.Content>
+			</Card.Root>
 		{/if}
 
 		<Card.Root>
-	<Card.Header>
-		<Card.Title>Workers</Card.Title>
-	</Card.Header>
-	<Card.Content>
-			
-			{#if m.workers.length === 0}
-				<p class="note">Nothing is connected, so no song can be processed.</p>
-			{:else}
-				{#each m.workers as w (w.workerId)}
-					<div class="worker">
-						<strong>{w.workerId}</strong>
-						<span class="note">{w.capabilities.join(', ')} · {w.slotsFree} free</span>
-						{#if w.host}
-							{@const facts = hostFacts(w.host)}
-							{#if facts.length}
-								<dl class="facts">
-									{#each facts as [k, v] (k)}
-										<div>
-											<dt>{k}</dt>
-											<dd>{v}</dd>
-										</div>
-									{/each}
-								</dl>
+			<Card.Header>
+				<Card.Title>Workers</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				{#if m.workers.length === 0}
+					<p class="note">Nothing is connected, so no song can be processed.</p>
+				{:else}
+					{#each m.workers as w (w.workerId)}
+						<div class="worker">
+							<strong>{w.workerId}</strong>
+							<span class="note">{w.capabilities.join(', ')} · {w.slotsFree} free</span>
+							{#if w.host}
+								{@const facts = hostFacts(w.host)}
+								{#if facts.length}
+									<dl class="facts">
+										{#each facts as [k, v] (k)}
+											<div>
+												<dt>{k}</dt>
+												<dd>{v}</dd>
+											</div>
+										{/each}
+									</dl>
+								{/if}
 							{/if}
-						{/if}
-					</div>
-				{/each}
-			{/if}
-	</Card.Content>
-</Card.Root>
+						</div>
+					{/each}
+				{/if}
+			</Card.Content>
+		</Card.Root>
 	{/if}
 </section>
 

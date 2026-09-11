@@ -64,93 +64,89 @@
 				<Card.Root>
 					<Card.Content>
 						<div class="tile">
-				<span class="n">{stats.sings.total}</span>
-				<span class="k">songs sung</span>
-				<span class="sub">{stats.sings.window} in the last {stats.window.days} days</span>
-		</div>
-	</Card.Content>
-</Card.Root>
-</div>
+							<span class="n">{stats.sings.total}</span>
+							<span class="k">songs sung</span>
+							<span class="sub">{stats.sings.window} in the last {stats.window.days} days</span>
+						</div>
+					</Card.Content>
+				</Card.Root>
+			</div>
 			<div class="tile-slot">
-<Card.Root>
-	<Card.Content>
-		<div class="tile">
-				<span class="n">{stats.library.ready}</span>
-				<span class="k">ready to sing</span>
-				<!-- The catalog count is a footnote, never the headline: it counts every search result ever
+				<Card.Root>
+					<Card.Content>
+						<div class="tile">
+							<span class="n">{stats.library.ready}</span>
+							<span class="k">ready to sing</span>
+							<!-- The catalog count is a footnote, never the headline: it counts every search result ever
 				     seen (271 behind 7 singable songs on the live box), so quoting it as "the library"
 				     overstates it by ~40x. -->
-				<span class="sub">of {stats.library.catalog} found</span>
-		</div>
-	</Card.Content>
-</Card.Root>
-</div>
+							<span class="sub">of {stats.library.catalog} found</span>
+						</div>
+					</Card.Content>
+				</Card.Root>
+			</div>
 			<div class="tile-slot">
-<Card.Root>
-	<Card.Content>
-		<div class="tile">
-				<span class="n">{stats.sings.distinctSongs}</span>
-				<span class="k">different songs</span>
-		</div>
-	</Card.Content>
-</Card.Root>
-</div>
+				<Card.Root>
+					<Card.Content>
+						<div class="tile">
+							<span class="n">{stats.sings.distinctSongs}</span>
+							<span class="k">different songs</span>
+						</div>
+					</Card.Content>
+				</Card.Root>
+			</div>
 		</div>
 
 		<Card.Root>
-	<Card.Header>
-		<Card.Title>Most sung</Card.Title>
-	</Card.Header>
-	<Card.Content>
-			
-			<Bars
-				rows={stats.topSongs.map((s) => ({ label: s.title, value: s.plays }))}
-				unit="sings"
-				empty="Nobody has sung yet"
-			/>
-	</Card.Content>
-</Card.Root>
+			<Card.Header>
+				<Card.Title>Most sung</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				<Bars
+					rows={stats.topSongs.map((s) => ({ label: s.title, value: s.plays }))}
+					unit="sings"
+					empty="Nobody has sung yet"
+				/>
+			</Card.Content>
+		</Card.Root>
 
 		{#if recentDiffers}
 			<Card.Root>
-	<Card.Header>
-		<Card.Title>Hot lately</Card.Title>
-	</Card.Header>
-	<Card.Content>
-				
-				<Bars rows={stats.topRecent.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" />
-				<p class="note">Last {stats.window.days} days.</p>
-	</Card.Content>
-</Card.Root>
+				<Card.Header>
+					<Card.Title>Hot lately</Card.Title>
+				</Card.Header>
+				<Card.Content>
+					<Bars rows={stats.topRecent.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" />
+					<p class="note">Last {stats.window.days} days.</p>
+				</Card.Content>
+			</Card.Root>
 		{/if}
 
 		<Card.Root>
-	<Card.Header>
-		<Card.Title>Top artists</Card.Title>
-	</Card.Header>
-	<Card.Content>
-			
-			<Bars
-				rows={stats.topArtists.map((a) => ({ label: a.artist, value: a.plays }))}
-				unit="sings"
-				empty="No artists identified yet"
-			/>
-			<!-- Honest about the gap rather than silently short: the normalizer stores null instead of
+			<Card.Header>
+				<Card.Title>Top artists</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				<Bars
+					rows={stats.topArtists.map((a) => ({ label: a.artist, value: a.plays }))}
+					unit="sings"
+					empty="No artists identified yet"
+				/>
+				<!-- Honest about the gap rather than silently short: the normalizer stores null instead of
 			     guessing a low-confidence artist, so some sung songs cannot be attributed at all. -->
-			<p class="note">Songs we couldn't match to an artist aren't counted.</p>
-	</Card.Content>
-</Card.Root>
+				<p class="note">Songs we couldn't match to an artist aren't counted.</p>
+			</Card.Content>
+		</Card.Root>
 
 		<Card.Root>
-	<Card.Header>
-		<Card.Title>Sings per day</Card.Title>
-	</Card.Header>
-	<Card.Content>
-			
-			<Trend points={stats.perDay} since={stats.window.since} until={now} />
-			<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
-	</Card.Content>
-</Card.Root>
+			<Card.Header>
+				<Card.Title>Sings per day</Card.Title>
+			</Card.Header>
+			<Card.Content>
+				<Trend points={stats.perDay} since={stats.window.since} until={now} />
+				<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
+			</Card.Content>
+		</Card.Root>
 	{/if}
 </section>
 

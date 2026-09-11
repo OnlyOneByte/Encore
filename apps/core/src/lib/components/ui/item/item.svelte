@@ -14,44 +14,44 @@
      name (motion.test.ts); the second is a link-row hover Encore's rows do not have.
 -->
 <script lang="ts" module>
-	import { tv, type VariantProps } from "tailwind-variants";
+	import { tv, type VariantProps } from 'tailwind-variants';
 
 	export const itemVariants = tv({
-		base: "group/item flex w-full items-center outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
+		base: 'group/item flex w-full items-center outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50',
 		variants: {
 			variant: {
-				default: "rounded-md border border-transparent text-sm",
-				outline: "rounded-md border border-border text-sm",
-				muted: "rounded-md border border-transparent bg-muted/50 text-sm",
+				default: 'rounded-md border border-transparent text-sm',
+				outline: 'rounded-md border border-border text-sm',
+				muted: 'rounded-md border border-transparent bg-muted/50 text-sm',
 				/*
 				 * Encore's rows already ARE surfaces: `.card` paints them and `.list-row` lays them out, so
 				 * this tone contributes nothing but the `group/item` context four of the parts need. Without
 				 * it the registry's border and radius would double every row's own.
 				 */
-				bare: "",
+				bare: ''
 			},
 			size: {
-				default: "gap-3.5 px-4 py-3.5",
+				default: 'gap-3.5 px-4 py-3.5',
 				/* `.list-row` owns the gap and padding for Encore rows (12px / 11px 12px). */
-				bare: "",
-				sm: "gap-2.5 px-3 py-2.5",
-				xs: "gap-2 px-2.5 py-2 in-data-[slot=dropdown-menu-content]:p-0",
-			},
+				bare: '',
+				sm: 'gap-2.5 px-3 py-2.5',
+				xs: 'gap-2 px-2.5 py-2 in-data-[slot=dropdown-menu-content]:p-0'
+			}
 		},
 		defaultVariants: {
-			variant: "default",
-			size: "default",
-		},
+			variant: 'default',
+			size: 'default'
+		}
 	});
 
-	export type ItemSize = VariantProps<typeof itemVariants>["size"];
-	export type ItemVariant = VariantProps<typeof itemVariants>["variant"];
+	export type ItemSize = VariantProps<typeof itemVariants>['size'];
+	export type ItemVariant = VariantProps<typeof itemVariants>['variant'];
 </script>
 
 <script lang="ts">
-	import { cn, type WithElementRef } from "$lib/utils.js";
-	import type { Snippet } from "svelte";
-	import type { HTMLAttributes } from "svelte/elements";
+	import { cn, type WithElementRef } from '$lib/utils.js';
+	import type { Snippet } from 'svelte';
+	import type { HTMLAttributes } from 'svelte/elements';
 
 	let {
 		ref = $bindable(null),
@@ -68,10 +68,10 @@
 
 	const mergedProps = $derived({
 		class: cn(itemVariants({ variant, size }), className),
-		"data-slot": "item",
-		"data-variant": variant,
-		"data-size": size,
-		...restProps,
+		'data-slot': 'item',
+		'data-variant': variant,
+		'data-size': size,
+		...restProps
 	});
 </script>
 

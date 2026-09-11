@@ -19,26 +19,26 @@
      call site on a wrapper, since that is page layout rather than the bar's own metric.
 -->
 <script lang="ts">
-	import { Progress as ProgressPrimitive } from "bits-ui";
-	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+	import { Progress as ProgressPrimitive } from 'bits-ui';
+	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
 
 	let {
 		ref = $bindable(null),
 		class: className,
 		max = 100,
 		value,
-		size = "default",
+		size = 'default',
 		...restProps
-	}: WithoutChildrenOrChild<ProgressPrimitive.RootProps> & { size?: "default" | "sm" } = $props();
+	}: WithoutChildrenOrChild<ProgressPrimitive.RootProps> & { size?: 'default' | 'sm' } = $props();
 </script>
 
 <ProgressPrimitive.Root
-	bind:ref
+	bind:ref={ref}
 	data-slot="progress"
 	data-size={size}
-	class={cn("relative flex w-full items-center", className)}
-	{value}
-	{max}
+	class={cn('relative flex w-full items-center', className)}
+	value={value}
+	max={max}
 	{...restProps}
 >
 	<div

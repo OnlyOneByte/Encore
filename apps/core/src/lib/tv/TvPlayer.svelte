@@ -17,7 +17,8 @@
 	// and the lyrics overlay run on. Nothing about the existing playback path changes, which is the
 	// reason this is two media elements rather than a WebAudio graph — a graph buys sample-exact lock
 	// and effects at the cost of rebuilding the part that already works.
-	import { playbackRef, isPlayable, guideOffsetSec } from '@encore/shared';	import type { PlaybackSnapshot } from './catalog';
+	import { playbackRef, isPlayable, guideOffsetSec } from '@encore/shared';
+	import type { PlaybackSnapshot } from './catalog';
 	import { untrack } from 'svelte';
 	import { guideCorrection, prerollSeekTarget, resumeSeekTarget, seekPlan } from './guide-sync';
 	import { nextVideoSrc } from './video-src';

@@ -24,7 +24,7 @@
 	}: HTMLAttributes<HTMLSpanElement> = $props();
 </script>
 
-<span {role} aria-label={ariaLabel} data-slot="spinner" class={cn('encore-spinner', className)} {...restProps}
+<span role={role} aria-label={ariaLabel} data-slot="spinner" class={cn('encore-spinner', className)} {...restProps}
 ></span>
 
 <style>

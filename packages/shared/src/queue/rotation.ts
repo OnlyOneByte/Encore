@@ -25,9 +25,7 @@ import { insertIndexFor, type Ordering } from './queue-order';
  * Does NOT mutate; returns a new array.
  */
 export function storedOrder(entries: QueueEntry[]): QueueEntry[] {
-	return [...entries].sort(
-		(a, b) => a.rotationSeq - b.rotationSeq || a.addedAt - b.addedAt || (a.id < b.id ? -1 : 1)
-	);
+	return [...entries].sort((a, b) => a.rotationSeq - b.rotationSeq || a.addedAt - b.addedAt || (a.id < b.id ? -1 : 1));
 }
 
 /**
@@ -91,7 +89,10 @@ export function applyAndReseq(entries: QueueEntry[], op: QueueOp, ordering: Orde
 			: op.op === 'move-to-index'
 				? moveToIndex(entries, op.id, op.toIdx)
 				: applyOp(entries, op);
-	return assignSeqs(applied.filter((e) => !isTerminal(e)), ordering);
+	return assignSeqs(
+		applied.filter((e) => !isTerminal(e)),
+		ordering
+	);
 }
 
 /**

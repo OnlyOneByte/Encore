@@ -31,11 +31,7 @@ import type { EntryStatus } from '@encore/shared';
  * (The `!ownPicksPinned` clause was removed with pinning in #856 step 3: with no durable pin there is
  * nothing left to re-seat a moved row, so the clause was constant-true and its predicate dead.)
  */
-export function gripVisible(opts: {
-	mine: boolean;
-	ownQueuedCount: number;
-	reorderMeaningful: boolean;
-}): boolean {
+export function gripVisible(opts: { mine: boolean; ownQueuedCount: number; reorderMeaningful: boolean }): boolean {
 	return opts.mine && opts.ownQueuedCount > 1 && opts.reorderMeaningful;
 }
 

@@ -141,8 +141,7 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 	const CITED = ['manual', 'musicbrainz', 'youtube'];
 	const keepCited = (field: 'artist' | 'title') => CITED.includes(prev?.provenance?.[field]?.by ?? '');
 	// Runtime annotation wins over a stored one: it is the fresher citation. Either citation source.
-	const cited =
-		m.annotation?.source === 'musicbrainz' || m.annotation?.source === 'youtube' ? m.annotation : undefined;
+	const cited = m.annotation?.source === 'musicbrainz' || m.annotation?.source === 'youtube' ? m.annotation : undefined;
 	// The provenance `by` records WHICH authority cited it, so a YouTube citation is not mislabelled as
 	// MusicBrainz (they are not equal evidence, and `by` is what a later reader trusts).
 	const citedBy = cited?.source === 'youtube' ? ('youtube' as const) : ('musicbrainz' as const);
@@ -304,7 +303,9 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
  * a restore and a live align completion can never disagree about which candidate a human's pick selects.
  */
 export function chosenLyricsRef(s: MediaSidecar): string | undefined {
-	return resolveLyricsRef(s.artifacts.lyricsCandidates, s.artifacts.lyricsOverrideRef) ?? s.artifacts.lyrics ?? undefined;
+	return (
+		resolveLyricsRef(s.artifacts.lyricsCandidates, s.artifacts.lyricsOverrideRef) ?? s.artifacts.lyrics ?? undefined
+	);
 }
 
 /** The browse-safe canonical artist: null when we only guessed (see track-title.ts). */

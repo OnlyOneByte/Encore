@@ -97,23 +97,19 @@
 -->
 <Item.Root variant="bare" size="bare">
 	{#snippet child({ props })}
-		<div
-			{...props}
-			class="qrow proc card list-row"
-			class:pending={pending}
-			class:failed={failed}
-			class:dimmed={dimmed}
-		>
-			<Item.Media><div class="seq">
-		{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}
-	</div></Item.Media>
+		<div {...props} class="qrow proc card list-row" class:pending={pending} class:failed={failed} class:dimmed={dimmed}>
+			<Item.Media
+				><div class="seq">
+					{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}
+				</div></Item.Media
+			>
 			<Item.Content>
-		<div class="t">
-			{title}{#if !failed}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
-		</div>
-		{#if singerName}
-			<div class="who">
-				<!-- Same away marker as QueueRow: a process outlives its owner's attention span, and the room
+				<div class="t">
+					{title}{#if !failed}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
+				</div>
+				{#if singerName}
+					<div class="who">
+						<!-- Same away marker as QueueRow: a process outlives its owner's attention span, and the room
 				     should not learn the singer left only once the song reaches the front.
 
 				     This line names the SINGER and nothing else. It used to end in "· being prepared" (and
@@ -121,42 +117,56 @@
 				     state alongside process-phrasing.ts's "Making karaoke..." and SongRow's chip -- and it sat
 				     one line above the .stage row that already says exactly that, from the shared source.
 				     Redundant AND divergent, so it is gone. -->
-				<i class:dim={singerAway} style="--singer:{singerColor}"></i>
-				{singerName}{#if singerAway}<span class="away">· away</span>{/if}{#if pending}{' · '}<span class="adding"
-						>{pendingLabel}</span
-					>{/if}
-			</div>
-		{/if}
-				</Item.Content>
-	{#if !pending && (onremove || reorderable)}
-		<Item.Actions data-align="start">
-			{#if reorderable}
-				<Button variant="outline" size="icon" press="ink" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
-					><Icon name="arrow-up" /></Button
-				>
-				<Button variant="outline" size="icon" press="ink" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
-					><Icon name="arrow-down" /></Button
-				>
+						<i class:dim={singerAway} style="--singer:{singerColor}"></i>
+						{singerName}{#if singerAway}<span class="away">· away</span>{/if}{#if pending}{' · '}<span class="adding"
+								>{pendingLabel}</span
+							>{/if}
+					</div>
+				{/if}
+			</Item.Content>
+			{#if !pending && (onremove || reorderable)}
+				<Item.Actions data-align="start">
+					{#if reorderable}
+						<Button
+							variant="outline"
+							size="icon"
+							press="ink"
+							aria-label="move up"
+							disabled={!canUp}
+							onclick={() => onup?.()}><Icon name="arrow-up" /></Button
+						>
+						<Button
+							variant="outline"
+							size="icon"
+							press="ink"
+							aria-label="move down"
+							disabled={!canDown}
+							onclick={() => ondown?.()}><Icon name="arrow-down" /></Button
+						>
+					{/if}
+					{#if onremove}
+						<Button
+							variant="outline"
+							size="icon"
+							press="accent2"
+							aria-label="remove from queue"
+							onclick={() => onremove?.()}><Icon name="close" /></Button
+						>
+					{/if}
+				</Item.Actions>
 			{/if}
-			{#if onremove}
-				<Button variant="outline" size="icon" press="accent2" aria-label="remove from queue" onclick={() => onremove?.()}
-					><Icon name="close" /></Button
-				>
-			{/if}
-		</Item.Actions>
-	{/if}
-	<div class="progress">
-		{#if failed}
-			<!-- No bar for a dead process: there is no progress to show, and a bar stuck near 0 reads as a
+			<div class="progress">
+				{#if failed}
+					<!-- No bar for a dead process: there is no progress to show, and a bar stuck near 0 reads as a
 			     stalled process rather than a failed one. The stage line alone carries "Couldn't make
 			     karaoke", tinted as a failure so the card is legible as broken at a glance. -->
-			<div class="stage bad" aria-live="polite"><span>{stageLabel}</span></div>
-		{:else}
-			<div class="bar-slot"><Progress value={overall} aria-label="Process progress" /></div>
-			<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
-		{/if}
-	</div>
-</div>
+					<div class="stage bad" aria-live="polite"><span>{stageLabel}</span></div>
+				{:else}
+					<div class="bar-slot"><Progress value={overall} aria-label="Process progress" /></div>
+					<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
+				{/if}
+			</div>
+		</div>
 	{/snippet}
 </Item.Root>
 

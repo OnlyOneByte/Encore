@@ -40,21 +40,21 @@
 	-->
 	<Chart.Container config={{ plays: { label: 'Plays', color: 'var(--grad)' } }}>
 		<ol class="bars">
-		{#each rows as row, i (row.label + i)}
-			<li>
-				<div class="line">
-					<span class="label" title={row.label}>{row.label}</span>
-					<span class="value">{row.value}{unit ? ` ${unit}` : ''}</span>
-				</div>
-				<!-- The track is the full width; the fill is the proportion. A gradient is fine here
+			{#each rows as row, i (row.label + i)}
+				<li>
+					<div class="line">
+						<span class="label" title={row.label}>{row.label}</span>
+						<span class="value">{row.value}{unit ? ` ${unit}` : ''}</span>
+					</div>
+					<!-- The track is the full width; the fill is the proportion. A gradient is fine here
 				     because nothing is written on top of it — no contrast obligation. -->
-				<div class="track" role="presentation">
-					<div class="fill" style:width="{(row.value / max) * 100}%"></div>
-				</div>
-				{#if row.hint}<span class="hint">{row.hint}</span>{/if}
-			</li>
-		{/each}
-	</ol>
+					<div class="track" role="presentation">
+						<div class="fill" style:width="{(row.value / max) * 100}%"></div>
+					</div>
+					{#if row.hint}<span class="hint">{row.hint}</span>{/if}
+				</li>
+			{/each}
+		</ol>
 	</Chart.Container>
 {/if}
 

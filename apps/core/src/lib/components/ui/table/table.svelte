@@ -14,8 +14,8 @@
      digits make a column of numbers ragged enough to defeat that comparison.
 -->
 <script lang="ts">
-	import { cn, type WithElementRef } from "$lib/utils.js";
-	import type { HTMLTableAttributes } from "svelte/elements";
+	import { cn, type WithElementRef } from '$lib/utils.js';
+	import type { HTMLTableAttributes } from 'svelte/elements';
 
 	let {
 		ref = $bindable(null),

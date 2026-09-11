@@ -123,7 +123,8 @@
 			<Icon name="prev" />
 		</Button>
 		<Button
-			variant="iconPrimary" size="icon"
+			variant="iconPrimary"
+			size="icon"
 			aria-label="play/pause"
 			disabled={!hasSong && !canStart}
 			onclick={() => ontoggleplay?.()}
@@ -151,10 +152,10 @@
 				<Collapsible.Trigger>
 					{#snippet child({ props })}
 						<button class="tools-toggle" {...props}>
-				<Icon name={controlsOpen ? 'chevron-down' : 'chevron-right'} />
-				<span class="tools-label">Adjust while you sing</span>
-				{#if controlsSummary}<span class="tools-peek">{controlsSummary}</span>{/if}
-			</button>
+							<Icon name={controlsOpen ? 'chevron-down' : 'chevron-right'} />
+							<span class="tools-label">Adjust while you sing</span>
+							{#if controlsSummary}<span class="tools-peek">{controlsSummary}</span>{/if}
+						</button>
 					{/snippet}
 				</Collapsible.Trigger>
 				<Collapsible.Content>
@@ -167,17 +168,16 @@
 						-->
 						<div class="tools-body" {...props}>
 							{#if controlsOpen}
-					<!-- Ahead of the controls, so the reason is read BEFORE the dead control it explains rather
+								<!-- Ahead of the controls, so the reason is read BEFORE the dead control it explains rather
 					     than after it — and outside the snippet, so no `opacity` on a disabled control can dim
 					     it (XR-PH-15 / XR-PH-03). -->
-					{#if controlsNote}<p class="tools-note">{controlsNote}</p>{/if}
-					{@render controls()}
-											{/if}
+								{#if controlsNote}<p class="tools-note">{controlsNote}</p>{/if}
+								{@render controls()}
+							{/if}
 						</div>
 					{/snippet}
 				</Collapsible.Content>
 			</Collapsible.Root>
-
 		</div>
 	{/if}
 </section>

@@ -31,18 +31,18 @@
          thing that reaches them.
 -->
 <script lang="ts">
-	import { Slider as SliderPrimitive } from "bits-ui";
-	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+	import { Slider as SliderPrimitive } from 'bits-ui';
+	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
 
 	let {
 		ref = $bindable(null),
 		value = $bindable(),
-		orientation = "horizontal",
-		variant = "field",
+		orientation = 'horizontal',
+		variant = 'field',
 		class: className,
 		...restProps
 	}: WithoutChildrenOrChild<SliderPrimitive.RootProps> & {
-		variant?: "field" | "guiding";
+		variant?: 'field' | 'guiding';
 	} = $props();
 </script>
 
@@ -51,13 +51,13 @@ Discriminated Unions + Destructing (required for bindable) do not
 get along, so we shut typescript up by casting `value` to `never`.
 -->
 <SliderPrimitive.Root
-	bind:ref
+	bind:ref={ref}
 	bind:value={value as never}
 	data-slot="slider"
 	data-variant={variant}
-	{orientation}
+	orientation={orientation}
 	class={cn(
-		"data-disabled:cursor-not-allowed data-vertical:min-h-40 relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col",
+		'data-disabled:cursor-not-allowed data-vertical:min-h-40 relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col',
 		className
 	)}
 	{...restProps}
@@ -67,19 +67,17 @@ get along, so we shut typescript up by casting `value` to `never`.
 			data-slot="slider-track"
 			data-orientation={orientation}
 			data-variant={variant}
-					class={cn(
-				"encore-slider-track rounded-full data-horizontal:w-full data-vertical:h-full relative grow overflow-hidden"
+			class={cn(
+				'encore-slider-track rounded-full data-horizontal:w-full data-vertical:h-full relative grow overflow-hidden'
 			)}
 		>
 			<SliderPrimitive.Range
 				data-slot="slider-range"
 				class={cn(
 					cn(
-					"absolute select-none data-horizontal:h-full data-vertical:w-full",
-					variant === "guiding"
-						? "bg-linear-to-r from-[var(--accent)] to-[var(--accent2)]"
-						: "bg-[var(--accent)]"
-				)
+						'absolute select-none data-horizontal:h-full data-vertical:w-full',
+						variant === 'guiding' ? 'bg-linear-to-r from-[var(--accent)] to-[var(--accent2)]' : 'bg-[var(--accent)]'
+					)
 				)}
 			/>
 		</span>
@@ -88,10 +86,10 @@ get along, so we shut typescript up by casting `value` to `never`.
 				data-slot="slider-thumb"
 				index={thumb.index}
 				class={cn(
-					"rounded-full block shrink-0 select-none disabled:pointer-events-none disabled:opacity-50",
-					variant === "guiding"
-						? "size-[22px] border-2 border-[var(--accent)] bg-[var(--ink)] shadow-[0_2px_8px_rgba(0,0,0,0.5)] data-disabled:border-[var(--line-strong)] data-disabled:bg-[var(--ink-dim)]"
-						: "size-[28px] border-[3px] border-[var(--ink)] bg-[var(--accent)] shadow-[var(--shadow)]"
+					'rounded-full block shrink-0 select-none disabled:pointer-events-none disabled:opacity-50',
+					variant === 'guiding'
+						? 'size-[22px] border-2 border-[var(--accent)] bg-[var(--ink)] shadow-[0_2px_8px_rgba(0,0,0,0.5)] data-disabled:border-[var(--line-strong)] data-disabled:bg-[var(--ink-dim)]'
+						: 'size-[28px] border-[3px] border-[var(--ink)] bg-[var(--accent)] shadow-[var(--shadow)]'
 				)}
 			/>
 		{/each}

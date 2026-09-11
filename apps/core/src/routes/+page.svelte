@@ -663,9 +663,15 @@
 	const resultShape = $derived(
 		!searchActive
 			? ''
-			: [query.trim(), readyResults.length, processingRows.length, rawResults.length, library.length, popular.length, recent.length].join(
-					'|'
-				)
+			: [
+					query.trim(),
+					readyResults.length,
+					processingRows.length,
+					rawResults.length,
+					library.length,
+					popular.length,
+					recent.length
+				].join('|')
 	);
 	$effect(() => {
 		if (!resultShape) return;
@@ -1213,8 +1219,8 @@
 
 <main>
 	{#if me}
-	{#if !searchActive}
-		<!--
+		{#if !searchActive}
+			<!--
 			HOME IS THE QUEUE (direction A, issue #832). The playing song is the one thing on this screen
 			that is not a list item, so it gets a HERO rather than the docked peek row it used to share with
 			the rotation; the bottom of the screen belongs to the one primary button instead.
@@ -1225,30 +1231,29 @@
 			beside the group saying why and what still works (#835 Q1-D). Who may operate the controls
 			mid-song is a separate, still-open policy row (XR-PH-16); nothing about that changes here.
 		-->
-		<NowPlayingHero
-			title={nowEntry ? (nowDisplay.title || mediaTitle(nowEntry.mediaId)) : 'Nothing playing'}
-			singerName={nowEntry ? (singerOf(nowEntry.singerId)?.displayName ?? 'Someone') : null}
-			singerColor={nowEntry ? (singerOf(nowEntry.singerId)?.color ?? SINGER_COLORS[0]) : null}
-			byline={heroByline}
-			hint={nowEntry ? null : queued.length === 0 ? 'Queue a song to start the party' : 'Starting the next song…'}
-			elapsedSec={displayPos}
-			durationSec={nowDurationSec}
-			isPlaying={playback.isPlaying}
-			hasSong={!!nowEntry}
-			canStart={queued.length > 0}
-			onrestart={() => sendPlayer({ cmd: 'restart' })}
-			ontoggleplay={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}
-			onskip={() => sendPlayer({ cmd: 'skip' })}
-			{controlsSummary}
-			{controlsNote}
-		>
-			{#snippet controls()}
-
-				<!-- Guiding track: how loud the ORIGINAL vocals sit under the instrumental. Above the Key control,
+			<NowPlayingHero
+				title={nowEntry ? nowDisplay.title || mediaTitle(nowEntry.mediaId) : 'Nothing playing'}
+				singerName={nowEntry ? (singerOf(nowEntry.singerId)?.displayName ?? 'Someone') : null}
+				singerColor={nowEntry ? (singerOf(nowEntry.singerId)?.color ?? SINGER_COLORS[0]) : null}
+				byline={heroByline}
+				hint={nowEntry ? null : queued.length === 0 ? 'Queue a song to start the party' : 'Starting the next song…'}
+				elapsedSec={displayPos}
+				durationSec={nowDurationSec}
+				isPlaying={playback.isPlaying}
+				hasSong={!!nowEntry}
+				canStart={queued.length > 0}
+				onrestart={() => sendPlayer({ cmd: 'restart' })}
+				ontoggleplay={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}
+				onskip={() => sendPlayer({ cmd: 'skip' })}
+				controlsSummary={controlsSummary}
+				controlsNote={controlsNote}
+			>
+				{#snippet controls()}
+					<!-- Guiding track: how loud the ORIGINAL vocals sit under the instrumental. Above the Key control,
 				     sharing its labelled-row idiom; both are per-song adjustments to the same playing song. -->
-				<GuidingTrack pct={guidePct} available={guideEnabled} oninput={onGuideInput} oncommit={onGuideCommit} />
+					<GuidingTrack pct={guidePct} available={guideEnabled} oninput={onGuideInput} oncommit={onGuideCommit} />
 
-				<!--
+					<!--
 					KEY LINE. A value row ABOVE the ± buttons, NOT inline in `.key`: `.key` is a no-wrap flex with two
 					flex:1 buttons, so a third inline element crushes both below their 44px target at 480px. It
 					carries NO label of its own — `.key` already says "Key" beside the buttons it belongs to, and two
@@ -1259,72 +1264,72 @@
 					an Icon, not a U+2192 glyph (icons.test.ts bans that codepoint); the key names are ASCII from the
 					helper.
 				-->
-				{#if keyOriginal}
-					<div class="key-head" class:shifted={keyShifted}>
-						<span class="key-vals">
-							<span class="key-orig">{keyOriginal}</span>
-							{#if keyShifted}
-								<span class="key-arrow"><Icon name="arrow-right" /></span>
-								<span class="key-sound">{keySounding}</span>
-							{/if}
-						</span>
+					{#if keyOriginal}
+						<div class="key-head" class:shifted={keyShifted}>
+							<span class="key-vals">
+								<span class="key-orig">{keyOriginal}</span>
+								{#if keyShifted}
+									<span class="key-arrow"><Icon name="arrow-right" /></span>
+									<span class="key-sound">{keySounding}</span>
+								{/if}
+							</span>
+						</div>
+					{/if}
+
+					<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
+						<span class="lab">{keyLabel}</span>
+						<button
+							class="key-btn"
+							disabled={!keyShiftEnabled || playback.keyShift <= -7}
+							onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}
+							><Icon name="minus" /> semitone</button
+						>
+						<button
+							class="key-btn"
+							disabled={!keyShiftEnabled || playback.keyShift >= 7}
+							onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}
+							><Icon name="plus" /> semitone</button
+						>
 					</div>
-				{/if}
 
-				<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
-					<span class="lab">{keyLabel}</span>
-					<button
-						class="key-btn"
-						disabled={!keyShiftEnabled || playback.keyShift <= -7}
-						onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}
-						><Icon name="minus" /> semitone</button
-					>
-					<button
-						class="key-btn"
-						disabled={!keyShiftEnabled || playback.keyShift >= 7}
-						onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}><Icon name="plus" /> semitone</button
-					>
-				</div>
-
-				<!--
+					<!--
 					VOCAL RANGE, behind a disclosure. Same idiom as the 'Browse' toggle above: a plain $state
 					boolean, a real <button> carrying aria-expanded, a chevron-down/right Icon swap, and a 44px
 					target. Only rendered when there is a measured range to show (hasRange). Everything inside reacts
 					to playback.keyShift through the shared helpers, so the ± buttons slide the bar and can flip the
 					band sentence — which is what makes transposing feel like it means something.
 				-->
-				{#if hasRange}
-					<div class="range">
-						<!-- #913 S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> stays
+					{#if hasRange}
+						<div class="range">
+							<!-- #913 S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> stays
 							here via Bits UI's `child` snippet, so its scoped class in this file still applies. -->
-						<Collapsible.Root bind:open={rangeOpen}>
-							<Collapsible.Trigger>
-								{#snippet child({ props })}
-									<button class="range-toggle" {...props}>
-							<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
-							Vocal range
-							<span class="range-peek">{rangeText}</span>
-						</button>
-								{/snippet}
-							</Collapsible.Trigger>
-							<Collapsible.Content>
-								{#snippet child({ props })}
-									<div class="range-body" {...props}>
-								<div class="range-facts">
-									<span class="range-label">{rangeText}</span>
-									{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
-								</div>
-								{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
-								<RangeBar profile={profile} keyShift={playback.keyShift} />
-							</div>
-								{/snippet}
-							</Collapsible.Content>
-						</Collapsible.Root>
+							<Collapsible.Root bind:open={rangeOpen}>
+								<Collapsible.Trigger>
+									{#snippet child({ props })}
+										<button class="range-toggle" {...props}>
+											<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
+											Vocal range
+											<span class="range-peek">{rangeText}</span>
+										</button>
+									{/snippet}
+								</Collapsible.Trigger>
+								<Collapsible.Content>
+									{#snippet child({ props })}
+										<div class="range-body" {...props}>
+											<div class="range-facts">
+												<span class="range-label">{rangeText}</span>
+												{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
+											</div>
+											{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
+											<RangeBar profile={profile} keyShift={playback.keyShift} />
+										</div>
+									{/snippet}
+								</Collapsible.Content>
+							</Collapsible.Root>
+						</div>
+					{/if}
 
-					</div>
-				{/if}
-
-				<!--
+					<!--
 					The TV stage look lives ONLY in room settings now. The per-song override that used to sit here
 					(a phone repainting the stage for the current song via sendPlayer 'background') was removed: the
 					stage is a room-wide decision, not a per-singer one, so a single writer in Settings is correct.
@@ -1332,63 +1337,62 @@
 					with no writer the field simply stays null and the resolver already falls back to the room style.
 				-->
 
-				<!--
+					<!--
 					Lyrics re-select (#640): the per-song fallback for wrong / wrongly-chosen lyrics. Any joined
 					singer may re-pick (Q1=A). Only shown once the song has candidates on disk; the control itself
 					hides when there is nothing to choose. The pick is re-timed server-side from the retained vocals.
 				-->
-				{#if nowMedia && nowMedia.lyricsCandidates?.length}
-					<LyricsReselect
-						candidates={nowMedia.lyricsCandidates}
-						chosenRef={chosenCandidate(nowMedia)?.ref}
-						overrideRef={nowMedia.lyricsOverrideRef}
-						newerExists={hasNewerCandidateThanOverride(nowMedia.lyricsCandidates, nowMedia.lyricsOverrideRef)}
-						onpick={(ref) => reselectLyrics(nowMedia.id, { ref })}
-						onpaste={(text) => reselectLyrics(nowMedia.id, { text })}
-					/>
-				{/if}
+					{#if nowMedia && nowMedia.lyricsCandidates?.length}
+						<LyricsReselect
+							candidates={nowMedia.lyricsCandidates}
+							chosenRef={chosenCandidate(nowMedia)?.ref}
+							overrideRef={nowMedia.lyricsOverrideRef}
+							newerExists={hasNewerCandidateThanOverride(nowMedia.lyricsCandidates, nowMedia.lyricsOverrideRef)}
+							onpick={(ref) => reselectLyrics(nowMedia.id, { ref })}
+							onpaste={(text) => reselectLyrics(nowMedia.id, { text })}
+						/>
+					{/if}
+				{/snippet}
+			</NowPlayingHero>
 
-			{/snippet}
-		</NowPlayingHero>
+			<!-- The guest's own place, in words, with the wait omitted rather than guessed (XR-PH-09). -->
+			<MyPositionCard words={myPosition} />
 
-		<!-- The guest's own place, in words, with the wait omitted rather than guessed (XR-PH-09). -->
-		<MyPositionCard words={myPosition} />
-
-		<h2 class="grouphead">Up next · {orderLabel}</h2>
-		<!--
+			<h2 class="grouphead">Up next · {orderLabel}</h2>
+			<!--
 			XR-PH-19 — the mode's own chrome. Done and Cancel are REAL buttons rather than a tap-anywhere
 			dismissal, because "commit" and "abandon" are different outcomes and a mode that exits one way
 			cannot express the other. Escape is bound on <svelte:window> below and takes the Cancel path.
 			The note is a polite live region: a mode that closes ITSELF (my pick started playing, my second
 			pick was removed elsewhere) has to say why, or the list simply changes shape under the guest.
 		-->
-		{#if reorderOpen}
-			<div class="reorder-bar card" role="group" aria-label="Reordering your songs">
-				<p class="reorder-hint">Drag to one of your own positions. Other guests' songs stay put.</p>
-				<div class="reorder-acts">
-					<button class="chip" onclick={() => exitReorder(hoverSlot)}>Done</button>
-					<button class="chip" onclick={() => exitReorder(null)}>Cancel</button>
+			{#if reorderOpen}
+				<div class="reorder-bar card" role="group" aria-label="Reordering your songs">
+					<p class="reorder-hint">Drag to one of your own positions. Other guests' songs stay put.</p>
+					<div class="reorder-acts">
+						<button class="chip" onclick={() => exitReorder(hoverSlot)}>Done</button>
+						<button class="chip" onclick={() => exitReorder(null)}>Cancel</button>
+					</div>
 				</div>
-			</div>
-		{/if}
-		{#if !reorderOpen && reorderNote}
-			<!-- The mode closed ITSELF (XR-PH-19). Visible as well as announced: the list has just changed
+			{/if}
+			{#if !reorderOpen && reorderNote}
+				<!-- The mode closed ITSELF (XR-PH-19). Visible as well as announced: the list has just changed
 			     shape under the guest's hand, and a reason only a screen reader gets is not a reason. -->
-			<p class="reorder-note">{reorderNote}</p>
-		{/if}
-		{#if queued.length === 0}
-			<Empty.Root>
-				<Empty.Header>
-					<Empty.Description>Queue's empty — add a song to start the party.</Empty.Description>
-				</Empty.Header>
-			</Empty.Root>
-		{:else}
-			{#each queued as e, i (e.id)}
-				{@const s = singerOf(e.singerId)}
-				{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
-				{@const isMine = e.singerId === me?.id}
-				{@const ownIdx = myIdx(e.id)}
-				<!--
+				<p class="reorder-note">{reorderNote}</p>
+			{/if}
+			{#if queued.length === 0}
+				<Empty.Root>
+					<Empty.Header>
+						<Empty.Description>Queue's empty — add a song to start the party.</Empty.Description>
+					</Empty.Header>
+				</Empty.Root>
+			{:else}
+				{#each queued as e, i (e.id)}
+					{@const s = singerOf(e.singerId)}
+					{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
+					{@const isMine = e.singerId === me?.id}
+					{@const ownIdx = myIdx(e.id)}
+					<!--
 					XR-PH-18 — ONE legal drop target per own queued pick, drawn immediately above the pick whose
 					position it represents, and rendered ONLY while the mode is open. The count therefore equals
 					`myPicks.length` by construction and can never equal the visible list length: `mySlots` is
@@ -1399,72 +1403,70 @@
 					(see onGripPointerDown) instead of from a geometry table, and the same index is what the
 					button's own click commits — so the keyboard path and the pointer path cannot drift apart.
 				-->
-				{#if reorderOpen && isMine && ownIdx >= 0 && mySlots[ownIdx]}
-					{@const slot = mySlots[ownIdx]}
-					<button
-						class="dropslot"
-						class:hot={hoverSlot === slot.index}
-						data-slot={slot.index}
-						aria-label={slot.label}
-						onclick={() => exitReorder(slot.index)}>{slot.ordinal}</button
-					>
-				{/if}
-				{#if card === 'processing' || card === 'failed'}
-					{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
-					<ProcessingCard
-						seq={i + 1}
-						title={mediaTitle(e.mediaId)}
-						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-						singerColor={s?.color ?? SINGER_COLORS[0]}
-						singerAway={awaySingers.has(e.singerId)}
-						status={proc.status}
-						pct={proc.pct}
-						pending={pendingKind.get(e.id) ?? null}
-						onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
-						reorderable={!rowFrozen(e) &&
-							(canReorder && !!me?.id && queued.length > 1)}
-						canUp={queuedIdx(e.id) > 0}
-						canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
-						dimmed={reorderOpen && !isMine}
-						onup={() => moveGlobal(e.id, -1)}
-						ondown={() => moveGlobal(e.id, 1)}
-					/>
-				{:else}
-					<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
+					{#if reorderOpen && isMine && ownIdx >= 0 && mySlots[ownIdx]}
+						{@const slot = mySlots[ownIdx]}
+						<button
+							class="dropslot"
+							class:hot={hoverSlot === slot.index}
+							data-slot={slot.index}
+							aria-label={slot.label}
+							onclick={() => exitReorder(slot.index)}>{slot.ordinal}</button
+						>
+					{/if}
+					{#if card === 'processing' || card === 'failed'}
+						{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
+						<ProcessingCard
+							seq={i + 1}
+							title={mediaTitle(e.mediaId)}
+							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+							singerColor={s?.color ?? SINGER_COLORS[0]}
+							singerAway={awaySingers.has(e.singerId)}
+							status={proc.status}
+							pct={proc.pct}
+							pending={pendingKind.get(e.id) ?? null}
+							onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
+							reorderable={!rowFrozen(e) && canReorder && !!me?.id && queued.length > 1}
+							canUp={queuedIdx(e.id) > 0}
+							canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
+							dimmed={reorderOpen && !isMine}
+							onup={() => moveGlobal(e.id, -1)}
+							ondown={() => moveGlobal(e.id, 1)}
+						/>
+					{:else}
+						<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
 					     safe to remove. The old `i !== 0` guard meant to protect the current song but
 					     actually froze whatever sat at position 0 — i.e. the next-up song. -->
-					<QueueRow
-						seq={i + 1}
-						title={mediaTitle(e.mediaId)}
-						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-						singerColor={s?.color ?? SINGER_COLORS[0]}
-						mine={e.singerId === me?.id}
-						singerAway={awaySingers.has(e.singerId)}
-						up={e.id === nextPlayableId}
-						pending={pendingKind.get(e.id) ?? null}
-						subtitle={e.id === nextPlayableId ? 'up next' : ''}
-						removable={e.singerId === me?.id}
-						reorderable={!rowFrozen(e) &&
-							(canReorder && !!me?.id && queued.length > 1)}
-						canUp={queuedIdx(e.id) > 0}
-						canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
-						grip={gripFor(e)}
-						gripId={e.id}
-						dimmed={reorderOpen && !isMine}
-						moving={movingId === e.id && dragging}
-						dragY={movingId === e.id && dragging ? dragY : 0}
-						ongripdown={(ev) => onGripPointerDown(e, ev)}
-						ongrip={(el) => enterReorder(e.id, el)}
-						onremove={() => removeWithUndo(e)}
-						onup={() => moveGlobal(e.id, -1)}
-						ondown={() => moveGlobal(e.id, 1)}
-					/>
-				{/if}
-			{/each}
+						<QueueRow
+							seq={i + 1}
+							title={mediaTitle(e.mediaId)}
+							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+							singerColor={s?.color ?? SINGER_COLORS[0]}
+							mine={e.singerId === me?.id}
+							singerAway={awaySingers.has(e.singerId)}
+							up={e.id === nextPlayableId}
+							pending={pendingKind.get(e.id) ?? null}
+							subtitle={e.id === nextPlayableId ? 'up next' : ''}
+							removable={e.singerId === me?.id}
+							reorderable={!rowFrozen(e) && canReorder && !!me?.id && queued.length > 1}
+							canUp={queuedIdx(e.id) > 0}
+							canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
+							grip={gripFor(e)}
+							gripId={e.id}
+							dimmed={reorderOpen && !isMine}
+							moving={movingId === e.id && dragging}
+							dragY={movingId === e.id && dragging ? dragY : 0}
+							ongripdown={(ev) => onGripPointerDown(e, ev)}
+							ongrip={(el) => enterReorder(e.id, el)}
+							onremove={() => removeWithUndo(e)}
+							onup={() => moveGlobal(e.id, -1)}
+							ondown={() => moveGlobal(e.id, 1)}
+						/>
+					{/if}
+				{/each}
+			{/if}
 		{/if}
-	{/if}
 
-	<!--
+		<!--
 		THE RESULTS VIEW — direction A's queue-home (issue #832), direction B's layout (issue #833), and
 		the 2026-09-09 owner correction (issue #902): it renders IN PLACE over the queue while the box
 		has a query (`searchActive`), with NO navigation. There is no browse mode any more.
@@ -1491,113 +1493,113 @@
 		which is what returns the screen to the queue underneath. It renders only while `searchActive`,
 		because with an empty box the queue is already what is showing.
 	-->
-	{#if searchActive}
-		<div class="backrow">
-			<button class="back-btn" onclick={clearSearch}><Icon name="arrow-left" /> Queue</button>
-		</div>
-	{/if}
+		{#if searchActive}
+			<div class="backrow">
+				<button class="back-btn" onclick={clearSearch}><Icon name="arrow-left" /> Queue</button>
+			</div>
+		{/if}
 
-	<!--
+		<!--
 		FURTHEST FROM THE THUMB: songs that still need karaoke made. Recently queued sits above Popular
 		tonight — but only ever as search results now; the empty-box shortcut lists were dropped in #902
 		in favour of showing the live queue.
 	-->
-	{#if searchActive}
-		{#if searching && rawResults.length === 0 && readyResults.length === 0}
-			<div aria-busy="true" aria-label="Searching…">
-				{#each [0, 1, 2] as i (i)}
-					<div class="skel-row">
-						<Skeleton variant="thumb" />
-						<div class="skel-text">
-							<Skeleton />
-							<Skeleton variant="line-short" />
+		{#if searchActive}
+			{#if searching && rawResults.length === 0 && readyResults.length === 0}
+				<div aria-busy="true" aria-label="Searching…">
+					{#each [0, 1, 2] as i (i)}
+						<div class="skel-row">
+							<Skeleton variant="thumb" />
+							<div class="skel-text">
+								<Skeleton />
+								<Skeleton variant="line-short" />
+							</div>
 						</div>
-					</div>
+					{/each}
+				</div>
+			{/if}
+			{#if !searching && rawResults.length === 0 && readyResults.length === 0}
+				<Empty.Root>
+					<Empty.Header>
+						<Empty.Description>No results. YouTube search needs yt-dlp installed on the server.</Empty.Description>
+					</Empty.Header>
+				</Empty.Root>
+			{/if}
+			{@const rawRows = unaccounted(rawResults).reverse()}
+			{#if rawRows.length}
+				<h2 class="grouphead">Needs karaoke · has vocals</h2>
+				{#each rawRows as m (m.id)}
+					{@const r = readinessFor(m)}
+					<SongRow
+						{...rowMeta(m)}
+						readiness={r}
+						pct={liveOf(m.id)?.pct ?? 0}
+						status={liveOf(m.id)?.status}
+						inQueue={inMyQueue(m.id)}
+						processable={isProcessableSource(m.source)}
+						onadd={() => addSong(m.id)}
+						onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
+					/>
 				{/each}
-			</div>
+			{/if}
 		{/if}
-		{#if !searching && rawResults.length === 0 && readyResults.length === 0}
-			<Empty.Root>
-				<Empty.Header>
-					<Empty.Description>No results. YouTube search needs yt-dlp installed on the server.</Empty.Description>
-				</Empty.Header>
-			</Empty.Root>
-		{/if}
-		{@const rawRows = unaccounted(rawResults).reverse()}
-		{#if rawRows.length}
-			<h2 class="grouphead">Needs karaoke · has vocals</h2>
-			{#each rawRows as m (m.id)}
-				{@const r = readinessFor(m)}
-				<SongRow
-					{...rowMeta(m)}
-					readiness={r}
-					pct={liveOf(m.id)?.pct ?? 0}
-					status={liveOf(m.id)?.status}
-					inQueue={inMyQueue(m.id)}
-					processable={isProcessableSource(m.source)}
-					onadd={() => addSong(m.id)}
-					onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
-				/>
-			{/each}
-		{/if}
-	{/if}
 
-	<!--
+		<!--
 		Processing, immediately above the ready rows: rotation HOLDS a processing song's slot, so it keeps its
 		fair position and plays when the stems land. Processing is not a blocked state, which is why these
 		rows sit with the singable ones rather than behind a chip. The heading that said so in prose was
 		mechanism 4 and is deleted — SongRow's own readiness chip already says it per row, and a failed
 		process says so on its own row rather than in a heading covering the whole group.
 	-->
-	{#if searchActive && processingRows.length}
-		{@const processingStack = [...processingRows].reverse()}
-		{#each processingStack as c (c.id)}
-			{@const r = displayReadiness(c.media, liveOf(c.id))}
-			<SongRow
-				{...rowMeta(c.media)}
-				readiness={r}
-				pct={c.pct}
-				status={c.status}
-				inQueue={inMyQueue(c.id)}
-				processable={isProcessableSource(c.media.source)}
-				onadd={() => addSong(c.id)}
-				onmake={canProcess(c.media, r) ? () => singThis(c.id) : undefined}
-			/>
-		{/each}
-	{/if}
+		{#if searchActive && processingRows.length}
+			{@const processingStack = [...processingRows].reverse()}
+			{#each processingStack as c (c.id)}
+				{@const r = displayReadiness(c.media, liveOf(c.id))}
+				<SongRow
+					{...rowMeta(c.media)}
+					readiness={r}
+					pct={c.pct}
+					status={c.status}
+					inQueue={inMyQueue(c.id)}
+					processable={isProcessableSource(c.media.source)}
+					onadd={() => addSong(c.id)}
+					onmake={canProcess(c.media, r) ? () => singThis(c.id) : undefined}
+				/>
+			{/each}
+		{/if}
 
-	<!--
+		<!--
 		NEAREST THE THUMB: the songs that can be sung right now, best match last. The "Ready to sing ·
 		no wait" heading that used to sit above them was mechanism 4 — it restated the readiness chip
 		directly above it — and it is deleted with the chips.
 	-->
-	{#if searchActive}
-		{@const readyStack = [...readyResults].reverse()}
-		{#each readyStack as m (m.id)}
-			<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
-		{/each}
-		<!--
+		{#if searchActive}
+			{@const readyStack = [...readyResults].reverse()}
+			{#each readyStack as m (m.id)}
+				<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
+			{/each}
+			<!--
 			The library HAS karaoke songs, they just do not match what is in the box. Saying so — and
 			naming the way back — is what stops a non-matching query reading as "the app threw my
 			downloads away". This used to be the Ready CHIP's empty state; the chip is gone, and the
 			condition it was really about (a query the ready library cannot answer) is stated directly.
 		-->
-		{#if searchActive && !readyStack.length && library.length}
-			{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
-			<Empty.Root>
-				<Empty.Header>
-					<Empty.Description>{empty.message}</Empty.Description>
-				</Empty.Header>
-			</Empty.Root>
-			{#if empty.showAllCount !== null}
-				<div class="showall-row">
-					<button class="chip ok chip-icon" onclick={clearSearch}
-						><Icon name="mic" /> Show all {empty.showAllCount}</button
-					>
-				</div>
+			{#if searchActive && !readyStack.length && library.length}
+				{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
+				<Empty.Root>
+					<Empty.Header>
+						<Empty.Description>{empty.message}</Empty.Description>
+					</Empty.Header>
+				</Empty.Root>
+				{#if empty.showAllCount !== null}
+					<div class="showall-row">
+						<button class="chip ok chip-icon" onclick={clearSearch}
+							><Icon name="mic" /> Show all {empty.showAllCount}</button
+						>
+					</div>
+				{/if}
 			{/if}
 		{/if}
-	{/if}
 	{:else}
 		<!-- UNJOINED (#834): `/` is the landing page. Both a scan affordance and a six-segment code entry,
 		     or — when a QR was scanned (`/?room=CODE`) — the room confirmed in words. -->
@@ -1640,11 +1642,7 @@
 	One toast surface for the whole page, docked above the measured band. `richColors` is off: the error
 	tone comes from Encore's own `--destructive`, which the vendored component points at.
 -->
-<Toaster
-	position="bottom-center"
-	offset="var(--dock-h, 0px)"
-	style="--width: min(92vw, 420px);"
-/>
+<Toaster position="bottom-center" offset="var(--dock-h, 0px)" style="--width: min(92vw, 420px);" />
 
 <!--
 	Polite live region for ambient queue activity a screen reader would otherwise miss (a guest's add,

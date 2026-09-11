@@ -23,7 +23,11 @@ import { makeRegistry } from './registry';
 import { DEFAULT_QUEUE_ORDER, isQueueOrder, type QueueOrderId } from '../queue/queue-order';
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from '../process/fetchers';
 import { DEFAULT_STAGE_COLOR, DEFAULT_STAGE_DIM, normalizeStageColor, normalizeStageDim } from '../presentation/colors';
-import { DEFAULT_PRESENCE_GRACE_MINUTES, MAX_PRESENCE_GRACE_MINUTES, MIN_PRESENCE_GRACE_MINUTES } from '../queue/membership';
+import {
+	DEFAULT_PRESENCE_GRACE_MINUTES,
+	MAX_PRESENCE_GRACE_MINUTES,
+	MIN_PRESENCE_GRACE_MINUTES
+} from '../queue/membership';
 import {
 	DEFAULT_ASR_MODEL,
 	DEFAULT_LYRICS_BALL,
