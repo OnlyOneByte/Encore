@@ -28,6 +28,24 @@ export interface ReaperOptions {
 	onReaped?: OnReaped;
 	/** Hook fired once per job moved to terminal `failed` this tick, so the app can settle its gate. */
 	onFailed?: OnJobFailed;
+	/**
+	 * Hook fired on EVERY tick, whether or not anything changed. This is what makes the reaper the
+	 * system's clock rather than only its change notifier.
+	 *
+	 * WHY BOTH THIS AND `onReaped`. They answer different questions and collapsing them loses one.
+	 * `onReaped` means "capacity may have changed, redispatch now"; `onTick` means "time has passed".
+	 * Time-based sweeps need the second, and an unservable job proved it: the unservable-TTL stamp and its
+	 * expiry check both live inside `WorkerHub.dispatch()`, which is event-driven, and an unservable job is
+	 * never assigned or running. So `sweep()` returned no actions on every tick, `onReaped` never fired,
+	 * `dispatch()` was never called again, and the 120s TTL was never reached — the job parked queued
+	 * forever, which is the exact hang the TTL was introduced to end.
+	 *
+	 * The bug survived because the coverage asserting the TTL calls `dispatch()` ITSELF, supplying the
+	 * second pass production may never make. A test can be green about a path the running system cannot
+	 * reach; `tests/unit/core/server/jobs/terminal-failure-durability.test.ts` drives the TTL through this
+	 * hook instead, so removing it reds.
+	 */
+	onTick?: () => void;
 }
 
 export class JobReaper {
@@ -36,6 +54,7 @@ export class JobReaper {
 	#now: () => number;
 	#onReaped: OnReaped;
 	#onFailed: OnJobFailed;
+	#onTick: () => void;
 	#timer: ReturnType<typeof setInterval> | null = null;
 
 	constructor(jobs: JobRepository, opts: ReaperOptions = {}) {
@@ -44,6 +63,7 @@ export class JobReaper {
 		this.#now = opts.now ?? Date.now;
 		this.#onReaped = opts.onReaped ?? (() => {});
 		this.#onFailed = opts.onFailed ?? (() => {});
+		this.#onTick = opts.onTick ?? (() => {});
 	}
 
 	/**
@@ -59,6 +79,11 @@ export class JobReaper {
 			else this.#onFailed(this.#jobs.fail(action.id, action.error, now, action.attempts));
 		}
 		if (actions.length > 0) this.#onReaped();
+		// …and ALWAYS, because time passed even when nothing changed. Ordered after `onReaped` so a tick
+		// that did change something has already redispatched before the periodic pass runs; the periodic
+		// pass is then a no-op for capacity and does the time-based work (the unservable TTL) that no
+		// change-gated hook could ever reach.
+		this.#onTick();
 		return actions.length;
 	}
 

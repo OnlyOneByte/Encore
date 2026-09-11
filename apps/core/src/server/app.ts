@@ -557,6 +557,12 @@ export function getApp(): EncoreApp {
 	// When the reaper requeues/fails a job (lease expiry), capacity may have changed → redispatch.
 	const reaper = new JobReaper(jobs, {
 		onReaped: () => workerHub.dispatch(),
+		// And on EVERY tick, changed or not — the reaper is the only clock this system has. The
+		// unservable-TTL check lives inside dispatch(), which is otherwise event-driven, and an unservable
+		// job is never assigned or running: sweep() found no actions, onReaped never fired, dispatch() was
+		// never called again, and a job whose capability nothing advertises parked queued forever. That is
+		// precisely the hang the TTL exists to end, reproduced in the quietest case.
+		onTick: () => workerHub.dispatch(),
 		// A reaper-killed cook (worker box died, attempts exhausted) reaches terminal `failed` without
 		// the worker reporting it, so it never hits #onFailed. The reaper has no catalog, so it hands
 		// the job up and we do here EXACTLY what the reported (#onFailed) and unservable-TTL paths do —
@@ -569,7 +575,18 @@ export function getApp(): EncoreApp {
 		// It now calls the one shared epilogue directly — settle the gate (#90), tell the room, log one
 		// uniform line, reclaim scratch — with `cause: 'reaper'` so the operator can still grep this
 		// path apart (issue #451).
-		onFailed: (job) => reportTerminalFailure(job, 'reaper', { broadcast: (e) => app.publish(e), mediaById })
+		onFailed: (job) =>
+			reportTerminalFailure(job, 'reaper', {
+				broadcast: (e) => app.publish(e),
+				mediaById,
+				// The reaper path needs the durable half as much as the other two — arguably more, since a
+				// reaper kill means the worker box died, which is exactly the kind of incident a core
+				// restart tends to follow.
+				persist: (mediaId) => {
+					const m = mediaById.get(mediaId);
+					if (m) mediaRepo.upsert(m);
+				}
+			})
 	});
 
 	app = {

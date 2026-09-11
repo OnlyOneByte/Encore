@@ -36,16 +36,17 @@ Two areas deliberately did **not** get a namespace here:
 Recorded here because each was verified against source and each is open. A reader who assumes this
 tree is descriptive will otherwise mistake these for settled behaviour.
 
-**1. A permanently failed cook settles its readiness gate in memory only.** `stem_status` and
+**1. A permanently failed cook settles its readiness gate in memory only — NOW FIXED for new failures.** `stem_status` and
 `lyrics_status` are stored columns and the *cooking* flip is persisted, but the terminal-failure path
 carries no persistence sink and no boot pass reconciles the value against the job ledger. After a
-restart the song reads as still cooking, with a terminal job row and no Sing button. `XR-JOB-04` —
-and it is the one finding in this tree a guest cannot work around.
+restart the song reads as still cooking, with a terminal job row and no Sing button. `XR-JOB-04`. The epilogue now persists a settled gate at all three terminal paths; what remains open is
+reconciling rows written BEFORE the fix, which is a migration question rather than a code one.
 
-**2. The unservable-job TTL is not a timer.** Both the stamp and the check live inside `dispatch()`,
+**2. The unservable-job TTL was not a timer — NOW FIXED.** Both the stamp and the check live inside `dispatch()`,
 which is event-driven; with an empty fleet nothing is assigned or running, so the sweep produces no
 actions, `dispatch()` is never called again, and the 120 s TTL is never reached. It reproduces the
-exact hang the TTL was added to end, in the quietest case. `XR-JOB-11`.
+exact hang the TTL was added to end, in the quietest case. The reaper now fires a dispatch hook on every
+tick rather than only on a tick that changed a job. `XR-JOB-11`.
 
   > The trap for whoever fixes it: `worker-hub.test.ts` *appears* to cover this branch, because the
   > test supplies the second `dispatch()` pass that production may never make. A test can be green

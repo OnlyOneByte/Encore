@@ -396,9 +396,25 @@ export type TerminalFailureCause = 'worker' | 'unservable' | 'reaper';
 
 export interface TerminalFailureDeps {
 	/** The room sink. Injected because make-karaoke cannot reach worker-hub's private #emitStatus,
-	 *  and app.ts's reaper hook had to hand-reimplement it (issue #451). */
+	 *  and app.ts's reaper hook had to hand-reimplement it. */
 	broadcast: (event: ServerEvent) => void;
 	mediaById: Map<string, Media>;
+	/**
+	 * Flush the song's row after a gate settles. Optional, matching `WorkerHubDeps.persistMedia`, so the
+	 * hub still unit-tests with no DB.
+	 *
+	 * WHY THIS EXISTS. `settleGatesForFailedJob` mutates the in-memory `Media` and nothing else, but
+	 * `stem_status` and `lyrics_status` are STORED columns and the *queued* flip IS persisted — the
+	 * make-karaoke route upserts immediately after enqueue, precisely so a restart mid-cook still knows
+	 * the song is pending. `hydrateMediaCatalog` then wins at boot over the sidecar path, which never
+	 * stores `'queued'`, and no boot pass reconciled the column against the job ledger.
+	 *
+	 * So a terminal failure settled the gate in memory, the process restarted, and the song came back
+	 * reading as cooking with a terminal job row behind it and no Sing button — resurrecting the exact
+	 * stranding `settleStemsGate` was written to end. It is the one failure in this subsystem a guest
+	 * cannot work around: no user action clears it, and the cook will never run again to clear it either.
+	 */
+	persist?: (mediaId: string) => void;
 }
 
 /**
@@ -429,8 +445,13 @@ export interface TerminalFailureDeps {
  * and error. Returns whether the gate settle changed anything, for a caller that wants it.
  */
 export function reportTerminalFailure(job: Job, cause: TerminalFailureCause, deps: TerminalFailureDeps): boolean {
-	// 1. Settle the gate for this job type (the half #90 already extracted).
+	// 1. Settle the gate for this job type (the half already extracted).
 	const settled = settleGatesForFailedJob(job, deps.mediaById);
+	// 1b. …and make that settlement DURABLE. Gated on `settled` deliberately: a stems-upgrade failure
+	//     keeps its working instrumental and settles nothing, so writing there would flush a row per
+	//     failure for no change. Ordered before the broadcast so the room is never told a song is failed
+	//     while the row that outlives the process still says it is cooking.
+	if (settled) deps.persist?.(job.mediaId);
 	// 2. Tell the room — same shouldBroadcastCook guard #emitStatus applies.
 	const media = deps.mediaById.get(job.mediaId);
 	if (shouldBroadcastCook(job, media)) {

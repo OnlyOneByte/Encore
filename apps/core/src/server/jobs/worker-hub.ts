@@ -417,7 +417,8 @@ export class WorkerHub {
 			// hole because there is no longer a fourth copy to drift.
 			reportTerminalFailure(updated, 'worker', {
 				broadcast: (e) => this.#d.broadcast(e),
-				mediaById: this.#d.mediaById
+				mediaById: this.#d.mediaById,
+				persist: (mediaId) => this.#d.persistMedia?.(mediaId)
 			});
 		}
 	}
@@ -465,7 +466,8 @@ export class WorkerHub {
 					// `reason`), and reclaim scratch — which this branch used to OMIT (issue #451).
 					reportTerminalFailure(updated, 'unservable', {
 						broadcast: (e) => this.#d.broadcast(e),
-						mediaById: this.#d.mediaById
+						mediaById: this.#d.mediaById,
+						persist: (mediaId) => this.#d.persistMedia?.(mediaId)
 					});
 				}
 				continue; // already warned this stall; nothing else to do until the TTL fires
