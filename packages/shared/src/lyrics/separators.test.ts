@@ -85,6 +85,21 @@ describe('separator registry', () => {
 		expect(ids).toContain('htdemucs_6s');
 	});
 
+	it('offers audiosep as a live-selectable mel-band engine with instrumental_becruily (#483)', () => {
+		// Owner ruling #483 Option A: python-audio-separator adopted ALONGSIDE roformer, with the
+		// mel-band instrumental_becruily checkpoint live-selectable (NOT upgrade-only like ensemble).
+		const audiosep = getEngine('audiosep');
+		expect(audiosep).toBeTruthy();
+		expect(audiosep!.capability).toBe('stems:audiosep'); // distinct capability routes the cook
+		expect(isValidSeparator('audiosep', 'instrumental_becruily')).toBe(true);
+		expect(isLiveSelectable('audiosep', 'instrumental_becruily')).toBe(true); // Option A, not upgrade-only
+		// its rank sits below the ear-approved bs-roformer-1297 (35): unheard/community, must not
+		// outrank the owner-approved top of the ladder
+		expect(qualityRank('audiosep', 'instrumental_becruily')).toBeLessThan(
+			qualityRank('roformer', 'bs-roformer-1297')
+		);
+	});
+
 	it('does NOT offer a mel-band roformer model', () => {
 		// The engine backing `roformer` implements only the BS-RoFormer architecture, and the former
 		// mel-roformer-inst-v2 token mapped to a slug absent from its registry — a phone option no

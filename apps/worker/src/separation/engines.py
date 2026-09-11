@@ -24,6 +24,7 @@ import os
 from typing import Protocol
 
 from ..retry_policy import PermanentError
+from . import audiosep as a
 from . import demucs as d
 from . import mlx as m
 from . import roformer as r
@@ -267,6 +268,69 @@ class RoformerEngine:
         return []
 
 
+class AudioSepEngine:
+    """The MEL-BAND RoFormer family via `python-audio-separator`.
+
+    The fast RoFormer path `bs-roformer-infer` cannot reach: audio-separator runs mel-band checkpoints
+    as a first-class MDXC path, and `mel instrumental_becruily` measures rt 1.28 on the reference box
+    versus `bs_roformer-1297`'s rt 13.29 — a 10.4x RoFormer-family instrumental cook, no GPU
+    (docs/benchmarks/SUMMARY.md §4). Adopted ALONGSIDE roformer, not replacing it — both engines, issue
+    #483 owner ruling Q1(b).
+
+    Shape-wise it sits between demucs and roformer. Like demucs, its input is a single named WAV (not a
+    dedicated input directory — audio-separator takes the input FILE as a positional argument, so it
+    does not re-separate its own output the way bs-roformer-infer's `--input_folder` would). Like
+    roformer, its outputs are DISCOVERED by globbing `--output_dir` for the delimited `_(Instrumental)_`
+    / `_(Vocals)_` markers rather than derived from the model name. All the audio-separator-specific
+    behaviour is the pure argv/path helpers in `separation/audiosep.py`; this class is the seam adapter.
+
+    `parse_progress` returns None: audio-separator renders a tqdm bar, not a stable percentage source, so
+    the step emits a coarse 0→100 exactly as roformer does.
+
+    THE REAL COOK IS UNVERIFIED IN THIS ENVIRONMENT — the same accepted caveat roformer carries (see
+    audiosep.py's module warning). audio-separator is not installed on the aarch64 dev/CI box; only a
+    worker an operator gave the `stems:audiosep` capability runs it.
+    """
+
+    id = "audiosep"
+    backend = "audio-separator"
+
+    def __init__(
+        self,
+        *,
+        default_model: str = a.DEFAULT_AUDIOSEP_MODEL,
+        audiosep_bin: str = "audio-separator",
+        model_file_dir: str | None = None,
+    ) -> None:
+        self._default_model = default_model
+        self._bin = audiosep_bin
+        self._model_file_dir = model_file_dir
+
+    def resolve_model(self, params: dict) -> str:
+        return a.resolve_audiosep_checkpoint(params, self._default_model)
+
+    def input_wav(self, work: str) -> str:
+        # A single named file in the shared scratch dir, like demucs — audio-separator separates the
+        # FILE passed as its positional argument, not every file in a directory, so no dedicated dir.
+        return os.path.join(work, "input.wav")
+
+    def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:
+        return a.audiosep_argv(input_wav, out_dir, model, model_file_dir=self._model_file_dir, bin=self._bin)
+
+    def parse_progress(self, line: str) -> int | None:
+        return None  # tqdm output is not a stable pct source; the step emits a coarse 0→100
+
+    def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]:
+        return {
+            "instrumental": a.find_audiosep_instrumental(out_dir),
+            "vocals": a.find_audiosep_vocals(out_dir),
+        }
+
+    def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
+        # audio-separator writes an instrumental stem directly; nothing to derive.
+        return []
+
+
 def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorEngine:
     """The engine this job resolved to, executed through the resolved `backend`.
 
@@ -290,7 +354,12 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
     `default_model` slot let a caller hand one engine the OTHER engine's checkpoint name (issue #84: the
     lone production caller supplied the demucs default, which reached `RoformerEngine` and made
     `DEFAULT_ROFORMER_MODEL` unreachable — a roformer cook without a `model` then raised naming a demucs
-    checkpoint). Keeping the names engine-specific makes that cross-wiring inexpressible.
+    checkpoint). Keeping the names engine-specific makes that cross-wiring inexpressible. `audiosep_model`
+    follows the same rule: it maps only to `AudioSepEngine`.
+
+    `audiosep` (python-audio-separator) is the mel-band RoFormer engine (#483), run through its own
+    `audio-separator` CLI. Like roformer it is not a demucs backend — it is a distinct engine id with its
+    own capability (`stems:audiosep`), so a `backend` other than its own CLI is not applicable to it.
 
     The MLX branch reuses the demucs-family kwargs: `demucs_model` maps to its `default_model` (mlx runs
     the same htdemucs checkpoints), and `overlap`/`segment`/`shifts` are the perf knobs demucs-mlx shares
@@ -304,6 +373,12 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
         if "roformer_model" in given:
             kw["default_model"] = given["roformer_model"]
         return RoformerEngine(**kw)
+    if name == AudioSepEngine.id:
+        allowed = {"audiosep_bin", "model_file_dir"}
+        kw = {k: v for k, v in given.items() if k in allowed}
+        if "audiosep_model" in given:
+            kw["default_model"] = given["audiosep_model"]
+        return AudioSepEngine(**kw)
     if name == DemucsEngine.id:
         if backend == "mlx":
             # Wired, not silent: an mlx-resolved cook builds the MLX engine, which runs demucs-mlx and

@@ -43,6 +43,7 @@ def test_parse_engine_defaults_when_absent_and_rejects_unknown():
     assert parse_engine(None) is Engine.DEMUCS
     assert parse_engine("") is Engine.DEMUCS
     assert parse_engine("roformer") is Engine.ROFORMER
+    assert parse_engine("audiosep") is Engine.AUDIOSEP  # #483: the mel-band RoFormer engine
     with pytest.raises(ValueError, match="unknown engine"):
         parse_engine("spleeter")  # registered as a slot in the design, not a runnable engine
 

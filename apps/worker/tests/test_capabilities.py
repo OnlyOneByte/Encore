@@ -133,6 +133,29 @@ def test_every_advertised_stems_capability_resolves_to_a_real_engine(monkeypatch
         assert eng is not None
 
 
+def test_audiosep_is_advertised_only_when_its_dep_is_present(monkeypatch, tmp_path):
+    # #483: the mel-band RoFormer engine (python-audio-separator). Advertised only when the dep is
+    # present — the same honesty contract as every other token. A box with demucs but no audio-separator
+    # must NOT claim stems:audiosep, or the core would route a mel-band cook that dies at plan selection.
+    _with_path(monkeypatch, tmp_path)
+    _fake_bin(tmp_path, "demucs")  # separator present, but NOT audio-separator
+    monkeypatch.setattr(capabilities, "_module_available", lambda _name: False)
+
+    caps, probes, _w = capabilities.resolve()
+    assert "stems" in caps
+    assert "stems:audiosep" not in caps, "no audio-separator on PATH and no module — must not be claimed"
+    asep = next(p for p in probes if p.token == "stems:audiosep")
+    assert not asep.available and asep.reason
+
+    # With the audio-separator CLI present, it is advertised and engine_for builds a real engine.
+    _fake_bin(tmp_path, "audio-separator")
+    caps2, _p2, _w2 = capabilities.resolve()
+    assert "stems:audiosep" in caps2
+    from src.separation.engines import AudioSepEngine, engine_for
+
+    assert isinstance(engine_for("audiosep"), AudioSepEngine)
+
+
 def test_a_cli_on_PATH_counts_even_when_the_module_is_invisible(monkeypatch, tmp_path):
     # The worker shells out BY NAME for the heavy lifting, so a venv-vs-system-python split (the normal
     # shape of a native install) is a perfectly capable box. Requiring the import would deny it.

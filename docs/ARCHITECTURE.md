@@ -517,7 +517,8 @@ separation, mapped through `whisperx_device_for` because CTranslate2 has only cu
 an Intel or Apple box separates on its accelerator and still aligns on the CPU.
 
 **Capabilities are proven too** (`capabilities.py`). Each token is backed by a probe — `yt-dlp` on PATH
-or importable → `fetch:ytdlp`, demucs → `stems`, the roformer engine → `stems:roformer`,
+or importable → `fetch:ytdlp`, demucs → `stems`, the roformer engine → `stems:roformer`, the
+audio-separator engine → `stems:audiosep`,
 whisperx → `align` — and the evidence is logged either way. `stems:ensemble` is kept in the
 vocabulary so configuration and routing can name it, but it is **never advertised** until an
 engine backs it (none does yet), mirroring the OPENVINO backend one domain over — a
