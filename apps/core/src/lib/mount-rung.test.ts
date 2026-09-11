@@ -30,12 +30,31 @@
 // imports inside the tests means deleting one stub file reds the tests that use THAT stub by name
 // instead of failing this whole file to load, which would leave the deletion pinned by nothing.
 import { test, expect, beforeEach } from 'bun:test';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { mount, unmount, flushSync } from '../../../../test-setup/svelte-client';
 
 // import.meta.dir === apps/core/src/lib.
 const SRC = join(import.meta.dir, '..');
+
+/*
+ * The repo root, found by walking UP for `bunfig.toml` rather than by counting `..` from here.
+ *
+ * `@encore/test-support` exports this already, but that alias is declared only in `tests/tsconfig.json`
+ * — deliberately, so test-only code cannot be reached from production source and therefore cannot be
+ * bundled. This file still lives under `apps/core/src`, so it cannot see the alias yet. Six lines inline
+ * beats moving a mount test into a guard tree just to reach a constant.
+ */
+const REPO_ROOT = (() => {
+	let dir = import.meta.dir;
+	for (let hops = 0; hops < 12; hops++) {
+		if (existsSync(join(dir, 'bunfig.toml'))) return dir;
+		const up = join(dir, '..');
+		if (up === dir) break;
+		dir = up;
+	}
+	throw new Error('mount-rung: could not find the repo root (no bunfig.toml above this file)');
+})();
 const PRELOAD = join(import.meta.dir, '..', '..', '..', '..', 'test-setup', 'svelte-dom-preload.ts');
 
 /** Every `.ts`/`.svelte` file under apps/core/src, excluding SvelteKit's generated tree. */
@@ -320,13 +339,27 @@ test('no test still documents the $app/$env virtual modules as un-aliased', () =
 	// doc-pointer-accuracy.test.ts already uses.
 	const stale = /does\s+not\s+alias\s+the[\s\S]{0,40}\$app/;
 	const offenders: string[] = [];
-	// Excludes ONLY itself, by path — this file quotes the retired claim in its own comment, which is
-	// exactly the thing the guard looks for.
-	const scanned = sourceFiles(SRC).filter((f) => f.endsWith('.test.ts') && f !== import.meta.path);
+	/*
+	 * EVERY test file in the repo, wherever it lives — not every test file under `apps/core/src`.
+	 *
+	 * This walked `SRC` alone, which was the whole population when every test sat beside its source. The
+	 * reorganisation moves them into `tests/`, and a walk rooted at `SRC` would then examine only what had
+	 * not moved yet. The floor below is `> 50`, and 139 files stay behind, so that walk would keep passing
+	 * while its coverage quietly halved — the exact silent-vacuity shape XR-VER-05 exists to refuse.
+	 *
+	 * Anchored on the repo root via `@encore/test-support`, so this arm does not care where a test lives
+	 * and does not need editing again the next time they move.
+	 */
+	const roots = [SRC, join(REPO_ROOT, 'tests'), join(REPO_ROOT, 'packages')].filter((d) => existsSync(d));
+	const scanned = roots
+		.flatMap((d) => sourceFiles(d))
+		.filter((f) => f.endsWith('.test.ts') && f !== import.meta.path);
 	for (const file of scanned) {
 		if (stale.test(readFileSync(file, 'utf8'))) offenders.push(file);
 	}
-	// Floor (XR-VER-05): this suite has hundreds of test files; a walk finding a handful is broken.
-	expect(scanned.length, 'the test-file walk is broken').toBeGreaterThan(50);
+	// Floor (XR-VER-05): this suite has hundreds of test files; a walk finding a handful is broken. Raised
+	// from 50 to 200 now that the walk spans every root — a floor set for one subtree is nearly vacuous
+	// once the population triples, and a floor that cannot fall is not a floor.
+	expect(scanned.length, 'the test-file walk is broken').toBeGreaterThan(200); // @nvf-floor scanned.length
 	expect(offenders, 'a test still claims the harness cannot alias $app/$env').toEqual([]);
 });

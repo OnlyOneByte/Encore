@@ -167,6 +167,15 @@ const FLOORS: Record<string, Floor[]> = {
 				'the RETIRED entries actually read from disk. This arm used `existsSync(abs) && …`, so a keyed file that moved made it examine nothing, and with no floor the whole test degraded to a no-op reporting green — a vacuity hole inside the file that exists to close them. Its three siblings all red in that situation. Found while surveying for the unified test-architecture reorganisation, and fixed before any file moved, because this is the only loud detector for the worst failure mode that reorganisation can cause.'
 		}
 	],
+	'apps/core/src/lib/mount-rung.test.ts': [
+		{
+			subject: 'scanned.length',
+			min: 200,
+			count: 1,
+			guards:
+				"every test file in the repo, which the stale-$app-claim scan reads. This walk was rooted at apps/core/src alone — correct when every test sat beside its source, and quietly wrong the moment the reorganisation began moving them into tests/. Measured: the narrow walk sees 252 files today and would see 120 once the guards move, while its old floor of >50 kept passing. Coverage would have halved with no signal. The walk now spans every root and this floor is set against the whole population, so losing a root reds instead."
+		}
+	],
 	'apps/core/src/lib/tailwind-toolchain.test.ts': [
 		{
 			subject: 'mintSurfaces',
@@ -459,7 +468,19 @@ const PENDING_RULING: { file: string; anchor: string; ruling: string }[] = [
 /** Locate a floor assertion on `subject` and return every literal asserted against it. */
 function assertedLiterals(src: string, subject: string): number[] {
 	const esc = subject.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	const re = new RegExp(String.raw`expect\(\s*${esc}\s*\)\s*\.\s*toBeGreaterThan(?:OrEqual)?\(\s*(\d+)\s*\)`, 'g');
+	/*
+	 * The optional `,\s*<message>` is what lets a floored assertion also carry a failure message.
+	 *
+	 * Without it the pattern demanded `expect(subject)` immediately followed by the matcher, so
+	 * `expect(scanned.length, 'the test-file walk is broken').toBeGreaterThan(200)` read as NO floor at
+	 * all — the registry reported the floor GONE while it sat two characters away. That is the wrong
+	 * incentive: it pressures an author to drop the message to satisfy the bookkeeping, when a message
+	 * naming the wrong diagnosis is exactly what R4 asks a guard to carry.
+	 */
+	const re = new RegExp(
+		String.raw`expect\(\s*${esc}\s*(?:,[^)]*)?\)\s*\.\s*toBeGreaterThan(?:OrEqual)?\(\s*(\d+)\s*\)`,
+		'g'
+	);
 	return [...src.matchAll(re)].map((m) => Number(m[1]));
 }
 
@@ -550,7 +571,7 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// on the drawer-deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
 	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
 	// prescribes rather than counted: raised absurdly high, read `Received: 40`.
-	expect(located).toBeGreaterThanOrEqual(50);
+	expect(located).toBeGreaterThanOrEqual(51);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -608,7 +629,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(50);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(51);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {
