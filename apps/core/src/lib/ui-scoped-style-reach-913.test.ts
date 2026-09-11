@@ -38,6 +38,18 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const UI = join(import.meta.dir, 'components', 'ui');
+/*
+ * The APP side is in scope too, and leaving it out let a real defect ship.
+ *
+ * This walked only `components/ui` on the reasoning that the vendored tree was where classes get handed
+ * to Bits UI children. But after the migration every PAGE hands classes to shadcn components as well, and
+ * `metrics/+page.svelte` did exactly that: `<Table.Cell class="name">`, whose rule the same change deleted
+ * from the page. The suite was green because this constant stopped one directory short of it.
+ *
+ * Cost of widening: one offender at the time of writing, which is the defect. Anything the app side hands
+ * to a component must be reached the same two ways as in `ui/` — `:global()`, or a plain element here.
+ */
+const APP = [join(import.meta.dir, 'components'), join(import.meta.dir, '..', 'routes')];
 
 function svelteFiles(dir: string): string[] {
 	const out: string[] = [];
@@ -152,10 +164,12 @@ function scopedRuleClasses(css: string): Map<string, string> {
 	return found;
 }
 
-test('no scoped rule in ui/ styles a class it hands to a child component (#913)', () => {
-	const files = svelteFiles(UI);
-	// Non-vacuity: the vendored tree is real and this walk reached it. #913 brought in 19 components.
-	expect(files.length).toBeGreaterThan(30); // @nvf-floor files.length
+test('no scoped rule styles a class it hands to a child component (#913)', () => {
+	const files = [...new Set([...svelteFiles(UI), ...APP.flatMap(svelteFiles)])];
+	// Non-vacuity: measured, not guessed — 67 files under ui/ (22 components), 81 under lib/components
+	// including those, and 9 under routes/, deduping to 90. A walk that drops materially below that lost a
+	// root, and the empty offenders array below would then mean "scanned nothing" rather than "clean".
+	expect(files.length).toBeGreaterThanOrEqual(85); // @nvf-floor files.length
 
 	const offenders: string[] = [];
 	let filesWithBoth = 0;

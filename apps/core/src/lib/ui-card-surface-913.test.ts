@@ -66,10 +66,26 @@ function svelteFiles(dir: string): string[] {
 }
 
 /** Files whose markup lists `card` as a whole class token. */
+/** Markup with style blocks, script blocks and HTML comments removed. */
+function markupOf(src: string): string {
+	return src
+		.replace(/<style[\s\S]*?<\/style>/g, ' ')
+		.replace(/<script[\s\S]*?<\/script>/g, ' ')
+		.replace(/<!--[\s\S]*?-->/g, ' ');
+}
+
 function callersInTree(): string[] {
 	const out = new Set<string>();
 	for (const f of svelteFiles(SRC)) {
-		const src = readFileSync(f, 'utf8');
+		/*
+		 * MARKUP ONLY. A class list written inside a comment, a style block or a script string applies to
+		 * nothing, and counting it makes this guard fire on its own documentation: a comment explaining that
+		 * S8 replaced `<div class="card tile primary">` registered the stats page as a live `card` caller and
+		 * redded the suite. That is the fourth guard on this branch to have been defeated by prose about
+		 * itself, so the stripper is applied here rather than the sentence being reworded — a rule you cannot
+		 * describe next to the code it governs is a rule that goes undocumented.
+		 */
+		const src = markupOf(readFileSync(f, 'utf8'));
 		for (const m of src.matchAll(/class="([^"]*)"/g)) {
 			if (m[1]!.split(/\s+/).includes('card')) out.add(f.slice(SRC.length + 1));
 		}
@@ -162,4 +178,23 @@ test('a later rule that un-paints `card` is caught, not just a deleted one (#913
 	// …and a comment mentioning the property must not count as a declaration.
 	const commented = `/* background: none would break this */\n${healthy}`;
 	expect(lastOf(commented.replace(/\/\*[\s\S]*?\*\//g, ' '), 'background')).toMatch(/var\(--card\)/);
+});
+
+test('a class list inside a comment is not a caller (#913)', () => {
+	/*
+	 * Both directions, so the stripper cannot become a hole: prose mentioning the class must not register a
+	 * caller, and real markup must still register one.
+	 */
+	const prose = `<!-- S8 replaced <div class="card tile primary"> with a wrapper -->\n<div class="tiles"></div>`;
+	expect(markupOf(prose)).not.toContain('card');
+
+	const inStyle = `<style>/* .card is defined in app.css */</style>\n<div class="tiles"></div>`;
+	expect(markupOf(inStyle)).not.toContain('card');
+
+	const real = `<div class="row card list-row"></div>`;
+	expect(markupOf(real)).toContain('card');
+
+	// …and a mid-list token is still found, which is the defect that started this file.
+	const tokens = [...markupOf(real).matchAll(/class="([^"]*)"/g)].flatMap((m) => m[1]!.split(/\s+/));
+	expect(tokens).toContain('card');
 });

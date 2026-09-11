@@ -316,5 +316,6 @@
 	   finishes cooking and its card becomes a row. The card is taller than a row, so the cluster aligns
 	   to the title line (flex-start) rather than the card's centre — its own comment already claimed
 	   this, but align-items:center floated the buttons mid-card. */
-	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css. */
+	/* Sizing, radius, surface and glyph size come from <Button variant="icon"> in components/ui/button.
+	   `.icon-btn` in app.css was deleted in #913 S1b when its ten consumers became that variant. */
 </style>

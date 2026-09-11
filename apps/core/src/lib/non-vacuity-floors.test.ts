@@ -88,10 +88,10 @@ const FLOORS: Record<string, Floor[]> = {
 	'apps/core/src/lib/ui-scoped-style-reach-913.test.ts': [
 		{
 			subject: 'files.length',
-			min: 30,
+			min: 85,
 			count: 1,
 			guards:
-				'the walk over the vendored tree that the reach check reads. An empty walk reports an empty offenders array exactly like a clean tree does, so the population is counted. #913 brought in 22 components across 67 files; a walk that fell to single digits means the directory moved or the recursion broke, and the check went unenforceable rather than clean.'
+				'the walk the reach check reads — the vendored tree PLUS the app side. An empty walk reports an empty offenders array exactly like a clean tree does, so the population is counted. #913 brought in 22 components across 67 files, and lib/components + routes dedupe to 90. The scope originally stopped at components/ui, which is why `<Table.Cell class="name">` in metrics/+page.svelte shipped green — the app side hands classes to shadcn components too now. A walk that falls materially below this lost a root, and the check went unenforceable rather than clean.'
 		},
 		{
 			subject: 'styled.size',
@@ -133,6 +133,15 @@ const FLOORS: Record<string, Floor[]> = {
 			count: 1,
 			guards:
 				"the rendered Tabs.Trigger elements the keyboard arms drive. These are the only #913 assertions that measure BEHAVIOUR rather than text, and a harness that mounted but rendered no triggers would let every arrow-key assertion pass over an empty list. Bits UI owns the key handling; what this guards is Encore's wrapper still forwarding restProps and the page still using the primitive."
+		}
+	],
+	'apps/core/src/lib/app-class-resolution-913.test.ts': [
+		{
+			subject: 'files.length',
+			min: 30,
+			count: 1,
+			guards:
+				'the app-side files whose class tokens are checked against real rules. This guard exists because an unresolved class renders nothing and looks correct in source — six instances shipped during #913, four of them past a fully green suite, found only by comparing screenshots. An empty walk would report zero offenders exactly like a clean tree, so the population is counted: 33 app-side .svelte files at the time of writing, excluding the vendored tree where every class legitimately resolves to a minted utility.'
 		}
 	],
 	'apps/core/src/lib/tailwind-toolchain.test.ts': [
@@ -509,7 +518,7 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
 	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
 	// prescribes rather than counted: raised absurdly high, read `Received: 40`.
-	expect(located).toBeGreaterThanOrEqual(46);
+	expect(located).toBeGreaterThanOrEqual(47);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -567,7 +576,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(46);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(47);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

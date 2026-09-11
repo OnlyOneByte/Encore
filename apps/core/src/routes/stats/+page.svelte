@@ -61,9 +61,9 @@
 	{:else}
 		<div class="tiles">
 			<div class="tile-slot primary">
-<Card.Root>
-	<Card.Content>
-		<div class="tile">
+				<Card.Root>
+					<Card.Content>
+						<div class="tile">
 				<span class="n">{stats.sings.total}</span>
 				<span class="k">songs sung</span>
 				<span class="sub">{stats.sings.window} in the last {stats.window.days} days</span>
@@ -199,6 +199,23 @@
 	 * `min(100%, …)` is what keeps the floor itself from becoming the overflow — a floor wider than the
 	 * row would push a single track past the viewport, which is the same defect one level up.
 	 */
+	/*
+	 * The wrapper that carries the tile into the grid.
+	 *
+	 * S8 replaced a single element that was grid item, surface and layout at once with a wrapper around
+	 * <Card.Root>. The wrapper became the grid item and stretches to the row's height, but `Card.Root` is
+	 * `flex flex-col` with no `h-full`, so it sized to its own content and the three cards' bottom edges
+	 * stair-stepped — measured 26.6px of spread at 1080px against 0.0px once this rule exists.
+	 * `display: grid` makes the single child fill the slot, which is what the shared surface used to do for
+	 * free by BEING the grid item.
+	 *
+	 * Phone width hid it: `auto-fit` collapses to one column, so every tile is its own row and there is no
+	 * shared height to disagree with. That is why the eyes-on pass at 390px missed it.
+	 */
+	.tile-slot {
+		display: grid;
+	}
+
 	.tiles {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 9em), 1fr));

@@ -280,8 +280,10 @@
 		gap: var(--space-md);
 		margin-top: var(--space-md);
 	}
-	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css, which derives its box from
-	   var(--tap) — no literal here (XR-PH-01). */
+	/* The tool buttons take sizing, radius, surface and glyph size from <Button variant="icon"> in
+	   components/ui/button, which derives its box from var(--tap) — no literal here (XR-PH-01).
+	   `.icon-btn` in app.css was deleted in #913 S1b once all ten of its consumers became that variant;
+	   the rules below are this file's own layout only. */
 	.tools {
 		margin-top: var(--space-lg);
 		border-top: 1px solid var(--line);

@@ -281,8 +281,9 @@
 	.adding {
 		color: var(--warn);
 	}
-	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css -- this block and
-	   ProcessingCard's were byte-identical, each with its own copy of the same rationale. */
+	/* Sizing, radius, surface and glyph size come from <Button variant="icon"> in components/ui/button.
+	   `.icon-btn` in app.css was deleted in #913 S1b when its ten consumers became that variant; this
+	   block and ProcessingCard's were byte-identical, each with its own copy of the same rationale. */
 	/*
 	 * XR-PH-18 — another guest's row while the reorder mode is open: not a legal drop target, so it is
 	 * de-emphasised and made non-interactive (the `inert` attribute is set by the caller, which is what

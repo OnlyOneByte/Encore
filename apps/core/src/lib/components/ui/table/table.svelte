@@ -57,6 +57,23 @@
 	}
 	/* The label column reads left, and is the anchor the numbers belong to. */
 	:global([data-slot='table-head']:first-child),
+	/*
+	 * A cell that opts out of the numeric right-alignment by name.
+	 *
+	 * #913 deleted the page's `td.name { text-align: left }` after migrating to <Table.Cell>, and three of
+	 * main's four `class="name"` cells were `:first-child` and so already covered by the rule above. The
+	 * fourth — the ASR table's syncMode column, which is SECOND — silently became right-aligned: a word
+	 * in a column of numbers, ranged the wrong way.
+	 *
+	 * It has to live HERE rather than in the page. The class now sits on a COMPONENT, so a scoped `.name`
+	 * rule written in the page compiles to `.name.svelte-<page-hash>` and lands on no element; the page
+	 * cannot reach this cell at all any more.
+	 */
+	:global([data-slot='table-cell'].name) {
+		padding-left: 0;
+		text-align: left;
+	}
+
 	:global([data-slot='table-cell']:first-child) {
 		text-align: left;
 		padding-left: 0;
