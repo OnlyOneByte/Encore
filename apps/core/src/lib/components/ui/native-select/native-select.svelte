@@ -37,7 +37,7 @@
 </script>
 
 <div
-	class={cn('cn-native-select-wrapper group/native-select relative w-full has-[select:disabled]:opacity-50', className)}
+	class={cn('group/native-select relative w-full has-[select:disabled]:opacity-50', className)}
 	data-slot="native-select-wrapper"
 	data-size={size}
 >
