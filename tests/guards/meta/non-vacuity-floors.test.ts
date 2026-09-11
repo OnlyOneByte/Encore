@@ -61,7 +61,7 @@
  * count, so a sibling PR adding a new floor to a listed file is fine; removing one is not.
  */
 import { test, expect } from 'bun:test';
-import { repoRoot, at } from '@encore/test-support';
+import { repoRoot, at, filesUnder, relative } from '@encore/test-support';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -87,6 +87,31 @@ type Floor = {
  * and the two on the motion guard's new utility-class arm.
  */
 const FLOORS: Record<string, Floor[]> = {
+	'tests/guards/meta/no-self-anchored-paths.test.ts': [
+		{
+			subject: 'files.length',
+			min: 100,
+			count: 1,
+			guards:
+				'the walk that looks for self-anchored path derivations across the test tree. This guard exists because 61 relocated guards passed while their scan roots pointed at the wrong tree; if its own walk found nothing it would report a clean tree in exactly that way, reproducing the defect it was written to catch. It went unregistered from the moment it was written — direction C is what surfaced it.'
+		}
+	],
+	'tests/guards/meta/test-tree-deps.test.ts': [
+		{
+			subject: 'files.length',
+			min: 200,
+			count: 1,
+			guards:
+				'the walk over the whole test tree that collects every external import. An empty walk yields an empty undeclared list, which reads exactly like a tree whose dependencies are all declared. 287 files at the time of writing, so 200 leaves room for the suite to shrink without the floor becoming the thing that fails first.'
+		},
+		{
+			subject: 'Object.keys(declaredForTests).length',
+			min: 1,
+			count: 1,
+			guards:
+				'the version-lockstep comparison. It iterates the packages tests/package.json declares, so an emptied manifest would make it compare nothing and pass — while the test tree silently lost the declaration that makes drizzle-orm resolve at all.'
+		}
+	],
 	'tests/guards/design-system/ui-scoped-style-reach-913.test.ts': [
 		{
 			subject: 'files.length',
@@ -161,6 +186,13 @@ const FLOORS: Record<string, Floor[]> = {
 		}
 	],
 	'tests/guards/meta/non-vacuity-floors.test.ts': [
+		{
+			subject: 'filesWalked',
+			min: 200,
+			count: 1,
+			guards:
+				"direction C's own walk over the test tree. Direction C exists because A and B only look inside files already registered here, so a new guard's floors were invisible; if its walk returned nothing, that coverage would silently revert to the hole it was written to close."
+		},
 		{
 			subject: 'examined',
 			min: 4,
@@ -572,8 +604,13 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// guard's entire population was the two deleted drawer components), and +1 for the `scanned` floor
 	// on the drawer-deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
 	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
-	// prescribes rather than counted: raised absurdly high, read `Received: 40`.
-	expect(located).toBeGreaterThanOrEqual(51);
+	// prescribes rather than counted: raised absurdly high, read `Received: 55`.
+	//
+	// 51 -> 55 when the test tree was reorganised: four floors were REGISTERED, none invented. Two belong
+	// to the new test-tree-deps guard, one is direction C's own `filesWalked`, and one is a floor on
+	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
+	// surfaced it. Both literals were re-measured, not incremented.
+	expect(located).toBeGreaterThanOrEqual(55);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -621,6 +658,39 @@ test('every registered floor is tagged at its site, and every tag is registered 
 			}
 		}
 	}
+
+	/*
+	 * Direction C — every tagged floor ANYWHERE under tests/ belongs to a registered file.
+	 *
+	 * Directions A and B both iterate FLOORS, so they only ever look inside files this registry already
+	 * knows about. That leaves the obvious remaining hole: a BRAND-NEW guard carrying floors is invisible
+	 * to the whole mechanism, because nothing in the loop above ever opens a file that is not already a
+	 * key. Direction B's comment claims it closes "plant a floor in a source file, never register it" —
+	 * that is true only for a file already registered, which is the narrower half of the claim.
+	 *
+	 * Found by walking into it: `tests/guards/meta/test-tree-deps.test.ts` was added with two tagged
+	 * floors and the suite stayed green. A registry whose coverage depends on being told what to cover is
+	 * not a registry, so the tag scan now starts from the TREE.
+	 */
+	const knownFiles = new Set(Object.keys(FLOORS));
+	let filesWalked = 0;
+	for (const abs of filesUnder('tests', ['.test.ts'])) {
+		filesWalked += 1;
+		const rel = relative(abs);
+		if (knownFiles.has(rel)) continue; // A and B already cover it, tags included
+		const tags = taggedFloorSubjects(readFileSync(abs, 'utf8'));
+		for (const t of new Set(tags)) {
+			offenders.push(
+				`${rel}: \`// ${NVF_TAG} ${t}\` marks a floor in a file with NO entry in this registry at all. ` +
+					`A new guard's floors have to be recorded here, or they can be lowered or deleted without ` +
+					`anything noticing — which is the exact failure this registry exists to prevent.`
+			);
+		}
+	}
+	// Non-vacuity for direction C itself: the walk has to have covered the tree. A `filesUnder` that
+	// returned nothing would make the loop above trivially clean, which is this file's own recurring bug.
+	expect(filesWalked).toBeGreaterThan(200); // @nvf-floor filesWalked
+
 	expect(offenders).toEqual([]);
 	// This scan's OWN non-vacuity floor (re-triage step 4), a zero-slack literal on the tag
 	// count exactly like `located` above. Without it, an emptied FLOORS or a broken tag regex would make
@@ -631,7 +701,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(51);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(55);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {
