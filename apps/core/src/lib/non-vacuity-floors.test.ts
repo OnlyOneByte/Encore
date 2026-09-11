@@ -158,6 +158,15 @@ const FLOORS: Record<string, Floor[]> = {
 				'the app-side files whose class tokens are checked against real rules. This guard exists because an unresolved class renders nothing and looks correct in source — six instances shipped during #913, four of them past a fully green suite, found only by comparing screenshots. An empty walk would report zero offenders exactly like a clean tree, so the population is counted: 33 app-side .svelte files at the time of writing, excluding the vendored tree where every class legitimately resolves to a minted utility.'
 		}
 	],
+	'apps/core/src/lib/non-vacuity-floors.test.ts': [
+		{
+			subject: 'examined',
+			min: 4,
+			count: 1,
+			guards:
+				"the RETIRED entries actually read from disk. This arm used `existsSync(abs) && …`, so a keyed file that moved made it examine nothing, and with no floor the whole test degraded to a no-op reporting green — a vacuity hole inside the file that exists to close them. Its three siblings all red in that situation. Found while surveying for #775's test reorganisation, and fixed before any file moved, because this is the only loud detector for the worst failure mode that reorganisation can cause."
+		}
+	],
 	'apps/core/src/lib/tailwind-toolchain.test.ts': [
 		{
 			subject: 'mintSurfaces',
@@ -470,10 +479,19 @@ function assertedLiterals(src: string, subject: string): number[] {
  */
 const NVF_TAG = '@nvf-floor';
 
-/** Every `// @nvf-floor <subject>` tag in `src`, as the list of subject strings it marks. */
+/**
+ * Every `// @nvf-floor <subject>` tag in `src`, as the list of subject strings it marks.
+ *
+ * WHY THE LINE MUST ALSO CARRY AN ASSERTION. The tag's definition is that it marks a floor **at its
+ * site**, so a line bearing the tag but no `expect(` is not a site — it is prose *about* the tag. That
+ * distinction only became load-bearing when this file registered its own floor and the scanner promptly
+ * read the two lines of documentation above (which spell the tag out to explain it) as two untracked
+ * floors. Requiring the assertion on the same line makes the scanner agree with its own definition, and
+ * is strictly narrower than stripping comments — which cannot work here, because the tag lives in one.
+ */
 function taggedFloorSubjects(src: string): string[] {
-	const re = new RegExp(String.raw`//\s*${NVF_TAG}\s+(.+?)\s*$`, 'gm');
-	return [...src.matchAll(re)].map((m) => m[1]);
+	const re = new RegExp(String.raw`^(.*\bexpect\s*\(.*)//\s*${NVF_TAG}\s+(.+?)\s*$`, 'gm');
+	return [...src.matchAll(re)].map((m) => m[2]);
 }
 
 test('every recorded non-vacuity floor is still present, and no weaker than recorded', () => {
@@ -532,7 +550,7 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
 	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
 	// prescribes rather than counted: raised absurdly high, read `Received: 40`.
-	expect(located).toBeGreaterThanOrEqual(49);
+	expect(located).toBeGreaterThanOrEqual(50);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -590,11 +608,12 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(49);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(50);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {
 	const offenders: string[] = [];
+	let examined = 0;
 	for (const [rel, entries] of Object.entries(RETIRED)) {
 		for (const e of entries) {
 			// (1) a reason, not a shrug. XR-VER-06 wants the invariant, the sites that left scope, and what
@@ -609,8 +628,25 @@ test('a retired floor is retired on the record: substantive reason, and genuinel
 			if (FLOORS[rel]?.some((f) => f.subject === e.subject)) {
 				offenders.push(`${rel}: \`${e.subject}\` is in both FLOORS and RETIRED — one of the two is wrong`);
 			}
+			// (3) the retirement is REAL — the assertion is gone from the source, not merely reduced.
+			//
+			// WHY A MISSING FILE IS AN OFFENDER AND NOT A SKIP. This read `existsSync(abs) && …`, so a keyed
+			// file that had moved or been deleted made the check quietly examine nothing. With no floor behind
+			// it (see below) the whole test then degraded to a no-op that reported green — a vacuity hole in
+			// the one file whose job is closing vacuity holes. Its three sibling tests all fail loudly in that
+			// situation; this arm was simply missed. The consequence it was protecting against is specific: a
+			// retired floor could be resurrected in weakened form in any keyed file and nothing would say so.
 			const abs = join(REPO, rel);
-			if (existsSync(abs) && assertedLiterals(readFileSync(abs, 'utf8'), e.subject).length > 0) {
+			if (!existsSync(abs)) {
+				offenders.push(
+					`${rel}: recorded a RETIRED floor for a file that no longer exists. Either the file moved — ` +
+						`update this key in the same change that moved it — or it was deleted, in which case drop ` +
+						`the entry. This is NOT a skip: an unreadable key makes the retirement unverifiable.`
+				);
+				continue;
+			}
+			examined++;
+			if (assertedLiterals(readFileSync(abs, 'utf8'), e.subject).length > 0) {
 				offenders.push(
 					`${rel}: \`${e.subject}\` is recorded as retired but a floor on it is still in the source — ` +
 						`retire means the assertion is gone, not that its number was reduced`
@@ -619,6 +655,10 @@ test('a retired floor is retired on the record: substantive reason, and genuinel
 		}
 	}
 	expect(offenders).toEqual([]);
+	// non-vacuity: every entry above was actually read from disk. Without this, a RETIRED map whose keys had
+	// all moved would examine nothing and pass — which is precisely the shape XR-VER-06 exists to refuse.
+	// Measured, not guessed: 3 keyed files carrying 4 entries at the time of writing.
+	expect(examined).toBeGreaterThanOrEqual(4); // @nvf-floor examined
 });
 
 test('every guard with a planned premise change carries a ruling that still matches its guard', () => {
