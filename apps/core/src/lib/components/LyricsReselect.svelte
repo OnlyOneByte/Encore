@@ -203,8 +203,46 @@
 		gap: var(--space-xs);
 		margin-top: var(--space-xs);
 	}
+	/*
+	 * #640/#913: these two buttons had classes `chip` / `chip ghost` but NO `.chip` base rule — the
+	 * migration moved SongRow's `.chip` into ui/badge, and Badge renders a span, so a native button
+	 * carrying the chip class was left pointing at a class that no longer existed. With Preflight off and
+	 * no global button reset, "Use these lyrics" and "Cancel" rendered as native OS buttons (~21px, wrong
+	 * font) on a dark sheet. A base `.chip` rule restores a real styled control at the 44px --tap floor.
+	 *
+	 * They stay NATIVE buttons with a LOCAL rule rather than becoming the shared Button primitive,
+	 * deliberately: the `.chip` / `.ghost` class names are the handle lyrics-reselect-640.test.ts uses to
+	 * address them (`.reselect-acts .chip:not(.ghost)`), and app-class-resolution-913.test.ts requires
+	 * every app-side class to resolve to a rule that can REACH it — a scoped rule cannot reach a class
+	 * handed to a child component (ui-scoped-style-reach-913 enforces exactly that). Handing the chip
+	 * class to the Button primitive would orphan the class and red two guards at once. Keeping the
+	 * styling local keeps all three green while fixing the visible defect. Migrating these to the Button
+	 * primitive is a Phase-2 change that must land together with the guard edits re-pointing those
+	 * selectors.
+	 */
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-2xs);
+		min-height: var(--tap);
+		padding: var(--space-xs) var(--space-md);
+		background: var(--accent);
+		color: var(--on-accent);
+		border: 1px solid transparent;
+		border-radius: var(--radius-btn);
+		font: inherit;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.chip:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
 	.chip.ghost {
 		background: none;
-		border: 1px solid var(--line);
+		color: var(--ink);
+		border-color: var(--line);
+		font-weight: 400;
 	}
 </style>
