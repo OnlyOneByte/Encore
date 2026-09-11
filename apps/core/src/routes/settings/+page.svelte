@@ -1224,23 +1224,23 @@
 
 	/*
 	 * #913 S4: `.field`, `.field-swatch`, `.hint` and the `.dim` label state left this file for
-	 * ui/field. The vertical rhythm they carried moved with them, because the registry's label has no
-	 * margins and 27 stacked fields would otherwise collapse against each other.
+	 * ui/field. NOTE (corrected): the vertical rhythm they carried did NOT move with them. The
+	 * registry's `Field.Label` and `Field.Description` are marginless by design — the spacing lives in
+	 * the WRAPPER parts (`Field.Field`'s gap, `Field.Group`'s gap), and this page adopted the leaves
+	 * without the wrappers, so stacked fields collapse against each other. The `.panel`/`.pair` gaps
+	 * below are the interim fix at the panel level; adopting `Field.Field`/`Field.Group` is the real
+	 * one. The earlier version of this comment asserted the rhythm "moved with them", which was false.
 	 */
-	/* The duration is inert while the intro is off; the label recedes with its control. */
 	/* A trailing 1em swatch after flowing text can wrap onto its own line at 320px, reading as an orphan
 	   dot. A flex row keeps text and swatch together and lets them wrap as a unit if ever needed. */
 	/*
-	 * #913 S2: `select`, `.text` and `.name-input` left this rule — their appearance moved INTO
-	 * ui/input and ui/native-select, because Svelte's scoped CSS cannot reach an element inside a child
-	 * component and a call-site utility is minted by nothing under `source(none)`. The range stays
-	 * native until its Slider rebuild, so it keeps the rule.
-	 */
-	/*
-	 * #913 S3: the range sliders are <Slider> now. Their geometry — a 28px thumb on a 6px --track-bg
-	 * rail at var(--tap) — moved into ui/slider, and with it the two parallel ::-webkit-slider-* and
-	 * ::-moz-range-* rule sets a native range needed. Bits UI builds the control from real elements, so
-	 * one set of rules replaces both. Width comes from the component too.
+	 * #913 S2/S3: `select`, `.text`, `.name-input` and the range sliders all left this file — their
+	 * appearance moved into ui/input, ui/native-select and ui/slider, because Svelte's scoped CSS
+	 * cannot reach an element inside a child component and a call-site utility is minted by nothing
+	 * under `source(none)`. (The previous two comments here disagreed on whether the range was still
+	 * native; it is a <Slider> now, and the 28px-thumb / 6px --track-bg / var(--tap) geometry plus the
+	 * two parallel ::-webkit-slider-* and ::-moz-range-* rule sets a native range needed all live in
+	 * ui/slider, where Bits UI builds the control from real elements so one rule set replaces both.)
 	 */
 	/*
 	 * A live swatch beside the label, so the choice is visible without walking to the TV. It carries no

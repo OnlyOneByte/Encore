@@ -218,10 +218,12 @@
 
 <style>
 	/*
-	 * #913 S8: `.seq`, `.meta` and `.actions` moved to ui/item as Encore's shared ROW GRAMMAR — `.seq`
-	 * and `.actions` were verbatim duplicates of ProcessingCard's. `.t` and `.who` STAY, because their
-	 * descendants do: the subtitle line holds a singer identity dot whose rule two contrast guards read
-	 * directly, and a descendant rule cannot follow its ancestor into a component with no `child` snippet.
+	 * #913 S8: `.meta` and `.actions` moved to ui/item as Encore's shared ROW GRAMMAR — `.actions` was
+	 * a verbatim duplicate of ProcessingCard's. `.seq`, `.t` and `.who` STAY here, because their
+	 * surfaces or descendants do: `.seq` paints its own colour+background (see its own note below —
+	 * moving it fired contrast.test.ts), and the subtitle line holds a singer identity dot whose rule
+	 * two contrast guards read directly, and a descendant rule cannot follow its ancestor into a
+	 * component with no `child` snippet.
 	 */
 	/* Geometry comes from .list-row in app.css, shared with the search row and the processing card.
 	   The entry animation is app.css's .pop-in helper (added to the root class list above), which
