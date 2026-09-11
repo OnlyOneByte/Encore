@@ -20,11 +20,12 @@ vendoring, and copying with attribution are all open to us — no licence blocke
 | [`karaoke-gen`](https://github.com/nomadkaraoke/karaoke-gen) | **Ideas only, no dependency** | Mostly scope we do not want (4K render, CDG packaging, YouTube/Dropbox upload). Its **human review stage** is the keeper. → **Deferred** |
 
 **Adopted ALONGSIDE `bs-roformer-infer` — both engines, not one over the other (issue #483, owner
-ruling Q1(b)).** The ruling is settled. The dependency is **adopted but NOT YET LANDED**: on this
-commit there is no `python-audio-separator` pin in `apps/worker/requirements.txt` and no
-audio-separator engine in `apps/worker/src/separation/engines.py`, and #483 is still open as the unit
-of work that lands it. When it lands it JOINS `bs-roformer-infer` rather than replacing it, selected
-per job (`params.engine`) through `engine_for` — the seam both engines will resolve behind.
+ruling Q1(b)).** The ruling is settled, and the dependency has **LANDED**: `python-audio-separator` is
+pinned in `apps/worker/requirements.txt` and the `audiosep` engine is wired in
+`apps/worker/src/separation/engines.py` (`engine_for` resolves `demucs`, `roformer` and now
+`audiosep`). It JOINS `bs-roformer-infer` rather than replacing it, selected per job
+(`params.engine`) through `engine_for` — the seam both engines resolve behind. The two coexist behind
+one seam; when the mel-band engine is added, it does not replace the roformer one.
 `bs-roformer-infer` is retained for its load/infer/release session lifecycle (load the ~700 MB
 checkpoint ONCE per long-lived worker, not per cook) and its repointable sha256-verified checkpoint
 registry. **This is ratified: a pass proposing to drop one of the two engines is re-opening a

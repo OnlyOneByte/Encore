@@ -13,7 +13,7 @@
 // can never trigger an arbitrary multi-hundred-MB checkpoint download onto the shared box. Widening
 // to arbitrary Hugging Face ids is a deliberate future toggle, not the default.
 
-export type SeparatorEngineId = 'demucs' | 'roformer' | 'ensemble';
+export type SeparatorEngineId = 'demucs' | 'roformer' | 'audiosep' | 'ensemble';
 
 /**
  * What a checkpoint COSTS to run, measured rather than guessed.
@@ -161,6 +161,34 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				 */
 				rank: 35,
 				cost: { rtFactor: 8.28, overlap: 4, cpuPrecision: 'bf16', provenance: 'measured' }
+			}
+		]
+	},
+	{
+		id: 'audiosep',
+		label: 'Mel-Band RoFormer',
+		capability: 'stems:audiosep', // a distinct capability — only an audio-separator-equipped worker takes it
+		liveSelectable: true, // owner ruling #483 Option A: live-selectable, medium speed on CPU
+		speed: 'medium',
+		models: [
+			{
+				id: 'instrumental_becruily',
+				label: 'Mel-Band Instrumental (becruily)',
+				note: 'RoFormer-quality instrumental, ~10× faster than BS-RoFormer on CPU.',
+				/**
+				 * 5.14s per 8s window at fp32, × overlap 2 ⇒ rt 1.28 (docs/benchmarks/SUMMARY.md §4).
+				 * fp32 rather than bf16 because bf16 measured a LOSS on this 8s-window mel-band model
+				 * (7.09s/window vs 5.14) — the sign of the bf16 win reverses per checkpoint, which is why
+				 * cpuPrecision is a per-model measurement, not a global switch. `overlap` is this model's
+				 * own default of 2, an integer window count (MDXC/RoFormer semantics).
+				 *
+				 * Two caveats the owner accepted knowingly (#483 Option A): NO prior ear-approval (only
+				 * bs-roformer-1297 has a published SDR and an owner listening test), and the model weights
+				 * may carry non-commercial / research licence terms on their Hugging Face card (the MIT
+				 * clearance in DECISIONS.md covers the surveyed PACKAGES, not the checkpoint weights).
+				 */
+				rank: 30,
+				cost: { rtFactor: 1.28, overlap: 2, cpuPrecision: 'fp32', provenance: 'measured' }
 			}
 		]
 	},

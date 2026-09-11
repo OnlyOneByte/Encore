@@ -74,6 +74,7 @@ class Engine(_StrEnum):
 
     DEMUCS = "demucs"
     ROFORMER = "roformer"
+    AUDIOSEP = "audiosep"
     ENSEMBLE = "ensemble"
 
 
