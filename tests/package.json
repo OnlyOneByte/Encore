@@ -1,0 +1,29 @@
+{
+	"name": "@encore/tests",
+	"private": true,
+	"type": "module",
+	"//": [
+		"The test tree is a workspace member so that it can DECLARE what it imports (#775 phase 3).",
+		"",
+		"WHY THIS FILE EXISTS. Node and bun resolve a bare package specifier by walking UP from the importing",
+		"file looking for node_modules. While a test sat at apps/core/src/server/media/, that walk reached",
+		"apps/core/node_modules and found drizzle-orm. From tests/unit/core/server/media/ it never does, and the",
+		"move turned two passing tests into `Cannot find package 'drizzle-orm'`.",
+		"",
+		"That is a real consequence of a top-level test tree, not an accident to paper over: a test that imports",
+		"a package now has to say so, in the package that contains it. Declaring it here keeps the dependency",
+		"visible at the point of use, and means the next test to reach for something new fails with an install",
+		"error rather than a mysterious resolution failure.",
+		"",
+		"WHY NOT ADD IT TO THE ROOT MANIFEST. The root is the workspace container; giving it apps/core's runtime",
+		"dependencies would make every package able to import them by accident, which is the coupling the",
+		"workspace split exists to prevent. Scoping it here keeps the reach narrow.",
+		"",
+		"The version tracks apps/core's declaration deliberately. A test asserting behaviour against a DIFFERENT",
+		"drizzle than the app runs is worse than no test, so if apps/core moves, this moves with it —",
+		"tests/guards/meta/test-tree-deps.test.ts holds the two in lockstep."
+	],
+	"devDependencies": {
+		"drizzle-orm": "^0.45.2"
+	}
+}

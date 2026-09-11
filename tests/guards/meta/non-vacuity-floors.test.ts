@@ -128,7 +128,7 @@ const FLOORS: Record<string, Floor[]> = {
 				'the deduped app-source files the ink ban reads, outside the vendored tree. The list previously composed svelteFiles(LIB) with styleFiles(LIB), which already returns .svelte — 24 files were counted twice and the floor read 57 where the truth is 33, so it would still have passed with a third of the tree unreachable. Now deduped, with app.css deliberately in scope as the likeliest home for an `@apply text-primary`.'
 		}
 	],
-	'apps/core/src/lib/components/tabs-keyboard-913.test.ts': [
+	'tests/unit/core/lib/components/tabs-keyboard-913.test.ts': [
 		{
 			subject: 'triggers.length',
 			min: 3,
@@ -169,7 +169,7 @@ const FLOORS: Record<string, Floor[]> = {
 				'the RETIRED entries actually read from disk. This arm used `existsSync(abs) && …`, so a keyed file that moved made it examine nothing, and with no floor the whole test degraded to a no-op reporting green — a vacuity hole inside the file that exists to close them. Its three siblings all red in that situation. Found while surveying for the unified test-architecture reorganisation, and fixed before any file moved, because this is the only loud detector for the worst failure mode that reorganisation can cause.'
 		}
 	],
-	'apps/core/src/lib/mount-rung.test.ts': [
+	'tests/unit/core/lib/mount-rung.test.ts': [
 		{
 			subject: 'scanned.length',
 			min: 200,
@@ -399,7 +399,7 @@ const FLOORS: Record<string, Floor[]> = {
  * stays in the source.
  */
 const RETIRED: Record<string, { subject: string; reason: string }[]> = {
-	'apps/core/src/lib/ui-foreign-theme-913.test.ts': [
+	'tests/unit/core/lib/ui-foreign-theme-913.test.ts': [
 		{
 			subject: 'files.length',
 			reason:

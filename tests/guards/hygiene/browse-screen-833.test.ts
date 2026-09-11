@@ -98,13 +98,20 @@ test('mechanisms 2+3 — the phone asks the library endpoint for the whole libra
 
 test('— the retired tag-filter wiring guard is deleted, and its server sibling is not', () => {
 	// A retired guard left in the suite is indistinguishable from one that is working (XR-VER-07).
-	expect(existsSync(at('apps/core/src/routes/library-tag-filter-wiring.test.ts'))).toBe(false);
-	// Its `library-tags-wiring` sibling pins PER-ROW tag chips, which this change does not touch, and
-	// the server halves of the tag filter still hold. Deleting any of the three under cover of this ruling would be wrong.
-	expect(existsSync(at('apps/core/src/routes/library-tags-wiring.test.ts'))).toBe(true);
+	//
+	// EVERY PATH HERE IS NOW IN THE tests/ TREE, because the reorganisation moved all of them. That matters
+	// for the NEGATIVE assertion in particular: asserting a file is absent from `apps/core/src/routes/` is
+	// trivially true of every test file now, so it would have become a check that passes for the wrong
+	// reason. A deleted guard and a moved guard have to stay distinguishable, which means naming the place
+	// it would live if it existed.
+	expect(existsSync(at('tests/guards/wiring/library-tag-filter-wiring-retired.test.ts'))).toBe(false);
+	// Its `library-tags-wiring` sibling pins PER-ROW tag chips, which this change does not touch, and the
+	// server halves of the tag filter still hold. Deleting any of the three under cover of this ruling
+	// would be wrong. Two files carry that name after the split — the guard half and the unit half — and
+	// both must survive.
+	expect(existsSync(at('tests/guards/wiring/library-tags-wiring.test.ts'))).toBe(true);
+	expect(existsSync(at('tests/unit/core/routes/library-tags-wiring.test.ts'))).toBe(true);
 	expect(existsSync(at('tests/guards/wiring/library-tag-filter-wiring.test.ts'))).toBe(true);
-	// The server-half guard moved to the tests/ tree in the same reorganisation; the subject is
-	// the same file, so only its address changes here.
 	expect(existsSync(at('tests/guards/subsystem-media/library-tag-filter.test.ts'))).toBe(true);
 });
 
