@@ -33,7 +33,7 @@
  *
  * EXIT CODES
  *   0 all passed · 1 a real failure · 2 the environment could not host the test (no server,
- *   no Chromium, no cooked song).
+ *   no Chromium, no processed song).
  */
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
@@ -101,9 +101,9 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 	bail(`no Encore server on ${base}. See apps/core/e2e/HARNESS.md for boot instructions.`);
 }
 const searchInit = await fetch(`${base}/api/search?q=caroline`).then((r) => r.json());
-const cookedIds = new Set((searchInit.ready ?? []).map((/** @type {ReadyRow} */ r) => r.id));
-if (cookedIds.size === 0) {
-	bail('no READY song in the library — nothing to play.\n' + '  Seed + cook one first (HARNESS.md §Cook a song).');
+const processedIds = new Set((searchInit.ready ?? []).map((/** @type {ReadyRow} */ r) => r.id));
+if (processedIds.size === 0) {
+	bail('no READY song in the library — nothing to play.\n' + '  Seed + process one first (HARNESS.md §Process a song).');
 }
 // The first ready row is what the TV will pick up when a singer queues it.
 const firstReady = (searchInit.ready ?? [])[0];
@@ -277,13 +277,13 @@ try {
 		await returnHomeFromBrowse(page);
 	}
 
-	// Queue a cooked song from a phone. Uses the real UI: search, then click .add on a ready row.
+	// Queue a processed song from a phone. Uses the real UI: search, then click .add on a ready row.
 	/** @param {Page} page @param {string} q */
 	async function queueSong(page, q) {
 		await openBrowseFromHome(page); // #832: search lives behind the browse push
 		await page.fill(SEL.search, q);
 		await page.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
-		// Prefer .add (already cooked) over .sing (queue+cook) so we do not depend on the fake worker.
+		// Prefer .add (already processed) over .sing (queue+process) so we do not depend on the fake worker.
 		const hasAdd = await page.count(SEL.addTurn);
 		await page.click(hasAdd > 0 ? SEL.addTurn : SEL.sing);
 		// The rotation is on home (#832). A PLAYING entry is not a `.qrow` — `queued` filters it out and
@@ -297,7 +297,7 @@ try {
 	}
 
 	await queueSong(phone1, 'caroline');
-	// Additional cooked songs give us: Song 1 (caroline) — the primary transport target; Song 2
+	// Additional processed songs give us: Song 1 (caroline) — the primary transport target; Song 2
 	// (bohemian) — the skip-to-next target; Song 3 (believin) — a headroom song so the OOB seek test
 	// can consume ONE song without leaving the queue empty for the last-song skip test.
 	/** @type {ReadyRow[]} */
@@ -566,7 +566,7 @@ try {
 	// too. RECORDED AT THE END so it does not consume queued songs before the skip tests need them.
 
 	// ── T1 · SKIP (→ next song) ──────────────────────────────────────────────
-	// If we managed to cook a second song, skip must advance to it. Otherwise this becomes the
+	// If we managed to process a second song, skip must advance to it. Otherwise this becomes the
 	// last-song test (T6) directly.
 	if (secondReadyId) {
 		const preSkip = await readMasterOrRetry(tv);
@@ -646,12 +646,12 @@ try {
 			`isPlaying=${srvAfterLastSkip.state.isPlaying}`
 		);
 	} else {
-		// Only ONE song was COOKED (secondReadyId is null), so there is no other cooked song to skip
-		// TO. There may still be more than one QUEUED turn on that one cooked song, though — a second
+		// Only ONE song was PROCESSED (secondReadyId is null), so there is no other processed song to skip
+		// TO. There may still be more than one QUEUED turn on that one processed song, though — a second
 		// singer taking a turn on it, or an entry left behind by an interrupted earlier run. A single
 		// skip would then advance INTO the waiting turn (correct rotation, player.ts advance()), so
 		// currentEntryId would stay set and the "skip on the sole last song → no-current" assertion
-		// would fire a phantom CRITICAL. Drain EVERY remaining turn — same loop as the multi-cooked
+		// would fire a phantom CRITICAL. Drain EVERY remaining turn — same loop as the multi-processed
 		// arm — so "the last song" is genuinely the last song regardless of how many turns are
 		// queued, and the T5 precondition below (queue empty, nothing playing) is actually true.
 		for (let i = 0; i < 8; i++) {
@@ -667,7 +667,7 @@ try {
 			srvAfterSkip.state.currentEntryId === null,
 			`currentEntryId=${srvAfterSkip.state.currentEntryId}, isPlaying=${srvAfterSkip.state.isPlaying}`
 		);
-		record('INFO', 'T1e/T1f/T2-oob skipped: only ONE cooked song in the fixture — no next song to skip TO', true);
+		record('INFO', 'T1e/T1f/T2-oob skipped: only ONE processed song in the fixture — no next song to skip TO', true);
 	}
 
 	// ── T5 · disabled controls on an empty room ──────────────────────────────

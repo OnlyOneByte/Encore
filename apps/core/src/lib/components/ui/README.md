@@ -93,7 +93,7 @@ tree-wide, because a keyframes utility cannot honour Reduce Motion. Nine of #913
 `transition-all`; all of it was stripped.
 
 Live motion is allowed when it is declared CSS on a composited property. `progress.svelte` transitions
-`transform` only — never `width` — which is why both cook bars drove a `scaleX`/`translateX` rather
+`transform` only — never `width` — which is why both process bars drove a `scaleX`/`translateX` rather
 than resizing. `skeleton` and `spinner` declare their animation **inside**
 `@media (prefers-reduced-motion: no-preference)`, so motion is opt-in and there is no reset that can
 lose the cascade.

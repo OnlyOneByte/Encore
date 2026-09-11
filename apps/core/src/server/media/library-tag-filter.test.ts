@@ -21,7 +21,7 @@ import { instrumentalKey } from '$server/media/paths';
 import type { Media } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
-const cooked = (id: string): Media => ({
+const processed = (id: string): Media => ({
 	id,
 	source: 'youtube',
 	sourceRef: 'vid-' + id,
@@ -32,14 +32,14 @@ const cooked = (id: string): Media => ({
 	instrumentalRef: instrumentalKey(id),
 	songProfile: { ...EMPTY_SONG_PROFILE }
 });
-// a song still cooking — stems not ready. Must never appear in a tag filter or count toward a facet.
-const cooking = (id: string): Media => ({ ...cooked(id), stemStatus: 'queued', instrumentalRef: undefined });
+// a song still processing — stems not ready. Must never appear in a tag filter or count toward a facet.
+const processing = (id: string): Media => ({ ...processed(id), stemStatus: 'queued', instrumentalRef: undefined });
 
 test('byTag returns exactly the ready songs carrying that tag-kind value (#690)', () => {
 	const repo = new MediaRepository(migratedDb());
-	repo.upsert(cooked('a'));
-	repo.upsert(cooked('b'));
-	repo.upsert(cooked('c'));
+	repo.upsert(processed('a'));
+	repo.upsert(processed('b'));
+	repo.upsert(processed('c'));
 	repo.setTags('a', 'tag', ['Duet', '80s']);
 	repo.setTags('b', 'tag', ['duet']);
 	repo.setTags('c', 'tag', ['acoustic']);
@@ -57,17 +57,17 @@ test('byTag returns exactly the ready songs carrying that tag-kind value (#690)'
 
 test('byTag excludes non-ready songs even when they carry the tag (#690)', () => {
 	const repo = new MediaRepository(migratedDb());
-	repo.upsert(cooked('ready'));
-	repo.upsert(cooking('cooking'));
+	repo.upsert(processed('ready'));
+	repo.upsert(processing('processing'));
 	repo.setTags('ready', 'tag', ['duet']);
-	repo.setTags('cooking', 'tag', ['duet']);
-	// only the ready song is browsable — a cooking song you cannot sing must not show under a tag.
+	repo.setTags('processing', 'tag', ['duet']);
+	// only the ready song is browsable — a processing song you cannot sing must not show under a tag.
 	expect(repo.byTag('duet').map((m) => m.id)).toEqual(['ready']);
 });
 
 test('the tag filter reads the tag KIND, not genre — a genre value must not surface (#690)', () => {
 	const repo = new MediaRepository(migratedDb());
-	repo.upsert(cooked('g'));
+	repo.upsert(processed('g'));
 	repo.setTags('g', 'genre', ['rock']); // a GENRE, not a tag
 	// byTag/tagFacets are tag-kind only; a genre value is invisible to them (the #121 fence keeps
 	// genre browse dead, and #690 does not reintroduce it).
@@ -77,15 +77,15 @@ test('the tag filter reads the tag KIND, not genre — a genre value must not su
 
 test('tagFacets counts ready songs per tag, most-first (#690)', () => {
 	const repo = new MediaRepository(migratedDb());
-	repo.upsert(cooked('a'));
-	repo.upsert(cooked('b'));
-	repo.upsert(cooked('c'));
-	repo.upsert(cooking('d')); // cooking — its tag must not count
+	repo.upsert(processed('a'));
+	repo.upsert(processed('b'));
+	repo.upsert(processed('c'));
+	repo.upsert(processing('d')); // processing — its tag must not count
 	repo.setTags('a', 'tag', ['duet', 'acoustic']);
 	repo.setTags('b', 'tag', ['duet']);
 	repo.setTags('c', 'tag', ['duet']);
 	repo.setTags('d', 'tag', ['acoustic']);
-	// duet: a+b+c = 3 (most, first). acoustic: a only = 1 (d is cooking, excluded).
+	// duet: a+b+c = 3 (most, first). acoustic: a only = 1 (d is processing, excluded).
 	expect(repo.tagFacets()).toEqual([
 		{ tag: 'duet', count: 3 },
 		{ tag: 'acoustic', count: 1 }
@@ -137,7 +137,7 @@ function countingDb(): { db: ReturnType<typeof migratedDb>; reads: number[]; res
 
 /** 30 finished songs, exactly one of them tagged — the shape the issue measured at 900. */
 function libraryOf30(repo: MediaRepository): void {
-	for (let i = 0; i < 30; i++) repo.upsert(cooked('s' + String(i).padStart(2, '0')));
+	for (let i = 0; i < 30; i++) repo.upsert(processed('s' + String(i).padStart(2, '0')));
 	repo.setTags('s07', 'tag', ['ballad']);
 }
 
@@ -192,12 +192,12 @@ test('the push-down is pure: identical answers across every readiness state (#79
 	// Parity, hard-coded rather than derived: these expectations hold under BOTH shapes, which is
 	// what makes the change a push-down and not a behaviour change. Six seeded states, four queries.
 	const repo = new MediaRepository(migratedDb());
-	repo.upsert(cooked('s1-finished'));
-	repo.upsert({ ...cooked('s2-midalign'), lyricsStatus: 'queued' }); // stems done, lyrics gate open
-	repo.upsert(cooking('s3-unacquired')); // nothing cooked at all
-	repo.upsert({ ...cooked('s4-noartifact'), instrumentalRef: undefined }); // status without artifact
-	repo.upsert({ ...cooked('s5-lyricsnone'), lyricsStatus: 'none' }); // alignment never ran
-	repo.upsert(cooked('s6-twotags'));
+	repo.upsert(processed('s1-finished'));
+	repo.upsert({ ...processed('s2-midalign'), lyricsStatus: 'queued' }); // stems done, lyrics gate open
+	repo.upsert(processing('s3-unacquired')); // nothing processed at all
+	repo.upsert({ ...processed('s4-noartifact'), instrumentalRef: undefined }); // status without artifact
+	repo.upsert({ ...processed('s5-lyricsnone'), lyricsStatus: 'none' }); // alignment never ran
+	repo.upsert(processed('s6-twotags'));
 	for (const id of ['s1-finished', 's2-midalign', 's3-unacquired', 's4-noartifact', 's5-lyricsnone'])
 		repo.setTags(id, 'tag', ['ballad']);
 	repo.setTags('s6-twotags', 'tag', ['ballad', 'duet']);

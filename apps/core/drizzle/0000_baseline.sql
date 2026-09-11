@@ -26,7 +26,7 @@ CREATE TABLE `job_attempts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`job_id` text NOT NULL,
 	`media_id` text NOT NULL,
-	`cook_id` text NOT NULL,
+	`processing_id` text NOT NULL,
 	`job_type` text NOT NULL,
 	`attempt` integer DEFAULT 1 NOT NULL,
 	`worker_id` text,
@@ -47,13 +47,13 @@ CREATE TABLE `job_attempts` (
 );
 --> statement-breakpoint
 CREATE INDEX `job_attempts_media_idx` ON `job_attempts` (`media_id`,`enqueued_at`);--> statement-breakpoint
-CREATE INDEX `job_attempts_cook_idx` ON `job_attempts` (`cook_id`);--> statement-breakpoint
+CREATE INDEX `job_attempts_processing_idx` ON `job_attempts` (`processing_id`);--> statement-breakpoint
 CREATE INDEX `job_attempts_job_idx` ON `job_attempts` (`job_id`);--> statement-breakpoint
 CREATE INDEX `job_attempts_type_finished_idx` ON `job_attempts` (`job_type`,`finished_at`);--> statement-breakpoint
 CREATE TABLE `jobs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`media_id` text NOT NULL,
-	`cook_id` text DEFAULT '' NOT NULL,
+	`processing_id` text DEFAULT '' NOT NULL,
 	`singer_id` text,
 	`job_type` text NOT NULL,
 	`status` text DEFAULT 'queued' NOT NULL,

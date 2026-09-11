@@ -27,12 +27,12 @@
 		lobbyRoster,
 		isUnreachableJoinOrigin,
 		lyricsAdvancing,
-		cookStep,
-		COOK_STEPS
+		processStep,
+		PROCESS_STEPS
 	} from '$lib/tv/screen';
 	import { isAutoTranscribed, provenanceLabel } from '$lib/tv/lyrics';
-	import { cookStageLabel } from '$lib/cook-phrasing';
-	import { mergeCatalog, snapshot, cookIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
+	import { processStageLabel } from '$lib/process-phrasing';
+	import { mergeCatalog, snapshot, processIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
 	import { makePhraseBag, reducedMotionPhrase, seedFromString, ATTRACT_PHRASES } from '$lib/tv/phrases';
 
 	let { data } = $props();
@@ -122,7 +122,7 @@
 	let keyShift = $state(0);
 	// THE SNAPSHOT SEAM (#396). The slots hold immutable `PlaybackSnapshot`s, not live catalog records:
 	// a `Media` is not assignable here, so the only way a song reaches the player is through
-	// `snapshot()` in `syncSlots()` — i.e. on an explicit playback transition. A cook event cannot
+	// `snapshot()` in `syncSlots()` — i.e. on an explicit playback transition. A process event cannot
 	// reach a playing song even if it churns the catalog, because there is no longer a path from the
 	// catalog to a mounted slot that does not go through a deliberate re-assignment.
 	let slotMedia = $state<{ A: PlaybackSnapshot | null; B: PlaybackSnapshot | null }>({
@@ -138,12 +138,12 @@
 	// ── loudness normalization (#462, PR3) ──────────────────────────────────────────────────────────
 	// The decision happens HERE, at playback, not in the worker: the master pulldown for a song depends
 	// on the LIVE library median, which is a property of the room's whole catalog at play time, not of
-	// the song's cook. The route owns both facts — the full `mediaCatalog` and the room's setting — so
+	// the song's process. The route owns both facts — the full `mediaCatalog` and the room's setting — so
 	// it resolves the gain and hands each slot a plain `masterLevel`. TvPlayer stays a pure applier.
 	//
 	// Every measured `loudnessLufs` in the library. `null`/absent levels are simply not in the list, so
 	// the count is the population the floor (>=8) is checked against. Re-derives whenever the catalog
-	// changes (a new cook lands a new level), so the median tracks the library rather than a stale seed.
+	// changes (a new process lands a new level), so the median tracks the library rather than a stale seed.
 	const libraryLoudnessLevels = $derived(
 		[...mediaCatalog.values()]
 			.map((m) => m.songProfile?.loudnessLufs ?? null)
@@ -176,7 +176,7 @@
 	 * why #396 needed a boundary rather than a fifth consumer-side guard. Two rules hold here:
 	 *
 	 *   • `mergeCatalog` is the ONLY thing that writes `mediaCatalog`, and it takes a full server list,
-	 *     so this route cannot express a partial local edit to a media record. The cook path used to
+	 *     so this route cannot express a partial local edit to a media record. The process path used to
 	 *     make exactly such an edit; that is what reached the playing song.
 	 *   • the player is handed `snapshot(...)`, never `mediaOf(...)` directly.
 	 */
@@ -225,8 +225,8 @@
 		// purity is load-bearing) or guarding inside `LyricsOverlay`. See issue #868.
 		positionSec = 0;
 		durationSec = 0;
-		// held-slot: if the server handed us a current whose media has no instrumental yet (a cooking
-		// make-karaoke song), show WAITING rather than a black player. Server normally skips these via
+		// held-slot: if the server handed us a current whose media has no instrumental yet (a processing
+		// process song), show WAITING rather than a black player. Server normally skips these via
 		// nextPlayable, so this is a belt-and-suspenders guard.
 		const m = mediaOf(cur);
 		if (cur && m && !isPlayable(m)) {
@@ -360,13 +360,13 @@
 			keyShift = e.state.keyShift;
 		}
 		/*
-		 * COOK LIFECYCLE — and note what is NOT here any more (#396).
+		 * PROCESS LIFECYCLE — and note what is NOT here any more (#396).
 		 *
 		 * This handler used to write the catalog: `new Map(mediaCatalog).set(id, {...m, stemStatus})`,
 		 * on EVERY progress tick, minting a fresh Media identity and inventing a `stemStatus` the
 		 * server never sent (anything not `ready`/`failed` was written as `queued`, which made the
 		 * PLAYING song locally unplayable for a moment). That write is the coupling this issue is
-		 * about: it is how a cook for one song reached the playhead of another.
+		 * about: it is how a process for one song reached the playhead of another.
 		 *
 		 * It is gone, and nothing replaced it, because nothing needed it:
 		 *
@@ -375,20 +375,20 @@
 		 *     `waiting` on an explicit playback event. The old comment here claimed these local
 		 *     catalog writes were what made the TV "leave WAITING promptly" — that was never true;
 		 *     the only exit this handler ever owned is the terminal-failure one below.
-		 *   • cook PROGRESS has no consumer on the TV. The TV renders "Making the karaoke", not a
+		 *   • process PROGRESS has no consumer on the TV. The TV renders "Making the karaoke", not a
 		 *     percentage, so a tick had nothing to update and churned the render tree for free.
 		 *
 		 * What remains is a pure lifecycle decision, and no state of its own.
 		 */
 		if (e.type === 'media:status') {
-			// A cook that FAILED, or a job NO connected worker can ever run (`unservable`), will never
+			// A process that FAILED, or a job NO connected worker can ever run (`unservable`), will never
 			// become playable — and enterWaiting() sets no timer, so if this is the entry the room is
 			// holding on, the party stares at "Making the karaoke" forever. Leave WAITING the same way
 			// the dead-media path does: say so on screen via the error treatment, tell the server the
 			// entry ended so it advances authoritatively, and drop out of the waiting hold.
 			// Defensive: this fires purely on the wire signal and does not assume the server TTL fix
 			// has landed.
-			const stuck = cookIsTerminal(e);
+			const stuck = processIsTerminal(e);
 			if (stuck && tvState === 'waiting' && current && current.mediaId === e.mediaId) {
 				const who = singerName(current.singerId);
 				skipNotice = `Couldn't make the karaoke for ${who}'s song — skipping`;
@@ -512,7 +512,7 @@
 	 * it.
 	 *
 	 * isPlayable (not readyToSing) on purpose: this asks "could the TV load a file for it", which is the
-	 * same question the player asks, so the lobby cannot claim something is cooking that the player
+	 * same question the player asks, so the lobby cannot claim something is processing that the player
 	 * would happily start.
 	 */
 	const pendingCount = $derived(
@@ -535,7 +535,7 @@
 	 * as long as the TV is showing a song, and releases it the moment the room goes idle.
 	 *
 	 * Gated on `!isAttract` — the SAME flag the player slots and the stage background use — not on a
-	 * literal `screen === 'playing'`: a song that is cooking (`waiting`) or between tracks
+	 * literal `screen === 'playing'`: a song that is processing (`waiting`) or between tracks
 	 * (`interstitial`) is still on stage and must keep the screen lit, exactly the instrumental-break
 	 * case the issue names. `attract`/`lobby` (nobody singing, or nothing queued) release it.
 	 *
@@ -677,7 +677,7 @@
 	 * Gated on `!isAttract` — the SAME flag that gates the player slots — rather than on
 	 * `screen === 'playing'`. That is deliberate: a literal playing check would drop the background
 	 * during the interstitial, putting a black flash between every song, and it would also drop it on
-	 * `waiting` (a song IS on the stage, it is still cooking). Reusing the flag also means the two
+	 * `waiting` (a song IS on the stage, it is still processing). Reusing the flag also means the two
 	 * conditions cannot drift apart later.
 	 *
 	 * The attract and lobby screens keep painting their own glow at z-index 5 and are untouched by this
@@ -786,7 +786,7 @@
 	 * mid-transition, so two full-screen panels could paint over each other. Deriving a single value and
 	 * gating every block on it makes exactly one mountable, and the precedence states which wins:
 	 *   error   — a skip notice is the most urgent thing to say, so it outranks everything.
-	 *   waiting — the player is actively holding for a cook; a real, named in-progress state.
+	 *   waiting — the player is actively holding for a process; a real, named in-progress state.
 	 *   next    — the song-intro card (opener or gapless-swap transition).
 	 *   loading — the FALLBACK for the missed-preload path (P1 black stage). When the gapless swap
 	 *             misses its window, `onEnded` sets `loading` with `current` still set, so `screen`
@@ -1077,7 +1077,7 @@
 						>{'\u00a0· '}{nowPlayingDisplay.artist}</span
 					>{/if}</span
 			>
-			<!-- The sounding key + how far it is transposed, when the cook found a trustworthy one. -->
+			<!-- The sounding key + how far it is transposed, when the process found a trustworthy one. -->
 			{#if keyLine}
 				<span class="ls-key">{keyLine}</span>
 			{/if}
@@ -1160,28 +1160,28 @@
 			{/if}
 		</div>
 	{:else if transient === 'waiting'}
-		<!-- Still cooking (issue #826, T1b) — warn family. A wait, not a failure: the song title is the
+		<!-- Still processing (issue #826, T1b) — warn family. A wait, not a failure: the song title is the
 		     hero and a bounded 3-step progress names the current step, so the wait reads as finite. The
-		     words come from cook-phrasing (the ONE guest-facing cook vocabulary, shared with the phone).
-		     THE TV KNOWS ONLY A COARSE "cooking" STATE: #396 deliberately stripped per-media cook tracking
-		     from the TV (a cook for one song was reaching another's playhead), so there is no per-media
-		     MediaStatus to read here. cookStep() is a pure, total MediaStatus->step mapping (guarded in
+		     words come from process-phrasing (the ONE guest-facing process vocabulary, shared with the phone).
+		     THE TV KNOWS ONLY A COARSE "processing" STATE: #396 deliberately stripped per-media process tracking
+		     from the TV (a process for one song was reaching another's playhead), so there is no per-media
+		     MediaStatus to read here. processStep() is a pure, total MediaStatus->step mapping (guarded in
 		     screen.test.ts and shared in shape with the phone, XR-TV-15); the TV feeds it the representative
-		     mid-cook step 'separating' (the mockup's bolded "Removing vocals") rather than inventing the
+		     mid-process step 'separating' (the mockup's bolded "Removing vocals") rather than inventing the
 		     per-media tracking the TV was purpose-built not to hold. -->
-		{@const cookMedia = mediaOf(current)}
-		{@const cook = cookStep('separating')}
+		{@const processMedia = mediaOf(current)}
+		{@const process = processStep('separating')}
 		<div class="interstitial takeover state-waiting">
 			<div class="state-mark"><Icon name="flame" /></div>
-			<div class="up-label">{cookStageLabel('queued')}</div>
-			<div class="up-song hero-song">{songDisplay(cookMedia).title}</div>
+			<div class="up-label">{processStageLabel('queued')}</div>
+			<div class="up-song hero-song">{songDisplay(processMedia).title}</div>
 			<!-- Bounded 3-step progress. The bar width tracks the current step so the wait reads as
 			     finite; the current step is bolded. Every step label is a fixed guest word (not a worker
-			     stage), and exactly one step is current for every status (cookStep is total). -->
-			<div class="cook-bar"><i style="width: {cook.fraction}"></i></div>
-			<div class="cook-steps">
-				{#each COOK_STEPS as label, i (label)}
-					<span class:step-current={i === cook.index} class:step-done={i < cook.index}>{label}</span>
+			     stage), and exactly one step is current for every status (processStep is total). -->
+			<div class="process-bar"><i style="width: {process.fraction}"></i></div>
+			<div class="process-steps">
+				{#each PROCESS_STEPS as label, i (label)}
+					<span class:step-current={i === process.index} class:step-done={i < process.index}>{label}</span>
 				{/each}
 			</div>
 		</div>
@@ -1740,7 +1740,7 @@
 		/*
 		 * A SCRIM, not a wash. This was --bg at 94%, which blanked the room's chosen backdrop — a
 		 * gradient, the singer's colour, or an animated visualiser — for every song change and every
-		 * cook hold. That is the black-flash class of problem the background layer is deliberately gated
+		 * process hold. That is the black-flash class of problem the background layer is deliberately gated
 		 * on `!isAttract` to avoid, undone one layer up. Dark in the middle where the words go, clear at
 		 * the edges so the corner chrome and the backdrop stay visible underneath: the state reads as
 		 * something happening ON the stage rather than as a different screen.
@@ -1787,7 +1787,7 @@
 	 * each, drawn as a 14px LEFT BORDER in the family colour plus a same-direction gradient. Left-aligned
 	 * from the title-safe x (the border lives just outside it, so the text still starts at title-safe),
 	 * overriding the centred base `.interstitial` layout. Colour is never the only carrier — each also
-	 * keeps its own eyebrow and (error/cooking) its own mark.
+	 * keeps its own eyebrow and (error/processing) its own mark.
 	 */
 	.takeover {
 		align-items: flex-start;
@@ -1839,7 +1839,7 @@
 		margin-top: 1.4vh;
 	}
 
-	/* Still cooking — warn family. Song title is the hero; a bounded 3-step bar says the wait is finite. */
+	/* Still processing — warn family. Song title is the hero; a bounded 3-step bar says the wait is finite. */
 	.state-waiting.takeover {
 		border-left-color: var(--warn);
 		background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 10%, transparent), transparent 55%);
@@ -1859,31 +1859,31 @@
 		line-height: 1.04;
 		margin-top: 1vh;
 	}
-	.cook-bar {
-		width: var(--tv-cook-bar-w);
-		height: var(--tv-cook-bar-h);
+	.process-bar {
+		width: var(--tv-process-bar-w);
+		height: var(--tv-process-bar-h);
 		border-radius: var(--radius-pill);
 		background: var(--track-bg);
 		margin-top: 3vh;
 		overflow: hidden;
 	}
-	.cook-bar i {
+	.process-bar i {
 		display: block;
 		height: 100%;
 		background: var(--warn);
 	}
-	.cook-steps {
+	.process-steps {
 		display: flex;
 		gap: var(--space-4xl);
 		margin-top: 2vh;
 		font-size: var(--tv-small);
 		color: var(--ink-dim);
 	}
-	.cook-steps .step-current {
+	.process-steps .step-current {
 		color: var(--warn);
 		font-weight: 700;
 	}
-	.cook-steps .step-done {
+	.process-steps .step-done {
 		color: var(--ink);
 	}
 	/*

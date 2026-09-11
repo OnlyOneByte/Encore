@@ -19,7 +19,7 @@ already isolated (monophonic-ish) and we only need per-frame pitch to bucket int
 transcription-grade tracker.
 
 numpy + stdlib ONLY (wave is stdlib). No torch, no soundfile: the stem is a plain PCM WAV in scratch
-at this point in the cook, before it is encoded to m4a.
+at this point in the process, before it is encoded to m4a.
 """
 
 from __future__ import annotations
@@ -156,7 +156,7 @@ def summarize_range(frames: list[PitchFrame], *, hop_sec: float | None = None) -
     ALL fields None when there are no voiced frames — a stem that is silence, an instrumental, or a
     tracker that found nothing. This is the load-bearing empty case: the caller still publishes the
     profile object with these nulls so core reads "the step ran, found nothing" rather than "still
-    cooking".
+    processing".
 
     `hop_sec` is seconds-per-frame; when omitted it is inferred from consecutive frame timestamps
     (falling back to 0 for a single frame, so the histogram then counts a single frame as 0s but the
@@ -217,7 +217,7 @@ def _infer_hop_sec(frames: list[PitchFrame]) -> float:
 def summarize_wav(path: str) -> dict:
     """Convenience: read a PCM WAV, track its pitch, and summarize. Used by the processors on the
     vocals stem. Raises on an unreadable file — the caller wraps this in best-effort try/except and
-    publishes nulls, so a failure here degrades to an empty profile rather than a failed cook."""
+    publishes nulls, so a failure here degrades to an empty profile rather than a failed process."""
     samples, sample_rate = read_wav_mono(path)
     frames = extract_pitch_track(samples, sample_rate)
     hop_sec = _DEFAULT_HOP / sample_rate  # SAME constant extract_pitch_track defaults its hop to

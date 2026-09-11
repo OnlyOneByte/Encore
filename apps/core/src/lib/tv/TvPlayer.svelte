@@ -25,7 +25,7 @@
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
 	interface Props {
 		// A `PlaybackSnapshot`, not a live `Media` (#396). The brand makes this a compiler boundary: the
-		// page cannot hand this slot a catalog record that a cook can still change underneath it, so the
+		// page cannot hand this slot a catalog record that a process can still change underneath it, so the
 		// player observes a song's fields as they were when the slot was assigned and at no other time.
 		media: PlaybackSnapshot | null;
 		// The id of the QUEUE ENTRY this slot is playing — NOT the media/song id (#701). A song queued
@@ -662,7 +662,7 @@
 	// a tracked dependency (`if (!master || !media || !isPlayable(media) ...)`), so ANY fresh Media
 	// identity re-ran this effect and re-applied `seekSec` — the position from the last playback
 	// COMMAND, which is stale by design (position telemetry deliberately does not broadcast). When a
-	// cook for an unrelated song churned the catalog, the playing song's playhead was yanked back to
+	// process for an unrelated song churned the catalog, the playing song's playhead was yanked back to
 	// wherever the last pause/seek/restart had left it. Not to 0 — to an earlier part, which is why four
 	// fixes aimed at the src-assignment path (whose signature is "restarts from 0") all missed it.
 	//
@@ -847,7 +847,7 @@
 	 * The src the element currently holds, tracked so we assign it ONLY when the resolved string
 	 * actually changes.
 	 *
-	 * Bug A: an unrelated cook finishing rebroadcasts a full `queue:sync`, and the TV route rebuilds
+	 * Bug A: an unrelated process finishing rebroadcasts a full `queue:sync`, and the TV route rebuilds
 	 * its media catalog into fresh object identities — including the one currently playing. A markup
 	 * binding `src={fileSrc(media)}` re-evaluates on that identity change and reassigns the element's
 	 * src, and assigning `HTMLMediaElement.src` RELOADS the resource and resets `currentTime` to 0 even
@@ -859,7 +859,7 @@
 	$effect(() => {
 		if (!master) return;
 		// `playable` is the WHOLE condition the {#if} around the <audio> gates on. It is the pivot of
-		// #251: a next-up cook reaching a stage rebroadcasts `queue:sync`, the TV rebuilds its media
+		// #251: a next-up process reaching a stage rebroadcasts `queue:sync`, the TV rebuilds its media
 		// catalog, and for a churn pass or two the PLAYING slot's `media` prop can read momentarily null
 		// (a `mediaOf(current)` miss) or not-yet-`isPlayable`. The element only EXISTS while `media &&
 		// isPlayable(media)`, so a song that genuinely leaves UNMOUNTS it and this effect short-circuits

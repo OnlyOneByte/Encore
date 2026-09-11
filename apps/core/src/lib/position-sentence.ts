@@ -36,7 +36,7 @@ export interface PositionInput {
 	 */
 	aheadDurationsSec?: Array<number | null>;
 	/**
-	 * Can the guest's own pick actually play when its turn arrives? A still-cooking song is skipped
+	 * Can the guest's own pick actually play when its turn arrives? A still-processing song is skipped
 	 * by the TV, so claiming "you're up next" for one contradicts the queue list's own badge.
 	 */
 	playable?: boolean;
@@ -95,7 +95,7 @@ export function positionWords(input: PositionInput): PositionWords | null {
 	let lead: string;
 	if (place === 1) {
 		// Only claim "up next" when the song can actually play next. Ranking on position alone said
-		// "You're up next!" for a still-cooking song the TV skips straight past.
+		// "You're up next!" for a still-processing song the TV skips straight past.
 		lead = playable ? "You're up next." : "You're next once it's ready.";
 	} else if (beforeName) {
 		lead = `You're up after ${beforeName}.`;

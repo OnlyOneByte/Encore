@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Media } from '@encore/shared';
-import { cookIsTerminal, mergeCatalog, snapshot } from './catalog';
+import { processIsTerminal, mergeCatalog, snapshot } from './catalog';
 
 /*
  * #396 — "when a song finishes PROCESSING, the currently playing song's playhead jumps back to an
@@ -10,9 +10,9 @@ import { cookIsTerminal, mergeCatalog, snapshot } from './catalog';
  *
  * THE CALL CHAIN, from the processing-finish event to the perturbation this PR removes:
  *
- *   worker completes a cook
+ *   worker completes a process
  *     -> core `onMediaReady` (server/app.ts) publishes BOTH `queue:sync` and, via `reconcileOnReady`,
- *        `nowplaying:changed`; the cook's progress ticks arrive separately as `media:status`
+ *        `nowplaying:changed`; the process's progress ticks arrive separately as `media:status`
  *     -> TV route `media:status` handler did `new Map(mediaCatalog).set(id, {...m, stemStatus})`,
  *        minting a fresh Media identity on EVERY tick (and inventing a `stemStatus` the server never
  *        sent, so a tick on the playing song made it momentarily unplayable)
@@ -56,14 +56,14 @@ function media(over: Partial<Media> = {}): Media {
 	} as Media;
 }
 
-describe('#396 the catalog boundary — cook churn cannot reach a playing song', () => {
+describe('#396 the catalog boundary — process churn cannot reach a playing song', () => {
 	it('preserves object identity for a song whose fields did not change', () => {
 		const playing = media({ id: 'playing' });
 		const prev = new Map([['playing', playing]]);
-		// A cook finishing for ANOTHER song re-sends the whole list, with the playing song unchanged.
+		// A process finishing for ANOTHER song re-sends the whole list, with the playing song unchanged.
 		const next = mergeCatalog(prev, [
 			{ ...playing },
-			media({ id: 'justCooked', stemStatus: 'ready', instrumentalRef: 'inst/j.flac' })
+			media({ id: 'justProcessed', stemStatus: 'ready', instrumentalRef: 'inst/j.flac' })
 		]);
 		// The playing record must be the SAME OBJECT, not a structurally-equal copy: identity is what a
 		// reactive consumer wakes on, and waking is what moved the playhead.
@@ -92,20 +92,20 @@ describe('#396 the catalog boundary — cook churn cannot reach a playing song',
 	it('a later catalog replacement is unobservable through a snapshot already handed to a slot', () => {
 		let catalog = new Map([['playing', media({ id: 'playing' })]]);
 		const heldByTheSlot = snapshot(catalog.get('playing'))!;
-		// The cook pipeline replaces the record — the old handler's exact move, and any future writer's.
+		// The process pipeline replaces the record — the old handler's exact move, and any future writer's.
 		catalog = mergeCatalog(catalog, [media({ id: 'playing', stemStatus: 'queued' })]);
 		expect(catalog.get('playing')!.stemStatus).toBe('queued');
 		// The playing slot still sees the song as it was when the slot was assigned.
 		expect(heldByTheSlot.stemStatus).toBe('ready');
 	});
 
-	it('cookIsTerminal admits only the two states that can never become playable', () => {
-		expect(cookIsTerminal({ type: 'media:status', mediaId: 'm', status: 'failed', pct: 0 })).toBe(true);
-		expect(cookIsTerminal({ type: 'media:status', mediaId: 'm', status: 'queued', pct: 0, unservable: true })).toBe(
+	it('processIsTerminal admits only the two states that can never become playable', () => {
+		expect(processIsTerminal({ type: 'media:status', mediaId: 'm', status: 'failed', pct: 0 })).toBe(true);
+		expect(processIsTerminal({ type: 'media:status', mediaId: 'm', status: 'queued', pct: 0, unservable: true })).toBe(
 			true
 		);
 		for (const status of ['queued', 'downloading', 'separating', 'aligning', 'ready'] as const) {
-			expect(cookIsTerminal({ type: 'media:status', mediaId: 'm', status, pct: 50 })).toBe(false);
+			expect(processIsTerminal({ type: 'media:status', mediaId: 'm', status, pct: 50 })).toBe(false);
 		}
 	});
 });
@@ -184,7 +184,7 @@ describe('#396 the seek effect depends on playback intent, never on the catalog'
 	});
 });
 
-describe('#396 the TV route has exactly one catalog writer, and the cook path is not it', () => {
+describe('#396 the TV route has exactly one catalog writer, and the process path is not it', () => {
 	const code = stripComments(route);
 
 	it('assigns mediaCatalog in exactly one place, through mergeCatalog', () => {
@@ -195,13 +195,13 @@ describe('#396 the TV route has exactly one catalog writer, and the cook path is
 		expect(code).toContain('mediaCatalog = mergeCatalog(mediaCatalog, e.media)');
 	});
 
-	it('never mints a catalog Map by hand — the shape the cook handler used', () => {
+	it('never mints a catalog Map by hand — the shape the process handler used', () => {
 		expect(code).not.toContain('new Map(mediaCatalog)');
 	});
 
 	it('takes the writer and the seam from the shared module rather than redefining them locally', () => {
 		expect(code).toContain("from '$lib/tv/catalog'");
-		for (const named of ['mergeCatalog', 'snapshot', 'cookIsTerminal', 'type PlaybackSnapshot']) {
+		for (const named of ['mergeCatalog', 'snapshot', 'processIsTerminal', 'type PlaybackSnapshot']) {
 			expect(code).toContain(named);
 		}
 		// A local copy of the writer is how there came to be two writers in the first place. One
@@ -215,7 +215,7 @@ describe('#396 the TV route has exactly one catalog writer, and the cook path is
 		expect(handler).not.toContain('mediaCatalog');
 		expect(handler).not.toContain('stemStatus');
 		// All it may still decide is the terminal-failure exit from `waiting`.
-		expect(handler).toContain('cookIsTerminal(e)');
+		expect(handler).toContain('processIsTerminal(e)');
 	});
 
 	it('hands the slots snapshots, taken in syncSlots and nowhere else', () => {

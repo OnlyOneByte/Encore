@@ -1,8 +1,8 @@
-"""Cancelling a cook must kill the CLI's children too, not just the CLI.
+"""Cancelling a process must kill the CLI's children too, not just the CLI.
 
 Every subprocess the worker shells out to — yt-dlp, ffmpeg, demucs — goes through
 `subprocess_runner`. Demucs with `-j N` forks N worker processes each holding a model (~2 GiB), so a
-`proc.kill()` that signals only the parent left all of them alive and unreachable: a cancelled cook
+`proc.kill()` that signals only the parent left all of them alive and unreachable: a cancelled process
 kept its memory forever, and a box with ENCORE_WORKER_CONCURRENCY>1 OOMed after a few cancels.
 
 This drives a real process tree rather than a fake runner, because the defect is entirely in how the
@@ -53,7 +53,7 @@ async def test_cancelling_the_runner_kills_the_grandchild_too():
         nonlocal child_pid
         async for line in subprocess_runner([sys.executable, "-c", PARENT]):
             child_pid = int(line.strip())
-            break  # abandon the generator mid-stream — this is what a cancelled cook does
+            break  # abandon the generator mid-stream — this is what a cancelled process does
 
     task = asyncio.create_task(drive())
     await task

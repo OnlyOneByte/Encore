@@ -861,7 +861,7 @@ try {
 	 * NO other z-tier-7 box, at 1080p AND 4K.
 	 *
 	 * WHY SYNTHETIC BOXES. `.fs-btn` and `.upnext`/`.corner`/`.lower-third` render only in the PLAYING
-	 * branch, which needs live WS playback the self-hosting drive has no cooked media for (same reason
+	 * branch, which needs live WS playback the self-hosting drive has no processed media for (same reason
 	 * CLAIM 6 covers only attract/lobby). So the probe MOUNTS one element per class under the real
 	 * `.tv` — the tokens (`--tv-safe-x/y`, `--tv-upnext-h`, `--z-tv-card`) resolve on `.tv` and the
 	 * loaded /tv stylesheet positions each element exactly as production does. `.upnext` is given a
@@ -973,8 +973,8 @@ try {
 	 *     painted under .fs-btn is worse than the "+N more" it replaced, and is invisible to a source
 	 *     scan. Swept with LONG-name fixtures at 6/10/12/13 guests (name length is load-bearing here).
 	 *
-	 * The takeover frames (next-up / cooking / skipping) need live WS playback to mount and are NOT
-	 * driven here — the self-hosting drive has no cooked media — so their invariants stay on the
+	 * The takeover frames (next-up / processing / skipping) need live WS playback to mount and are NOT
+	 * driven here — the self-hosting drive has no processed media — so their invariants stay on the
 	 * source-scan guard; this gate covers attract and lobby, the two the drive can reach honestly.
 	 */
 	{
@@ -1023,7 +1023,7 @@ try {
 		// the same #826 join panel (.url) and the roster, so the URL-no-break (XR-TV-19) and the
 		// roster-not-occluded (XR-TV-14) invariants are measured here. The attract `.jt-url` and the three
 		// takeover frames stay on the source-scan guard (the takeovers need live WS playback the
-		// self-hosting drive has no cooked media for).
+		// self-hosting drive has no processed media for).
 		const lobbyProbe = `(() => {
 			const chips = [...document.querySelectorAll(${JSON.stringify(SEL.lobbyStripPerson)})];
 			const url = document.querySelector(${JSON.stringify(SEL.lobbyUrl)});

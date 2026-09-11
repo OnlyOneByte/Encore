@@ -2,8 +2,8 @@
  * The cancel path must be able to stop EVERY kind of pipeline job.
  *
  * `cancelJobsForMedia` iterates `PIPELINE_JOB_TYPES` (cancel.ts) and asks the repository whether a
- * live job of each type exists; a type absent from that list is never asked about, so its cook keeps
- * running after a guest taps remove — "a silently un-cancellable cook", the exact failure cancel.ts
+ * live job of each type exists; a type absent from that list is never asked about, so its process keeps
+ * running after a guest taps remove — "a silently un-cancellable process", the exact failure cancel.ts
  * was written to close. The table's own comment promised the compiler would catch an omitted member,
  * but a `readonly JobType[]` array literal has no exhaustiveness obligation, so that promise was
  * empty: a fifth `JobType` could be dropped and the tree still typechecked green.

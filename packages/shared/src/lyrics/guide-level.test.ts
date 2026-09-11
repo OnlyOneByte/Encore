@@ -13,7 +13,7 @@ import {
 	type Media
 } from '../index';
 
-const cooked = (over: Partial<Media> = {}): Media => ({
+const processed = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
 	source: 'youtube',
 	sourceRef: 'x',
@@ -73,14 +73,14 @@ describe('effectiveGuideLevel', () => {
 
 describe('hasGuidingTrack', () => {
 	it('is true only for a playable song that also has a vocals stem', () => {
-		expect(hasGuidingTrack(cooked({ vocalsRef: 'derived/stems/m1-vocals.m4a' }))).toBe(true);
+		expect(hasGuidingTrack(processed({ vocalsRef: 'derived/stems/m1-vocals.m4a' }))).toBe(true);
 	});
 
-	it('is false without a vocals stem (cooked before the ref existed, or a silent stem)', () => {
-		expect(hasGuidingTrack(cooked())).toBe(false);
+	it('is false without a vocals stem (processed before the ref existed, or a silent stem)', () => {
+		expect(hasGuidingTrack(processed())).toBe(false);
 	});
 
-	it('is false for an uncooked song even if a vocals ref is somehow present', () => {
+	it('is false for an unprocessed song even if a vocals ref is somehow present', () => {
 		// there is nothing to mix the vocals UNDER until the instrumental exists
 		expect(
 			hasGuidingTrack({

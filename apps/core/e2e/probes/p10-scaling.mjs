@@ -86,7 +86,7 @@ function contrastRatio(fg, bg) {
 // Boot the browser once; a fresh guest per page opens its own cookie jar and its own idle state.
 const browser = await connect(CDPPORT);
 
-// A cook has already run before this probe — a probe must not require another. To reach the TV's
+// A process has already run before this probe — a probe must not require another. To reach the TV's
 // "playing" screen we drive a real phone through join → queue → play in a hidden browser tab, because
 // enqueue/play do not exist as REST endpoints — the room's transport lives on the websocket. This
 // gives us the CORNER placement of JoinBadge (the during-playback treatment), not just the HERO one.

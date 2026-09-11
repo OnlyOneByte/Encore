@@ -153,7 +153,7 @@ def test_effective_cpus_takes_the_tighter_of_a_cpuset_pin_and_a_quota(tmp_path, 
 # ── accelerator + report ────────────────────────────────────────────────────────────
 def test_accelerator_detection_survives_torch_being_absent():
     # torch is genuinely not installed in this test environment, and the worker must still start: the
-    # stub processor needs no ML at all, and a CPU cook is a valid outcome, not a crash.
+    # stub processor needs no ML at all, and a CPU process is a valid outcome, not a crash.
     accel = hardware.detect_accelerator()
     assert accel.kind == "cpu"
 

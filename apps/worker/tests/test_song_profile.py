@@ -1,5 +1,5 @@
 """songProfile builder + engine wiring — the always-publish contract. Core reads a PRESENT profile as
-'the analysis step ran' and an ABSENT one as 'still cooking', so the load-bearing assertion is that a
+'the analysis step ran' and an ABSENT one as 'still processing', so the load-bearing assertion is that a
 songProfile object is ALWAYS in the completion artifacts, with null inner fields when analysis found
 or produced nothing. A profile failure must NEVER fail the job."""
 
@@ -107,7 +107,7 @@ def test_silent_vocals_yield_null_range_not_a_failure(tmp_path):
 
 # ── engine wiring: demucs always publishes songProfile ────────────────────────────────
 def _demucs_fake_runner(tmp_path):
-    """A demucs cook fake that writes both stems and emits nothing useful. The acquisition / volumedetect
+    """A demucs process fake that writes both stems and emits nothing useful. The acquisition / volumedetect
     / encode branches live in the shared `fake_cli_runner` (issue #455) — including the volumedetect
     branch that makes the silence probe real; only the demucs stem writes are here."""
 

@@ -133,10 +133,10 @@ test('QueueRow takes the pending KIND, defaults it, and derives one label from i
 	expect(ROW).not.toMatch(/<span class="adding">adding…<\/span>/);
 });
 
-test('ProcessingCard accepts a pending prop so the "adding…" state survives the cooking case', () => {
-	// The primary ✨ Sing flow produces a cooking entry, so ProcessingCard is what renders during an
+test('ProcessingCard accepts a pending prop so the "adding…" state survives the processing case', () => {
+	// The primary ✨ Sing flow produces a processing entry, so ProcessingCard is what renders during an
 	// add. On base it had no pending prop; the fix must give it one, default it, and wire the visuals.
-	// Since #832 the prop is the op KIND rather than a boolean, so a pending reorder of a cooking entry
+	// Since #832 the prop is the op KIND rather than a boolean, so a pending reorder of a processing entry
 	// does not announce that it is "adding".
 	expect(PROC).toMatch(/pending\?:\s*'add' \| 'move' \| null/); // interface field
 	expect(PROC).toMatch(/pending\s*=\s*null,/); // destructuring default
@@ -166,8 +166,8 @@ test('ProcessingCard renders the "adding…" marker gated on pending, and styles
 
 /*
  * #735 §D: the component gallery must carry a PENDING ProcessingCard, and a source scan is the only
- * thing that can hold it. Both `pending` rules shipped in #304 unreadable (the cook readout at
- * 3.76:1, the singer dot at 2.57:1) specifically BECAUSE nothing ever rendered a pending cooking
+ * thing that can hold it. Both `pending` rules shipped in #304 unreadable (the process readout at
+ * 3.76:1, the singer dot at 2.57:1) specifically BECAUSE nothing ever rendered a pending processing
  * card: the gallery's only pending fixture was a QueueRow, so the reviewer who found the defect had
  * to inject the class into the page by hand to measure it. A fixture's whole purpose is being looked
  * at, so its absence is invisible to every runtime assertion in the suite -- which is exactly what
@@ -176,7 +176,7 @@ test('ProcessingCard renders the "adding…" marker gated on pending, and styles
  */
 test('the component gallery renders a pending ProcessingCard so the state is eyes-on', () => {
 	const cards = [...GALLERY.matchAll(/<ProcessingCard\b([\s\S]*?)\/>/g)].map((m) => m[1]!);
-	expect(cards.length).toBeGreaterThan(0); // non-vacuity: the gallery still has cooking cards at all
+	expect(cards.length).toBeGreaterThan(0); // non-vacuity: the gallery still has processing cards at all
 	// A real `pending` ATTRIBUTE, not the word inside a title string or a comment. Since #832 it carries
 	// the op kind, so `pending="add"` is the shape; a bare `pending` would now type as `true`.
 	const pendingCards = cards.filter((attrs) => /(?:^|\s)pending="(add|move)"(?=\s|$)/.test(attrs));

@@ -6,13 +6,13 @@
  *
  * WHY THIS IS NEEDED. server.ts indexes a demo track only when a file actually exists behind it. That
  * filter is deliberate and load-bearing: without it the four demos were searchable, queueable songs
- * that could never play, and cooking one burned three worker attempts on `ffmpeg exited 254` before
- * leaving the song stuck in the phone's cooking list for the rest of the night. So an unseeded
+ * that could never play, and processing one burned three worker attempts on `ffmpeg exited 254` before
+ * leaving the song stuck in the phone's processing list for the rest of the night. So an unseeded
  * checkout has an empty library, and the e2e cannot queue anything.
  *
  * The files written here are PLACEHOLDERS, not media. They are enough for indexing, searching, queueing
  * and rotation — everything the flow asserts. They are NOT enough to decode, so do not use this to test
- * playback or cooking; that needs real audio.
+ * playback or processing; that needs real audio.
  */
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -34,4 +34,4 @@ for (const f of FILES) {
 	written++;
 }
 console.log(`seeded ${written} placeholder track(s) into ${dir} (${FILES.length} total)`);
-console.log('these are NOT decodable media — indexing/queueing only, never playback or cooking');
+console.log('these are NOT decodable media — indexing/queueing only, never playback or processing');

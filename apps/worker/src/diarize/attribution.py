@@ -147,7 +147,7 @@ def attribute_parts(doc: dict[str, Any], diarization: Any) -> dict[str, Any]:
         return doc  # layer 4: lopsided — a near-solo, not a duet
 
     # Confident duet. Assign each speaker a stable ABSTRACT part letter by first appearance, so the
-    # label set is {"A", "B"} regardless of the diarizer's internal speaker strings, and re-cooking the
+    # label set is {"A", "B"} regardless of the diarizer's internal speaker strings, and re-processing the
     # same song yields the same letters.
     order: list[str] = []
     for speaker in attributed:

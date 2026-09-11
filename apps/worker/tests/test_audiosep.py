@@ -1,9 +1,9 @@
-"""python-audio-separator engine: pure helpers + engine routing + an end-to-end cook.
+"""python-audio-separator engine: pure helpers + engine routing + an end-to-end process.
 
-The real audio-separator cook is REAL-ML/NET and unverified in this environment (audio-separator is
+The real audio-separator process is REAL-ML/NET and unverified in this environment (audio-separator is
 not installed on the aarch64 box — see audiosep.py's module warning), the identical stance test_roformer
 takes. These cover the argv-free logic — model-token→checkpoint resolution, output-stem discovery, argv
-shape — and drive a full stems cook with a FAKE `audio-separator` subprocess so the SeparatorEngine seam
+shape — and drive a full stems process with a FAKE `audio-separator` subprocess so the SeparatorEngine seam
 is exercised without the package.
 """
 
@@ -98,7 +98,7 @@ def test_audiosep_argv_includes_model_file_dir_when_set():
 def test_engine_for_builds_a_real_audiosep_engine():
     """The #118 parity contract for the new token: `engine_for("audiosep")` must build a real engine
     (capabilities.py advertises `stems:audiosep` only when the dep is present, and the core routes a
-    stems:audiosep cook here — an unbuildable engine would dispatch and die at plan selection)."""
+    stems:audiosep process here — an unbuildable engine would dispatch and die at plan selection)."""
     from src.separation.engines import AudioSepEngine, engine_for
 
     eng = engine_for("audiosep")
@@ -117,7 +117,7 @@ def test_engine_selection_reads_audiosep_from_the_job_param():
 
 def test_a_demucs_default_cannot_reach_the_audiosep_engine():
     """Issue #84 class, applied to the new engine. `plans.stems_runner` forwards this worker's
-    `demucs_model` into `engine_for` on every cook. The audiosep branch must ignore it and keep its OWN
+    `demucs_model` into `engine_for` on every process. The audiosep branch must ignore it and keep its OWN
     default (`instrumental_becruily`), never resolve to a demucs checkpoint."""
     from src.separation.audiosep import DEFAULT_AUDIOSEP_MODEL, resolve_audiosep_checkpoint
     from src.separation.engines import engine_for
@@ -127,7 +127,7 @@ def test_a_demucs_default_cannot_reach_the_audiosep_engine():
     assert eng.resolve_model({}) == resolve_audiosep_checkpoint({}, DEFAULT_AUDIOSEP_MODEL)
 
 
-# ── end-to-end audiosep cook (fake audio-separator runner) ──────────────────────────
+# ── end-to-end audiosep process (fake audio-separator runner) ──────────────────────────
 import os as _os  # noqa: E402
 
 from src import plans  # noqa: E402
@@ -137,7 +137,7 @@ from tests.cli_fakes import fake_cli_runner  # noqa: E402
 
 
 def _audiosep_fake_runner(store_writes: bool = True, write_vocals: bool = True):
-    """A fake runner scripting the real audiosep cook shape: yt-dlp → ffmpeg decode → audio-separator →
+    """A fake runner scripting the real audiosep process shape: yt-dlp → ffmpeg decode → audio-separator →
     ffmpeg volumedetect probe → ffmpeg encode. Records every argv so the test can assert the seam, and
     writes the stems audio-separator would into --output_dir under the UVR `_(Stem)_<model>` template,
     with the model name in the filename that find_outputs must DISCOVER by globbing (not derive)."""
@@ -173,7 +173,7 @@ def _aspec(tmp_path, **params):
 
 
 @pytest.mark.asyncio
-async def test_an_audiosep_cook_runs_the_real_audiosep_engine_end_to_end(tmp_path):
+async def test_an_audiosep_process_runs_the_real_audiosep_engine_end_to_end(tmp_path):
     """Drives a stems job with engine=audiosep through plans.stems_runner and asserts the seam: the
     engine that ran, the resolved-checkpoint fact, the input FILE (not a dir), and DISCOVERED outputs.
 
@@ -184,7 +184,7 @@ async def test_an_audiosep_cook_runs_the_real_audiosep_engine_end_to_end(tmp_pat
     events = await _drain(proc, _aspec(tmp_path, model="instrumental_becruily"))
 
     completes = [e for e in events if isinstance(e, CompleteResult)]
-    assert len(completes) == 1, "the audiosep cook must publish"
+    assert len(completes) == 1, "the audiosep process must publish"
     facts = completes[0].facts
 
     # the engine that ran is audiosep, its backend is the CLI, not torch
@@ -222,9 +222,9 @@ async def test_an_audiosep_cook_runs_the_real_audiosep_engine_end_to_end(tmp_pat
 
 
 @pytest.mark.asyncio
-async def test_an_audiosep_cook_that_produces_no_instrumental_fails_loudly(tmp_path):
+async def test_an_audiosep_process_that_produces_no_instrumental_fails_loudly(tmp_path):
     """The find_outputs discovery contract from the failure side: if audio-separator writes nothing into
-    --output_dir, Separate must raise rather than publish a phantom cook — the same guard demucs and
+    --output_dir, Separate must raise rather than publish a phantom process — the same guard demucs and
     roformer have, now proven on the audiosep path. And the raise is non-retryable (#571 class): a
     wrong output-filename contract is deterministic, so every retry re-runs the same pass identically."""
     runner, _ = _audiosep_fake_runner(store_writes=False)
@@ -236,17 +236,17 @@ async def test_an_audiosep_cook_that_produces_no_instrumental_fails_loudly(tmp_p
 
 
 @pytest.mark.asyncio
-async def test_an_audiosep_cook_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_path):
+async def test_an_audiosep_process_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_path):
     """The vocals-LESS half of the discovery contract — the audiosep analogue of the demucs/roformer
     siblings. When audio-separator writes the instrumental but no vocals output, find_audiosep_vocals
-    returns None, the publish step drops the null stem, and the cook still completes best-effort with the
+    returns None, the publish step drops the null stem, and the process still completes best-effort with the
     vocals key ABSENT (not a None value)."""
     runner, _ = _audiosep_fake_runner(write_vocals=False)
     proc = plans.stems_runner(runner=runner)
     events = await _drain(proc, _aspec(tmp_path, model="instrumental_becruily"))
 
     completes = [e for e in events if isinstance(e, CompleteResult)]
-    assert len(completes) == 1, "the audiosep cook must still complete best-effort"
+    assert len(completes) == 1, "the audiosep process must still complete best-effort"
     stems = completes[0].artifacts["stems"]
     assert stems["instrumental"].endswith("ma-instrumental.flac")
     assert Path(stems["instrumental"]).exists()

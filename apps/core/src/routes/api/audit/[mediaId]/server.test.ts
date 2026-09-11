@@ -11,7 +11,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		id: 'a1',
 		jobId: 'j1',
 		mediaId: 'm1',
-		cookId: 'c1',
+		processingId: 'c1',
 		jobType: 'align',
 		attempt: 1,
 		workerId: 'w1',

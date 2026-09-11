@@ -235,7 +235,7 @@ describe('migration off the legacy layout', () => {
 
 	it('worker-written dirs are SHARED-WRITE, meta is not', () => {
 		// The core and the worker are different uids on one mounted volume. A 0755 dir created by the
-		// core is unwritable by the worker -- which is how the layout migration first broke every cook with
+		// core is unwritable by the worker -- which is how the layout migration first broke every process with
 		// "Permission denied: /app/media/work/<jobId>". meta/ is core-only and stays restrictive.
 		ensureLayout();
 		const mode = (p: string) => statSync(p).mode & 0o777;

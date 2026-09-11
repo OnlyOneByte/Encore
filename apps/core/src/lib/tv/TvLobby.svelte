@@ -13,7 +13,7 @@
 	import JoinBadge from './JoinBadge.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import type { RosterMember } from './screen';
-	import { cookStageLabel } from '$lib/cook-phrasing';
+	import { processStageLabel } from '$lib/process-phrasing';
 
 	interface Props {
 		qrDataUrl: string;
@@ -23,7 +23,7 @@
 		/** How many present singers did not fit in `roster`. */
 		overflow?: number;
 		/**
-		 * Queued entries that cannot play yet — cooking, or waiting on a worker.
+		 * Queued entries that cannot play yet — processing, or waiting on a worker.
 		 *
 		 * The lobby covers TWO situations, not one, and the headline used to describe only the first:
 		 * "Waiting for someone to pick a song…" was shown even when somebody HAD picked one and it was
@@ -60,28 +60,28 @@
 	   line so it cannot collide with a full roster below it (#826). */
 	const joinShort = $derived(joinUrl.replace(/^https?:\/\//, '').replace(/\?.*$/, ''));
 	/** Somebody has picked, it just is not singable yet. Different situation, different words. */
-	const cooking = $derived(pendingCount > 0);
+	const processing = $derived(pendingCount > 0);
 
-	// The cook line comes from cook-phrasing — the ONE guest-facing cook vocabulary, shared with the
+	// The process line comes from process-phrasing — the ONE guest-facing process vocabulary, shared with the
 	// phone — so the lobby and the phone say the same thing. The TV knows only a coarse "something is
-	// cooking" state, so it passes the least-committal in-flight value 'queued' (which resolves to
+	// processing" state, so it passes the least-committal in-flight value 'queued' (which resolves to
 	// "Making karaoke…") rather than naming a worker step it cannot know. The "· N in line" count is a
 	// lobby-only addition the phone has no equivalent for, so it stays here.
 	const headline = $derived(
-		cooking
+		processing
 			? pendingCount === 1
-				? cookStageLabel('queued')
-				: `${cookStageLabel('queued')} · ${pendingCount} in line`
+				? processStageLabel('queued')
+				: `${processStageLabel('queued')} · ${pendingCount} in line`
 			: 'Waiting for someone to pick a song…'
 	);
 
 	// With a rehydrated queue but nobody reconnected, the roster is empty — say something true
 	// rather than "0 in the room".
 	const sub = $derived(
-		cooking
+		processing
 			? // Do NOT tell them to pick a song here: they already did, and the honest answer is that the
 				// wait is the karaoke being made, not them. "karaoke", not "the vocals"/"separation" — the
-				// guest word, matching cook-phrasing and the phone.
+				// guest word, matching process-phrasing and the phone.
 				count > 0
 				? `${count} in the room · making the karaoke, this takes a minute`
 				: 'Making the karaoke — this takes a minute'

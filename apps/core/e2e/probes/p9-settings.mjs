@@ -499,13 +499,13 @@ function extractJoinFromHtml(html) {
 // worker that receives an align assign and prints what it was handed. fake-align-worker.mjs is
 // exactly that; fake-stems-worker.mjs handles the fetch→stems chain that produces the align job.
 async function runWireProbe() {
-	// Pick TWO distinct uncooked local songs from the seeded library, one per run. `make-karaoke` on
+	// Pick TWO distinct unprocessed local songs from the seeded library, one per run. `process` on
 	// an already-ready song short-circuits (no chain, no align, no wire signal), so a search alone is
-	// not enough — check `stemStatus`/`instrumentalRef` and skip cooked entries.
+	// not enough — check `stemStatus`/`instrumentalRef` and skip processed entries.
 	const seen = new Map();
 	for (const q of ['caroline', 'believin', 'bohemian', 'livin', 'journey', 'queen']) {
 		const s = await (await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`)).json().catch(() => ({}));
-		for (const m of [...(s.ready ?? []), ...(s.cooking ?? []), ...(s.results ?? [])]) {
+		for (const m of [...(s.ready ?? []), ...(s.processing ?? []), ...(s.results ?? [])]) {
 			if (m.source === 'local' && !seen.has(m.id)) seen.set(m.id, m);
 		}
 	}
@@ -514,15 +514,15 @@ async function runWireProbe() {
 		add(
 			'LOW',
 			'wire',
-			'no raw local song to cook — skipped wire probe',
-			`fixture has ${seen.size} local songs, all already cooked. Re-seed with a fresh MEDIA_DIR.`
+			'no raw local song to process — skipped wire probe',
+			`fixture has ${seen.size} local songs, all already processed. Re-seed with a fresh MEDIA_DIR.`
 		);
 		return;
 	}
 	const rawCand = raw[0];
 	const otherRaw = raw[1] ?? null;
 
-	// Set the two align-time settings to distinctive values before the cook. Both are GLOBAL.
+	// Set the two align-time settings to distinctive values before the process. Both are GLOBAL.
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'medium', syncMode: 'lines' } });
 
 	// Start a stems worker (fetch,stems only — leave align to the align-worker below).
@@ -548,10 +548,10 @@ async function runWireProbe() {
 	alignA.stderr.on('data', (d) => alignOutA.push(String(d)));
 	await sleep(300);
 
-	// Fire the cook.
-	const mk = await api('POST', '/api/make-karaoke', { cookie: aliceCookie, body: { mediaId: rawCand.id } });
+	// Fire the process.
+	const mk = await api('POST', '/api/process', { cookie: aliceCookie, body: { mediaId: rawCand.id } });
 	if (mk.status !== 200) {
-		add('LOW', 'wire', `make-karaoke rejected: HTTP ${mk.status}`, mk.text);
+		add('LOW', 'wire', `process rejected: HTTP ${mk.status}`, mk.text);
 		stems.kill();
 		alignA.kill();
 		return;
@@ -582,7 +582,7 @@ async function runWireProbe() {
 		`fake-align exit=${alignExit} asrModel=${alignParams?.asrModel} syncMode=${alignParams?.syncMode}  — server/jobs/dispatch.ts:82`
 	);
 
-	// Second cook to prove LIVE reading. Change settings, cook another song, expect the NEW values in
+	// Second process to prove LIVE reading. Change settings, process another song, expect the NEW values in
 	// the align assign. Params are computed at assign time (dispatch.ts:52), so a change made between
 	// enqueue and dispatch must reach the worker; a change made mid-song must not perturb the running
 	// one.
@@ -591,7 +591,7 @@ async function runWireProbe() {
 			'LOW',
 			'wire',
 			'only one raw song available — skipped run B (live-update assertion)',
-			'a second uncooked song is needed to trigger a second align at a different setting'
+			'a second unprocessed song is needed to trigger a second align at a different setting'
 		);
 	} else {
 		await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'tiny', syncMode: 'forced' } });
@@ -605,9 +605,9 @@ async function runWireProbe() {
 		alignB.stdout.on('data', (d) => alignOutB.push(String(d)));
 		alignB.stderr.on('data', (d) => alignOutB.push(String(d)));
 		await sleep(300);
-		const mk2 = await api('POST', '/api/make-karaoke', { cookie: aliceCookie, body: { mediaId: otherRaw.id } });
+		const mk2 = await api('POST', '/api/process', { cookie: aliceCookie, body: { mediaId: otherRaw.id } });
 		if (mk2.status !== 200) {
-			add('LOW', 'wire', `run B make-karaoke rejected: HTTP ${mk2.status}`, mk2.text);
+			add('LOW', 'wire', `run B process rejected: HTTP ${mk2.status}`, mk2.text);
 			alignB.kill();
 		} else {
 			const alignExitB = await new Promise((resolve) => {
@@ -630,7 +630,7 @@ async function runWireProbe() {
 			add(
 				paramsB?.asrModel === 'tiny' && paramsB?.syncMode === 'forced' ? 'PASS' : 'HIGH',
 				'wire',
-				'a global-settings change BETWEEN cooks reaches the NEXT align:assign (live, no restart)',
+				'a global-settings change BETWEEN processes reaches the NEXT align:assign (live, no restart)',
 				`fake-align exit=${alignExitB} asrModel=${paramsB?.asrModel} syncMode=${paramsB?.syncMode}  — dispatch.ts:assignParams`
 			);
 		}

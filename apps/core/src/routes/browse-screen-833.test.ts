@@ -49,11 +49,11 @@ test('#833 mechanism 1 — the readiness chip row is gone, and so is the state b
 	expect(PAGE).not.toContain('Filter by readiness');
 	expect(PAGE).not.toMatch(/class="chips"/);
 	// …and the state, or the chips could be restored without re-deriving anything. `filter` was the
-	// single source of the axis; `showReady`/`showCooking`/`showRaw` gated the three groups on it, and
+	// single source of the axis; `showReady`/`showProcessing`/`showRaw` gated the three groups on it, and
 	// `libraryCount` existed only to put a number on the Ready chip.
 	expect(PAGE).not.toMatch(/\blet filter\b/);
 	expect(PAGE).not.toMatch(/\bshowReady\b/);
-	expect(PAGE).not.toMatch(/\bshowCooking\b/);
+	expect(PAGE).not.toMatch(/\bshowProcessing\b/);
 	expect(PAGE).not.toMatch(/\bshowRaw\b/);
 	// `libraryCount` as a DERIVED is gone; the identically-named PARAMETER of readyEmptyState() is not
 	// this mechanism and must survive — the empty state below still names how many songs the library has.
@@ -62,13 +62,13 @@ test('#833 mechanism 1 — the readiness chip row is gone, and so is the state b
 });
 
 test('#833 mechanism 1 — every group renders unconditionally, so nothing is hidden behind a chip', () => {
-	// The ready and cooking groups are gated on `searchActive` (#902) and on having rows — never on a
+	// The ready and processing groups are gated on `searchActive` (#902) and on having rows — never on a
 	// filter. This is the arm that fails if a "quick" reinstatement re-adds a gate without the chips.
-	expect(PAGE).toContain('{#if searchActive && cookingRows.length}');
+	expect(PAGE).toContain('{#if searchActive && processingRows.length}');
 	// `accountedFor` subtracts BOTH groups from the shortcut lists unconditionally: with a filter, a
 	// hidden group stopped accounting for its songs and they reappeared under Popular/Recently queued.
 	expect(PAGE).toMatch(/for \(const m of searchActive \? readyResults : library\) ids\.add\(m\.id\);/);
-	expect(PAGE).toMatch(/for \(const c of cookingRows\) ids\.add\(c\.id\);/);
+	expect(PAGE).toMatch(/for \(const c of processingRows\) ids\.add\(c\.id\);/);
 });
 
 // ── mechanisms 2 and 3: the artist rail and the genre/tag rail ───────────────────────────────────
@@ -106,7 +106,7 @@ test('#833 mechanism 4 — the readiness group headings are gone; the rows say i
 	// These two restated, in prose, the chip directly above them. SongRow paints a readiness chip per
 	// row, so the axis is still visible — it is just not announced twice.
 	expect(PAGE).not.toContain('Ready to sing');
-	expect(PAGE).not.toContain('Cooking · queue it anyway');
+	expect(PAGE).not.toContain('Processing · queue it anyway');
 	expect(PAGE).not.toMatch(/\bshowGroupHeads\b/);
 	expect(PAGE).not.toMatch(/class="grouphead ok"/);
 	expect(PAGE).not.toMatch(/class="grouphead warn"/);
@@ -150,7 +150,7 @@ test('#833 — the results stack UPWARD: every result list is emitted with its b
 	// (XR-PH-12). A `column-reverse` container would paint the column against its DOM order and invert
 	// the focus sequence with it, so the ban is part of the claim.
 	expect(PAGE).toMatch(/\{@const readyStack = \[\.\.\.readyResults\]\.reverse\(\)\}/);
-	expect(PAGE).toMatch(/\{@const cookingStack = \[\.\.\.cookingRows\]\.reverse\(\)\}/);
+	expect(PAGE).toMatch(/\{@const processingStack = \[\.\.\.processingRows\]\.reverse\(\)\}/);
 	expect(PAGE).toMatch(/\{@const rawRows = unaccounted\(rawResults\)\.reverse\(\)\}/);
 	// The zero-query shortcut stacks (popularRows / recentRows) were dropped with the browse mode (#902).
 	expect(PAGE).not.toContain('popularRows');
@@ -158,10 +158,10 @@ test('#833 — the results stack UPWARD: every result list is emitted with its b
 	expect(PAGE).not.toContain('column-reverse');
 
 	// Section order is the same claim at the block level: the most relevant section is the LAST one, so
-	// it is the one beside the thumb. Ready is nearest, then cooking, then what still needs karaoke.
+	// it is the one beside the thumb. Ready is nearest, then processing, then what still needs karaoke.
 	const main = PAGE.slice(PAGE.indexOf('<main>'), PAGE.indexOf('</main>'));
-	expect(main.indexOf('rawRows')).toBeLessThan(main.indexOf('cookingStack'));
-	expect(main.indexOf('cookingStack')).toBeLessThan(main.indexOf('readyStack'));
+	expect(main.indexOf('rawRows')).toBeLessThan(main.indexOf('processingStack'));
+	expect(main.indexOf('processingStack')).toBeLessThan(main.indexOf('readyStack'));
 });
 
 test('#833 — the bottom-anchored column reserves the top for the back control', () => {

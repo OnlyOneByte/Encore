@@ -20,7 +20,7 @@ The loop is deliberately simple:
 
 > phone queues → server decides rotation → TV renders → server broadcasts truth → phones converge.
 
-Round-robin is by **singer**, not FIFO: everyone's first pick before anyone's second. A song cooking
+Round-robin is by **singer**, not FIFO: everyone's first pick before anyone's second. A song processing
 at the front is skipped without losing its fairness position (the **held-slot rule**).
 
 ## 2. Deployment and stack
@@ -109,7 +109,7 @@ client field before it reaches state/SQLite — one missing `singerId` once kill
 
 `rotate` / `assignSeqs` / `applyAndReseq` own fairness. Terminal entries (`done`/`canceled`) are
 pruned on apply and hydrate. A not-ready file entry is skipped by `isEntryReady` but keeps its
-`rotationSeq`, so cooking never burns a singer's turn.
+`rotationSeq`, so processing never burns a singer's turn.
 
 WHICH ordering is a room setting (`RoomSettings.queueOrder`), and the registry is
 `packages/shared/src/queue/queue-order.ts` (built with `makeRegistry`, like every other flat registry): fair
@@ -160,7 +160,7 @@ playing > waiting > lobby > attract
 
 - **attract:** nobody present; full-screen QR.
 - **lobby:** people present, no queue; hero QR + roster.
-- **waiting:** queued media still cooking.
+- **waiting:** queued media still processing.
 - **playing:** media, lower-third, lyrics, compact join card.
 
 Spatial ownership is contractual: lower-third = bottom-left, join card = bottom-right.
@@ -182,12 +182,12 @@ Also contractual, and easy to break by accident because the layers live in three
 Two consequences worth stating, because both were live defects:
 
 - **Nothing above 0 may paint an opaque background.** `TvPlayer`'s `<video>` used to carry its own
-  `background: #000`, which — since a make-karaoke song has no video track and `object-fit: contain`
+  `background: #000`, which — since a process song has no video track and `object-fit: contain`
   letterboxes — painted the whole screen black and hid layer 0 completely. It is `transparent` now;
   `.tv`'s own black is the floor.
 - **The background is shown for the whole playing BAND, not just `screen === 'playing'`.** It is gated
   on the same `!isAttract` flag as the player slots, so it also covers `waiting` (a song is on stage,
-  still cooking) and the interstitial. Gating it on `playing` alone puts a black flash between every
+  still processing) and the interstitial. Gating it on `playing` alone puts a black flash between every
   song.
 
 ### The stage layer can host a renderer, not just a colour
@@ -264,27 +264,27 @@ Implementation: `src/lib/tv/gapless.ts`, `TvPlayer.svelte`, server `realtime/pla
 
 ### Identity
 
-`sourceRef` is **immutable origin identity**. Cooked playback lives in `Media.instrumentalRef`, and
+`sourceRef` is **immutable origin identity**. Processed playback lives in `Media.instrumentalRef`, and
 players call `playbackRef(media)`. Never overwrite `sourceRef` with an artifact path: doing that made
-a result unmatchable against its own future searches and minted duplicate uncooked rows.
+a result unmatchable against its own future searches and minted duplicate unprocessed rows.
 
 ### Playability
 
 **Nothing plays unprocessed.** A song is playable when it has a separated instrumental, and not
-before — no YouTube embed, no singing over the original vocals, and a local library file is a cook
+before — no YouTube embed, no singing over the original vocals, and a local library file is a process
 candidate like any other source rather than a special case.
 
-`playbackRef` returns `''` for anything uncooked and `isPlayable` is defined in terms of it, so "what
+`playbackRef` returns `''` for anything unprocessed and `isPlayable` is defined in terms of it, so "what
 do I load" and "is there anything to load" cannot disagree. Both require a `ready` status **and** an
 `instrumentalRef`: the two are written by separate steps, and a status running ahead of its artifact
 would hand the player an empty source. `listReady` mirrors the same rule, so a browse row can never
 resolve to a file that is not on disk.
 
 This replaced a `playMode: 'iframe' | 'file'` column that encoded two questions at once — is this ref
-a playable file, and has it been cooked — leaving two sources of truth for playability. `stemStatus` +
+a playable file, and has it been processed — leaving two sources of truth for playability. `stemStatus` +
 `instrumentalRef` already answered the second; the first stopped existing when the embed path did.
 
-Readiness therefore has three honest states: `ready` (cooked), `cooking` (a job in flight, rotation
+Readiness therefore has three honest states: `ready` (processed), `processing` (a job in flight, rotation
 holding its slot), and `unacquired` (nothing to play yet). The third used to mean "playable as-is,
 with the original vocals", which is why it was renamed rather than reworded.
 
@@ -381,7 +381,7 @@ queued → assigned → running → ready
 - Progress lease: running job must report at least every ~30s.
 - Reaper requeues expired jobs; boot resets orphaned `assigned`/`running` to `queued`.
 - Priority is the earliest `rotationSeq` needing that media, not FIFO.
-- Acquisition is its own job. A cook starts at `fetch`, which chains to `stems` through
+- Acquisition is its own job. A process starts at `fetch`, which chains to `stems` through
   `followUps()`, so a separation is never dispatched before its input exists. A local media skips
   acquisition: its bytes are already on the volume.
 - A completed `stems` job enqueues `align` through `followUps()` — it needs the vocals stem, so
@@ -403,10 +403,10 @@ nothing picked up has no start, and 0 there would invent work). It also carries 
 engine/model/backend/device and asrModel/syncMode, which cannot be re-derived later: they resolve from
 operator-editable global settings at dispatch, and a worker may resolve something different again.
 
-`cookId` groups the steps of one run. `mediaId` cannot: a song may be cooked more than once (a failure
+`processingId` groups the steps of one run. `mediaId` cannot: a song may be processed more than once (a failure
 frees the dedup slot; `stems-upgrade` re-separates a finished song), so grouping by media blends
 distinct runs and makes an end-to-end duration meaningless. `stems-upgrade` deliberately starts a NEW
-cook — it is background work on an already-finished song, and folding a 43-minute upgrade into a cook
+process — it is background work on an already-finished song, and folding a 43-minute upgrade into a process
 that delivered a singable song in 90 seconds would make every end-to-end average a fiction.
 
 The ledger is **observability and never a failure mode**: it is optional on the repository, and a
@@ -446,14 +446,14 @@ first-class fetcher rather than an absence: "already here" is exactly the case t
 can separate it need not be the same machine. That is what makes a credentialed fetcher droppable later
 without touching dispatch; `local` carries no capability because there is nothing to route.
 
-The registry in `packages/shared/src/cook/fetchers.ts` whitelists what is possible so a stored setting can be
+The registry in `packages/shared/src/process/fetchers.ts` whitelists what is possible so a stored setting can be
 validated and a picker rendered from one source; the *choice* is a setting, not a per-request argument.
 
 A `fetch` finishes by **identifying** what it downloaded (see §6 Metadata provenance). Annotation is a
 step rather than its own job because it needs exactly what a download produces and nothing a separate
 job would add: the real title and the exact duration. It is best-effort by construction — a declined
 match, an unreachable service, or `ENCORE_ANNOTATE=0` all leave the normalizer's values in place and
-never fail the cook. A karaoke night must not stop because a metadata service is down.
+never fail the process. A karaoke night must not stop because a metadata service is down.
 
 MusicBrainz calls pass through one **process-global, serialised** gate. The documented limit is one
 request per second per source IP, and the penalty is total rather than partial: exceeding it declines
@@ -500,7 +500,7 @@ stripped for a C++ pipeline, so supporting it is a port rather than a dependency
 
 ### What the worker measures, and what it is told
 
-The boundary is deliberate and runs one way: **the core decides what a cook produces, the worker decides
+The boundary is deliberate and runs one way: **the core decides what a process produces, the worker decides
 how its own box executes it.**
 
 Core-side, because these are persisted onto `Media.separator` and feed the never-regress upgrade ladder
@@ -529,7 +529,7 @@ forever, which is indistinguishable from a hung worker.
 The one thing the worker reports **up** is hardware: `worker:hello` carries an optional `runtime`
 (accelerator, device name, usable cores, memory, VRAM, torch version, whether a cgroup limit applies),
 stored on the `WorkerSession`. Before this the core made every cost-bearing decision against a static
-reference box — `estimateCookSeconds` takes a `hardwareFactor` nothing supplied. The field is additive,
+reference box — `estimateProcessSeconds` takes a `hardwareFactor` nothing supplied. The field is additive,
 so a worker that omits it is treated exactly as it was before.
 
 Symmetrically, the core now says when it cannot place work: a queued job whose capability no connected
@@ -544,7 +544,7 @@ Settings live in two layers, split by **who a setting belongs to**:
 | Scope | Belongs to | Examples |
 |---|---|---|
 | **global** | the deployment and its worker fleet | default separator engine + model, upgrade policy, the source **fetcher**, the join address |
-| **room** | one party | interstitial pacing, a downward-only cook-quality ceiling, TV progress + stage background, lyrics presentation |
+| **room** | one party | interstitial pacing, a downward-only process-quality ceiling, TV progress + stage background, lyrics presentation |
 
 Separator policy is global rather than per-room because an engine is only usable if some connected
 worker advertises its capability — a fact about the server's hardware, not about a party. Two rooms
@@ -555,9 +555,9 @@ bytes, so storing it would mean "never download anything" — and the normalizer
 as well as write, which is also what a de-whitelisted value needs.
 
 The room layer is keyed by room id, so multi-room is a row per room rather than a migration. A room
-may only cap cook quality **downward** (`maxQualityRank`): the global choice is already bounded by
+may only cap process quality **downward** (`maxQualityRank`): the global choice is already bounded by
 what the fleet can run, so letting a room raise it would name an engine no worker advertises and the
-job would sit queued forever. `resolveCookSeparator` applies that rule.
+job would sit queued forever. `resolveProcessSeparator` applies that rule.
 
 Both layers are authoritative server state. A write to either broadcasts `settings:changed` carrying
 the combined payload, and `queue:sync` includes both for mid-party joiners — a client never merges
@@ -594,7 +594,7 @@ Adding a new ephemeral field means editing all three sites.
 ### Quality ladder and upgrades
 
 Engine+model pairs carry a declared quality rank, mirrored in the shared contract and the worker. A
-completed cook can chain a `stems-upgrade` that re-separates from the **retained raw audio** — no
+completed process can chain a `stems-upgrade` that re-separates from the **retained raw audio** — no
 re-download — and the swap is refused unless the new artifact strictly outranks the published one.
 `Media.separator` records what produced the current instrumental so that comparison is possible. An
 unranked pair scores zero and can never win, so an unknown or de-whitelisted model cannot displace a
@@ -746,7 +746,7 @@ divergence found in this codebase resolves before the first step runs.** Three t
   step 1, so it is **plan selection** (`plan_for`), not branching. The retry cases — silent stem, an
   unavailable format, LRCLIB becoming reachable — belong to the **core**, because the core owns the
   `job_attempts` ledger and `/metrics/<mediaId>` audits every attempt; a worker-internal retry loop
-  would report one cook where three engines were tried.
+  would report one process where three engines were tried.
 
 The decision stays deliberately reversible: the runner iterates through one seam (`Plan.first()` /
 `Plan.after(step, result, ctx)`), so a future `GraphPlan` implementing `after()` as a transition table

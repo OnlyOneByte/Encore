@@ -164,7 +164,7 @@ def test_dial_home_keeps_no_private_classification_table():
 
 # ── #651: the two SEPARATOR MODEL RESOLVERS are boundary failures too ───────────────────────────────
 # An explicit-but-unknown model token is a permanent config error (retrying re-resolves the same bad
-# token forever, burning cook attempts). Both resolvers must fail NON-retryable through is_retryable.
+# token forever, burning process attempts). Both resolvers must fail NON-retryable through is_retryable.
 # On base, roformer.resolve_roformer_slug raised a bare ValueError (.retryable=None → is_retryable
 # defaulted it retryable), so the roformer row REDS on base; the demucs row already routed through
 # BoundaryError (#497) and PASSES on base — it is the not-vacuous sentinel that keeps this test honest

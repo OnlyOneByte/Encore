@@ -1,4 +1,4 @@
-// Job ledger — the durable state-of-record for make-karaoke processing (Demucs stems, WhisperX
+// Job ledger — the durable state-of-record for process processing (Demucs stems, WhisperX
 // align, scoring). SQLite is authority here (NOT the transport): workers dial home over WS and the
 // ledger tracks ownership/lifecycle. This is the I/O layer; the legal-transition rules live in the
 // pure transitions.ts (mirrors store.ts ↔ shared/applyAndReseq). See
@@ -84,7 +84,7 @@ export class JobRepository {
 	#releaseSlot: ((workerId: string) => void) | null = null;
 	/**
 	 * The ledger is OPTIONAL so every existing unit test that constructs a bare repository keeps
-	 * working, and so a missing ledger can never break a cook — it is observability, not correctness.
+	 * working, and so a missing ledger can never break a process — it is observability, not correctness.
 	 * app.ts wires it; tests that assert on history pass one in.
 	 */
 	constructor(db: DB, ledger?: AttemptLedger) {
@@ -97,7 +97,7 @@ export class JobRepository {
 	 * constructed after the repository, so it is injected rather than passed to the constructor —
 	 * mirroring the ledger). Fired by `transition` on a SLOT_RELEASING_EVENT with the OWNING worker
 	 * id (read pre-write, before the patch clears `workerId`). Unit tests that never touch worker
-	 * capacity leave it unset and the hook is a no-op, so slot accounting can never break a cook.
+	 * capacity leave it unset and the hook is a no-op, so slot accounting can never break a process.
 	 */
 	setSlotReleaseHook(release: (workerId: string) => void): void {
 		this.#releaseSlot = release;
@@ -109,23 +109,23 @@ export class JobRepository {
 	 * job is only created when no slot-occupying job exists (i.e. the previous one failed/canceled,
 	 * or there never was one).
 	 *
-	 * `cookId` threads an existing cook through a chained step (stems inherits fetch's cook). Omitted
-	 * = this job STARTS a cook and mints its own. Reusing an existing live job does not re-open an
+	 * `processingId` threads an existing process through a chained step (stems inherits fetch's process). Omitted
+	 * = this job STARTS a process and mints its own. Reusing an existing live job does not re-open an
 	 * attempt: the caller is subscribing to work already in flight, not causing new work.
 	 *
-	 * `singerId` attributes the cook to the requesting singer for the per-singer concurrent-cook cap
-	 * (`countLiveCooksForSinger`). Omitted by internal callers that impose no cap; a REUSED live job
+	 * `singerId` attributes the process to the requesting singer for the per-singer concurrent-process cap
+	 * (`countLiveProcessesForSinger`). Omitted by internal callers that impose no cap; a REUSED live job
 	 * keeps its original requester rather than being re-attributed to whoever tapped second.
 	 */
-	enqueue(mediaId: string, jobType: JobType, priority: number, now: number, cookId?: string, singerId?: string): Job {
+	enqueue(mediaId: string, jobType: JobType, priority: number, now: number, processingId?: string, singerId?: string): Job {
 		const existing = this.findLive(mediaId, jobType);
 		if (existing) return existing;
 
 		const job: Job = {
 			id: ulid(now),
 			mediaId,
-			cookId: cookId ?? ulid(now),
-			// Who this cook is attributed to for the per-singer cap. Omitted by internal callers
+			processingId: processingId ?? ulid(now),
+			// Who this process is attributed to for the per-singer cap. Omitted by internal callers
 			// (backfill, chained follow-up steps) which impose no cap.
 			singerId: singerId ?? null,
 			jobType,
@@ -165,7 +165,7 @@ export class JobRepository {
 	 * Free a FINISHED job's dedup slot so the song can be re-processed (#640). A `ready` job still
 	 * occupies the slot in both the app check and the partial unique index, and `ready` is TERMINAL —
 	 * `cancel()` cannot move it (the state machine gives terminal states no outgoing events). So a
-	 * re-run of a completed step (a human re-picking lyrics, a future re-cook button) has no way to
+	 * re-run of a completed step (a human re-picking lyrics, a future re-process button) has no way to
 	 * proceed: `enqueue` would return the old `ready` job and nothing would run, silently.
 	 *
 	 * This deletes the SLOT-OCCUPYING row for the key — the one `findLive` names, which is exactly the
@@ -190,10 +190,10 @@ export class JobRepository {
 	}
 
 	/**
-	 * The step of this song's cook that is CURRENTLY outstanding — the first not-yet-finished job in
+	 * The step of this song's process that is CURRENTLY outstanding — the first not-yet-finished job in
 	 * pipeline order, or null when nothing is in flight.
 	 *
-	 * Exists because /api/library used to answer "what is cooking right now?" by looking for a live
+	 * Exists because /api/library used to answer "what is processing right now?" by looking for a live
 	 * `stems` job and nothing else. A song mid-fetch or mid-align has no such job, so a phone that
 	 * reloaded during either step found none and fell back to a hardcoded 'queued' — the progress strip
 	 * jumping backwards on refresh, for the same reason the broadcasts did (see media-status.ts).
@@ -267,22 +267,22 @@ export class JobRepository {
 	 * Lower a queued/in-flight job's scheduling priority WITHOUT a status change.
 	 *
 	 * `priority` is scheduling metadata, not lifecycle: dispatch sorts `priority ASC, createdAt ASC`
-	 * (dispatch.ts), so a smaller number is more urgent. A cook's priority is a snapshot of
-	 * `soonestSeqFor` taken ONCE at enqueue (make-karaoke.ts). When the singer's queue add is dropped
+	 * (dispatch.ts), so a smaller number is more urgent. A process's priority is a snapshot of
+	 * `soonestSeqFor` taken ONCE at enqueue (process.ts). When the singer's queue add is dropped
 	 * over a reconnecting socket, that snapshot is `NO_QUEUE_PRIORITY` — nobody was waiting yet — and
-	 * nothing ever revises it, so the cook sorts behind the lyrics backfill forever even after the
+	 * nothing ever revises it, so the process sorts behind the lyrics backfill forever even after the
 	 * turn lands (the starvation half of #135).
 	 *
-	 * This cannot go through `transition`: a starved cook is still `queued`, and `queued → queued` is
+	 * This cannot go through `transition`: a starved process is still `queued`, and `queued → queued` is
 	 * deliberately not a legal edge (transitions.ts) — opening one would let a lease-expiry requeue
 	 * masquerade as a no-op progress update. So this is a narrow, status-free write that touches only
 	 * `priority` + `updatedAt` and emits no ledger event.
 	 *
 	 * Two guards keep it safe:
-	 *   • terminal jobs are never touched — a ready/failed/canceled cook has no scheduling future;
-	 *   • it only ever LOWERS the number (makes a cook more urgent). A reorder that would raise a
-	 *     cook's priority — push it further back — is refused, so this hook can only ever unstick a
-	 *     starved cook, never demote one another entry still needs.
+	 *   • terminal jobs are never touched — a ready/failed/canceled process has no scheduling future;
+	 *   • it only ever LOWERS the number (makes a process more urgent). A reorder that would raise a
+	 *     process's priority — push it further back — is refused, so this hook can only ever unstick a
+	 *     starved process, never demote one another entry still needs.
 	 *
 	 * No-op (returns the unchanged job) when the id is terminal or the new priority is not strictly
 	 * lower, so callers can fire it unconditionally on any add.
@@ -371,23 +371,23 @@ export class JobRepository {
 	}
 
 	/**
-	 * The DISTINCT media this singer has an in-flight cook JOB for — the ledger-backed attribution the
-	 * per-singer concurrent-cook cap is derived from.
+	 * The DISTINCT media this singer has an in-flight process JOB for — the ledger-backed attribution the
+	 * per-singer concurrent-process cap is derived from.
 	 *
-	 * Returns the set of `mediaId`s with a live root-cook job (`fetch` or `stems`) attributed to this
+	 * Returns the set of `mediaId`s with a live root-process job (`fetch` or `stems`) attributed to this
 	 * singer, where "live" = the dedup-occupying statuses (everything except failed/canceled) MINUS
 	 * `ready`. Only the root steps count, never the chained follow-ups: `align`/`stems-upgrade` reuse
-	 * the same `singerId` but are downstream of a cook already admitted, so counting them would let one
-	 * admitted cook consume several cap slots as it advances.
+	 * the same `singerId` but are downstream of a process already admitted, so counting them would let one
+	 * admitted process consume several cap slots as it advances.
 	 *
-	 * WHY THE LEDGER, NOT QUEUE ENTRIES. The cook (HTTP) and the queue entry (WebSocket) ride different
+	 * WHY THE LEDGER, NOT QUEUE ENTRIES. The process (HTTP) and the queue entry (WebSocket) ride different
 	 * transports and only the entry is droppable. A phone that taps Sing while its socket is
-	 * reconnecting files the cook with NO entry, so an entry-derived count saw zero and admitted every
+	 * reconnecting files the process with NO entry, so an entry-derived count saw zero and admitted every
 	 * tap — the exact cap bypass this closes. The job ledger is the thing being bounded and does not
-	 * depend on the second transport. The caller drops media already marked ready (a finished cook no
+	 * depend on the second transport. The caller drops media already marked ready (a finished process no
 	 * longer costs the fleet) and the media being re-requested.
 	 */
-	liveCookMediaForSinger(singerId: string): Set<string> {
+	liveProcessMediaForSinger(singerId: string): Set<string> {
 		const rows = this.#db
 			.select({ mediaId: jobs.mediaId })
 			.from(jobs)

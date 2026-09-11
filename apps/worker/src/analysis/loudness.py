@@ -65,5 +65,5 @@ def measure_lufs(wav_path: str | None) -> float | None:
         if not np.isfinite(loudness):
             return None
         return loudness
-    except Exception:  # noqa: BLE001 — analysis must never fail the cook; unmeasurable → None
+    except Exception:  # noqa: BLE001 — analysis must never fail the process; unmeasurable → None
         return None

@@ -22,7 +22,7 @@
 // guard.
 //
 // This asserts production's own text; comments are blanked first so a commented-out wiring cannot
-// satisfy the scan (same technique as reprioritize-cook-wiring.test.ts:20-23,
+// satisfy the scan (same technique as reprioritize-process-wiring.test.ts:20-23,
 // ephemeral-reset-single-source.test.ts). It anchors on each LITERAL, not the whole file, because
 // several hook names (entries, jobs, dispatch, now) also appear at unrelated call sites.
 import { test, expect } from 'bun:test';

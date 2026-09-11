@@ -43,7 +43,7 @@ test('empty query returns nothing', async () => {
 	expect(await lib().search('   ', 10)).toEqual([]);
 });
 
-test('resultToMedia leaves a local file UNCOOKED, so it is not playable yet', async () => {
+test('resultToMedia leaves a local file UNPROCESSED, so it is not playable yet', async () => {
 	const r = (await lib().search('take', 1))[0]!;
 	const m = resultToMedia('id1', r);
 	expect(m.stemStatus).toBe('none');
@@ -54,8 +54,8 @@ test('resultToMedia leaves a local file UNCOOKED, so it is not playable yet', as
 
 // ── never advertise a track whose file is missing ─────────────────────────────
 // The dev seed listed four library demos with no files behind them. They were searchable and
-// cookable, and a cook failed 3x on `ffmpeg exited 254: No such file or directory`, then left the
-// song pinned in the phone's "cooking" list permanently.
+// processable, and a process failed 3x on `ffmpeg exited 254: No such file or directory`, then left the
+// song pinned in the phone's "processing" list permanently.
 import { presentTracks, type LocalTrack } from './local';
 
 const track = (ref: string): LocalTrack => ({ sourceRef: ref, title: ref, durationSec: 1 });

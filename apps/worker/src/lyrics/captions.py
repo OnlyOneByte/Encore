@@ -53,7 +53,7 @@ DEFAULT_SUB_LANGS = "en-orig,en,en-US,en-GB"
 #: Seconds to wait before EACH subtitle download. The one flag that directly answers a 429: the requests
 #: are what YouTube rate-limits, and this is what stops them arriving as a burst. Small on purpose —
 #: `--skip-download` means this whole call is a handful of metadata requests, so the added wall time is
-#: about a second per track and it runs inside a cook that already takes minutes.
+#: about a second per track and it runs inside a process that already takes minutes.
 SUB_SLEEP_SEC = 1
 
 #: Backoff for an HTTP error that is retryable, 429 included: exponential from 1s, capped at 30s. Without
@@ -334,7 +334,7 @@ def find_caption_file(directory: str) -> str | None:
 
     Machine translations are refused outright (see `is_translated_track`). Among what remains, an
     original-language marker wins, then a plain code over a regional variant — purely so the choice is
-    deterministic and a re-cook cannot silently produce different lyrics.
+    deterministic and a re-process cannot silently produce different lyrics.
     """
     try:
         names = sorted(os.listdir(directory))

@@ -1,5 +1,5 @@
 // Browse by artist. The catalog holds every search result ever materialised (271 rows
-// for 7 cooked songs on the live box), so the invariant under test is that browse only ever shows
+// for 7 processed songs on the live box), so the invariant under test is that browse only ever shows
 // songs you can actually SING, and that an uncertain artist never becomes a heading.
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { migratedDb } from '../db/test-db';
@@ -19,7 +19,7 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-const cooked = (id: string, over: Partial<Media> = {}) =>
+const processed = (id: string, over: Partial<Media> = {}) =>
 	media(id, {
 		stemStatus: 'ready',
 		lyricsStatus: 'ready',
@@ -37,7 +37,7 @@ beforeEach(() => {
 
 describe('canonical metadata in the index', () => {
 	it('stores and reads back canonical artist/album/year', () => {
-		repo.upsert(cooked('a'));
+		repo.upsert(processed('a'));
 		repo.setCanonical('a', { artist: 'Daft Punk', album: 'Discovery', year: 2001 });
 		expect(repo.artistFacets()).toEqual([{ artist: 'Daft Punk', count: 1 }]);
 	});
@@ -45,7 +45,7 @@ describe('canonical metadata in the index', () => {
 	it('a NULL canonical artist is excluded from the facets, not bucketed as Unknown', () => {
 		// This is the low-confidence case: better no heading than a wrong one. An "Unknown" bucket of
 		// 40 songs would be the uploader-as-artist bug wearing a different hat.
-		repo.upsert(cooked('a'));
+		repo.upsert(processed('a'));
 		repo.setCanonical('a', { artist: null, album: null, year: null });
 		expect(repo.artistFacets()).toEqual([]);
 	});
@@ -58,7 +58,7 @@ describe('canonical metadata in the index', () => {
 		const { eq } = await import('drizzle-orm');
 		const db = migratedDb();
 		const r = new MediaRepository(db);
-		r.upsert(cooked('a'));
+		r.upsert(processed('a'));
 
 		// A prior good write populated album + year.
 		r.setCanonical('a', { artist: 'Daft Punk', album: 'Discovery', year: 2001 });
@@ -76,7 +76,7 @@ describe('canonical metadata in the index', () => {
 		const { eq } = await import('drizzle-orm');
 		const db = migratedDb();
 		const r = new MediaRepository(db);
-		r.upsert(cooked('a'));
+		r.upsert(processed('a'));
 		r.setCanonical('a', { artist: 'X', album: 'Y', year: 1999 });
 		r.setCanonical('a', { artist: 'X', album: null, year: null });
 		const row = db.select().from(media).where(eq(media.id, 'a')).all()[0]!;
@@ -87,7 +87,7 @@ describe('canonical metadata in the index', () => {
 
 describe('media tags (setTags/tagsOf machinery)', () => {
 	it('setTags is idempotent and replaces the whole set for that kind', () => {
-		repo.upsert(cooked('a'));
+		repo.upsert(processed('a'));
 		repo.setTags('a', 'tag', ['pop', 'pop', 'POP ']); // dupes + case + whitespace collapse to one
 		expect(repo.tagsOf('a', 'tag')).toEqual(['pop']);
 
@@ -96,7 +96,7 @@ describe('media tags (setTags/tagsOf machinery)', () => {
 	});
 
 	it('kinds are independent — setting one kind leaves another alone', () => {
-		repo.upsert(cooked('a'));
+		repo.upsert(processed('a'));
 		repo.setTags('a', 'tag', ['pop']);
 		repo.setTags('a', 'mood', ['banger']);
 		repo.setTags('a', 'tag', ['rock']);
@@ -105,7 +105,7 @@ describe('media tags (setTags/tagsOf machinery)', () => {
 	});
 
 	it('an empty set clears the tags', () => {
-		repo.upsert(cooked('a'));
+		repo.upsert(processed('a'));
 		repo.setTags('a', 'tag', ['pop']);
 		repo.setTags('a', 'tag', []);
 		expect(repo.tagsOf('a', 'tag')).toEqual([]);
@@ -114,10 +114,10 @@ describe('media tags (setTags/tagsOf machinery)', () => {
 
 describe('browse only shows singable songs', () => {
 	beforeEach(() => {
-		// two cooked songs by one artist, one cooked by another, and an UNCOOKED one that must not appear
-		repo.upsert(cooked('c1'));
-		repo.upsert(cooked('c2'));
-		repo.upsert(cooked('c3'));
+		// two processed songs by one artist, one processed by another, and an UNPROCESSED one that must not appear
+		repo.upsert(processed('c1'));
+		repo.upsert(processed('c2'));
+		repo.upsert(processed('c3'));
 		repo.upsert(media('raw1')); // a plain search result — cannot be sung without vocals
 		repo.setCanonical('c1', { artist: 'Daft Punk', album: null, year: null });
 		repo.setCanonical('c2', { artist: 'Daft Punk', album: null, year: null });

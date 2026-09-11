@@ -514,7 +514,7 @@ def test_a_failing_search_still_tries_get():
 
 
 def test_both_endpoints_failing_is_a_miss_not_a_job_failure():
-    """A dead LRCLIB must degrade the RESULT, not fail the cook — the invariant this module was
+    """A dead LRCLIB must degrade the RESULT, not fail the process — the invariant this module was
     originally written to establish."""
     client = FakeLrclib(search_raises=True, get_raises=True)
     assert LrclibSource(client, _segments).fetch(_req()) is None

@@ -73,15 +73,15 @@ test('REJECT and LEASE_EXPIRED are DISTINGUISHABLE events that both land on queu
 });
 
 test('REPRIORITIZE is a legal in-machine self-loop on EVERY non-terminal status (#471/#525)', () => {
-	// Retires repository.ts:176's raw write: a starved cook is rescheduled THROUGH the machine.
+	// Retires repository.ts:176's raw write: a starved process is rescheduled THROUGH the machine.
 	// Every non-terminal status carries the self-loop, matching reprioritize()'s terminal-only guard.
-	// `assigned` is load-bearing: reprioritizeCookForMedia fires on the onEntryAdded path and
+	// `assigned` is load-bearing: reprioritizeProcessForMedia fires on the onEntryAdded path and
 	// findOutstandingForMedia returns assigned jobs, so a missing assigned edge throws and drops the
 	// queue:patch broadcast (the #525 regression).
 	expect(nextStatus('queued', 'REPRIORITIZE')).toBe('queued');
 	expect(nextStatus('assigned', 'REPRIORITIZE')).toBe('assigned'); // the reconnect add during the ack window
 	expect(nextStatus('running', 'REPRIORITIZE')).toBe('running');
-	// but never on a terminal job — a finished cook has no scheduling future and no REPRIORITIZE edge
+	// but never on a terminal job — a finished process has no scheduling future and no REPRIORITIZE edge
 	for (const term of TERMINAL_JOB_STATUSES) {
 		expect(canFire(term, 'REPRIORITIZE')).toBe(false);
 	}

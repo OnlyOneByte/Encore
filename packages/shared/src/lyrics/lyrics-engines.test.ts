@@ -46,7 +46,7 @@ describe('sync mode registry', () => {
 	});
 
 	it('line mode is declared as the one that skips the aligner', () => {
-		// This boolean IS the cost model: it is the difference between one ML pass per cook and two.
+		// This boolean IS the cost model: it is the difference between one ML pass per process and two.
 		expect(getSyncMode('lines')?.usesAligner).toBe(false);
 		expect(getSyncMode('lines')?.granularity).toBe('line');
 	});

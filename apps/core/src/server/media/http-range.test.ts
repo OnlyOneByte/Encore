@@ -3,7 +3,7 @@
 import { describe, test, expect } from 'bun:test';
 import { parseRangeHeader, contentRange, unsatisfiedContentRange, type RangeDecision } from './http-range';
 
-const SIZE = 26_218_241; // a real cooked instrumental FLAC, for realism
+const SIZE = 26_218_241; // a real processed instrumental FLAC, for realism
 
 function partial(d: RangeDecision): { start: number; end: number } {
 	if (d.kind !== 'partial') throw new Error(`expected partial, got ${d.kind}`);

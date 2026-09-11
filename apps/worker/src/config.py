@@ -33,7 +33,7 @@ def _str(env: dict[str, str], key: str, default: str) -> str:
     `dict.get(key, default)` is wrong for compose-style plumbing: `FOO=${FOO:-}` puts an empty string
     in the environment, which is present, so `.get` returns `""` and the default never applies. That
     turned an unset override into `demucs_model=""` — a worker that passes `-n ''` to demucs and fails
-    every cook for a reason nothing in the config line would explain.
+    every process for a reason nothing in the config line would explain.
     """
     return env.get(key, "").strip() or default
 
@@ -99,8 +99,8 @@ def auto_demucs_segment(free_vram: int | None = None) -> int | None:
 
     Keyed on FREE memory rather than `Accelerator.vram_bytes`, which is physical capacity. That
     distinction is the whole reason this exists: a 12 GiB card with a browser, a display server or a
-    second cook already on it can have under 3 GiB free, and a worker that sizes itself for 12 fails at
-    the first chunk with a CUDA OOM — reported to the room as a failed cook, not as a full card.
+    second process already on it can have under 3 GiB free, and a worker that sizes itself for 12 fails at
+    the first chunk with a CUDA OOM — reported to the room as a failed process, not as a full card.
 
     None means "say nothing and let demucs choose", which is correct in three cases: no accelerator
     (CPU separation is bounded by RAM, and the box's own swap behaviour is a better judge than a guess
@@ -121,7 +121,7 @@ def auto_demucs_segment(free_vram: int | None = None) -> int | None:
         return 7
     if gib >= 3.0:
         return 5
-    return 3  # very tight — small chunks are slower per song, but a slow cook beats an OOM
+    return 3  # very tight — small chunks are slower per song, but a slow process beats an OOM
 
 
 def auto_torch_threads(concurrency: int, demucs_jobs: int, cpu_count: int | None = None) -> int | None:
@@ -193,7 +193,7 @@ class WorkerConfig:
     processor: str = "real"  # "stub" forces the no-ML path
     #: Shared secret the core requires on the worker WS handshake. The core gates `role=worker`
     #: connections when ENCORE_WORKER_TOKEN is set on ITS side (server.ts) and returns 401 otherwise,
-    #: so a worker that does not present the same token is refused and ALL cooking silently stops.
+    #: so a worker that does not present the same token is refused and ALL processing silently stops.
     #: Empty/unset means the connection carries no token — identical to the pre-auth behaviour, for a
     #: deployment that has not set a token. NEVER logged as a value: `describe()` shows presence only.
     worker_token: str = ""
@@ -202,7 +202,7 @@ class WorkerConfig:
     demucs_model: str = "htdemucs"
     #: ONE device override for the whole worker (separation AND alignment). None => auto-detect the
     #: best accelerator present. Set to force "cpu" / "cuda" / "cuda:1" / "xpu" / "mps"; an explicit
-    #: device that is not reachable raises at startup rather than silently cooking on CPU.
+    #: device that is not reachable raises at startup rather than silently processing on CPU.
     device: str | None = None
     #: Parallel chunk jobs. Each job holds its own model copy, so this trades MEMORY for wall time.
     #: Defaults to `auto_demucs_jobs(cpu_count)` rather than a fixed number: measured 1.72x on a 32-core
@@ -222,18 +222,18 @@ class WorkerConfig:
     torch_threads: int | None = None
     #: Identify a download against MusicBrainz after fetching it. On by default because the payoff is a
     #: correct artist/title for the LRCLIB lookup; set ENCORE_ANNOTATE=0 on a box with no outbound
-    #: network, where every call would decline anyway and only cost a timeout per cook.
+    #: network, where every call would decline anyway and only cost a timeout per process.
     annotate: bool = True
     #: Retain the RAW caption track (the winning `.vtt`/`.srt`) in durable `derived/` storage for
-    #: post-cook diagnosis of a caption-parsing defect (#670). OFF by default: retaining it puts
-    #: third-party caption text into the media volume for every cook, and #709's core-side change is
+    #: post-process diagnosis of a caption-parsing defect (#670). OFF by default: retaining it puts
+    #: third-party caption text into the media volume for every process, and #709's core-side change is
     #: what lets the retention cap count and evict it. Parsed at the config boundary like every other
     #: operator boolean — reading it as bare truthiness inside the step (its original form) made
     #: `ENCORE_KEEP_RAW_CAPTIONS=0` turn it ON, since "0" is a non-empty string (#709).
     keep_raw_captions: bool = False
     #: Which backend executes a separator engine here: "torch", "mlx", or unset for auto-detect.
     #: Distinct from `device`: the backend is the IMPLEMENTATION, the device is where torch runs.
-    #: An explicit backend that is unavailable fails at startup rather than silently cooking on CPU.
+    #: An explicit backend that is unavailable fails at startup rather than silently processing on CPU.
     separator_backend: str | None = None
 
     # ── encoding ──────────────────────────────────────────────────────────────────
@@ -315,7 +315,7 @@ class WorkerConfig:
             demucs_shifts=_opt_int(e, "ENCORE_DEMUCS_SHIFTS", w, minimum=0),
             torch_threads=torch_threads,
             annotate=e.get("ENCORE_ANNOTATE", "1").strip().lower() not in ("0", "false", "no", "off"),
-            # Default "0" (OFF) so an absent flag keeps the ordinary-cook footprint; the SAME
+            # Default "0" (OFF) so an absent flag keeps the ordinary-process footprint; the SAME
             # false-spelling set annotate uses, so "0"/"false"/"no"/"off" all read as off (#709).
             # `or "0"` folds an empty / whitespace-only value into the false set: this flag defaults
             # OFF, and `ENCORE_KEEP_RAW_CAPTIONS=` (blank, the .env/compose idiom for "neutralise this")
@@ -403,7 +403,7 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
     # HONESTY: `caps` proves `stems` from demucs being importable, but #119 made the resolved separator
     # backend DRIVE which demucs engine runs, and only `torch` has an implementation. So a box that
     # proves `stems` but resolves its backend to one with no engine (an Apple-Silicon box with
-    # `demucs-mlx` importable auto-selects `mlx`) would advertise `stems` and then fail every cook it is
+    # `demucs-mlx` importable auto-selects `mlx`) would advertise `stems` and then fail every process it is
     # handed at plan selection. Narrow the set HERE — the one place that both has the proven capability
     # set and can resolve the backend — so the box refuses the work at boot instead. The backend is
     # resolved SILENTLY (`_build_processor` owns the single startup print of it); this only needs its

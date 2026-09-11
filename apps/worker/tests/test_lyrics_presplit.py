@@ -475,7 +475,7 @@ def test_a_raising_upstream_degrades_to_the_unbounded_lines(monkeypatch):
 
 def test_max_line_chars_mirrors_the_tv_row_width():
     # LINE_MAX_CHARS in apps/core/src/lib/tv/lyrics.ts is the authority (the TV row width the worker
-    # bounds cook-time lines to). Read it from the TS source and assert the worker constant equals it,
+    # bounds process-time lines to). Read it from the TS source and assert the worker constant equals it,
     # so narrowing the TV row on the authority side reds here instead of silently re-splitting at
     # display time. Explicitly NOT upstream's default of 36.
     assert lp.MAX_LINE_CHARS == _ts_number(_TV_LYRICS_TS, "LINE_MAX_CHARS")

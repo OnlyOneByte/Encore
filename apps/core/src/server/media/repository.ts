@@ -1,6 +1,6 @@
-// Media repository — the durable catalog. Search results and cooked (make-karaoke) songs are upserted
-// here so the catalog survives a restart, `requestMakeKaraoke` dedupes to already-separated stems
-// instead of re-cooking, and the saved-karaoke library can list every song whose instrumental is on
+// Media repository — the durable catalog. Search results and processed (process) songs are upserted
+// here so the catalog survives a restart, `requestProcess` dedupes to already-separated stems
+// instead of re-processing, and the saved-karaoke library can list every song whose instrumental is on
 // disk. The runtime `mediaById` Map stays the hot read path; this is the write-behind + boot-hydrate
 // store.
 import { eq, and, desc, isNotNull, inArray, type SQL } from 'drizzle-orm';
@@ -114,7 +114,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	// 0 so the guide is held as today. A stored number (including 0, a measured "aligned") round-trips.
 	guideOffsetMs: r.guideOffsetMs ?? undefined,
 	// A NULL column means the stems job has not run — leave songProfile UNDEFINED (absent), which the
-	// gate reads as still-cooking. A present string is untrusted (an older build, a hand-edited sidecar
+	// gate reads as still-processing. A present string is untrusted (an older build, a hand-edited sidecar
 	// mirrored here) so it is re-normalized at this boundary: normalizeSongProfile degrades any bad half
 	// to null rather than throwing, so a corrupt profile downgrades to EMPTY_SONG_PROFILE (still a
 	// gate-satisfying "ran, found nothing") instead of bricking the hydrate.
@@ -144,7 +144,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
  * the narrowing, so the artist filter listed a song the unfiltered library correctly hid, and a tag
  * chip reading `ballad 1` opened a measured EMPTY list. Keeping the whole predicate in SQL instead had
  * already split the server's library from the phone's own rules once before that — a song rendered in
- * the Ready and Cooking groups at the same time. Hence: narrow in SQL, decide in the gate table, in
+ * the Ready and Processing groups at the same time. Hence: narrow in SQL, decide in the gate table, in
  * one place.
  *
  * `extra` narrows FURTHER in SQL — the artist filter's index push-down, and `readyTagged`'s id set. It
@@ -249,9 +249,9 @@ export class MediaRepository {
 	}
 
 	/**
-	 * The saved-karaoke library: songs that are FINISHED — every required cook gate satisfied — so
+	 * The saved-karaoke library: songs that are FINISHED — every required process gate satisfied — so
 	 * re-queueing one skips the worker entirely. Ordered newest-first by id (ULIDs are monotonic, so
-	 * this is catalog-discovery order, not cook order).
+	 * this is catalog-discovery order, not process order).
 	 *
 	 * Deliberately a one-liner over `readySongs`: "finished" is defined in exactly one place for every
 	 * reader that lists or counts browsable songs, so the library, the browse filters and the browse
@@ -264,7 +264,7 @@ export class MediaRepository {
 	// ── browse ───────────────────────────────────────────────────────────────
 	//
 	// Only READY songs are browsable. The catalog holds every search result ever materialised (271 rows
-	// on the live box for 7 cooked songs), so browsing the whole table would drown the library in
+	// on the live box for 7 processed songs), so browsing the whole table would drown the library in
 	// things you cannot actually sing yet.
 
 	/** Mirror the canonical metadata for one media into the index (from its authoritative sidecar).

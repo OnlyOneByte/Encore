@@ -10,7 +10,7 @@
 // apps/core/src/lib/tv/pitch-shift-doc-accuracy.test.ts (PR #580).
 //
 // #776: the package's production modules now live in domain subdirectories (core/, queue/, lyrics/,
-// cook/, presentation/). The scan RECURSES so a subdir module is still covered, and a comment that
+// process/, presentation/). The scan RECURSES so a subdir module is still covered, and a comment that
 // cites a bare filename ("in separators.ts") resolves against a filename → path index so a pointer
 // keeps resolving after its target moved subdir. This file itself stays at the package root.
 import { test, expect } from 'bun:test';

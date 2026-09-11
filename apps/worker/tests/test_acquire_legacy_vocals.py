@@ -1,7 +1,7 @@
 """AcquireAudio must find a pre-#480 legacy vocals stem (issue #501).
 
-#480 switched VOCALS_EXT from `m4a` to `flac` for NEW cooks, but the worker never receives the stored
-vocals ref — it re-derives the path from the CURRENT VOCALS_EXT on every align job. Every song cooked in
+#480 switched VOCALS_EXT from `m4a` to `flac` for NEW processes, but the worker never receives the stored
+vocals ref — it re-derives the path from the CURRENT VOCALS_EXT on every align job. Every song processed in
 the interim era has its vocals stem on disk as `<id>-vocals.m4a`, so a lookup that only tries the current
 extension loses it and align silently degrades to aligning against the mix.
 
@@ -74,7 +74,7 @@ def test_acquire_finds_legacy_m4a_vocals_stem(tmp_path):
 def test_acquire_prefers_current_flac_over_legacy_m4a(tmp_path):
     """When BOTH extensions are present, the current VOCALS_EXT (.flac) wins.
 
-    Pins the preference so a fresh re-cook's stem is chosen over a stale legacy sibling, rather than the
+    Pins the preference so a fresh re-process's stem is chosen over a stale legacy sibling, rather than the
     choice being incidental to glob/sort ordering.
     """
     _write(_legacy_m4a_path(tmp_path))

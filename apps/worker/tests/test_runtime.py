@@ -76,7 +76,7 @@ def test_a_step_reading_what_no_earlier_step_writes_is_REFUSED():
     """The whole point of declaring reads and writes.
 
     A reordered step, or one dropped into the wrong slot, otherwise surfaces as a confusing `None` several
-    steps later — on the deploy box, mid-cook. Here it is a validation error naming the step and the key.
+    steps later — on the deploy box, mid-process. Here it is a validation error naming the step and the key.
     """
     plan = LinearPlan("broken", [Writes("second", writes=set(), reads={"lyrics.texts"})])
     with pytest.raises(PlanError, match="lyrics.texts"):
@@ -138,7 +138,7 @@ async def test_the_RUNNER_refuses_a_malformed_plan_before_any_step_runs(tmp_path
 
     `validate_plan` is exercised directly above, but the promise `plan.py`'s docstring makes — a
     reordered step is a validation error naming the step and the key, NOT a confusing `None` several
-    steps later on the deploy box mid-cook — is only kept because `PlanRunner.process` calls it before
+    steps later on the deploy box mid-process — is only kept because `PlanRunner.process` calls it before
     the first step. Drive a malformed plan (a step reading a key nothing earlier writes) through the
     runner via the `plans=` injection seam and assert it is refused BEFORE execution: the step's `ran`
     flag must stay False. Deleting the runner's `validate_plan` call reds this — the step runs, reads an
@@ -200,7 +200,7 @@ class Marks(Step):
 async def test_STOP_ends_the_plan_and_still_COMPLETES(tmp_path):
     """STOP means the job is DONE, not failed. The one real case is an instrumental: no source produced
     any text, so the remaining lyrics steps have nothing to operate on. Raising instead would leave that
-    song stuck cooking forever on a step that is working correctly, because readiness waits on align."""
+    song stuck processing forever on a step that is working correctly, because readiness waits on align."""
     plan = LinearPlan("stopping", [Stops(), Marks("after")])
     proc = PlanRunner(runner=noop_runner, plans=lambda j, e: plan)
     events = await drain(proc, job(tmp_path))
@@ -491,13 +491,13 @@ def test_a_valid_action_with_no_registered_plan_raises_plan_error(tmp_path, monk
 
 @pytest.mark.asyncio
 async def test_run_blocking_awaits_its_thread_before_the_generator_finishes(tmp_path, monkeypatch):
-    """A cancelled ML cook must not free its concurrency slot while the thread is still running.
+    """A cancelled ML process must not free its concurrency slot while the thread is still running.
 
     run_blocking offloads a synchronous ML call to a thread and yields keepalives. When the job is
     cancelled, dial_home cancels the consuming task, which throws GeneratorExit into this generator's
     suspended `yield`. The slot is freed the instant run_blocking returns (_run_job's finally). If the
     generator returned while the thread was still executing, the worker would advertise capacity it did
-    not have and a cancelled cook would keep burning CPU/VRAM off the books.
+    not have and a cancelled process would keep burning CPU/VRAM off the books.
 
     The thread here cannot be killed — it sleeps a fixed span and sets `finished` only when it truly
     ends. We consume one keepalive, then `aclose()` the generator (the GeneratorExit path). With the
@@ -609,7 +609,7 @@ def test_scratch_for_produces_the_documented_media_volume_layout(tmp_path):
     in a two-container deploy a core-side rmtree gets EACCES, so the worker's own delete is the ONLY
     reclaim path. It had zero test callers, so a producer edit that changed the path shape — grouping
     scratch under the media id, a per-attempt subdir, moving off the media volume — sailed past the
-    whole suite (579 green) while every cooked song leaked its decoded source + both WAV stems until
+    whole suite (579 green) while every processed song leaked its decoded source + both WAV stems until
     the volume filled, silently (`ignore_errors=True`).
 
     Pin the producer's contract HERE, independent of any hand-rebuilt copy: the expectation is written
@@ -659,7 +659,7 @@ def test_the_cleanup_derives_its_delete_target_FROM_scratch_for_not_a_hand_rebui
 async def test_run_stage_emits_a_time_based_keepalive_while_the_child_is_quiet(monkeypatch):
     """A subprocess stage whose child makes no NEW percentage for longer than the progress lease must
     still renew the lease with a TIME-BASED keepalive, or the core's 30 s progressLeaseMs expires and a
-    HEALTHY cook is reaped and retried as a fresh pass (#435).
+    HEALTHY process is reaped and retried as a fresh pass (#435).
 
     This is the roformer shape exactly: `parse` returns None unconditionally (roformer's
     parse_progress does), so NOT ONE line parses to a percentage, and the child stays quiet for a long

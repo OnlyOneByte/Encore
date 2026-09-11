@@ -71,7 +71,7 @@ test('a reported host is stored on the session, so the core can stop guessing at
 		version: '1',
 		host: HOST
 	});
-	// estimateCookSeconds takes a hardwareFactor that nothing ever supplied — this is the value that
+	// estimateProcessSeconds takes a hardwareFactor that nothing ever supplied — this is the value that
 	// makes it real, so it has to survive the handshake rather than being logged and dropped.
 	expect(registry.get('w1')!.host).toEqual(HOST);
 });
@@ -146,10 +146,10 @@ test('a job waiting only for a FREE SLOT is never called unservable', () => {
 	expect(statuses(broadcasts).some((s) => s.unservable)).toBe(false);
 });
 
-test('a stalled follow-up does NOT regress an already-playable song to cooking', () => {
+test('a stalled follow-up does NOT regress an already-playable song to processing', () => {
 	// A published song with a stalled `align` follow-up is genuinely unservable — and irrelevant to the
 	// room, because the song plays. Broadcasting a queued status for it would flip a ready song back to
-	// cooking on every phone, which is a worse bug than the one being reported: missing lyrics is not
+	// processing on every phone, which is a worse bug than the one being reported: missing lyrics is not
 	// missing audio.
 	const { hub, jobs, broadcasts } = harness({
 		m1: { instrumentalRef: 'derived/stems/m1-instrumental.flac', stemStatus: 'ready' }

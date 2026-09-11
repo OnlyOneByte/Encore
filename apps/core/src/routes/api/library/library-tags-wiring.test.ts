@@ -31,7 +31,7 @@ test('the route reads tags with the tag KIND, not the genre default (#689)', () 
 });
 
 test('the route builds a mediaId→tags map over the LIBRARY list (#689)', () => {
-	// A `tags` record, populated by iterating the library (not the cooking list, not the whole catalog).
+	// A `tags` record, populated by iterating the library (not the processing list, not the whole catalog).
 	expect(SRC).toMatch(/const\s+tags\s*:\s*Record<string,\s*string\[\]>\s*=\s*\{\}/);
 	expect(SRC).toMatch(/for\s*\(\s*const\s+\w+\s+of\s+library\s*\)/);
 });

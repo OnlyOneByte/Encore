@@ -148,7 +148,7 @@ console.log(`\nP6 lyrics probe — server ${base}, media ${MEDIA_DIR}\n`);
 // ── Sanity: is the fake-worker fixture even something the client parser can read? ─────
 // The fake worker's align payload writes {startSec,endSec,text} on words/lines, but the
 // TV overlay's parseLyricsDoc reads {start,end,word}. If the fixture is wrong every
-// downstream timing check is meaningless, so surface that BEFORE cooking a song and
+// downstream timing check is meaningless, so surface that BEFORE processing a song and
 // looking at moving pixels.
 const parserCheck = await (async () => {
 	const raw = {
@@ -169,7 +169,7 @@ const parserCheck = await (async () => {
 })();
 const fixtureShapeMatchesParser = !parserCheck.badWordsDropped;
 
-// ── Cook a song, using the running fake worker ─────────────────────────────
+// ── Process a song, using the running fake worker ─────────────────────────────
 const jar = join(process.env.KIROCREW_SCRATCH ?? '/tmp', `p6-jar-${process.pid}`);
 await fetch(`${base}/api/join`, {
 	method: 'POST',
@@ -181,20 +181,20 @@ await fetch(`${base}/api/join`, {
 });
 const cookieHeader = existsSync(jar) ? readFileSync(jar, 'utf8') : '';
 
-/** Cook a fresh song by title-fragment, returning its media id when the align artifact lands. */
+/** Process a fresh song by title-fragment, returning its media id when the align artifact lands. */
 /**
  * @param {string} query
  * @param {{ waitForAlign?: boolean, timeoutMs?: number }} [opts]
  * @returns {Promise<{ id: string, row: SongRow }>}
  */
-async function cookAndWait(query, { waitForAlign = true, timeoutMs = 15_000 } = {}) {
+async function processAndWait(query, { waitForAlign = true, timeoutMs = 15_000 } = {}) {
 	const found = /** @type {SearchBody} */ (
 		await fetch(`${base}/api/search?q=${encodeURIComponent(query)}`).then((r) => r.json())
 	);
 	const raw = [...found.results, ...found.ready].find((x) => x.source === 'local');
 	if (!raw) throw new Error(`no local song matching "${query}"`);
 	if (!found.ready.some((r) => r.id === raw.id)) {
-		await fetch(`${base}/api/make-karaoke`, {
+		await fetch(`${base}/api/process`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json', cookie: cookieHeader },
 			body: JSON.stringify({ mediaId: raw.id })
@@ -213,13 +213,13 @@ async function cookAndWait(query, { waitForAlign = true, timeoutMs = 15_000 } = 
 }
 
 /** @type {{ id: string, row: SongRow }} */
-let cooked;
+let processed;
 try {
-	cooked = await cookAndWait('caroline');
+	processed = await processAndWait('caroline');
 } catch (err) {
-	bail(`could not cook a probe song: ${err instanceof Error ? err.message : String(err)}`);
+	bail(`could not process a probe song: ${err instanceof Error ? err.message : String(err)}`);
 }
-console.log(`cooked: "${cooked.row.title}" id=${cooked.id} lyricsRef=${cooked.row.lyricsRef}\n`);
+console.log(`processed: "${processed.row.title}" id=${processed.id} lyricsRef=${processed.row.lyricsRef}\n`);
 
 // ── Boot Chromium once, drive two contexts (phone + TV) ─────────────────────
 const proc = spawn(
@@ -292,7 +292,7 @@ try {
 	browser = await connect(CDP_PORT);
 	rawCdp = await openRawCdp(CDP_PORT);
 
-	// ── phone joins and queues the cooked song ────────────────────────────
+	// ── phone joins and queues the processed song ────────────────────────────
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
 	await phone.goto(`${base}/join`);
@@ -380,7 +380,7 @@ try {
 		'HIGH',
 		reelPresent,
 		'lyrics overlay renders once the align artifact is available, without a reload',
-		reelPresent ? '' : 'no .lyrics element ever appeared on /tv while a cooked song with lyricsRef was current'
+		reelPresent ? '' : 'no .lyrics element ever appeared on /tv while a processed song with lyricsRef was current'
 	);
 
 	// Under what state exactly does it render? Useful context for the visual finding.
@@ -504,8 +504,8 @@ try {
 	// ── Override the artifact file with the CORRECT shape, so we can measure real
 	// tracking behavior of the overlay itself. Field names {start,end,word} match the
 	// real Python worker at apps/worker/src/lyrics/artifact.py.
-	if (!cooked.row.lyricsRef) throw new Error('cooked song has no lyricsRef');
-	const lyricsPath = join(MEDIA_DIR, cooked.row.lyricsRef);
+	if (!processed.row.lyricsRef) throw new Error('processed song has no lyricsRef');
+	const lyricsPath = join(MEDIA_DIR, processed.row.lyricsRef);
 	const correctedDoc = {
 		language: 'en',
 		lines: fakeWords.map((w, i) => ({
@@ -549,7 +549,7 @@ try {
 	})();
 	console.log('  lyrics file (first 200):', fileNow);
 	const fetchedByBrowser = await tv.evaluate(
-		`fetch('/media/${cooked.row.lyricsRef}').then(r => r.text()).then(t => t.slice(0, 200))`
+		`fetch('/media/${processed.row.lyricsRef}').then(r => r.text()).then(t => t.slice(0, 200))`
 	);
 	console.log('  lyrics file as browser sees:', fetchedByBrowser);
 	record(
@@ -719,7 +719,7 @@ try {
 	console.log('  provenance state:', JSON.stringify(provState));
 	// This is a LEGIT env limit rather than a real defect: real ASR workers (whisperx.py
 	// via apps/worker/src/lyrics/artifact.py) also pass candidates alongside the uri, so
-	// the label DOES appear in a real cook. The fake worker exposes the surface — the
+	// the label DOES appear in a real process. The fake worker exposes the surface — the
 	// probe therefore records the finding but classifies it as MEDIUM/env-limit.
 	const provOk = provState.asrLabel === 'Auto-transcribed' && provState.unverified;
 	record(
@@ -733,7 +733,7 @@ try {
 					`ROOT CAUSE (env limit): fake-stems-worker.mjs align branch does not send ` +
 					`artifacts.lyrics.candidates; worker-hub.ts:245 calls setMediaLyrics without candidates; ` +
 					`chosenCandidate(media) returns null; isAutoTranscribed(null)=false. ` +
-					`Real workers via apps/worker do send candidates, so this surface works in a real cook.`
+					`Real workers via apps/worker do send candidates, so this surface works in a real process.`
 	);
 
 	// ── FINDING (6): live settings changes take effect with NO restart ────

@@ -298,7 +298,7 @@ async def test_aligner_failure_falls_back_to_line_sync(tmp_path):
 # "This song has no words" is a RESULT, not an error. These three used to assert a raise, which was
 # defensible while lyrics were a garnish — a red job on a song that played fine. It stopped being
 # defensible once readiness waits for the lyrics gate: a raise would leave a genuine instrumental stuck
-# cooking forever on a step that worked correctly. The job now COMPLETES with no lyrics artifact.
+# processing forever on a step that worked correctly. The job now COMPLETES with no lyrics artifact.
 
 
 async def _completes_with_no_lyrics(proc, job) -> None:
@@ -735,7 +735,7 @@ def test_asr_source_reads_the_VOCALS_stem_and_lets_whisper_detect_language():
     assert got.language == "en"
 
 
-def test_asr_source_declines_when_the_vocals_stem_is_not_cooked_yet():
+def test_asr_source_declines_when_the_vocals_stem_is_not_processed_yet():
     """It does NOT fall back to the mixed audio: quietly producing worse words would be
     indistinguishable from producing good ones."""
     t = FakeTranscriber(ASR_RAW)
@@ -764,7 +764,7 @@ def test_asr_source_declines_on_an_empty_transcript_an_instrumental():
 
 @pytest.mark.asyncio
 async def test_DONE_WHEN_lrclib_dead_asr_still_yields_word_timed_lyrics(tmp_path):
-    """The done-when, at the unit level: with LRCLIB declining, a cooked song still gets WORD-timed
+    """The done-when, at the unit level: with LRCLIB declining, a processed song still gets WORD-timed
     lyrics on the TV — and they are marked low-confidence so the overlay can be honest."""
     vocals = tmp_path / "derived" / "stems"
     vocals.mkdir(parents=True)
@@ -860,7 +860,7 @@ async def test_asr_text_is_FORCE_ALIGNED_to_get_word_timings(tmp_path):
     assert done.artifacts["lyrics"]["candidates"][0]["timing"] == TIMING_WORD
 
 
-# ── the event loop must stay free during ML (found on a live cook) ─────────────
+# ── the event loop must stay free during ML (found on a live process) ─────────────
 @pytest.mark.asyncio
 async def test_blocking_ML_does_not_freeze_the_event_loop(tmp_path, monkeypatch):
     """Observed live: sync torch calls inline froze the loop, so the worker missed the websocket
@@ -1335,7 +1335,7 @@ async def test_an_LRC_whose_timings_do_not_fit_this_recording_is_REPORTED(tmp_pa
         aligner=ExtraBridgeAligner(),
     )
     events = await drain(proc, spec(tmp_path, durationSec=60.0))
-    assert [e for e in events if isinstance(e, CompleteResult)], "the cook must still COMPLETE"
+    assert [e for e in events if isinstance(e, CompleteResult)], "the process must still COMPLETE"
 
     out = capsys.readouterr().out
     assert "do NOT fit this recording" in out, out
@@ -2341,7 +2341,7 @@ def test_Selection_to_record_persists_the_coverage_winnerSuspect_was_decided_on_
     the RANKING score. On the normal partial-baseline case that makes `/metrics/<mediaId>` read as a
     MISSED DETECTION on its own numbers — `winnerSuspect: false` beside a `winnerScore` under the
     documented 0.40 — while the value that actually cleared the threshold is not persisted at all. This
-    record exists so a mis-pick is answerable after the cook log has rotated, which it cannot be while
+    record exists so a mis-pick is answerable after the process log has rotated, which it cannot be while
     the deciding number is dropped.
     """
     from src.lyrics.chain import Selection, VariantChoice
@@ -2540,7 +2540,7 @@ async def test_773_a_flash_only_doc_is_NOT_logged_as_repaired_but_is_still_repor
     """#773. `repair_word_spans` declines a flash with no room before the next word, so on a doc whose
     only defect is such a flash the published artifact is byte-identical to what the aligner produced.
     The call site nonetheless ORed `flashed_uncorrectable` — by construction the things the repair did
-    NOT change — into the `timing repaired` gate, so the cook log claimed a repair on an untouched doc,
+    NOT change — into the `timing repaired` gate, so the process log claimed a repair on an untouched doc,
     and `timing repaired` is the whole evidence trail for whether #629 item 2 does anything.
 
     Three assertions, and the third is why the fix cannot be "delete the note". FAILING ASSERTION ON

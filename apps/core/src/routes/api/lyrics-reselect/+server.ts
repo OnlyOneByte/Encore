@@ -3,27 +3,27 @@
 // picks a different STORED candidate by ref, or PASTES words (a `manual` source), and the align step
 // re-times the chosen text from the retained vocals stem.
 //
-// Requires a joined singer, like /api/make-karaoke — no anonymous compute. No capability gate beyond
+// Requires a joined singer, like /api/process — no anonymous compute. No capability gate beyond
 // "joined" (owner ruling Q1=A: any joined singer may re-pick, same as every other room control).
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
 import { mediaStatusFor } from '$server/jobs/media-status';
-import { requestLyricsReselect, type ReselectRefusal } from '$server/jobs/make-karaoke';
+import { requestLyricsReselect, type ReselectRefusal } from '$server/jobs/process';
 import type { MediaStatus } from '@encore/shared';
 
 // The honest status code for each refusal — a 409 (conflict with the song's current state) except an
 // unknown media (404) and an empty/absent body field (400), so the phone can tell them apart.
 const REFUSAL_STATUS: Record<ReselectRefusal, number> = {
 	'unknown-media': 404,
-	'not-cooked': 409,
+	'not-processed': 409,
 	'unknown-candidate': 409,
 	'no-text': 400
 };
 const REFUSAL_MESSAGE: Record<ReselectRefusal, string> = {
 	'unknown-media': 'unknown media',
-	'not-cooked': 'that song is not cooked yet — there is nothing to re-time',
+	'not-processed': 'that song is not processed yet — there is nothing to re-time',
 	'unknown-candidate': 'that lyrics option is no longer available',
 	'no-text': 'paste some lyrics first'
 };

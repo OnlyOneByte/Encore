@@ -3,7 +3,7 @@
 // Pure and separate from the component for the same reason `screen.ts` is: the interesting part is a
 // decision table, and a decision table that lives inside a `.svelte` file cannot be unit-tested.
 //
-// Why this matters more than it sounds: a make-karaoke song plays a separated instrumental, which has
+// Why this matters more than it sounds: a process song plays a separated instrumental, which has
 // no video track, so the `<video>` paints nothing and this value is the ENTIRE visual field for the
 // song — sitting directly behind the word-timed lyric reel.
 //
@@ -12,7 +12,7 @@
 // enough to wash those lyrics out. #425 retired the bound and kept the concern, by moving the defence
 // onto the thing being defended: the reel now paints its own `-webkit-text-stroke` outline (#750,
 // `b764d92`), so the words hold against any field. That is strictly stronger, because a stage bound
-// only ever protected the make-karaoke case — over a real music video the reel sat on frames nothing
+// only ever protected the process case — over a real music video the reel sat on frames nothing
 // here controls, and was already unprotected.
 //
 // So `solid` now renders the room's stored colour VERBATIM. The two styles the room does not pick by

@@ -3,7 +3,7 @@
 // Rejected the old source switch (?source=youtube|local, caller picks an index): a singer picks by
 // whether they can sing a song now with no vocals, not by where it came from. So this searches every
 // resolver, materializes + persists each hit, and returns three groups — ready (stems on disk),
-// cooking (stems in flight), raw (plays with vocals) — each song appearing exactly once. `source`
+// processing (stems in flight), raw (plays with vocals) — each song appearing exactly once. `source`
 // survives as an optional narrowing filter.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
@@ -15,7 +15,7 @@ import { ulid, type Media } from '@encore/shared';
 const PER_SOURCE_LIMIT = 12;
 
 /** One resolver's results, or none — a dead source (yt-dlp missing, no network) must not fail the
- *  whole search, because the local library and the already-cooked catalog are still useful. */
+ *  whole search, because the local library and the already-processed catalog are still useful. */
 async function safeSearch(resolver: MediaResolver | undefined, q: string): Promise<SearchResult[]> {
 	if (!resolver) return [];
 	try {
@@ -32,13 +32,13 @@ async function safeSearch(resolver: MediaResolver | undefined, q: string): Promi
  * worker dispatch all hold them), so replacing the object would leave those readers on a stale copy.
  *
  * Strictly limited to `viewCount` and `thumbnail`. Everything else — title, artist, the canonicals,
- * stemStatus, every artifact ref — is either immutable identity or hard-won cook state, and a search
+ * stemStatus, every artifact ref — is either immutable identity or hard-won process state, and a search
  * result is not evidence about any of it. In particular this must never touch `stemStatus`, or
- * searching for a song you already cooked would un-cook it.
+ * searching for a song you already processed would un-process it.
  *
  * `thumbnail` is included because it is now DERIVED from the video id (see ytThumbnailUrl), so
  * refreshing replaces the signed, inconsistently-sized URLs stored by earlier versions with the stable
- * 16:9 one — no re-cook, no migration, just the next time the song appears in a search.
+ * 16:9 one — no re-process, no migration, just the next time the song appears in a search.
  */
 function refreshDisplayFields(existing: Media, r: SearchResult, persist: (m: Media) => void): Media {
 	let changed = false;
@@ -67,7 +67,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		const byId = (id: string) => app.mediaById.get(id);
 		const recent = app.popularity.recent(6).map(byId).filter(Boolean);
 		const popular = app.popularity.popular(6).map(byId).filter(Boolean);
-		return json({ ready: [], cooking: [], results: [], recent, popular });
+		return json({ ready: [], processing: [], results: [], recent, popular });
 	}
 
 	const [yt, local, spotify] = await Promise.all([
@@ -75,14 +75,14 @@ export const GET: RequestHandler = async ({ url }) => {
 		only === 'youtube' || only === 'spotify' ? [] : safeSearch(app.localLibrary, q),
 		// Spotify is a SEARCH / metadata source only (annotator pattern): its hits surface clean
 		// canonical artist/title/duration and appear in the merged output, but their bytes are never
-		// pulled from Spotify — a spotify-sourced media is not cookable (`isCookableSource`, the one
-		// authority; asked by `cookState`, by the phone's `canCook`, and by this route's consumers).
+		// pulled from Spotify — a spotify-sourced media is not processable (`isProcessableSource`, the one
+		// authority; asked by `processState`, by the phone's `canProcess`, and by this route's consumers).
 		// No-op when creds are unset; safeSearch tolerates a dead source.
 		only === 'youtube' || only === 'local' ? [] : safeSearch(app.spotify, q)
 	]);
 
 	// Materialize every hit into a queue-able Media. Recognising a song we have SEEN BEFORE (by its
-	// origin identity) is what keeps a cooked song from reappearing as a second, raw row — see
+	// origin identity) is what keeps a processed song from reappearing as a second, raw row — see
 	// Media.sourceRef, which is immutable for exactly this reason.
 	const materialized: Media[] = [...local, ...yt, ...spotify].map((r) => {
 		const existing = [...app.mediaById.values()].find((m) => m.source === r.source && m.sourceRef === r.sourceRef);
@@ -90,12 +90,12 @@ export const GET: RequestHandler = async ({ url }) => {
 		const media = resultToMedia(ulid(), r);
 		app.mediaById.set(media.id, media);
 		// Persist on materialize so the id stays valid across a restart — a queue entry (or a
-		// cooked stem) referencing this media must still resolve to a title after the server bounces.
+		// processed stem) referencing this media must still resolve to a title after the server bounces.
 		app.media.upsert(media);
 		return media;
 	});
 
-	const { ready, cooking, unacquired } = partitionSearch(q, [...app.mediaById.values()], materialized);
+	const { ready, processing, unacquired } = partitionSearch(q, [...app.mediaById.values()], materialized);
 	// `results` keeps its name for the unacquired group: it is what still needs work to become karaoke.
-	return json({ ready, cooking, results: unacquired });
+	return json({ ready, processing, results: unacquired });
 };

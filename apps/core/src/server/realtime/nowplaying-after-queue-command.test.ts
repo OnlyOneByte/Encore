@@ -23,7 +23,7 @@
 //
 //  1. BEHAVIOURAL (below): drive the real `handleQueueCommand` + `AuthoritativeState` + `emitNowPlaying`
 //     and require the broadcast `upNext` to track the truth across three queue transitions. This pins
-//     what `emitNowPlaying` at this seam must produce — including that a still-COOKING entry at the
+//     what `emitNowPlaying` at this seam must produce — including that a still-PROCESSING entry at the
 //     head of the rotation is never advertised — but NOT that server.ts calls it, because server.ts is
 //     the Bun.serve entry and has no unit harness (telemetry-frame-lean.test.ts:15). Taken alone this
 //     half is vacuous with respect to the production line, which is why half 2 exists.
@@ -57,11 +57,11 @@ const readyMedia = (id: string): Media => ({
 });
 
 /**
- * A song still COOKING: no instrumental yet, so the stems gate is open and `readyToSing` is false.
+ * A song still PROCESSING: no instrumental yet, so the stems gate is open and `readyToSing` is false.
  * An entry on this media is SKIP-DESTINED — `upNextAfter` holds its slot and walks past it — which is
  * the queue head this issue is about: it must never be advertised as the song that plays next.
  */
-const cookingMedia = (id: string): Media => ({
+const processingMedia = (id: string): Media => ({
 	id,
 	source: 'youtube',
 	sourceRef: 'x',
@@ -69,7 +69,7 @@ const cookingMedia = (id: string): Media => ({
 	durationSec: 100,
 	// 'queued' = the stems job is filed but has not produced an instrumental, so the stems gate is
 	// open (gates.ts: `stemStatus === 'ready' && !!instrumentalRef`). instrumentalRef is OPTIONAL on
-	// Media, so a cooking song simply has none — omitted rather than null.
+	// Media, so a processing song simply has none — omitted rather than null.
 	stemStatus: 'queued',
 	lyricsStatus: 'queued',
 	songProfile: EMPTY_SONG_PROFILE
@@ -93,7 +93,7 @@ function harness() {
 		publish: (e) => published.push(e),
 		mediaById: new Map([
 			['m-ready-1', readyMedia('m-ready-1')],
-			['m-cooking', cookingMedia('m-cooking')],
+			['m-processing', processingMedia('m-processing')],
 			['m-ready-3', readyMedia('m-ready-3')],
 			['m-ready-4', readyMedia('m-ready-4')]
 		]),
@@ -133,13 +133,13 @@ function queueCommandArmPreFix(cmd: ClientCommand, deps: HubDeps) {
 	if (!deps.state.entries.some((e) => e.id === deps.state.playback.currentEntryId)) reconcileOnReady(deps);
 }
 
-test('a queue mutation mid-song re-broadcasts the TRUE next, and never the cooking entry holding the head slot (#636)', () => {
+test('a queue mutation mid-song re-broadcasts the TRUE next, and never the processing entry holding the head slot (#636)', () => {
 	const { state, deps, published } = harness();
 
-	// s2's song is queued FIRST but is still cooking, so it holds the head of the rotation and every
+	// s2's song is queued FIRST but is still processing, so it holds the head of the rotation and every
 	// "what plays next" answer must walk past it.
 	deps.actorSingerId = 's2';
-	queueCommandArm(addCmd('q2', 'm-cooking', 's2'), deps);
+	queueCommandArm(addCmd('q2', 'm-processing', 's2'), deps);
 	// Nothing is playable yet, so the room is idle and there is no next.
 	expect(state.playback.currentEntryId).toBeNull();
 
@@ -167,7 +167,7 @@ test('a queue mutation mid-song re-broadcasts the TRUE next, and never the cooki
 	expect(advertisedUpNextId(published)).not.toBe('q2');
 
 	// ── Transition 2: the advertised song is REMOVED while the same song still plays. Truth becomes
-	// "no next" — q2 is still cooking — so the advertised value must not stay q3.
+	// "no next" — q2 is still processing — so the advertised value must not stay q3.
 	queueCommandArm(removeCmd('q3'), deps);
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(advertisedUpNextId(published)).toBeNull();
@@ -176,7 +176,7 @@ test('a queue mutation mid-song re-broadcasts the TRUE next, and never the cooki
 	queueCommandArm(addCmd('q4', 'm-ready-4', 's3'), deps);
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(advertisedUpNextId(published)).toBe('q4');
-	// The cooking entry is STILL never advertised, across all three transitions.
+	// The processing entry is STILL never advertised, across all three transitions.
 	expect(published.filter((e) => e.type === 'nowplaying:changed').every((e) => e.upNext?.id !== 'q2')).toBe(true);
 });
 
@@ -190,7 +190,7 @@ test('without the else, a mid-song queue mutation leaves the advertised next nam
 	queueCommandArmPreFix(addCmd('q1', 'm-ready-1', 's1'), deps); // auto-starts
 	deps.actorSingerId = 's3';
 	queueCommandArmPreFix(addCmd('q3', 'm-ready-3', 's3'), deps);
-	// A playback-side event (a cook completing, a play/pause) legitimately broadcasts q3 as next.
+	// A playback-side event (a process completing, a play/pause) legitimately broadcasts q3 as next.
 	reconcileOnReady(deps);
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(advertisedUpNextId(published)).toBe('q3');

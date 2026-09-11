@@ -12,7 +12,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { clampDays, songDisplay } from '@encore/shared';
-import { e2e, isAnecdote, perAsrModel, perCook, perModel, perStage, perStep } from '$server/jobs/metrics';
+import { e2e, isAnecdote, perAsrModel, perProcess, perModel, perStage, perStep } from '$server/jobs/metrics';
 
 const DEFAULT_LIMIT = 2000;
 
@@ -22,10 +22,10 @@ export const GET: RequestHandler = async ({ url }) => {
 	const windowDays = clampDays(url.searchParams.get('days'), { fallback: DEFAULT_WINDOW_DAYS, max: MAX_WINDOW_DAYS });
 	// Window by TIME, not by a bare row count. The old row-count window (`allFinished(limit)`) had no
 	// notion of its own edge: at the cap it returned N rows with nothing saying more existed, and a
-	// cook straddling that edge lost its older steps yet still reported `complete: true` and measured
-	// its span from only the surviving rows — silently understating that cook's duration (#472). A
-	// time window has a knowable edge (`windowStart`), which `perCook`/`e2e` use to flag and drop a
-	// boundary-straddling cook, and it buys the one query Encore lacked: "the last N days".
+	// process straddling that edge lost its older steps yet still reported `complete: true` and measured
+	// its span from only the surviving rows — silently understating that process's duration (#472). A
+	// time window has a knowable edge (`windowStart`), which `perProcess`/`e2e` use to flag and drop a
+	// boundary-straddling process, and it buys the one query Encore lacked: "the last N days".
 	const windowStart = app.now() - windowDays * DAY_MS;
 	// EVERY sealed attempt in the window, not just successful ones: a failure rate is part of how a
 	// step performs, and the rollup already refuses to average a failure into a duration. `limit`
@@ -35,19 +35,19 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	const steps = perStep(attempts);
 	const overall = e2e(attempts, windowStart);
-	const cooks = perCook(attempts, windowStart);
+	const processes = perProcess(attempts, windowStart);
 	const models = perModel(attempts);
 	const titleOf = new Map(app.media.all().map((mm) => [mm.id, songDisplay(mm).title]));
 
 	// Truncation is now VISIBLE rather than silent: `clipped` is true when the row backstop actually
-	// bit (more rows finished in the window than we fetched) or when any cook straddled the window's
+	// bit (more rows finished in the window than we fetched) or when any process straddled the window's
 	// older edge. Either way the operator is told the sample is partial instead of reading a confident
 	// number off an incomplete set.
-	const clipped = attempts.length >= limit || cooks.some((c) => c.clipped);
+	const clipped = attempts.length >= limit || processes.some((c) => c.clipped);
 
 	return json({
 		// Sample size first, and flagged, because it governs how much of the rest means anything. A
-		// mean over two cooks renders identically to a mean over two hundred unless something says so.
+		// mean over two processes renders identically to a mean over two hundred unless something says so.
 		// `total` is the honest denominator behind the windowed `attempts`, and `clipped` says whether
 		// the window or the row backstop dropped anything.
 		sample: {
@@ -55,7 +55,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			total: totalFinished,
 			windowDays,
 			clipped,
-			cooks: overall.n,
+			processes: overall.n,
 			provisional: isAnecdote(overall.n)
 		},
 		steps: steps.map((s) => ({ ...s, provisional: isAnecdote(s.n) })),
@@ -69,10 +69,10 @@ export const GET: RequestHandler = async ({ url }) => {
 		asr: perAsrModel(attempts).map((a) => ({ ...a, provisional: isAnecdote(a.n) })),
 		// Sub-step split, from what the worker reported. Empty for attempts predating that.
 		stages: perStage(attempts),
-		// Slowest complete cooks, for finding the outlier rather than reasoning about the mean. Titles are
+		// Slowest complete processes, for finding the outlier rather than reasoning about the mean. Titles are
 		// joined here because a media id is not a song: an operator navigating a list of "m-zombie" has
 		// to open each one to find out what it is. /api/stats already does the same join.
-		slowestCooks: cooks
+		slowestProcesses: processes
 			.filter((c) => c.complete)
 			.slice(0, 10)
 			.map((c) => ({ ...c, title: titleOf.get(c.mediaId) ?? null })),

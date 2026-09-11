@@ -69,7 +69,7 @@ describe('sidecarFromMedia', () => {
 		expect(s.raw.rawTitle).toBe('Britney Spears - Baby One More Time (Lyrics)');
 	});
 
-	it('carries the artifact refs that make a cooked song restorable', () => {
+	it('carries the artifact refs that make a processed song restorable', () => {
 		const s = sidecarFromMedia(
 			media({ instrumentalRef: 'derived/stems/m1-instrumental.m4a', lyricsRef: 'derived/lyrics/m1.json' }),
 			NOW
@@ -111,7 +111,7 @@ describe('sidecarFromMedia', () => {
 	it('keeps the ORIGIN sourceRef even if the live media somehow drifted', () => {
 		const first = sidecarFromMedia(media(), NOW);
 		const again = sidecarFromMedia(media({ sourceRef: 'derived/stems/oops.m4a' }), NOW, first);
-		expect(again.origin.sourceRef).toBe('djV11Xbc914'); // immutable identity — never the cooked stem key
+		expect(again.origin.sourceRef).toBe('djV11Xbc914'); // immutable identity — never the processed stem key
 	});
 });
 
@@ -128,7 +128,7 @@ describe('mediaFromSidecar (the index projection)', () => {
 		});
 	});
 
-	it('a cooked song comes back as READY and playable, so it is not re-cooked', () => {
+	it('a processed song comes back as READY and playable, so it is not re-processed', () => {
 		const s = sidecarFromMedia(media({ instrumentalRef: 'derived/stems/m1-instrumental.m4a' }), NOW);
 		const back = mediaFromSidecar(s);
 		expect(back.stemStatus).toBe('ready');
@@ -277,7 +277,7 @@ describe('sidecar I/O and index rebuild', () => {
 		});
 
 		expect(restored).toBe(2);
-		expect(index.get('a')!.stemStatus).toBe('ready'); // cooked song recognised as cooked
+		expect(index.get('a')!.stemStatus).toBe('ready'); // processed song recognised as processed
 		expect(index.get('a')!.instrumentalRef).toBe('derived/stems/a-instrumental.m4a');
 		expect(index.get('b')!.stemStatus).toBe('none');
 	});
@@ -449,25 +449,25 @@ describe('clearArtifacts (eviction must stick) (#442 §1)', () => {
 		expect(after?.artifacts.lyricsCandidates).toEqual([]);
 	});
 
-	it('makes an eviction STICK: a re-derive does not resurrect the song as cooked', async () => {
+	it('makes an eviction STICK: a re-derive does not resurrect the song as processed', async () => {
 		// The bug: app.ts eviction sets instrumentalRef = undefined and upserts, but sidecarFromMedia
 		// does `m.instrumentalRef ?? prev?.artifacts.instrumental`, so undefined ?? prev RESTORES the
 		// just-deleted ref; mediaFromSidecar then re-derives stemStatus 'ready', resurrecting an evicted
-		// song as cooked with a ref to a deleted file. clearArtifacts nulls the fields directly so the
+		// song as processed with a ref to a deleted file. clearArtifacts nulls the fields directly so the
 		// eviction sticks. This test reproduces BOTH halves.
-		const cooked = media({
+		const processed = media({
 			instrumentalRef: 'derived/stems/m1-instrumental.flac',
 			vocalsRef: 'derived/stems/m1-vocals.flac',
 			lyricsRef: 'derived/lyrics/m1.json',
 			stemStatus: 'ready'
 		});
-		await writeSidecar(sidecarFromMedia(cooked, NOW));
+		await writeSidecar(sidecarFromMedia(processed, NOW));
 
 		// Eviction as app.ts performs it: the runtime Media loses its refs (undefined) and is upserted,
 		// which fires sidecarFromMedia with the PRIOR sidecar as `previous`.
 		const prev = await readSidecar('m1');
 		const evicted: Media = {
-			...cooked,
+			...processed,
 			instrumentalRef: undefined,
 			vocalsRef: undefined,
 			lyricsRef: undefined,

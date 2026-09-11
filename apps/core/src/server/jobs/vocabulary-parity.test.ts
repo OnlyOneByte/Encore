@@ -41,11 +41,11 @@ const protocolPy = readFileSync(join(WORKER_SRC, 'protocol.py'), 'utf8');
  * Both separator engines yield `CompleteResult(artifacts={"stems": ..., "songProfile": ...})`, so the
  * profile is a SIBLING of `stems`. The core's `#onComplete` originally reached for
  * `artifacts.stems.songProfile` instead — one level too deep — so the value arrived `undefined` on
- * every single cook. Nothing caught it: the worker's pytest asserted its own dict and the core's
+ * every single process. Nothing caught it: the worker's pytest asserted its own dict and the core's
  * bun test asserted its own mock, and neither ever saw the other's shape.
  *
- * The consequence was not a missing chip. Because the `stems` cook gate requires the profile to be
- * PRESENT, every separated song would have sat at "Separating vocals" forever, and the re-cook check
+ * The consequence was not a missing chip. Because the `stems` process gate requires the profile to be
+ * PRESENT, every separated song would have sat at "Separating vocals" forever, and the re-process check
  * reads `hasInstrumental` rather than the gate, so nothing would ever have retried it. A silent
  * whole-library stall from a one-word path difference.
  *
@@ -105,7 +105,7 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 
 /**
  * Every artifact key the worker WRITES must be a member of `JobArtifacts` — the whole class of drift
- * that stalled cooks when `songProfile` shipped undeclared and, most recently, `source` (a `fetch`
+ * that stalled processes when `songProfile` shipped undeclared and, most recently, `source` (a `fetch`
  * job's retained-original key) rode this frame written, undeclared and unread (#459). This scan is
  * broader than the `songProfile`-placement guard above: it covers ALL `steps/*.py`, not just
  * `separate.py`, and asserts subset-of-`JobArtifacts` rather than one hard-coded key. Reads both sides
@@ -307,7 +307,7 @@ describe('TS↔Python vocabulary parity', () => {
 	/**
 	 * `Stage` was the one worker enum this file did not cross-check. The worker emits it as
 	 * `job:progress.stage`, typed `MediaStatus`, and the core rebroadcasts it to phones — so a stage
-	 * the union does not contain is a progress row that renders no label or freezes mid-cook. Subset,
+	 * the union does not contain is a progress row that renders no label or freezes mid-process. Subset,
 	 * not equality: `queued`/`ready`/`failed`/`canceled` are core-side states no worker emits.
 	 */
 	test('worker stages are all valid MediaStatus values', () => {
@@ -378,7 +378,7 @@ describe('roformer token ↔ checkpoint identity', () => {
  * in-process whisper/wav2vec2 pass: `asyncio.wait({task}, timeout=LEASE_KEEPALIVE_SEC)` wakes every
  * `LEASE_KEEPALIVE_SEC` seconds to yield a progress tick. Core's reaper (leases.ts) requeues a running
  * job whose last progress is older than `progressLeaseMs`, so if the keepalive interval ever creeps
- * above that lease a HEALTHY cook goes silent past the deadline and the reaper kills it — reason
+ * above that lease a HEALTHY process goes silent past the deadline and the reaper kills it — reason
  * `progress-lease-expired`, then at `maxAttempts` a false `worker died` failure, each retry a full ASR
  * pass. Production is correct today (10s < 30s), so this is an UNGUARDED invariant, not a live defect:
  * raising the constant to any value ≥ 30 ships with the whole worker suite green, because the two tests
@@ -628,7 +628,7 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
  * The drift this stops is concrete: add a fourth checkpoint to `separators.ts` and it becomes
  * selectable in room settings, but the worker's `resolve_demucs_model` rejects any id not in
  * DEMUCS_MODELS. The core validated the engine+model pairing against `separators.ts` before
- * enqueueing, so every cook of that song then hits `demucs.py`'s `ValueError` — a permanent config
+ * enqueueing, so every process of that song then hits `demucs.py`'s `ValueError` — a permanent config
  * error that no retry can fix, burned `maxAttempts` times. Guard it the same way the roformer twin
  * is: read the Python tuple as TEXT (no interpreter, runs in `bun test`) and assert it agrees, in
  * both directions, with the demucs engine's offered model ids.
@@ -666,7 +666,7 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
 			'the demucs engine offers no models in separators.ts — did the registry move?'
 		).toBeGreaterThan(0);
 		// Set equality both directions: a model selectable in room settings the worker will reject
-		// (offered ⊄ worker) parks every cook of it on a non-retryable ValueError; a worker checkpoint
+		// (offered ⊄ worker) parks every process of it on a non-retryable ValueError; a worker checkpoint
 		// no UI offers (worker ⊄ offered) is dead config that drifts unnoticed.
 		expect([...worker].sort()).toEqual([...offered].sort());
 	});
@@ -684,14 +684,14 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
  * nothing about what is inside it — and the inside is written in Python (`_NULL_PROFILE` in
  * `analysis/song_profile.py`, the one place the always-publish null shape is built) and read in
  * TypeScript (`SongProfile` + `EMPTY_SONG_PROFILE` + `normalizeSongProfile` in
- * `packages/shared/src/cook/song-profile.ts`). There is no generator between them. The worker's pytest
+ * `packages/shared/src/process/song-profile.ts`). There is no generator between them. The worker's pytest
  * asserts its own dict, the shared package's bun test asserts its own literal, and neither has ever
  * seen the other's shape — the identical blind spot that let `songProfile` itself ship at the wrong
  * envelope level.
  *
  * The drift this catches is silent in the direction that matters. Add a measured field on the worker
  * side and forget the TS mirror and `normalizeSongProfile` drops it on the floor at the boundary: the
- * cook still completes, the gate is still satisfied, nothing errors, and the measurement is simply
+ * process still completes, the gate is still satisfied, nothing errors, and the measurement is simply
  * never seen — which is exactly how `meanDb` came to be parsed, tested and discarded for a year
  * (#462). Add it on the TS side and forget Python and every song reads null forever.
  *
@@ -700,7 +700,7 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
  * of `EMPTY_SONG_PROFILE`.
  */
 describe('songProfile inner-field parity (worker dict vs shared type)', () => {
-	const SHARED_SONG_PROFILE = join(WORKER_SRC, '../../../packages/shared/src/cook/song-profile.ts');
+	const SHARED_SONG_PROFILE = join(WORKER_SRC, '../../../packages/shared/src/process/song-profile.ts');
 	const WORKER_SONG_PROFILE = join(WORKER_SRC, 'analysis/song_profile.py');
 
 	/** Keys of `_NULL_PROFILE = { "name": None, ... }`, read from the Python as text. */

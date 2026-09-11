@@ -1,12 +1,12 @@
 // Retention — keep the volume bounded without ever losing something unrecoverable.
 //
 // Two jobs, separated because they have different costs:
-//   1. RECOMPRESS legacy formats. Songs cooked before the current audio policy have WAV stems, ~8x
+//   1. RECOMPRESS legacy formats. Songs processed before the current audio policy have WAV stems, ~8x
 //      larger than today's FLAC. Transcoded IN PLACE (bytes already on disk, no download, no Demucs
 //      run, song never leaves the library) — the right tool for reclaiming pre-policy space, not
 //      eviction.
 //   2. EVICT derived artifacts when over a soft cap. Derived data is regenerable from `audio/`, so
-//      dropping it costs a re-cook (1-2 min) and nothing permanent. `audio/` and `meta/` are NEVER
+//      dropping it costs a re-process (1-2 min) and nothing permanent. `audio/` and `meta/` are NEVER
 //      touched: audio cannot be re-acquired once an upload disappears, and meta IS the library.
 //
 // The planning half is pure so the policy is testable without a filesystem or a transcoder.
@@ -42,9 +42,9 @@ export function retentionCapBytes(env: Record<string, string | undefined> = proc
  * Deliberately NOT "anything not the current format": both stems now target FLAC (#480), so that
  * looser rule would flag every existing `.m4a` vocals stem for "upgrade", and AAC→FLAC is actively
  * harmful — it cannot recover what the lossy encode discarded, only produce a ~4x larger file of the
- * same audio. Legacy `.m4a` cooks therefore keep their `.m4a` and are NOT recompressed; only WAV
+ * same audio. Legacy `.m4a` processes therefore keep their `.m4a` and are NOT recompressed; only WAV
  * (a genuinely uncompressed pre-policy artifact) is worth transcoding, and a real codec upgrade means
- * re-cooking from the retained raw audio, a different operation.
+ * re-processing from the retained raw audio, a different operation.
  */
 export function isLegacyStemRef(ref: string | undefined | null): boolean {
 	if (!ref) return false;
@@ -71,7 +71,7 @@ export function planRecompress(all: Media[]): RecompressTarget[] {
 	for (const m of all) {
 		if (isLegacyStemRef(m.instrumentalRef)) {
 			out.push({ mediaId: m.id, from: m.instrumentalRef!, to: instrumentalKey(m.id), kind: 'instrumental' });
-			// a legacy instrumental implies a legacy vocals stem from the same cook
+			// a legacy instrumental implies a legacy vocals stem from the same process
 			out.push({ mediaId: m.id, from: siblingVocalsRef(m.instrumentalRef!), to: vocalsKey(m.id), kind: 'vocals' });
 		}
 	}
@@ -159,11 +159,11 @@ export interface EvictionCandidate {
 }
 
 /**
- * Which songs to strip back to un-cooked, least-recently-used first, until the derived total fits the
+ * Which songs to strip back to un-processed, least-recently-used first, until the derived total fits the
  * cap. PURE.
  *
  * `protectedIds` names media that must NEVER be evicted regardless of age — the currently-playing song
- * and everything queued. A cook stripped out from under a live or queued entry would vanish mid-party
+ * and everything queued. A process stripped out from under a live or queued entry would vanish mid-party
  * (stemStatus reset to 'none', derived stems gone, an entry pointing at a media that can no longer
  * play). Enforcing the exclusion HERE, in the pure function, means the guarantee holds no matter what
  * a caller remembers to filter — the previous design left it to the caller and the caller did not.
@@ -199,13 +199,13 @@ export function planEviction(
 /**
  * Every `derived/` ref a song could have on disk — the ONE list both the eviction and the plan read.
  *
- * They used to build this inline and had drifted: the plan omitted `vocalsKey`, so a modern cook's
+ * They used to build this inline and had drifted: the plan omitted `vocalsKey`, so a modern process's
  * vocals stem was deleted by `evictDerived` but invisible to `derivedBytesOf`. It read as correct
  * because the ext-blind `-instrumental.`→`-vocals.` swap only resolves when the two stems share an
  * extension, and `vocalsKey` derives from the CURRENT `VOCALS_EXT`. Neither can name a stem whose
- * stored extension differs from today's constant — e.g. an interim cook (instrumental `.flac`, vocals
+ * stored extension differs from today's constant — e.g. an interim process (instrumental `.flac`, vocals
  * `.m4a`) after #480 flipped `VOCALS_EXT` to `.flac`. So the authoritative source is `m.vocalsRef`,
- * the ref each cook actually stored; it covers legacy `.wav`, interim `.m4a`, and current `.flac`
+ * the ref each process actually stored; it covers legacy `.wav`, interim `.m4a`, and current `.flac`
  * alike. `planEviction` compares the SUM against the cap, so undercounting made retention conclude
  * there was nothing to reclaim on a volume genuinely over budget. Anything derived that a song can own
  * belongs here, not in a caller.
@@ -233,9 +233,9 @@ export function derivedRefsOf(m: Media): string[] {
 		m.instrumentalRef,
 		m.lyricsRef,
 		// The STORED per-media vocals ref is authoritative and covers ALL layouts regardless of what
-		// VOCALS_EXT currently is: legacy .wav, interim .m4a, and current .flac cooks all recorded a ref.
+		// VOCALS_EXT currently is: legacy .wav, interim .m4a, and current .flac processes all recorded a ref.
 		// vocalsKey + the ext-blind swap are the FALLBACK for old rows that never stored one. Without
-		// m.vocalsRef, flipping VOCALS_EXT to .flac (#480) would strand the already-cooked .m4a vocals
+		// m.vocalsRef, flipping VOCALS_EXT to .flac (#480) would strand the already-processed .m4a vocals
 		// cohort — the cohort this PR deliberately does not recompress — from both byte-counting and
 		// eviction, so derivedBytesOf would undercount and evictDerived would orphan those files.
 		// candidateVocalsRefs is the SINGLE candidate list (vocalsKey + every legacy-ext sibling);
@@ -251,7 +251,7 @@ export function derivedRefsOf(m: Media): string[] {
 		// it inherits NONE of the "safe to delete, first to evict" retention its own docstring claims:
 		// derivedBytesOf undercounts and evictDerived orphans the file on disk permanently, the identical
 		// undercount #496/#442 closed for the vocals/lyrics siblings above. Naming both exts per kind is
-		// free: the ext is chosen from the winning file at cook time (.vtt/.srt), and a key whose file is
+		// free: the ext is chosen from the winning file at process time (.vtt/.srt), and a key whose file is
 		// absent is skipped by the existsSync check below. Callers dedupe with a Set.
 		...CAPTION_KINDS.flatMap((kind) => KNOWN_CAPTION_EXTS.map((ext) => rawCaptionKey(m.id, kind, ext)))
 	].filter((r): r is string => !!r);
@@ -259,7 +259,7 @@ export function derivedRefsOf(m: Media): string[] {
 
 /**
  * Delete a song's derived artifacts and return the refs that were removed. The caller resets the media
- * to un-cooked so rotation stops treating it as playable and a re-request re-cooks it.
+ * to un-processed so rotation stops treating it as playable and a re-request re-processes it.
  * NEVER touches `audio/` or `meta/`.
  */
 export function evictDerived(m: Media): { removed: string[]; bytes: number } {
@@ -309,7 +309,7 @@ const TRANSCODE_TIMEOUT_MS = 120_000;
 
 /**
  * ffmpeg-backed transcoder: lossless stereo FLAC, matching the worker's `encode_flac_argv` (#480), so
- * a recompressed legacy stem lands in the SAME codec and container a freshly cooked one does. The
+ * a recompressed legacy stem lands in the SAME codec and container a freshly processed one does. The
  * destination is a `.flac` ref (INSTRUMENTAL_EXT/VOCALS_EXT, paths.ts), and a legacy WAV stem is
  * itself lossless — FLAC recompresses it without a second lossy generation, exactly what the FLAC
  * policy protects (a native-ffmpeg AAC re-encode would smear the crash-cymbal transients this stem

@@ -74,7 +74,7 @@ DEFAULT_HEARTBEAT_INTERVAL_SEC = 10.0
 # removes a dir whose newest file is older than SCRATCH_MIN_AGE_SEC — a live job writes continuously,
 # so its scratch is always fresher than the threshold and can never be swept, even by another worker.
 SCRATCH_SWEEP_INTERVAL_SEC = 1800.0  # every 30 min
-SCRATCH_MIN_AGE_SEC = 6 * 3600.0  # only reclaim scratch untouched for 6h — far longer than any cook
+SCRATCH_MIN_AGE_SEC = 6 * 3600.0  # only reclaim scratch untouched for 6h — far longer than any process
 
 
 class WorkerClient:
@@ -248,7 +248,7 @@ class WorkerClient:
             return
         # `params` is the last required field with no parse layer, unlike jobId/jobType/mediaId above.
         # A non-dict here (a core bug, a malformed frame) reaches JobSpec.params: dict untyped and then
-        # `**params`-style access downstream would raise mid-cook, escaping into the reconnect handler.
+        # `**params`-style access downstream would raise mid-process, escaping into the reconnect handler.
         # Reject it job-scoped at the boundary — the same shape as the checks above — so the one check
         # here makes the two defensive `isinstance(job.params, dict)` re-guards downstream (runner.py,
         # ctx.py) dead (issue #459). Absent `params` is fine: `.get` defaults to {} below.
@@ -272,8 +272,8 @@ class WorkerClient:
             source_uri=msg.get("sourceUri", ""),
             params=params,
             media_dir=self._media_dir,
-            # Trace id for this cook (#472). Absent on a frame from a core that predates it -> "".
-            cook_id=msg.get("cookId", ""),
+            # Trace id for this process (#472). Absent on a frame from a core that predates it -> "".
+            processing_id=msg.get("processingId", ""),
         )
         # run processing concurrently so the loop keeps reading ping/cancel
         task = asyncio.ensure_future(self._run_job(job))
@@ -334,7 +334,7 @@ class WorkerClient:
             # and the startup sweep is the backstop for the attempts that turned out to be the last.
             preserve_scratch = retryable
             # LOG it too: reporting only over the wire made a retry loop invisible from both ends — a
-            # job failing at 99% every attempt looked identical to one still cooking.
+            # job failing at 99% every attempt looked identical to one still processing.
             print(
                 f"[worker] job {job.job_id} ({job.job_type}) FAILED retryable={retryable}: {exc!r}",
                 flush=True,
@@ -396,11 +396,11 @@ class WorkerClient:
         needs after `handle(assign())` so the concurrent job task actually runs.
 
         `cancel=True` first CANCELS them, which is what the reconnect path needs on a socket drop.
-        A dropped socket abandons this client and its `_tasks`; without a cancel the orphaned cook
+        A dropped socket abandons this client and its `_tasks`; without a cancel the orphaned process
         runs to completion against a closed socket, its `job:complete` is lost, and the core's reaper
         has meanwhile requeued the same job onto a fresh connection — duplicate GPU work for one song.
         Cancelling propagates GeneratorExit into the processor (subprocess_runner kills the child), so
-        the abandoned cook stops instead of racing its own retry. `return_exceptions=True` so the
+        the abandoned process stops instead of racing its own retry. `return_exceptions=True` so the
         CancelledError each task raises is collected here rather than escaping the reconnect handler."""
         if not self._tasks:
             return
@@ -417,7 +417,7 @@ def _newest_mtime(path: str) -> float:
     A separation writes ONE large file deep inside work/<jobId> over many minutes; that does not bump
     the top dir's own mtime, so testing only os.path.getmtime(path) would call an actively-written
     scratch "old" and sweep it. Walking for the newest mtime is what makes the age bound actually
-    track liveness. Best-effort: a file that vanishes mid-walk (a cook cleaning up) is skipped."""
+    track liveness. Best-effort: a file that vanishes mid-walk (a process cleaning up) is skipped."""
     newest = 0.0
     try:
         newest = os.stat(path).st_mtime
@@ -456,7 +456,7 @@ def sweep_orphaned_scratch(
     fleet" — an early version passed frozenset() and would delete another worker's in-flight scratch:
 
       * AGE. Only a dir whose NEWEST file is older than `min_age_sec` (default 6h, far longer than any
-        cook) is removed. A live job writes its scratch continuously, so it is always fresher than the
+        process) is removed. A live job writes its scratch continuously, so it is always fresher than the
         threshold and can never be swept — by this worker OR another one. This is the load-bearing
         guard on a shared volume, because it needs no cross-worker knowledge.
       * LIVE SET. A jobId in `live_job_ids` is skipped outright. THIS worker's own in-flight jobs, so
@@ -552,7 +552,7 @@ def oversubscription_warnings(
             out.append(
                 f"{parallel} parallel separations need roughly {need // 1024**3} GiB but only "
                 f"{memory_bytes // 1024**3} GiB is available; expect the OOM killer rather than "
-                "slow cooks — lower ENCORE_WORKER_CONCURRENCY or ENCORE_DEMUCS_JOBS"
+                "slow processes — lower ENCORE_WORKER_CONCURRENCY or ENCORE_DEMUCS_JOBS"
             )
     return out
 
@@ -632,7 +632,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         # second dispatch layer: EngineRouter's job is now `engine_for` inside the Separate step.
         #
         # Roformer's ~700MB checkpoint machinery is still only reachable when the capability was granted:
-        # engine_for imports it lazily, and the CORE only routes a roformer cook to a worker advertising
+        # engine_for imports it lazily, and the CORE only routes a roformer process to a worker advertising
         # stems:roformer.
         # Segment: an explicit ENCORE_DEMUCS_SEGMENT always wins; otherwise size it to the memory the
         # card actually has FREE right now. Measured here rather than in `WorkerConfig.from_env` on
@@ -718,7 +718,7 @@ async def _run_forever() -> None:
         device, _why = preferred_torch_device(CONFIG.device)
     except ValueError as exc:
         # An explicit device that is not reachable is fatal ON PURPOSE — it means the operator asked
-        # for an accelerator and would otherwise get a silent CPU cook at a fraction of the speed.
+        # for an accelerator and would otherwise get a silent CPU process at a fraction of the speed.
         print(f"[worker] FATAL: {exc}", flush=True)
         raise
 
@@ -747,7 +747,7 @@ async def _run_forever() -> None:
     # this periodic, age-bounded sweep is the only thing that reclaims it. It NEVER touches a live job:
     # the 6h age bound means a scratch being actively written cannot qualify, so it is safe even though
     # docker-compose mounts one media volume across several workers. `_active` gives each pass the
-    # CURRENT worker's in-flight ids as a second guard (a legitimately-long cook of THIS worker). The
+    # CURRENT worker's in-flight ids as a second guard (a legitimately-long process of THIS worker). The
     # task lives for the process, above the reconnect loop; the live-set closure reads whichever client
     # is connected right now, or an empty set between connections.
     _current: dict[str, WorkerClient | None] = {"client": None}
@@ -809,7 +809,7 @@ async def _run_forever() -> None:
                 heartbeat_task.cancel()
             # The next loop builds a BRAND NEW client, so this one's in-flight tasks are about to be
             # abandoned. Cancel them rather than let them run to completion against a socket that is
-            # already closed: an orphaned cook loses its result AND races the core's reaper, which has
+            # already closed: an orphaned process loses its result AND races the core's reaper, which has
             # requeued the same job — cancelling is what stops the duplicate GPU work for one song.
             #
             # Cancel SYNCHRONOUSLY here (the GeneratorExit that kills a subprocess step must propagate

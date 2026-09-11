@@ -44,8 +44,8 @@ DEFAULT_MODEL = "htdemucs"
 
 # The demucs-family checkpoints demucs-mlx carries AND this engine will run. Intersection of the
 # torch engine's whitelist (packages/shared/src/lyrics/separators.ts, mirrored in demucs.py DEMUCS_MODELS)
-# with the models demucs-mlx ships — the same three, so an mlx cook resolves the exact checkpoint a
-# torch cook would. Defence in depth: the core validates engine+model before enqueue, but a worker
+# with the models demucs-mlx ships — the same three, so an mlx process resolves the exact checkpoint a
+# torch process would. Defence in depth: the core validates engine+model before enqueue, but a worker
 # must never shell `demucs-mlx -n <arbitrary>` from a job param.
 MLX_MODELS = ("htdemucs", "htdemucs_ft", "htdemucs_6s")
 
@@ -72,7 +72,7 @@ def mlx_instrumental_sources(model: str = DEFAULT_MODEL) -> tuple[str, ...]:
     """The stem files that sum to the instrumental for this model — every source EXCEPT vocals.
 
     Four-stem models contribute drums/bass/other; the 6-source htdemucs_6s adds piano/guitar. Derived
-    from the model name rather than hardcoded, so a 6s cook sums all five non-vocal stems instead of
+    from the model name rather than hardcoded, so a 6s process sums all five non-vocal stems instead of
     silently dropping piano and guitar from the backing track."""
     if model == "htdemucs_6s":
         return _FOUR_STEM_INSTRUMENTAL + _SIX_STEM_EXTRA

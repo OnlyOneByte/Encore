@@ -126,7 +126,7 @@ def proc(client):
 
 
 def spec(tmp_path, **params):
-    """A job for a song whose stems are already cooked.
+    """A job for a song whose stems are already processed.
 
     The vocals stem is written deliberately: version selection runs on the ASR TRANSCRIPT, the ASR tier
     reads the isolated vocals stem and declines without one, and the core therefore chains `align` after

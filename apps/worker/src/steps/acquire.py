@@ -55,7 +55,7 @@ class AcquireAudio(Step):
       * a DECLARED-local source is already a path under the media volume — nothing to fetch. Declared by
         the core rather than inferred from the URI's shape, because inference sent every unrecognised
         scheme down the local path to die inside ffmpeg with "No such file" several stages later.
-      * the file already exists, because an earlier job fetched it. An align job for a cooked song then
+      * the file already exists, because an earlier job fetched it. An align job for a processed song then
         costs no network at all, which is the whole reason the raw original is a retained artifact.
     """
 
@@ -127,15 +127,15 @@ def _existing_vocals(ctx: Ctx) -> str | None:
     """The isolated vocals stem, if a stems job already published one.
 
     Returned only when it EXISTS. The ASR baseline reads this, and a path to a missing file would make it
-    fail rather than decline — and a declining baseline is a real, honest outcome (stems not cooked yet),
+    fail rather than decline — and a declining baseline is a real, honest outcome (stems not processed yet),
     while a failing one looks like a broken worker.
 
     Extension-blind, exactly as `find_downloaded` is for the retained original above. `VOCALS_EXT`
-    switched from `m4a` to `flac` in #480 for NEW cooks, but the worker re-derives this path on every
+    switched from `m4a` to `flac` in #480 for NEW processes, but the worker re-derives this path on every
     align job from the CURRENT `VOCALS_EXT` — it is never sent the stored ref — so an interim-era song
     (instrumental `.flac` + vocals `.m4a`, the whole library up to that commit) has a real stem on disk
     under an unexpected name. Nothing migrates those files. Glob `<id>-vocals.*`, prefer the current
-    extension when several exist so a fresh re-cook wins, and fall back to the legacy file otherwise.
+    extension when several exist so a fresh re-process wins, and fall back to the legacy file otherwise.
     No transcode: AAC → FLAC recovers nothing, which #480 already ruled — align just has to LOOK.
     """
     from ..processor import VOCALS_EXT, vocals_path
