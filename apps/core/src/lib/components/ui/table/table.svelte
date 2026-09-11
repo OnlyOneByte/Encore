@@ -26,7 +26,7 @@
 </script>
 
 <div data-slot="table-container" class="relative w-full overflow-x-auto">
-	<table bind:this={ref} data-slot="table" class={cn("encore-table", className)} {...restProps}>
+	<table bind:this={ref} data-slot="table" class={cn(className)} {...restProps}>
 		{@render children?.()}
 	</table>
 </div>

@@ -132,6 +132,42 @@ test('while anything uses `card`, app.css defines it WITH a background (#913)', 
 	};
 	expect(lastOf('background'), '`.card` must actually paint a surface').toMatch(/var\(--card\)/);
 	expect(lastOf('border'), '`.card` must carry its border').toMatch(/1px solid var\(--line\)/);
+
+	/*
+	 * …and no OTHER rule un-paints it.
+	 *
+	 * "The last declaration wins" holds only at equal specificity and equal importance, so collecting the
+	 * bare `.card` rules closed one case and left two open. Both of these strip the surface from all nine
+	 * callers with everything above still green:
+	 *
+	 *     body .card { background: none }        higher specificity, and not matched by the bare-rule regex
+	 *     .card { background: none !important }  wins from anywhere, including earlier in the file
+	 *
+	 * Neither shape exists in the tree today, which is why this is a guard rather than a fix. The check is
+	 * deliberately narrow: any rule whose selector mentions `.card` and which sets background or border to
+	 * something that is not the token. A legitimate future variant (`.card.compact { padding: … }`) is
+	 * untouched because it sets neither.
+	 */
+	const suspicious: string[] = [];
+	for (const m of css.matchAll(/(?:^|\n)([^{}\n]*\.card[^{}\n]*)\{([^}]*)\}/g)) {
+		const [selector, body] = [m[1]!.trim(), m[2]!];
+		if (/^\.card\s*$/.test(selector)) continue; // the canonical rule, asserted above
+		for (const prop of ['background', 'border'] as const) {
+			const decl = new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;}]+)`).exec(body);
+			if (!decl) continue;
+			const value = decl[1]!.trim();
+			const paints = prop === 'background' ? /var\(--card/.test(value) : /var\(--line/.test(value);
+			if (!paints || /!important/.test(value)) {
+				suspicious.push(`${selector} { ${prop}: ${value} }`);
+			}
+		}
+	}
+	expect(
+		suspicious,
+		'another rule sets `background` or `border` on a `.card` selector to something other than the ' +
+			'surface tokens. At higher specificity, or with !important, that wins over the canonical rule and ' +
+			'every caller silently loses its surface — the regression this file was written after.'
+	).toEqual([]);
 });
 
 test('every `card` caller is enumerated, so a new one is a decision (#913)', () => {
@@ -197,4 +233,30 @@ test('a class list inside a comment is not a caller (#913)', () => {
 	// …and a mid-list token is still found, which is the defect that started this file.
 	const tokens = [...markupOf(real).matchAll(/class="([^"]*)"/g)].flatMap((m) => m[1]!.split(/\s+/));
 	expect(tokens).toContain('card');
+});
+
+test('a higher-specificity or !important override is caught too (#913)', () => {
+	/*
+	 * The two shapes the "last wins" model missed. Both are realistic accidents — a reset block, a theme
+	 * layer, a print stylesheet — and both un-paint all nine callers.
+	 */
+	const suspects = (css: string) => {
+		const out: string[] = [];
+		for (const m of css.matchAll(/(?:^|\n)([^{}\n]*\.card[^{}\n]*)\{([^}]*)\}/g)) {
+			const [selector, body] = [m[1]!.trim(), m[2]!];
+			if (/^\.card\s*$/.test(selector)) continue;
+			const decl = /(?:^|;)\s*background\s*:\s*([^;}]+)/.exec(body);
+			if (!decl) continue;
+			const v = decl[1]!.trim();
+			if (!/var\(--card/.test(v) || /!important/.test(v)) out.push(`${selector} -> ${v}`);
+		}
+		return out;
+	};
+
+	expect(suspects(`body .card { background: none; }`)).toHaveLength(1);
+	expect(suspects(`.theme-x .card { background: red; }`)).toHaveLength(1);
+	// A variant that sets neither background nor border is legitimate and must not be flagged.
+	expect(suspects(`.card.compact { padding: 4px; }`)).toEqual([]);
+	// …and one that re-states the real token is fine.
+	expect(suspects(`@media print { .card { background: var(--card); } }`)).toEqual([]);
 });

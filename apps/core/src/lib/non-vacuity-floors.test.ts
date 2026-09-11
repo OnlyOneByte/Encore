@@ -137,6 +137,20 @@ const FLOORS: Record<string, Floor[]> = {
 	],
 	'apps/core/src/lib/app-class-resolution-913.test.ts': [
 		{
+			subject: 'tokensSeen',
+			min: 15,
+			count: 1,
+			guards:
+				"the `encore-*` tokens found in the vendored tree, which the same file's other arm skips by path. That exemption argued every class under components/ui resolves to a minted utility — true of `flex`, false of our own namespace, which `source(none)` can never mint. It switched the guard off across the largest and least-reviewed hundred files in #913, and five tokens were sitting there with no rule at all (encore-bar, encore-table, encore-tab, encore-seg, encore-chip-neutral), residue of the pre-data-slot form. If this count collapses the namespace scan is examining nothing."
+		},
+		{
+			subject: 'vendoredFiles.length',
+			min: 55,
+			count: 1,
+			guards:
+				'the vendored .svelte files the `encore-*` namespace scan reads — 62 at the time of writing. An empty walk reports an empty orphan list exactly like a clean tree.'
+		},
+		{
 			subject: 'files.length',
 			min: 30,
 			count: 1,
@@ -518,7 +532,7 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
 	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
 	// prescribes rather than counted: raised absurdly high, read `Received: 40`.
-	expect(located).toBeGreaterThanOrEqual(47);
+	expect(located).toBeGreaterThanOrEqual(49);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -576,7 +590,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(47);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(49);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

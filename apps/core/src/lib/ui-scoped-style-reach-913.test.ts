@@ -134,15 +134,63 @@ function classesOnChildComponents(src: string): Set<string> {
 	 * `<svelte:element>` is therefore an element here, not a component. What matters is whether the tag
 	 * that CONSUMES the variants call is a component; `tabs-list` is the case that must still be caught.
 	 */
-	const variantsConsumedByComponent = new Set<string>();
-	for (const tag of tagsOfChildComponents(src)) {
-		for (const call of tag.matchAll(/\b([A-Za-z_][\w]*Variants)\s*\(/g)) {
-			variantsConsumedByComponent.add(call[1]!);
-		}
+	/*
+	 * Which variants functions reach a child component — resolved TRANSITIVELY, not by scanning tag text.
+	 *
+	 * The first version looked for `xxxVariants(` inside the component's own tag. That is a textual proxy
+	 * for the real relationship, and hoisting the call one line defeats it while leaving the rendered DOM
+	 * byte-identical:
+	 *
+	 *     const listCls = tabsListVariants({ variant });     // in <script>
+	 *     <TabsPrimitive.List class={cn(listCls, className)} />
+	 *
+	 * That is an ordinary refactor, not an evasion, so it would have happened by accident — and with it the
+	 * guard went green on the exact dead-rule defect this file exists to catch. So: collect every
+	 * identifier a child component's tag mentions, then follow script-level `const`s until a `*Variants(`
+	 * call is reached.
+	 */
+	const assignments = new Map<string, string>();
+	for (const a of src.matchAll(/\b(?:const|let|var)\s+([A-Za-z_][\w]*)\s*=\s*([^;\n]+)/g)) {
+		assignments.set(a[1]!, a[2]!);
 	}
-	for (const decl of src.matchAll(/\b(?:const|let)\s+([A-Za-z_][\w]*Variants)\s*=\s*tv\(\s*\{([\s\S]*?)\n\t\}\)/g)) {
-		if (!variantsConsumedByComponent.has(decl[1]!)) continue;
-		for (const lit of decl[2]!.matchAll(/"([^"]*)"/g)) {
+	const variantsConsumedByComponent = new Set<string>();
+	const seen = new Set<string>();
+	const follow = (ident: string, depth = 0): void => {
+		if (depth > 6 || seen.has(ident)) return;
+		seen.add(ident);
+		if (/Variants$/.test(ident)) variantsConsumedByComponent.add(ident);
+		const rhs = assignments.get(ident);
+		if (!rhs) return;
+		for (const ref of rhs.matchAll(/\b([A-Za-z_][\w]*)\s*\(?/g)) follow(ref[1]!, depth + 1);
+	};
+	for (const tag of tagsOfChildComponents(src)) {
+		if (!/\bclass\s*=/.test(tag)) continue;
+		for (const ident of tag.matchAll(/\b([A-Za-z_][\w]*)\b/g)) follow(ident[1]!);
+	}
+	/*
+	 * The tv() declarations themselves, matched BRACE-BALANCED rather than by indentation.
+	 *
+	 * This depended on the literal `\n\t})` that prettier happens to produce, so a single-line
+	 * `tv({ base: "x", variants: {} })` — perfectly ordinary code — was invisible and its base unchecked.
+	 */
+	for (const start of src.matchAll(/\b(?:const|let|var)\s+([A-Za-z_][\w]*Variants)\s*=\s*tv\(/g)) {
+		const name = start[1]!;
+		if (!variantsConsumedByComponent.has(name)) continue;
+		let i = start.index! + start[0].length;
+		let depth = 1;
+		let quote: string | null = null;
+		const from = i;
+		for (; i < src.length && depth > 0; i++) {
+			const c = src[i]!;
+			if (quote) {
+				if (c === quote) quote = null;
+				continue;
+			}
+			if (c === '"' || c === "'" || c === '`') quote = c;
+			else if (c === '(' || c === '{') depth++;
+			else if (c === ')' || c === '}') depth--;
+		}
+		for (const lit of src.slice(from, i).matchAll(/"([^"]*)"/g)) {
 			for (const t of lit[1]!.split(/\s+/)) if (t && !t.includes(':')) out.add(t);
 		}
 	}
@@ -153,7 +201,12 @@ function classesOnChildComponents(src: string): Set<string> {
 function scopedRuleClasses(css: string): Map<string, string> {
 	const found = new Map<string, string>();
 	// Blank every `:global(...)` interior first: a class named in there is explicitly global and fine.
-	const scoped = css.replace(/:global\([^)]*\)/g, (m) => ' '.repeat(m.length));
+	// COMMENTS FIRST. Without this the guard reds on its own documentation: a commented-out
+	// `/* .encore-seg { … } was replaced by the data-slot rule */` is read as a live scoped rule and
+	// reported as a defect. `styleOnly` in this same file already strips them, and this function did not —
+	// the fourth instance of that anti-pattern on this branch and the one that was missed.
+	const css2 = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
+	const scoped = css2.replace(/:global\([^)]*\)/g, (m) => ' '.repeat(m.length));
 	for (const rule of scoped.matchAll(/([^{}]+)\{[^{}]*\}/g)) {
 		const sel = rule[1]!;
 		if (sel.includes('@')) continue; // an at-rule preamble, not a subject
@@ -357,4 +410,61 @@ test('the data-slot reach check fails when the attribute is dropped (#913)', () 
 	const fixed = markupOnly(`<div data-slot="ghost-slot"></div>`);
 	const nowEmitted = new Set([...fixed.matchAll(/data-slot=["']([^"']+)["']/g)].map((m) => m[1]!));
 	expect(slots.filter((x) => !nowEmitted.has(x))).toEqual([]);
+});
+
+test('the tv() consumer test survives hoisting the variants call (#913)', () => {
+	/*
+	 * The hole this closes: moving `tabsListVariants({ variant })` out of the tag and into a script-level
+	 * `const` made the base invisible to a text scan of the tag, so a scoped rule on it shipped green.
+	 * Both spellings must be seen, because they render identically.
+	 */
+	const direct = `<script lang="ts" module>
+	export const xVariants = tv({ base: "encore-direct", variants: {} });
+</script>
+<TabsPrimitive.List class={cn(xVariants({ variant }), className)} />`;
+	expect(classesOnChildComponents(direct).has('encore-direct')).toBe(true);
+
+	const hoisted = `<script lang="ts" module>
+	export const yVariants = tv({ base: "encore-hoisted", variants: {} });
+</script>
+<script lang="ts">
+	const listCls = yVariants({ variant });
+</script>
+<TabsPrimitive.List class={cn(listCls, className)} />`;
+	expect(classesOnChildComponents(hoisted).has('encore-hoisted')).toBe(true);
+
+	// …through one more hop, and still NOT when a real element consumes it.
+	const twoHops = `<script lang="ts" module>
+	export const zVariants = tv({ base: "encore-twohop", variants: {} });
+</script>
+<script lang="ts">
+	const a = zVariants({ variant });
+	const b = a;
+</script>
+<TabsPrimitive.List class={cn(b, className)} />`;
+	expect(classesOnChildComponents(twoHops).has('encore-twohop')).toBe(true);
+
+	const onElement = `<script lang="ts" module>
+	export const wVariants = tv({ base: "encore-elem", variants: {} });
+</script>
+<script lang="ts">
+	const cls = wVariants({ variant });
+</script>
+<svelte:element this={href ? "a" : "span"} class={cn(cls, className)} />`;
+	expect(classesOnChildComponents(onElement).has('encore-elem')).toBe(false);
+});
+
+test('a commented-out rule is not read as a live scoped rule (#913)', () => {
+	// The guard must not red on its own documentation, and must still see the real rule beside it.
+	const commented = `<style>
+	/* .encore-seg { min-height: var(--tap); } was replaced by the data-slot rule */
+	.encore-real { display: flex; }
+</style>`;
+	const found = scopedRuleClasses(commented);
+	expect(found.has('encore-seg')).toBe(false);
+	expect(found.has('encore-real')).toBe(true);
+
+	// …and a rule on the same line as a closing comment marker is still collected.
+	const sameLine = `<style>/* note */ .encore-after { display: grid; }</style>`;
+	expect(scopedRuleClasses(sameLine).has('encore-after')).toBe(true);
 });

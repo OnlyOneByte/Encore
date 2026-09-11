@@ -127,7 +127,7 @@ test('#903: vaul-svelte stays gone, and bits-ui is present only because somethin
 	 * `bits-ui` and `@internationalized/date`. That was right when written — bits-ui was there for
 	 * NOTHING, satisfying an import vaul-svelte failed to declare, with zero consumers in src.
 	 *
-	 * S3 brings it back for a real reason: shadcn's Switch, Slider, Checkbox and Select are built on
+	 * S3 brings it back for a real reason: shadcn's Slider, Checkbox, Tabs and Collapsible are built on
 	 * Bits UI, so it is a direct, declared, USED dependency now. That is a different fact about the
 	 * world, not a relaxation — so the assertion becomes the two halves that still matter:
 	 *   1. `vaul-svelte` stays absent. The drawer is dead and the ratified design has no place for one.

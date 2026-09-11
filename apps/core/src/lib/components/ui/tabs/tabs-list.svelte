@@ -15,24 +15,15 @@
   carries its own header for them. They were listed here too for one build, which sent anyone auditing
   the 44px floor to a file whose style block has no `min-height` in it at all.
 -->
-<script lang="ts" module>
-	import { tv, type VariantProps } from "tailwind-variants";
-
-	export const tabsListVariants = tv({
-		base: "encore-seg",
-		variants: {
-			variant: {
-				default: "",
-				line: "",
-			},
-		},
-		defaultVariants: {
-			variant: "default",
-		},
-	});
-
-	export type TabsListVariant = VariantProps<typeof tabsListVariants>["variant"];
-</script>
+<!--
+  `tabsListVariants` was removed rather than kept empty.
+  The registry's version carries a `variant` axis whose arms are Tailwind utilities. Encore replaces the
+  appearance with `:global([data-slot='tabs-list'])`, so every arm and the base became `""` — a function
+  that can only ever return an empty string, exported from index.ts and called on every render. That reads
+  like a styling hook and is not one, which is worse than nothing.
+  The `variant` PROP stays and still lands as `data-variant`, so a future rule has an attribute to key on
+  without anyone having to reinstate the machinery.
+-->
 
 <script lang="ts">
 	import { Tabs as TabsPrimitive } from "bits-ui";
@@ -44,7 +35,7 @@
 		class: className,
 		...restProps
 	}: TabsPrimitive.ListProps & {
-		variant?: TabsListVariant;
+		variant?: string;
 	} = $props();
 </script>
 
@@ -52,7 +43,7 @@
 	bind:ref
 	data-slot="tabs-list"
 	data-variant={variant}
-	class={cn(tabsListVariants({ variant }), className)}
+	class={cn(className)}
 	{...restProps}
 />
 

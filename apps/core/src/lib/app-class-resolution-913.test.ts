@@ -35,6 +35,8 @@ import { join } from 'node:path';
  */
 
 const SRC = join(import.meta.dir, '..');
+/** Stands in for a `{…}` expression, so a token fused to one is recognisable as dynamic. */
+const DYNAMIC = '\u0000';
 const VENDORED = join('components', 'ui');
 
 function svelteFiles(dir: string): string[] {
@@ -108,9 +110,24 @@ function unresolvedTokens(): Record<string, string[]> {
 	for (const f of files) {
 		const src = readFileSync(f, 'utf8');
 		const own = classNamesIn(styleOf(src));
-		for (const m of markupOf(src).matchAll(/class="([^"{}]*)"/g)) {
+		/*
+		 * `{…}` spans are BLANKED, not used to skip the attribute.
+		 *
+		 * This matched `class="([^"{}]*)"`, so one interpolation anywhere in the attribute discarded every
+		 * static token beside it. `class="topbar {cls}"` checked nothing at all, silently — and turning
+		 * `class="topbar"` into `class="topbar {cls}"` is a refactor nobody would think of as reducing
+		 * coverage.
+		 *
+		 * The expression is replaced with a MARKER rather than a space, because a token can be built across
+		 * the boundary: `class="hl-{i}"` is one dynamic name, and blanking to a space leaves `hl-` looking
+		 * like a static token with no rule. Any token still carrying the marker is dynamic and skipped;
+		 * tokens that are whole words on their own are checked as normal.
+		 */
+		const scannable = markupOf(src).replace(/\{[^{}]*\}/g, DYNAMIC);
+		for (const m of scannable.matchAll(/class="([^"]*)"/g)) {
 			for (const tok of m[1]!.split(/\s+/)) {
 				// Only plain lowercase tokens. An interpolated or dynamic class cannot be checked statically.
+				if (tok.includes(DYNAMIC)) continue; // built across an interpolation boundary
 				if (!/^[a-z][\w-]*$/.test(tok)) continue;
 				if (own.has(tok) || global.has(tok)) continue;
 				(out[tok] ??= []).push(f.slice(SRC.length + 1));
@@ -199,4 +216,64 @@ test('the resolution check catches all six shapes the migration actually shipped
 
 	// A fully resolved file reports nothing.
 	expect(resolves(`<div class="a b">x</div>`, `.a {} .b {}`)).toEqual([]);
+});
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────────────────────────────────
+ * THE VENDORED TREE IS NOT EXEMPT FROM ITS OWN NAMESPACE
+ * ─────────────────────────────────────────────────────────────────────────────────────────────────────
+ *
+ * Everything above skips `components/ui` by path, on the argument that every class there resolves to a
+ * minted utility. That is true of `flex` and `bg-card`. It is NOT true of `encore-*`, which is our own
+ * namespace: `source(none)` means Tailwind mints only what it finds in this directory, and it can never
+ * mint `.encore-table` because no utility grammar produces it. So a path exemption switched this guard
+ * off across the largest, newest and least-reviewed hundred files in the change — laundering exactly the
+ * defect class it was written for.
+ *
+ * It was not theoretical. Five `encore-*` tokens were being written into the DOM with no rule anywhere:
+ * `encore-bar`, `encore-table`, `encore-tab`, `encore-seg` and `encore-chip-neutral` — leftovers from the
+ * pre-`data-slot` form the slider defect forced these files off. Nothing rendered wrong, because
+ * `:global([data-slot='…'])` had taken over the painting, but every one was a live invitation to the same
+ * mistake: a reader sees the class, assumes it carries the styling, and writes a rule for it that lands
+ * nowhere.
+ *
+ * Splitting on our own prefix keeps the predicate honest without needing to model Tailwind's grammar.
+ */
+const ENCORE_PREFIX = /^encore-/;
+
+test('every `encore-*` class in the vendored tree has a rule (#913)', () => {
+	const global = globallyDefined();
+	// Named distinctly from the app-side arm's `files`: two floors in one file with the same subject are
+	// indistinguishable to the anti-laundering check in non-vacuity-floors.test.ts, which matches on it.
+	const vendoredFiles = svelteFiles(join(SRC, 'lib', 'components', 'ui'));
+	// Non-vacuity: the vendored tree was reached. 62 files at the time of writing.
+	expect(vendoredFiles.length).toBeGreaterThanOrEqual(55); // @nvf-floor vendoredFiles.length
+
+	let tokensSeen = 0;
+	const orphans: string[] = [];
+	for (const f of vendoredFiles) {
+		const src = readFileSync(f, 'utf8');
+		const own = classNamesIn(styleOf(src));
+		// Class strings reach these elements through cn() and tv() bases as well as plain attributes, so
+		// every string literal in the markup and the module script counts.
+		const region = src.replace(/<style[\s\S]*?<\/style>/g, ' ').replace(/<!--[\s\S]*?-->/g, ' ');
+		for (const lit of region.matchAll(/["'`]([^"'`\n]*)["'`]/g)) {
+			for (const tok of lit[1]!.split(/\s+/)) {
+				if (!ENCORE_PREFIX.test(tok)) continue;
+				tokensSeen++;
+				if (own.has(tok) || global.has(tok)) continue;
+				orphans.push(`${f.slice(SRC.length + 1)}: "${tok}" is written into the DOM with no rule`);
+			}
+		}
+	}
+
+	// Non-vacuity: the namespace is really in use, so an empty orphan list means clean rather than blind.
+	expect(tokensSeen).toBeGreaterThanOrEqual(15); // @nvf-floor tokensSeen
+
+	expect(
+		[...new Set(orphans)],
+		'an `encore-*` class is applied with no rule to match it. Tailwind cannot mint this namespace, so ' +
+			'the token does nothing: either add the rule, or delete the token. If the styling moved to ' +
+			"`:global([data-slot='…'])`, the old class is residue and should go with it."
+	).toEqual([]);
 });

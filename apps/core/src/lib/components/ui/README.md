@@ -12,9 +12,13 @@ Item, Empty, Skeleton, Spinner, Sonner and Chart. `Label` is reached through `Fi
 directly; it is the only indirect one.
 
 `Switch`, `Textarea` and `Separator` were vendored during the migration and deleted again before review
-closed, because nothing used them — "vendored but unwired" reads as migrated when it is not. Unused
-*parts* of components we DO use are kept on purpose: a part is the registry's unit, and deleting one
-makes the next `--overwrite` look like a regression. If you are adding number 20, the five sections below
+closed, because nothing used them — "vendored but unwired" reads as migrated when it is not.
+
+Unused *parts* of components we DO use are kept on purpose: a part is the registry's unit, and deleting
+one makes the next `--overwrite` look like a regression. `Card.Action`, `Table.Caption`, `Field.Set` and
+about twenty others are unrendered and staying. **The one exception is a part whose own dependency goes**:
+`Field.Separator` and `Item.Separator` were deleted with `Separator` itself, because a part that imports a
+component we no longer vendor cannot compile. If you re-add `Separator`, re-add them with it. If you are adding number 20, the five sections below
 are the constraints that will bite you, in the order they bit #913.
 
 ---
@@ -104,7 +108,7 @@ do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if 
 
 ---
 
-## Adding component 23
+## Adding component 20
 
 1. `cd apps/core && ./node_modules/.bin/shadcn-svelte add <name> --yes` (`bunx` fails — CodeArtifact
    401). Run `bun test` from the **repo root** afterwards; `bunfig.toml` and its preload live there,
@@ -113,8 +117,11 @@ do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if 
    the `@theme` bridge mints a utility but emits **no** custom property, so reading it as
    `var(--color-popover)` paints nothing. `design-system.test.ts` catches that.
 3. Give it Encore's appearance where the registry's differs, and record **why** in an `ENCORE
-   DEVIATIONS` HTML comment at the top of the file, naming the test that enforces each item. Every
-   deviating component here carries one; they are what makes an `--overwrite` reviewable.
+   DEVIATIONS` HTML comment at the top of the file, naming the test that enforces each item. They are what
+   makes an `--overwrite` reviewable. 18 of the 19 components carry one in that exact form; `button/` is
+   the odd one out, using `DEVIATIONS FROM REGISTRY OUTPUT` inside a `<script module>` block because it
+   predates the convention. Its content is the most thorough here — only the marker differs, so a grep for
+   the mandated header misses it.
 4. Watch §2 when you write the CSS.
 5. If it replaces something guarded, the guard **follows what it watches** — re-anchor it in the same
    change, or retire it on the record with its successors named (`non-vacuity-floors.test.ts` has a
@@ -126,10 +133,11 @@ do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if 
 
 ## What is deliberately NOT here
 
-- `.card` in `app.css` is **not** dead and must stay. Nine elements take the shared surface rather than
-  a `<Card.Root>` — three list rows, the hero, the TV progress track, a code-entry segment, the
-  reorder bar. `ui-card-surface-913.test.ts` keeps the rule and its callers together in both
-  directions.
+- `.card` in `app.css` is **not** dead and must stay. **Nine** elements take the shared surface rather
+  than a `<Card.Root>`: three queue/list rows, the hero, the TV progress track, a code-entry segment, the
+  reorder bar, `MyPositionCard` and `JoinLanding`. `ui-card-surface-913.test.ts` holds that list and
+  enforces it in both directions, so the authoritative enumeration is there rather than here — if the two
+  ever disagree, the test is right.
 - `ColourPicker`'s hue slider stays a native range: its track **is** an oklch colour space and its
   thumb shows the picked colour.
 - The search dock's input stays native — a bare text node inside a composed container that wants none

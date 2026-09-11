@@ -25,7 +25,7 @@
 				 * CERTIFIED triple — surface, border and ink set together, never separately — lifted
 				 * verbatim from SongRow's chip rules so the migration changes no colour.
 				 */
-				neutral: "encore-chip-neutral",
+				neutral: "",
 				ok: "encore-chip-ok",
 				warn: "encore-chip-warn",
 				bad: "encore-chip-bad",

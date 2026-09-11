@@ -36,7 +36,7 @@
 	bind:ref
 	data-slot="progress"
 	data-size={size}
-	class={cn("encore-bar relative flex w-full items-center", className)}
+	class={cn("relative flex w-full items-center", className)}
 	{value}
 	{max}
 	{...restProps}

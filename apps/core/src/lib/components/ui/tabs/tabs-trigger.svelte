@@ -31,7 +31,7 @@
 <TabsPrimitive.Trigger
 	bind:ref
 	data-slot="tabs-trigger"
-	class={cn("encore-tab", className)}
+	class={cn(className)}
 	{...restProps}
 />
 
