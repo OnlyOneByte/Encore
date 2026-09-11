@@ -363,13 +363,23 @@ export const SEL = {
 	 */
 	dashChartOrBody: '.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)',
 	// ── admin dashboard (/admin — the #639 entry-delete surface the admin-delete probe drives) ──
-	/** A deletable song row on /admin: <li class="song-row"> (routes/admin/+page.svelte). */
-	adminSongRow: '.song-row',
-	/** The first-step Delete button on an admin song row: <button class="delete"> — arms the confirm. */
-	adminDelete: '.delete',
-	/** The second-step confirm button: <button class="danger"> inside <span class="confirm"> — the
-	 *  destructive commit, scoped under .confirm so it is distinct from the .delete arm. */
-	adminConfirmDelete: '.confirm .danger'
+	/*
+	 * RE-POINTED BY #913 PHASE 2. These three were `.song-row`, `.delete` and `.confirm .danger` — classes
+	 * on a hand-rolled <li> and three hand-rolled buttons. The row is Item.Root/Content/Actions and the
+	 * controls are Button variants now, so the classes are gone along with 13 CSS rules and all seven of
+	 * this page's hardcoded colours. The anchors moved to things that describe the CONTROL rather than its
+	 * styling: the row keys on Item's own `data-slot`, and the two destructive steps key on the per-song
+	 * `aria-label` added in the same change (they had none, so AT announced "Delete, button" N times with
+	 * nothing to tell the rows apart). A styling class is a poor test handle — that is what left an
+	 * orphaned `.chip` in LyricsReselect — and an aria-label cannot be deleted without a real a11y
+	 * regression, which makes it the sturdier contract.
+	 */
+	/** A deletable song row on /admin: <Item.Root> (routes/admin/+page.svelte). */
+	adminSongRow: "[data-slot='item']",
+	/** The first-step Delete button on an admin song row — arms the confirm. */
+	adminDelete: "[data-act='arm-delete']",
+	/** The second-step confirm button: the destructive commit, distinct from the Delete arm. */
+	adminConfirmDelete: "[data-act='confirm-delete']"
 } as const;
 
 /**
@@ -778,19 +788,19 @@ export const HOOKS: Hook[] = [
 	{
 		id: 'adminSongRow',
 		file: 'src/routes/admin/+page.svelte',
-		anchor: 'class="song-row"',
-		why: 'the admin-delete probe reads deletable rows on /admin from .song-row'
+		anchor: '<Item.Root',
+		why: 'the admin-delete probe reads deletable rows on /admin from the Item row root'
 	},
 	{
 		id: 'adminDelete',
 		file: 'src/routes/admin/+page.svelte',
-		anchor: 'class="delete"',
+		anchor: 'data-act="arm-delete"',
 		why: 'the probe clicks the first-step Delete button to arm the confirm'
 	},
 	{
 		id: 'adminConfirmDelete',
 		file: 'src/routes/admin/+page.svelte',
-		anchor: 'class="danger"',
-		why: 'the probe waits on the second-step confirm button (.confirm .danger) to shoot the confirm state'
+		anchor: 'data-act="confirm-delete"',
+		why: 'the probe waits on the second-step confirm button to shoot the confirm state'
 	}
 ];
