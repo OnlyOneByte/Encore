@@ -5,7 +5,9 @@
 > how the system works now is [`../ARCHITECTURE.md`](../ARCHITECTURE.md); how to operate it safely
 > is [`../HANDOFF.md`](../HANDOFF.md). Open work is tracked in **GitHub issues**.
 
-Written 2026-09-09 for the UI redesign. **105 requirements** across five sections.
+Written 2026-09-09 for the UI redesign, extended since. **127 requirements** across seven sections.
+Subsystem contracts — media, the HTTP surface, background jobs — are a sibling tree at
+[`../arch/`](../arch/README.md), because this document is about the design rules and those are not.
 
 | Section | Rows | Covers |
 |---|---|---|
@@ -14,6 +16,8 @@ Written 2026-09-09 for the UI redesign. **105 requirements** across five section
 | [`03-colour-tokens.md`](03-colour-tokens.md) | 24 | The 48-stop palette, four per-stop contrast roles, token-layer consequences |
 | [`04-verification.md`](04-verification.md) | 22 | How the rules are *checked* — the two rungs, anti-vacuity, migration safety |
 | [`05-concurrency.md`](05-concurrency.md) | 17 | Authority, cross-surface consistency, the social cost of a visible failure |
+| [`06-components.md`](06-components.md) | 12 | The component contract: variant discipline, who owns a decision, accessible names |
+| [`07-tv-module.md`](07-tv-module.md) | 10 | The TV's module layer beneath the visuals: player lifecycle, media failure, what it must not depend on |
 
 ## How to read a row
 

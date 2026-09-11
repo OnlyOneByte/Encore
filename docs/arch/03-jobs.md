@@ -1,0 +1,358 @@
+# 03 — Background work and durable state
+
+**IDs:** `XR-JOB-nn`
+**Repo root for every path below:** `/local/home/angryang/.kiro/crew/workspace/Encore-ux` (branch
+`refactor/test-architecture-775`, HEAD `366c60b3`). Paths are repo-relative.
+
+---
+
+## What this section covers
+
+Everything that happens to a song when nobody is watching, and everything the box must still know
+after it is turned off and on again. Concretely: the job ledger (`apps/core/src/server/jobs`, 14
+source files) and the authoritative-state layer (`apps/core/src/server/state`, 3 files) — enqueue and
+dedup, dispatch to a worker fleet the core does not control, leases and the reaper, retry and terminal
+failure, and the write-behind snapshot of the queue and playback.
+
+Five questions govern every row: **what happens to an in-flight job when the process restarts**,
+**whether a step is idempotent under redelivery**, **how a failure becomes visible to a person rather
+than only to a log**, **what bounds concurrency**, and **whether the state survives a crash at all**.
+
+The subsystem is unusually well-reasoned in source — the pure/IO split (`transitions.ts` ↔
+`repository.ts`, `leases.ts` ↔ `reaper.ts`) is real, and the comments carry the defect history. What
+the rows below are for is the part that is *not* in source: which of these behaviours are decisions
+someone could reverse, and which are accidents nobody has been asked about.
+
+A cook is coordinated across two processes and two languages. **The Python worker at `apps/worker`
+was read for this section** — `dial_home.py` (the reconnect loop and the heartbeat leg),
+`protocol.py` (the worker's own slot accounting and accept/reject rule), `runtime/runner.py` (the
+lease keepalive) and `hardware.py` (worker identity). It has its own pytest suite, which nothing here
+executed; every cross-process claim below names the file and line on both sides so a reader can check
+the pair rather than trust the prose.
+
+---
+
+## 0. Where reading the code contradicted the brief — read this first
+
+Four things. Each was checked against the files named; the first is a defect, the others are drift
+between a comment and the code beside it.
+
+| Expected | The code actually does | Consequence |
+|---|---|---|
+| A permanently failed cook settles the song's readiness gate, so the song is re-cookable — the whole point of `settleStemsGate` | It settles it **in memory only**. `TerminalFailureDeps` (`apps/core/src/server/jobs/make-karaoke.ts:397`) carries exactly `broadcast` and `mediaById` — there is no persistence sink, so `reportTerminalFailure` (`:431`) mutates the runtime `Media` and stops. But `stem_status` / `lyrics_status` are **stored columns** (`apps/core/src/server/db/schema.ts:74-75`), and the cooking flip *was* persisted, at `apps/core/src/routes/api/make-karaoke/+server.ts:66` | A restart after a failed or cancelled cook rehydrates `stemStatus: 'queued'` from SQLite (`hydrateMediaCatalog`, `apps/core/src/server/media/repository.ts:368`, runs first and wins over the sidecar path, which never stores `'queued'` — `media/sidecar.ts:241`). The job row is terminal, so nothing redispatches it: the song reads as cooking with no Sing button. This is the exact stranding `settleStemsGate` was written to fix, resurrected across a restart. See `XR-JOB-04` |
+| The unservable-job TTL is a timer | It is evaluated **only inside `dispatch()`**, on a later pass, and `dispatch()` is event-driven with no periodic tick (`workerHub.dispatch()` has six call sites; the only `setInterval` at boot is the membership sweep, `apps/core/server.ts:415`; the reaper's `onReaped` hook fires only on a tick that changed ≥1 job, `apps/core/src/server/app.ts:559`) | With an empty fleet and no further events, a stalled job's 120 s TTL is **never reached** — the first pass stamps `#unservableSince` and there is no second pass. The job stays `queued` forever, which is the state the TTL exists to prevent. See `XR-JOB-11` |
+| The worker adopts the core's lease interval, so the two cannot drift | It adopts the advertised number, but the two comments describing it are wrong: `apps/worker/src/dial_home.py:66` and `:184` both say the advertised value **is** `progressLeaseMs / 1000`, while the core deliberately halves it — `Math.floor(this.#config.progressLeaseMs / 1000 / 2)` (`apps/core/src/server/jobs/worker-hub.ts:234`, with the margin argument in the comment above it). Separately, the advertised value drives only the `worker:heartbeat` leg; the **job progress lease** is refreshed by a hardcoded `LEASE_KEEPALIVE_SEC = 10.0` (`apps/worker/src/runtime/runner.py:36`) that adopts nothing | Three numbers in two languages must agree and only prose ties them. Behaviour is correct today; the documentation is not. See `XR-JOB-12` |
+| A worker id is stable across a restart, as its own docstring claims | `default_worker_id()` returns `f"{host}-{os.getpid()}"` (`apps/worker/src/hardware.py:313`), so it is stable across a *reconnect* (same process) and **not** across a process restart | Harmless — the WS close deregisters the old session and the reaper reclaims its jobs by lease — but the docstring's "stays the same across a restart" is false as written, and a future reader sizing a lease against it would be reasoning from a wrong premise |
+
+### Negative findings — what was searched for and not found
+
+- **No published standard governs any number in this section.** Lease durations, retry ceilings,
+  keepalive cadence, an unservable TTL and a write-behind debounce are all engineering choices for a
+  single-box self-hosted service with a fleet of one to a few workers. Every row whose subject is a
+  duration or a count is therefore `UNSOURCED` **by necessity**, not by omission. None of the existing
+  numbers is second-guessed here and no new number is invented.
+- **No durable record of a cook failure exists on the song.** The owner ruled against a server-side
+  `last_error` column in favour of a per-device client scar (`apps/core/src/lib/stores/cook-scars.ts:1-9`).
+  The failure *is* durable in the attempt ledger (`job_attempts.error`) and readable at
+  `GET /api/audit/[mediaId]`; what does not exist is a path from there to a guest's phone.
+- **Nothing in the test tree drives a restart across a real SQLite file.** `recoverOnBoot` is covered
+  (`tests/unit/core/server/jobs/reaper.test.ts:102`) and `flushNow` is covered
+  (`tests/unit/core/server/state/state.test.ts`), but both run against an in-process repository. Every
+  row whose subject is *what survives a restart* therefore needs a test shape the repo does not yet
+  have, and each says so rather than naming a file that would not exercise it.
+
+---
+
+## Group A — Restart, crash and recovery
+
+### XR-JOB-01 — A core restart returns every in-flight job to the queue, and nothing resumes mid-step
+
+| Field | Content |
+|---|---|
+| **Statement** | On core startup, every job in a non-terminal owned state (`assigned`, `running`) is returned to `queued` before the dispatch loop starts, and no code path attempts to resume a step from partial output. A restart costs the work in flight; it never costs the request. |
+| **Surfaces** | None directly (server subsystem). Phone renders the consequence as a cook that restarts its progress bar; TV renders it as a song that stays held. Operator dashboards read the resulting attempt history. |
+| **Rationale** | Ownership of a job is a live WebSocket session, and after a restart there are no sessions by definition — so a job left `running` names an owner that cannot exist, and would sit unreaped until a lease that no longer has a live counterpart expires. Discarding partial work is the cheap half of the trade; the expensive half would be a resume protocol per step. |
+| **Source** | Cited. `apps/core/src/server/jobs/leases.ts:90-92` (`inflightToRecover` selects exactly `assigned`/`running`), applied by `apps/core/src/server/jobs/reaper.ts:70-78` (`recoverOnBoot`, firing the `RECOVER` event), called once at `apps/core/src/server/app.ts:608` — **before** `apps/core/server.ts:58` starts the tick loop. `RECOVER` is a legal edge from both owned states and from nowhere else (`apps/core/src/server/jobs/transitions.ts:28-55`). No resume mechanism exists: `job_attempts` records `startedAt`/`finishedAt` but no step cursor, and the worker's own reconnect path *cancels* its in-flight tasks rather than continuing them (`apps/worker/src/dial_home.py:827`). |
+| **Acceptance** | **Given** a job persisted as `running` with a `workerId` and a lease, **when** the core starts, **then** before the first dispatch pass that job is `queued` with `workerId` null and `leaseExpiresAt` null. **Falsified by** a single job observed in `assigned` or `running` after `recoverOnBoot` returns, or by any code path that reads a partially-written artifact and skips a step. |
+| **Check** | `tests/unit/core/server/jobs/reaper.test.ts:95-109` already pins the in-process half (two in-flight jobs recovered, a `queued` one untouched). What is **not** covered is the durable half — the same assertion across a real SQLite file closed and reopened. That test does not exist yet and would need writing; it is the only shape that distinguishes "the repository resets the row" from "the row was reset and written". |
+| **Priority** | **Ship-blocking.** A single job stuck `running` after a restart holds its dedup slot forever, which makes the song un-cookable rather than merely slow. |
+
+---
+
+### XR-JOB-02 — A restart-recovered attempt is uncharged, and the redispatch it permits has a stated ceiling
+
+| Field | Content |
+|---|---|
+| **Statement** | Boot recovery does not consume a job's retry budget — and because it does not, the product states what bounds a job that is recovered repeatedly, so a core that restarts during every cook cannot redispatch the same job without limit. |
+| **Surfaces** | None directly. Phone renders it as a cook that never finishes and never fails; operator dashboards render it as an unbounded run of `abandoned` attempts on one job. |
+| **Rationale** | "A core restart isn't the worker's fault" is correct as a fairness rule and incomplete as a policy: it removes the only counter that ends the loop. A crash-looping core and a worker that reliably kills the box are indistinguishable from inside the ledger, and the second is the case where uncapped retry does real harm — it spends the fleet forever on a job that will never complete. |
+| **Source** | `DERIVED` for the loop; cited for the mechanism. **Model:** `attempts` is preserved verbatim on recovery (`apps/core/src/server/jobs/leases.ts:88`, and `reaper.ts:74` reads the pre-recovery count back off the in-flight row through `#jobByIdAttempts`, `:96`), and `RECOVER` is a member of both `OUTCOME_FOR_EVENT` (`apps/core/src/server/jobs/repository.ts:46-53`, sealing the dying attempt `abandoned`) and `REQUEUE_EVENTS` (`:56`, opening a fresh one). So each restart appends exactly one sealed `abandoned` attempt and leaves `attempts` where it was, while `attemptsExhausted` (`leases.ts:35`) — the only thing that ends a job — reads `attempts` alone. The conclusion is by enumeration of the counters, not by observation: **no crash loop was executed.** |
+| **Acceptance** | **Given** a job recovered N times with no worker ever completing it, **when** N grows, **then** the product's stated ceiling is reached and the job becomes terminal with a reason naming the restart loop. **Falsified by** a job whose `attempts` is still 0 after 50 recoveries with 50 `abandoned` rows in its ledger — which is the behaviour today. |
+| **Check** | `EXEMPT` from a source scan: the question is a policy that does not exist yet, so there is nothing to assert against. Once a ceiling is stated, the mechanism is testable in-process by looping `recoverOnBoot` against the existing `tests/unit/core/server/jobs/reaper.test.ts` harness and asserting the terminal transition — the judgment deferred is the ceiling itself, and what it should count (recoveries, wall-clock age, or ledger rows). |
+| **Priority** | **Should ship.** The failure mode needs a crash-looping core, which is rare and loud; but the cost while it lasts is the whole fleet, and the ledger's own audit trail is what grows without bound. |
+
+> **Recommendation (not decided).** Do not charge a recovery against `attempts` — the fairness
+> argument in `leases.ts:93` is right. Bound it on a **different axis instead**: fail a job whose
+> ledger holds more than a stated number of `abandoned` attempts with zero `startedAt` stamps, which
+> is precisely the signature of work that is dispatched and never begins. That reads off columns the
+> ledger already writes (`attempts.ts:65-67`), needs no new state, and leaves an honest retry — a
+> worker that genuinely tried and died — untouched.
+
+---
+
+### XR-JOB-03 — Authoritative room state loses at most one stated window to an ungraceful stop
+
+| Field | Content |
+|---|---|
+| **Statement** | The queue and playback are held in memory and snapshotted write-behind, and the product **states the window of mutations an ungraceful stop discards** — a power cut, an OOM kill, `docker kill` — as a duration, not as "small". |
+| **Surfaces** | Phone and TV both render the post-restart queue, so a lost mutation is a song that a guest watched themselves add and that is no longer there. Operator dashboards unaffected. |
+| **Rationale** | Write-behind is the right choice on the hot path and the loss window is the price of it. Unstated, the price is paid by whoever is standing in the room when it happens and cannot tell a lost add from a bug — and "the queue is small (a party)" argues that a *flush* is cheap, which is a different claim from the loss being acceptable. |
+| **Source** | Cited for the mechanism, `UNSOURCED` for the acceptable window. `apps/core/src/server/state/store.ts:70` sets `flushDelayMs = 250`; `#scheduleFlush` (`:205-211`) coalesces a burst into one trailing write, so the exposure is bounded by the debounce rather than by the mutation rate. `flushNow()` (`:214`) is wired to **`SIGTERM` and `SIGINT` only** (`apps/core/server.ts:436-455`), which are exactly the signals an ungraceful stop does not send. Persistence is replace-the-world per room inside one transaction (`apps/core/src/server/state/persistence.ts:11-24`), so a torn snapshot is not a failure mode — a lost one is. |
+| **Acceptance** | **Given** the stated window W, **when** the process is killed uncatchably at any point, **then** the rehydrated queue is missing at most the mutations of the last W. **Falsified by** a restart that drops a mutation older than W — for instance any state written by a path that mutates memory without calling `#scheduleFlush`. |
+| **Check** | `tests/guards/hygiene/graceful-shutdown-exit.test.ts` pins the signal handler and its exit code; `tests/unit/core/server/state/state.test.ts` covers `flushNow`. Neither can observe the loss window, which needs a test the repo does not have: mutate, kill without a signal, reopen the same database file, compare. Written as a source-level guard instead, the tractable half is an enumeration that every mutating method on `AuthoritativeState` calls `#scheduleFlush` — today `applyQueueOp`, `reorder`, `setPlayback` and `setPosition` all do (`store.ts:135, 148, 179, 202`), and a future fifth that does not would make the window unbounded for that state rather than merely 250 ms. |
+| **Priority** | **Should ship.** The number is already conservative; what is missing is that it is written down and that the enumeration keeping it true is enforced. |
+
+---
+
+### XR-JOB-04 — A settled readiness gate is durable, or it is recomputed at boot
+
+| Field | Content |
+|---|---|
+| **Statement** | When a cook reaches a terminal state — failed, or cancelled — the readiness gate it settles is **either persisted with the settle or re-derived at boot from the job ledger**. A restart must not be able to restore a song to "cooking" when no job is cooking it. |
+| **Surfaces** | Phone (a stranded row shows a progress line and no Sing button, so the guest has no affordance to recover it); TV (rotation holds the entry and skips it every pass). |
+| **Rationale** | The gate is what rotation consults, so a gate stuck mid-flight is not a cosmetic error — it removes the song from the party and removes the guest's way to ask for it again. The subsystem already recognises this as its worst failure class and fixed it three times for three fail paths; the restart is the fourth door into the same room, and it is open. |
+| **Source** | `DERIVED` by path enumeration; every link cited. **Model:** (1) the cooking flip **is** persisted — `apps/core/src/routes/api/make-karaoke/+server.ts:63-66` upserts the media immediately after `requestMakeKaraoke` sets `stemStatus = 'queued'` (`apps/core/src/server/jobs/make-karaoke.ts:186`), with a comment that says so; (2) `stem_status` and `lyrics_status` are stored columns, not derived (`apps/core/src/server/db/schema.ts:74-75`), and `fromRow` reads them verbatim (`apps/core/src/server/media/repository.ts:99-100`); (3) the settle is memory-only — `TerminalFailureDeps` (`make-karaoke.ts:397-402`) has no persistence member, so `reportTerminalFailure` (`:431`) and `settleStemsGate` (`:352`) mutate the runtime map and nothing else, and `cancelJobsForMedia` (`apps/core/src/server/jobs/cancel.ts`) takes the same two optional deps; (4) boot rehydrates the stored value and the DB wins — `hydrateMediaCatalog` (`media/repository.ts:368-375`) skips any id already present, and it runs synchronously at `app.ts:245` **before** the async sidecar-restore pass, whose own derivation would never produce `'queued'` (`media/sidecar.ts:241` maps to `'ready'` or `'none'`); (5) no boot pass reconciles a stored `'queued'` against the ledger — the six passes are enumerated at `app.ts:266, 284, 316, 369, 392, 421` and none reads a job row. **The sequence was traced through source, not executed**; the falsifying observation below is what would confirm it on a live box. |
+| **Acceptance** | **Given** a cook that reached terminal `failed` (or was cancelled) and settled its gate, **when** the core is restarted, **then** the song rehydrates un-cooked and offers Sing. **Falsified by** one observation: a song whose newest job row for `fetch`/`stems` is `failed` or `canceled` while its media row still reads `stem_status = 'queued'` after a boot. |
+| **Check** | A boot-reconciliation guard that does not exist yet: for every media rehydrated as `stemStatus: 'queued'`, assert a live (non-`failed`, non-`canceled`) job row exists for it, and settle the gate where it does not. The in-process half can extend `tests/unit/core/server/jobs/cancel.test.ts` and `tests/unit/core/server/jobs/reaper-broadcast-on-failure.test.ts`, both of which already build a repository plus a media map and drive a terminal failure — what they do not assert is that anything was written. The wiring half has a precedent in `tests/guards/wiring/reaper-onfailed-wiring.test.ts`, which pins that the reaper hook reaches the shared epilogue at all. |
+| **Priority** | **Ship-blocking.** It is the one defect in this section that a guest cannot work around, it is reached by an ordinary restart rather than by a rare race, and the recovery is a manual database edit. |
+
+> **Recommendation (not decided).** Prefer the **boot reconciliation** over adding a persistence sink
+> to `reportTerminalFailure`. A fifth dependency on the epilogue is a fifth thing a future fail path
+> can forget, and the epilogue exists precisely because four copies had already drifted; a boot pass
+> instead makes the invariant hold for *every* way a gate can end up stale — including a crash between
+> the settle and any write, which no persistence sink can cover. The ledger is already the authority
+> for "is anything cooking", and `findOutstandingForMedia` (`repository.ts:204`) already answers it.
+
+---
+
+## Group B — Idempotency, dedup and retry
+
+### XR-JOB-05 — At most one live job per (song, step), enforced by the database and not only by the application
+
+| Field | Content |
+|---|---|
+| **Statement** | Two requests for the same step of the same song produce **one** job, and that uniqueness is enforced by a database constraint as well as by the application's lookup — so a concurrent second request cannot create a duplicate between the read and the write. |
+| **Surfaces** | None directly. Phone renders the consequence: a second guest queueing the same song subscribes to the cook already running rather than starting a second one. |
+| **Rationale** | Dedup here is not an optimisation but the mechanism that makes the whole request path idempotent — every retry, every reconnect resend, every second tap relies on it. An application-only check is a read followed by a write, and the two requests that matter arrive over two transports at once. |
+| **Source** | Cited. Both halves exist. Application: `findLive` (`apps/core/src/server/jobs/repository.ts:155-162`) excludes only `SLOT_FREEING_STATUSES = ['failed', 'canceled']` (`:26`), so a `ready` job still holds the slot; `enqueue` (`:120-122`) returns the existing live job untouched, without opening a new attempt. Database: the partial unique index `jobs_live_media_type_idx` on `(media_id, job_type) WHERE status NOT IN ('failed','canceled')` (`apps/core/src/server/db/schema.ts:366-368`) — the same predicate, which is what makes the two agree by construction rather than by hand. |
+| **Acceptance** | **Given** an existing live job for `(m, stems)`, **when** a second request enqueues `(m, stems)`, **then** the same job id is returned, no second `job_attempts` row is opened, and the `singerId` attribution stays with the original requester. **Falsified by** two rows in `jobs` for one `(media_id, job_type)` neither of which is `failed` or `canceled`. |
+| **Check** | `tests/unit/core/server/jobs/repository.test.ts` covers the application lookup. The **index** predicate and the constant are two statements of one rule in two languages, and the honest guard is a source-scan asserting `SLOT_FREEING_STATUSES` and the index's `WHERE` clause name the same statuses — the shape `tests/guards/docs/vocabulary-parity.test.ts` already uses for the TypeScript↔Python enum mirrors. That parity assertion does not exist yet. |
+| **Priority** | **Ship-blocking**, and it is the cheapest row here: both mechanisms already ship correctly, and what is missing is the guard that stops them diverging. |
+
+---
+
+### XR-JOB-06 — Re-running a finished step has one stated mechanism
+
+| Field | Content |
+|---|---|
+| **Statement** | The product has **one** documented way to make a step that already succeeded run again, and every caller that needs a re-run uses it. Two mechanisms for one need is a defect, not a choice. |
+| **Surfaces** | Phone (the human lyrics re-pick is the only user-facing re-run today); operator dashboards (a future re-cook control would be the second). |
+| **Rationale** | A `ready` job occupies the dedup slot on purpose — that is what stops a re-queue burning GPU on an identical instrumental — so every re-run has to defeat the same guard, and each new caller that invents its own way to do it is a new way to leave the ledger inconsistent. |
+| **Source** | Cited, and the two mechanisms are both in `main`. `supersedeForRerun` (`apps/core/src/server/jobs/repository.ts:183-190`) deletes the terminal slot occupant so a fresh `enqueue` runs, guarding that only a terminal occupant is removed and leaving the attempt history intact. The lyrics re-pick path uses **cancel-then-enqueue** instead (`make-karaoke.ts:244` onwards; its doc comment states the reasoning — a cancel frees the slot, and the owner rejected special-casing `align` inside `findLive` because it would let a chained align race a manual one), while calling `supersedeForRerun` on one of its two branches (`:281`). So one function documents itself as the durable seam for exactly this problem and the only live re-run does something else, partly. |
+| **Acceptance** | **Given** the stated mechanism, **when** every call site that re-runs a finished step is enumerated, **then** each uses it; **and given** a re-run, **then** the prior attempt rows survive and exactly one new job exists for the key. **Falsified by** a second re-run path that reaches `queued` by different means, or by a re-run that leaves both an old and a new live row for the key. |
+| **Check** | A source-scan enumerating writes that clear a terminal occupant — `delete` against `jobs`, and `cancel()` on a job the caller is about to re-enqueue — and asserting each routes through the named mechanism. `tests/unit/core/server/jobs/lyrics-reselect-640.test.ts` covers the re-pick's behaviour but not its uniqueness as a mechanism; the enumeration does not exist yet. |
+| **Priority** | **Should ship.** One re-run path ships and works; the cost is paid by the second one, which the register expects (a re-cook control) rather than observes. |
+
+---
+
+### XR-JOB-07 — The retry ceiling is stated per step class, or stated to be uniform on purpose
+
+| Field | Content |
+|---|---|
+| **Statement** | The number of processing attempts a job gets before terminal failure is stated as a policy — including "the same for every step" as a legitimate stated answer — and where a step's cost differs by orders of magnitude, the policy says why the same ceiling still applies. |
+| **Surfaces** | None directly. Phone renders it as how long a song tries before giving up; the fleet pays for it. |
+| **Rationale** | Three attempts is generous for a two-second metadata fetch and expensive for a forty-minute separation on a shared box, and the same constant governs both. That may well be right, but it is currently an inherited default rather than a decision, and the retry ceiling is the one number that multiplies every other cost in this subsystem. |
+| **Source** | `UNSOURCED` for the number, cited for the mechanism and for the cost asymmetry. The ceiling is one rule in one place — `attemptsExhausted(attempts, maxAttempts)` (`apps/core/src/server/jobs/leases.ts:35`), whose comment records that it was previously inlined in two sites that had to stay in lockstep by hand, and which explicitly names "a per-job-type cap" as the change it was extracted to make possible. The value is set per job at `repository.ts:135` (`maxAttempts: 3`) with the column defaulting identically (`schema.ts:351`). The asymmetry is the subsystem's own claim: `dispatch.ts:189-198` argues a `stems-upgrade` must not inherit its parent cook id precisely because "a 43-minute upgrade would be folded into a cook that actually delivered a singable song in 90 seconds". |
+| **Acceptance** | **Given** the policy, **when** a reader asks how many times a separation is retried and how many times a metadata fetch is, **then** they find an answer for each; **and given** a job of a class whose stated ceiling is N, **when** its Nth attempt fails, **then** it reaches terminal `failed` and no N+1th is dispatched. **Falsified by** a `stems` job observed on a fourth attempt, or by a policy document that states one number without saying it is deliberately uniform. |
+| **Check** | `tests/unit/core/server/jobs/leases.test.ts` pins `attemptsExhausted`, and `tests/unit/core/server/jobs/reaper.test.ts` drives a job to terminal `failed` through the real exhaustion path. Both are ceiling-agnostic, which is correct — they check the rule, not the number. What a stated per-class policy would additionally need is an assertion that `enqueue` derives `maxAttempts` from the job type rather than from a literal, so a class without a stated ceiling is a failure rather than a silent 3. |
+| **Priority** | **Should ship.** Nothing is broken; the exposure is a fleet spending three full separations on a model that will never load, which the unservable path does not catch because the worker is present and does try. |
+
+> **Recommendation (not decided).** State the ceiling **per job type**, and make it 3 for `fetch` and
+> `align` and **1 for `stems-upgrade`**. An upgrade is background work on a song that already plays
+> (`dispatch.ts:189-198`), so its retries buy nothing a guest can perceive while costing the most
+> expensive resource the box has. Keep `stems` at 3: that one is the song.
+
+---
+
+## Group C — How a failure becomes visible
+
+### XR-JOB-08 — Every terminal failure reaches the room through one epilogue, and the epilogue's coverage is enumerable
+
+| Field | Content |
+|---|---|
+| **Statement** | Every path that can move a job to terminal `failed` runs the same terminal-failure epilogue — settle the gate, tell the room, log one greppable line, reclaim scratch — and the set of such paths is **enumerable by a test**, so a fifth path cannot be added silently. |
+| **Surfaces** | Phone (the `media:status` that clears "Making karaoke…" and returns the Sing button); operator log. TV exempt for a per-song cook failure — it is not a room-level fact. |
+| **Rationale** | This subsystem's history is three paths to one outcome drifting apart four times: the reaper path shipped entirely silent, the unservable path omitted scratch reclaim, and all three log lines diverged so that no single grep found every terminal failure. The epilogue was extracted to end that; what has never been enforced is that it is *reached*, and reachability is the half that keeps breaking. |
+| **Source** | Cited. One epilogue: `reportTerminalFailure(job, cause, deps)` (`apps/core/src/server/jobs/make-karaoke.ts:431`), with the four steps documented at `:405-429` and the three-cause discriminator at `:395`. Three call sites, all present: the worker report (`apps/core/src/server/jobs/worker-hub.ts:418`), the unservable-TTL branch (`worker-hub.ts:466`), and the reaper hook (`apps/core/src/server/app.ts:572`). The gate rule inside it is itself extracted once (`settleGatesForFailedJob`, `make-karaoke.ts:381`). Enumeration is what is missing: `JobRepository.fail` (`repository.ts:338`) is callable from anywhere and nothing asserts that its callers are exactly those three. |
+| **Acceptance** | **Given** every call site of `JobRepository.fail`, **when** they are enumerated, **then** each is immediately followed by the epilogue with a stated cause. **Given** a new fail path added without it, **then** a test fails naming that site. **Falsified by** a song that reaches terminal `failed` while a phone stays pinned on a progress line — the shape the reaper path shipped with. |
+| **Check** | `tests/guards/wiring/reaper-onfailed-wiring.test.ts` pins one of the three sites, and `tests/unit/core/server/jobs/reaper-broadcast-on-failure.test.ts` pins its behaviour. Generalising to all three — driven off the call sites of `fail()` rather than off a hand-written list of three — is the guard that does not exist yet; the arm-scoped enumeration in `tests/guards/wiring/capability-wiring.test.ts` is the closest in-repo precedent for the shape. |
+| **Priority** | **Ship-blocking.** The failure mode is a song that is permanently unsingable *and* silent, and the subsystem has already shipped it once. |
+
+---
+
+### XR-JOB-09 — A failed cook is legible to the guest who asked for it, and the register states who else can see it
+
+| Field | Content |
+|---|---|
+| **Statement** | A guest whose cook failed can find out that it failed — after a page reload, and without asking an operator — and the product **states which other surfaces learn about it**, including "none" as a legitimate stated answer. |
+| **Surfaces** | Phone (the guest's own, and every other guest's — the difference is the point of this row). TV deliberately excluded. |
+| **Rationale** | A failure a guest cannot see is a song that simply never comes, in a room where they asked for it out loud. The live `media:status` covers the case where they are watching; the reload is the case where they are not, and it is the common one at a party. |
+| **Source** | Cited, with an owner ruling. The live channel: `reportTerminalFailure` broadcasts `media:status` (`make-karaoke.ts:436-444`), gated on `shouldBroadcastCook` so a background upgrade does not regress a ready row (`apps/core/src/server/jobs/media-status.ts:137-140`). The reload channel is a **client-side, per-device scar** — `apps/core/src/lib/stores/cook-scars.ts`, `COOK_SCAR_TTL_MS = 30 * 60 * 1000` (`:30`), holding a minimal media snapshot because a settled song is no longer in `GET /api/library`. Its header records the ruling explicitly: "The owner ruled a client-side scar over the two alternatives (a server `last_error` column, or leaving it as-is): per-device, data-free, no migration." The consequence follows from that design and is not stated anywhere: a second phone, and the guest's own phone after 30 minutes or in a different browser, learn nothing — while the failure itself is durable in `job_attempts.error` and readable at `GET /api/audit/[mediaId]`. |
+| **Acceptance** | **Given** a cook that failed while the guest's phone was backgrounded, **when** they reload within the stated window, **then** the row states that it failed and offers a retry. **Given** the stated scope is per-device, **then** the policy document says so, and no surface implies otherwise. **Falsified by** a failed cook that rehydrates as an ordinary un-cooked row with no trace, on the phone of the guest who requested it, inside the stated window. |
+| **Check** | `tests/unit/core/lib/stores/cook-scars.test.ts` covers the TTL and snapshot logic; `tests/guards/wiring/failed-cook-scar-wiring.test.ts` pins that the failure path reaches the store; `tests/guards/hygiene/cook-scars-single-liveness-rule.test.ts` pins that liveness is decided in one place. The **scope** half is `EXEMPT` from a test — "which other surfaces learn about it" is a policy statement, and the judgment deferred is whether per-device is the intended answer or an artefact of choosing the cheapest mechanism. |
+| **Priority** | **Should ship.** The mechanism ships and works within its scope; what is missing is that the scope is a decision on the record rather than an implementation detail. |
+
+> **Recommendation (not decided).** Keep the client scar and keep it per-device — a server
+> `last_error` column would put a permanent scar on a row that is immediately re-cookable, which is
+> the argument the owner already accepted. State the scope, and close the one gap that costs nothing:
+> the audit endpoint already holds the durable error, so a scarred row can offer "why?" as a link
+> rather than the product having to choose between remembering everywhere and remembering nowhere.
+
+---
+
+## Group D — Bounds and cross-process contracts
+
+### XR-JOB-10 — Concurrency is bounded on the guest axis and the fleet axis, and each bound names the other
+
+| Field | Content |
+|---|---|
+| **Statement** | The product bounds how much background work one guest can cause **and** how much the fleet will accept at once, states both numbers in the same place, and states that no third bound exists — so a reader who finds one does not assume it is both. |
+| **Surfaces** | Phone (the refusal, which must carry a reason a guest can act on); operator dashboards (fleet capacity). TV unaffected. |
+| **Rationale** | The two axes fail differently: the guest axis is a self-inflicted denial of service that needs no malice, and the fleet axis is the box's physical capacity. A reader who finds the per-guest cap and stops looking will assume the fleet is protected, and vice versa — which is exactly how the cheap axis stayed uncapped in the queue-depth case. |
+| **Source** | Cited for both bounds, `UNSOURCED` for the numbers. Guest axis: `MAX_CONCURRENT_COOKS_PER_SINGER = 3` (`apps/core/src/server/jobs/make-karaoke.ts:54`), counted from the **job ledger** and not from queue entries (`liveCookMediaForSinger`, `repository.ts:390-402`, whose comment records why: entry and cook ride different transports and only the entry is droppable, so an entry-derived count saw zero during any reconnect and admitted every tap), refused as `'over-limit'` and answered **HTTP 429** with a guest-readable reason (`apps/core/src/routes/api/make-karaoke/+server.ts:44-53`). Fleet axis: each worker declares its own `concurrency` at handshake and the core tracks `slotsFree` in memory only (`apps/core/src/server/jobs/registry.ts:1, 45`), with dispatch refusing to over-place within a pass (`apps/core/src/server/jobs/dispatch.ts:268-283`). The two are **not** stated together, and the fleet bound is advisory: a reconnect resets `slotsFree` to full `concurrency` (`registry.ts:45`) while the ledger may still hold that worker's leased jobs, so the core can briefly offer more than the worker can take — bounded because the worker refuses on its own count (`apps/worker/src/protocol.py:146` `slots_free`, `:188` `can_accept` returning `"no free slots"`), which lands as a `job:reject` that burns no attempt (`transitions.ts:37`). |
+| **Acceptance** | **Given** the stated bounds, **when** a reader looks up "how much can one guest start" and "how much will the box run at once", **then** they find both, in one place, plus a statement that nothing else is capped. **Given** a guest at their cap, **when** they request another cook, **then** they get a refusal naming the limit and a remedy. **Falsified by** a guest holding four concurrent cooks, or by a worker running more jobs than its declared concurrency. |
+| **Check** | `tests/unit/core/server/jobs/make-karaoke.test.ts` covers the per-singer count; `tests/unit/core/server/jobs/registry.test.ts` and `tests/unit/core/server/jobs/dispatch.test.ts` cover slot accounting and placement. The cross-process half needs the parity shape rather than a behavioural test: assert that the core's over-offer is always refusable, i.e. that the worker's `can_accept` is the authority, by reading `apps/worker/src/protocol.py` as text the way `tests/guards/docs/vocabulary-parity.test.ts` already reads the vocabulary mirrors. That assertion does not exist yet. |
+| **Priority** | **Should ship.** Both bounds work; the exposure is a reader's false assumption, and the transient over-offer is already absorbed by a mechanism nothing pins. |
+
+---
+
+### XR-JOB-11 — Every queued job reaches a terminal state without depending on another event arriving
+
+| Field | Content |
+|---|---|
+| **Statement** | A job that can never be served reaches terminal `failed` on a bounded clock, and that clock advances **without requiring an unrelated event to occur**. A stall must not be able to outlive the mechanism that ends it. |
+| **Surfaces** | Phone (a song at 0% that never resolves either way); TV (a held entry rotation skips every pass). |
+| **Rationale** | The whole reason the unservable TTL exists is that a job with no capable worker never reaches a terminal state, so the surfaces wait forever on a song that can never cook. A TTL that is itself only evaluated when something else happens reproduces the bug it was built to fix, in the quietest case — an idle room with no fleet, which is precisely when nothing else happens. |
+| **Source** | `DERIVED` by call-site enumeration; every link cited. **Model:** the TTL is `UNSERVABLE_TTL_MS = 120_000` (`apps/core/src/server/jobs/worker-hub.ts:60`), and both the stamp and the check live inside `dispatch()` — first pass stamps `#unservableSince` (`:473`), a later pass compares against it and fails the job (`:452-465`). `dispatch()` has no timer: its call sites are the worker handshake, a reject, a completion, a retryable failure, the make-karaoke route, the lyrics-reselect route, the lyrics-backfill boot pass, and the reaper's `onReaped` hook — and that hook fires only on a tick that changed at least one job (`apps/core/src/server/jobs/reaper.ts:61`, wired at `apps/core/src/server/app.ts:559`). With no worker connected there is nothing `assigned` or `running`, so the reaper's `sweep` returns no actions and never calls it. The only `setInterval` at boot is the membership sweep (`apps/core/server.ts:415`). `dispatch()` also returns immediately when nothing is queued (`worker-hub.ts:432`), which is correct and unrelated. Additionally `#unservableSince` is an in-memory `Map` (`:159`), so a restart resets the clock even where a second pass would have come. **Traced through source; no live box was observed stalling.** |
+| **Acceptance** | **Given** one queued job whose capability no connected worker advertises, **when** no other event occurs, **then** within the stated TTL the job is terminal `failed` and the room has been told. **Falsified by** a single job observed `queued` for longer than the TTL with the fleet unchanged — which is the behaviour today for an idle core. |
+| **Check** | `tests/unit/core/server/jobs/worker-hub.test.ts` already drives the TTL by calling `dispatch()` twice with a clock advanced between them, which is why the branch reads as covered: the test supplies the second pass that production may never have. The missing assertion is the *reachability* one — that the TTL is evaluated on a clock the hub owns — which is a wiring guard in the shape of `tests/guards/wiring/reaper-onfailed-wiring.test.ts` and does not exist. Note the trap for whoever writes it: a test that calls `dispatch()` itself cannot detect this defect, so the guard has to assert the timer, not the outcome. |
+| **Priority** | **Ship-blocking.** The observable failure is the exact one the TTL was introduced to remove, and the case that reproduces it — a party where the worker box never came up — is the likeliest way a self-hosted deployment goes wrong on its first night. |
+
+> **Recommendation (not decided).** Do not add a second timer. The reaper already ticks every ~3 s and
+> already owns the "time has passed, re-examine the ledger" job; call `dispatch()` on **every** tick
+> rather than only on a tick that changed something. `dispatch()` is documented as idempotent and
+> returns immediately on an empty queue (`worker-hub.ts:432`), so the cost is one indexed query per
+> tick, and the stall clock then advances for the same reason every other deadline in this subsystem
+> does.
+
+---
+
+### XR-JOB-12 — The lease and the keepalive that protects it are one checked pair across both languages
+
+| Field | Content |
+|---|---|
+| **Statement** | The core's progress-lease duration and the worker's keepalive cadence are a **stated pair with a stated margin**, and their agreement is checked by a test rather than by comments in two languages. |
+| **Surfaces** | None (project artefact). The failure it prevents is visible on every surface as a healthy cook that restarts itself. |
+| **Rationale** | If the keepalive is slower than the lease, the reaper requeues a job that is running perfectly and the whole pass runs again — which the worker's own comment records as having happened, and which is invisible to both test suites because each side is internally consistent. This is the same unguarded-cross-language-contract class the repo has already been bitten by once and now defends elsewhere. |
+| **Source** | Cited on both sides; `UNSOURCED` for the margin. Core: `progressLeaseMs: 30_000` (`apps/core/src/server/jobs/leases.ts:22`), refreshed on `accept` and every `progress` (`worker-hub.ts:249, 273`), enforced by `sweep` (`leases.ts:61-83`). Core advertises **half** the lease at handshake — `heartbeatIntervalSec: Math.floor(this.#config.progressLeaseMs / 1000 / 2)` (`worker-hub.ts:234`), with the argument in the comment above it: at the full lease one dropped tick breaches the deadline. Worker: the advertised value is adopted for the `worker:heartbeat` leg only (`apps/worker/src/dial_home.py:184-190`, falling back to `DEFAULT_HEARTBEAT_INTERVAL_SEC = 10.0` at `:69`); the **job progress** keepalive is a hardcoded `LEASE_KEEPALIVE_SEC = 10.0` (`apps/worker/src/runtime/runner.py:36`) whose comment states it "MUST stay comfortably under the core's progressLeaseMs (30 s, leases.ts)" and which adopts nothing. Two of the three comments describing this pair are wrong (see §0). |
+| **Acceptance** | **Given** the two constants, **when** either changes, **then** a test fails unless the stated margin still holds. **Given** a separation pass that emits no parseable progress for ten minutes, **then** no requeue occurs. **Falsified by** a job requeued as `progress-lease-expired` while its worker was demonstrably alive and mid-pass. |
+| **Check** | `tests/guards/docs/vocabulary-parity.test.ts` is the mechanism and the precedent: it reads `apps/worker/src` **as text** so it needs no Python interpreter and runs inside the ordinary `bun test` gate, and the `@encore/test-support` helpers it uses (`worker`, `at`, `read` — `packages/test-support/src/tree.ts:81-96`) already resolve worker paths. Extend it, or add a sibling, asserting `LEASE_KEEPALIVE_SEC * 1000` is at most half of `DEFAULT_LEASE_CONFIG.progressLeaseMs`, and that the halving at `worker-hub.ts:234` is not silently removed. Does not exist yet. Note the pre-existing coverage that does **not** cover this: `tests/unit/core/server/jobs/leases.test.ts` and `tests/unit/core/server/jobs/reaper.test.ts` both pass a `LeaseConfig` explicitly, so neither reads the default the worker is sized against. |
+| **Priority** | **Ship-blocking.** The defect it guards is silent, expensive, and self-amplifying — a requeued cook re-runs the full pass, so a fleet under load makes the breach more likely rather than less. |
+
+---
+
+## (a) Requirements deliberately NOT written, and why
+
+1. **The job state machine's legality rules.** `transitions.ts` is a pure, exhaustive, event-keyed
+   table with terminal states having no outgoing edges, and `tests/unit/core/server/jobs/transitions.test.ts`
+   pins it. The design note explaining why it is keyed on the *event* rather than a status pair
+   (`assigned → queued` is both a reject and an ack-timeout) is better than a requirement restating it.
+2. **That the ledger is optional and can never break a cook.** Stated and enforced in three places:
+   the `AttemptLedger` is a nullable constructor argument (`repository.ts:90`), the slot-release
+   hook is opt-in (`:102`), and `#patchOpen` is a documented no-op when no attempt is open
+   (`attempts.ts:190-193`). This is a good rule that was never at risk.
+3. **Slot-release event membership.** Which events free a worker's concurrency slot is one of the
+   subtlest rules in the subsystem — `FAIL` and `CANCEL` are deliberately excluded because they are
+   not exclusively worker-reported, and the explicit releases live at the two provably-live call sites
+   (`worker-hub.ts:400, 408`). It carries 20 lines of reasoning at `repository.ts:60-79` and two
+   dedicated tests (`reaper-fail-not-slot-release-555.test.ts`,
+   `transitions-ledger-and-slots-524.test.ts`). Nothing to add.
+4. **Cook-stage monotonicity on the phone.** `media-status.ts:1-45` records six measured backward
+   jumps, three distinct causes, and the floor-not-passthrough rule that fixed them, enforced by
+   `tests/unit/core/server/jobs/media-status.test.ts` driving a full chain. Stated, measured and
+   guarded — a requirement here would be a description.
+5. **Cancellation coverage across job types.** `CANCELLABLE_JOB_TYPES` is an exhaustive
+   `Record<JobType, true>` so a fifth job type is a typecheck failure at that table, with
+   `PIPELINE_JOB_TYPES` derived from its keys so the loop bound cannot drift
+   (`cancel.ts:36-44`), plus `tests/guards/subsystem-jobs/cancel-job-types-exhaustive.test.ts`.
+   The strongest shape in the subsystem; nothing to require.
+6. **Cook attribution and priority starvation.** `reprioritize-cook.ts` is narrow, documented, only
+   ever lowers a priority, and is safe to fire on every add; `repository.ts:290-300` explains why it
+   cannot go through the state machine. Covered by `reprioritize-cook.test.ts` and a wiring guard.
+   Settled.
+7. **Specific values for the lease, the TTL, the debounce or the cook cap.** No source supports any of
+   them and inventing one would present a choice as a finding. Each appears above as a *stated-policy*
+   requirement, never as a number this document chose.
+8. **A durable server-side failure record on the song.** Already ruled against by the owner in favour
+   of the client scar (`cook-scars.ts:1-9`). `XR-JOB-09` requires the *scope* of that ruling to be
+   stated; re-litigating the mechanism would be re-opening a closed decision.
+9. **Authentication on the audit and metrics surfaces.** Recorded as a finding rather than written as
+   a row, because it belongs to an auth section and not to this one: `GET /api/audit/[mediaId]` states
+   in its own header that it is "ungated for the same reason as `/api/metrics`", and both expose worker
+   ids, model names and raw error strings — to an un-joined caller, which is a wider audience than the
+   "any joined singer is a host" ruling covers. Noted here so the next reader does not conclude it was
+   missed.
+10. **Multi-room job scoping.** Jobs are keyed by media and never by room, which is correct — a cooked
+    instrumental is a deployment-wide asset. The room-scoped half of the state layer
+    (`persistence.ts:11-16`) is already threaded and documented. Not a jobs question.
+
+---
+
+## (b) Open questions for the owner
+
+Four rows above resolve to a number or a scope nobody has been asked for. Each is stated so it can be
+settled without discussion.
+
+**Q1 — What bounds a job that is recovered by boot forever?** (`XR-JOB-02`)
+**A** — nothing; accept that a crash-looping core redispatches indefinitely. *Cost:* zero code; spends
+the fleet and grows the ledger without bound for as long as the loop lasts.
+**B** — fail after N `abandoned` attempts that never reached `startedAt`. *Cost:* one query over
+columns the ledger already writes; needs a stated N. **Recommended in `XR-JOB-02`.**
+**C** — fail on wall-clock age since the job's `createdAt`. *Cost:* same shape, but also kills a job
+that has been waiting legitimately for a worker to come up, which is the common self-hosted case.
+
+**Q2 — Is the retry ceiling per job type?** (`XR-JOB-07`)
+**A** — uniform 3; state that it is deliberate. *Cost:* one line of documentation.
+**B** — per type, with `stems-upgrade` at 1. *Cost:* `enqueue` derives `maxAttempts` from the job type;
+one constant per type. **Recommended in `XR-JOB-07`.**
+**C** — per type and operator-configurable. *Cost:* four new settings fields and a normalizer, for a
+knob nobody has asked to turn.
+
+**Q3 — Is a cook failure per-device by design?** (`XR-JOB-09`)
+**A** — yes; state it. *Cost:* one line. A second guest's phone never learns, which at a co-located
+party is arguably fine because the first guest is standing right there.
+**B** — yes, plus a "why?" link into the existing audit endpoint. *Cost:* one link; no new state, no
+migration. **Recommended in `XR-JOB-09`.**
+**C** — broadcast the failure to every phone. *Cost:* a room-wide toast for one guest's refusal, which
+`05-concurrency.md`'s `XR-CON-13` argues against on exactly these grounds.
+
+**Q4 — Does the gate settle become durable, or does boot reconcile it?** (`XR-JOB-04`)
+**A** — boot reconciliation from the ledger. *Cost:* one boot pass; covers a crash between the settle
+and any write, which no write can. **Recommended in `XR-JOB-04`.**
+**B** — add a persistence sink to `reportTerminalFailure`. *Cost:* a fifth dependency on the one
+function the subsystem extracted to stop paths drifting; leaves the crash-in-between case open.
+**C** — both. *Cost:* the sink's maintenance burden for a case A already covers.
+
+`XR-JOB-04` and `XR-JOB-11` should land **before** the rest: they are the two rows where the current
+behaviour is a defect rather than an unstated decision, and both are reached by ordinary operation
+rather than by a race.

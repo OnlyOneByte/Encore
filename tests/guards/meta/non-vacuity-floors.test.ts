@@ -87,6 +87,29 @@ type Floor = {
  * and the two on the motion guard's new utility-class arm.
  */
 const FLOORS: Record<string, Floor[]> = {
+	'tests/guards/docs/register-index-matches.test.ts': [
+		{
+			subject: 'tablesChecked',
+			min: 2,
+			count: 1,
+			guards:
+				'that both index tables were actually parsed. A table regex that stopped matching would leave every count unverified while the arm reported a consistent index.'
+		},
+		{
+			subject: 'defined.size',
+			min: 150,
+			count: 1,
+			guards:
+				'the row collection. This floor is unusual: an empty map would make the dangling-citation arm fail LOUDLY rather than pass, so the floor is what keeps it from inverting into noise instead of silence. 162 rows at the time of writing.'
+		},
+		{
+			subject: 'cited.size',
+			min: 100,
+			count: 1,
+			guards:
+				'the citation scan across docs and tests. If it collected nothing, no citation could be dangling and the arm would pass while every Check field in the register pointed at a retired row.'
+		}
+	],
 	'tests/guards/wiring/route-auth-posture.test.ts': [
 		{
 			subject: 'routes.length',
@@ -636,13 +659,13 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// guard's entire population was the two deleted drawer components), and +1 for the `scanned` floor
 	// on the drawer-deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
 	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
-	// prescribes rather than counted: raised absurdly high, read `Received: 59`.
+	// prescribes rather than counted: raised absurdly high, read `Received: 62`.
 	//
 	// 51 -> 55 when the test tree was reorganised: four floors were REGISTERED, none invented. Two belong
 	// to the new test-tree-deps guard, one is direction C's own `filesWalked`, and one is a floor on
 	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
 	// surfaced it. Both literals were re-measured, not incremented.
-	expect(located).toBeGreaterThanOrEqual(59);
+	expect(located).toBeGreaterThanOrEqual(62);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -733,7 +756,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(59);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(62);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {
