@@ -92,7 +92,6 @@ function globallyDefined(): Set<string> {
  * failure instead of noise in a list nobody reads. Fixing one means deleting its line here.
  */
 const PRE_EXISTING: Record<string, string> = {
-	panel: 'settings/+page.svelte ×3 — a wrapper whose rule was dropped before #913; unstyled on main too',
 	qrow: 'QueueRow.svelte — only `.qrow.proc` exists, and it is scoped to ProcessingCard, so the bare token has never resolved',
 	'reselect-body': 'LyricsReselect.svelte — dialog body wrapper, no rule on main',
 	'opt-src': 'LyricsReselect.svelte — per-option source label, no rule on main',
@@ -206,21 +205,15 @@ test('the resolution check catches the shapes it can reach (#913)', () => {
 	]);
 
 	// 6. the rule deleted while the class stayed — `.name`
-	expect(resolves(`<Table.Cell class="name">x</Table.Cell>`, `.scroller { overflow: auto }`)).toEqual([
-		'name'
-	]);
+	expect(resolves(`<Table.Cell class="name">x</Table.Cell>`, `.scroller { overflow: auto }`)).toEqual(['name']);
 	// …and quiet once a :global rule can reach it, which is where it had to go.
-	expect(
-		resolves(`<Table.Cell class="name">x</Table.Cell>`, ``, new Set(['name']))
-	).toEqual([]);
+	expect(resolves(`<Table.Cell class="name">x</Table.Cell>`, ``, new Set(['name']))).toEqual([]);
 
 	// 1. the mid-list token the original `class="card[ "]` grep could not see
 	expect(resolves(`<div class="row card list-row">x</div>`, `.row {} .list-row {}`)).toEqual(['card']);
 
 	// A comment naming a class must NOT count as defining it.
-	expect(resolves(`<div class="ghost">x</div>`, `/* .ghost is intentionally unstyled */`)).toEqual([
-		'ghost'
-	]);
+	expect(resolves(`<div class="ghost">x</div>`, `/* .ghost is intentionally unstyled */`)).toEqual(['ghost']);
 
 	// …and a class only mentioned in a style block or script must not count as APPLIED.
 	expect(resolves(`<style>.only-here {}</style>`, `.only-here {}`)).toEqual([]);

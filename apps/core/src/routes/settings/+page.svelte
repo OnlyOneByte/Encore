@@ -1215,24 +1215,20 @@
 	 * ~150px each is where the option text starts truncating.
 	 */
 	/*
-	 * THE INTER-CARD GAP IS DELIBERATELY NOT SET HERE — it is the one part of the settings-spacing fix
-	 * that cannot be done without a test edit, which this change is scoped to avoid.
+	 * The tab panel holding a scope's cards. shadcn's Card carries no outer margin — its spacing is all
+	 * internal — so the eleven sibling Card.Root boxes stacked with 0px between them and two adjacent
+	 * rings touched, reading as one 2px divider. `.panel` had NO rule at all before this (its rule was
+	 * dropped before #913 and never replaced, which is why it sat in
+	 * app-class-resolution-913.test.ts's PRE_EXISTING allowlist; that entry is deleted with this rule).
 	 *
-	 * shadcn's Card carries no outer margin, so the eleven sibling Card.Root boxes in each panel stack
-	 * with 0px between them (two adjacent rings touch and read as one divider). The obvious fix is
-	 * `.panel { display:flex; flex-direction:column; gap: var(--space-lg) }`. But `.panel` is currently
-	 * listed in app-class-resolution-913.test.ts's PRE_EXISTING allowlist as an intentionally-UNRESOLVED
-	 * token ("a wrapper whose rule was dropped before #913; unstyled on main too"), and that guard
-	 * asserts every allowlist entry STAYS unresolved — so adding any rule that reaches `.panel` reds it
-	 * on the "these tokens resolve now, delete their PRE_EXISTING entries" arm. The guard is right: the
-	 * correct fix is to add the rule AND delete the `panel:` allowlist entry in the same change. That
-	 * entry lives in a test file, which is out of scope for this branch, so the gap is left for the
-	 * Phase-2 change that owns the guard edits (which also adopts Field.Group, the deeper fix).
-	 *
-	 * The intra-card collapse IS fixed here, guard-safely, by restoring card-content's registry
-	 * `flex flex-col gap-(--card-spacing)` (see ui/card/card-content.svelte), and the `.pair` narrow
-	 * collapse below is fixed by moving it to a grid.
+	 * This is the panel-level fix. The deeper one is Field.Group / Field.Field, which is where the
+	 * registry keeps this rhythm and which also fixes it for any future card body — Phase 2.
 	 */
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-lg);
+	}
 
 	.pair {
 		/* Grid, not flex, so the gap SURVIVES the narrow-viewport collapse below. As `display:flex` with

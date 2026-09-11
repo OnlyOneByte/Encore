@@ -75,7 +75,11 @@ test('pasting reports the text via onpaste', () => {
 	const win = host.ownerDocument.defaultView as unknown as { Event: typeof Event };
 	ta.dispatchEvent(new win.Event('input', { bubbles: true }));
 	flushSync();
-	(host.querySelector('.reselect-acts .chip:not(.ghost)') as HTMLButtonElement).click();
+	// Addressed by `data-act`, not by a styling class. These two actions are the shared Button primitive
+	// now, so there is no `.chip` class to key on — and keying a test on a class that exists only for the
+	// test is what left an orphaned `.chip` selector in the component in the first place (the class had no
+	// rule at all after #913 moved `.chip` into ui/badge, so both buttons rendered as native OS chrome).
+	(host.querySelector('.reselect-acts [data-act="confirm"]') as HTMLButtonElement).click();
 	expect(pasted).toBe('my own words');
 });
 
