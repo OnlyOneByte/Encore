@@ -1,4 +1,4 @@
-// Guard for the defect that blocked #832's first head: direction A moved the search box off `/` and
+// Guard for the defect that blocked the direction-A phone home shell's first head: direction A moved the search box off `/` and
 // behind the browse push, and FIFTEEN driver/probe call sites still waited for it immediately after
 // joining. Every driven flow then timed out at its first step — `bun run e2e` could not get past
 // joining — while all four unit gates stayed green, because none of them drives a browser.
@@ -40,7 +40,7 @@ function previousCodeLine(lines: string[], idx: number): string {
 }
 
 test('the contract names the way to the docked search box, and homeReady resolves', () => {
-	// Since #902 the search box is docked on home unconditionally, so `homeReady` (the docked band) is
+	// The search box is now docked on home unconditionally, so `homeReady` (the docked band) is
 	// both the post-join readiness signal AND the band the box lives in — there is nothing to click.
 	// `contract.test.ts` proves it resolves to real source; this proves it exists at all.
 	expect(SEL.homeReady).toBe('.search-dock');

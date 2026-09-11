@@ -23,11 +23,11 @@ import { join } from 'node:path';
 import { svelteFiles, styleFiles } from './test-helpers';
 
 const SRC = join(import.meta.dir, '..');
-// Repo root, for the #852 breakpoint scan which must reach packages/*/src as well as apps/*/src.
+// Repo root, for the breakpoint scan which must reach packages/*/src as well as apps/*/src.
 const REPO = join(SRC, '..', '..', '..');
 // Read app.css comment-stripped: the `defined`-token set and the palette are built from this text and
 // compared against comment-stripped component source, so a token or colour that exists only inside a
-// comment in app.css must NOT count as real (issue #453 -- the asymmetric-stripping hole).
+// comment in app.css must NOT count as real (the asymmetric-stripping hole).
 const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
 
 /** Every .svelte under src, recursively. */
@@ -226,7 +226,7 @@ test('a component never references a token that exists only in the @theme bridge
 	// THE BUG THIS EXISTS FOR, AND IT IS ARMED RATHER THAN HISTORICAL. `@theme inline` is not a place
 	// custom properties live -- it is Tailwind's configuration input, and its keys are NOT emitted into
 	// the stylesheet. Verified against the built bundle: `--spacing-tap` and `--text-tv-label` have been
-	// in that block since #853 and appear NOWHERE in any built asset. So `var(--spacing-tap)` in a
+	// in that block since the Tailwind v4 migration and appear NOWHERE in any built asset. So `var(--spacing-tap)` in a
 	// component resolves to nothing and paints nothing -- the exact failure mode of the undefined
 	// `--warn-bg` that rendered /metrics' worker-down banner transparent, which is the defect the
 	// sibling test above was written for.
@@ -494,7 +494,7 @@ test('every z-index in a component names a paint-order tier, never a bare intege
 	//
 	// A duplication rule could not express it anyway: the two ladders SHARE values by design (--z-header
 	// and --z-tv-video are both 1, and --z-sheet matched --z-tv-affordance at 10 before the sheet tiers
-	// were retired in #903), so value -> token is
+	// were retired with the queue sheet), so value -> token is
 	// ambiguous and only the author knows which tier was meant.
 	//
 	// Inline `style=` is in scope too — TvPlayer picks its slot tier from an expression, and a bare
@@ -525,7 +525,7 @@ test('every z-index in a component names a paint-order tier, never a bare intege
 
 test('each paint-order ladder still climbs in its documented order', () => {
 	// THE CLAIM THIS KEEPS ALIVE. Naming the tiers moved every ordering fact out of the components and
-	// into app.css -- and the ordering IS the whole content of a z-index. Before #829, `.fs-btn`'s guard
+	// into app.css -- and the ordering IS the whole content of a z-index. Before the tiers were named, `.fs-btn`'s guard
 	// asserted the literal 7 and its own name carried the reason ("above the reel and video, below the
 	// overlays and the hint"); the autoplay hint's asserted 10 and the interstitial's 8 the same way. Those
 	// assertions now read `var(--z-tv-card)`, which pins WHICH TIER but says nothing about where the tier
@@ -572,7 +572,7 @@ test('each paint-order ladder still climbs in its documented order', () => {
 	const laddered = new Set(Object.values(LADDERS).flat());
 	const unplaced = [...ROOT_TOKENS].filter((t) => /^z-/.test(t) && !laddered.has(t));
 	expect(unplaced).toEqual([]);
-	// XR-VER-06 RECORD — this floor went 11 -> 10 in #903, and here is what left scope. The INVARIANT is
+	// XR-VER-06 RECORD — this floor went 11 -> 10 when the queue sheet was deleted, and here is what left scope. The INVARIANT is
 	// unchanged: every z-* tier in :root belongs to exactly one ladder and each ladder climbs in its
 	// documented order. What shrank is the POPULATION: --z-sheet-scrim (9) and --z-sheet (10) were the
 	// queue sheet's two tiers, and the drawer surface that was their only reader was deleted, so the
@@ -583,7 +583,7 @@ test('each paint-order ladder still climbs in its documented order', () => {
 });
 
 test('the phone type ladder never reaches a TV surface', () => {
-	// THE HAZARD THIS CLOSES, AND #829 IS WHAT OPENED IT. `tv/stage-scale.test.ts` enforces a ten-foot
+	// THE HAZARD THIS CLOSES, AND THE PHONE TYPE LADDER IS WHAT OPENED IT. `tv/stage-scale.test.ts` enforces a ten-foot
 	// floor by scanning the TV tree for `font-size: <number><rem|px>` and rejecting anything under 24px.
 	// That scan cannot see through a token — and it currently matches ZERO declarations, because every TV
 	// font-size is already a `var(--tv-*)`, a `clamp()` or an `em`.
@@ -619,12 +619,12 @@ test('the phone type ladder never reaches a TV surface', () => {
 });
 
 test('every @media width literal in source is a declared breakpoint', () => {
-	// THE SIXTH NON-COLOUR DIMENSION (#829 named it, #852 lands it). The defect this closes: the seven
+	// THE SIXTH NON-COLOUR DIMENSION (the tokenisation pass named it, this scan lands it). The defect this closes: the seven
 	// `@media` width queries in source branch at four widths (380/520/768/1200), the reviewer checklist
 	// names three others (390/820/1440), and NOTHING compared either list against a declaration — so a
 	// new `@media (min-width: 900px)` could ship at a width no token knows about and no reviewer checks.
 	//
-	// MEMBERSHIP, NOT EQUALITY — the owner's #831 Q1-C ruling. The reviewer widths are eyeballing
+	// MEMBERSHIP, NOT EQUALITY — the owner's Q1-C ruling. The reviewer widths are eyeballing
 	// widths; these are switch widths. The two are DIFFERENT lists on purpose, so this asserts only
 	// that every `@media` width literal is a MEMBER of the declared `--bp-*` set. It does NOT touch
 	// `docs/loop/REVIEW-PASSES.md` and does NOT assert the two lists are equal.
@@ -734,7 +734,7 @@ test('the colour picker anchors arrow movement on nextSwatchIndex, not a bare in
 	expect(picker).toMatch(/import \{[^}]*\bnextSwatchIndex\b[^}]*\} from '@encore\/shared';/);
 	// ...and the arrow handler must derive `next` from that helper...
 	expect(picker).toMatch(/const next = nextSwatchIndex\(value, step\);/);
-	// ...and must NOT reintroduce the divergent bare-indexOf arrow base (the #215 defect). Comments are
+	// ...and must NOT reintroduce the divergent bare-indexOf arrow base (the original defect). Comments are
 	// stripped first, so the rationale prose above cannot satisfy or trip this.
 	expect(picker).not.toMatch(/indexOf\(value\)/);
 });
@@ -841,12 +841,12 @@ test('the bottom-docked band clears the home indicator', () => {
 	// indicator unless it carries the inset itself. The original defect was on the queue sheet's peek,
 	// whose inset landed on the sheet's separate scroll body instead — so in the collapsed state the
 	// transport controls and the "when am I up?" line rendered under the indicator. That surface was
-	// deleted in #903 and the invariant moved WITH the band contract to the phone home's docked bands.
+	// deleted with the sheet and the invariant moved WITH the band contract to the phone home's docked bands.
 	//
 	// The band is also what --dock-h measures (bound to that element's clientHeight, which includes
 	// padding), and every other docked control offsets from --dock-h with no env() of its own. So the
 	// inset belonging to the band is a contract, not a detail: move it and the toasts silently stop
-	// clearing the indicator too. Since #902 there is ONE band — the search dock, docked on home for a
+	// clearing the indicator too. Today there is ONE band — the search dock, docked on home for a
 	// joined singer and present in both views (the `.cta-dock` primary button it replaced is gone); it
 	// is a list so the next docked band must comply.
 	const page = readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8');
@@ -862,8 +862,8 @@ test('the bottom-docked band clears the home indicator', () => {
 	expect(banded).toBe(1);
 });
 
-test('both documentElement custom-property writes (--undo-h, --dock-h) tear down on unmount (#460 §14/§17)', () => {
-	// THE BUG THIS EXISTS FOR (#460 sec.14). A component wrote `--peek-h` onto documentElement in an
+test('both documentElement custom-property writes (--undo-h, --dock-h) tear down on unmount (§14/§17)', () => {
+	// THE BUG THIS EXISTS FOR (sec.14). A component wrote `--peek-h` onto documentElement in an
 	// $effect but returned no cleanup, so the inline property OUTLIVED the component on the root element
 	// and kept beating a `@media` rule after it unmounted. A documentElement custom-property write is
 	// app-global mutable state; leaving it set is a leak. Source scan because bun:test has no DOM to
@@ -873,7 +873,7 @@ test('both documentElement custom-property writes (--undo-h, --dock-h) tear down
 	// SCOPE: the original --peek-h site was the queue sheet, deleted with the drawer surface, so
 	// this guard now covers the two writers that remain — routes/+page.svelte's --undo-h (the SAME leak
 	// shape: a setProperty $effect with no cleanup, skewing the --error-dock stack after the route
-	// unmounts, fixed + pinned in the #460 tail §17) and its --dock-h (the docked band's measured
+	// unmounts, fixed + pinned in the leak sweep's tail §17) and its --dock-h (the docked band's measured
 	// height, the same leak shape on a third site). The leak CLASS is documented in full at --dock-h's
 	// declaration in routes/+page.svelte. Each site must both WRITE its property and RETURN a cleanup
 	// that removeProperty's it; reverting either teardown reds this.
@@ -891,7 +891,7 @@ test('both documentElement custom-property writes (--undo-h, --dock-h) tear down
 	/*
 	 * Non-vacuity floor: an emptied list would pass this test silently.
 	 *
-	 * It read `>= 2` under the comment "Two live writers today". #913 S5 deleted one of them — `--undo-h`
+	 * It read `>= 2` under the comment "Two live writers today". S5 deleted one of them — `--undo-h`
 	 * and the whole measured-height chain it fed went with the hand-rolled toasts — so the floor is
 	 * lowered to the ONE writer that remains, on the record, in the same change that removed the other.
 	 * That is the required shape: a floor is never nudged to make a suite pass, and a writer whose

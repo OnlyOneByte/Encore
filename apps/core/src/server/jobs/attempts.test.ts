@@ -281,9 +281,9 @@ describe('the ledger is observability, never a failure mode', () => {
 	});
 });
 
-// `AttemptLedger.allFinished` was removed in #556: it had zero callers since #472 replaced its
+// `AttemptLedger.allFinished` was removed: it had zero callers since the time-window switch replaced its
 // bare-row-count window with the time window `finishedSince` + `countFinished`, and the semantics it
-// still offered are the ones #472 measured as wrong (a straddling cook reports complete with an
+// still offered are the ones that switch measured as wrong (a straddling cook reports complete with an
 // understated span). A public method on an exported class is invisible to the unused-EXPORT sweep
 //, so nothing else in the repo would catch its reintroduction. This source scan does: it reds
 // on base, where `allFinished(` still exists at attempts.ts:142. Comments are blanked so the two

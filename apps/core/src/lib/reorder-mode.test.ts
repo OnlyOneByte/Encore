@@ -148,7 +148,7 @@ test('XR-PH-19 · another guest\u2019s add is NOT an invalidation — the slots 
 
 test('non-vacuity · +page.svelte imports and calls every predicate asserted here', () => {
 	// Without this, all of the above could pass against a module the page had stopped using — the
-	// failure mode #830 exists to make loud. Each name is checked as a CALL, not just as an import.
+	// failure mode this non-vacuity arm exists to make loud. Each name is checked as a CALL, not just as an import.
 	const src = readFileSync(PAGE, 'utf8');
 	expect(src).toContain("from '$lib/reorder-mode'");
 	for (const fn of ['gripVisible(', 'ownSlots(', 'dropTarget(', 'modeInvalidation(']) {

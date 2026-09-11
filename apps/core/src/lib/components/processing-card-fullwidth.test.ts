@@ -1,10 +1,10 @@
-// Guard for issue #176: the ProcessingCard progress block (bar + stage line) must occupy the
+// Guard: the ProcessingCard progress block (bar + stage line) must occupy the
 // card's FULL inner width, independent of whether the action cluster
 // (remove / reorder) renders. Before the fix the bar and chips lived INSIDE .meta, which shared a
 // single flex row with .actions, so a viewer's OWN cooking song (which shows up to three 44px
 // buttons = ~148px) got a 134px bar while a stranger's action-less card kept a 294px bar —
 // different geometry for the same component in the same list. (The per-stage chip strip this guard
-// also once covered was removed in #253; the bar's width-invariance is what #176 pins.)
+// also once covered has since been removed; the bar's width-invariance is what this guard pins.)
 //
 // The fix lifts the progress block onto its own full-width grid row. This guard pins the two
 // structural facts that make the bar's width invariant to the actions column, and reds if either
@@ -31,10 +31,10 @@ const CODE = strip(SRC);
 // A simple depth counter over <div ...>/</div> within the markup region is enough here because
 // .meta contains only divs.
 /*
- * The row-sharing container's interior. #913 S8: that container is <Item.Content> now, not
+ * The row-sharing container's interior. S8: that container is <Item.Content> now, not
  * `<div class="meta">` — the row's grammar moved onto ui/item, whose `min-width: 0; flex: 1` is what
  * `.meta` used to carry. The CLAIM is unchanged: whatever shares the row with the action cluster must
- * not also hold the progress bar or the stage line, because that is the squeeze #176 fixed.
+ * not also hold the progress bar or the stage line, because that is the squeeze the fix removed.
  */
 function metaInner(code: string): string {
 	const start = code.indexOf('<Item.Content>');

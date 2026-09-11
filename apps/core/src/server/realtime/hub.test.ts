@@ -79,7 +79,7 @@ test('state reflects the applied op after handling', () => {
 	expect(state.rev).toBe(1);
 });
 
-// — onEntryAdded: the add-side mirror of onEntryRemoved (#135 starvation seam) —
+// — onEntryAdded: the add-side mirror of onEntryRemoved (the starvation seam) —
 
 const removeCmd = (entryId: string): ClientCommand => ({
 	clientOpId: ulid(),
@@ -107,7 +107,7 @@ test('onEntryAdded does NOT fire on a remove (that side owns onEntryRemoved)', (
 	expect(added).toBe(0);
 });
 
-// — #345: server-stamped addedAt — a client-minted addedAt is NOT an ordering weapon —
+// — server-stamped addedAt — a client-minted addedAt is NOT an ordering weapon —
 //
 // These pin the BEHAVIOUR (who ranks first), not the stamp value: a test that re-derived the
 // expected addedAt the way nextAddedAt() does would agree with any wrong stamp. Under the default

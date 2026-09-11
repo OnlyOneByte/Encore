@@ -41,10 +41,10 @@ const SLIDERS: { id: string; field: string; div100?: boolean }[] = [
 	{ id: 'guide-default', field: 'guideLevelDefault', div100: true }
 ];
 
-// The stage colour was `tv-background-hue`, a range, until #425 replaced the stored angle with a real
+// The stage colour was `tv-background-hue`, a range, until the full-picker rewrite replaced the stored angle with a real
 // colour. It is a `type="color"` now, so it moved out of SLIDERS — but it did NOT leave this guard, and
 // that is deliberate: a native colour picker fires `input` continuously while the user drags inside it,
-// so the live/commit split #134 exists for applies unchanged. Deleting the entry instead of moving it
+// so the live/commit split this guard exists for applies unchanged. Deleting the entry instead of moving it
 // would have quietly dropped the one control on this page whose live readout is a visible swatch.
 const COLOUR_INPUTS: { id: string; field: string }[] = [{ id: 'tv-background-color', field: 'tvBackgroundColor' }];
 
@@ -72,7 +72,7 @@ for (const { id, field, div100 } of SLIDERS) {
 		 * followed the control onto Bits UI: `oninput` → `onValueChange`, `onchange` → `onValueCommit`,
 		 * and the handler takes the value directly instead of digging it out of a DOM event. Bits UI
 		 * provides both edges as first-class props, which is what made the swap safe: had it offered
-		 * only a change event, #134's live/commit split would have had to be rebuilt by hand.
+		 * only a change event, the live/commit split would have had to be rebuilt by hand.
 		 */
 		const live = new RegExp(`onValueChange=\\{\\(v\\)\\s*=>\\s*liveRoom\\(\\s*'${field}'\\s*,[\\s\\S]*?\\)\\s*\\}`);
 		expect(
@@ -98,10 +98,10 @@ for (const { id, field, div100 } of SLIDERS) {
 }
 
 for (const { id, field } of COLOUR_INPUTS) {
-	test(`the ${id} colour input updates its swatch live via liveRoom('${field}') (#134/#425)`, () => {
+	test(`the ${id} colour input updates its swatch live via liveRoom('${field}')`, () => {
 		const el = controlElement(src, id);
 		// It must actually be a colour input, not a range that happens to carry this id — the whole point
-		// of #425 is that the control widened from one axis to a full picker.
+		// of that rewrite is that the control widened from one axis to a full picker.
 		expect(/type="color"/.test(el), `#${id} must be an <input type="color">, not a range`).toBe(true);
 		// A colour input's value IS the field's value, so unlike the sliders there is no Number() coercion.
 		const live = new RegExp(`oninput=\\{\\(e\\)\\s*=>\\s*liveRoom\\(\\s*'${field}'\\s*,[\\s\\S]*?\\)\\s*\\}`);

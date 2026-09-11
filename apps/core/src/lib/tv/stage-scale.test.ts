@@ -63,7 +63,7 @@ test('no TV type is sized below the ten-foot floor with a literal size', () => {
  * / XR-TV-01/02 — the TV type floor lives in exactly ONE declaration and the whole ladder is rem.
  *
  * The floor test above only rejects a literal size BELOW the ten-foot floor, so it would happily pass
- * a hard-coded `44px` on the stage — which is precisely the drift #821 closes: a px font-size anywhere
+ * a hard-coded `44px` on the stage — which is precisely the drift XR-TV-01/02 closes: a px font-size anywhere
  * under the TV tree is a tier that no longer tracks the one root floor. The ONE exemption is the root
  * declaration itself — `.tv { font-size: calc(max(2.7vh, 20px) * clamp(0.8, var(--ui-scale), 1.6)) }`
  * — because that IS the floor every rem tier multiplies. `em` stays out of scope for the reason the
@@ -295,7 +295,7 @@ test('the TV fullscreen button floors its clamp on var(--tap), never the number'
 
 test('every HERO join badge sizes from a vmin TV-QR token, never a bare pixel number', () => {
 	// This is the assertion the size={320}->size={9999} mutation must not survive: a hero badge with a
-	// numeric size is the fixed-pixel bug, whatever the number is. #826: the ATTRACT panel's QR is the
+	// numeric size is the fixed-pixel bug, whatever the number is. The ATTRACT panel's QR is the
 	// smaller in-panel `--tv-attract-qr` (it shares the right column with the code), while the LOBBY hero
 	// keeps `--tv-qr`. Both are vmin clamp tokens that GROW with the panel — which is the anti-freeze
 	// property this guard exists to protect — so either is accepted; a bare pixel number is not.
@@ -444,7 +444,7 @@ test('the pitch-shift graph teardown runs per song change — and not on media i
 	const player = stripComments(raw).replace(/\/\/[^\n]*/g, '');
 	// The per-song reset effect reads the media id and early-returns on the unchanged VALUE; the
 	// destroy-only effect detaches but reads no id. Pick by the id read, NOT by a detach() call --
-	// #477 removed the master detach from this effect, so keying on detach() would find nothing.
+	// the master detach was removed from this effect, so keying on detach() would find nothing.
 	const bodies = [...player.matchAll(/\$effect\(\(\)\s*=>\s*\{([\s\S]*?)\n\t\}\);/g)].map((m) => m[1]);
 	const teardown = bodies.find((b) => /media\?\.id/.test(b) && /resetForId/.test(b)) ?? '';
 	expect(teardown).not.toBe('');
@@ -452,10 +452,10 @@ test('the pitch-shift graph teardown runs per song change — and not on media i
 	expect(/media\?\.id/.test(teardown)).toBe(true);
 	// And it must EARLY-RETURN when the id is unchanged, so a new object for the same song is a no-op.
 	expect(/if\s*\(\s*id\s*===\s*resetForId\s*\)\s*return;/.test(teardown)).toBe(true);
-	// / #694: NEITHER the master NOR the guide graph is detached on a song change. Both their
+	// NEITHER the master NOR the guide graph is detached on a song change. Both their
 	// <audio> elements survive a song-to-song transition -- the master lives as long as the SLOT, and
 	// on a SKIP the guide element stays mounted too (guideMountable holds for both songs, so Svelte
-	// keeps the same element; #694). detach() cannot restore the native path (the element is a
+	// keeps the same element). detach() cannot restore the native path (the element is a
 	// permanent capture), so detaching a still-mounted element leaves it feeding a disconnected node
 	// = silence. The reset resets each to ratio 1 via setShift(0) in place instead; detach() belongs
 	// only where an element genuinely unmounts (the destroy effect and the guideMountable-false
@@ -553,11 +553,11 @@ test('the unverified tint overrides variables only — it never re-selects a wor
  * 2/9 with the cap removed, so it pins both halves of the fix; before/after frames are in the PR body.
  */
 test('the lobby roster strip wraps the full roster in flow — not absolutely docked, not clipped', () => {
-	// RETARGETED from #98 (XR-TV-14/XR-TV-20). #98's design capped the roster and folded the surplus
-	// into a "+N more" chip, and this guard pinned that cap. #826 ratifies the OPPOSITE: the lobby shows
+	// RETARGETED (XR-TV-14/XR-TV-20). The ORIGINAL design capped the roster and folded the surplus
+	// into a "+N more" chip, and this guard pinned that cap. The current design ratifies the OPPOSITE: the lobby shows
 	// EVERY guest with no truncation, because the point of the roster is that it must not degrade as the
 	// party grows. So the strip WRAPS (was flex-wrap:nowrap + a max-height cap) and the step-down rule
-	// keeps a large party inside the title-safe band instead of a fold. What is preserved from #98: the
+	// keeps a large party inside the title-safe band instead of a fold. What is preserved from the original: the
 	// strip is IN FLOW (never absolutely docked to the edge), which is what kept it from painting over
 	// the typed join address on a short panel.
 	const lobby = stripComments(TV_LOBBY);
@@ -575,7 +575,7 @@ test('the lobby roster strip wraps the full roster in flow — not absolutely do
 });
 
 test('the lobby shows the whole roster with a chip step-down rule, never a "+N more" fold', () => {
-	// RETARGETED from #98 (XR-TV-14). #98 bounded the roster with MAX_CHIPS and a "+N more" fold; #826
+	// RETARGETED (XR-TV-14). The ORIGINAL design bounded the roster with MAX_CHIPS and a "+N more" fold; the current one
 	// ratifies showing EVERY guest, so the fold is gone and the step-down (chips shrink above a
 	// threshold) is what keeps a big party inside the title-safe band. This guard now pins the
 	// step-down rule and the ABSENCE of the fold, so a future edit cannot silently reintroduce the cap.

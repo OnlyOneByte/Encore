@@ -4,7 +4,7 @@
 // end-to-end: the request's `code` reaches the room resolution and the resolved roomId reaches the
 // response body.
 //
-// #797 removed the second cookie this route used to set (`encore_room`), which had no reader anywhere:
+// A cleanup removed the second cookie this route used to set (`encore_room`), which had no reader anywhere:
 // the room a socket may act in is derived from the session token via the singers row, never from a
 // client-supplied value (see $server/realtime/room-scope). So the cookie assertions here pin the
 // COOKIE SET ITSELF — exactly one cookie, the session one — rather than naming the deleted constant,
@@ -75,7 +75,7 @@ test('joining with a room code lands in THAT room — the body carries its id, a
 	const payload = (await res.json()) as { roomId: string };
 	expect(payload.roomId).toBe(other.id);
 	// The room id reaches the phone in the BODY. It must not also be handed back as a cookie: a
-	// client-supplied room id is exactly the mechanism #657 refused, and #654's cookie never had a
+	// client-supplied room id is exactly the mechanism room isolation refused, and the old room cookie never had a
 	// reader. Asserting the whole key set (not the absence of one name) catches a re-add under any name.
 	expect(Object.keys(set)).toEqual([SESSION_COOKIE]);
 	expect(set[SESSION_COOKIE]).toBeString();

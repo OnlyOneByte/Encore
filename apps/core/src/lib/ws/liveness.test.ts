@@ -177,7 +177,7 @@ test('connection edges are reported once each, so the UI can show an offline cue
 	expect(h.edges).toEqual([true, false, true]);
 });
 
-// Issue #114: #dial() overwrote #sock without disposing the socket it replaced, so the wake/reconnect
+// The reconnect-path socket leak: #dial() overwrote #sock without disposing the socket it replaced, so the wake/reconnect
 // path reintroduced exactly what #presumeDead defends against on the death path. A single lifecycle
 // event during a reconnect (a phone unlocking mid-connect -> one visibilitychange -> wake) dialled a
 // second socket while the first was still CONNECTING (wake() checks !connected, which is false for the

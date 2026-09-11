@@ -86,7 +86,7 @@ describe('separator registry', () => {
 	});
 
 	it('offers audiosep as a live-selectable mel-band engine with instrumental_becruily', () => {
-		// Owner ruling #483 Option A: python-audio-separator adopted ALONGSIDE roformer, with the
+		// Owner ruling, Option A: python-audio-separator adopted ALONGSIDE roformer, with the
 		// mel-band instrumental_becruily checkpoint live-selectable (NOT upgrade-only like ensemble).
 		const audiosep = getEngine('audiosep');
 		expect(audiosep).toBeTruthy();
@@ -426,7 +426,7 @@ describe('lyrics presentation registries', () => {
 		// changes every existing room on upgrade.
 		expect(DEFAULT_LYRICS_BALL).toBe('off');
 		expect(DEFAULT_LYRICS_HIGHLIGHT).toBe('word');
-		expect(DEFAULT_LYRICS_LEAD_MS).toBe(0); // #629: global lead ships OFF by default
+		expect(DEFAULT_LYRICS_LEAD_MS).toBe(0); // global lead ships OFF by default
 	});
 });
 
@@ -782,7 +782,7 @@ describe('tv background styles', () => {
 		expect(out.tvBackgroundColor).toBe('#123456');
 	});
 
-	// #425 replaced the stored hue ANGLE with a real colour, so this block replaces the quantiser
+	// The full-picker rewrite replaced the stored hue ANGLE with a real colour, so this block replaces the quantiser
 	// assertions that used to live here. The angle needed wrapping and snapping because every number had
 	// a meaning once wrapped; a colour is either parseable or it is not, so the rule is normalise-or-keep.
 	it('normalises the stage colour to canonical hex rather than storing what was sent', () => {
@@ -818,7 +818,7 @@ describe('tv background styles', () => {
 		}
 	});
 
-	// (piece 3 of #425): the stage dimmer, a 0..1 fraction normalised beside the colour it dims.
+	// (piece 3 of the full-picker rewrite): the stage dimmer, a 0..1 fraction normalised beside the colour it dims.
 	it('the default stage dim is 0 — no dim, today TV exactly', () => {
 		expect(DEFAULT_ROOM_SETTINGS.tvBackgroundDim).toBe(0);
 	});

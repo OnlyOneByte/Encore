@@ -2,7 +2,7 @@
 // reaches the per-word spans.
 //
 // THE FEATURE. The reel used to paint both highlight treatments in the room-wide accent:
-// `--reel-line: var(--accent2)` and `--reel-now: var(--accent2)`. #634 replaces the source of that
+// `--reel-line: var(--accent2)` and `--reel-now: var(--accent2)`. This wiring replaces the source of that
 // colour with whoever is singing, so a guest sees "their" colour follow the words and, with two
 // singers taking turns, the stage visibly changes hands. The owner's ruling on the legibility question
 // (2026-09-07) was to KEEP the singer's hue and lean on the outline the reel already paints — see
@@ -95,13 +95,13 @@ test('the resolved colour is appended as --reel-singer, and only when there is o
 	expect(src).toMatch(/style=\{typeStyle\}/);
 });
 
-test('both highlight treatments read the reel colour chain, and neither names --accent2 any more (layered by #692)', () => {
+test('both highlight treatments read the reel colour chain, and neither names --accent2 any more (layered by the part colour)', () => {
 	const src = overlaySrc();
 	// The default: the room accent, declared once.
 	expect(src).toMatch(/--reel-singer:\s*var\(--accent2\)\s*;/);
 	// Both treatments read the reel colour — `--reel-now` is the sung WORD, `--reel-line` the whole
 	// current lyric under the `line` room setting. Splitting them would let the two settings disagree
-	// about whose colour is showing, so both are asserted. #692 inserted `--reel-part` between the
+	// about whose colour is showing, so both are asserted. The part-colour layer inserted `--reel-part` between the
 	// treatments and `--reel-singer` (part colour layers over singer colour), so the treatments now
 	// read `--reel-part` and `--reel-part` falls back to `--reel-singer` — the singer colour still
 	// flows through unchanged when no part applies, which is what this test protects.
@@ -119,7 +119,7 @@ test('both highlight treatments read the reel colour chain, and neither names --
 test('the amber provenance override still wins for the line treatment, and still leaves the word alone', () => {
 	const src = overlaySrc();
 	// `.lyrics.unverified` overrides `--reel-line` (so the `line` treatment shows provenance) but NOT
-	// `--reel-now` (position and identity are a different question from trustworthiness). #634 changed
+	// `--reel-now` (position and identity are a different question from trustworthiness). This wiring changed
 	// where `--reel-now` gets its colour, and this pins that it did NOT change that precedence: an
 	// auto-transcribed song must still carry the singer's colour on the word being sung.
 	const unverified = /\.lyrics\.unverified\s*\{([^}]*)\}/.exec(src);
@@ -132,18 +132,18 @@ test('the amber provenance override still wins for the line treatment, and still
 // UNVERIFIED by construction — reverting prose changes no behaviour, so nothing can red — and the two
 // hunks this closes are exactly that. They are not cosmetic, though: both retired sentences ASSERT that
 // the highlight is pink ("Pink means 'sing this word now' on every song", "leaving it pink"), which is
-// the claim #634 falsified. COMMON.md's own taxonomy counts a comment contradicting its code as a real
+// the claim this wiring falsified. COMMON.md's own taxonomy counts a comment contradicting its code as a real
 // defect, so leaving them would have been the cheaper and worse option.
 //
 // These two assertions are deliberately narrow. They ban the discredited CLAIM and require the
 // corrected paragraphs to name what replaced it — they do not pin wording, so an unrelated reword
 // passes. What cannot pass is re-asserting that the sung word is the room accent while the code says it
 // is the singer's.
-test('the provenance comment no longer claims the highlight is pink (#634 comment/code parity)', () => {
+test('the provenance comment no longer claims the highlight is pink (comment/code parity)', () => {
 	const raw = overlayRaw();
 	// Retired with hunk 7: the active word is the SINGER's colour now, not pink on every song.
 	expect(raw).not.toMatch(/Pink means "sing this word now" on every song/);
-	// …and the paragraph that replaced it says why `--reel-now` is still left alone under #634, so this
+	// …and the paragraph that replaced it says why `--reel-now` is still left alone here, so this
 	// bites on the prose being deleted as well as on it being restored.
 	expect(raw).toMatch(/`--reel-now` is deliberately NOT overridden, and #634 did not change that/);
 	// Retired with hunk 8: the `line` treatment's override is against `--reel-singer` now, not pink.
@@ -154,7 +154,7 @@ test('the provenance comment no longer claims the highlight is pink (#634 commen
 test('the TV route hands the overlay the current singer — the non-test caller', () => {
 	const src = routeSrc();
 	// The route already derives the current singer's stored colour for the stage glow and the
-	// lower-third dot; #634's whole wiring is that the reel is given the same value. Reverting this ONE
+	// lower-third dot; this feature's whole wiring is that the reel is given the same value. Reverting this ONE
 	// line leaves the feature with zero non-test callers, which is the failure mode this test exists
 	// for — a correct component that nothing ever hands a colour to.
 	expect(src).toMatch(/singerColor=\{currentSingerColor\}/);

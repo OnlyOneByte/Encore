@@ -1,15 +1,16 @@
 // — a comment can point a reader to another file for a symbol ("`X` in `foo.ts`") and rot when
 // that symbol MOVES file. Symbol naming does not protect a cross-file pointer: `lyrics-engines.ts`
 // named `tvProgressStyle` and `resolveLyricsPresentation` "in separators.ts" by symbol, and both rotted
-// when `0addb65` moved the config layer into `settings.ts`. Same class as #567's rotted citations.
+// when `0addb65` moved the config layer into `settings.ts`. Same class as pitch-shift.ts's
+// rotted citations.
 //
 // Comment stripping is INVERTED on purpose: the defect lives IN the source comments, so the SOURCE side
 // is read as comment text (never stripped) while the TARGET side is comment-STRIPPED, so a target's own
 // prose about a symbol it no longer owns cannot satisfy a claim about its code. Precedent for the
 // inversion: apps/core/.../leave/doc-accuracy.test.ts; for the SCANNED + length sentinel shape:
-// apps/core/src/lib/tv/pitch-shift-doc-accuracy.test.ts (PR #580).
+// apps/core/src/lib/tv/pitch-shift-doc-accuracy.test.ts.
 //
-// the package's production modules now live in domain subdirectories (core/, queue/, lyrics/,
+// The package's production modules now live in domain subdirectories (core/, queue/, lyrics/,
 // cook/, presentation/). The scan RECURSES so a subdir module is still covered, and a comment that
 // cites a bare filename ("in separators.ts") resolves against a filename → path index so a pointer
 // keeps resolving after its target moved subdir. This file itself stays at the package root.
@@ -107,8 +108,9 @@ function allPointers(): Pointer[] {
 // The repo root, four levels up from packages/shared/src/... — well, three from SRC itself
 // (src -> shared -> packages -> repo). Used only to tell a REAL cross-package citation (e.g.
 // `hub.ts`, which lives at apps/core/src/server/realtime/hub.ts) apart from a stale or MISSPELLED
-// in-package citation (e.g. `rotaton.ts`, a typo of rotation.ts, which exists nowhere). #776 moved
-// modules into subdirs, so a citation that no longer resolves must still be caught — the earlier
+// in-package citation (e.g. `rotaton.ts`, a typo of rotation.ts, which exists nowhere). The domain
+// regrouping moved modules into subdirs, so a citation that no longer resolves must still be
+// caught — the earlier
 // blanket "not a package module -> skip" arm let a misspelled package filename pass silently.
 const REPO_ROOT = join(SRC, '..', '..', '..');
 
@@ -148,7 +150,7 @@ function resolves(p: Pointer): boolean {
 	if (code === null) {
 		// Not a package module. If the cited filename exists somewhere in the repo (e.g. `hub.ts` in
 		// apps/core), it is a real cross-package reference and out of this guard's remit — skip. If it
-		// exists nowhere, it is a stale or misspelled citation of the exact kind #622 catches — fail.
+		// exists nowhere, it is a stale or misspelled citation of the exact kind this guard exists for — fail.
 		return repoTsBasenames.has(p.target);
 	}
 	return new RegExp(`\\b${p.ident.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(code);

@@ -1,7 +1,7 @@
 // guard: the TV route feeds its VISUALIZER an ANGLE derived from the room's stored stage COLOUR, and
 // feeds its SOLID stage that colour verbatim.
 //
-// THE CHANGE. #425 replaced the room's stored `tvBackgroundHue: number` with `tvBackgroundColor:
+// THE CHANGE. The full-picker rewrite replaced the room's stored `tvBackgroundHue: number` with `tvBackgroundColor:
 // string` (a real hex; the legibility pin moved onto the lyric reel's own stroke). Two wirings in
 // tv/+page.svelte turn on that:
 //   - the visualizers build their palette by hue ARITHMETIC (`stageHueToHex(hue + deg)`), so they still

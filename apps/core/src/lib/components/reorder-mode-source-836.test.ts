@@ -131,7 +131,7 @@ const GRAB_RULE = /([^{}]+)\{([^}]*cursor:\s*grab\s*(?=[;}])[^}]*)\}/g;
 
 test('XR-PH-17 · cursor:grab is declared on the grip button and on no row', () => {
 	/*
-	 * RE-ANCHORED BY #913 S1b (XR-VER-07). This previously scanned QueueRow, where `.grip` declared its
+	 * RE-ANCHORED BY S1b (XR-VER-07). This previously scanned QueueRow, where `.grip` declared its
 	 * own cursor. The grip is now <Button press="grab">, so the declaration lives on the shared control
 	 * keyed by that attribute. What is asserted is the same thing it always was: the grab cursor is on
 	 * ONE selector, and that selector is the grip control rather than a row.

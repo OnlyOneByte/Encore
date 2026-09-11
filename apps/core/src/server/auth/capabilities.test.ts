@@ -32,7 +32,7 @@ test('a missing or empty actor is refused rather than treated as trusted', () =>
 	}
 });
 
-// --- Issue #828: the owner CONFIRMED all five authority rulings on 2026-09-09, every one "any joined
+// --- The owner CONFIRMED all five authority rulings on 2026-09-09, every one "any joined
 // singer is a host". These assertions pin each ruling to the capability that enforces it, so a flip of
 // can() (narrowing any capability to a host role) reds the test naming that ruling. Published, non-source
 // statement of record: docs/ux/05-concurrency.md § "Owner rulings — CONFIRMED 2026-09-09".
@@ -55,11 +55,12 @@ test('Q3 — deployment-scoped settings stay open to any joined singer (settings
 });
 
 test('Q4 — cross-singer reorder stays open to everyone (queue:reorder-any)', () => {
-	// Pinning removal + last-write-wins mechanics are #856; the policy side is that this resolves to "anyone".
+	// Pinning removal + last-write-wins mechanics belong to the cross-singer reorder change; the policy
+	// side is that this resolves to "anyone".
 	expect(can(anySinger, 'queue:reorder-any')).toBe(true);
 });
 
-test('— queue:remove-any (unchanged by #828) stays open to any joined singer', () => {
+test('— queue:remove-any (unchanged by the rulings) stays open to any joined singer', () => {
 	expect(can(anySinger, 'queue:remove-any')).toBe(true);
 });
 

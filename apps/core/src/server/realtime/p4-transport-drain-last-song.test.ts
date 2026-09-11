@@ -69,7 +69,7 @@ test('the single-cooked-song arm exists and contains the T6a no-current assertio
 // The drain may be written inline as a `for` loop in the arm, OR hoisted into a helper the arm
 // calls (a legal refactor — the multi-cooked arm runs the same drain, so factoring it out is the
 // obvious next edit and changes no behaviour). Pinning "a for-loop token sits in the arm" is wrong
-// on both faces: it survives a loop whose break is inverted so it drains NOTHING (#264 verbatim,
+// on both faces: it survives a loop whose break is inverted so it drains NOTHING (the defect verbatim,
 // reached by a one-character edit), and it falsely reds a correct helper extraction. So we find the
 // drain body by structure — the arm's own loop if it has one, else the body of the single helper it
 // awaits — and assert the DRAIN SEMANTICS: it reads currentEntryId, clicks skip, and breaks on the
@@ -131,15 +131,15 @@ test('the single-cooked-song arm DRAINS the queue: reads currentEntryId, skips, 
 	expect(DRAIN).toMatch(/clickByLabel\(\s*['"]skip['"]\s*\)/);
 	expect(DRAIN).toMatch(/currentEntryId/);
 	// The loop must break on the EXHAUSTED condition — `if (!<id>) break` — so it keeps skipping
-	// until the room is empty. This is the invariant #264 requires: "skip the LAST song" means the
+	// until the room is empty. This is the invariant the fix requires: "skip the LAST song" means the
 	// queue is genuinely drained, not one skip issued.
 	expect(DRAIN).toMatch(/if\s*\(\s*!\s*[A-Za-z_$][\w$]*\s*\)\s*break/);
 });
 
-test('the single-cooked-song drain does NOT break while an entry is still current (#264 false-safety trap)', () => {
+test('the single-cooked-song drain does NOT break while an entry is still current (the false-safety trap)', () => {
 	// M5: inverting the break to `if (<id>) break` keeps the loop's SHAPE but drains NOTHING — it
 	// exits on the first iteration whenever an entry is current, which is exactly the state the loop
-	// exists to clear. currentEntryId is then still set at the T6a assertion and #264 fires verbatim.
+	// exists to clear. currentEntryId is then still set at the T6a assertion and the defect fires verbatim.
 	// A break guarded by the bare (present) condition, with no negation, is the defect; ban it.
 	expect(DRAIN).not.toMatch(/if\s*\(\s*[A-Za-z_$][\w$]*\s*\)\s*break/);
 });
@@ -147,9 +147,9 @@ test('the single-cooked-song drain does NOT break while an entry is still curren
 // Resolve WHERE the drain sits inside the arm, so we can pin its ORDER relative to the T6a assert.
 // Mirrors drainBody()'s Case 1 / Case 2 split, but returns the drain's start index WITHIN the arm
 // (Case 1: the inline `for`; Case 2: the arm's call-site of the drain helper) rather than its body.
-// This is a distinct property from "a drain exists": #264 is produced by the compare that FOLLOWS
+// This is a distinct property from "a drain exists": the defect is produced by the compare that FOLLOWS
 // the drain, so a real drain placed AFTER the T6a assertion still asserts against an undrained room
-// and ships #264 back green (the direction PR #404 left unpinned). Precedent: #331 / #378 pinned the
+// and ships the defect back green (the direction left unpinned earlier). Precedent: earlier guards pinned the
 // skip's index < the measurement's index as a separate property from the skip existing.
 function drainStartInArm(arm: string): number {
 	// Case 1: inline `for` loop lives in the arm — its position IS the drain's position.
@@ -185,7 +185,7 @@ function drainStartInArm(arm: string): number {
 	throw new Error('could not locate the drain in the single-cooked arm to pin its order');
 }
 
-test('the single-cooked-song arm DRAINS BEFORE it asserts no-current (#264 order — the ship-a-bug direction)', () => {
+test('the single-cooked-song arm DRAINS BEFORE it asserts no-current (drain order — the ship-a-bug direction)', () => {
 	const drainIdx = drainStartInArm(ARM);
 	const t6aIdx = ARM.indexOf('skip on the sole (last) song');
 	// Not vacuous: both anchors must resolve inside the arm.
@@ -193,6 +193,6 @@ test('the single-cooked-song arm DRAINS BEFORE it asserts no-current (#264 order
 	expect(t6aIdx).toBeGreaterThanOrEqual(0);
 	// The drain MUST run before the T6a assertion. A real drain placed AFTER T6a leaves every
 	// earlier test green (a drain still exists, still breaks on empty) yet asserts currentEntryId
-	// against an UNDRAINED room — #264 verbatim. This assertion is the one that reds that move.
+	// against an UNDRAINED room — the defect verbatim. This assertion is the one that reds that move.
 	expect(drainIdx).toBeLessThan(t6aIdx);
 });

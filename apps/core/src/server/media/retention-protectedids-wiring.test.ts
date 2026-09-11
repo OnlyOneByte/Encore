@@ -1,4 +1,4 @@
-// guard: planEviction's protectedIds parameter is only real once app.ts WIRES it. #442 §2.
+// guard: planEviction's protectedIds parameter is only real once app.ts WIRES it.
 //
 // planEviction(candidates, cap, protectedIds) enforces "never strip a cook out from under a live or
 // queued entry" HERE, in the pure function — retention.test.ts covers the parameter. But the ONLY
@@ -22,13 +22,13 @@ function stripComments(src: string): string {
 // import.meta.dir === apps/core/src/server/media → one level up to app.ts.
 const APP = stripComments(readFileSync(join(import.meta.dir, '..', 'app.ts'), 'utf8'));
 
-test('app.ts passes a third protectedIds argument to planEviction (#442 §2)', () => {
+test('app.ts passes a third protectedIds argument to planEviction', () => {
 	// The two-argument call `planEviction(candidates, cap)` defaults protectedIds to an empty Set —
 	// the exact unwired state this closes. Require a THIRD argument to the call.
 	expect(APP).toMatch(/planEviction\(\s*candidates\s*,\s*cap\s*,\s*protectedIds\s*\)/);
 });
 
-test('app.ts builds protectedIds from the hydrated queue plus the currently-playing media (#442 §2)', () => {
+test('app.ts builds protectedIds from the hydrated queue plus the currently-playing media', () => {
 	// Isolate the eviction branch so a match cannot be satisfied by unrelated code, then pin that the
 	// protected set is the queued media ids plus the playing entry's media id.
 	const start = APP.indexOf('const protectedIds');
@@ -45,7 +45,7 @@ test('app.ts builds protectedIds from the hydrated queue plus the currently-play
 	expect(window).toMatch(/planEviction\([^)]*protectedIds\s*\)/);
 });
 
-test('app.ts imports clearArtifacts and calls it in the eviction loop so eviction STICKS (#442 §1)', () => {
+test('app.ts imports clearArtifacts and calls it in the eviction loop so eviction STICKS', () => {
 	// The sidecar restore bug (sidecarFromMedia `?? prev`) resurrects an evicted song unless the
 	// authoritative record is nulled directly. clearArtifacts is that null; app.ts must import it and
 	// call it per evicted id. Reverting the call (or the import) would otherwise only break the build,

@@ -1,4 +1,4 @@
-// Wiring guards for #742 — the hunks whose revert a runtime suite cannot see.
+// Wiring guards for the Spotify not-cookable ruling — the hunks whose revert a runtime suite cannot see.
 //
 // The behavioural halves live in spotify-not-cookable-742.test.ts (cookState's verdict, the rotation
 // consequence), not-cookable-arm-742.test.ts (the route arm) and spotify-affordance-742.test.ts (the

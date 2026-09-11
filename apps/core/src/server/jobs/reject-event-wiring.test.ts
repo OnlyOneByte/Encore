@@ -1,9 +1,9 @@
-// guard: #471's reject/lease-expiry DISTINCTION is only real once worker-hub actually fires the
+// guard: the event-typed machine's reject/lease-expiry DISTINCTION is only real once worker-hub actually fires the
 // distinguishing event. `requeue(id, attempts, now, cause)` defaults `cause` to 'LEASE_EXPIRED' so
 // existing 3-arg callers keep compiling — which means the #onReject path silently reverts to
 // LEASE_EXPIRED if its explicit 'REJECT' argument is dropped, and every behavioural test stays
 // green because both events land on `queued`. There is no observable field that separates them at
-// the worker-hub boundary (that is deferred to the ledger-hook step, which collides with #520), so
+// the worker-hub boundary (that is deferred to the ledger-hook step, which collides with the metrics time-window change), so
 // this decidable property is pinned by source scan, the same way reaper-onfailed-wiring.test.ts
 // pins app.ts's reaper seam. Comments are blanked so a commented-out call cannot satisfy the match.
 import { test, expect } from 'bun:test';
@@ -64,7 +64,7 @@ function methodBody(src: string, name: string): string {
 test('#onReject requeues with the REJECT event, not the LEASE_EXPIRED default', () => {
 	const body = methodBody(HUB, 'onReject');
 	// The requeue in the reject handler MUST pass 'REJECT' as the causing event. Dropping it (back to
-	// the LEASE_EXPIRED default) reds here — the collapse #471 fixes.
+	// the LEASE_EXPIRED default) reds here — the collapse the event-typed machine fixes.
 	expect(body).toMatch(/\.requeue\(msg\.jobId,\s*job\.attempts,\s*this\.#d\.now\(\),\s*'REJECT'\)/);
 	// And it must NOT smuggle a LEASE_EXPIRED into the reject path.
 	expect(body).not.toMatch(/'LEASE_EXPIRED'/);

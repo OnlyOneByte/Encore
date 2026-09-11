@@ -156,7 +156,7 @@ test('status colors pass AA as text on a card', () => {
 });
 
 /*
- * THE ACTIONABLE PAIR, re-anchored by #840 (XR-COL-11, XR-COL-12).
+ * THE ACTIONABLE PAIR, re-anchored by the colour-token rework (XR-COL-11, XR-COL-12).
  *
  * This used to read `ratio(token('on-accent'), token('accent-strong'))`. `--accent-strong` is retired:
  * it was a 3% darken of `--accent` whose sole job was getting white to 4.5:1, and per-stop `on_fill`
@@ -217,7 +217,7 @@ test('--on-accent passes AA on --accent (the actionable pair)', () => {
  * `non-vacuity-floors.test.ts` holds the machine-checkable half of this: it asserts this record and the
  * guard it describes are still both present, so the ruling cannot rot out from under the guard.
  *
- * ── THE RULING, EXECUTED BY #840. SWAP RECORDED PER XR-VER-06 ──────────────────────────────────────
+ * ── THE RULING, EXECUTED BY THE COLOUR-TOKEN REWORK. SWAP RECORDED PER XR-VER-06 ───────────────────
  *
  * Carried out exactly as written above, and the trigger was the one the ruling did NOT predict: not a
  * red, but `--accent-strong`'s retirement (XR-COL-11) removing the loop's second operand outright.
@@ -271,11 +271,11 @@ test('the focus ring is visible against every surface it can appear on', () => {
  * The test above proves --focus is SAFE on every surface a ring can land on, but it never looks at
  * what colour any rule actually draws a ring IN -- so a rule ringing in --accent (a darker
  * background token, 3.10:1 on --card2 vs --focus's 5.08:1) or, worse, in the surface colour itself
- * (an invisible ring) sailed past it. #149: the queue peek and every Trend column rang in --accent.
+ * (an invisible ring) sailed past it. The queue peek and every Trend column once rang in --accent.
  * This closes the class in the same belt-and-braces shape as the --grad and --accent scans: every
  * `outline`/`outline-color` that names a colour must name --focus. A bare reset (`outline: none`,
  * `outline: 0`) draws no ring and is allowed; `outline-offset` and `outline-width` set no colour.
- * MUTATION-VERIFIED against #149: recolouring either ring to var(--accent) or var(--card2) reds this.
+ * MUTATION-VERIFIED: recolouring either ring to var(--accent) or var(--card2) reds this.
  */
 test('every focus outline is drawn in --focus, not --accent or the surface colour', () => {
 	const files = [join(SRC, 'app.css'), ...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
@@ -312,7 +312,7 @@ test('every focus outline is drawn in --focus, not --accent or the surface colou
  * means someone put a label back on it. Scanning rule blocks rather than whole files keeps this from
  * firing on a bar fill that merely sits near an unrelated color declaration.
  *
- * THE SCAN IS UNCHANGED BY #840; ITS REASON IS RE-STATED PER STOP (XR-COL-13). The ban used to rest on
+ * THE SCAN IS UNCHANGED BY THE COLOUR-TOKEN REWORK; ITS REASON IS RE-STATED PER STOP (XR-COL-13). The ban rested on
  * one figure -- white on the pink stop, 2.84:1 -- and with `accent2` derived per stop this is 48
  * gradients, so that number licenses nothing about the other 47. Re-measured over the registry: a
  * stop's OWN certified `on_fill` clears AA at BOTH endpoints for only 36 of 48 (worst `Scarlet`,
@@ -369,7 +369,7 @@ test('no rule puts a text color on var(--grad)', () => {
  *
  * SCOPE: card ROOTS only, deliberately. `.who i.dim` (opacity 0.5 on the away dot) and
  * `.act:disabled` each dim one leaf, which is the in-repo pattern this steers toward. The away dot's
- * own 2.42:1 is pre-existing and an owner proposal (#735 §6), not this guard's business.
+ * own 2.42:1 is pre-existing and an owner proposal (tracked separately), not this guard's business.
  *
  * MUTATION-VERIFIED: re-adding `opacity: 0.55` to either `.pending` rule reds this naming four pairs.
  */

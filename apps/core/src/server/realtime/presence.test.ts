@@ -264,24 +264,24 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 		expect(source).not.toMatch(/\bcount\s*\(\s*\)/);
 	});
 
-	// The public surface of PresenceTracker, name-for-name. This is the invariant #281 pins: membership
+	// The public surface of PresenceTracker, name-for-name. This is the invariant this guard pins: membership
 	// is answered ONLY through stateOf()/evaluate() (which route through memberState/the three-state
 	// policy), never by a method that hands back a raw socket-count boolean. The previous guard pinned
 	// the DELETED BODY TEXT of isOnline() (`?? 0) > 0;`), so the same predicate re-added under a new
-	// name with a delegating body survived it (see #281's mutation table). These two checks are
+	// name with a delegating body survived it (see that guard's mutation table). These two checks are
 	// name-independent: an allowlist reddens on ANY new public method, and a shape ban reddens on the
 	// discredited comparison under ANY spelling.
 	const CLASS_START = 'class PresenceTracker';
 	const classBody = source.slice(source.indexOf(CLASS_START));
 	// Class-member declarations are indented one tab; a name is harvested whether it is followed by
 	// `(` (method shorthand) OR `=` (an arrow class property — `isHere = (id) => …`), which is the form
-	// #347's blocking review proved escaped a `(`-only collector. A leading access/declaration modifier
+	// the blocking review proved escaped a `(`-only collector. A leading access/declaration modifier
 	// (`public`/`private`/`protected`/`readonly`/`static`) is SKIPPED before the name capture — without
 	// that skip a leading modifier makes the WHOLE declaration invisible to the collector: the name
 	// candidate becomes the modifier (`public sockets(…)` → `public`), immediately followed by a SPACE
 	// rather than `(`/`=`, so the match fails at that position and the member drops out of the harvested
-	// set entirely — a false EXEMPT (a smuggled member goes unseen by the allowlist), not a false RED
-	//. Interface fields and private
+	// set entirely — a false EXEMPT (a smuggled member goes unseen by the allowlist), not a false RED.
+	// Interface fields and private
 	// #members are not matched (# prefix, and the interface lives above the class start). Reads names off
 	// the source so the test cannot derive its expectation the way the class does.
 	const MEMBER_MODIFIERS = /(?:public|private|protected|readonly|static)\s+/.source;
@@ -294,7 +294,7 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 	it('exposes ONLY the allowlisted public methods (a rename cannot slip a membership predicate in)', () => {
 		// Add a method here ONLY after deciding it belongs on the presence surface. A `sockets > 0`
 		// membership boolean under any name (isHere, present, active, …) reddens this by construction —
-		// which is exactly the copy-paste-and-rename trap #126's deleted isOnline() left open.
+		// which is exactly the copy-paste-and-rename trap the deleted isOnline() left open.
 		const ALLOWED = ['connect', 'disconnect', 'evaluate', 'forget', 'online', 'sockets', 'stateOf'];
 		expect([...publicMethods]).toEqual([...ALLOWED].sort());
 	});
@@ -302,7 +302,7 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 	it('no method RETURNS a bare sockets-based membership predicate, under any name', () => {
 		// Ban the SHAPE, not the deleted literal: a value that IS `<…sockets…> > 0` (or >= 1, !== 0,
 		// != 0, or Boolean(<…sockets…>)), reached via `return …` OR an arrow expression body `=> …`
-		// (#347's review proved a `return`-only ban is blind to `isHere = (id) => (…sockets…) > 0`).
+		// (that review proved a `return`-only ban is blind to `isHere = (id) => (…sockets…) > 0`).
 		// The negative lookahead exempts online()'s honest `.filter(([, r]) => r.sockets > 0)` — that
 		// returns the ID LIST, not a per-singer boolean. A getter/static/computed-key membership
 		// predicate is not name-collected (its name is not in method/arrow position) but is caught here.
@@ -330,7 +330,7 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 	it('only the three change-report methods return a boolean at all (a membership predicate cannot be spelled around the shape ban)', () => {
 		// The shape ban above pins the sockets>0 COMPARISON TEXT after return/=>, so the same predicate
 		// written in an `if (…) return true; return false;` or behind a `const n = …; return n > 0;` (see
-		// #353's M1/M2) — or on a method declared with a leading modifier the name-collector misses (M3/M4,
+		// the M1/M2 mutants) — or on a method declared with a leading modifier the name-collector misses (M3/M4,
 		// `public`/`async`) — slips through. Pin the INVARIANT by RETURN TYPE instead of by comparison text:
 		// a membership answer is a boolean, and only connect/disconnect/forget legitimately hand one back
 		// (they report "did this change" / "was it there"; membership itself is answered via stateOf/evaluate,

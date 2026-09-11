@@ -218,7 +218,7 @@ test('the same lyrics score high; a different song scores low', () => {
 	expect(score!).toBeLessThan(0.25); // shares almost nothing, ranks near the floor
 });
 
-test('agreement is count- and position-aware since #542 (repeats and reorders cost the score)', () => {
+test('agreement is count- and position-aware (repeats and reorders cost the score)', () => {
 	// The two cases symmetric set Jaccard scored a perfect 1.0. The words are all present either way,
 	// so coverage stays 1 — it IS the same song and the wrong-song judgement must not fire — while the
 	// ranking score drops on both.
@@ -262,7 +262,7 @@ test('the parity corpus keeps a case only MULTIPLICITY can score', () => {
 	// WHY THIS GUARD EXISTS. The row above pins what `agreement` COMPUTES; this pins that the table still
 	// contains a row capable of telling a multiset intersection from a set one. Without it, deleting that
 	// row leaves every remaining case scoring identically under either overlap, so replacing
-	// `multisetOverlap` — the metric #542 introduced — with a set-based overlap keeps the whole TS suite
+	// `multisetOverlap` — the metric that replaced set Jaccard — with a set-based overlap keeps the whole TS suite
 	// green. Measured on base: that mutation was invisible at 26 pass / 0 fail.
 	//
 	// The discriminator is computed here as the DISTINCT shared count — deliberately NOT with the
@@ -304,7 +304,7 @@ test('hasUsableTiming is true for word/line, false for none', () => {
 });
 
 // ── the retired threshold stays retired ───────────────────────────────────────
-// #542 replaced SUSPECT_AGREEMENT = 0.25 with SUSPECT_COVERAGE = 0.40 on a DIFFERENT axis, so the old
+// SUSPECT_AGREEMENT = 0.25 was replaced with SUSPECT_COVERAGE = 0.40 on a DIFFERENT axis, so the old
 // name was deleted rather than re-valued. Deleting a symbol nothing imports is invisible to a
 // behavioural test by construction — re-adding the constant reds nothing — so this is a source-scan
 // guard: it reads the real production module as TEXT and asserts the declaration is gone.

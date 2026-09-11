@@ -24,7 +24,7 @@ const COMPOSITED_PROPS = new Set([
 // every .svelte AND .css file under a directory — the CSS lives in both component <style> blocks
 // and the shared design system (src/app.css), so a scan restricted to .svelte is blind to app.css.
 // The walk itself is `styleFiles` in ../test-helpers (XR-VER-14): it was a private copy here,
-// which is why widening this guard's scope in #177 left every other guard's scope untouched.
+// which is why widening this guard's scope left every other guard's scope untouched.
 function assertScanIntact(files: string[]): void {
 	expect(files.some((f) => f.endsWith('app.css'))).toBe(true);
 	expect(files.some((f) => f.includes(join('lib', 'tv')) && f.endsWith('.svelte'))).toBe(true);
@@ -44,9 +44,9 @@ function tsSources(dir: string): string[] {
 
 // strip BOTH comment forms before a whole-file scan: CSS `/* … */` AND HTML `<!-- … -->`. Tests 1 and 2
 // read entire .svelte files (markup + <style>), so a `transition:` written in prose inside an HTML
-// comment (e.g. tv/+page.svelte's 'not a transition: work in progress' note) must not false-positive
-// (issue #287 gap 1 / #290 :55,:67). All three tests use this stripper — test 3 now scans Svelte
-// markup for `style:animation` directives too, so it needs `<!-- -->` blanked (issue #615 advisory 1).
+// comment (e.g. tv/+page.svelte's 'not a transition: work in progress' note) must not false-positive.
+// All three tests use this stripper — test 3 now scans Svelte
+// markup for `style:animation` directives too, so it needs `<!-- -->` blanked.
 /*
  * S6: the two NAME-scanning arms below read through this too, not just the declaration scans.
  * They flagged a vendored component's own DEVIATIONS header for quoting `transition-all` while
@@ -69,10 +69,10 @@ function animatedProps(css: string, isSvelte: boolean): string[] {
 	return props;
 }
 
-// REGION SPLIT. The #648 CSS-vs-markup discriminator was LEXICAL, not regional: it
+// REGION SPLIT. The earlier CSS-vs-markup discriminator was LEXICAL, not regional: it
 // blanked every tag (a less-than-to-greater-than strip) then boundary-scanned the result. That class
 // was UNBOUNDED, so ONE less-than anywhere in a stylesheet blanked every transition: up to the next
-// greater-than, dropping test 1 primary layout catch for the rest of the file (issue #699 finding 1).
+// greater-than, dropping test 1 primary layout catch for the rest of the file.
 // A stylesheet body and Svelte markup are different REGIONS, not different lexical shapes: partition
 // by region and scan each with the rule that fits it. The stylesheet scan then never sees a less-than
 // to blank nor a directive to misread; the markup scan reads inline motion in every delimiter.
@@ -94,11 +94,11 @@ function markupRegion(css: string): string {
 	return css.replace(/<style[\s\S]*?<\/style>/gi, ' ');
 }
 
-// Blank the interior of every `style={ … }` attribute, brace-BALANCED (issue #719 advisory a). #699's
+// Blank the interior of every `style={ … }` attribute, brace-BALANCED. The previous
 // blank used the character class `\{[^}]*\}`, which stops at the FIRST `}` -- in a template literal
 // that is the `}` closing an interpolation `${…}`, so the transition-carrying TAIL survived unblanked
 // and the directive scan below misread it (same declaration, opposite verdict depending only on an
-// earlier interpolation -- the #242/#290/#615/#699 shape). Walk braces from the opening `{` to its
+// earlier interpolation -- the same recurring shape). Walk braces from the opening `{` to its
 // true match and blank the whole span so no `transition:`/directive text leaks out of a style value.
 function blankBalancedStyleBraces(markup: string): string {
 	let out = markup;
@@ -120,11 +120,11 @@ function blankBalancedStyleBraces(markup: string): string {
 
 // CSS transition:/transition-property: layout scan over the STYLESHEET region ONLY. With no markup in
 // the region, no directive nor inline style= attribute can reach it, and no less-than exists to blank
-// anything (issue #699 finding 1). Read the first identifier of each comma entry.
+// anything. Read the first identifier of each comma entry.
 //
-// Vendor prefix (issue #719 finding 1): recognise `-webkit-transition`/`-moz-transition` too. #481's
+// Vendor prefix: recognise `-webkit-transition`/`-moz-transition` too. An earlier
 // scoping decision rested on this scan being "accidentally immune" (its regex once had NO left
-// boundary, so `-webkit-transition: width` matched and redded); #648 added the `[;{\s]` boundary and
+// boundary, so `-webkit-transition: width` matched and redded); a later round added the `[;{\s]` boundary and
 // killed that immunity, since a boundary class cannot match the `-` that precedes `-webkit-transition`.
 // Add the same optional `(?:-(?:webkit|moz)-)?` group that :448 (animation) and :178 (keyframes) already
 // carry, so a prefix-only spelling is caught, not just the unprefixed one. iOS Safari is this app's
@@ -142,10 +142,10 @@ function transitionPropsInStylesheet(css: string, isSvelte: boolean): string[] {
 	return out;
 }
 
-// Inline transition: in the MARKUP region, DELIMITER-AGNOSTIC (issue #699 finding 2). #648 read only a
+// Inline transition: in the MARKUP region, DELIMITER-AGNOSTIC. The earlier scan read only a
 // quote-delimited style= attribute value, so the braced style={...} form (live on tv/+page.svelte:544
 // and LyricsOverlay.svelte:254), a template literal, and a string built in the script block all escaped
-// -- the #590/#615 finding-2 class with nothing watching two of its four spellings. Read every
+// -- the recurring finding-2 class with nothing watching two of its four spellings. Read every
 // transition: in the markup regardless of surrounding delimiter: classify when the first identifier is
 // a readable CSS property; when opaque (opens with a brace or dollar-brace) report it via the same
 // style-transition-directive sentinel the style:transition loop uses. A bare transition: DIRECTIVE
@@ -153,7 +153,7 @@ function transitionPropsInStylesheet(css: string, isSvelte: boolean): string[] {
 function inlineTransitionProps(css: string): string[] {
 	const out: string[] = [];
 	const markup = markupRegion(css);
-	// DOM style-object write (issue #719 finding 2): a transition set through the script style object has
+	// DOM style-object write: a transition set through the script style object has
 	// NO colon after the property name, so neither value scan below (both require `transition:`) can see
 	// it -- yet it lands as a real inline style, which no @media wrapper or reduce reset can ever cover.
 	// Three spellings: `el.style.transition = ...`, the camelCased `el.style.webkitTransition = ...` /
@@ -171,21 +171,21 @@ function inlineTransitionProps(css: string): string[] {
 		out.push('style-transition-directive');
 	}
 	// opaque value: transition: immediately followed by an interpolation opener (a brace or dollar-brace).
-	// Vendor prefix (issue #719 finding 1): recognise `-webkit-transition`/`-moz-transition` inline too.
+	// Vendor prefix: recognise `-webkit-transition`/`-moz-transition` inline too.
 	for (const _m of markup.matchAll(/(?<!style)\b(?:-(?:webkit|moz)-)?transition(?:-property)?:\s*[$]?[{]/g)) {
 		out.push('style-transition-directive');
 	}
 	// readable value: transition: then a value up to the next delimiter (; quote backtick brace OR a tag
-	// boundary < >). Bounding at the tag boundary (issue #719 finding 3) is what lets a Svelte
+	// boundary < >). Bounding at the tag boundary is what lets a Svelte
 	// `transition:<fn>` DIRECTIVE be told from a CSS declaration: a real inline CSS value is delimited by a
 	// quote/backtick/brace/semicolon, never by the surrounding element tag, so a value that runs to `>` is
 	// a directive, not a declaration.
 	for (const m of markup.matchAll(/(?<!style)\b(?:-(?:webkit|moz)-)?transition(?:-property)?:\s*([^;"'`}<>]+)/g)) {
 		const readable = m[1]!;
-		// A Svelte `transition:<fn>` DIRECTIVE (issue #719 finding 3): the value is a bare identifier (the
+		// A Svelte `transition:<fn>` DIRECTIVE: the value is a bare identifier (the
 		// transition function name) and the char immediately after it is a tag boundary (`>`/`/`) or a
-		// directive modifier (`|`). #648 moved directive reporting to test 3's directive scan (:520), which
-		// names the DIRECTIVE; #713's markup value scan then ALSO misread the same `slide` as a CSS property,
+		// directive modifier (`|`). An earlier round moved directive reporting to test 3's directive scan (:520),
+		// which names the DIRECTIVE; the markup value scan then ALSO misread the same `slide` as a CSS property,
 		// so `<div transition:slide>` redded TWICE (once here as `transition: slide`, once there correctly).
 		// Skip it here so test 3 stays its sole, accurate reporter. `transition:color` never doubled only by
 		// coincidence (color is composited); slide/fly/fade/blur/scale all tripped it.
@@ -206,7 +206,7 @@ function inlineTransitionProps(css: string): string[] {
 	}
 	// Svelte style:transition directive (char after transition is = or nothing), read separately: the
 	// value patterns above require a : after transition, which style:transition lacks. Four spellings
-	// (issue #615 advisory 2): quoted, single-quoted, ={expr}, bare shorthand; quoted classified, opaque flagged.
+	// (all four): quoted, single-quoted, ={expr}, bare shorthand; quoted classified, opaque flagged.
 	for (const m of markup.matchAll(/style:transition(?:-property)?(?:=(?:"([^"]*)"|'([^']*)'|\{([^}]*)\}))?/g)) {
 		const readable = m[1] ?? m[2] ?? m[3];
 		if (readable === undefined || readable.trim() === '') {
@@ -225,16 +225,16 @@ function inlineTransitionProps(css: string): string[] {
 test('no transition animates a layout-triggering property (transform/opacity only)', () => {
 	// scan every .svelte + .css under src/ — including src/lib/tv, src/lib/ui and src/app.css
 	const files = styleFiles(join(import.meta.dir, '..', '..'));
-	// count floor (issue #287 gap 3): a directory rename / moved src / glob typo would make this
+	// count floor: a directory rename / moved src / glob typo would make this
 	// scan pass VACUOUSLY. The asserted floor (>= 24) is the guard — a broken walk reds instead of
-	// silently passing, the exact failure mode #140 shipped under. (No live count in prose: issue #615
-	// advisory 3 — the parenthetical drifted across #575/#590/#615, so the assertion is the only number.)
+	// silently passing, the exact failure mode an earlier guard shipped under. (No live count in prose —
+	// the parenthetical drifted across review rounds, so the assertion is the only number.)
 	expect(files.length).toBeGreaterThanOrEqual(24); // @nvf-floor files.length
 	assertScanIntact(files);
 	const offenders: string[] = [];
 	for (const f of files) {
-		// strip comments first (issue #287 gap 1): a `transition:` in a `/* … */` or `<!-- … -->` comment
-		// must not false-positive — the #205 source-scan precedent.
+		// strip comments first: a `transition:` in a `/* … */` or `<!-- … -->` comment
+		// must not false-positive — the long-standing source-scan precedent.
 		const css = stripAllComments(readFileSync(f, 'utf8'));
 		for (const prop of animatedProps(css, f.endsWith('.svelte'))) {
 			if (!COMPOSITED_PROPS.has(prop)) offenders.push(`${f}: transition: ${prop}`);
@@ -243,7 +243,7 @@ test('no transition animates a layout-triggering property (transform/opacity onl
 	expect(offenders).toEqual([]);
 });
 
-// capture the full body of every @keyframes block via a brace-depth walk (issue #290 :71). The old
+// capture the full body of every @keyframes block via a brace-depth walk. The old
 // `\}\s*\}` terminator required the block to end with two braces separated by whitespace ONLY, so a
 // trailing comment — or any non-whitespace — between the last stop's `}` and the block's `}` made the
 // regex skip the ENTIRE block. A depth counter from the block's opening `{` to its matching close is
@@ -267,7 +267,7 @@ function keyframeBodies(css: string): string[] {
 }
 
 // every property animated inside a keyframes body: the FIRST identifier of each `prop:` declaration.
-// Vendor prefix (issue #719 advisory c): strip a leading `-webkit-`/`-moz-` before the composited
+// Vendor prefix: strip a leading `-webkit-`/`-moz-` before the composited
 // lookup, so `-webkit-transform` (an ALLOWED, GPU-composited property) is not falsely condemned. This
 // is the mirror of finding 1: there a prefix HID a banned transition, here it CONDEMNED an allowed
 // keyframe -- both are the one missing normalisation.
@@ -284,7 +284,7 @@ test('@keyframes animate only GPU-composited properties', () => {
 	const bad: string[] = [];
 	for (const f of files) {
 		// strip comments first so (a) a trailing comment can't defeat the block capture and (b) a
-		// commented-out declaration does not false-positive; strips `/* */` and `<!-- -->` (issue #287 gap 1).
+		// commented-out declaration does not false-positive; strips `/* */` and `<!-- -->`.
 		const css = stripAllComments(readFileSync(f, 'utf8'));
 		for (const body of keyframeBodies(css)) {
 			for (const prop of keyframeProps(body)) {
@@ -300,7 +300,7 @@ test('@keyframes animate only GPU-composited properties', () => {
 // suppressible if it is EITHER declared inside an `@media (prefers-reduced-motion: no-preference)`
 // block, OR paired with an `@media (prefers-reduced-motion: reduce) { … animation: none }` reset that
 // covers ITS OWN selector in the SAME file. `animation: none` declarations are themselves the reset
-// and are exempt. This closes the drift hazard behind #148: QueueRow's `.qrow { animation: pop … }`
+// and are exempt. This closes a drift hazard that already shipped once: QueueRow's `.qrow { animation: pop … }`
 // ran under Reduce Motion while app.css's guarded `.pop-in` helper had no callers. Source-decidable in
 // the same shape as the scans above.
 //
@@ -320,9 +320,9 @@ function firesOnlyWhenMotionAllowed(prelude: string): boolean {
 }
 // True when a `not` operator negates the prefers-reduced-motion FEATURE query that opens at
 // `featureParenIdx` — i.e. the `not` binds to THIS feature, not to some sibling feature in the same
-// branch (issue #615 §1, corrected for #615's own regression). Three spellings put a `not` in front
+// branch (a later round's fix, corrected for its own regression). Three spellings put a `not` in front
 // of a feature `(…)`, and all three must be recognised while a `not` on an UNRELATED feature must not
-// flip the verdict (issue #590 §3 gate 9: `(prefers-reduced-motion: no-preference) and
+// flip the verdict (gate 9: `(prefers-reduced-motion: no-preference) and
 // (not (min-width: 700px))` — the `not` there governs min-width, so the reduce feature is un-negated):
 //   • MQ4 adjacent:       `not (prefers-reduced-motion: …)`
 //   • MQ4 parenthesised:  `(not (prefers-reduced-motion: …))`  ← the regression: an opening `(` sits
@@ -504,13 +504,13 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 		...svelteFiles(join(import.meta.dir, '..', '..', 'routes'))
 	];
 	const files = [...svelte, join(import.meta.dir, '..', '..', 'app.css')];
-	// test 3 had NO count floor (issue #481 finding 4): the exact vacuity gap #287 gap 3 added to
+	// test 3 had NO count floor: the exact vacuity gap the count floors closed for
 	// tests 1 and 2 was left out here. Give it the same real-count floor + which-files sentinel.
 	expect(files.length).toBeGreaterThanOrEqual(24); // @nvf-floor files.length
 	assertScanIntact(files);
 	const offenders: string[] = [];
 	for (const f of files) {
-		// strip BOTH comment forms (issue #615 advisory 1): test 3 now scans Svelte markup for
+		// strip BOTH comment forms: test 3 now scans Svelte markup for
 		// `style:animation` directives, and markup comments are `<!-- -->`, not `/* */`. The CSS-only
 		// strip left a directive written inside an HTML comment to false-RED; stripAllComments (used by
 		// tests 1 and 2 for the same reason) blanks `<!-- -->` and `/* */`, preserving newlines.
@@ -520,7 +520,7 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 		const resetSelectors = reduceResetSelectors(css, rules);
 		// match `animation:` / `animation-name:` shorthand declarations (not @keyframes, not the guard media queries)
 		// The boundary class carries `"` and `'` so an inline `style="animation: …"` in markup is seen
-		// (issue #590 §2): the char before `animation` in a style attribute is the opening/closing quote
+		// — the char before `animation` in a style attribute is the opening/closing quote
 		// of a prior declaration or the attribute itself, which start-of-string, `;`, `{` and whitespace
 		// all miss. When that boundary char is a quote the declaration lives in an inline attribute, which
 		// no `@media` wrapper or reduce reset can ever cover — so it is reported directly.
@@ -530,7 +530,7 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 			const at = m.index! + m[1]!.length;
 			if (m[1] === '"' || m[1] === "'" || m[1] === '`') {
 				// an inline style attribute — no media wrapper or reduce reset applies to it, so it can
-				// never honour Reduce Motion (issue #590 §2).
+				// never honour Reduce Motion.
 				offenders.push(
 					`${f}: animation in an inline style attribute (cannot honour Reduce Motion): ${value.slice(0, 40)}`
 				);
@@ -554,12 +554,12 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 			if (!guarded && !reset) offenders.push(`${f}: unguarded animation: ${value.slice(0, 40)}`);
 		}
 		// Svelte's `style:animation` / `style:animation-name` directive is the SAME inline-style
-		// declaration as the quoted `style="animation: …"` attribute above (issue #615 §2), but the char
+		// declaration as the quoted `style="animation: …"` attribute above, but the char
 		// before `animation` there is `:` (the `style:` prefix), which the boundary class above misses, so
 		// it escapes the scan entirely. Like any inline style it can never be covered by an `@media`
-		// wrapper or a reduce reset, so route it into the SAME direct-report branch #590 §2 built, with the
+		// wrapper or a reduce reset, so route it into the SAME direct-report branch the inline-attribute arm built, with the
 		// SAME message text — two spellings of one defect must not read as two different causes.
-		// The match is VALUE-AGNOSTIC (issue #615 advisory 2): Svelte writes a directive four ways —
+		// The match is VALUE-AGNOSTIC: Svelte writes a directive four ways —
 		// `style:animation="…"`, `style:animation='…'`, the expression form `style:animation={expr}`, and
 		// the shorthand `style:animation` (reads a same-named variable). All four set a real inline
 		// animation, so match the property name and report UNLESS the value is provably `none` — pinning one
@@ -572,11 +572,11 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 				`${f}: animation in an inline style attribute (cannot honour Reduce Motion): ${(value || '<shorthand>').slice(0, 40)}`
 			);
 		}
-		// DOM style-object animation write (issue #719 finding 2, animation half): `el.style.animation = …`,
+		// DOM style-object animation write (the animation half): `el.style.animation = …`,
 		// the camelCased `el.style.webkitAnimation` / `el.style.animationName`, and
 		// `el.style.setProperty('animation', …)` set a real inline animation with NO `animation:` colon, so
 		// the css.matchAll boundary scan above cannot see them. Like every inline style they can never honour
-		// Reduce Motion, so report them through the SAME message #590 §2 built. This is the spelling a
+		// Reduce Motion, so report them through the SAME message the inline-attribute arm built. This is the spelling a
 		// transition-only fix would leave uncaught, which is why the issue's gate 7 pins it separately.
 		for (const _m of css.matchAll(/\.style\.(?:animation|webkitAnimation|animationName)\s*=/g)) {
 			offenders.push(
@@ -589,15 +589,15 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 			);
 		}
 		// Svelte's OWN motion API — the `transition:` / `in:` / `out:` / `animate:` directives — is unread
-		// by every CSS-declaration scan (issue #648 §1). These are NOT CSS: Svelte compiles them to a
+		// by every CSS-declaration scan. These are NOT CSS: Svelte compiles them to a
 		// runtime-generated keyframes rule plus an inline `animation`, so the animated property list cannot
 		// be recovered from the call site (`slide` animates height/padding/margin/border — none composited),
 		// and the transition runtime never consults `prefers-reduced-motion`, so a directive runs at full
-		// motion under Reduce Motion unless hand-gated — the #148 defect in another spelling. Like an inline
+		// motion under Reduce Motion unless hand-gated — the unguarded-animation defect in another spelling. Like an inline
 		// style, no `@media` wrapper or reduce reset can cover a directive, so the DIRECTIVE is what is
 		// rejected (not its properties, which do not exist in source), in the same direct-report shape
-		// §2 / #615 §2 built. `transition:` alone was previously caught by ACCIDENT (test 1's CSS scan
-		// had no left boundary and misread the function name `slide` as a property); §2 moved that scan to
+		// the inline arms built. `transition:` alone was previously caught by ACCIDENT (test 1's CSS scan
+		// had no left boundary and misread the function name `slide` as a property); a later round moved that scan to
 		// tag-stripped text, so THIS scan is what replaces it, with a message that names the DIRECTIVE.
 		// Scan MARKUP ONLY: strip `<style>…</style>` first, so a compact CSS `transition:transform` can
 		// never be misread as a directive (`animate:`/`in:`/`out:` have no CSS form; only `transition:`
@@ -634,7 +634,7 @@ test('every animation declaration honours prefers-reduced-motion', () => {
  * That is the reason to land it now: after utilities arrive there is no moment at which the ban's
  * silence is distinguishable from its enforcement.
  *
- * ALLOWLIST, NOT A DENYLIST — the same #290 decision the rest of the file rests on. A `transition-x`
+ * ALLOWLIST, NOT A DENYLIST — the same decision the rest of the file rests on. A `transition-x`
  * utility is resolved to the CSS properties it animates and each is looked up in COMPOSITED_PROPS, the
  * file's single source of truth. Two consequences worth stating, because both are deliberate:
  *   - an UNKNOWN utility key (a project-specific `transition-foo`) is an OFFENDER, not a skip. A
@@ -782,7 +782,7 @@ test('no utility class expresses motion the declaration scans cannot see', () =>
 	expect(svelte.some((f) => f.includes(join('lib', 'tv')))).toBe(true);
 
 	/*
-	 * THE ONE NAMED EXEMPTION THIS EXTRACTOR IS ALLOWED, TAKEN BY #913 S1 — and taken the way the
+	 * THE ONE NAMED EXEMPTION THIS EXTRACTOR IS ALLOWED, TAKEN BY S1 — and taken the way the
 	 * comment on the NET arm below prescribes, not as a way to make a red go away.
 	 *
 	 * A copied-in shadcn component computes its class list: `class={cn(buttonVariants({ variant, size }),
@@ -790,7 +790,7 @@ test('no utility class expresses motion the declaration scans cannot see', () =>
 	 * resolves at runtime — so NO static extractor can read it, and this arm reports every such
 	 * component as an `UNRESOLVED` expression. That report is correct and it is also unactionable: the
 	 * only way to satisfy it would be to stop using the library, or to hand-inline every variant back
-	 * into markup, which is the hand-rolling #913 exists to end.
+	 * into markup, which is exactly the hand-rolling the shadcn migration exists to end.
 	 *
 	 * The exemption is safe because it costs no COVERAGE, only the precise message. The net arm below
 	 * greps every `.svelte` and `.ts` source for the motion utility NAMES in any position — including
@@ -854,7 +854,7 @@ test('no motion utility name appears anywhere in source, in any position', () =>
 });
 
 /*
- * THE STRIPPER MUST HIDE PROSE WITHOUT BLINDING THE SCAN (#913 S6).
+ * THE STRIPPER MUST HIDE PROSE WITHOUT BLINDING THE SCAN (S6).
  *
  * The two name-scanning arms above read through `stripAllComments`, so a component may DOCUMENT that
  * it removed a motion utility without being reported for naming it. That concession is only safe while

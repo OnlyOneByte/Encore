@@ -33,15 +33,131 @@ import { join, basename } from 'node:path';
 // import.meta.dir === apps/core/src/lib; four levels up is the repo root.
 const REPO = join(import.meta.dir, '..', '..', '..', '..');
 
-// The three retired/current task-id families. `T-<n>` is the live convention and must stay absent from
-// source; `B-<n>` and `M<n>-C<n>` are the retired schemes this sweep cleared. `\b` on both ends is
-// what keeps `T-<n>` from firing inside, say, a hyphenated identifier, and what makes the bare-number
-// timestamp constants (`T1`) unreachable.
-const PATTERNS: { re: RegExp; family: string }[] = [
+// The task-id families, plus GitHub issue refs in test prose.
+//
+// `T-<n>` is the live convention and must stay absent from source; `B-<n>` and `M<n>-C<n>` are the
+// retired schemes this sweep cleared. `\b` on both ends is what keeps `T-<n>` from firing inside, say, a
+// hyphenated identifier, and what makes the bare-number timestamp constants (`T1`) unreachable.
+//
+// `#<n>` IS SCOPED TO TEST FILES, and the scope is the finding rather than a convenience. THE RULE above
+// says task ids belong in a PR, a commit message, or docs — and by that reasoning a GitHub issue number
+// in a test name or header is the same noise, which is why 1,780 of them were removed from test prose.
+// But the rule was never applied to production source or docs, which still carry ~847 and ~212
+// references respectively. Banning those is a separate decision with a separate cost, so this pattern
+// stops at `*.test.ts` rather than quietly widening the guard's remit to a thousand offenders it was
+// never ruled on.
+//
+// DISCRIMINATING AN ISSUE FROM A COLOUR. There is no syntactic difference between the issue `#913` and
+// the three-digit hex colour `#913`, so the only signal is the CLOSING quote: a colour is written as a
+// string literal (`'#000'`), while an issue reference in prose is followed by space or punctuation.
+//
+// An earlier version excluded a quote on EITHER side, which looked symmetrical and was wrong — it made
+// the pattern blind to exactly the case this ban exists for, a test name opening `test('…`, where
+// the quote sits immediately before the `#`. Only the trailing quote may be excluded. The mutation arm
+// at the bottom of this file pins both halves so that cannot regress.
+const PATTERNS: { re: RegExp; family: string; only?: (rel: string) => boolean }[] = [
 	{ re: /\bT-[0-9]+\b/, family: 'T-<n>' },
 	{ re: /\bB-[0-9]+\b/, family: 'B-<n> (retired)' },
-	{ re: /\bM[0-9]+-C[0-9]+\b/, family: 'M<n>-C<n> (retired)' }
+	{ re: /\bM[0-9]+-C[0-9]+\b/, family: 'M<n>-C<n> (retired)' },
+	{
+		re: /(?<![0-9a-fA-F#])#[0-9]{3,4}(?![0-9a-fA-F'"])/,
+		family: 'GitHub issue #<n> in test prose',
+		only: (rel) => rel.endsWith('.test.ts')
+	}
 ];
+
+/**
+ * Lines where an issue number is the SUBJECT of an assertion, not prose about one.
+ *
+ * Nine assertions read a source file or a doc and require a specific issue reference to still be present
+ * in it — so they enforce the convention in the OPPOSITE direction from the ban above. Stripping these
+ * would not tidy the test, it would break the guard.
+ *
+ * Recorded per line with a reason, in the shape EXEMPT_PREFIXES uses, so a tenth entry is a conscious act
+ * a reviewer sees. Note the standing consequence: if production source and docs are ever cleaned of issue
+ * references, every one of these nine reds — which is the correct signal, and the reason the wider
+ * cleanup needs its own ruling rather than being folded in here.
+ */
+const ISSUE_SUBJECT_EXEMPT: { file: string; contains: string; why: string }[] = [
+	{
+		file: 'apps/core/src/lib/tv/lyrics-singer-colour-wiring.test.ts',
+		contains: '`--reel-now` is deliberately NOT overridden',
+		why: 'asserts the TvPlayer source still carries the prose explaining why --reel-now is not overridden'
+	},
+	{
+		file: 'apps/core/src/routes/browse-screen-833.test.ts',
+		contains: "expect(RAW).toContain('DELETED HERE",
+		why: 'asserts the raw route still carries its DELETED-HERE marker, which names the direction ruled on'
+	},
+	{
+		file: 'apps/core/src/routes/browse-screen-833.test.ts',
+		contains: "expect(PAGE).not.toContain('DELETED HERE",
+		why: 'the paired negative — the marker must be absent from the rendered page'
+	},
+	{
+		file: 'apps/core/src/server/media/library-tag-filter.test.ts',
+		contains: 'expect(doc).toMatch(/#798/)',
+		why: 'asserts a doc still cites the change whose ruling the filter implements'
+	},
+	{
+		file: 'apps/core/src/server/realtime/dangling-current-entry.test.ts',
+		contains: 'Self-heal a persisted DANGLING currentEntryId',
+		why: 'asserts the store still carries the self-heal comment naming the defect it repairs'
+	},
+	{
+		file: 'apps/core/src/server/realtime/nowplaying-single-source.test.ts',
+		contains: 'expect(preamble).toMatch(/#803/)',
+		why: 'asserts the single-source preamble still cites the change that established it'
+	},
+	{
+		file: 'apps/core/src/server/realtime/nowplaying-single-source.test.ts',
+		contains: 'expect(preamble).toMatch(/#848/)',
+		why: 'asserts the preamble also cites the follow-up that extended it'
+	},
+	{
+		file: 'packages/shared/src/lyrics/wrong-song-axis-prose-806.test.ts',
+		contains: 'expect(doc).toMatch(/#806/)',
+		why: 'asserts the prose doc still cites the axis it documents'
+	},
+	{
+		file: 'packages/shared/src/lyrics/wrong-song-axis-prose-806.test.ts',
+		contains: 'expect(coverage).toMatch(/#806/)',
+		why: 'asserts the coverage table still cites the same axis'
+	},
+	{
+		file: 'apps/core/src/server/singers/room-cookie-797.test.ts',
+		contains: 'const inAComment =',
+		why: 'planted fixture: a comment replayed verbatim to prove the reading-verb matcher still fires'
+	},
+	{
+		file: 'apps/core/src/server/singers/room-cookie-797.test.ts',
+		contains: 'The room-scoping chain reads it:',
+		why: 'planted fixture: the first of the two base comments, replayed verbatim'
+	},
+	{
+		file: 'apps/core/src/server/singers/room-cookie-797.test.ts',
+		contains: 'sets the identity; the chain that scopes',
+		why: 'planted fixture: the second base comment, replayed verbatim'
+	},
+	{
+		file: 'apps/core/src/server/singers/room-cookie-797.test.ts',
+		contains: 'also set a second cookie naming the room',
+		why: 'planted fixture: the honest correction, which must survive the matcher as a denial'
+	}
+];
+
+/**
+ * Is this line a recorded exempt site?
+ *
+ * KEYED ON CONTENT, NOT A LINE NUMBER. The first version keyed `path:line` and broke within the hour: a
+ * sibling edit two lines above shifted `browse-screen-833.test.ts` from 236/237 to 237/238, so two
+ * exemptions silently stopped matching while a third began pointing at ordinary prose. A line number is a
+ * fact about everything ABOVE a site rather than about the site itself, which makes it the wrong key for a
+ * record meant to outlive edits.
+ */
+function isExemptSite(rel: string, line: string): boolean {
+	return ISSUE_SUBJECT_EXEMPT.some((e) => e.file === rel && line.includes(e.contains));
+}
 
 const SCANNED_EXT = ['.ts', '.svelte', '.py', '.js', '.mjs', '.md', '.txt', '.yml', '.yaml'];
 // Extensionless / dotfile config that carried retired task tokens (M<n>-C<n>, B-<n>) and must stay clean.
@@ -63,7 +179,7 @@ const SELF = join(import.meta.dir, 'task-number-hygiene.test.ts');
 // artifact's whole value.
 //
 // Exempt by DIRECTORY, not by file list. docs/loop/ churns: today's two hits are COMMON.md and
-// PR-BOT.md, while the DRIFT.md that issue #764 was filed against has already been deleted — so a file
+// PR-BOT.md, while the DRIFT.md that was filed against has already been deleted — so a file
 // list is a treadmill that reds main again on the next brief that cites a ticket. Everything else stays
 // scanned, the REST of docs/ included, which is the coverage the retired B-<n> / M<n>-C<n> families
 // (they lived mostly in docs) exist for. The trailing slash is load-bearing: a bare `docs/loop` prefix
@@ -114,9 +230,11 @@ function scannedFiles(): string[] {
 function offendersIn(rel: string, text: string): string[] {
 	const found: string[] = [];
 	text.split('\n').forEach((line, i) => {
-		for (const { re, family } of PATTERNS) {
+		for (const { re, family, only } of PATTERNS) {
+			if (only && !only(rel)) continue;
 			const m = line.match(re);
 			if (m) {
+				if (isExemptSite(rel, line)) continue;
 				found.push(
 					`${rel}:${i + 1}: "${m[0]}" (${family}) — task numbers live in the PR/commit/docs, ` +
 						`not here; state the reason instead`
@@ -130,7 +248,7 @@ function offendersIn(rel: string, text: string): string[] {
 test('no task/ticket number appears in source, comments, tests or fixtures', () => {
 	const offenders: string[] = [];
 	const files = scannedFiles();
-	// Non-vacuity floor (issue #453): the walk was unanchored — if `git ls-files` returned nothing
+	// Non-vacuity floor: the walk was unanchored — if `git ls-files` returned nothing
 	// (guard run outside the git tree, or the ext/name filter matched none), the scan iterated zero
 	// files and passed while guarding nothing. Pin a floor well below the true count (hundreds).
 	expect(files.length).toBeGreaterThan(50); // @nvf-floor files.length
@@ -140,7 +258,7 @@ test('no task/ticket number appears in source, comments, tests or fixtures', () 
 	expect(offenders).toEqual([]);
 });
 
-// NON-VACUITY SENTINEL for the exemption above (issue #764). An exemption that quietly stops the guard
+// NON-VACUITY SENTINEL for the exemption above. An exemption that quietly stops the guard
 // biting anywhere is strictly worse than the red it silenced, so pin the three properties it must keep.
 // Without this, `EXEMPT_PREFIXES` could be widened to `''` — or the patterns hollowed out — and the
 // guard above would still report a serene green.

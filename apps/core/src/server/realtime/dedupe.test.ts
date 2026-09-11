@@ -79,7 +79,7 @@ test('distinct clientOpIds both apply', () => {
 	expect(state.entries).toHaveLength(2);
 });
 
-// ── #490 — the idempotency ledger must sit AHEAD of validation, not behind it ────────────────────
+// ── the idempotency ledger must sit AHEAD of validation, not behind it ───────────────────────────
 // dedupe's three tests above all build their command with `addCmd`, i.e. the ONE op shape whose
 // resend still validates against post-apply state (the entry is still `queued`, so applyOp's add arm
 // re-lands it in place and validateCommand's collision guard passes). That is exactly why the contract
@@ -128,7 +128,7 @@ test('Finding 2: a resent already-applied ADD is re-acked once its entry has STA
 	expect(state.entries.find((e) => e.id === 'q1')!.status).toBe('playing');
 
 	// Same lost-ack window: the phone resends the SAME add on reconnect. On base validateCommand's
-	// collision guard reds it with `entry id already taken: q1` (since #370's status!=='queued' clause).
+	// collision guard reds it with `entry id already taken: q1` (because of the status!=='queued' clause).
 	const before = published.length;
 	const sent: ServerEvent[] = [];
 	const patch = handleQueueCommand(add, deps, (e) => sent.push(e));
@@ -165,7 +165,7 @@ test('CONTROL: a genuinely-new INVALID op (never applied, not in the ledger) is 
 test('REGRESSION: a resent genuinely-INVALID op is rejected AGAIN, never falsely re-acked (the ledger must not record a never-applied op)', () => {
 	// The blocking regression the first cut introduced: the validation-failure re-ack path used the
 	// record-on-check `seenOp`, so REJECTING a never-applied op wrote its clientOpId into the ledger —
-	// and its resend (the same lost-message window #490 is about: reject lost, op stays pending,
+	// and its resend (the same lost-message window: reject lost, op stays pending,
 	// resendPending fires it again) was then answered with a false re-ack instead of a reject, and the
 	// client (queue.ts:203) deletes it from pending as "server-confirmed" with no snapshot to correct
 	// the optimistic row. Fixed by consulting the NON-RECORDING `hasOp` on the failure path. This pins

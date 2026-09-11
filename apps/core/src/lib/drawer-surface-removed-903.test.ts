@@ -1,16 +1,16 @@
-// Guard for issue #903: the dead drawer surface is GONE, and stays gone.
+// Guard: the dead drawer surface is GONE, and stays gone.
 //
 // WHY THIS FILE EXISTS. A deletion has no runtime-observable regression by construction — reverting it
 // re-adds code nothing calls, so the per-hunk prover reports UNVERIFIED (and on a whole-file deletion it
 // cannot revert the hunk at all). That green-when-reverted result IS the finding: zero non-test callers.
 // The honest close is a source scan that encodes the invariant the deletion establishes, so the removal
 // is PINNED rather than merely done. Without it, the drawer surface could be reintroduced silently and
-// every guard retired in #903 would have been retired for nothing.
+// every guard retired alongside it would have been retired for nothing.
 //
-// WHAT WAS DELETED, and why it was dead: the ratified phone design has no drawer. #832 made the queue
+// WHAT WAS DELETED, and why it was dead: the ratified phone design has no drawer. The home-shell change made the queue
 // the home screen (inline rows + now-playing hero + docked band), and after it landed QueueSheet.svelte
-// and its #827 vaul port QueueSheetDrawer.svelte rendered in exactly ONE place — the /components
-// gallery. No guest could reach either, yet #791 still spent a fix on the scroll behaviour of one.
+// and its vaul port QueueSheetDrawer.svelte rendered in exactly ONE place — the /components
+// gallery. No guest could reach either, yet a later fix was still spent on the scroll behaviour of one.
 //
 // WHAT SURVIVED IS THE CONTRACT, NOT THE SHEET. `--dock-h`, published from routes/+page.svelte by
 // `.cta-dock` (home) and `.search-dock` (browse), carries the identical band contract: the token equals
@@ -88,28 +88,28 @@ test('no live code imports, renders or reads the deleted drawer surface', () => 
 		// An import of, or an element instantiation of, either deleted component.
 		for (const name of ['QueueSheet', 'QueueSheetDrawer']) {
 			if (new RegExp(`from\\s+['"][^'"]*${name}\\.svelte['"]`).test(code)) {
-				offenders.push(`${rel}: imports ${name}.svelte, which #903 deleted`);
+				offenders.push(`${rel}: imports ${name}.svelte, which was deleted`);
 			}
 			if (new RegExp(`<${name}[\\s/>]`).test(code)) {
-				offenders.push(`${rel}: renders <${name}>, which #903 deleted`);
+				offenders.push(`${rel}: renders <${name}>, which was deleted`);
 			}
 		}
 
 		// A read of, or a declaration of, the retired band token. `--dock-h` is its successor.
 		if (/var\(\s*--peek-h/.test(code)) offenders.push(`${rel}: reads var(--peek-h); the live token is --dock-h`);
-		if (/--peek-h\s*:/.test(code)) offenders.push(`${rel}: declares --peek-h, retired by #903`);
+		if (/--peek-h\s*:/.test(code)) offenders.push(`${rel}: declares --peek-h, now retired`);
 
 		// The retired paint tiers and the sheet chrome they dressed.
 		for (const tier of ['--z-sheet-scrim', '--z-sheet']) {
-			if (new RegExp(`${tier}\\s*:`).test(code)) offenders.push(`${rel}: declares ${tier}, retired by #903`);
-			if (new RegExp(`var\\(\\s*${tier}\\b`).test(code)) offenders.push(`${rel}: reads ${tier}, retired by #903`);
+			if (new RegExp(`${tier}\\s*:`).test(code)) offenders.push(`${rel}: declares ${tier}, now retired`);
+			if (new RegExp(`var\\(\\s*${tier}\\b`).test(code)) offenders.push(`${rel}: reads ${tier}, now retired`);
 		}
 		for (const cls of ['sheet-scrim', 'sheet-surface']) {
 			if (new RegExp(`\\.${cls}\\s*[{,>]`).test(code)) offenders.push(`${rel}: still declares .${cls} chrome`);
 		}
 
 		// The vaul dependency the port pulled in.
-		if (/from\s+['"]vaul-svelte['"]/.test(code)) offenders.push(`${rel}: imports vaul-svelte, removed by #903`);
+		if (/from\s+['"]vaul-svelte['"]/.test(code)) offenders.push(`${rel}: imports vaul-svelte, now removed`);
 	}
 
 	expect(offenders).toEqual([]);
@@ -123,7 +123,7 @@ test('no live code imports, renders or reads the deleted drawer surface', () => 
 
 test('vaul-svelte stays gone, and bits-ui is present only because something imports it', () => {
 	/*
-	 * RE-SCOPED BY #913 S3 (XR-VER-07). This asserted all THREE packages stay absent: `vaul-svelte`,
+	 * RE-SCOPED BY S3 (XR-VER-07). This asserted all THREE packages stay absent: `vaul-svelte`,
 	 * `bits-ui` and `@internationalized/date`. That was right when written — bits-ui was there for
 	 * NOTHING, satisfying an import vaul-svelte failed to declare, with zero consumers in src.
 	 *
@@ -132,7 +132,7 @@ test('vaul-svelte stays gone, and bits-ui is present only because something impo
 	 * world, not a relaxation — so the assertion becomes the two halves that still matter:
 	 *   1. `vaul-svelte` stays absent. The drawer is dead and the ratified design has no place for one.
 	 *   2. `bits-ui` may be present ONLY while something actually imports it, which is what stops it
-	 *      drifting back into the dead weight #903 removed.
+	 *      drifting back into the dead weight the deletion removed.
 	 */
 	const pkg = JSON.parse(readFileSync(join(CORE, 'package.json'), 'utf8')) as {
 		dependencies?: Record<string, string>;
@@ -151,12 +151,12 @@ test('vaul-svelte stays gone, and bits-ui is present only because something impo
 
 test('the band contract SURVIVED the deletion — --dock-h is still published and measured', () => {
 	// This is the arm that stops the file above from being satisfied by deleting everything. The
-	// invariant #903 preserved is the band contract; if the successor mechanism goes too, that is a
+	// invariant the deletion preserved is the band contract; if the successor mechanism goes too, that is a
 	// regression, not a further cleanup.
 	const page = stripComments(readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8'));
 	expect(page).toMatch(/documentElement\.style\.setProperty\(\s*['"]--dock-h['"]/);
 	expect(page).toMatch(/removeProperty\(\s*['"]--dock-h['"]\s*\)/);
-	// Since #902 there is exactly ONE band — the search dock, docked on home for a joined singer and
+	// Since the one-band change there is exactly ONE band — the search dock, docked on home for a joined singer and
 	// present in both views (the `+ Add a turn` `.cta-dock` it replaced is gone). It carries the
 	// safe-area inset itself.
 	for (const cls of ['search-dock']) {

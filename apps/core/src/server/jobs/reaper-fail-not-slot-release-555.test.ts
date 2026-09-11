@@ -1,4 +1,4 @@
-// Issue #555 — the job machine read slot release off the EVENT NAME alone, so the reaper's terminal
+// The job machine read slot release off the EVENT NAME alone, so the reaper's terminal
 // FAIL (a presumed-DEAD worker whose progress lease lapsed with attempts exhausted) freed the slot
 // of a worker that was STILL holding a live job, driving an assign/reject storm.
 //

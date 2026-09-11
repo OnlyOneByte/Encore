@@ -1,4 +1,4 @@
-// guard: Chromium discovery must stay single-sourced (follow-up to #455).
+// guard: Chromium discovery must stay single-sourced.
 //
 // `findChromium()` was copy-pasted into 15 e2e drivers and drifted: only two validated PW_CHROMIUM,
 // one hardcoded a personal home path, and the short variants dropped the /usr/bin fallback. The
@@ -24,7 +24,7 @@ const CANON = 'lib/chromium.mjs';
  * pair was missing.
  *
  * The floor lives IN the walk rather than in each test, so a future consumer inherits it instead of
- * having to remember it — the way test 3 in motion.test.ts had to be retro-fitted (#481 finding 4).
+ * having to remember it — the way test 3 in motion.test.ts had to be retro-fitted.
  *
  * A firing floor is a FINDING, never a number to adjust — see XR-VER-06 and
  * `../../src/lib/non-vacuity-floors.test.ts`.

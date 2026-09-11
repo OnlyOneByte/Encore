@@ -1,8 +1,8 @@
-// guard: #657 room isolation is only real once it is WIRED into the WS layer, and server.ts is the
+// guard: room isolation is only real once it is WIRED into the WS layer, and server.ts is the
 // process entrypoint — it calls Bun.serve and process.exit, so it cannot be imported into bun:test
 // without terminating the runner and this repo has no socket harness. The isolation decisions are
 // unit-tested purely in room-scope.test.ts; THIS scan pins that server.ts actually routes the wire
-// through them, so reverting any single seam back to the pre-#657 shared-topic/no-scope behaviour reds
+// through them, so reverting any single seam back to the pre-isolation shared-topic/no-scope behaviour reds
 // here even though every pure test stays green. Same pattern as room-identity-wiring / graceful-shutdown.
 //
 // The four seams, each of which alone reopens the isolation gap:
@@ -46,13 +46,13 @@ test('server.ts imports the room-scope isolation helpers and the TV-room resolve
 		/import\s*\{[^}]*\bisForeignRoom\b[^}]*\bsubscribeTopicFor\b[^}]*\bbroadcastTopicFor\b[^}]*\}\s*from\s*['"]\.\/src\/server\/realtime\/room-scope['"]/
 	);
 	// the TV-room resolver is imported too — dropping it (while the usage stays) fails to
-	// compile, which a source scan is blind to, so pin the import here alongside the #657 helpers.
+	// compile, which a source scan is blind to, so pin the import here alongside the room-scope helpers.
 	expect(SERVER).toMatch(/import\s*\{[^}]*\btvRoomId\b[^}]*\}\s*from\s*['"]\.\/src\/server\/rooms\/tv-room['"]/);
 });
 
-test('the WS upgrade captures a roomId scope onto the socket, not just the id (re-anchored #658)', () => {
+test('the WS upgrade captures a roomId scope onto the socket, not just the id (re-anchored for the TV branch)', () => {
 	// The scope key: every socket carries a roomId on SocketData. Dropping the roomId capture would
-	// leave every socket unscoped, so isForeignRoom could never fire. #658 changed where the value
+	// leave every socket unscoped, so isForeignRoom could never fire. The TV-room resolver changed where the value
 	// comes from — a phone still gets it from its session token (me?.roomId), but a TV (no cookie)
 	// resolves it from ?room=<code> via tvRoomId — so the value is now a resolved `roomId` local
 	// rather than `me?.roomId` inline. This still pins the scope capture: the upgrade must put a
@@ -71,7 +71,7 @@ test('the WS upgrade captures a roomId scope onto the socket, not just the id (r
 test('websocket.open subscribes to the socket own room topic via subscribeTopicFor', () => {
 	// A per-room subscribe, keyed on the socket's roomId + the served room — NOT a single shared topic.
 	expect(SERVER).toMatch(/ws\.subscribe\(\s*subscribeTopicFor\(\s*ws\.data\.roomId\s*,\s*app\.activeRoomId\s*\)\s*\)/);
-	// and the old single-shared-topic subscribe is gone (the exact pre-#657 shape).
+	// and the old single-shared-topic subscribe is gone (the exact pre-isolation shape).
 	expect(SERVER).not.toMatch(/ws\.subscribe\(\s*ROOM_TOPIC\s*\)/);
 });
 

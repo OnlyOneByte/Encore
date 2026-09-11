@@ -198,7 +198,7 @@ test('applyQueueOp prunes terminal entries from the authoritative queue (Finding
 	expect(s.entries.map((e) => e.id)).toEqual(['b']);
 });
 
-// — #345: server-owned monotonic addedAt (nextAddedAt) —
+// — server-owned monotonic addedAt (nextAddedAt) —
 
 test('nextAddedAt is strictly increasing even when called faster than the clock ticks', () => {
 	const s = new AuthoritativeState();

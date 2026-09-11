@@ -23,7 +23,7 @@
  * artifact `XR-COL-01` makes the only place a stop's values exist.
  *
  * The ratios below are recomputed from the hex values rather than read out of the registry's `r_*`
- * fields, for #820's reason: a test that trusts the numbers the generator printed cannot catch a
+ * fields, for the palette registry's reason: a test that trusts the numbers the generator printed cannot catch a
  * generator that measured the wrong thing.
  */
 import { test, expect, describe } from 'bun:test';
@@ -306,7 +306,7 @@ describe('--accent-ink remains a required, distinct token (XR-COL-10)', () => {
 	});
 
 	/**
-	 * ── THE MEASURED GAP THAT KEEPS THE PER-STOP `accent_ink` WIRING OUT OF #840 ────────────────────
+	 * ── THE MEASURED GAP THAT KEEPS THE PER-STOP `accent_ink` WIRING OUT OF THIS CHANGE ─────────────
 	 *
 	 * This test asserts a DEFECT still exists, which is unusual, so read why before "fixing" it.
 	 *
@@ -315,8 +315,8 @@ describe('--accent-ink remains a required, distinct token (XR-COL-10)', () => {
 	 * — `SongRow.svelte`'s `.chip.kind.lyric` and `.chip.tag` — sit on `--card-tint2`, a surface the
 	 * registry's own `surfaces` block has never contained. On it, 16 of 48 stops FAIL AA.
 	 *
-	 * That is #820's defect class one surface further out: figures generated against surfaces the app
-	 * does not paint. So #840 deliberately leaves `--accent-ink` at its incumbent value (7.35:1 there)
+	 * That is the palette registry's defect class one surface further out: figures generated against
+	 * surfaces the app does not paint. So this change deliberately leaves `--accent-ink` at its incumbent value (7.35:1 there)
 	 * instead of adopting the seeded stop's `accent_ink` (3.99:1 there), and this test is what stops the
 	 * wiring landing quietly later: whoever wires it must first close the gap, and closing it turns this
 	 * expectation red, at which point DELETE THIS TEST — its premise will genuinely be gone.

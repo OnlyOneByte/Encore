@@ -1,13 +1,13 @@
 // Guard: the TV lower-third (singer name, key, provenance marker) carries a hard OUTLINE, not only a
 // soft glow — so it stays legible on ANY stage colour a room now picks (piece 2).
 //
-// THE DEFECT this pins. #425 piece 2 lets a room store a real stage COLOUR, including white. Piece 1
+// THE DEFECT this pins. Stage-colour piece 2 lets a room store a real stage COLOUR, including white. Piece 1
 // stroked the lyric REEL for exactly this reason — but it stroked ONLY the reel
 // (LyricsOverlay.svelte). The `.lower-third` block in tv/+page.svelte had `NO CARD` and leaned solely
 // on `text-shadow: 0 2px 14px rgba(0,0,0,.9)`, a blurred shadow that dissolves against a bright field
 // of similar luminance. On a white stage the white singer name measured ~1.10:1 and the amber
 // `ls-asr` marker ~1.72:1 — the regression the retired stage pin used to prevent, and a violation of
-// the owner's ratified #425 condition, "always visible regardless of the background". The fix gives
+// the owner's ratified stage-colour condition, "always visible regardless of the background". The fix gives
 // `.lower-third` the same treatment the reel got: `-webkit-text-stroke` + `paint-order: stroke fill`,
 // so a hard dark outline sits behind every glyph and the text reads on any backdrop.
 //

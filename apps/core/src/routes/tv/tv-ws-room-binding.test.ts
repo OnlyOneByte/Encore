@@ -13,7 +13,7 @@ import { join } from 'node:path';
 
 const SRC = readFileSync(join(import.meta.dir, '+page.svelte'), 'utf8');
 
-test('the TV opens its WS as role=tv (#658 keeps the TV role)', () => {
+test('the TV opens its WS as role=tv (the room-identity work keeps the TV role)', () => {
 	expect(SRC).toMatch(/\/ws\?role=tv/);
 });
 

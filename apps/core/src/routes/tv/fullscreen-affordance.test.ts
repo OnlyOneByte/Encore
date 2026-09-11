@@ -3,7 +3,7 @@
 // NB filename: SvelteKit reserves `+`-prefixed names inside routes/, so this cannot be
 // `+page.test.ts`; it colocates with the page it guards without being treated as a route.
 //
-// WHAT #424 ADDED. `/tv` is `position: fixed; inset: 0` and already owns the whole VIEWPORT, but not
+// WHAT THE FULLSCREEN AFFORDANCE ADDED. `/tv` is `position: fixed; inset: 0` and already owns the whole VIEWPORT, but not
 // the browser's own chrome (URL bar / tab strip), which eats the top of a TV browser or an
 // HDMI-plugged laptop. The owner ruled C: a dedicated `f` hotkey PLUS a self-hiding corner button,
 // both toggling the Fullscreen API, with the existing autoplay-recovery tap requesting fullscreen as a
@@ -19,7 +19,7 @@
 // idle, and the toggle firing — lives in the PR body via the repo's CDP driver.
 //
 // Each test below pins a DISTINCT production hunk, so reverting any one hunk individually reds a
-// NAMED test rather than relying on a union revert (the #224 failure mode).
+// NAMED test rather than relying on a union revert, the shape that hides a mutation-blind hunk.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -62,7 +62,7 @@ test('toggleFullscreen toggles via document.fullscreenElement, not a one-way req
 	expect(script).toMatch(/document\.exitFullscreen/);
 });
 
-test('an `f` keydown handler calls toggleFullscreen (#424 hotkey)', () => {
+test('an `f` keydown handler calls toggleFullscreen (hotkey)', () => {
 	// PINS the keydown hunk — the half of ruling C that works on a TV with a paired keyboard/remote and
 	// needs no visible chrome at all. A keydown is also a real user activation, which is what makes the
 	// hotkey a legal fullscreen trigger in the first place.
@@ -71,7 +71,7 @@ test('an `f` keydown handler calls toggleFullscreen (#424 hotkey)', () => {
 	expect(script).toMatch(/toggleFullscreen\s*\(\s*\)/);
 });
 
-test('the autoplay-recovery tap requests fullscreen as a free rider (#424 ruling C)', () => {
+test('the autoplay-recovery tap requests fullscreen as a free rider (ruling C)', () => {
 	// PINS the free-rider hunk. Asserted INSIDE the .autoplay-hint element, not merely somewhere in the
 	// file: the ruling is specifically that the tap which authorises audio also asks for fullscreen, so
 	// a toggleFullscreen() call anywhere else must not satisfy this. The block-clearing assignment is
@@ -109,8 +109,8 @@ test('.fs-btn sits on the --z-tv-card tier — above the reel and video, below t
 });
 
 test('.fs-btn and the corner join QR do NOT share the same bottom-right anchor', () => {
-	// PINS the #889 fix hunk: the fullscreen button and the during-playback join QR are BOTH z-tv-card
-	// (tier 7) persistent chrome, and both are position:absolute. Before #889 both anchored to
+	// PINS the corner-collision fix hunk: the fullscreen button and the during-playback join QR are BOTH z-tv-card
+	// (tier 7) persistent chrome, and both are position:absolute. Before that fix both anchored to
 	// `right: var(--tv-safe-x); bottom: var(--tv-safe-y)`, so at equal z-index the later-in-DOM button
 	// painted its translucent tile over the QR card's "Scan to join" text — the readable half of the
 	// invitation. The button is now pinned TOP-right (below the status dot) so the two never share a

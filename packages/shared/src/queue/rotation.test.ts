@@ -137,7 +137,7 @@ test('isTerminal is true only for done', () => {
 	}
 });
 
-// ── move-to-index: cross-singer reorder (#856 step 4) ────────────────────────
+// ── move-to-index: cross-singer reorder (step 4) ─────────────────────────────
 
 test('move-to-index places a song at a GLOBAL queued index, jumping another singer', () => {
 	// fair rotation interleaves: a1, b1, a2 (everyone's 1st before anyone's 2nd).

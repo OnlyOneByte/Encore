@@ -52,11 +52,11 @@ test('the Undo toast control reaches the tap floor (padding-only guard gap)', ()
 	expect(tokened || heights.some((h) => h >= TAP)).toBe(true);
 });
 
-// ── Issue #108: the error toast was drawn across the Undo button (5s timer, un-tappable). ─────────
+// ── The error toast was drawn across the Undo button (5s timer, un-tappable). ─────────────────────
 // Two independent defects composed it, and neither is visible to any rule-body guard that reads one
 // selector in isolation — so both are pinned here structurally.
 
-test('the docked toast declares a width a phone can actually use (#913 S5, was the left:50% gap)', () => {
+test('the docked toast declares a width a phone can actually use (S5, was the left:50% gap)', () => {
 	const src = readFileSync(PAGE, 'utf8');
 	/*
 	 * THE BUG THIS EXISTS FOR. Encore's two hand-rolled toasts were `position: fixed` with
@@ -79,7 +79,7 @@ test('the docked toast declares a width a phone can actually use (#913 S5, was t
 });
 
 /*
- * RETIRED BY #913 S5 (XR-VER-07): 'the error toast docks off the undo toast MEASURED height'.
+ * RETIRED BY S5 (XR-VER-07): 'the error toast docks off the undo toast MEASURED height'.
  *
  * It pinned `--error-dock: calc(... + var(--undo-h) ...)` against a real bug -- the undo toast's height
  * is content-dependent and unbounded, so ANY fixed px reserve is the same overlap at a longer title.

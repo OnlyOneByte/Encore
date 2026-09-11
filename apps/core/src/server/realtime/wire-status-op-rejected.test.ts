@@ -1,4 +1,4 @@
-// Regression for #195: a `status` op is SERVER-OWNED and must be rejected at the wire seam.
+// Regression guard: a `status` op is SERVER-OWNED and must be rejected at the wire seam.
 //
 // The only two producers of `{op:'status'}` in the whole repo are the server itself — player.ts
 // beginSinging ('playing') and advance ('done') — and BOTH call state.applyQueueOp DIRECTLY, never

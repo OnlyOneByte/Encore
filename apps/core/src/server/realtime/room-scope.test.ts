@@ -9,7 +9,7 @@
 //   5. a room-B socket subscribes to B's topic (never A's) and A's broadcasts go to A's topic — so a
 //      broadcast in room A reaches only room-A (and served-room spectator) sockets.
 //
-// On BASE (pre-#657) this module does not exist and there is one shared ROOM_TOPIC with no scope
+// On BASE (before the session token became the room identity) this module does not exist and there is
 // check, so none of this is expressible — the isolation it asserts is exactly what the PR adds.
 import { test, expect } from 'bun:test';
 import { roomTopic } from '@encore/shared';

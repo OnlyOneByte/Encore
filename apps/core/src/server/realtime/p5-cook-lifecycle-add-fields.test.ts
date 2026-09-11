@@ -9,7 +9,7 @@
 // status !== 'queued' ('invalid status', :165), so the frame was refused and queueViaWs threw
 // `queue add rejected: ...` at :201 — every scenario in the probe died at setup. The two other add
 // producers in e2e/ (p2-guiding-track.mjs, p11-dashboards.mjs) both mint all six and are accepted;
-// only p5 was stale. The addedAt guard landed in #305 (the #188 fix) and the status narrowing in
+// only p5 was stale. The addedAt guard and the status narrowing both landed
 // AFTER queueViaWs was written, so the frame silently rotted.
 //
 // WHY A SOURCE SCAN: the probe is a live-server .mjs script with no unit harness and no runner in

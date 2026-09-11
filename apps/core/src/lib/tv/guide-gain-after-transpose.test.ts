@@ -1,4 +1,4 @@
-// Regression guard for #434 -- set a guide level, then transpose, and the isolated vocals jump to
+// Regression guard: set a guide level, then transpose, and the isolated vocals jump to
 // FULL volume under the instrumental for the rest of the song.
 //
 // ROOT CAUSE (issue-triaged, confirmed by reading the code): the guide's level is owned by the gain
@@ -8,13 +8,13 @@
 // (pitch-shift.ts) and build() writes that straight into the GainNode. The gain effect does NOT
 // re-run on graph construction, so `setGain(effectiveGuide)` is never applied and the guide plays at
 // full volume. Once routed, HTMLMediaElement.volume is bypassed, so the level the room set is gone.
-// (post-#477 the master graph now persists across songs; the guide graph is still rebuilt on
+// (the master graph now persists across songs; the guide graph is still rebuilt on
 // transpose, so the fix must re-apply the level whenever that graph is built.)
 //
 // Two halves pin the fix:
 //   A. BEHAVIOURAL -- drive the REAL PitchShiftGraph under stubbed WebAudio and prove the primitive
 //      the fix leans on: a level set via setGain() BEFORE the graph is built survives into the
-//      GainNode once a shift builds it. No audio hardware -- same technique as the #477 lifetime test.
+//      GainNode once a shift builds it. No audio hardware -- same technique as pitch-shift-graph-lifetime.test.ts.
 //   B. SOURCE-SCAN -- the pitch effect lives inside a .svelte effect bun cannot execute without a
 //      Svelte compile + DOM, so a text scan proves the fix is WIRED: after building/keeping the guide
 //      graph, the effect re-applies the room level with setGain(effectiveGuide). Mutation trap:

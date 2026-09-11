@@ -69,7 +69,7 @@ test('checkI4 skips under a gestureless autoplay refusal', () => {
 	expect(BODY).toMatch(/skip\(\s*[\s\S]*?'I4'[\s\S]*?the browser refused autoplay/);
 });
 
-test('checkI4 skips a refused master BEFORE it computes the cue (#331 regression trap)', () => {
+test('checkI4 skips a refused master BEFORE it computes the cue (regression trap)', () => {
 	// If the skip landed AFTER the cue computation it would never fire — the phantom violation is
 	// produced by the cue-vs-window compare. Require the autoplayRefused guard to precede the cue.
 	const skipIdx = BODY.search(/autoplayRefused\(w\)/);

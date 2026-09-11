@@ -4,7 +4,7 @@
 // was the one a reader would reach for (the only one NAMED after the question) yet it answered
 // differently from the rule every entry point actually consults: it omitted the `&& scar.media` term
 // that `pruneScars` requires, so a media-less scar was DEAD to the module and ALIVE to its
-// public-looking predicate. #870 removes it, leaving `pruneScars` as the single reachable rule that
+// public-looking predicate. It has been removed, leaving `pruneScars` as the single reachable rule that
 // `recordScar` / `clearScar` / `activeScars` all route through.
 //
 // This scan pins that outcome where there is no pure function to exercise a deletion: it asserts the
@@ -57,12 +57,12 @@ test('pruneScars is the single live liveness rule and keeps its media term', () 
 	expect(end).toBeGreaterThan(open);
 	const body = SRC.slice(open, end + 1);
 	// The live rule: unexpired deadline AND a media snapshot present. The `&& scar.media` term is the
-	// exact clause scarActive omitted; dropping it here would re-introduce the divergence #870 removes.
+	// exact clause scarActive omitted; dropping it here would re-introduce the divergence the removal closed.
 	expect(body).toMatch(/scar\.expiresAt\s*>\s*now\s*&&\s*scar\.media/);
 });
 
 test('the expiry comparison lives ONLY inside pruneScars — no restated liveness rule under any name', () => {
-	// The literal-name arm above stops `scarActive` coming back verbatim, but #870's finding is that
+	// The literal-name arm above stops `scarActive` coming back verbatim, but the finding behind the removal is that
 	// the *expression* was wrong, not merely that the name was unused. Re-adding the same discredited
 	// comparison under a new name (e.g. `isScarLive`) would slip past a name scan and is exactly the
 	// edit §4 predicts the next dev writes. This arm enforces the "derive rather than restate" ruling:

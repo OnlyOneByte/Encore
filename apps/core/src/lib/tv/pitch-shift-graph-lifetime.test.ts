@@ -1,5 +1,5 @@
-// Regression guard for #477 -- skip a song and the instrumental is silent until you touch the
-// semitones.
+// Regression guard for the song-change instrumental silence -- skip a song and the instrumental is
+// silent until you touch the semitones.
 //
 // ROOT CAUSE (owner-triaged at 9b07153, confirmed by reading the code): a PitchShiftGraph binds a
 // PERMANENT MediaElementAudioSourceNode to its element (see createMediaElementSource in
@@ -153,10 +153,10 @@ test('guard (not-vacuous): the destroy effect still detaches BOTH graphs on slot
 	expect(destroyRegion).toMatch(/guideGraph[?][.]detach[(]/);
 });
 
-// -- #694: the guide element PERSISTS across a song-to-song skip, so the per-song reset must reset
+// -- THE GUIDE HALF: the guide element PERSISTS across a song-to-song skip, so the per-song reset must reset
 //    it IN PLACE (setShift(0) + re-apply setGain) rather than detach() it. detach() on the still-
 //    mounted, permanently-captured element is the silence-until-a-tone-press bug the master already
-//    escaped in #477. Same two halves as above: A behavioural (the primitive survives), B source-scan
+//    escaped on a song change. Same two halves as above: A behavioural (the primitive survives), B source-scan
 //    (the reset is wired for the guide, and detach() moved to the genuine-unmount effect).
 
 test('a routed GUIDE graph SURVIVES setShift(0) -- stays routed (song-change reset)', async () => {
@@ -183,7 +183,7 @@ test('control: detach() on the still-mounted guide element closes the context --
 test('guard: the per-song reset resets the GUIDE graph via setShift(0) and re-applies the level', () => {
 	const body = stripComments(resetEffectBody(TV));
 	expect(body).toMatch(/guideGraph[?][.]setShift[(]\s*0\s*[)]/);
-	// The re-apply is load-bearing (#434: a fresh/reset graph defaults its gain to 1). It must use the
+	// The re-apply is load-bearing (a fresh/reset graph defaults its gain to 1). It must use the
 	// resolved room level, not a literal.
 	expect(body).toMatch(/guideGraph[?][.]setGain[(]\s*effectiveGuide\s*[)]/);
 });
@@ -226,15 +226,15 @@ test('guard (not-vacuous): a dedicated effect releases the guide graph when guid
 	expect(body).toMatch(/guideGraph = undefined/);
 });
 
-// -- #825: the MASTER element genuinely dies when a drained room unmounts the <audio> behind
-//    {#if media && isPlayable(media)}. The `if (!master)` element-unmount effect (the #674 shadow
+// -- THE MASTER HALF: the master element genuinely dies when a drained room unmounts the <audio> behind
+//    {#if media && isPlayable(media)}. The `if (!master)` element-unmount effect (the shadow
 //    clear) is where that death is detected, so it must ALSO release the master graph and DROP its
 //    reference -- detach() alone leaves `masterGraph` truthy and the build site's `!masterGraph` guard
 //    stays false forever, so the next song's fresh element is never captured and the instrumental
-//    stops transposing for the page's life (the master counterpart of the guide's #694 release). The
-//    per-song reset must NOT do this (that is #477); the release lives only where the ELEMENT dies.
+//    stops transposing for the page's life (the master counterpart of the guide's release). The
+//    per-song reset must NOT do this (that is the song-change defect); the release lives only where the ELEMENT dies.
 function masterUnmountEffectBody(s: string): string {
-	// Anchor on the shadow-clear the #674 fix does when the element is gone: `currentEntryId = null`
+	// Anchor on the shadow-clear the unmount fix does when the element is gone: `currentEntryId = null`
 	// sits inside the `if (!master)` block and survives comment stripping. This is distinct from the
 	// per-song reset (which keys on `resetForId`) and the destroy effect (which uses `return () =>`).
 	const marker = s.indexOf('currentEntryId = null');

@@ -1,4 +1,4 @@
-// Issue #524 — JOB_TRANSITIONS steps 2/3/4, built on #471's event-typed machine.
+// JOB_TRANSITIONS steps 2/3/4, built on the event-typed machine.
 //
 //  Step 2 — the LEDGER hooks `transition`, not the seven named wrappers. Now that the event is a
 //           parameter, `transition` alone seals the attempt (COMPLETE→ready, FAIL→failed,

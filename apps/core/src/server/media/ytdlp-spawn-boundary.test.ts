@@ -88,7 +88,7 @@ test('ARM 1: no production file under apps/core/src calls Bun.spawn( except spaw
 			if (/Bun\.spawn\s*\(/.test(line)) offenders.push(`${f.rel}:${i + 1}`);
 		}
 	}
-	// On base this reports server/media/ytdlp.ts:92 — the hand-rolled kill timer #446 replaced.
+	// On base this reports server/media/ytdlp.ts:92 — the hand-rolled kill timer spawn-capture.ts replaced.
 	expect(offenders).toEqual([]);
 });
 

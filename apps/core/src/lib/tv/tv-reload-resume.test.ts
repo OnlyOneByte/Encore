@@ -13,9 +13,9 @@ import { GUIDE_PREROLL_ALIGN_SEC, SEEK_JUMP_SEC, resumeSeekTarget } from './guid
  * never re-offered. The fresh master plays from 0 while the room is at 6s, and the TV's own telemetry
  * then drags the server's position backwards.
  *
- * The fix mirrors #578's guide pre-roll: hold the last room position, and apply it ONCE on the
+ * The fix mirrors the guide pre-roll: hold the last room position, and apply it ONCE on the
  * master's `canplay` via a pure decision function, then clear the held target so catalog churn cannot
- * re-yank a stale position onto a later song (the #396 invariant).
+ * re-yank a stale position onto a later song (the stale-seek invariant).
  *
  * Two halves are pinned here: (1) `resumeSeekTarget` decides correctly, and (2) TvPlayer.svelte is
  * WIRED to it — the position is held, taken on the master's `canplay`, and consumed. A pure test
@@ -89,7 +89,7 @@ describe('TvPlayer.svelte is wired to resume on a cold mount', () => {
 		expect(effectBody).toContain('applySeek(target)');
 	});
 
-	it('takes the resume on the master canplay and CONSUMES it (once per load, #396 stays shut)', () => {
+	it('takes the resume on the master canplay and CONSUMES it (once per load, stale seeks stay shut)', () => {
 		// The master <audio> calls applyResume on canplay — the only place the fresh element's buffer
 		// is primed and its playhead is where audio will emerge.
 		expect(src).toContain('oncanplay={() => applyResume()}');

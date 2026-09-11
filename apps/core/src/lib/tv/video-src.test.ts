@@ -61,7 +61,7 @@ test('the first assignment (no previous src) always changes', () => {
 	expect(src).toBe('/media/stems/m1-instrumental.wav');
 });
 
-// ── #251: a not-playable churn pass must NOT clear a still-mounted, still-playing src ────────────────
+// ── a not-playable churn pass must NOT clear a still-mounted, still-playing src ──────────────────────
 //
 // On the OLD two-arg contract this same situation resolved to '' and reported changed:true against a
 // real src — a CLEAR that reloaded the playing song to 0. The `playable` flag is exactly the {#if}

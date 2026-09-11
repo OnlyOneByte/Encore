@@ -11,7 +11,7 @@
 // NOTHING in `bun test` — there is no unit harness and no pure function to exercise. So the verb and
 // its use are decidable properties of the driver's and probe's own text. Reverting either half
 // (deleting realClick, or the probe ceasing to call it) leaves the whole suite green while the
-// affordance goes back to having zero coverage — exactly the hole #332 names. Comments are blanked so
+// affordance goes back to having zero coverage — exactly the coverage hole this closes. Comments are blanked so
 // prose describing the old synthetic-click behaviour can neither satisfy nor trip these matches.
 // Precedent: reaper-onfailed-wiring.test.ts, fuzz-i4-autoplay-refusal-skip.test.ts.
 import { test, expect } from 'bun:test';

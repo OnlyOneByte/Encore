@@ -1,11 +1,11 @@
 // XR-PH-09 — the guest's position is stated in WORDS, and the wait degrades HONESTLY when it cannot
-// be known. Issue #832.
+// be known.
 //
 // The requirement's acceptance is two-armed and the second arm is the one that ships bugs: "Given any
 // entry ahead lacks a duration, Then no minutes clause renders and the string never contains
 // 'roughly 0'". So every expectation below is a HARD-CODED string or an independently hand-computed
-// minute count — never `Math.round(total / 60)`, which is the operation under test. That is the #165
-// failure exactly: a test that rounds its own expected value cannot detect whether the code rounds.
+// minute count — never `Math.round(total / 60)`, which is the operation under test. That is the
+// cook-bar rounding failure exactly: a test that rounds its own expected value cannot detect whether the code rounds.
 import { test, expect } from 'bun:test';
 import { positionWords, waitWords, ordinalWord } from './position-sentence';
 

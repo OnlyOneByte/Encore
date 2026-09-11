@@ -117,15 +117,15 @@ test('the cooking sparkle is a sibling of .t inside .title-line, never nested in
 test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item, on EVERY rule', () => {
 	// The layout contract that keeps the mark off the clamped line: a flex ROW whose mark cannot grow.
 	//
-	// #482 named the hole and #523 closed it for `.t` only (see test 3): every `.t` rule is now read.
+	// The hole was named earlier and closed for `.t` only (see test 3): every `.t` rule is now read.
 	// The other two selectors in the SAME contract were left on any-match `toMatch`, satisfied forever
 	// by the base rules at `.title-line`/`.sparkle`. So a redeclaration inside `@media (max-width: 380px)`
 	// — this file's established idiom, the block already redeclares six selectors — was invisible:
 	//   • `.title-line { flex-direction: column }` (or `display: block`/`grid`) drops the mark onto its
-	//     OWN line, reading as a metadata bullet rather than a mark on the title — #194's loss by another
+	//     OWN line, reading as a metadata bullet rather than a mark on the title — the same loss by another
 	//     route.
 	//   • `.sparkle { flex: 1 1 auto }` lets the inline-grid box grow and floats the centred glyph into
-	//     the empty tail — #334's exact symptom.
+	//     the empty tail — the floated-mark defect's exact symptom.
 	// Both left the old test at 3 pass / 0 fail. Read EVERY rule (collectRules) and hold each to its
 	// contract, mirroring test 3's `.t` widening.
 
@@ -161,7 +161,7 @@ test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item,
 		const { grow } = flexOf(r.body);
 		// grow MUST be 0: `.sparkle` is `display: inline-grid; place-items: center`, so any grow lets the
 		// box swell and centres the glyph out in the empty tail, separating it from the title (Finding 2,
-		// #334's symptom). `flex: 1 1 auto` => grow "1" reds here where the any-match guard let it pass.
+		// the floated-mark symptom). `flex: 1 1 auto` => grow "1" reds here where the any-match guard let it pass.
 		expect(grow).toBe('0');
 	}
 });
@@ -174,14 +174,14 @@ test('.t does not grow and always shrinks — the clamp box hugs its text so the
 	// row and floating the mark out to the column's right edge, and shrink > 0 lets the box shrink to hug
 	// its (clamped) text so the mark still sits adjacent. Pinning grow alone left a hole: setting
 	// flex-shrink:0 / flex: 0 0 auto keeps grow 0 and passes, but the box stops shrinking and the mark is
-	// pushed back to the column right edge (title-length-independent) — #334 reopened, gate green.
+	// pushed back to the column right edge (title-length-independent) — the floated-mark defect reopened, gate green.
 	//
 	// SongRow declares .t TWICE — the base rule AND a redeclaration inside @media (max-width: 380px).
 	// The old guard used String.prototype.search, which returns only the FIRST match, so a `flex` written
 	// into that media-query rule (which WINS the cascade at <=380px, same specificity + later in source)
 	// was invisible. Read EVERY .t rule by matching the selector repeatedly, brace-match each body, and
 	// hold every rule that declares a flex axis to the same grow-0 / shrink->0 contract. A rule that
-	// declares no flex is fine — it inherits the base rule's flex, so it cannot reopen #334 on its own.
+	// declares no flex is fine — it inherits the base rule's flex, so it cannot reopen the defect on its own.
 	const bodies = collectRules('.t');
 	// not-vacuous: SongRow declares .t at least TWICE today (base + @media). A floor on the count means a
 	// future edit that stops one rule matching (renamed selector, merged rules) cannot silently shrink the
@@ -194,14 +194,14 @@ test('.t does not grow and always shrinks — the clamp box hugs its text so the
 	expect(declaring.length).toBeGreaterThanOrEqual(1);
 
 	// EVERY .t rule that declares a flex axis must satisfy the contract: grow 0 AND shrink > 0. This is
-	// the #482 widening — `.t { …; flex: 1 }` inside @media (max-width: 380px) now reds here, where the
+	// the every-rule widening — `.t { …; flex: 1 }` inside @media (max-width: 380px) now reds here, where the
 	// first-rule-only guard let it survive.
 	for (const b of declaring) {
 		const { grow, shrink } = flexOf(b.body);
-		// grow: `flex: 1` => "1" (the #334 defect); `flex: 0 1 auto` => "0" (the fix). Anything > 0 reds.
+		// grow: `flex: 1` => "1" (the floated-mark defect); `flex: 0 1 auto` => "0" (the fix). Anything > 0 reds.
 		expect(grow).toBe('0');
 		// shrink MUST be > 0 so the two-line clamp box shrinks to hug its text. `flex: 0 0 auto`
-		// (shrink 0) is the #334-reopening edit the grow-only guard misses; it must red here.
+		// (shrink 0) is the defect-reopening edit the grow-only guard misses; it must red here.
 		expect(shrink).not.toBeNull();
 		expect(Number(shrink)).toBeGreaterThan(0);
 	}

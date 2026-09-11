@@ -414,7 +414,7 @@ test('a lead selects the NEXT word sooner (what the knob is for)', () => {
 	expect(activeWordIndex(line, 0.45 + lead)).toBe(1);
 });
 
-// ── issue #431: dual-script (romanization) pass-through ──────────────────────────
+// ── dual-script (romanization) pass-through ──────────────────────────
 // A Chinese line-synced doc carries a per-line `romanization` (the pinyin the LRCLIB record
 // interleaved). parseLyricsDoc must surface it onto the line; a line without one leaves it
 // undefined (single-script, unchanged behaviour). Display-only — it carries no timings.

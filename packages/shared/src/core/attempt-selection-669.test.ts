@@ -28,7 +28,7 @@ describe('attemptSelection', () => {
 	it('round-trips a serialized record, preserving every rejected label and score', () => {
 		const got = attemptSelection({ selection: JSON.stringify(RECORD) });
 		expect(got).toEqual(RECORD);
-		// The two facts that separate #542 arm (b) from arm (c) survive intact.
+		// The two facts that separate the lyrics-agreement arm (b) from arm (c) survive intact.
 		const c = got!.choices[0]!;
 		expect(c.decidedBy).toBe('agreement');
 		expect(c.votes).toBe(2);
@@ -60,7 +60,7 @@ describe('attemptSelection', () => {
 		expect(attemptSelection({ selection: bad })).toBeNull();
 	});
 
-	// — the record must also carry the axis `winnerSuspect` is DECIDED on. Since #800 that
+	// — the record must also carry the axis `winnerSuspect` is DECIDED on. Since the coverage-threshold change that
 	// judgement thresholds baseline COVERAGE, not the ranking score, so a record holding only
 	// `winnerScore` reads as a MISSED DETECTION on its own numbers on the normal partial-baseline case:
 	// `winnerSuspect: false` beside a score under the documented 0.40, with the number that actually
@@ -77,7 +77,7 @@ describe('attemptSelection', () => {
 	});
 
 	it('an older record with no winnerCoverage still parses — a missing axis is not a bad record', () => {
-		// Attempt rows written before #806 have no such key. `attemptSelection` parses defensively, so
+		// Attempt rows written before winnerCoverage existed have no such key. `attemptSelection` parses defensively, so
 		// the honest reading is "this worker did not record it", never a decision made on nothing.
 		const got = attemptSelection({ selection: JSON.stringify(RECORD) });
 		expect(got).not.toBeNull();

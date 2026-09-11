@@ -5,7 +5,7 @@
 //      getApp() stands up the whole app over a file/memory DB and has no unit harness, so reverting
 //      the boot mint or the literal wiring leaves every other test green.
 //   2. the phone landing page (JoinLanding) reads the ?room= code the QR encoded and FORWARDS it to
-//      /api/join. `/join` was retired (#834 Q2-A); the join UI is now JoinLanding.svelte, rendered in
+//      /api/join. `/join` was retired (Q2-A); the join UI is now JoinLanding.svelte, rendered in
 //      the unjoined branch of `/`. There is no Svelte-component render harness in this repo, so this
 //      scan is the only thing that reds if the forwarding is dropped and a scanned QR silently joins
 //      the wrong party.
@@ -39,7 +39,7 @@ test('app.ts mints the active room at boot and exposes its id', () => {
 	expect(APP).toMatch(/activeRoomId:\s*string;/);
 });
 
-test('the phone landing page reads the ?room= code and forwards it to /api/join (#834)', () => {
+test('the phone landing page reads the ?room= code and forwards it to /api/join', () => {
 	// reads the code the QR encoded out of the URL.
 	expect(JOIN_PAGE).toMatch(/page\.url\.searchParams\.get\('room'\)/);
 	// and forwards it in the /api/join body as `code` — drop this and a scanned QR joins the default

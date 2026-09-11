@@ -3,7 +3,7 @@
 // reprioritizeCookForMedia is unit-tested through the hub (reprioritize-cook.test.ts drives
 // handleQueueCommand -> onEntryAdded -> the helper), but the seam it hangs on — HubDeps.onEntryAdded
 // — is optional, and the LIVE composition that fills it now lives in app.ts's buildHubDeps factory
-// (#460 §3 folded the per-frame bag into one factory; before that this wiring was in the Bun.serve
+// (a later refactor folded the per-frame bag into one factory; before that this wiring was in the Bun.serve
 // websocket message closure in server.ts). The hub tests mirror the seam with a local onEntryAdded,
 // so reverting the real wiring leaves them green — without this guard the fix could be silently
 // unwired and ship green.
@@ -23,7 +23,7 @@ function stripComments(src: string): string {
 }
 
 // import.meta.dir === apps/core/src/server/jobs → one level up to apps/core/src/server/app.ts,
-// where buildHubDeps (the single HubDeps composition site, #460 §3) now wires this seam.
+// where buildHubDeps (the single HubDeps composition site) now wires this seam.
 const APP = stripComments(readFileSync(join(import.meta.dir, '..', 'app.ts'), 'utf8'));
 
 test('app.ts imports reprioritizeCookForMedia', () => {
@@ -47,7 +47,7 @@ test('the wired hook passes the job ledger, the post-add entries, and a dispatch
 	// (the onEntryRemoved cancelJobsForMedia wiring, upNextAfter(..., state.entries, ...), and the
 	// /harness/phone dev-page <script> string), so the guard stayed 3/3 green with the hook mutated to
 	// `entries: entries.filter((e) => e.status === 'playing')` — the exact type-valid partial that
-	// restores the #135 starvation bug. This mirrors reaper-onfailed-wiring.test.ts's single
+	// restores the starvation bug. This mirrors reaper-onfailed-wiring.test.ts's single
 	// anchored /onFailed:...settleGatesForFailedJob(job, mediaById)/.
 
 	// Not-vacuous sentinel: the hook opening must be present, so a broken/empty read reds here first.

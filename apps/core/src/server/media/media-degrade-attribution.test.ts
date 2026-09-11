@@ -1,9 +1,9 @@
 // — a media degrade boundary must be ATTRIBUTABLE: the graceful-degrade return value stays
 // exactly as documented ([] for an absent/failed source, 502 for a dead thumbnail upstream), but the
 // FAILURE REASON must not be thrown away, or six different causes collapse to one indistinguishable
-// observation. This directory has fixed exactly this class three times already — retention.ts:284
-//, sidecar.ts:343, and ytdlp.ts — and each fix stopped at its own file. spotify.ts and
-// thumbs.ts are the siblings #767 explicitly deferred ("a different file cluster and a future pass's
+// observation. This directory has fixed exactly this class three times already — retention.ts:284,
+// sidecar.ts:343, and ytdlp.ts — and each fix stopped at its own file. spotify.ts and
+// thumbs.ts are the siblings the ytdlp.ts fix explicitly deferred ("a different file cluster and a future pass's
 // business"); this guard pins them so a fourth silent copy cannot re-appear.
 //
 // Why a SOURCE SCAN and not only behaviour: the fix is behaviour-preserving — every return value is
@@ -33,7 +33,7 @@ const THUMBS = stripComments(readFileSync(join(MEDIA_DIR, 'thumbs.ts'), 'utf8'))
  * PARAMETER LIST by paren balance first — spotifySearch's signature spans four lines and declares an
  * inline `opts: { ... }` type, so taking the first `{` after the name would close brace balance on
  * the signature and return a stub containing none of the code under guard. (Found by running this
- * guard, exactly as #767's sibling documents for ytDlpSearch.)
+ * guard, exactly as the ytdlp.ts sibling documents for ytDlpSearch.)
  */
 function sliceFunction(src: string, name: string): string {
 	const at = src.indexOf(`function ${name}(`);
@@ -143,7 +143,7 @@ test('ARM 3: distinct Spotify token failures (401, 200-no-token) are observable,
 		expect(linesA.some((l) => l.includes('401'))).toBe(true);
 
 		// Cause B — a 200 token response with NO access_token field: a malformed/unexpected token
-		// response, not a credential refusal and not a miss. This exit (#872 named it: "give :98 its
+		// response, not a credential refusal and not a miss. This exit (the report named it: "give :98 its
 		// warn too") falls between all three arms on a source scan — it is not a bare `catch {` (ARM 1)
 		// and not a `!res.ok` (ARM 2) — so this drive is the one thing that keeps hunk #2's warn from
 		// being reverted invisibly. Degrade value is still [].

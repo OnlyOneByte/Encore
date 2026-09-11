@@ -1,8 +1,9 @@
 // guard: SettingsRepository's four room-scoped methods (getRoom/setRoom/hasRoom/getEffective) must
 // take a REQUIRED roomId — no default initialiser at all — so a caller can never silently
 // address the default room 'main'. A defaulted parameter is invisible to `tsc` by
-// construction, so nothing forces the Nth call site; #653 already shipped that exact bug. This is the
-// same source-scan discipline the rooms chain used for the required listPublic(roomId) at
+// construction, so nothing forces the Nth call site; the un-threaded roomId on PUT
+// /api/settings/room already shipped that exact bug. This is the same source-scan discipline the
+// rooms chain used for the required listPublic(roomId) at
 // rooms/room-identity-wiring.test.ts. Deleting a default is behaviour-preserving, so no behavioural
 // test can red — this scan is what reds on base.
 //
@@ -12,18 +13,19 @@
 //   ARM 2 (belt) — every bare `.getRoom()/.setRoom()/.hasRoom()/.getEffective()` across the seven
 //                   production caller files must be gone (empty-paren shape only; see the known limit).
 //
-// #737 adds two more arms, over RAW source this time. #728 removed the parameter defaults but left the
-// exported constant they had named, with zero non-test callers and a docstring asserting 'main' IS "the
+// The DEFAULT_ROOM_ID report adds two more arms, over RAW source this time. The roomId default
+// removal removed the parameter defaults but left the exported constant they had named, with zero
+// non-test callers and a docstring asserting 'main' IS "the
 // default room's id" — which `rooms.byId('main')` returns null for, because RoomRepository.create mints
 // a ULID. `settings.getRoom(DEFAULT_ROOM_ID)` therefore type-checked, threw nothing, and served
-// pristine defaults instead of the room the box was running: #728's failure mode, one autocomplete
+// pristine defaults instead of the room the box was running: that same failure mode, one autocomplete
 // away. The constant is deleted; these two arms keep it deleted.
 //   ARM 3 — the identifier occurs 0 times in the repository, comments INCLUDED, so neither the export
 //           nor the docstring that made it look correct can come back.
 //   ARM 4 — no NON-TEST file under apps/core/src, plus apps/core/server.ts, mentions it either, so it
 //           cannot be reintroduced somewhere else and re-acquire a production caller.
 // Both read raw rather than stripped source deliberately: stripping would let the misleading docstring
-// return, and the comment contradicting its code is half of what #737 reported.
+// return, and the comment contradicting its code is half of what the DEFAULT_ROOM_ID report flagged.
 import { test, expect } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -48,7 +50,7 @@ const PROD_FILES = [
 		.map((p) => join(SRC_DIR, p))
 ];
 
-// The seven production files that call the room-scoped methods (from the #728 census).
+// The seven production files that call the room-scoped methods (from the roomId-default census).
 const CALLER_PATHS = [
 	join(import.meta.dir, '..', '..', '..', 'server.ts'), // apps/core/server.ts
 	join(import.meta.dir, '..', 'app.ts'),
@@ -97,7 +99,7 @@ test('ARM 3 — the repository no longer names DEFAULT_ROOM_ID at all, comments 
 test('ARM 4 — no non-test production file under apps/core mentions DEFAULT_ROOM_ID', () => {
 	// Wider than ARM 3: the constant must not come back anywhere a production caller could reach it.
 	// Only apps/core/drizzle/0004_rekey_room_settings.sql still names it, as shipped historical prose
-	// about the pre-#728 world; a .sql migration is not scanned here and must not be edited.
+	// about the pre-default-removal world; a .sql migration is not scanned here and must not be edited.
 	const offenders = PROD_FILES.filter((f) => readFileSync(f, 'utf8').includes('DEFAULT_ROOM_ID'));
 	expect(offenders).toEqual([]);
 });

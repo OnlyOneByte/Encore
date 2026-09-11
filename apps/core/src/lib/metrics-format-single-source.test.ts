@@ -1,6 +1,6 @@
 //
 // Guards the two /metrics route components against re-growing their OWN copy of a formatter that
-// $lib/metrics-format.ts (and $lib/clock.ts) exists to single-source. See issue #603.
+// $lib/metrics-format.ts (and $lib/clock.ts) exists to single-source.
 //
 // THE DEFECT THESE BOUND. Both routes render the realtime factor (`0.29×`) by open-coding
 // `${v.toFixed(2)}×` — it lived at four sites across the two files while a `rt()` helper sat in one

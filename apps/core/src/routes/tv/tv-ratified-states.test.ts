@@ -129,7 +129,7 @@ test('XR-TV-11: each takeover owns one colour family, drawn as a family-coloured
 	}
 	// three distinct families, so colour is a real discriminator
 	expect(seen.size).toBe(3);
-	// the retired --accent-strong (#840/XR-COL-11) must not have crept back in
+	// the retired --accent-strong (XR-COL-11) must not have crept back in
 	expect(clean).not.toContain('--accent-strong');
 	// the takeover border width is one shared token
 	expect(/border-left:\s*var\(--tv-takeover-border\)\s*solid/.test(clean)).toBe(true);

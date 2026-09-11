@@ -6,8 +6,8 @@
 //
 // This test drives a REAL JobReaper + JobRepository (in-memory sqlite) to attempts-exhaustion with
 // the PRODUCTION `reportTerminalFailure` wired as the onFailed hook — the same function app.ts and
-// both worker-hub paths call. It used to reconstruct that hook inline (the "fourth copy" issue #451
-// names); asserting the real function instead means a site that diverges from it can no longer pass.
+// both worker-hub paths call. It used to reconstruct that hook inline (the "fourth copy" hazard);
+// asserting the real function instead means a site that diverges from it can no longer pass.
 // A `media:status: failed` must reach the broadcast sink and the scratch must be reclaimed.
 // reaper.test.ts asserts the media STATE after the settle, but nothing about a broadcast — there was
 // no broadcast seam before this fix.
@@ -61,7 +61,7 @@ test('reaper-killed stems cook broadcasts media:status failed + logs uniformly (
 		const { jobs, job, broadcasts } = exhaust('stems', { stemStatus: 'queued' });
 		// Reaper path reached terminal failed (not #onFailed).
 		expect(jobs.byId(job.id)!.status).toBe('failed');
-		// The regression: before #303 broadcasts was []. Now exactly one media:status: failed reaches the sink.
+		// The regression: before this fix broadcasts was []. Now exactly one media:status: failed reaches the sink.
 		const statusEvents = broadcasts.filter((e) => e.type === 'media:status');
 		expect(statusEvents.length).toBe(1);
 		const ev = statusEvents[0] as Extract<ServerEvent, { type: 'media:status' }>;

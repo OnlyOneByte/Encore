@@ -1,19 +1,20 @@
 // Regression guard for the SILENT-AUDIO-AFTER-A-COMMON-ACTION class — the prevention split
-// out of #694. The same defect has shipped three times on the same two media elements, each caught
+// out of the skip-silence fix. The same defect has shipped three times on the same two media elements, each caught
 // by a human at a party rather than a test:
 //
-//   | Issue | Element      | Symptom                                                              |
-//   |-------|--------------|----------------------------------------------------------------------|
-//   | #477  | instrumental | SILENT after a song change until a tone press rebuilt the graph      |
-//   | #434  | guide        | jumped to FULL VOLUME after a transpose, ignoring the room level     |
-//   | #694  | guide        | SILENT after a skipped song until a tone press                       |
+//   | Defect                | Element      | Symptom                                                              |
+//   |-----------------------|--------------|----------------------------------------------------------------------|
+//   | song-change silence   | instrumental | SILENT after a song change until a tone press rebuilt the graph      |
+//   | transpose full-volume | guide        | jumped to FULL VOLUME after a transpose, ignoring the room level     |
+//   | skip silence          | guide        | SILENT after a skipped song until a tone press                       |
 //
 // All three are one shape: an audio graph whose lifetime was modelled on the wrong thing, and no test
 // that drove a real ACTION SEQUENCE. Every one needed TWO actions in order (set level THEN transpose;
 // play THEN change song; skip THEN listen), so single-action tests caught none of them. The existing
 // guards (pitch-shift-graph-lifetime.test.ts, guide-gain-after-transpose.test.ts) are per-issue
 // mutation traps written after the fact plus a source scan of TvPlayer.svelte — a source scan proves a
-// line is PRESENT, not that the audio is audible, which is exactly how #694 shipped next door to #477.
+// line is PRESENT, not that the audio is audible, which is exactly how skip silence shipped next
+// door to song-change silence.
 //
 // This is the decision-B version (issue comment): it actually MOUNTS TvPlayer.svelte and RUNS its
 // $effects, under a compiled-Svelte + happy-dom harness (test-setup/, wired by the root bunfig.toml)
@@ -25,10 +26,10 @@
 //          a transpose ROUTES it through WebAudio, `HTMLMediaElement.volume` is bypassed, so audibility
 //          is "the graph is routed to a running context and NOT degraded, wired through to the
 //          destination, and its GainNode is non-zero" — a routed-but-disconnected graph is the
-//          #477/#694 defect.
+//          song-change-silence / skip-silence defect.
 //   INV-2 (gain): the level the room last set is the level actually applied — the element's `.volume`
 //          on the native path, the GainNode's `gain.value` once routed. A routed GainNode stuck at the
-//          default 1 while the room asked for less is the #434 defect.
+//          default 1 while the room asked for less is the transpose full-volume defect.
 //
 // The biting-mutation proof (each of the three old bugs reintroduced into a TvPlayer copy reds this
 // matrix) is in the PR body; the guards for "which source line" remain the two files above.
@@ -219,7 +220,7 @@ test('matrix: instrumental + guide stay audible and correctly gained across comm
 			// legitimately silent, not a regression.
 			if (playing && level > 0) expect(gd.audible, `${where}: guide audible`).toBe(true);
 			// INV-2 guide: the level actually applied equals the room level, on EITHER path. Once routed
-			// this is the #434 assertion — a routed GainNode must not sit at the default 1.
+			// this is the transpose full-volume assertion — a routed GainNode must not sit at the default 1.
 			expect(gd.gain, `${where}: guide gain == room level`).toBeCloseTo(level, 6);
 		}
 	}
@@ -249,7 +250,7 @@ test('matrix: instrumental + guide stay audible and correctly gained across comm
 	await settle();
 	await assertInvariants('after transpose back to 0', true, 0.2);
 
-	// SONG CHANGE in place (a skip: same slot, new song). #477 (master) + #694 (guide): the per-song
+	// SONG CHANGE in place (a skip: same slot, new song). Master and guide alike: the per-song
 	// reset must keep both routed graphs ALIVE (setShift(0), re-apply gain), NOT detach them.
 	props.media = g2;
 	props.entryId = 'e2';

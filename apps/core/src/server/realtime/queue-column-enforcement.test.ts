@@ -1,12 +1,12 @@
 // — what queue_entries ACTUALLY rejects at the write-behind flush, measured, so the add-arm
 // guard's rationale (hub.ts) can never regress back to "the NOT NULL enum column rejects it".
 //
-// The add-arm guard added by #305 is correct and stays. Its old comment credited the column's
+// The add-arm guard added by the shape-reject fix is correct and stays. Its old comment credited the column's
 // constraints with rejecting off-enum/non-finite values. That is measurably false: `queue_entries`
 // has NO CHECK constraint on `status` (drizzle's `enum:` is compile-time only) and stores a garbage
 // `addedAt` past the NOT NULL check — only a MISSING/null value throws. So for STATUS the guard, not
-// the column, is the only thing keeping the value set honest. addedAt is a different case since #345
-// (5acf86d): the server re-stamps every add's addedAt at the applyQueueOp seam, so the guard's
+// the column, is the only thing keeping the value set honest. addedAt is a different case since the
+// addedAt re-stamp (5acf86d): the server re-stamps every add's addedAt at the applyQueueOp seam, so the guard's
 // finiteness reject on it is a SHAPE reject, not the last line of defence against persisting garbage.
 // This test drives real values into a real migrated DB to pin the column split, source-scans the
 // corrected comments so the belief cannot creep back in (the hazard §3 of the review charter names: a
@@ -106,9 +106,9 @@ test('hub.ts states the measured mechanism, not the false "enum column rejects i
 	expect(src).not.toContain('the NOT NULL enum column an add');
 });
 
-// — since #324 the add-arm's ALLOWED set is the bare literal 'queued', NOT derived from the
+// — since the forged-playing correction the add-arm's ALLOWED set is the bare literal 'queued', NOT derived from the
 // column's enumValues; the enumValues import survives only to pick a word ('server-owned' vs
-// 'off-enum') in the reject-log string. The #317 header rewrite left one clause generalising the
+// 'off-enum') in the reject-log string. The earlier header rewrite left one clause generalising the
 // classification read into the ALLOWED set ("its enumValues ... allowed set can never drift from the
 // column"), which is the false account this pins against. The guard both BANS that false framing and
 // affirmatively requires the corrected mechanism, so deleting the header cannot pass vacuously.
@@ -123,8 +123,8 @@ test('hub.ts header credits the literal, not enumValues, as the add-arm allowed 
 	expect(src).toMatch(/enumValues are read below ONLY to CLASSIFY/);
 });
 
-// — the add-arm rationale must name EVERY field the code server-owns at the add seam. Since #345
-// (5acf86d) the seam `{ ...cmd.op.entry, addedAt: deps.state.nextAddedAt() }` re-stamps addedAt, so
+// — the add-arm rationale must name EVERY field the code server-owns at the add seam. Since the
+// addedAt re-stamp (5acf86d) the seam `{ ...cmd.op.entry, addedAt: deps.state.nextAddedAt() }` re-stamps addedAt, so
 // the server owns rotationSeq AND addedAt; the old prose said only rotationSeq. This arm reads hub.ts,
 // extracts the fields the CODE rewrites at the seam, extracts the fields the PROSE declares
 // server-owned, and asserts code ⊆ prose — self-extending, since a third rewritten field reds it too.
@@ -132,7 +132,7 @@ test('hub.ts header credits the literal, not enumValues, as the add-arm allowed 
 // Comment stripping is INVERTED here on purpose: the defect lives in the PROSE, so the code side is
 // stripped of comments (to read only what the seam literal actually rewrites) while the prose side is
 // read AS comments. In-repo precedent for the inversion: routes/api/leave/doc-accuracy.test.ts and
-// lib/tv/pitch-shift-doc-accuracy.test.ts (#567/#581/#622). Stripping is load-bearing: `addedAt`
+// lib/tv/pitch-shift-doc-accuracy.test.ts. Stripping is load-bearing: `addedAt`
 // occurs many times raw but only once in the seam literal, so a whole-file scan would read it as
 // "named" from prose alone.
 test('hub.ts prose names every field the add seam server-owns (rotationSeq AND addedAt)', () => {

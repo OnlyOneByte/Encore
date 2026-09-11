@@ -1,5 +1,5 @@
 /*
- * guard: each scan helper has exactly one definition (issue #841 — XR-VER-14).
+ * guard: each scan helper has exactly one definition (XR-VER-14).
  *
  * ── WHAT THIS IS FOR ───────────────────────────────────────────────────────────────────────────────
  *
@@ -172,7 +172,7 @@ test('the shared markupControls and classPresent are the ones the guards behaved
 	// a non-interactive element contributes nothing
 	expect(ctrl.classes.has('plain')).toBe(false);
 
-	// exact-token semantics from #682: a hyphen fragment and an interpolated identifier are NOT classes
+	// exact-token semantics: a hyphen fragment and an interpolated identifier are NOT classes
 	expect(classPresent('<div class="badqr-b"></div>', 'b')).toBe(false);
 	expect(classPresent('<div class="badqr-b"></div>', 'badqr-b')).toBe(true);
 	expect(classPresent('<div class="pill {row.outcome}"></div>', 'row')).toBe(false);

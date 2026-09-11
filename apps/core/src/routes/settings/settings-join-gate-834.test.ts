@@ -52,7 +52,7 @@ test('an unjoined visitor to /settings is redirected to / (not /join), carrying 
 });
 
 test("leaving the room sends the guest to / (the landing page), not the retired /join", () => {
-	// The leave handler clears the session cookie and navigates; after #834 Q2-A the honest destination
+	// The leave handler clears the session cookie and navigates; after Q2-A the honest destination
 	// is `/` (which shows the join UI unjoined), never `/join`. Source-scan: mounting the settings page
 	// needs its full load data, so the navigation target is pinned from the source. A revert reds here.
 	const page = readFileSync(join(import.meta.dir, '+page.svelte'), 'utf8')

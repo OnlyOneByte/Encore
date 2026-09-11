@@ -82,7 +82,7 @@ test('contrastRatio matches known WCAG values', () => {
 });
 
 test('the surfaces production measures against are the tokens app.css declares', () => {
-	// The guard #819 exists for. `SURFACES` in `colors.ts` cannot read `app.css` (browser bundle, no
+	// Why this guard exists: `SURFACES` in `colors.ts` cannot read `app.css` (browser bundle, no
 	// filesystem), so this assertion is the only thing standing between `isLegibleSingerColor` and a
 	// surface the app stopped painting: change `--bg` or `--card` in `app.css` without updating
 	// `colors.ts` and this reds, naming both values. It also covers the three contrast tests below,
@@ -322,7 +322,7 @@ test('nextSwatchIndex moves correctly from a preset value (the control case)', (
 	expect(nextSwatchIndex(SINGER_COLORS[2]!, -1)).toBe(1);
 });
 
-test('nextSwatchIndex after a wheel pick matches the tab stop, not indexOf(-1) — #215', () => {
+test('nextSwatchIndex after a wheel pick matches the tab stop, not indexOf(-1)', () => {
 	// value is a wheel hex (no preset matches), reproducing the exact reported state.
 	const wheelHex = hueToHex(120);
 	expect(SINGER_COLORS as readonly string[]).not.toContain(wheelHex); // premise: genuinely non-preset
@@ -332,7 +332,7 @@ test('nextSwatchIndex after a wheel pick matches the tab stop, not indexOf(-1) �
 	expect(nextSwatchIndex(wheelHex, -1)).toBe(7);
 	// Mutation proof: reverting the base in nextSwatchIndex to `SINGER_COLORS.indexOf(value)` makes this
 	// (1 + -1 + 8) % 8 => wheelHex gives base -1, so step +1 -> 0 (fails toBe(1)) and step -1 -> 6
-	// (fails toBe(7)). Both assertions red exactly as #215 describes.
+	// (fails toBe(7)). Both assertions red exactly as the reported defect describes.
 });
 
 test('hueToHex fully reduces chroma into sRGB gamut, even from a high starting chroma (no clip)', () => {
@@ -380,7 +380,7 @@ test('hueToHex fully reduces chroma into sRGB gamut, even from a high starting c
 	expect(sawFixedFloorOutOfGamut).toBe(true);
 });
 
-// ── #425: the stage stores a real colour ───────────────────────────────────
+// ── the stage stores a real colour ─────────────────────────────────────────
 
 // The constant is a hand-written literal because SQL cannot run an OKLCH conversion — the SQLite column
 // default and the 0005 migration's backfill both need these bytes. This is the guard that stops the
@@ -415,7 +415,7 @@ test('normalizeStageColor keeps the caller current colour for anything unparseab
 	}
 });
 
-// This is the assertion that pins the OWNER'S RULING rather than the mechanism. Ruling B on #425 was
+// This is the assertion that pins the OWNER'S RULING rather than the mechanism. Ruling B was
 // "drop the lightness/chroma legibility pin"; the sibling `normalizeSingerColor` still enforces one, so
 // a reviewer cannot tell the two apart by reading either function alone. If someone reinstates a bound
 // on the stage — copying the singer validator, most likely — this reds and names why it must not.
@@ -465,7 +465,7 @@ test('hueOfColor is independent of lightness and chroma, and greys have no hue',
 	expect(hueOfColor('not a colour')).toBe(0);
 });
 
-// ── #782 stage dim (piece 3 of #425) ────────────────────────────────────────
+// ── stage dim (piece 3 of the stage-colour work) ────────────────────────────
 
 test('dimTowardBlack with dim 0 returns the colour untouched', () => {
 	// 0 is the default, so this is the invisible-migration promise at the pixel level: no dim = no change.

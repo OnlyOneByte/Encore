@@ -1,4 +1,4 @@
-// Regression for issue #348: `ClientCommand.baseRev` was a required field, minted client-side,
+// Regression: `ClientCommand.baseRev` was a required field, minted client-side,
 // documented as an optimistic-concurrency check — and read by NOTHING on the server. Worse, it
 // could not simply be wired: `rev` is a ROOM revision that `setPlayback` (a pause) bumps
 // (store.ts), so a naive `baseRev !== state.rev → reject` would spuriously reject valid queue
@@ -88,14 +88,14 @@ test('no non-test source under apps/core references baseRev', () => {
 });
 
 // The three .ts/.svelte scans above do NOT reach the e2e harness: `apps/core/e2e/**/*.mjs` are
-// live-server scripts invoked by nothing in `bun test`, so #348 left three of them still sending or
+// live-server scripts invoked by nothing in `bun test`, so the deletion left three of them still sending or
 // documenting the dead field. This scan closes that gap — precedent for widening a source-scan
-// guard to `.mjs` is #408 (task-number-hygiene.test.ts).
+// guard to `.mjs` is task-number-hygiene.test.ts.
 //
 // It bans the AFFIRMATIVE declaration `baseRev:` (a property/send), not the bare word: after the
 // stale prose was corrected, the probes legitimately NAME `baseRev` as the removed field in a
 // `report()` string literal that stripComments cannot blank (it is not a comment), and a bare-word
-// ban self-reds on it — the exact trap that fired three times on #254. A re-added send is always
+// ban self-reds on it — the exact trap that has fired three times before. A re-added send is always
 // `baseRev: <value>`, so the colon form catches every regression while leaving honest prose alone.
 const E2E_DIR = join(import.meta.dir, '..', '..', '..', 'e2e');
 

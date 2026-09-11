@@ -59,7 +59,7 @@ test('reject rolls back the optimistic add via the recorded inverse', () => {
 	expect(store.pendingCount).toBe(0);
 });
 
-// Regression for issue #101: a rejected MOVE must roll back to the pre-drag order, not a third
+// Regression for the rejected-move rollback defect: a rejected MOVE must roll back to the pre-drag order, not a third
 // half-applied order, and must not leave rotationSeq non-contiguous or re-apply on the next op.
 // RED on base: base rolled back via applyOp(inverse) which only touches rotationSeq while the
 // forward move (applyAndReseq -> reorderWithinSinger) had permuted addedAt, so the addedAt
@@ -113,7 +113,7 @@ test('reject of an earlier pending op preserves a later still-pending op', () =>
 	expect(store.pendingCount).toBe(1); // only B remains pending
 });
 
-// Regression for the pr-bot #168 finding: a rejected op must roll back to CURRENT server truth,
+// Regression for the pr-bot finding: a rejected op must roll back to CURRENT server truth,
 // not to a stale issue-time snapshot. A second phone's add lands as a normal queue:patch between
 // our pending move and its reject; the reject must keep that add, not discard it.
 // RED on the frozen-snapshot draft (rolled back to m1,m2,m3, dropping sam-song); GREEN once the
@@ -156,16 +156,16 @@ test('reject rolls back to CURRENT truth, preserving a server patch that arrived
 	// Now my move is rejected. The rollback must land on the WITH-PATCH world minus my move —
 	// sam's song MUST survive, not be discarded by a stale pre-patch snapshot.
 	store.onServerEvent({ type: 'op:reject', clientOpId: 'id6', reason: 'unknown entry' });
-	expect(store.entries.map((e) => e.mediaId)).toContain('sm'); // #168: server add preserved
+	expect(store.entries.map((e) => e.mediaId)).toContain('sm'); // server add preserved
 	expect(store.pendingCount).toBe(0);
 });
 
-// Issue #869 Finding 1: #onSync must refresh each pending op's rollback target to CURRENT truth,
+// Rollback-target finding 1: #onSync must refresh each pending op's rollback target to CURRENT truth,
 // exactly as #onPatch does — the two share #rebasePending. This is the reconnect path:
 // resendPending fires on every queue:sync, so a reject after a resync rolls back through here.
 // RED with the snapshot-refresh in #rebasePending removed on the #onSync path: the reject would
 // then roll back to a stale pre-sync world and silently drop the entries the resync brought.
-test('reject after a queue:sync rolls back to the post-sync truth, not a stale one (#869 F1)', () => {
+test('reject after a queue:sync rolls back to the post-sync truth, not a stale one (F1)', () => {
 	const { store } = makeStore();
 	// A resync settles the world at [o1], with my add still pending on top.
 	const mine = store.addSong('mine'); // id0 entry / id1 opId (pending)
@@ -192,18 +192,18 @@ test('reject after a queue:sync rolls back to the post-sync truth, not a stale o
 	// The server rejects my resent add. The rollback MUST land on the post-sync world minus my add —
 	// o2 (which arrived on the second sync) must survive, not be discarded by a stale snapshot.
 	store.onServerEvent({ type: 'op:reject', clientOpId: 'id1', reason: 'unknown media' });
-	expect(store.entries.map((e) => e.id)).toEqual(['o1', 'o2']); // #869 F1: post-sync truth preserved
+	expect(store.entries.map((e) => e.id)).toEqual(['o1', 'o2']); // F1: post-sync truth preserved
 	expect(store.pendingCount).toBe(0);
 });
 
-// Issue #869 Finding 2: #onReject's `p.seq <= pending.seq` filter (skip ops already baked into the
+// Rollback-target finding 2: #onReject's `p.seq <= pending.seq` filter (skip ops already baked into the
 // rejected op's snapshot) must be exercised by rejecting the LATER op first, then the EARLIER one.
-// The #101 test rejects the EARLIER op, so its surviving op is later and the `<=` branch is never
+// The earlier-op-reject test above rejects the EARLIER op, so its surviving op is later and the `<=` branch is never
 // taken — its comment claims a branch its test does not enter. This test rejects B (later) then A
 // (earlier): rejecting A must roll back to A's pre-op snapshot AND drop B's already-rejected effect.
 // RED with the seq filter removed: the loop then refreshes A's snapshot from a base that already
 // contains A's own effect, so A's rollback target stops being pre-op and A survives its own reject.
-test('reject the LATER pending op then the EARLIER one — both roll back cleanly (#869 F2)', () => {
+test('reject the LATER pending op then the EARLIER one — both roll back cleanly (F2)', () => {
 	const { store } = makeStore();
 	// Settle the world at [o1] so the ops under test are the only pending ones.
 	store.onServerEvent({
@@ -226,7 +226,7 @@ test('reject the LATER pending op then the EARLIER one — both roll back cleanl
 	// Reject A (the EARLIER op). Its rollback target is its own pre-op snapshot ([o1]); with B already
 	// gone, the world must return to exactly [o1] — A must not survive its own reject.
 	store.onServerEvent({ type: 'op:reject', clientOpId: 'id1', reason: 'unknown media' });
-	expect(store.entries.map((e) => e.id)).toEqual(['o1']); // #869 F2: A gone, no half-applied third state
+	expect(store.entries.map((e) => e.id)).toEqual(['o1']); // F2: A gone, no half-applied third state
 	expect(store.pendingCount).toBe(0);
 });
 
@@ -323,7 +323,7 @@ test('queue:patch with authoritative entries snaps to server order (no flicker),
 	expect(store.rev).toBe(5);
 });
 
-// Issue #115: #onPatch must not rewind #rev below what a higher-rev event already set. #rev is what
+// Regression for the rev-rewind defect: #onPatch must not rewind #rev below what a higher-rev event already set. #rev is what
 // the WS gap detector reads (getLastRev at client.ts:161); if a lower-rev queue:patch rewinds it, the
 // next legitimate patch is measured against a stale expected and discarded, forcing a full resync to
 // every phone — the exact storm #noteRev's advance-only rule was written to stop, reintroduced here.
@@ -343,7 +343,7 @@ test('a lower-rev queue:patch does NOT rewind rev, and the next real patch still
 	store.onServerEvent({ type: 'playback:state', state: pb, rev: 10 });
 	expect(store.rev).toBe(10);
 
-	// an out-of-order queue:patch carrying a LOWER rev arrives (reachable once #114's duplicate
+	// an out-of-order queue:patch carrying a LOWER rev arrives (reachable once the undisposed duplicate
 	// socket breaks single-socket ordering). It must NOT rewind the counter.
 	store.onServerEvent({ type: 'queue:patch', patch: { rev: 4, ops: [] } });
 	expect(store.rev).toBe(10); // guarded: NOT 4

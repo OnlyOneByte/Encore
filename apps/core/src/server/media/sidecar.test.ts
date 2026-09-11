@@ -205,7 +205,7 @@ describe('sidecar I/O and index rebuild', () => {
 		}
 	});
 
-	it('a PARTIAL sidecar (only `id`) fails the shape check — a hand edit must not throw a boot pass (#446 defect 2)', async () => {
+	it('a PARTIAL sidecar (only `id`) fails the shape check — a hand edit must not throw a boot pass (defect 2)', async () => {
 		// Hand-editing meta/<id>.json is the design (writeSidecar is pretty-printed on purpose). A hand
 		// edit that keeps only the id — the shape `{"id":"m1"}` — used to PASS readSidecar's id-only check,
 		// then throw deep inside a boot maintenance pass (mediaFromSidecar reads s.origin/raw/canonical,
@@ -229,7 +229,7 @@ describe('sidecar I/O and index rebuild', () => {
 		}
 	});
 
-	it('mediaFromSidecar throws on the partial shape readSidecar now rejects — proving the rejection matters (#446 defect 2)', () => {
+	it('mediaFromSidecar throws on the partial shape readSidecar now rejects — proving the rejection matters (defect 2)', () => {
 		// This is what USED to run when readSidecar returned the partial: a dereference of a missing
 		// section. It documents why widening the predicate is the fix — the partial is genuinely unusable.
 		expect(() => mediaFromSidecar({ id: 'm1' } as unknown as MediaSidecar)).toThrow();
@@ -425,7 +425,7 @@ describe('annotation persistence', () => {
 	});
 });
 
-describe('clearArtifacts (eviction must stick) (#442 §1)', () => {
+describe('clearArtifacts (eviction must stick) (§1)', () => {
 	it('nulls all four derived-artifact fields on the authoritative record', async () => {
 		const s0 = sidecarFromMedia(
 			media({

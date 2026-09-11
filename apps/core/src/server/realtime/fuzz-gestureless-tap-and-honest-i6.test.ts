@@ -1,6 +1,6 @@
 // guard: the fuzz driver's gestureless policy must be COMPLETE about the gesture. Three
 // findings, one root cause — the policy was honest about the --autoplay-policy FLAG but never
-// delivered the one real GESTURE #332 made available, so it (A) excused a blocked TV too narrowly,
+// delivered the one real GESTURE the CDP tap helper made available, so it (A) excused a blocked TV too narrowly,
 // (B) never unblocked one, and (C) misreported the state when I6 did fire.
 //
 // A — autoplayRefused keyed on `currentTime === 0`, so a gestureless `seek` moved the playhead off 0
@@ -51,7 +51,7 @@ function fnBody(src: string, declStr: string): string {
 
 const REFUSED_BODY = fnBody(PROBE, 'function autoplayRefused(w)');
 
-test('A · autoplayRefused no longer keys on currentTime === 0 (#591 A: a seek defeated it)', () => {
+test('A · autoplayRefused no longer keys on currentTime === 0 (a seek defeated it)', () => {
 	// On base the body is `!AUTOPLAY && w.master?.paused === true && w.master?.currentTime === 0`.
 	// The currentTime conjunct is the phantom's root: a gestureless seek moves the playhead off 0
 	// while the element stays paused at its preload floor. It must be gone.
@@ -63,7 +63,7 @@ test('A · autoplayRefused no longer keys on currentTime === 0 (#591 A: a seek d
 	expect(REFUSED_BODY).toMatch(/paused\s*===\s*true/);
 });
 
-test('B · the driver delivers the real gesture #332 made available (#591 B: realClick was absent)', () => {
+test('B · the driver delivers the real gesture the CDP tap helper made available (realClick was absent)', () => {
 	// On base realClick appears 0 times in fuzz.mjs, so a gestureless TV never started. The fix calls
 	// the trusted CDP gesture (cdp.mjs realClick, proven 7/7 by p13-tap-to-start.mjs).
 	expect(PROBE).toMatch(/\brealClick\(/);
@@ -72,7 +72,7 @@ test('B · the driver delivers the real gesture #332 made available (#591 B: rea
 	expect(PROBE).toMatch(/real-tap/);
 });
 
-test('B · a run that never evaluated I6 exits 2, never 0 — the non-vacuity floor (#591 B)', () => {
+test('B · a run that never evaluated I6 exits 2, never 0 — the non-vacuity floor', () => {
 	// On base the summary path prints green and exits 0 even when I6 checked 0 of 24. I6 is the
 	// invariant this file calls the one that cannot be dropped; a run that never fired it measured
 	// nothing about audio and must not report green. The floor sets exitCode = 2 on stats.I6.checked === 0.
@@ -84,7 +84,7 @@ test('B · a run that never evaluated I6 exits 2, never 0 — the non-vacuity fl
 	expect(region).toMatch(/exitCode\s*=\s*2/);
 });
 
-test('C · the I6 silent-room report interpolates the server position, not a hardcoded 0 (#591 C)', () => {
+test('C · the I6 silent-room report interpolates the server position, not a hardcoded 0', () => {
 	// On base checkI6 hardcoded the clause `a server position frozen at 0` while the line above
 	// interpolated a NON-ZERO positionSec — a self-contradiction whose false half is the actionable
 	// one. The clause must no longer assert a literal frozen-at-0.

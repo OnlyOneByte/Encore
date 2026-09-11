@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /*
- * Route-inventory guard for issue #644 — the standard the owner chose (option A):
+ * Route-inventory guard for the cross-page consistency ruling — the standard the owner chose (option A):
  *
  *   Every route page EXCEPT /tv and /components renders exactly one <h1> landmark naming the page,
  *   plus a back affordance whenever it is not a root/entry surface.
@@ -12,7 +12,7 @@ import { join } from 'node:path';
  * consistency and no way back — nothing asserted the invariant, so the next new page could repeat it.
  * The h1 + back now come from the shared PageHeader component; the ROOT surface (`/`) carries its
  * wordmark as its own <h1 class="brand"> and is an entry point, so it needs no back. (`/join` was such
- * a root too until #834 retired it — its join UI is now the unjoined branch of `/`.)
+ * a root too until the landing-page rebuild retired it — its join UI is now the unjoined branch of `/`.)
  *
  * The exemption list is the explicit decision, written down here so removing a page from it is a
  * conscious act a reviewer sees:

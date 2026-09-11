@@ -1,4 +1,4 @@
-// Guard for issue #253: the cooking-status UI had redundant elements the owner asked to remove. Each
+// Guard for the cooking-status UI cleanup: it had redundant elements the owner asked to remove. Each
 // was a pure-markup deletion, so nothing BEHAVIOURAL reds if it comes
 // back - this source-scan guard is the load-bearing regression trap. It reads each component source,
 // strips comments (so the explanatory prose that NAMES the removed elements can neither satisfy nor
@@ -9,7 +9,7 @@
 //      "Making karaoke" stage line remain.
 // Each removal is paired with a not-vacuous sentinel that reds if the whole component vanished.
 //
-// RETIRED IN #903: a third arm pinned QueueSheet.svelte's chevron removal, and a #791 loop pinned the
+// RETIRED WITH THE DRAWER DELETION: a third arm pinned QueueSheet.svelte's chevron removal, and a loop pinned the
 // pinned-pane/scrolling-list split on QueueSheet.svelte + QueueSheetDrawer.svelte. Both components were
 // deleted with the drawer surface, so those arms had no subject left and no successor to re-point at —
 // nothing else in the tree renders a pull-up sheet. The two arms that remain here are untouched, and

@@ -127,7 +127,7 @@ test('the search dock is docked on home for a joined singer, and the + Add a tur
 	expect(PAGE).not.toContain('openBrowse');
 
 	// EXACTLY ONE fixed docked band on the route, and it measures into --dock-h. Two bands both binding
-	// dockH was the pre-#902 shape (`.cta-dock` on home, `.search-dock` on browse); collapsing to one is
+	// dockH was the PREVIOUS shape (`.cta-dock` on home, `.search-dock` on browse); collapsing to one is
 	// scope item 3. Count the fixed docks by their shared band contract line.
 	const bandBinds = PAGE.match(/bind:clientHeight=\{dockH\}/g) ?? [];
 	expect(bandBinds.length).toBe(1);
@@ -142,8 +142,8 @@ test('the search dock is docked on home for a joined singer, and the + Add a tur
 
 // ── results are IN PLACE, driven by the query, with no navigation ─────────────────────────
 test('the results view is driven by the query in place, with no browse mode or ?browse=1', () => {
-	// THE OWNER CORRECTION. Pre-#902 browsing was a `?browse=1` push whose only job was a history entry
-	// so Back returned to the queue. #902 renders results IN PLACE over the queue while the box has a
+	// THE OWNER CORRECTION. Browsing USED to be a `?browse=1` push whose only job was a history entry
+	// so Back returned to the queue. This route now renders results IN PLACE over the queue while the box has a
 	// query, so there is no navigation and no mode: the split is `searchActive`, derived from `query`.
 	expect(PAGE).toContain('const searchActive = $derived(query.trim().length > 0)');
 	// The mode, its navigations, and the URL read that backed them are GONE.
@@ -165,7 +165,7 @@ test('the results view is driven by the query in place, with no browse mode or ?
 
 test('every result surface is gated on searchActive — an empty box shows the queue, not a result list', () => {
 	/*
-	 * The claim is unchanged in spirit from #832/#833 and still load-bearing: if any result block loses
+	 * The claim is unchanged in spirit from the earlier home-shell guards and still load-bearing: if any result block loses
 	 * its gate, home shows the library list under an empty box instead of the live queue. Only the gate
 	 * moved — from `{#if browsing}` (the retired mode) to `{#if searchActive}` (query-driven).
 	 * Weakening this to "some gate exists" would be the wrong answer: the point is that EVERY result

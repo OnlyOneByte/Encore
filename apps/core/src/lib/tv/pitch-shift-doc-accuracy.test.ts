@@ -2,7 +2,7 @@
 // comments (plus its callers') cite it by coordinate and by identifier. Both idioms rot: a documented
 // method can be renamed or never have existed (the lifecycle docstring named a phantom `attach()`),
 // and a `pitch-shift.ts:<line>` citation drifts the moment a line is inserted above it. This is the
-// /#376/#395/#465 untrue-comment / rotted-citation class. This guard makes both machine-checkable.
+// untrue-comment / rotted-citation class. This guard makes both machine-checkable.
 //
 // Comment stripping is INVERTED here, on purpose: the defect lives IN the comments, so stripping them
 // would blind the guard to its whole subject — same reasoning doc-accuracy.test.ts states in its header.
@@ -19,9 +19,9 @@ const TVPLAYER = join(TV, 'TvPlayer.svelte');
 
 const pitchSrc = readFileSync(PITCH, 'utf8');
 
-// The files whose comments cite pitch-shift.ts. #567 landed in two parts: PR #580 fixed pitch-shift.ts
-// and this test file; #581 fixed TvPlayer.svelte's two remaining rotted line citations (the deferral
-// behind owner-owned #396 is now lifted, #396 having merged) and ADDED it here. Keep this list and the
+// The files whose comments cite pitch-shift.ts. This guard landed in two parts: the first fixed pitch-shift.ts
+// and this test file; the second fixed TvPlayer.svelte's two remaining rotted line citations (the deferral
+// behind the owner-owned change is now lifted, that change having merged) and ADDED it here. Keep this list and the
 // SCANNED.length sentinel in sync if another citing file appears.
 const SCANNED = [PITCH, LIFETIME, TVPLAYER];
 

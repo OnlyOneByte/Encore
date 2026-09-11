@@ -226,7 +226,7 @@ test('distinct names are unaffected', () => {
 // Before this issue nothing wrote the rooms table and doJoin ignored any code: every join landed in
 // one implicit singleton party. The identity layer mints a room and lets a phone join a SPECIFIC one
 // by its code (the QR encodes it), returning WHICH room the join landed in. Playback/queue/singers
-// are NOT yet scoped to the room — that is #655/#656 — so the identity is what the join returns and
+// are NOT yet scoped to the room — that is the room-scoping step — so the identity is what the join returns and
 // the session then carries, not (yet) a column on the singer.
 
 test("a bare join lands in the core's single active room", () => {

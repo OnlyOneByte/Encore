@@ -1,10 +1,10 @@
-// Regression guard for #527 -- "Semitones not affecting instrumental sometimes".
+// Regression guard for "Semitones not affecting instrumental sometimes".
 //
 // ROOT CAUSE (owner-triaged at 8b115b8, confirmed by reading the code): PitchShiftGraph.build()
 // guarded on `if (this.routed || this.degraded) return;` (pitch-shift.ts). `degraded` is set when a
 // context cannot reach `running` (no user gesture yet on the TV wall) and NOTHING ever cleared it, so
 // it was a PERMANENT verdict rather than "the last attempt failed". The master <audio> element is
-// mounted unconditionally and its graph lives as long as the SLOT (kept, not rebuilt, per #477), so
+// mounted unconditionally and its graph lives as long as the SLOT (kept, not rebuilt, per the song-change reset), so
 // once it degraded pre-gesture the instrumental never shifted again -- while the guide element, which
 // is remounted with a FRESH graph per song, recovers. That is the "one shifts, the other does not"
 // asymmetry the report describes.
@@ -105,7 +105,7 @@ test('a graph that degraded pre-gesture RETRIES and routes once a context can re
 	// SAME (master/instrumental) graph must now route the element through the shifter.
 	canResume = true;
 	await graph.setShift(3);
-	// THIS is the #527 assertion: false on base (degraded latched terminal), true with the fix.
+	// THIS is the retry assertion: false on base (degraded latched terminal), true with the fix.
 	expect(graph.isRouted).toBe(true);
 	expect(graph.isDegraded).toBe(false);
 });

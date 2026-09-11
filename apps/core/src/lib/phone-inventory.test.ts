@@ -169,9 +169,9 @@ const PHONE_ROUTES = ALL_ROUTES.filter((r) => !isExempt(r.route));
  * new name here instead of leaving a dead exemption behind and the new surface unchecked.
  */
 test('XR-PH-08: the phone route set is derived from the filesystem, and every exemption is the spec\u2019s', () => {
-	// Re-anchored 4 -> 3 by #834: `/join` was retired (its state is now the unjoined branch of `/`), so
+	// Re-anchored 4 -> 3 when `/join` was retired (its state is now the unjoined branch of `/`), so
 	// the real phone-route set is `/`, `/settings`, `/stats`. Still non-vacuous — a walk that enumerates
-	// 0/1/2 (an over-broad exemption or a moved routes/ dir) still fails here. Keeps #849's per-site
+	// 0/1/2 (an over-broad exemption or a moved routes/ dir) still fails here. Keeps the per-site
 	// floor-tag anchor (below); the value 3 is recorded to match in non-vacuity-floors.test.ts's FLOORS.
 	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(3); // @nvf-floor PHONE_ROUTES.length
 
@@ -211,7 +211,7 @@ test('XR-PH-08: every phone route renders a designed empty, loading, error and o
 	}
 
 	// Non-vacuity floor: the walk really visited every route x condition pair. Without this, a broken
-	// route walk reports zero offenders and reads exactly like a clean tree (issues #140/#145).
+	// route walk reports zero offenders and reads exactly like a clean tree.
 	expect(pairsChecked).toBe(PHONE_ROUTES.length * CONDITIONS.length);
 	expect(missing).toEqual([]);
 });

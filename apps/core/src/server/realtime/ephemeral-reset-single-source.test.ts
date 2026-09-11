@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 
 // The per-song ephemeral reset (positionSec/keyShift/background/guideLevel) must be named in ONE
 // place — the EPHEMERAL_RESET const — and spread at EVERY song-start reset site, not re-typed as a
-// literal at each setPlayback call. issue #402: re-typing it at N sites let 7 of 16 (field × site)
+// literal at each setPlayback call. THE DEFECT: re-typing it at N sites let 7 of 16 (field × site)
 // pairs drop silently, and keyShift already shipped missing from one site once. A behaviour-
 // preserving refactor has no behavioural test that can red (the suite is green before and after),
 // so this is a source scan. Comments are STRIPPED first so the prose that describes the old shape
@@ -13,7 +13,7 @@ const strip = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(
 const playerSrc = strip(readFileSync(new URL('./player.ts', import.meta.url), 'utf8'));
 
 // Extract the object-literal argument of every `state.setPlayback({ ... })` call, matched by
-// balanced braces so nested objects do not truncate the slice. issue #649: pinning a FLOOR on the
+// balanced braces so nested objects do not truncate the slice. A LATER FINDING: pinning a FLOOR on the
 // spread count (`>= 4`) is blind to a NEW un-spread song-start site — the four existing spreads keep
 // the floor satisfied while the fifth site leaks. Deriving the site set from the code instead means
 // a sixth, seventh, ... is caught for free.
@@ -57,7 +57,7 @@ test('the per-song ephemeral reset set is named in exactly ONE const, not re-typ
 
 	// Every setPlayback call that CHANGES currentEntryId is a song-start / idle-clear reset site and
 	// MUST spread the const. The site set is derived from the code (not a hardcoded floor), so a
-	// NEWLY-ADDED currentEntryId-changing site that forgets the spread reds this test — the #649
+	// NEWLY-ADDED currentEntryId-changing site that forgets the spread reds this test — the floor's
 	// hole. `>= 4` is kept ONLY as a not-vacuous sentinel (the scan must have found the four known
 	// sites), never as the enumeration itself. Anchoring on `setPlayback({` excludes store.ts's
 	// hydrate heal by construction (it assigns #playback directly, not via setPlayback), which is

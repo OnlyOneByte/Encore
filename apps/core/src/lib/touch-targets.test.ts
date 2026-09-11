@@ -70,7 +70,7 @@ function subjectIsControl(sel: string, ctrl: { tags: Set<string>; classes: Set<s
  *
  * Both touch-target tests below iterate THIS, rather than each carrying its own copy of the split +
  * `subjectIsControl` + `declaresBox` sequence. A second private copy of a scan is how one guard ends up
- * measuring a different population from its sibling while both stay green (#841's finding, applied to
+ * measuring a different population from its sibling while both stay green (the duplicated-scan finding, applied to
  * this file's own two arms).
  */
 function* controlRules(): Generator<{ file: string; sel: string; body: string }> {
@@ -164,7 +164,7 @@ test('every phone control expresses the tap standard as var(--tap), never the nu
  * The specific controls that regressed before, asserted by name. A structural rule can be satisfied
  * while the exact control that broke slips through a gap in it, so these are pinned.
  *
- * `SIZE` is TOKEN-ONLY since issue #831. It used to accept `44px` OR `var(--tap)`, for a good reason at
+ * `SIZE` is TOKEN-ONLY today. It used to accept `44px` OR `var(--tap)`, for a good reason at
  * the time: pinning only the literal made this guard fight the design system it belongs to, failing a
  * control for the correct spelling. Accepting both fixed that and left the other half open — a control
  * could satisfy this pin with the number forever. Now the token is the only accepted form here, and the
@@ -194,7 +194,7 @@ test('the controls that previously fell short declare the tap standard as the to
 	expect(declares(phone, 'chip', 'min-height')).toBe(true);
 	// RETIRED: the `.browse-toggle` pin. Direction B deleted the browse disclosure along with the
 	// artist and genre rails it hid, so the rule it named is gone from the phone stylesheet — the
-	// assertion could only fail, never bite. #831 had just re-pointed this pin at `var(--tap)`; that
+	// assertion could only fail, never bite. The token-only conversion had just re-pointed this pin at `var(--tap)`; that
 	// conversion is moot here rather than reverted, because the control it converted no longer exists.
 	// Nothing replaces it: the search field that took its place is covered by the rendered gate (see the
 	// measured-design quarantine entry for it) rather than by a declaration.
@@ -206,8 +206,8 @@ test('the controls that previously fell short declare the tap standard as the to
 	// neither page was in FILES, so the structural test above never saw them. Pinned by name here.
 	expect(declares(metrics, 'cooks a', 'min-height')).toBe(true);
 
-	// The stage-colour control was a 22px-tall hue slider with a 28px thumb — a 28px hit area (issue
-	// #133). #425 replaced it with a native colour input, so the pin moves to that control rather than
+	// The stage-colour control was a 22px-tall hue slider with a 28px thumb — a 28px hit area. The
+	// stage-colour rework replaced it with a native colour input, so the pin moves to that control rather than
 	// being dropped: the underlying mistake (a sub-44px box on the one settings control whose whole job
 	// is being tapped) is just as available to a colour input, whose browser default swatch is smaller
 	// still. Pinned by the exact selector, which the structural test above can miss because it waves
@@ -217,9 +217,9 @@ test('the controls that previously fell short declare the tap standard as the to
 });
 
 /*
- * The companion to the pin above, and it changed subject in #425. It used to pin the hue slider's
+ * The companion to the pin above, and it changed subject with the stage-colour rework. It used to pin the hue slider's
  * thumb-CENTRING: the tap box and the thumb offset moved independently, so pinning only the 44px box
- * let the exact state #133's fix had to correct back in — box raised to 44px, but the 28px WebKit thumb
+ * let the exact state the earlier hit-area fix had to correct back in — box raised to 44px, but the 28px WebKit thumb
  * still anchored to the top of its off-centre 22px runnable-track, hanging ~3.75px low.
  *
  * A colour input has no thumb and no runnable-track, so that specific arithmetic has no subject any
@@ -233,7 +233,7 @@ test('the controls that previously fell short declare the tap standard as the to
  * missing one, and a permanently-skipped test is indistinguishable from the rot it was meant to catch).
  * So this stays a source pin.
  */
-test('the stage-colour control is one full-size target with no sub-44px part (issue #133/#425)', () => {
+test('the stage-colour control is one full-size target with no sub-44px part', () => {
 	const settings = readFileSync(join(SRC, 'routes', 'settings', '+page.svelte'), 'utf8');
 
 	// The control itself is the colour input, and it is padded rather than filled edge to edge, so its
@@ -242,7 +242,7 @@ test('the stage-colour control is one full-size target with no sub-44px part (is
 
 	// And the retired hue slider must stay retired. Its 22px runnable-track is what produced the 28px
 	// hit area in the first place; leaving those rules behind would let a future edit reattach a
-	// `class="hue"` range and reproduce #133 under a selector nothing else here reads.
+	// `class="hue"` range and reproduce that 28px hit area under a selector nothing else here reads.
 	expect(/input\[type=['"]range['"]\]\.hue/.test(settings)).toBe(false);
 	expect(/class="hue"/.test(settings)).toBe(false);
 });
@@ -260,7 +260,7 @@ test('the stage-colour control is one full-size target with no sub-44px part (is
  * comparison. Those gaps are why the rendered gate (measured-design) found four sub-floor controls the
  * source scan waved through.
  *
- * This arm closes the field half structurally, so a REVERT of the #863 CSS fixes reds here too — not
+ * This arm closes the field half structurally, so a REVERT of the tap-floor sweep's CSS fixes reds here too — not
  * only in the browser gate, which skips on a machine with no Chromium. Each text-entry control must be
  * sized to the tap floor by SOME rule that names `var(--tap)` (an input's height can come from a shared
  * rule while a per-class rule only tweaks its padding, so the check is "is it reached anywhere", not
@@ -270,7 +270,7 @@ test('the stage-colour control is one full-size target with no sub-44px part (is
  *     which carries `min-height: var(--tap)` and is examined as its own control. Resizing the glyph is
  *     the wrong fix.
  *   - the range slider (`.hue input`): a different control with its own `height: var(--tap)` rule and
- *     track/thumb geometry, pinned by the #133/#425 arm above.
+ *     track/thumb geometry, pinned by the stage-colour arm above.
  */
 test('every text-entry control is sized to the tap floor by a var(--tap) rule', () => {
 	// Each entry: the file, the SELECTOR TOKEN that identifies the control's sizing rule, and a human
@@ -279,7 +279,7 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 	const CONTROLS: { file: string; token: RegExp; name: string }[] = [
 		{ file: join(SRC, 'routes', '+page.svelte'), token: /\.searchbox\s+input\b/, name: 'the dock search input' },
 		/*
-		 * RE-ANCHORED BY #913 S2 (XR-VER-07). These three controls were `select`, `.text` and `.name-input`
+		 * RE-ANCHORED BY S2 (XR-VER-07). These three controls were `select`, `.text` and `.name-input`
 		 * rules inside settings/+page.svelte. They are now <NativeSelect> and <Input>, and their appearance
 		 * moved INTO those components — Svelte's scoped CSS cannot reach an element inside a child
 		 * component, and under `source(none)` a utility written at a call site is minted by nothing, so the
@@ -296,7 +296,7 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 		{ file: join(SRC, 'lib', 'components', 'ui', 'native-select', 'native-select.svelte'), token: /\.encore-field\b/, name: 'the settings selects (NativeSelect)' },
 		{ file: join(SRC, 'lib', 'components', 'ui', 'input', 'input.svelte'), token: /\.encore-field\b/, name: 'the settings text fields (Input)' },
 		/*
-		 * ── WHY VENDORED CONTROLS MUST BE LISTED HERE BY HAND (#913 S4) ────────────────────────────
+		 * ── WHY VENDORED CONTROLS MUST BE LISTED HERE BY HAND (S4) ─────────────────────────────────
 		 *
 		 * `controlRules()` above derives "is this a control?" from the file's own MARKUP — it
 		 * looks for a rule whose subject is an interactive TAG, or a class that markup puts on one. A
@@ -308,7 +308,7 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 		 *
 		 * The consequence was measured, not assumed: moving the settings tabs' `min-height: var(--tap)`
 		 * out of the page and into ui/tabs left a 38px pill PASSING this whole file. The floor had gone
-		 * unguarded silently, which is the exact shape #863 exists to catch.
+		 * unguarded silently, which is the exact shape the tap-floor sweep exists to catch.
 		 *
 		 * So every vendored control that owns its own box is named here explicitly. `gate:measured` is
 		 * the real backstop — it hit-tests a live render — but it skips wherever Chromium is absent, and

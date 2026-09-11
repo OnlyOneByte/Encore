@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runBootMaintenance, type BootTask } from './boot-maintenance';
 
-test('a pass that throws does NOT skip the passes after it (the whole point of #446)', async () => {
+test('a pass that throws does NOT skip the passes after it (the whole point of the isolated boot runner)', async () => {
 	const ran: string[] = [];
 	const warnings: string[] = [];
 	const tasks: BootTask[] = [
@@ -117,7 +117,7 @@ function stripComments(src: string): string {
 }
 const APP = stripComments(readFileSync(join(import.meta.dir, 'app.ts'), 'utf8'));
 
-test('app.ts imports runBootMaintenance and drives the boot passes through it (#446 wiring)', () => {
+test('app.ts imports runBootMaintenance and drives the boot passes through it (the wiring)', () => {
 	expect(APP).toMatch(/import\s*\{[^}]*\brunBootMaintenance\b[^}]*\}\s*from\s*'\.\/boot-maintenance'/);
 	// The passes are a table, and that table is handed to the isolated runner. A revert to the old
 	// single `.then(...).catch(...)` chain would break both matches.

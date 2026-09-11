@@ -36,7 +36,7 @@ describe('needsVocalsBackfill', () => {
 
 describe('candidateVocalsRefs', () => {
 	it('offers the modern key first', () => {
-		expect(candidateVocalsRefs(m('a'))[0]).toBe('derived/stems/a-vocals.flac'); // #480: modern vocals is FLAC
+		expect(candidateVocalsRefs(m('a'))[0]).toBe('derived/stems/a-vocals.flac'); // modern vocals is FLAC
 	});
 
 	it('also offers the LEGACY sibling of an older instrumental ref', () => {
@@ -61,7 +61,7 @@ describe('candidateVocalsRefs', () => {
 	});
 
 	it('G4: a FLAC-instrumental interim cook still surfaces its .m4a vocals sibling', () => {
-		// The finding #488 re-measured: once VOCALS_EXT is .flac, an ext-blind swap on a .flac
+		// The re-measured finding: once VOCALS_EXT is .flac, an ext-blind swap on a .flac
 		// instrumental names only -vocals.flac, so a row that never stored a ref and left an interim
 		// .m4a vocals stem on disk becomes unfindable. The fallback must offer EVERY known vocals
 		// extension, not just today's constant. BASE reds: Received [derived/stems/a-vocals.flac].
@@ -93,7 +93,7 @@ describe('backfillVocalsRefs', () => {
 		const { io: deps, linked } = io();
 		const res = await backfillVocalsRefs([m('a')], deps);
 		expect(res).toEqual({ linked: 1, silent: 0, missing: 0, unmeasured: 0 });
-		expect(linked).toEqual([['a', 'derived/stems/a-vocals.flac']]); // #480: modern vocals is FLAC
+		expect(linked).toEqual([['a', 'derived/stems/a-vocals.flac']]); // modern vocals is FLAC
 	});
 
 	it('counts a song with no vocals file as missing, and links nothing', async () => {

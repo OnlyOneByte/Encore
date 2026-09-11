@@ -1,16 +1,16 @@
 // XR-PH-15's honest degradation, measured on the render.
 //
-// The relocation itself landed with #832: the guide level, the key row and the range bar are already
+// The relocation itself already landed: the guide level, the key row and the range bar are already
 // LIVE controls for the playing song, already in the hero's disclosure BODY, and
-// `phone-home-shell-832.test.ts` pins that. What #835 adds is the clause the relocation could not
+// `phone-home-shell-832.test.ts` pins that. What XR-PH-15 adds is the clause the relocation could not
 // satisfy — "when a song has no isolated vocals stem, the guide-vocal control renders disabled with
 // the reason plus a statement that pitch and range still work; it does not vanish".
 //
 // The reason lives on the HERO, beside the control group, rather than inside `GuidingTrack.svelte`.
-// That is the owner's ruling on this issue's Q1 (arm D). It matters because #253 deliberately DELETED
+// That is the owner's ruling on this issue's Q1 (arm D). It matters because the drawer UI cleanup deliberately DELETED
 // an equivalent line from inside the component and `drawer-ui-cleanup-253.test.ts:45-56` pins its
 // absence there; arm D is the only arm that satisfies the new row without reversing that ruling or
-// re-anchoring its guard. So this file asserts the sentence renders on the hero AND that #253's guard
+// re-anchoring its guard. So this file asserts the sentence renders on the hero AND that the cleanup's guard
 // subject is untouched — a future edit that "fixes" this by moving the line back into the component
 // reds both.
 //
@@ -61,7 +61,7 @@ const NOTE = 'No isolated vocals for this song, so the guiding track stays off. 
  *   - the sentence is in the disclosure BODY, never in the collapsed summary
  *
  * They live in `apps/core/e2e/probes/p16-hero-live-controls.mjs` now, and this is NOT a relocation of
- * convenience. #913 moved GuidingTrack's control onto shadcn's <Slider>, which is Bits UI, and Bits UI
+ * convenience. The Slider adoption moved GuidingTrack's control onto shadcn's <Slider>, which is Bits UI, and Bits UI
  * needs a real layout engine in two independent ways the mount rung deliberately refuses to provide:
  * it reads `offsetWidth`, which the preload replaces with a throw because happy-dom fabricates a zero;
  * and it observes its track with `ResizeObserver`, which the preload does not install and
@@ -75,7 +75,7 @@ const NOTE = 'No isolated vocals for this song, so the guiding track stays off. 
  * still fail.
  *
  * What stays HERE is everything decidable without a layout engine: the route's derivation of the
- * sentence, the copy itself, and the #253 source scans below.
+ * sentence, the copy itself, and the drawer-cleanup source scans below.
  */
 // ── the arm that needs no layout engine: nothing playing, so nothing mounts ───────────────────────
 
@@ -97,7 +97,7 @@ const SRC = new URL('../../', import.meta.url).pathname;
 const PAGE = readFileSync(`${SRC}routes/+page.svelte`, 'utf8');
 /**
  * Comments stripped, exactly as `drawer-ui-cleanup-253.test.ts` does and for the same reason: the
- * component's own prose NAMES the line #253 removed, so an unstripped read would trip a ban the
+ * component's own prose NAMES the line the cleanup removed, so an unstripped read would trip a ban the
  * shipped code satisfies. Stripping keeps the two guards reading the same subject.
  */
 const GUIDING_TRACK = readFileSync(`${SRC}lib/components/GuidingTrack.svelte`, 'utf8')
@@ -105,7 +105,7 @@ const GUIDING_TRACK = readFileSync(`${SRC}lib/components/GuidingTrack.svelte`, '
 	.replace(/\/\*[\s\S]*?\*\//g, '')
 	.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
-test('the route derives the sentence from a media row, not from the flag alone (#835 Q1-D)', () => {
+test('the route derives the sentence from a media row, not from the flag alone (Q1-D)', () => {
 	// `guideEnabled` is ALSO false for a playing entry whose media row has not reached this client's
 	// catalog, and there a missing stem is a guess rather than a reading. `nowMedia &&` is what keeps
 	// the sentence honest, so it is pinned: dropping it makes the phone assert a fact it does not have.

@@ -1,4 +1,4 @@
-// Guards for #741 — a terminally failed cook was rendered and acted on as if the singer held no
+// Guards: a terminally failed cook was rendered and acted on as if the singer held no
 // queued turn for that media, so (F1) the retry the app advertises booked a SECOND turn of the same
 // song, and (F2) the singer's own queue card never said the cook died. Encore has no jsdom for these
 // two component surfaces, so — like song-row-tags.test.ts and the sparkle-sibling guard — every UI

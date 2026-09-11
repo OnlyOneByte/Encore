@@ -128,7 +128,7 @@ test('isCooking is gate-driven — it catches a song sitting between two gates',
 });
 
 // guard: gates.ts holds ONE cook vocabulary, and it is not this one — the dead guest-facing labels
-// #175 removed do not come back.
+// removed with `pendingLabel` do not come back.
 //
 // THE DEFECT. gates.ts carried a SECOND guest-facing cook vocabulary: a `pendingLabel` field
 // on CookGate ('Separating vocals' / 'Timing lyrics') read only by `currentGateLabel`, which itself

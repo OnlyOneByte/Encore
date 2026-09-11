@@ -229,21 +229,21 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 	 * This slice used to be `.split('if (!master || !media || !isPlayable(media) || seekSec ===
 	 * undefined) return;')[1]`, i.e. THE DELIMITER WAS THE DEFECTIVE LINE. Two consequences, both bad:
 	 *
-	 *   1. Blind to the defect. The tracked `media` / `isPlayable(media)` reads that caused #396 landed
+	 *   1. Blind to the defect. The tracked `media` / `isPlayable(media)` reads that caused the seek-back defect landed
 	 *      in the DISCARDED prefix (`[0]`), so every assertion in this block ran on the text after them
 	 *      and was structurally incapable of observing them — while the block's own comment claimed the
 	 *      effect's deps were "seekSec and seekRev". That is why four rounds of review passed it.
 	 *   2. Load-bearing AGAINST the fix. Removing that line makes the delimiter vanish and the slice
 	 *      collapse to '', reddening several assertions here — including `not.toBe('')`, whose comment
 	 *      said it "fails if that tracked read is removed". It does. For the wrong reason. So the cheap
-	 *      way out of fixing #396 was to weaken this block.
+	 *      way out of fixing the seek-back defect was to weaken this block.
 	 *
 	 * Both anchors below are things the fix does NOT move: the extracted `applySeek` declaration, and
 	 * the call site the triggering effect makes. A future correctness fix to either the guard condition
 	 * or the dependency set therefore cannot silence these.
 	 */
 	const seekEffect = src.split('function applySeek(seekTarget: number): void {')[1]?.split('\n\t}')[0] ?? '';
-	/** The TRIGGERING effect — the part whose tracked reads are the dependency set #396 is about. */
+	/** The TRIGGERING effect — the part whose tracked reads are the dependency set the seek-back defect is about. */
 	const seekTrigger = (() => {
 		const upto = src.split('applySeek(target);')[0];
 		const i = upto.lastIndexOf('$effect(() => {');
@@ -303,7 +303,7 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 	it('aligns the guide to the fixed seek target, never to the master’s moving playhead', () => {
 		expect(seekEffect).not.toContain('guideEl.currentTime = master.currentTime');
 		expect(seekEffect).not.toContain('vocals.currentTime = master.currentTime');
-		// The same ban in the post-#396 spelling, where the master element is a local `el`.
+		// The same ban in the post-fix spelling, where the master element is a local `el`.
 		expect(seekEffect).not.toContain('guideEl.currentTime = el.currentTime');
 	});
 
@@ -374,9 +374,9 @@ describe('prerollSeekTarget -- the guide locks onto the master at once, not over
 });
 
 /*
- * THE SETTLE-TIME RELATIONSHIP (#578 -2). Written against the CONSTANTS, not a hard-coded 38.75s, so
+ * THE SETTLE-TIME RELATIONSHIP (the late-guide report, part 2). Written against the CONSTANTS, not a hard-coded 38.75s, so
  * a deliberate retune of the band updates one expectation here instead of hitting a wall. The point
- * of #578 is that leaving a residual to the trim band is slow: this pins HOW slow, as a fact about
+ * of the late-guide report is that leaving a residual to the trim band is slow: this pins HOW slow, as a fact about
  * the policy, so the value of taking the pre-roll seek at once (prerollSeekTarget) is measurable.
  *
  * The trim is rate = 1 + (-drift * GUIDE_RATE_GAIN) inside the band, i.e. d(drift)/dt = -drift/tau
@@ -406,7 +406,7 @@ describe('guideCorrection -- the trim band closes only asymptotically, which is 
 });
 
 /*
- * A source guard, because #578 too lived in WIRING: prerollSeekTarget being correct proves nothing
+ * A source guard, because the late-guide defect too lived in WIRING: prerollSeekTarget being correct proves nothing
  * about the component. The original defect was the pre-roll assigning vocals.currentTime =
  * master.currentTime at effect time in the transport effect and the gesture-recovery handler, where
  * the guide decoder flush then outran the master. These assertions fail if the pre-roll stops
@@ -437,7 +437,7 @@ describe('TvPlayer takes the pre-roll lock-on when the guide can play, not at ef
 	it('re-takes the lock-on INSIDE the guide canplay handler body, when the buffer is primed', () => {
 		// The heart of the fix: the comparison is taken when the guide can actually play, so the
 		// seek->audible gap is a primed-buffer flush and the master has not run away from it.
-		// #586/A1: a whole-file `toContain('alignGuidePreroll()')` is satisfied by the OTHER two call
+		// A1: a whole-file `toContain('alignGuidePreroll()')` is satisfied by the OTHER two call
 		// sites (the transport effect and the gesture handler), so gutting the canplay handler body
 		// would leave the old guard green. Slice the `oncanplay={...}` block and assert the call lives
 		// INSIDE it, so the on-buffer-primed lock-on cannot be silently removed.
@@ -454,12 +454,12 @@ describe('TvPlayer takes the pre-roll lock-on when the guide can play, not at ef
 });
 
 /*
- * A source guard, because #586 lives in WIRING: the mount condition and the readiness/level gate are
+ * A source guard, because the mount/readiness split lives in WIRING: the mount condition and the readiness/level gate are
  * two things that must be DIFFERENT expressions. The defect was one `wantsGuide` derived (level-gated)
  * driving BOTH the {#if} mount AND the ready-report, so a guide-level slider drag through 0 (step="1"
  * from min="0") flipped the mount false-then-true and UNMOUNTED/REMOUNTED the guide <audio> mid-song,
  * re-paying the canplay pre-roll lock-on. The fix splits mount-worthiness (level-independent) from the
- * level gate, and — trap #1 of #578 — keeps the ready-report on the level-gated condition so a level-0
+ * level gate, and — trap #1 of the late-guide report — keeps the ready-report on the level-gated condition so a level-0
  * room never waits on the guide buffer. These assertions red on base (single level-gated wantsGuide
  * driving the mount) and pin the split.
  */
@@ -509,7 +509,7 @@ describe('TvPlayer mounts the guide on mount-worthiness, gates readiness on the 
  *      non-zero offset holds, drifts and locks on relative to THAT point, not to raw master. This is
  *      just the existing pure-function behaviour re-read at a shifted origin, but it is the invariant
  *      the feature rests on, so it is asserted directly.
- *   2. A SOURCE GUARD, because — exactly like #396 and #578 — the offset lives in WIRING. guideOffsetSec
+ *   2. A SOURCE GUARD, because — exactly like the seek-back and late-guide defects — the offset lives in WIRING. guideOffsetSec
  *      being correct proves nothing about the component: a call site that ignored it would leave a
  *      shifted stem misaligned while every unit test on the pure functions stayed green. These
  *      assertions fail if any of the three sites stops folding the offset into its master zero point.
@@ -562,7 +562,7 @@ describe('TvPlayer folds the measured offset into the guide zero point at all th
 		expect(sync).toContain('master.currentTime + guideOffsetSecValue');
 		expect(sync).toContain('guideCorrection(vocals.currentTime, zero)');
 		expect(sync).toContain("if (correction.kind === 'reseek') vocals.currentTime = zero;");
-		// The pre-#766 form — drift measured against raw master — must be gone, or a shifted stem is
+		// The pre-offset form — drift measured against raw master — must be gone, or a shifted stem is
 		// chased back to the wrong point every governor tick.
 		expect(sync).not.toContain('guideCorrection(vocals.currentTime, master.currentTime)');
 	});

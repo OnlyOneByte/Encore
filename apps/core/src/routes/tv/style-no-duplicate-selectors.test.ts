@@ -21,7 +21,7 @@
 // pins the property so the next stale-copy edit fails here instead of on a real TV.
 //
 // SOURCE SCAN, not a rendered assertion: +page.svelte cannot be imported here (no Svelte compiler in
-// bun test, and the component needs a browser). The rendered result of the #127 fix was verified
+// bun test, and the component needs a browser). The rendered result of the fix was verified
 // eyes-on in a headless browser and captured in the PR.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -52,14 +52,14 @@ test('no class selector is declared more than once in the TV page <style>', () =
 	const seen = new Map<string, number>();
 	for (const h of heads) seen.set(h, (seen.get(h) ?? 0) + 1);
 	const dupes = [...seen.entries()].filter(([, n]) => n > 1).map(([sel, n]) => `${sel} (\u00d7${n})`);
-	// Red on the pre-#127 tree: .ls-name/.ls-song/.ls-artist/.ls-key each appeared twice.
+	// Red on the pre-fix tree: .ls-name/.ls-song/.ls-artist/.ls-key each appeared twice.
 	expect(dupes).toEqual([]);
 });
 
-test('.ls-artist does not re-introduce inline-inert truncation (the #127 regression)', () => {
+test('.ls-artist does not re-introduce inline-inert truncation (the original regression)', () => {
 	// The artist credit is an INLINE span; overflow/text-overflow are inert on it and white-space:
 	// nowrap clips it mid-word. Truncation is .ls-song's job (2-line -webkit-line-clamp). This asserts
-	// the specific declaration that caused #127 cannot come back on .ls-artist even if a future edit
+	// the specific declaration that caused the regression cannot come back on .ls-artist even if a future edit
 	// keeps the selector unique.
 	const body = styleBodies(raw);
 	const rule = /\.ls-artist\s*\{([^}]*)\}/.exec(body);

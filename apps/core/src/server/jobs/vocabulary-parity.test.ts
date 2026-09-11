@@ -394,7 +394,7 @@ describe('worker ML keepalive stays under the core progress lease', () => {
 	const runnerPy = readFileSync(join(WORKER_SRC, 'runtime/runner.py'), 'utf8');
 	// Python's effective value is the LAST module-level assignment. Take the last column-0 match, not
 	// the first, so a triple-quoted string containing `LEASE_KEEPALIVE_SEC = <value>` above the real
-	// assignment cannot shadow it and hide a drifted constant. (Folded in from the #300 review.)
+	// assignment cannot shadow it and hide a drifted constant. (Folded in from review.)
 	const lastKeepaliveSec = (): number | null => {
 		const ms = [...runnerPy.matchAll(/^LEASE_KEEPALIVE_SEC = ([\d.]+)/gm)];
 		const last = ms[ms.length - 1];
@@ -586,7 +586,7 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 
 	test('the retained raw caption key agrees byte-for-byte', () => {
 		// raw_caption_path(media_dir, media_id, kind, ext="vtt") is the FOURTH path builder that crosses
-		// this seam; #684 shipped it with no parity guard, and retention.ts enumerates it per (kind, ext)
+		// this seam; it shipped with no parity guard, and retention.ts enumerates it per (kind, ext)
 		// to count and evict the retained track. Check BOTH kinds and BOTH known exts so a drift on either
 		// side of the seam reds this. `kind` is a bare runtime arg, so it is supplied via subs.
 		for (const kind of ['captions', 'auto-captions']) {
@@ -751,7 +751,7 @@ describe('songProfile inner-field parity (worker dict vs shared type)', () => {
 	});
 
 	test('the measured loudness level crosses the wire under one name on both sides', () => {
-		// Named explicitly, not just covered by the set equality above: this is the field #462 adds,
+		// Named explicitly, not just covered by the set equality above: this is the field the loudness measurement adds,
 		// and a set-equality guard stays green if BOTH sides are renamed to something the playback
 		// side does not read.
 		expect(pyProfileKeys()).toContain('loudnessLufs');

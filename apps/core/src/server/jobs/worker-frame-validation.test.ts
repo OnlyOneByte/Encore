@@ -1,4 +1,4 @@
-// issue #433 — worker WS frames were JSON.parsed then cast + executed with NO runtime validation,
+// worker WS frames were JSON.parsed then cast + executed with NO runtime validation,
 // reachable UNAUTHENTICATED (role=worker upgrades are permitted when ENCORE_WORKER_TOKEN is unset).
 // server.ts:message() did `if ('workerId' in msg && msg.workerId) ... app.workerHub.handle(msg)` with
 // nothing guarding the shape. Three unguarded reads, each proven to throw on base below:

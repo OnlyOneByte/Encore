@@ -71,7 +71,7 @@ test('TvPlayer arms a document-wide gesture listener that re-attempts playback (
 	expect(src).toMatch(/let\s+autoplayBlocked\s*=\s*\$state\(false\)/);
 	// The two callbacks are actually DESTRUCTURED from props (not merely declared in the interface), so
 	// the parent's handlers are the ones invoked. Pins hunk #2. Each must appear in the destructure list
-	// as its own entry — trailing comma OR end-of-list — so a later prop (#393's onplayingchange now sits
+	// as its own entry — trailing comma OR end-of-list — so a later prop (onplayingchange now sits
 	// after onautoplayrecovered) does not falsify the guard while the destructuring it checks still holds.
 	expect(src).toMatch(/onautoplayblocked\s*,/);
 	expect(src).toMatch(/onautoplayrecovered\s*[,\n]/);
@@ -103,7 +103,7 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots (
 	expect(src).toMatch(/let\s+autoplayBlocked\s*=\s*\$state\(false\)/);
 	// The hint renders ONLY when blocked, so a TV that autoplays fine never shows it. Read the gate's
 	// whole expression rather than pinning one exact spelling: the block term is what THIS test owns, and
-	// the idle-room term it now sits beside is owned by the #736 test below.
+	// the idle-room term it now sits beside is owned by the on-stage-band test below.
 	expect(src).toMatch(/\{#if\s+[^}]*autoplayBlocked[^}]*\}/);
 	// Both TvPlayer slots report the block up and the recovery back down. Two of each — one per slot.
 	const blocked = src.match(/onautoplayblocked=/g) ?? [];
@@ -172,7 +172,7 @@ test('the /tv autoplay hint is scoped to the on-stage band, so it cannot outlive
 	// The affirmative above cannot by itself catch a REGRESSION that re-adds an unconditional copy of
 	// the overlay elsewhere in the file, so ban the bare form outright: after the fix no {#if} anywhere
 	// in the route gates on the latch alone. This is the arm that reds if the production hunk is reverted.
-	expect(src, 'no {#if} may gate the hint on the latch alone — that is the #736 defect').not.toMatch(
+	expect(src, 'no {#if} may gate the hint on the latch alone — that is the defect').not.toMatch(
 		/\{#if\s+autoplayBlocked\s*\}/
 	);
 

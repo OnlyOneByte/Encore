@@ -29,7 +29,7 @@ async function loadRoomCode(u: string): Promise<string> {
 	return data.roomCode;
 }
 
-test('a bare /tv resolves the SERVED room code (pre-#658 behaviour preserved)', async () => {
+test('a bare /tv resolves the SERVED room code (pre-room-identity behaviour preserved)', async () => {
 	const db = migratedDb();
 	const rooms = new RoomRepository(db);
 	const served = rooms.ensureActive(1);

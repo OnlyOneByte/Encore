@@ -1,4 +1,4 @@
-// Guards for #742 — tapping Sing on a Spotify search hit booked a turn that could never play.
+// Guards: tapping Sing on a Spotify search hit booked a turn that could never play.
 //
 // The ratified rule (docs/DECISIONS.md) is that Spotify is a SEARCH / metadata source only: its bytes
 // are never pulled, so no cook can ever run for one of its hits. That rule was ENFORCED at exactly one
@@ -110,7 +110,7 @@ test('the singer keeps their turn: a Sing tap on a Spotify row books NOTHING', (
 	// Readiness — it has no parameter for the media — so a 2-argument call is not something base can
 	// answer: the extra argument is dropped and `r === 'unacquired'` is compared against a Media object,
 	// which is falsy for BOTH rows. So `expect(spOffered).toBe(false)` would pass on base for entirely
-	// the wrong reason (#165's trap: a test that cannot detect the thing it is for). The honest
+	// the wrong reason (the classic trap: a test that cannot detect the thing it is for). The honest
 	// assertion is that the two rows are told APART — on base they are not, in either direction, which
 	// is the whole defect: readiness cannot see `source`, so a metadata-only hit reads exactly like a
 	// fresh YouTube upload.

@@ -105,7 +105,7 @@ test('the transport is disabled when there is nothing for it to act on', () => {
 });
 
 /*
- * MOVED TO THE LAYOUT RUNG BY #913 S5: 'the live controls render in the disclosure BODY, never in its
+ * MOVED TO THE LAYOUT RUNG BY S5: 'the live controls render in the disclosure BODY, never in its
  * summary (XR-PH-15)'.
  *
  * The hero's disclosure is a Bits UI Collapsible now, which reads `getBoundingClientRect()` to publish
@@ -246,7 +246,7 @@ test('the pending state is signalled on the row SURFACE, not by dimming its subt
 test('the gallery carries the hero and BOTH position branches, adjacent', () => {
 	/*
 	 * A fixture's absence is invisible to every runtime assertion in the suite, which is exactly how
-	 * #735's two `pending` rules shipped unreadable: nothing ever rendered them, so nobody measured
+	 * two earlier `pending` rules shipped unreadable: nothing ever rendered them, so nobody measured
 	 * them. Same closure as that guard — scan the real gallery source.
 	 *
 	 * The PAIR is the point for the position card: "no minutes clause" is only judgeable against the

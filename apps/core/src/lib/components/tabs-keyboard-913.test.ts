@@ -1,9 +1,9 @@
 /*
- * THE SETTINGS TABLIST'S KEYBOARD CONTRACT, PROVEN BY MOUNTING IT (#913 S4).
+ * THE SETTINGS TABLIST'S KEYBOARD CONTRACT, PROVEN BY MOUNTING IT (S4).
  *
  * `settings-scopes.test.ts` used to assert the hand-rolled implementation's exact source spelling,
  * because a source scan was all that was available: the settings page imports `$app`, so it cannot be
- * mounted. #913 replaced `onTabKey` with Bits UI's tablist, which deleted those expressions.
+ * mounted. The shadcn migration replaced `onTabKey` with Bits UI's tablist, which deleted those expressions.
  *
  * The behaviour they stood in for is checked here instead, against a real render of the same primitive
  * the page uses. This is a STRONGER claim than the grep it replaces: "the file contains the string

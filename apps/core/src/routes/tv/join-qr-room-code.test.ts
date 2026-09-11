@@ -1,5 +1,5 @@
 // The TV attract QR must encode THIS room's join code (`/?room=CODE`), so a scan lands the phone in
-// this party rather than at a bare landing. `/join` was retired (#834 Q2-A), so the QR now
+// this party rather than at a bare landing. `/join` was retired (Q2-A), so the QR now
 // points at the landing page `/`, not `/join`. Drives the REAL `load` with a real RoomRepository
 // behind the app singleton.
 //

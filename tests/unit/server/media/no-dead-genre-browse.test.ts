@@ -1,4 +1,4 @@
-// Regression guard for issue #121 (owner ruling: DELETE the unreachable browse-by-genre feature).
+// Regression guard for the browse-by-genre removal (owner ruling: DELETE the unreachable browse-by-genre feature).
 //
 // Browse-by-genre could never render: the ONLY writer of a song's `canonical.genre` was
 // `POST /api/tag`, which had zero non-route callers — no UI, no e2e, no server code, no test. Genre

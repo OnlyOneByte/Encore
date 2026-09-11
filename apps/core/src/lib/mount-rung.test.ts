@@ -87,7 +87,7 @@ test('every component importing a $app/$env virtual module loads under the mount
 		const specifiers = [...readFileSync(file, 'utf8').matchAll(KIT_IMPORT)].map((m) => m[1]!);
 		if (specifiers.length > 0) importers.push({ file, specifiers });
 	}
-	// Floor: importers across the route/component tree. Re-anchored 5 -> 4 (sites 6 -> 5) by #834:
+	// Floor: importers across the route/component tree. Re-anchored 5 -> 4 (sites 6 -> 5) by the `/join` retirement:
 	// `/join` was retired (its `$app/navigation` + `$app/state` importer went with it) and its join UI
 	// moved to JoinLanding.svelte (still both specifiers); at the same time `routes/+page.svelte` dropped
 	// its `goto('/join')` bounce, so it no longer imports `$app/navigation` at all. Net one fewer
@@ -168,7 +168,7 @@ test('an unstubbed SvelteKit virtual module fails with a message naming the stub
 test('the landing join surface mounts, reads the stubbed page.url, and its goto lands in the stub', async () => {
 	const { setPage } = await stateStub();
 	const { calls } = await navStub();
-	// `/join` was retired (#834 Q2-A); its join UI is the JoinLanding component rendered in the
+	// `/join` was retired (Q2-A); its join UI is the JoinLanding component rendered in the
 	// unjoined branch of `/`. A bare landing (no `?room`) joins the active room, and `?next=` is read
 	// here exactly as the old route read it — which is the `page.url` wiring this rung proves.
 	setPage({ url: '/?next=/settings' });

@@ -1,4 +1,4 @@
-// Regression for issue #128: removing the song that is CURRENTLY PLAYING via the client-driven queue
+// Regression for the dangling currentEntryId defect: removing the song that is CURRENTLY PLAYING via the client-driven queue
 // path (a `remove`/`status` op through the hub) leaves playback.currentEntryId pointing at an entry
 // that no longer exists. Because every auto-start gate is written as `!currentEntryId`, that dangling
 // (non-null) id reads as "a song is playing" while nothing is — so the music stops and the rotation
@@ -52,11 +52,11 @@ function harness() {
 	return { published, state, deps };
 }
 
-// mirrors the server.ts queue:command handler AFTER #803: the arm calls reconcileOnReady
+// mirrors the server.ts queue:command handler AFTER the predicate de-duplication: the arm calls reconcileOnReady
 // UNCONDITIONALLY and does not re-derive the recovery predicate — reconcileOnReady owns that decision
 // (player.ts), and its tail emitNowPlaying sits outside the recovery block so the "current resolves"
 // case is a re-emit with no double broadcast. The predicate itself is exercised through
-// reconcileOnReady rather than copied here, which is the point of #803.
+// reconcileOnReady rather than copied here, which is the point of that de-duplication.
 function queueThenReconcile(cmd: ClientCommand, deps: HubDeps) {
 	handleQueueCommand(cmd, deps);
 	reconcileOnReady(deps);
@@ -153,9 +153,9 @@ test('hydrate() leaves a currentEntryId that DOES resolve untouched', () => {
 // the server's queue:command composition, so they pin `reconcileOnReady`'s recovery logic but NOT
 // the one production line that FIRES it — apps/core/server.ts is the Bun.serve entry with no unit
 // harness, and reverting its call to the pre-fix `if (!currentEntryId)` form leaves the whole suite
-// green while resurrecting issue #128 (the recovery never fires on the reported path). This scan pins
+// green while resurrecting the dangling id (the recovery never fires on the reported path). This scan pins
 // that the arm FIRES the recovery, and that the recovery predicate keys on RESOLUTION rather than
-// nullness — the latter now asserted at player.ts, which is where #803 made the predicate live in
+// nullness — the latter now asserted at player.ts, which is where the de-duplication made the predicate live in
 // exactly one place. Same technique as session-cookie-attributes.test.ts on
 // routes/api/join/+server.ts, a file with the identical no-harness problem. Comments are blanked so a
 // commented-out call cannot satisfy it.
@@ -180,7 +180,7 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 	// RESOLVES to a live entry (`!entries.some((e) => e.id === currentEntryId)`), so a dangling
 	// (non-null) id triggers recovery. The pre-fix `!state.playback.currentEntryId` form — which reads
 	// a dangling id as "busy" and never recovers — must NOT be what guards the recovery block.
-	// It is asserted on player.ts because #803 deleted server.ts's second copy: server.ts used to
+	// It is asserted on player.ts because the de-duplication deleted server.ts's second copy: server.ts used to
 	// re-derive this same predicate to decide whether to CALL reconcileOnReady, so widening one copy
 	// and not the other was invisible to the suite. The caller now delegates unconditionally.
 	const fnIdx = PLAYER.indexOf('export function reconcileOnReady(');
@@ -188,19 +188,19 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 	const body = PLAYER.slice(fnIdx);
 	// the predicate is now the shared `entryResolves` helper (state/store.ts); recovery keys on
 	// its result. Pin the CALL, not a re-inlined `.some(...)` — a re-inlined copy here would be the
-	// drift #848 removed.
+	// drift the shared entryResolves helper removed.
 	expect(body).toMatch(
 		/const currentResolves = entryResolves\(\s*state\.entries\s*,\s*state\.playback\.currentEntryId\s*\)/
 	);
 	expect(body).toMatch(/if\s*\(\s*!currentResolves\s*\)/);
-	// The caller must NOT carry a second copy of it — that duplication IS #803, and re-adding it makes
+	// The caller must NOT carry a second copy of it — that duplication IS what was de-duplicated, and re-adding it makes
 	// the silent-half-edit hazard live again.
 	expect(SERVER).not.toMatch(/\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*[\w.]*playback\.currentEntryId/);
 
 	// THE PINNED ORDER: presence of the call is not enough — it must run AFTER
 	// handleQueueCommand, which is the prune that retires the playing entry. If it is hoisted ABOVE
 	// the call it evaluates the PRE-remove state (the playing id still resolves), so recovery never
-	// fires and #128 re-opens with every assertion above still green. Slice the queue:command arm out
+	// fires and the dangling id re-opens with every assertion above still green. Slice the queue:command arm out
 	// of the comment-blanked SERVER and require the reconcile's index inside that arm to be greater
 	// than the handleQueueCommand(evt.command call's — which also pins the reconcile is inside the
 	// queue:command arm at all, not merely somewhere in the file.
@@ -216,12 +216,12 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 	expect(reconcileIdx).toBeGreaterThan(callIdx);
 });
 
-// SOURCE-SCAN GUARD for the hydrate() heal comment (store.ts) — issue #254.
+// SOURCE-SCAN GUARD for the hydrate() heal comment (store.ts).
 // The heal at store.ts drops a dangling currentEntryId and sets isPlaying:false, which UNJAMS the
 // `!currentEntryId` auto-start gates but starts nothing: there is no boot resync and no boot
 // reconcile, so at hydrate time the room is left genuinely idle with a possibly-ready queue.
 // Recovery only happens later, on the next real event that runs reconcileOnReady (a queue:command,
-// a cook completing, or a manual play). The pre-#254 comment CLAIMED "the boot resync/reconcile then
+// a cook completing, or a manual play). The pre-fix comment CLAIMED "the boot resync/reconcile then
 // starts the next singer" — a boot reconcile that does not exist — which is exactly the false premise
 // that would stop the next developer from noticing the gap. A comment is not machine-checkable by
 // running it, so pin it here: the raw store.ts text must NOT re-assert a boot resync/reconcile that
@@ -256,15 +256,15 @@ test("hydrate()'s heal comment (store.ts) tells the truth about boot recovery", 
 	expect(STORE).toContain('onMediaReady');
 	expect(STORE).toContain('manual play');
 });
-// STRUCTURAL-TRUTH GUARD for the #254 heal comment — issue #342.
-// The #254 guard above pins how store.ts's comment is SPELLED (its prose must deny a boot reconcile
+// STRUCTURAL-TRUTH GUARD for the heal comment.
+// The spelling guard above pins how store.ts's comment is SPELLED (its prose must deny a boot reconcile
 // and name the three real recovery sites). It does not pin whether that prose is TRUE, because every
 // assertion reads store.ts as text and the facts live in other files. The comment's load-bearing
 // claim — "there is no boot resync or boot reconcile, so nothing starts a singer at hydrate time" —
 // is a claim about reconcileOnReady's call sites in apps/core, not about store.ts. So the moment a
-// later product decision adds the boot reconcile #254 deliberately quarantined ("DO NOT add a
+// later product decision adds the boot reconcile that correction deliberately quarantined ("DO NOT add a
 // reconcileOnReady call ... a rebooted room starts playing audio unprompted is a product call the
-// owner has not made"), the comment is false again — the exact defect #254 was filed for — and the
+// owner has not made"), the comment is false again — the exact false-premise defect the correction removed — and the
 // spelling guard above stays green. Pin the STRUCTURE here instead.
 //
 // import.meta.dir === apps/core/src/server/realtime → apps/core is three levels up, apps/core/src two.
@@ -289,7 +289,7 @@ function collectNonTestSources(): string[] {
 // A reconcileOnReady CALL, distinct from its `export function reconcileOnReady(` DEFINITION (player.ts).
 const RECONCILE_CALL = /(?<!function\s)\breconcileOnReady\s*\(/;
 
-test('reconcileOnReady is called from exactly the three non-boot sites: queue:command, onMediaReady, and the #639 entry-delete', () => {
+test('reconcileOnReady is called from exactly the three non-boot sites: queue:command, onMediaReady, and the entry-delete', () => {
 	// The set of NON-TEST files in apps/core that CALL reconcileOnReady must be exactly server.ts (the
 	// queue:command arm) and src/server/app.ts (the onMediaReady handler). A reconcile added anywhere
 	// else — e.g. a new boot module — reds this; deleting the last call in app.ts reds it too.
@@ -335,11 +335,11 @@ test('the play/pause transport button still allows a ready queue while nothing p
 	// The comment's third recovery route — "or a manual play … the play control stays enabled because a
 	// non-empty queue satisfies its gate" — is the play button's gate. restart and skip are stricter
 	// (they need a PLAYING entry), so after a boot heal (nowEntry null, queue ready) the play button is
-	// the room's ONLY manual restart. Narrowing this gate to the restart/skip form (the mutation #254's
+	// the room's ONLY manual restart. Narrowing this gate to the restart/skip form (the mutation that comment's
 	// own consequence paragraph named) leaves a boot-healed room with a phone that offers NO transport
 	// control at all — invisible to the suite until now.
 	//
-	// Since #832 the invariant spans TWO files: the transport moved onto the now-playing hero, so the
+	// Since the direction-A phone home shell the invariant spans TWO files: the transport moved onto the now-playing hero, so the
 	// hero owns the gate's SHAPE and the route owns the value it is fed. Both halves are asserted,
 	// because either one alone can break it — a hero that ANDs the two conditions is useless if the
 	// route stops passing `canStart`, and vice versa. The behavioural half is also now covered by a

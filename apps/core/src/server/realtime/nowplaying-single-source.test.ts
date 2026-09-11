@@ -1,8 +1,8 @@
-// SINGLE-SOURCE GUARD for the two things player.ts owns and apps/core/server.ts used to re-derive —
-// issue #803.
+// SINGLE-SOURCE GUARD for the two things player.ts owns and apps/core/server.ts used to re-derive:
+// the recovery predicate and the nowplaying:changed payload.
 //
 // Two findings, one root cause: the WebSocket switch in apps/core/server.ts wrote its own copy of
-//   (1) the #128 recovery predicate — `entries.some((e) => e.id === playback.currentEntryId)` — to
+//   (1) the recovery predicate — `entries.some((e) => e.id === playback.currentEntryId)` — to
 //       decide whether to call reconcileOnReady, which already evaluates that same predicate itself;
 //   (2) the `nowplaying:changed` payload, hand-derived and hand-built in the `hello` resync arm,
 //       byte-identical to emitNowPlaying's modulo a `deps.` prefix.
@@ -15,8 +15,8 @@
 // `ws.send(JSON.stringify(...))`, which accepts anything: adding one required field to the
 // nowplaying:changed variant (packages/shared/src/core/events.ts) produced exactly ONE tsc error, at
 // player.ts, and ZERO at server.ts. So a reconnecting TV or a reloading phone would be served the
-// old projection while every live client got the new one — #636's class (an advertised next that
-// disagrees with the truth) reached from the resync seam.
+// old projection while every live client got the new one — the same class as an advertised next that
+// disagrees with the truth, reached from the resync seam.
 //
 // These are FILE-SET censuses, not line coordinates: the fix moves lines, so asserting a `path:line`
 // would red on the very change it is meant to protect. Each arm names the file that must own the
@@ -71,7 +71,7 @@ test('the census actually covers this package, including the harness-less Bun.se
 	const rel = SOURCES.map(REL);
 	expect(rel).toContain('server.ts');
 	expect(rel).toContain('src/server/realtime/player.ts');
-	// a walk BLIND to store.ts is exactly how #803's census missed the third copy, so assert
+	// a walk BLIND to store.ts is exactly how the first census missed the third copy, so assert
 	// store.ts's membership rather than assume it.
 	expect(rel).toContain('src/server/state/store.ts');
 	// And the stripper must really blank comments, or a commented-out copy would count as a live one.
@@ -88,24 +88,24 @@ test('the census actually covers this package, including the harness-less Bun.se
 	expect(planted).toContain('const live = 1;'); // it blanks comments, not code
 });
 
-// ── ARM 1: the #128 recovery predicate is written ONCE ─────────────────────────────────────────────
-// Anchored on `currentEntryId` alone, NOT on a receiver spelling: #803's `[\w.]*playback\.`
-// pattern could not see store.ts's `this.#playback.` copy, which is the hole #848 closed. After the
+// ── ARM 1: the recovery predicate is written ONCE ──────────────────────────────────────────────────
+// Anchored on `currentEntryId` alone, NOT on a receiver spelling: the first census's `[\w.]*playback\.`
+// pattern could not see store.ts's `this.#playback.` copy, which is the hole the extraction closed. After the
 // extraction the predicate is the bare-parameter comparison inside `entryResolves`
 // (state/store.ts), so anchoring on the field name is what makes this census survive the relocation
 // and still find a receiver-prefixed re-inlined copy if one ever comes back.
 const RECOVERY_PREDICATE = /\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*[\w.#]*currentEntryId/;
 
-test('the #128 recovery predicate exists in exactly one production file, store.ts (#848)', () => {
-	// Base (pre-#848) FAILS with 2: src/server/realtime/player.ts and src/server/state/store.ts, the
-	// two byte-identical-modulo-receiver copies #848 consolidated into `entryResolves`. #803 had
-	// already removed server.ts's third copy. After #848 the sole home is the extracted helper.
+test('the recovery predicate exists in exactly one production file, store.ts', () => {
+	// Base (pre-extraction) FAILS with 2: src/server/realtime/player.ts and src/server/state/store.ts,
+	// the two byte-identical-modulo-receiver copies consolidated into `entryResolves`. The earlier
+	// census had already removed server.ts's third copy. After it the sole home is the helper.
 	expect(filesMatching(RECOVERY_PREDICATE)).toEqual(['src/server/state/store.ts']);
 });
 
 test('ARM 1 cannot be satisfied by deleting the invariant — the resolution test still exists', () => {
 	// Sentinel. A census counting sites passes at ZERO, so deleting the predicate outright would
-	// satisfy ARM 1 while re-opening #128. Require the resolution form to be present in store.ts,
+	// satisfy ARM 1 while re-opening the recovery defect. Require the resolution form to be present in store.ts,
 	// inside the exported `entryResolves` helper that both askers now call.
 	const STORE = stripComments(readFileSync(join(SRC_ROOT, 'server', 'state', 'store.ts'), 'utf8'));
 	const fnIdx = STORE.indexOf('export function entryResolves(');
@@ -126,7 +126,7 @@ test('ARM 1 cannot be satisfied by deleting the invariant — the resolution tes
 // Delete the disclosure and the duplication grows back for the same reason it grew the first time.
 const PLAYER_RAW = readFileSync(join(import.meta.dir, 'player.ts'), 'utf8');
 
-test('player.ts discloses where the recovery predicate is single-sourced (#848)', () => {
+test('player.ts discloses where the recovery predicate is single-sourced', () => {
 	// Non-vacuous: anchor on the symbol the prose documents, so a rename reds here rather than passing
 	// over a comment that no longer sits beside anything.
 	const fnIdx = PLAYER_RAW.indexOf('export function reconcileOnReady(');
@@ -138,10 +138,10 @@ test('player.ts discloses where the recovery predicate is single-sourced (#848)'
 	const preamble = PLAYER_RAW.slice(fnIdx, declIdx);
 
 	// Claim 1: the disclosure NAMES the single home of the predicate — the shared `entryResolves`
-	// helper — rather than claiming player.ts states it (which #848 made false: player.ts now calls
-	// the helper and states the predicate not at all). #803 AND #848 are cited so the next reader can
-	// find both measurements. Wrap-tolerant — the phrase spans comment lines, so `//`, tabs and
-	// newlines are allowed between words (same technique as the #254 guard in
+	// helper — rather than claiming player.ts states it (which the extraction made false: player.ts now calls
+	// the helper and states the predicate not at all). Both issue citations are required so the reader
+	// can find both measurements. Wrap-tolerant — the phrase spans comment lines, so `//`, tabs and
+	// newlines are allowed between words (same technique as the wrap-tolerant guard in
 	// dangling-current-entry.test.ts).
 	const ws = String.raw`(?:\s|\/\/)+`;
 	expect(preamble).toMatch(/#803/);
@@ -181,8 +181,8 @@ test("server.ts's queue:command arm calls reconcileOnReady unconditionally, deci
 });
 
 test('PINNED ORDER: the reconcile still runs AFTER handleQueueCommand', () => {
-	// #261 is the measured proof this matters: HOISTING the call above handleQueueCommand re-opened
-	// in full with the whole suite green, because the reconcile then reads the PRE-remove state
+	// A measurement proves this matters: HOISTING the call above handleQueueCommand re-opened the
+	// original defect in full with the whole suite green, because the reconcile then reads the PRE-remove state
 	// where the playing id still resolves. handleQueueCommand is the sole prune that can retire the
 	// playing entry, so the ordering IS the fix. Indexes are taken inside the arm, which also pins
 	// that the call is in the queue:command arm at all rather than merely somewhere in the file.

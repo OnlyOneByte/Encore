@@ -18,7 +18,7 @@ import { test, expect } from 'bun:test';
 import * as colors from './colors';
 
 // `--card`, the binding surface the dot rule tests here — read FROM `colors.SURFACES` rather than
-// restated, so it cannot drift from the token `app.css` declares (#845; same fix #842 made in
+// restated, so it cannot drift from the token `app.css` declares (the same fix made in
 // `colors.test.ts`). `SURFACES` is `[--bg, --card]`; the highlight rule binds on the card.
 const [, CARD] = colors.SURFACES;
 

@@ -2,13 +2,13 @@
 // and that colour actually reaches the reel — the visible half of the duet feature.
 //
 // THE FEATURE. The worker's diarization writes an abstract `part` letter ("A", "B") on each
-// line of a CONFIDENT duet, and NOTHING on a solo or a song it could not split. #692 paints each
-// part in its own colour as it is sung, so two singers see which lines are theirs without agreeing in
+// line of a CONFIDENT duet, and NOTHING on a solo or a song it could not split. The duet part-colour feature paints
+// each part in its own colour as it is sung, so two singers see which lines are theirs without agreeing in
 // advance. The colours come from the singer-identity palette (`SINGER_COLORS`) through the same
-// legibility floor (`isLegibleSingerColor`) #634's singer colour uses — a hard-coded second colour is
+// legibility floor (`isLegibleSingerColor`) the singer colour uses — a hard-coded second colour is
 // rejected by the owner precisely because it would skip that floor over video with a scrim.
 //
-// This extends #634's mechanism rather than competing with it: part colour LAYERS OVER singer colour,
+// This extends the singer-colour mechanism rather than competing with it: part colour LAYERS OVER singer colour,
 // which layers over the room accent. `--reel-part` defaults to `--reel-singer` (itself `--accent2`),
 // and the two highlight treatments read `--reel-part`. On an undiarized song no line carries a part,
 // `--reel-part` is never written, and the reel renders EXACTLY as today — the owner's fallback,
@@ -46,11 +46,11 @@ test('the duet-part wiring scan reads a non-empty overlay source', () => {
 	expect(overlaySrc().length).toBeGreaterThan(2000);
 });
 
-test('the overlay imports the shared part-colour helper (#692 import hunk)', () => {
+test('the overlay imports the shared part-colour helper (import hunk)', () => {
 	expect(overlaySrc()).toMatch(/import\s*\{[^}]*\bduetPartColors\b[^}]*\}\s*from\s*['"]@encore\/shared['"]/);
 });
 
-test('the overlay derives the CURRENT line part colour through the helper (#692 derived hunk)', () => {
+test('the overlay derives the CURRENT line part colour through the helper (derived hunk)', () => {
 	const src = overlaySrc();
 	// The map is derived per DOC from the shared helper — not re-implemented at the call site.
 	expect(src).toMatch(/partColors\s*=\s*\$derived\(\s*duetPartColors\s*\(\s*doc\?\.lines\s*\)\s*\)/);
@@ -60,7 +60,7 @@ test('the overlay derives the CURRENT line part colour through the helper (#692 
 	expect(src).toMatch(/partColors\.get\(\s*curLine\.part\s*\)/);
 });
 
-test('the part colour is appended as --reel-part, and ONLY when the current line has one (#692 typeStyle hunk)', () => {
+test('the part colour is appended as --reel-part, and ONLY when the current line has one (typeStyle hunk)', () => {
 	const src = overlaySrc();
 	// Emitted into the SAME inline style string, CONDITIONALLY: with no part nothing is written, so
 	// the stylesheet default is the single place the fallback is named. An unconditional write would
@@ -70,7 +70,7 @@ test('the part colour is appended as --reel-part, and ONLY when the current line
 	expect(src).toMatch(/style=\{typeStyle\}/);
 });
 
-test('the stylesheet defaults --reel-part to the singer colour, and both treatments read it (#692 CSS hunks)', () => {
+test('the stylesheet defaults --reel-part to the singer colour, and both treatments read it (CSS hunks)', () => {
 	const src = overlaySrc();
 	// The default: part colour falls back to the singer colour (itself the accent), so an undiarized
 	// song is byte-identical to today. This is the single place the duet fallback is named.
@@ -80,19 +80,19 @@ test('the stylesheet defaults --reel-part to the singer colour, and both treatme
 	// which part's colour is showing, so both are asserted.
 	expect(src).toMatch(/--reel-now:\s*var\(--reel-part\)\s*;/);
 	expect(src).toMatch(/--reel-line:\s*var\(--reel-part\)\s*;/);
-	// The pre-#692 form is gone: neither highlight property may read `--reel-singer` directly any
+	// The pre-part-colour form is gone: neither highlight property may read `--reel-singer` directly any
 	// more, which is exactly what reverting either CSS consumer hunk would restore. Scoped to these
 	// two declarations (the default line legitimately still names `--reel-singer`).
 	expect(src).not.toMatch(/--reel-now:\s*var\(--reel-singer\)/);
 	expect(src).not.toMatch(/--reel-line:\s*var\(--reel-singer\)/);
 });
 
-test('the amber provenance override still leaves the sung word alone under #692 (fallback precedence)', () => {
+test('the amber provenance override still leaves the sung word alone under the part colour (fallback precedence)', () => {
 	const src = overlaySrc();
 	// `.lyrics.unverified` overrides `--reel-line` (so the `line` treatment shows provenance) but NOT
-	// `--reel-now`. #692 changed where `--reel-now` reads its colour (now `--reel-part`); this pins
+	// `--reel-now`. The part-colour hunks changed where `--reel-now` reads its colour (now `--reel-part`); this pins
 	// that it did NOT change that precedence — an auto-transcribed duet still carries the PART colour
-	// on the word being sung, the same reasoning #634 recorded for the singer colour.
+	// on the word being sung, the same reasoning recorded for the singer colour.
 	const unverified = /\.lyrics\.unverified\s*\{([^}]*)\}/.exec(src);
 	expect(unverified).not.toBeNull();
 	expect(unverified![1]).toMatch(/--reel-line:\s*#ffe6b8\s*;/);

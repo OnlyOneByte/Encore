@@ -1,5 +1,5 @@
 /*
- * THE INK BAN, MOVED FROM EXISTENCE TO USE (#913 restructure, XR-COL-14 successor).
+ * THE INK BAN, MOVED FROM EXISTENCE TO USE (the shadcn restructure, XR-COL-14 successor).
  *
  * `app.css`'s `@theme` used to register no colour at all, so `text-primary` could not be minted. That
  * prevented the class from EXISTING — and it also made every vendored shadcn component unusable
@@ -16,7 +16,7 @@
  * utility NAMES do not occur in source at all".
  *
  * The per-stop half of the invariant is enforced elsewhere and deliberately: `contrast.test.ts` records
- * accent-as-ink leaving scope as a UNIVERSAL fact and becoming per-stop across #840's 48 stops.
+ * accent-as-ink leaving scope as a UNIVERSAL fact and becoming per-stop across all 48 palette stops.
  */
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';

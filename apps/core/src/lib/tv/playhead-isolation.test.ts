@@ -129,7 +129,7 @@ describe('the seek effect depends on playback intent, never on the catalog', () 
 	});
 
 	/*
-	 * THE #396 GUARD. On base this fails on `media` and `isPlayable`, which is the defect. It also bans
+	 * THE SEEK-BACK GUARD. On base this fails on `media` and `isPlayable`, which is the defect. It also bans
 	 * the elements and the slot flag, because the same argument applies to all of them: an input to the
 	 * decision must never be a trigger for it, and a re-run on ANY of them re-applies a stale position.
 	 */

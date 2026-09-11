@@ -250,7 +250,7 @@ test('a canceled status leaves playability to the catalog, like failed', () => {
 	expect(entryPlayable(m(), { status: 'canceled' })).toBe(false);
 });
 
-// ── #741 F2: the singer's own queue card must say when the cook died ──────────────────────────────
+// ── F2: the singer's own queue card must say when the cook died ──────────────────────────────
 // A rotation entry chose between the cook-progress card and a plain waiting row on an "is it in
 // flight" test, and a terminally failed cook is not in flight — so a dead turn rendered
 // byte-for-byte as a turn about to play, with nothing saying the cook failed while nextPlayable held

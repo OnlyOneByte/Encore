@@ -72,7 +72,7 @@ test('the response body reflects the ADDRESSED room, not the default room', asyn
 });
 
 test('an absent roomId writes the ACTIVE room, not the literal "main"', async () => {
-	// the phone settings page fetches /api/settings/room with NO ?roomId=. Before #728 that
+	// the phone settings page fetches /api/settings/room with NO ?roomId=. Before this fix that
 	// bare write landed on 'main' while every reader read the active room — the write was silently
 	// discarded (host toggles a control, gets 200, nothing changes). The fallback is now
 	// app.activeRoomId, so the bare write lands where the readers look.

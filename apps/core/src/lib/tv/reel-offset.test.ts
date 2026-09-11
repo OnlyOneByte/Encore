@@ -136,7 +136,7 @@ describe('reelOffset — the sung row stays on the reel', () => {
 // ---------------------------------------------------------------------------------------------------
 // the sung row must land in the UNMASKED window, not merely inside the band. The band includes
 // the two edge-fade ramps (LyricsOverlay masks 1.9em == one row to transparent at each edge that HAS
-// context rows). #270 clamped to [0, band] and so parked the sung row congruent with a ramp, so the
+// context rows). The earlier fix clamped to [0, band] and so parked the sung row congruent with a ramp, so the
 // line being sung rendered fainter than the line after it. This guard measures the row against the
 // readable region [fadeTop, band - fadeBot], computed a DIFFERENT way from reelOffset own arithmetic,
 // so a pass means the sung words are on fully-opaque pixels, not the formula returned what it returns.
@@ -295,7 +295,7 @@ describe('reelOffset - the sung row lands in the UNMASKED window, not inside a f
 		expect(frac).toBeGreaterThan(0);
 	});
 
-	it('with both fades 0 the clamp is EXACTLY #270 [0, band] (no regression of the earlier fix)', () => {
+	it('with both fades 0 the clamp is EXACTLY [0, band] (no regression of the earlier fix)', () => {
 		for (const before of [0, 1, 2, 3]) {
 			for (const after of [0, 1, 2, 3, 4]) {
 				for (const scale of Object.keys(ROW_AT_SCALE).map(Number)) {
@@ -325,7 +325,7 @@ function stripComments(src: string): string {
 }
 const CODE = stripComments(OVERLAY);
 
-describe('LyricsOverlay is wired to the clamp (#270 — the fix must stay on the render path)', () => {
+describe('LyricsOverlay is wired to the clamp (the fix must stay on the render path)', () => {
 	it('imports the pure reel-offset module', () => {
 		expect(/from '\.\/reel-offset'/.test(CODE)).toBe(true);
 	});
@@ -333,13 +333,13 @@ describe('LyricsOverlay is wired to the clamp (#270 — the fix must stay on the
 	it('measureReel assigns reelOffset from the pure function called with the measured band', () => {
 		// The call site: `reelOffset = reelOffsetFor({ ... band: viewportEl.clientHeight ... })`.
 		// Assert the assignment consumes the imported helper AND passes the CLIPPED clientHeight as band —
-		// clientHeight is the whole point of #270 (the bias must be measured against the clipped height).
+		// clientHeight is the whole point of the clamp (the bias must be measured against the clipped height).
 		expect(/reelOffset\s*=\s*reelOffsetFor\s*\(/.test(CODE)).toBe(true);
 		expect(/band\s*:\s*viewportEl\.clientHeight/.test(CODE)).toBe(true);
 	});
 
 	it('does NOT reintroduce the unclamped inline offset arithmetic (negative arm)', () => {
-		// The pre-#270 code was `reelOffset = -(row.offsetTop + ... - viewportEl.clientHeight / 2 - bias);`.
+		// The pre-clamp code was `reelOffset = -(row.offsetTop + ... - viewportEl.clientHeight / 2 - bias);`.
 		// A later edit could re-add that inline maths ALONGSIDE the call and pass a positive-only guard, so
 		// this negative arm bans the inline expression: reelOffset assigned from an inline `- bias)` form.
 		expect(/reelOffset\s*=\s*-\(/.test(CODE)).toBe(false);
@@ -348,9 +348,9 @@ describe('LyricsOverlay is wired to the clamp (#270 — the fix must stay on the
 
 	// render-path wiring: reelOffset now takes the rendered ramp depths, and the pure clamp only
 	// insets the sung row out of a ramp if measureReel actually PASSES them. Reverting measureReel to the
-	// pre-#671 call (no fadeTop/fadeBot) leaves the grid test green (the args default to 0 => [0, band]),
+	// pre-fade call (no fadeTop/fadeBot) leaves the grid test green (the args default to 0 => [0, band]),
 	// this repo's built-but-unwired shape — so pin the two args at the call site by source scan.
-	it('measureReel passes fadeTop AND fadeBot to reelOffset (the #671 depths reach the clamp)', () => {
+	it('measureReel passes fadeTop AND fadeBot to reelOffset (the ramp depths reach the clamp)', () => {
 		expect(/fadeTop\s*:/.test(CODE)).toBe(true);
 		expect(/fadeBot\s*:/.test(CODE)).toBe(true);
 		// keyed on the context-row flags, not a blind 1.9em: a no-context edge stays unfaded (0).

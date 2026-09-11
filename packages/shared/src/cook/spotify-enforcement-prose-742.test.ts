@@ -1,4 +1,4 @@
-// Guard for #742 F2 — five sites described an enforcement that did not exist.
+// Guard for F2 — five sites described an enforcement that did not exist.
 //
 // With the not-cookable rule enforced in exactly ONE place, five other sites explained it. Four named
 // `fetcherFor` as the refusal, and `fetcherFor` does not refuse: measured against the real helpers,
@@ -159,7 +159,7 @@ test('F2 the measurements the false claims contradicted still hold', () => {
 });
 
 test('F2 the ratified DECISION itself is untouched', () => {
-	// The issue upholds #427 and must not reopen it. Only the sentence describing HOW the rule is
+	// The issue upholds the ratified decision and must not reopen it. Only the sentence describing HOW the rule is
 	// enforced was wrong. If a later edit weakens the decision, this reds.
 	const decisions = sources.get('docs/DECISIONS.md')!;
 	expect(decisions).toMatch(/Spotify as a SEARCH \/ METADATA\s*source only|SEARCH \/ metadata\s*source only/i);

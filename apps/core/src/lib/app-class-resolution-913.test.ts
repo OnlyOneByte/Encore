@@ -88,11 +88,11 @@ function globallyDefined(): Set<string> {
  * Class tokens present on main and still unresolved, each with why it is not this PR's business.
  *
  * Measured against `origin/main`, not assumed: the same scan run on main reports exactly these seven, so
- * none is a #913 regression. They are recorded rather than fixed so that a NEW unresolved class is a hard
+ * none is a new regression. They are recorded rather than fixed so that a NEW unresolved class is a hard
  * failure instead of noise in a list nobody reads. Fixing one means deleting its line here.
  */
 const PRE_EXISTING: Record<string, string> = {
-	panel: 'settings/+page.svelte ×3 — a wrapper whose rule was dropped before #913; unstyled on main too',
+	panel: 'settings/+page.svelte ×3 — a wrapper whose rule was dropped earlier; unstyled on main too',
 	qrow: 'QueueRow.svelte — only `.qrow.proc` exists, and it is scoped to ProcessingCard, so the bare token has never resolved',
 	'reselect-body': 'LyricsReselect.svelte — dialog body wrapper, no rule on main',
 	'opt-src': 'LyricsReselect.svelte — per-option source label, no rule on main',

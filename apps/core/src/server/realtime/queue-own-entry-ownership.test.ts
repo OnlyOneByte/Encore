@@ -1,4 +1,4 @@
-// Issue #241: `queue:remove-any` / `queue:reorder-any` were asked for EVERY remove/move, including a
+// `queue:remove-any` / `queue:reorder-any` were asked for EVERY remove/move, including a
 // singer's OWN entry. can() ignores the capability TODAY (Boolean(actor?.singerId)), so nothing breaks
 // now — but capabilities.ts:9-11 exists precisely so can() can later be narrowed to a host role, and
 // the moment it is, gating every remove through the -any capability would refuse a singer their OWN

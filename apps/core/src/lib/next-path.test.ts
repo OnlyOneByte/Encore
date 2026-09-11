@@ -22,7 +22,7 @@ describe('safeNextPath', () => {
 		expect(safeNextPath('http://evil.example')).toBe('/');
 		// The WHATWG URL parser strips ASCII tab/LF/CR before parsing, so a percent-encoded
 		// control char survives a prefix denylist and re-forms `//evil.example`. These are the
-		// exact bypasses reported in #436; each must collapse to the fallback.
+		// exact bypasses that were reported; each must collapse to the fallback.
 		expect(safeNextPath('/\t/evil.example')).toBe('/');
 		expect(safeNextPath('/\n/evil.example')).toBe('/');
 		expect(safeNextPath('/\r/evil.example')).toBe('/');

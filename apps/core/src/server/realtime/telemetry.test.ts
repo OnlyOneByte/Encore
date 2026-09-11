@@ -188,14 +188,14 @@ test('an ended with no entry id keeps legacy behaviour (backward compatible with
 test('a stale position frame naming the outgoing entry after an advance does NOT move the playhead', () => {
 	// q1 plays at ~87s, then a skip/ended advances to q2 (fresh position 0). The outgoing <audio>
 	// for q1 fires one more ontimeupdate across the round-trip + slot swap: a POSITION frame naming
-	// q1, which is no longer current. Before #125 it was written unconditionally (q2.positionSec=87)
+	// q1, which is no longer current. Before the stale-frame fix it was written unconditionally (q2.positionSec=87)
 	// and fed back to the TV as a seek target, starting q2 87s in. It must now be dropped.
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1 playing
 	handleTelemetry({ entryId: 'q1', positionSec: 87.4 }, deps);
-	expect(state.playback.positionSec).toBe(87.4); // a live frame for the current entry still tracks (#718: sub-second kept)
+	expect(state.playback.positionSec).toBe(87.4); // a live frame for the current entry still tracks (sub-second kept)
 
 	// Advance to q2 (its own play resets positionSec to 0).
 	handleTelemetry({ entryId: 'q1', positionSec: 100, ended: true }, deps);
@@ -213,7 +213,7 @@ test('a position frame for the current entry still updates position (guard hoist
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	handleTelemetry({ entryId: 'q1', positionSec: 42.7 }, deps);
-	expect(state.playback.positionSec).toBe(42.7); // #718: broadcast position keeps sub-second precision
+	expect(state.playback.positionSec).toBe(42.7); // broadcast position keeps sub-second precision
 });
 
 test('an id-less position frame keeps legacy behaviour (older TV unaffected)', () => {
@@ -221,13 +221,13 @@ test('an id-less position frame keeps legacy behaviour (older TV unaffected)', (
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	handleTelemetry({ positionSec: 33.3 }, deps);
-	expect(state.playback.positionSec).toBe(33.3); // no id -> still applied (#718: sub-second kept)
+	expect(state.playback.positionSec).toBe(33.3); // no id -> still applied (sub-second kept)
 });
 
-test('the TV wires sendTelemetry through the pure telemetryFrame(status, current, …) so the stamp is reachable (#130)', () => {
-	// The server drop (player.ts) can only fire on a frame that CARRIES an entryId. Before #125 the
-	// TV stamped one only on `ended`, so position frames arrived id-less and the guard's first
-	// conjunct was false. #130 lifted the stamp out of this .svelte into the pure telemetryFrame()
+test('the TV wires sendTelemetry through the pure telemetryFrame(status, current, …) so the stamp is reachable', () => {
+	// The server drop (player.ts) can only fire on a frame that CARRIES an entryId. Before the
+	// stale-frame fix the TV stamped one only on `ended`, so position frames arrived id-less and the
+	// guard's first conjunct was false. The stamp was then lifted out of this .svelte into the pure telemetryFrame()
 	// (src/lib/tv/telemetry.ts), whose OUTPUT is asserted behaviourally in telemetry.test.ts beside
 	// it — so the stamp is now run, not grepped for. This source-scan only pins the WIRING that
 	// reverting the client hunk would break: sendTelemetry must delegate to telemetryFrame passing
@@ -235,5 +235,5 @@ test('the TV wires sendTelemetry through the pure telemetryFrame(status, current
 	const src = readFileSync(join(import.meta.dir, '..', '..', 'routes', 'tv', '+page.svelte'), 'utf8');
 	const body = src.split('function sendTelemetry(')[1]?.split('\n\t}')[0] ?? '';
 	expect(body).toContain('telemetryFrame(status, current'); // delegates, passing the live current
-	expect(body).not.toContain("status === 'ended' ?"); // the ended-only form is the #125 bug
+	expect(body).not.toContain("status === 'ended' ?"); // the ended-only form is the stale-frame bug
 });

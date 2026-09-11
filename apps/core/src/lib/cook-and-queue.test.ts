@@ -37,7 +37,7 @@ test('a turn for a DIFFERENT song does not lend its priority', () => {
 	expect(soonestSeqFor('m1', [entry({ mediaId: 'other' })])).toBe(NO_QUEUE_PRIORITY);
 });
 
-// ── #741 F1: the retry the app advertises must not book a SECOND turn ─────────────────────────────
+// ── F1: the retry the app advertises must not book a SECOND turn ─────────────────────────────
 // A terminally failed cook keeps offering Sing ("tap Sing to try again"), and taking that advice ran
 // BOTH steps — so the singer held two queued turns of one song and the room played it twice. With a
 // turn already queued the queue step must be skipped and only the cook run. Asserted against a

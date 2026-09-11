@@ -64,14 +64,14 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		expect(src).toContain('transportFor(');
 	});
 
-	test('the transport hasSrc means "holding THIS ENTRY\'s src", so a same-song advance re-runs it (#374/#701)', () => {
+	test('the transport hasSrc means "holding THIS ENTRY\'s src", so a same-song advance re-runs it', () => {
 		const calls = src.split('transportFor({').slice(1);
 		expect(calls.length).toBe(1); // ONE decision, derived once
 		const call = calls[0]!.slice(0, 1600);
 		// The input must compare the element's ENTRY-scoped token against the CURRENT entry's, not merely
-		// ask "has this slot ever held a src" (`!!currentSrc`, stale-true across ANY change — #374) and not
+		// ask "has this slot ever held a src" (`!!currentSrc`, stale-true across ANY change) and not
 		// merely "does the element hold this SONG's src" (`slotHoldsSrc`, stale-true across a SAME-SONG
-		// advance because the src is byte-identical — #701). `slotHoldsSong(songToken(currentEntryId, ...),
+		// advance because the src is byte-identical). `slotHoldsSong(songToken(currentEntryId, ...),
 		// songToken(entryId, ...fileSrc(media)...))` gives the `idle -> play` value edge exactly when the
 		// assign effect records the new entry, even for turn 2 of a twice-queued song.
 		expect(call).toContain('hasSrc: slotHoldsSong(');
@@ -150,7 +150,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 
 	test('currentSrc is not clobbered on a not-playable pass', () => {
 		// The bookkeeping the transport gates on must survive a churn pass, so its write is guarded on
-		// `playable` rather than assigned unconditionally to a possibly-empty `resolved`. (#701 moved the
+		// `playable` rather than assigned unconditionally to a possibly-empty `resolved`. (the same-song advance fix moved the
 		// write inside a `if (playable) { ... }` block that also records `currentEntryId`; the guard on the
 		// write's playability is what matters, so match the assignment inside the guarded block.)
 		expect(code).toContain('currentSrc = resolved');
@@ -175,7 +175,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	 * the derived value never having changed — is never retried. The room is silent while every surface
 	 * says it is playing. The fix clears the shadow WHEN THE ELEMENT IS GONE, so a remounted element reads
 	 * `hasSrc:false` and the transport takes a genuine `idle -> play` edge once the assign effect lands the
-	 * new src. This is a DIFFERENT clear from the #251 not-playable churn pass (element still bound, keep
+	 * new src. This is a DIFFERENT clear from the not-playable churn pass (element still bound, keep
 	 * the song) — it fires only on the unmount, and no such reset exists on base, so this reds today.
 	 * Comments are stripped so the prose above (which names the old and new shapes) can neither satisfy
 	 * nor trip it.
@@ -183,7 +183,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	test('both src+entry shadows are reset when the master element unmounts, not left to go stale', () => {
 		// A guard against the shadows that survive the drain. The reset must fire on the ABSENCE of the
 		// binding (`!master`) — a genuine unmount — and clear BOTH the src shadow (so a re-added same-song
-		// element does not read a stale hasSrc:true — #674) and the entry shadow (#701's held token half).
+		// element does not read a stale hasSrc:true) and the entry shadow (the held token half).
 		// Wrap-tolerant on whitespace between tokens.
 		expect(code).toMatch(/if\s*\(\s*!master\s*\)\s*\{[\s\S]*currentSrc\s*=\s*''[\s\S]*currentEntryId\s*=\s*null/);
 		// Not vacuous: the reader it protects is still wired to the shadow (if someone rewires the transport
@@ -215,7 +215,7 @@ describe("slotHoldsSrc — the element is holding THIS song's src, not merely SO
 		expect(slotHoldsSrc(A, A)).toBe(true);
 	});
 
-	test('false when the element still holds the PREVIOUS song across a change — this is #374', () => {
+	test('false when the element still holds the PREVIOUS song across a change — this is the stale-src defect', () => {
 		// The slot holds A's URL; the current media now resolves to B. The old `!!currentSrc` read this
 		// as `true` (a src exists) and kept the transport at `'play'`; `slotHoldsSrc` reads it as `false`
 		// because the element is NOT yet holding B.
@@ -237,7 +237,7 @@ describe('the transport across a song change on one page', () => {
 	const B = '/media/song-b-instrumental.wav';
 	// The slot state at the moment the new song B has arrived as `media` but the assign effect has not
 	// yet written B's src to the element, so `currentSrc` still holds A's URL. This is the exact instant
-	// #374 is about.
+	// the stale-src defect is about.
 	const slot = { playable: true, active: true, visible: true, playing: true };
 
 	test('BASE BEHAVIOUR (regression): !!currentSrc plays B before its src has landed', () => {
@@ -280,7 +280,7 @@ describe('the transport across a song change on one page', () => {
 /*
  * — "queue a song TWICE and its second turn never plays". Turn 1 and turn 2 are two separate
  * `QueueEntry`s (distinct client-minted ids) but ONE media record, so `fileSrc(media)` — and thus the
- * element's held src — is BYTE-IDENTICAL across the advance. #374's fix compared src strings, so on a
+ * element's held src — is BYTE-IDENTICAL across the advance. The stale-src fix compared src strings, so on a
  * same-song advance `slotHoldsSrc(currentSrc, wanted)` is `true` on BOTH sides: no value edge, the
  * transport `$derived` keeps `'play'`, its effect never re-runs, and since `ended` has paused the
  * element and the byte-identical src reset currentTime to 0, the room sits silent at 0 with no
@@ -320,8 +320,8 @@ describe('the transport across a SAME-SONG advance (a song queued twice)', () =>
 	 * THE NAMED GUARD, red on base. On base the transport input is `slotHoldsSrc`, which compares only
 	 * the src: for a same-song advance held===wanted===SRC on BOTH sides, so both decisions are 'play'
 	 * and there is NO edge — the exact hole. Expressed against the SRC-ONLY input this assertion FAILS
-	 * (both 'play'); against the ENTRY-scoped input it PASSES (idle -> play). This is what makes #701
-	 * dispatchable and is byte-for-byte the case #374's describe could never reach because every one of
+	 * (both 'play'); against the ENTRY-scoped input it PASSES (idle -> play). This is what makes the same-song
+	 * advance case dispatchable and is byte-for-byte the case the song-change describe block could never reach because every one of
 	 * its cases used two DIFFERENT songs.
 	 */
 	test('the src-only input produces NO edge across a same-song advance — the bug', () => {

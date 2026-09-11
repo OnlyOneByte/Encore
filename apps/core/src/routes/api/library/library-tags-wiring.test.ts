@@ -1,5 +1,5 @@
 // guard: GET /api/library must surface each library song's descriptive tags, so the phone
-// library row can show them WITHOUT a second round-trip. This is the READ/display half of #632; the
+// library row can show them WITHOUT a second round-trip. This is the READ/display half of the tags feature; the
 // WRITE half (kind:'tag' rows from the sidecar) already lands via setTags in app.ts.
 //
 // WHY A SOURCE SCAN. The handler calls getApp() — the live app singleton with a DB, job ledger and

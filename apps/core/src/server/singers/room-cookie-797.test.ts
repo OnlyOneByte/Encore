@@ -3,10 +3,10 @@
 //
 // `ROOM_COOKIE = 'encore_room'` was written by /api/join on every join, with a 30-day `maxAge`, and had
 // exactly ZERO readers: all nine `cookies.get(...)` / `readSessionToken(...)` sites in the app read the
-// SESSION cookie, and `readSessionToken` parses only that name. #654 designed the room identity as a
-// cookie the phone carries; #657 then chose the session token instead and said why — a room is a
+// SESSION cookie, and `readSessionToken` parses only that name. The room-cookie design made the room identity a
+// cookie the phone carries; the room-scope decision then chose the session token instead and said why — a room is a
 // tenancy boundary, so its id must resolve through the singers row rather than arriving as a client
-// claim ($server/realtime/room-scope). All of #652–#658 are closed, so no reader was ever coming.
+// claim ($server/realtime/room-scope). All of the room-identity tickets are closed, so no reader was ever coming.
 //
 // A pure deletion cannot red a behavioural test by construction, which is why this guard exists in two
 // arms:
@@ -17,7 +17,7 @@
 //     the room identity comes from is told, in the file, that this was tried and rejected. An
 //     unstripped scan would red on that honest explanation and push the next author into silence.
 //  2. PROSE — a windowed ban on re-asserting that anything READS a room cookie, under any constant
-//     name, allowed only when the window explicitly denies it. Same shape as the #742 F2 guard: the
+//     name, allowed only when the window explicitly denies it. Same shape as the spotify-enforcement prose guard: the
 //     defect was never the identifier, it was a comment that recommended the wrong mechanism for a
 //     security decision.
 //
@@ -98,7 +98,7 @@ test('F1 the stripper DISCRIMINATES — a comment mention passes, real code does
 });
 
 test('F1 the corrective prose is PRESENT where a reader would look', () => {
-	// The negative arm alone is satisfied by silence, and silence is what let #654's design outlive the
+	// The negative arm alone is satisfied by silence, and silence is what let the room-cookie design outlive the
 	// decision that replaced it. Both files that used to write or credit the cookie must now say the
 	// room comes from the resolved join, not from a cookie.
 	const joinRoute = sources.get(join(SRC, 'routes', 'api', 'join', '+server.ts'))!;
@@ -111,8 +111,9 @@ test('F1 the corrective prose is PRESENT where a reader would look', () => {
 /**
  * Every ±100-character window around a reading verb that also mentions a room cookie.
  *
- * Symmetric, for the reason the #742 F2 guard documents: the subject of "reads" usually sits before the
- * verb, so a forward-only window cuts off the word that says who reads and misattributes the sentence.
+ * Symmetric, for the reason the spotify-enforcement prose guard documents: the subject of "reads"
+ * usually sits before the verb, so a forward-only window cuts off the word that says who reads and
+ * misattributes the sentence.
  */
 function readingWindows(src: string): string[] {
 	const flat = src.replace(/\s+/g, ' ');
@@ -131,7 +132,7 @@ const isDenial = (w: string): boolean =>
 	/\bread[a-z]*\b[^.]{0,60}\b(no|never|nothing)\b/i.test(w);
 
 test('F1 no production source ASSERTS that anything reads a room cookie', () => {
-	// Anchored on the CLAIM, not the identifier, so re-introducing #654's design under a new constant
+	// Anchored on the CLAIM, not the identifier, so re-introducing the room-cookie design under a new constant
 	// name is still caught. A denial is allowed on purpose — the corrected comments have to be able to
 	// name the mechanism they rule out, and the test above requires them to.
 	for (const p of FILES) {
@@ -170,7 +171,7 @@ test('F1 the mechanism that DID win is still the one the code uses', () => {
 	expect(stripComments(repository).match(/if \(k === (\w+)\)/)?.[1]).toBe('SESSION_COOKIE');
 });
 
-// ── #797 F2 — the prose half ─────────────────────────────────────────────────
+// ── F2 — the prose half ──────────────────────────────────────────────────────
 //
 // `StoredSinger`'s docstring said the wire type carries no room because "a phone is never told its own
 // room id", and `SingerRepository.create`'s said "a phone never needs to be told its own room". That
@@ -211,9 +212,10 @@ function neverToldWindows(src: string): string[] {
 /**
  * Innocent = the window explicitly CONTRADICTS the claim rather than making it.
  *
- * Needed for the same reason the #742 F2 guard needs its denial escape: a correction has to be able to
- * name the belief it is overturning, and a ban that forbade the words outright would push the next
- * author into saying nothing — which is the state that let the false justification survive #657.
+ * Needed for the same reason the spotify-enforcement prose guard needs its denial escape: a correction
+ * has to be able to name the belief it is overturning, and a ban that forbade the words outright would
+ * push the next author into saying nothing — which is the state that let the false justification
+ * survive the room-scope decision.
  */
 const contradictsIt = (w: string): boolean => /\bDOES\b|\bdoes\s+learn\b|\bin\s+fact\b|\bis\s+false\b/.test(w);
 

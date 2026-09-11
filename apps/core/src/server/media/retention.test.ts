@@ -242,7 +242,7 @@ describe('evictDerived', () => {
 		expect(evictDerived(media('ghost'))).toEqual({ removed: [], bytes: 0 });
 	});
 
-	it('deletes and counts ALL lyrics-candidate JSONs, not just the chosen lyricsRef (#442 §3)', () => {
+	it('deletes and counts ALL lyrics-candidate JSONs, not just the chosen lyricsRef', () => {
 		// A song carries one lyrics JSON per text source (worker lyrics/chain.py mints a distinct key
 		// each), all retained in m.lyricsCandidates; lyricsRef is only the CHOSEN one. derivedRefsOf
 		// listing lyricsRef alone saw 1 of N — the other N-1 were never counted toward the cap and,
@@ -296,10 +296,10 @@ describe('evictDerived', () => {
 	});
 
 	it('counts AND evicts the retained raw caption track the cap claims to bound', () => {
-		// THE F1 PIN. #684 shipped ENCORE_KEEP_RAW_CAPTIONS retention, whose docstring claims the track
+		// THE F1 PIN. ENCORE_KEEP_RAW_CAPTIONS retention shipped with a docstring claiming the track
 		// "inherits the retention the cap already bounds" — but eviction here is ref-driven and
 		// derivedRefsOf enumerated no raw-caption key, so derivedBytesOf undercounted (the identical
-		// /#442 undercount) and evictDerived orphaned the file on disk PERMANENTLY: retention strips
+		// lyrics-candidate undercount) and evictDerived orphaned the file on disk PERMANENTLY: retention strips
 		// the song to un-cooked and the raw caption survives the eviction with nothing left pointing at it.
 		// The worker writes it to derived/captions/<kind>/<id>.captions.<ext> keyed per media id (no ref
 		// stored on Media), so derivedRefsOf enumerates CAPTION_KINDS × KNOWN_CAPTION_EXTS via rawCaptionKey.
@@ -327,7 +327,7 @@ describe('evictDerived', () => {
 	});
 });
 
-// ── #496: retention must report bytes it actually freed, and derive the vocals ref in ONE place ──
+// ── retention must report bytes it actually freed, and derive the vocals ref in ONE place ──
 import { readFileSync as _readFileSync } from 'node:fs';
 import { chmodSync, statSync as _statSync } from 'node:fs';
 import { join as _join } from 'node:path';
@@ -402,19 +402,19 @@ describe('§2 — the vocals ref is derived in exactly one place', () => {
 
 	it('derivedRefsOf reads the shared candidate list AND retains the stored ref', () => {
 		// GUARD 3: retention re-derived its own list; it must delegate to candidateVocalsRefs.
-		// The m.vocalsRef arm (added by #480) is a regression guard: it must still be present.
+		// The m.vocalsRef arm is a regression guard: it must still be present.
 		const body = stripComments(readSrc('retention.ts'));
 		const fn = body.match(/function derivedRefsOf[\s\S]*?\n}/);
 		expect(fn).not.toBeNull();
 		expect(fn![0]).toContain('candidateVocalsRefs'); // BASE FAILS: re-derived inline
-		expect(fn![0]).toContain('m.vocalsRef'); // #480 regression guard — passes today
+		expect(fn![0]).toContain('m.vocalsRef'); // regression guard — passes today
 	});
 });
 
-// ── #601: the recompress encoder must emit FLAC into the .flac destination it plans ──
+// ── the recompress encoder must emit FLAC into the .flac destination it plans ──
 // The suite's fakeTranscode writes bytes at `to` and returns true, IGNORING the destination extension
 // and the codec entirely — so before this block, mutating the production argv to `-c:a aac` (or any
-// codec) left the whole suite green (issue #601 §3, mutation-proven). These tests exercise the REAL
+// codec) left the whole suite green (mutation-proven). These tests exercise the REAL
 // `ffmpegTranscoder` end-to-end by pointing it at a fake `ffmpeg` executable that records the argv it
 // is handed, so the codec the production builder emits is asserted rather than assumed. ffmpeg need
 // not be installed on the box: the fake IS the ffmpeg the transcoder spawns.

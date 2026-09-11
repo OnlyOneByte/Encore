@@ -3,13 +3,13 @@
  *
  * Installing Tailwind into an app with ~4,950 lines of hand-written CSS required three decisions, and
  * each one is silent when it breaks. That is what this file is for. None of these arms tests Tailwind;
- * they test that the four choices #853 made are still the choices in force, because every one of them
+ * they test that the four choices the install made are still the choices in force, because every one of them
  * fails by producing a *quietly different app* rather than an error:
  *
  *   1. NO COLOUR IN `@theme`. Registering a colour mints the whole utility family with no per-family
  *      opt-out, so `--color-accent` hands out `text-accent` beside `bg-accent` — and `--accent` as ink
  *      measures 3.10:1 on `--card2`, below AA, which is why `--accent-ink` exists as a distinct token.
- *      #840's 48-stop palette makes that ink-vs-fill split load-bearing for all 48. A colour added here
+ *      The 48-stop palette makes that ink-vs-fill split load-bearing for all 48. A colour added here
  *      would be a legal-looking class that fails contrast.
  *   2. PREFLIGHT STAYS OUT. Measured cost of letting it in: 9,892 computed-value changes and 2,696
  *      moved boxes across 8 surfaces (`e2e/probes/preflight-reset-audit.mjs`). Re-adding the import is
@@ -17,7 +17,7 @@
  *   3. UTILITIES ARE MINTED FROM ONE DIRECTORY. Auto-detection scanned the whole repo — tests and
  *      markdown included — and collided with two class names the app really applies (`.underline` and
  *      `.block`, both `ball` marker styles; the first painted a real underline on the lyrics ball).
- *   4. THE COPY-IN TARGET IS IN GUARD SCOPE. #841 claimed `src/lib/components/ui/` is in scope "by
+ *   4. THE COPY-IN TARGET IS IN GUARD SCOPE. An earlier ruling claimed `src/lib/components/ui/` is in scope "by
  *      construction"; until this issue the directory did not exist, so the claim was untested.
  *
  * Arms 1-3 read app.css as TEXT rather than parsing CSS, for the same reason the other guards here do:
@@ -43,7 +43,7 @@ const APP_CSS = readFileSync(APP_CSS_PATH, 'utf8');
  * app.css is a plain stylesheet, so CSS block comments are the only comment form it can carry — there
  * is no `//` in CSS and no `<!-- -->` outside markup. Deliberately NOT imported from `test-helpers`:
  * the shared `stripComments` helpers there are the `.svelte` variants and are known to diverge on
- * whether they strip at all, which is why #626 left `stripComments` out of the single-sourcing batch.
+ * whether they strip at all, which is why the single-sourcing batch left `stripComments` out.
  *
  * STRING-AWARE, and that is not defensive programming — a naive version broke this file's own subject.
  * The `@source` glob ends with a recursive-directory wildcard followed by an extension wildcard, and
@@ -108,11 +108,11 @@ function themeBlocks(css: string): string[] {
  *
  * The value-bridge arm below must red on a `@theme` entry that FORWARDS to one of the app's own colour
  * tokens (`--color-x: var(--accent)` mints `text-accent` just as surely as a literal hex does). The
- * original #853 regex anchored the family list immediately after `--`:
+ * original regex anchored the family list immediately after `--`:
  *
  *     var\(\s*--(?:accent|grad|ok|warn|danger|ink|bg|card|line|focus|scrim|track|stage)
  *
- * which the #840 investigation (#876 history) flagged as leaky in exactly the direction #840's palette
+ * which the palette investigation flagged as leaky in exactly the direction the 48-stop palette
  * makes load-bearing: the per-stop INK tokens are named `--on-accent` and — under the 48-stop palette —
  * `--on-fill-N`, and both begin `--on`, so the anchored alternation never reaches `accent`/`fill` and
  * they slip straight through. Those are the tokens whose whole point is that ink ≠ fill; a minted
@@ -123,7 +123,7 @@ function themeBlocks(css: string): string[] {
  *   - the incumbent fill/surface families, now including `accent2`;
  *   - the ink tokens: `--on-accent`, `--accent-ink`, and any `--on-fill-N` per-stop ink;
  *   - any `--on-*` ink token and any `--fill-N` / `--hue-N` player-hue stop, so a future stop token
- *     minted from #840's palette is caught the day it is bridged, not the day someone remembers to add
+ *     minted from that palette is caught the day it is bridged, not the day someone remembers to add
  *     it to a list.
  */
 /** The per-stop tokens whose ink/fill split is load-bearing. Registering one of these mints an illegal pairing. */
@@ -181,7 +181,7 @@ function colourOffences(name: string, value: string): string[] {
  *
  * This setup is Tailwind v4 CSS-first: the theme lives in app.css's `@theme` block and there is no
  * `tailwind.config.*` (a JS config would be the v3 shape — app.css says so at its bridge comment). But
- * the #840 investigation flagged that the #853 guard reads ONLY app.css, so a v3-style config file
+ * the palette investigation flagged that the original guard reads ONLY app.css, so a v3-style config file
  * reintroduced later — `theme: { extend: { colors: { accent: '#7254e6' } } }` — would register the
  * whole colour family completely outside the guard's sight. XR-COL-14 must hold "given a Tailwind
  * config exists in the tree", whatever its shape.
@@ -254,7 +254,7 @@ describe('the @theme block registers no colour', () => {
 	});
 
 	/*
-	 * ── RETIRED BY #913'S RESTRUCTURE, ON THE RECORD (XR-VER-07) ─────────────────────────────────────
+	 * ── RETIRED BY THE REGISTRY RESTRUCTURE, ON THE RECORD (XR-VER-07) ─────────────────────────────────────
 	 *
 	 * This arm asserted `@theme` registers NO colour, so `text-<hue>` could never be minted. Its
 	 * measurement was never wrong: `--accent` as ink is 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2
@@ -269,7 +269,7 @@ describe('the @theme block registers no colour', () => {
 	 * SUCCESSOR: `shadcn-ink-ban-913.test.ts` bans those utility NAMES in app source, exempting the
 	 * vendored tree by path. That is the same mechanism `components/motion.test.ts`'s net arm already
 	 * uses for `transition-all`. The per-stop half stays with `contrast.test.ts`, which records
-	 * accent-as-ink leaving scope as a universal fact and becoming per-stop across #840's 48 stops.
+	 * accent-as-ink leaving scope as a universal fact and becoming per-stop across the palette's 48 stops.
 	 *
 	 * The PLAYER HUES are still unregistered and still un-mintable: `--accent2`, `--grad`, `--fill-N`
 	 * and `--hue-N` appear nowhere in `@theme`, which the arm below now pins directly.
@@ -285,7 +285,7 @@ describe('the @theme block registers no colour', () => {
 		 * The `ball`-marker lesson applies here too: the check is on what the declaration IS, not on
 		 * whether its name looks colour-ish.
 		 *
-		 * XR-COL-14 widens this two ways over the #853 original: the value-bridge now catches the
+		 * XR-COL-14 widens this two ways over the original: the value-bridge now catches the
 		 * per-stop INK tokens (`--on-accent`, `--on-fill-N`) that the anchored family list used to miss,
 		 * and the scan covers any `tailwind.config.*` in the tree as well as app.css's `@theme`, since a
 		 * v3-shape config would register colours entirely outside app.css. `mintSurfaces` counts every
@@ -339,7 +339,7 @@ describe('the @theme block registers no colour', () => {
 		expect(mutate('--color-accent: var(--accent);').length).toBeGreaterThan(0);
 		// by-value raw hex (a player hue pasted straight in)
 		expect(mutate('--player-hue-3: #7254e6;').length).toBeGreaterThan(0);
-		// THE HOLE #859 CLOSES: a bridge to the per-stop ink token, whose name begins `--on` and used to
+		// THE HOLE THIS CLOSES: a bridge to the per-stop ink token, whose name begins `--on` and used to
 		// walk past the anchored family alternation untouched.
 		expect(mutate('--text-hue-41: var(--on-accent);').length).toBeGreaterThan(0);
 		expect(mutate('--text-hue-7: var(--on-fill-7);').length).toBeGreaterThan(0);
@@ -352,7 +352,7 @@ describe('the @theme block registers no colour', () => {
 	});
 
 	it('MUTATION: a v3-shape tailwind.config that registers colours reds the config scan', () => {
-		// The other half of #859: prove the config-file leg fires on a reintroduced v3 config. In-process
+		// The other half of the widening: prove the config-file leg fires on a reintroduced v3 config. In-process
 		// against configColourOffences, so no file is written into the tree.
 		const cfg = "export default { theme: { extend: { colors: { accent: '#7254e6' } } } };";
 		expect(configColourOffences(cfg, 'tailwind.config.ts').length).toBeGreaterThan(0);
@@ -373,7 +373,7 @@ describe('Preflight stays out until someone decides otherwise', () => {
 		/*
 		 * Both spellings, because either one would bring the reset in: the explicit part import, and
 		 * the one-line `@import 'tailwindcss'` whose whole point is that it includes Preflight.
-		 * If you are here because this test failed and you MEANT to enable Preflight: #853's
+		 * If you are here because this test failed and you MEANT to enable Preflight: the install's
 		 * acceptance requires before/after frames of the existing screens and the fallout named, so
 		 * run `e2e/probes/preflight-reset-audit.mjs` on both sides and deal with what it reports —
 		 * last measured at 2,696 moved boxes — rather than deleting this arm.
@@ -419,7 +419,7 @@ describe('utilities are minted from the copy-in target only', () => {
 		 * copied-in component AND a semantic class on an app element. So intersect the two sets.
 		 *
 		 * It is empty today because `ui/` holds no component yet, which is honest rather than vacuous —
-		 * the arm exists for the moment #827 copies one in, where a `class="... block ..."` on a shadcn
+		 * the arm exists for the moment a copy-in lands one, where a `class="... block ..."` on a shadcn
 		 * drawer would otherwise silently re-arm `.block` against the lyrics ball. The floor below
 		 * asserts the app side really was collected, so the intersection cannot pass by finding nothing.
 		 */
@@ -480,7 +480,7 @@ describe('utilities are minted from the copy-in target only', () => {
 describe('the copy-in target is genuinely in guard scope', () => {
 	/*
 	 * The claim in `test-helpers.ts` is that a new source directory is in scope BY CONSTRUCTION,
-	 * because every walk is unconditionally recursive and there is no include-allowlist. #853 created
+	 * because every walk is unconditionally recursive and there is no include-allowlist. The Tailwind install created
 	 * `src/lib/components/ui/`, so the claim is testable for the first time.
 	 *
 	 * This is proven by MATERIALISING a file and walking for it, rather than by asserting a committed
@@ -512,10 +512,10 @@ describe('the copy-in target is genuinely in guard scope', () => {
 	it('svelteFiles and styleFiles both reach a file placed there', () => {
 		const probe = join(UI_DIR, '__scope-probe.svelte');
 		/*
-		 * NON-VACUITY, RE-ANCHORED BY #913 S1 (XR-VER-07).
+		 * NON-VACUITY, RE-ANCHORED BY S1 (XR-VER-07).
 		 *
 		 * This previously asserted the walk returns NOTHING from this directory, and used that emptiness
-		 * to prove a later hit was the walk arriving rather than the walk being indiscriminate. #913 S1
+		 * to prove a later hit was the walk arriving rather than the walk being indiscriminate. S1
 		 * copied in the first real component (`button/`), so that premise is gone — and it is gone
 		 * because the thing it was waiting for happened, which is the good case, not a regression.
 		 *

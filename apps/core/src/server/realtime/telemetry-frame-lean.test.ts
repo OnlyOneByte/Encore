@@ -1,4 +1,4 @@
-// guard: the tv:telemetry frame stays lean — the fields #129 removed do not come back.
+// guard: the tv:telemetry frame stays lean — the fields the lean-frame cleanup removed do not come back.
 //
 // THE DEFECT. tv:telemetry is a ~4Hz hot-path stream. Two of its five payload fields —
 // `durationSec` and `bufferedNextPct` — were declared on the shared wire contract, forwarded through
@@ -7,8 +7,9 @@
 // HARDCODED to the literal 100 at both producer sites, so a future server-side buffered/preload
 // decision wired to it would always read "the next song is fully buffered" — including when nothing
 // is warmed. This is the repo's built-never-wired class (a field that reads as supported protocol
-// but is vestigial), one layer out from #107. TvTelemetry.status was the same: the forwarder reduces
-// the wire status to `ended` before the handler sees it, so the copied .status was never read.
+// but is vestigial), one layer out from the earlier built-never-wired instance. TvTelemetry.status
+// was the same: the forwarder reduces the wire status to `ended` before the handler sees it, so the
+// copied .status was never read.
 //
 // THE FIX deletes those fields. WHY A SOURCE SCAN: a deletion has no runtime-observable regression by
 // construction — re-adding a field nothing reads leaves the whole suite green, so a per-hunk mutation
@@ -16,7 +17,7 @@
 // The absence of these fields is a decidable property of the sources, so this guard encodes it: the
 // wire frame, the handler type, the forwarder AND the client-side PRODUCER must not resurrect
 // durationSec/bufferedNextPct, and `bufferedNextPct` (the hardcoded-100 field, whose reappearance is
-// the sharpest regression) must not exist ANYWHERE in production. #280 caught that the earlier version
+// the sharpest regression) must not exist ANYWHERE in production. Review caught that the earlier version
 // scanned only events.ts/player.ts/server.ts and NOT the producer apps/core/src/lib/tv/telemetry.ts —
 // the one file the `<audio>.buffered` value is actually available at, and the natural place a
 // developer would re-add the field — so a hardcoded `bufferedNextPct: 100` there left the guard 5/5
@@ -24,7 +25,7 @@
 // literal), and the repo-wide claim below is made TRUE by walking the whole production tree rather
 // than a hand-picked file list, so a fourth site added later is covered without editing this file.
 // Matches the repo's source-scan-guard precedents (session-cookie-attributes.test.ts + stripComments,
-// ; the repo walk mirrors task-number-hygiene.test.ts, #55).
+// ; the repo walk mirrors task-number-hygiene.test.ts).
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -95,8 +96,8 @@ test('the tv:telemetry wire frame no longer declares the dead durationSec/buffer
 	// The fields that survive — the frame still carries these and the server reads/derives from them.
 	expect(TELEMETRY_VARIANT).toMatch(/positionSec/);
 	expect(TELEMETRY_VARIANT).toMatch(/status/); // forwarder derives `ended` from this
-	// entryId is the stamp #70/#125 depend on to reach player.ts:280's drop; the wire half is
-	// otherwise held by typecheck alone (deleting it makes evt.entryId a TS error). #295.
+	// entryId is the stamp the stale-frame drops depend on to reach player.ts:280's drop; the wire
+	// half is otherwise held by typecheck alone (deleting it makes evt.entryId a TS error).
 	expect(TELEMETRY_VARIANT).toMatch(/entryId\?/);
 });
 
@@ -123,12 +124,12 @@ test('the server.ts forwarder does not copy the dead fields into TvTelemetry, on
 	expect(forwarded).toMatch(/positionSec:\s*evt\.positionSec/);
 	// the middle link of the producer -> wire -> FORWARDER -> handler chain. Without the
 	// entryId stamp here, player.ts:280's `t.entryId !== undefined` drop goes inert for every
-	// frame (t.entryId is optional, so any unstamped form typechecks) and #70/#125 both re-open
-	// silently. The producer and handler ends are pinned; nothing pinned this middle site.
+	// frame (t.entryId is optional, so any unstamped form typechecks) and both stale-frame drops
+	// re-open silently. The producer and handler ends are pinned; nothing pinned this middle site.
 	expect(forwarded).toMatch(/entryId:\s*evt\.entryId/);
 });
 
-test('the client-side producer (lib/tv/telemetry.ts) does not carry the dead fields (#129)', () => {
+test('the client-side producer (lib/tv/telemetry.ts) does not carry the dead fields', () => {
 	// telemetry.ts is where `<audio>.buffered` is available, so it is the natural place a
 	// developer would re-add `bufferedNextPct: 100` — and it was NOT scanned before. The two-line
 	// mutant adds the field to BOTH the interface and the return literal; pin both.
@@ -142,7 +143,7 @@ test('the client-side producer (lib/tv/telemetry.ts) does not carry the dead fie
 });
 
 // make the "exists nowhere in production" claim TRUE by walking the whole production tree,
-// mirroring task-number-hygiene.test.ts (#55). The old version scanned three hand-picked files and
+// mirroring task-number-hygiene.test.ts. The old version scanned three hand-picked files and
 // missed the producer telemetry.ts; a fixed list would miss the NEXT new site too. The walk excludes
 // *.test.ts so this guard's own references (and any other test citing the field from git history)
 // are not scanned. import.meta.dir === apps/core/src/server/realtime; five levels up is the repo root.
@@ -162,7 +163,7 @@ function productionFiles(dir: string, out: string[]): string[] {
 	return out;
 }
 
-test('bufferedNextPct — the hardcoded-100 field — exists nowhere in production, repo-wide (#129)', () => {
+test('bufferedNextPct — the hardcoded-100 field — exists nowhere in production, repo-wide', () => {
 	// The sharpest regression is resurrecting the field a future reader would trust: a hardcoded 100
 	// that always answers "next song fully buffered". Walk the whole production tree so the test's own
 	// name ("exists nowhere ... repo-wide") is honest — not a claim over three hand-picked files.

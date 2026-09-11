@@ -1,4 +1,4 @@
-// Guard for #742, route half: POST /api/make-karaoke must ANSWER for a metadata-only source instead of
+// Guard for the not-cookable arm, route half: POST /api/make-karaoke must ANSWER for a metadata-only source instead of
 // falling through to its generic 409.
 //
 // The route has four honest arms (ready / unknown / playing / over-limit) and a catch-all

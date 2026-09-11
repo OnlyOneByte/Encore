@@ -121,7 +121,7 @@ test('the swatch selector asks for the accessible name the picker actually rende
 
 test('the contract exposes a hook for each surface the flow has to reach', () => {
 	// A cheap completeness check: the flow spans join, remote and TV, so all three must be represented.
-	// The join surface is JoinLanding.svelte since #834 retired the /join route (the join UI is now the
+	// The join surface is JoinLanding.svelte since the /join route was retired (the join UI is now the
 	// unjoined branch of `/`), so match it case-insensitively rather than the old lower-case `join` path.
 	const files = new Set(HOOKS.map((h) => h.file));
 	expect([...files].some((f) => /join/i.test(f))).toBe(true);
@@ -157,7 +157,7 @@ test('the contract exposes a hook for each surface the flow has to reach', () =>
  * `classPresent` — does a token appear as a CLASS in a Svelte source, via `class="…"`, a
  * `class:token` directive, or a `.token` rule in <style>? — is imported from
  * ../src/lib/test-helpers (XR-VER-14), where its exact-token semantics are documented.
- * The `#682 G2` case below exercises the shared function directly, so a regression there reds here.
+ * The `G2` case below exercises the shared function directly, so a regression there reds here.
  */
 
 /**
@@ -509,7 +509,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 	'probes/p10-scaling.mjs': [
 		// STAYS - a bare tag query, not a UI hook.
 		'button',
-		// (Group E of the #513 per-driver split, tail of #494) migrated the ten resolvable
+		// Group E of the per-driver split (tail of the SEL migration) migrated the ten resolvable
 		// selectors this driver used to spell out into SEL and rewrote the p10 data arrays to
 		// interpolate them, so they are gone from this list: the attract screen, the row card, the
 		// row chip, the three badqr notice lines, the two scoped lower-third lines, and the two
@@ -524,12 +524,12 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		//     waves anything through. p10 reads it only to enumerate the notice card's descendants for
 		//     an overflow check; it stays a literal.
 		//
-		// completed #547's deferred cleanup of the three DEAD reads that were quarantined here:
+		// A follow-up pass completed Group E's deferred cleanup of the three DEAD reads that were quarantined here:
 		// '.b', '.filter-chip' and '.roster' named classes no component ever declared, so they were
 		// removed from p10's contrast targets outright ('.attract .idle-title' was repointed to
 		// SEL.stageHeadline and '.row .a' to '.row .byline'). They are no longer in the data arrays and
 		// so no longer need a quarantine entry. The G1 guard below now reds if a p10 target ever again
-		// names an unresolvable class, and #682 also tightened classPresent so '.b' can no longer
+		// names an unresolvable class, and that same pass also tightened classPresent so '.b' can no longer
 		// spuriously resolve against the 'badqr-b' fragment.
 		'.badqr *'
 	],
@@ -540,17 +540,17 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'h1',
 		'h2',
 		'table th'
-		// Group D of the #494 tail migrated this driver's four real hooks into SEL — .card
+		// Group D of the SEL-migration tail migrated this driver's four real hooks into SEL — .card
 		// (SEL.dashCard), .card table (SEL.dashCardTable), .tile .n (SEL.dashTileNumber), and the
 		// `.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)` chart-or-body union
 		// (SEL.dashChartOrBody) — extending the resolver to model the `+` adjacent-sibling combinator
-		// and a `:not()` exclusion chain. This was the engine-heavy group; see the #546 test below.
+		// and a `:not()` exclusion chain. This was the engine-heavy group; see the Group D test below.
 	],
 	'probes/p12-search.mjs': [
 		// Hex swatch colour (shape rule), not a selector.
 		'#ff5cae'
-		// '.chips button.ok' was migrated to SEL.readyChip (Group C of #513, tail of #494) and then
-		// RETIRED by #833, which deleted the readiness chip row it anchored. Nothing returns here: the
+		// '.chips button.ok' was migrated to SEL.readyChip (Group C of the per-driver split, tail of the SEL migration) and then
+		// RETIRED when the readiness chip row it anchored was deleted. Nothing returns here: the
 		// probe reaches the same empty state by typing a non-matching query.
 	],
 	'probes/p13-tap-to-start.mjs': [
@@ -561,14 +561,14 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 	],
 	'probes/p14-playhead-vs-cook.mjs': ['#ff5cae', 'audio'],
 	/*
-	 * `shoot-913.mjs` is a CAPTURE script, not a driver: it produces the before/after evidence for #913's
+	 * `shoot-913.mjs` is a CAPTURE script, not a driver: it produces the before/after evidence for an
 	 * accepted visual change and asserts nothing. It still goes through this guard because the guard
 	 * enumerates every driver under `e2e/` rather than a hand-kept list, which is the right default.
 	 */
 	'shoot-913.mjs': [
 		// The join colour: a swatch VALUE, the same shape rule p2, p14 and p16 rely on.
 		'#ff5cae',
-		// The join/continue control, found by accessible text — #913 moved it onto the vendored <Button>,
+		// The join/continue control, found by accessible text — it now sits on the vendored <Button>,
 		// where a class belongs to the component rather than the app.
 		'button',
 		// A file extension, not a selector: this is the only script here that writes files.
@@ -577,7 +577,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 	'probes/p16-hero-live-controls.mjs': [
 		// The join colour: a swatch VALUE, not a selector — the same shape rule p2 and p14 rely on.
 		'#ff5cae',
-		// The join screen's submit control, found by accessible text rather than a class: #913 moved it
+		// The join screen's submit control, found by accessible text rather than a class: it was moved
 		// onto the vendored <Button>, where a class belongs to the component rather than the app. A bare
 		// tag name is not a selector the contract can own.
 		'button'
@@ -597,9 +597,9 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		// Tag-only / attribute-fragment reads, deliberately NOT selectors:
 		'[aria-label=', // truncated attribute-selector fragment built by string concat
 		'audio' // a bare tag query for the media element (see SEL.mediaEl for the union form)
-		// Group A of the #494 tail migrated the two combinator/descendant selectors that used to
+		// Group A of the SEL-migration tail migrated the two combinator/descendant selectors that used to
 		// sit here into SEL (slotVisibleAudio, seekFill), extending the resolver to model a `>` child
-		// combinator and a bare-tag descendant. Groups B–E (#544–#547) track the rest of the tail.
+		// combinator and a bare-tag descendant. Groups B–E track the rest of the tail.
 	],
 	'probes/p6-lyrics.mjs': [
 		// Liveness reads, deliberately NOT in SEL: a bare tag-union existence check for a media element,
@@ -611,7 +611,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		// Tag-only / attribute-fragment reads, deliberately NOT selectors moved to SEL:
 		'[aria-label=', // a truncated attribute-selector fragment built by string concat, not a whole selector
 		'button' // a bare tag query for "any button", not a UI-specific hook
-		// '.err[role=alert]' MIGRATED to SEL.joinError in #544 (Group B of the #513 per-driver split):
+		// '.err[role=alert]' MIGRATED to SEL.joinError in Group B of the per-driver split:
 		// selectorResolves now models a class + unquoted-attribute compound, so the probe reads it from
 		// the contract instead of spelling it out here.
 	],
@@ -784,10 +784,10 @@ test('Group B — p8-presence .err[role=alert] moved from KNOWN_OFFENDERS into S
 	expect(selectorResolves('.err[data-x=alert]', sources)).toBe(false);
 });
 
-test('Group C — the resolver still models a `tag.class` compound part (re-anchored by #833)', () => {
+test('Group C — the resolver still models a `tag.class` compound part (re-anchored after the readiness chip row was deleted)', () => {
 	// RE-ANCHORED, ON THE RECORD (XR-VER-07). This test used to pin SEL.readyChip ('.chips button.ok')
 	// through two halves: that KNOWN_OFFENDERS no longer waved the literal through, and that the SEL
-	// entry resolved against real source. #833 deleted the readiness chip row, so both halves now name
+	// entry resolved against real source. The readiness chip row was deleted, so both halves now name
 	// markup nothing renders — they cannot hold, and lowering them to a `null` check would leave the
 	// test looking authoritative while asserting nothing.
 	//
@@ -878,8 +878,8 @@ test('Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS in
 		expect(p10).not.toContain(gone);
 	}
 
-	// Half 2: the ten now come from SEL. Four reuse entries #494 already added (attract/dashCard/
-	// scoped lower-third/up lines); four are new #547 entries (chip + the three badqr notice lines).
+	// Half 2: the ten now come from SEL. Four reuse entries the SEL migration already added (attract/dashCard/
+	// scoped lower-third/up lines); four are new Group E entries (chip + the three badqr notice lines).
 	// Each resolves against real source — a green false/null would mean the SEL entry points at markup
 	// no component renders.
 	expect(SEL.attract).toBe('.attract');
@@ -908,7 +908,7 @@ test('Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS in
 		expect(selectorResolves(SEL[key] as string, sources), key).toBe(true);
 	}
 
-	// Half 3: only '.badqr *' stays quarantined. #682 completed #547's deferred cleanup — the three
+	// Half 3: only '.badqr *' stays quarantined. A follow-up pass completed Group E's deferred cleanup — the three
 	// DEAD reads ('.b', '.filter-chip', '.roster') were removed from p10's contrast targets outright,
 	// so they no longer need — and no longer have — a quarantine entry here.
 	for (const kept of ['.badqr *']) {
@@ -922,7 +922,7 @@ test('Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS in
 	expect(selectorResolves('.badqr *', sources)).toBeNull();
 	// The three former offenders all resolve FALSE now: '.filter-chip' and '.roster' name classes no
 	// component renders, and '.b' — which the resolver used to wave through by matching a word-boundary
-	// `b` inside the `badqr-b` fragment — is rejected after #682 tightened classPresent to exact-token
+	// `b` inside the `badqr-b` fragment — is rejected after classPresent was tightened to exact-token
 	// matching. A dead read that reds instead of silently resolving is the whole point of §2.
 	expect(selectorResolves('.filter-chip', sources)).toBe(false);
 	expect(selectorResolves('.roster', sources)).toBe(false);
@@ -973,7 +973,7 @@ test('G1 — every literal p10-scaling contrast target resolves to a real anchor
 
 	// Sentinel A: both target arrays were actually found and their literals extracted. Replacing the
 	// arrays with `[]` (or a rename that hides them from the scan) makes the main arm pass vacuously —
-	// this floor reds instead. 19 distinct live literals across the two arrays as of #682.
+	// this floor reds instead. 19 distinct live literals across the two arrays at the time of writing.
 	expect(arrays.length).toBe(2);
 	expect(lits.length).toBeGreaterThanOrEqual(19); // @nvf-floor lits.length
 

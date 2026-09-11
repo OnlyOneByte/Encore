@@ -381,7 +381,7 @@ test('re-tapping a song already cooking is never counted against its own owner (
 	expect(cookState('m0', d, 'alice')).toBe('cooking'); // not 'over-limit'
 });
 
-// ── #135: the cap must hold when the singer's queue ADD was dropped over a reconnecting socket ─────
+// ── the cap must hold when the singer's queue ADD was dropped over a reconnecting socket ─────
 // The add (WebSocket) and the cook (HTTP) ride different transports and only the add is droppable.
 // A phone that taps Sing while its socket is not OPEN buffers the add client-side but the cook POST
 // still lands, so NO queue entry exists for these cooks. The old cap derived its count from
@@ -425,7 +425,7 @@ test('a dropped-add cook is attributed to its requester in the ledger, and only 
 
 test('a spotify-sourced media is refused a cook (search-only; audio comes from YouTube)', () => {
 	// Cooking a spotify media would enqueue a fetch that forms youtube.com/watch?v=<spotify-track-id>
-	// and die at ffmpeg — the shape-inference bug the fetcher registry exists to kill. #427: Spotify
+	// and die at ffmpeg — the shape-inference bug the fetcher registry exists to kill. Spotify
 	// is a metadata source only; the singer queues the YouTube result instead.
 	const d = deps();
 	const m = media('sp1', { source: 'spotify', sourceRef: '4uLU6hMCjMI75M1A2tKUQC' });

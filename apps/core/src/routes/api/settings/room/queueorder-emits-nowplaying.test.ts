@@ -1,4 +1,4 @@
-// Regression for issue #636 on the ROOM-SETTINGS (queueOrder) seam.
+// Regression on the ROOM-SETTINGS (queueOrder) seam.
 //
 // Changing queueOrder re-derives rotationSeq, which changes who plays NEXT (the handler's own comment
 // says exactly this). The handler re-broadcast the reordered queue:patch but NOT nowplaying:changed, so
@@ -82,13 +82,13 @@ function putQueueOrder(order: string) {
 	return PUT({ request, cookies: { get: () => 'ignored' }, url } as never);
 }
 
-test('a queueOrder change leaves the queue and the advertised next alone (#856)', async () => {
+test('a queueOrder change leaves the queue and the advertised next alone', async () => {
 	const { settings, state, mediaById, published } = installApp();
 	settings.setRoom({ queueOrder: 'fcfs' }, ROOM);
 
 	// singer A queues a1, a2; singer B queues b1. Under the STORED-LIST model the queue is the
 	// source of truth, so flipping the algorithm cannot rearrange songs already standing — it would
-	// throw away every reorder anyone had made. #636 asked for the advertised next to stay honest
+	// throw away every reorder anyone had made. The ruling asked for the advertised next to stay honest
 	// across a flip; it now stays honest because nothing moves.
 	seed(state, mediaById, 'a1', 'A', 1);
 	seed(state, mediaById, 'a2', 'A', 2);

@@ -1,4 +1,4 @@
-// Guard for issue #304: the QueueRow/ProcessingCard "adding…" pending affordance must read the
+// Guard for the pending-affordance defect: the QueueRow/ProcessingCard "adding…" pending affordance must read the
 // store's REAL pending map, not the placeholder rotationSeq (Number.MAX_SAFE_INTEGER) that
 // applyAndReseq overwrites in the same synchronous frame as the add.
 //
@@ -136,7 +136,7 @@ test('QueueRow takes the pending KIND, defaults it, and derives one label from i
 test('ProcessingCard accepts a pending prop so the "adding…" state survives the cooking case', () => {
 	// The primary ✨ Sing flow produces a cooking entry, so ProcessingCard is what renders during an
 	// add. On base it had no pending prop; the fix must give it one, default it, and wire the visuals.
-	// Since #832 the prop is the op KIND rather than a boolean, so a pending reorder of a cooking entry
+	// Since the direction-A phone home shell the prop is the op KIND rather than a boolean, so a pending reorder of a cooking entry
 	// does not announce that it is "adding".
 	expect(PROC).toMatch(/pending\?:\s*'add' \| 'move' \| null/); // interface field
 	expect(PROC).toMatch(/pending\s*=\s*null,/); // destructuring default
@@ -153,7 +153,7 @@ test('ProcessingCard renders the "adding…" marker gated on pending, and styles
 	// saying the same thing.
 	expect(PROC).toMatch(/pendingLabel\s*=\s*\$derived\(pending === 'move' \? 'moving…' : 'adding…'\)/);
 	// And the two CSS rules that make the state visible: the card's warn-tinted surface and the
-	// warn-tinted marker. This pinned `opacity: 0.55` until #735 -- what it pinned was the
+	// warn-tinted marker. This pinned `opacity: 0.55` until the legibility fix -- what it pinned was the
 	// declaration's PRESENCE, and the declaration turned out to be the defect: an ancestor opacity
 	// flattened the whole card and dropped the stage line to 3.76:1 and the singer dot to 2.57:1. The
 	// state signal is the SURFACE now, so this pins the surface. The legibility invariant itself lives
@@ -166,7 +166,7 @@ test('ProcessingCard renders the "adding…" marker gated on pending, and styles
 
 /*
  * §D: the component gallery must carry a PENDING ProcessingCard, and a source scan is the only
- * thing that can hold it. Both `pending` rules shipped in #304 unreadable (the cook readout at
+ * thing that can hold it. Both `pending` rules shipped unreadable (the cook readout at
  * 3.76:1, the singer dot at 2.57:1) specifically BECAUSE nothing ever rendered a pending cooking
  * card: the gallery's only pending fixture was a QueueRow, so the reviewer who found the defect had
  * to inject the class into the page by hand to measure it. A fixture's whole purpose is being looked
@@ -177,14 +177,14 @@ test('ProcessingCard renders the "adding…" marker gated on pending, and styles
 test('the component gallery renders a pending ProcessingCard so the state is eyes-on', () => {
 	const cards = [...GALLERY.matchAll(/<ProcessingCard\b([\s\S]*?)\/>/g)].map((m) => m[1]!);
 	expect(cards.length).toBeGreaterThan(0); // non-vacuity: the gallery still has cooking cards at all
-	// A real `pending` ATTRIBUTE, not the word inside a title string or a comment. Since #832 it carries
+	// A real `pending` ATTRIBUTE, not the word inside a title string or a comment. Since the direction-A phone home shell it carries
 	// the op kind, so `pending="add"` is the shape; a bare `pending` would now type as `true`.
 	const pendingCards = cards.filter((attrs) => /(?:^|\s)pending="(add|move)"(?=\s|$)/.test(attrs));
 	expect(pendingCards.length).toBeGreaterThanOrEqual(1);
 });
 
 test('the component gallery renders a pending REORDER row, so the new state is eyes-on', () => {
-	// Same reasoning as the fixture above, which #735 had to add after both `pending` rules shipped
+	// Same reasoning as the fixture above, which the legibility fix had to add after both `pending` rules shipped
 	// unreadable BECAUSE nothing ever rendered that state: a state with no fixture is judged by nobody.
 	// `moving…` vs `adding…` is a one-word difference on an identical surface, which is exactly the kind
 	// of thing that regresses silently, so the gallery carries both and they sit next to each other.

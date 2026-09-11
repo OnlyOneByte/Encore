@@ -1,4 +1,4 @@
-// Guards for #742's rendered half — the phone must stop OFFERING an action it cannot honour.
+// Guards for the rendered half — the phone must stop OFFERING an action it cannot honour.
 //
 // Encore has no jsdom for these surfaces, so — like song-row-tags.test.ts, song-row-sparkle-sibling
 // and failed-cook-turn-741.test.ts — every UI invariant here is a decidable property of the component
@@ -43,11 +43,11 @@ test('every Sing site asks a gate that can SEE the media, not readiness alone', 
 	// The defect in one line: `canCook(r)` answered a per-item capability from a check that could not
 	// see `Media.source`, so a Spotify row offered Sing exactly like a YouTube row. Every call site must
 	// now pass the media. Counting them is what stops a fix that converts one of the four and leaves the
-	// other three — the shape #224 was blocked for.
+	// other three — the partial-fix shape a review blocked before.
 	const singSites = page.match(/onmake=\{canCook\([^)]*\)/g) ?? [];
-	// TWO sites since #902 dropped the empty-box shortcut lists (Popular / Recently, which each rendered
+	// TWO sites since the empty-box shortcut lists were dropped (Popular / Recently, which each rendered
 	// a SongRow): the raw search-results block and the cooking block. Counting them is what stops a fix
-	// that converts one and leaves the other — the shape #224 was blocked for.
+	// that converts one and leaves the other — the partial-fix shape a review blocked before.
 	expect(singSites).toHaveLength(2);
 	for (const site of singSites) {
 		// two arguments, the first of which is a media expression (not a bare Readiness variable)
@@ -59,7 +59,7 @@ test('every Sing site asks a gate that can SEE the media, not readiness alone', 
 });
 
 test('every row that can offer a turn also declares whether the song is cookable at all', () => {
-	// `cookable` is what removes the ADD affordance. Same count as the Sing sites: since #902 the raw
+	// `cookable` is what removes the ADD affordance. Same count as the Sing sites: today the raw
 	// search-results block plus the cooking block (the empty-box shortcut lists that used to add two
 	// more were dropped). It must be derived from the shared authority, not re-implemented with a local
 	// `source === 'spotify'` test — that is how the rule ended up enforced in one place and asserted in

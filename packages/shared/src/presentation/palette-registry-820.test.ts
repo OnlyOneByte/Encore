@@ -19,7 +19,7 @@ import registry from './player-palette-48.json';
  *
  * The ratios are recomputed here with production's own `contrastRatio` rather than read out of the
  * registry's `r_*` fields. A test that trusts the numbers the generator printed cannot catch a
- * generator that measured against the wrong surface — which is the whole of #820.
+ * generator that measured against the wrong surface — which is the whole of the mockup-surface defect.
  */
 
 // import.meta.dir === packages/shared/src/presentation. The token layer lives under apps/core, four levels up.
@@ -48,7 +48,7 @@ const STOPS = CHROMATIC.stops;
 
 describe('the 48-stop registry is measured against the surfaces app.css paints', () => {
 	test('the registry surfaces ARE the app.css tokens — not the mockup values (XR-COL-04)', () => {
-		// The assertion #820 exists for. The generator reads these three tokens; this proves the
+		// The assertion this file exists for. The generator reads these three tokens; this proves the
 		// committed artifact was generated from the values the app still declares. Change `--card` in
 		// `app.css` without regenerating and this reds, naming the declared and the recorded value.
 		expect(registry.surfaces).toEqual({
@@ -79,7 +79,7 @@ describe('every stop clears every role floor with margin > 0', () => {
 	});
 
 	test('on_fill clears AA against its own fill (XR-COL-06, 4.5:1)', () => {
-		// Surface-independent, so #820 did not move it. Pinned here because it is one of the four
+		// Surface-independent, so the surface remeasurement did not move it. Pinned here because it is one of the four
 		// roles the registry claims to have measured, and nothing else measures it.
 		const weak = STOPS.filter((s) => contrastRatio(s.on_fill, s.fill) <= AA).map((s) => s.name);
 		expect(weak).toEqual([]);
@@ -90,7 +90,7 @@ describe('every stop clears every role floor with margin > 0', () => {
 		expect(weak).toEqual([]);
 	});
 
-	test('the six stops #820 named now clear the real --card, and by more than a rounding error', () => {
+	test('the six stops named above now clear the real --card, and by more than a rounding error', () => {
 		// The regression fixture. Each of these measured 4.47–4.49 against `--card` while the registry
 		// recorded ~4.50 against the mockup card. `> AA` alone would have passed at 4.5000001, which is
 		// exactly the margin that let a surface change go unnoticed, so the floor asserted here is the

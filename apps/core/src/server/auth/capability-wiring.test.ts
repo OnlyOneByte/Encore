@@ -69,13 +69,13 @@ function switchArm(body: string, op: string): string {
 
 // The `if (!can({ singerId: deps.actorSingerId }, '<cap>')) return` gate shape, arm-scoped. Asserting
 // the full guard shape (not a bare `can(...)` call) means an inert call whose result is discarded — the
-// classic way to re-open #106 the moment can() is narrowed — does not satisfy it.
+// classic way to re-open the ungated-command defect the moment can() is narrowed — does not satisfy it.
 function gateFor(cap: string): RegExp {
-	// The tail is `return\s*'` (a returned STRING), NOT a bare `return`. #220: `return null` is
+	// The tail is `return\s*'` (a returned STRING), NOT a bare `return`. Note that `return null` is
 	// validateCommand's "command is valid" answer — handleQueueCommand does `if (err) { ...reject... }`,
 	// so a returned string REJECTS and null PROCEEDS. A gate whose consequent is `return null` therefore
 	// APPROVES on denial: permanently open while keeping the exact `if (!can(...))` shape. Requiring a
-	// string consequent reds that mutation, which is the hole #106/#220 exist to protect.
+	// string consequent reds that mutation, which is the hole this guard exists to protect.
 	return new RegExp(
 		`if\\s*\\(\\s*!can\\(\\s*\\{\\s*singerId:\\s*deps\\.actorSingerId\\s*\\}\\s*,\\s*'${cap.replace(/[-]/g, '\\$&')}'\\s*\\)\\s*\\)\\s*return\\s*'`
 	);

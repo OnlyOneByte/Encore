@@ -117,7 +117,7 @@ test('a sidecar rewrite from an index-only Media does not lose the candidate set
 	expect(rewritten.artifacts.lyricsCandidates).toHaveLength(1);
 });
 
-// ── #640: a human override outranks the ranker, everywhere the chosen candidate is resolved ──
+// ── a human override outranks the ranker, everywhere the chosen candidate is resolved ────────
 
 test('setMediaLyrics HONORS a human override over pickBestLyrics on a later align completion', () => {
 	// The song already has a pinned override on the ASR candidate; a re-time completes reporting both.

@@ -1,4 +1,4 @@
-// Regression for issue #639 — delete a song from the library ENTIRELY. Three properties the owner
+// Regression: delete a song from the library ENTIRELY. Three properties the owner
 // ruling turns on, each red on base (the module did not exist) and pinned per-hunk:
 //   1. DELETION ORDER: the sidecar (meta/<id>.json) is unlinked FIRST, before audio/derived — a rescan
 //      rebuilds the row from the sidecar, so any other order can resurrect the song.
@@ -122,7 +122,7 @@ test('drops the index row and clears the runtime catalog; unknown id is a no-op 
 	expect(again.deleted).toBe(false);
 });
 
-// Regression for issue #636: deleting a NON-playing entry changes who plays next, so the delete path
+// Regression: deleting a NON-playing entry changes who plays next, so the delete path
 // must re-broadcast nowplaying:changed too. reconcileOnReady fires only on the wasPlaying path (the
 // dangling-current case); the far more common non-playing delete published queue:removed +
 // media:status with NO nowplaying:changed, so the TV's advertised upNext kept naming the deleted
@@ -156,7 +156,7 @@ test('deleting a NON-playing entry re-broadcasts the true next', () => {
 	expect(np!.upNext?.id).not.toBe('q1');
 });
 
-// ── issue #762 — the hard delete left the two biggest byte classes on disk, and left every other
+// ── the hard delete left the two biggest byte classes on disk, and left every other
 // client's queue stale. Three guards, one per finding. All three are RED on base.
 
 /** A lyrics candidate at the real per-(source, tag, timing) key the worker mints. */
@@ -178,7 +178,7 @@ function cand(
 // The expected refs are HARD-CODED literals, deliberately not built with candidateAudioRefs/audioKey —
 // re-deriving them with the code's own helpers would make this pass for any list the code happens to
 // hold, including a one-entry one.
-test('unlinks the raw original at EVERY extension it could be under, not just .wav (#762 F1)', () => {
+test('unlinks the raw original at EVERY extension it could be under, not just .wav (F1)', () => {
 	const { deps, unlinked } = harness(['m1']);
 	const res = deleteMediaEntirely('m1', deps);
 	expect(res.deleted).toBe(true);
@@ -204,10 +204,10 @@ test('unlinks the raw original at EVERY extension it could be under, not just .w
 
 // F2. `derivedRefsFor` named `lyricsKey(id)` (the dead single-file key) + `m.lyricsRef` and stopped, so
 // the other N−1 lyrics JSONs were orphaned forever — the exact undercount retention.ts:216-222 records
-// as already-fixed once for itself (#496/#442). Delegating to retention's `derivedRefsOf` closes it.
+// as already-fixed once for itself. Delegating to retention's `derivedRefsOf` closes it.
 //
 // Base-RED: base unlinks the chosen `lrclib.word` ref (it equals m.lyricsRef) and misses the other two.
-test('unlinks EVERY lyrics candidate JSON, not only the chosen one (#762 F2)', () => {
+test('unlinks EVERY lyrics candidate JSON, not only the chosen one (F2)', () => {
 	const { deps, hub, unlinked } = harness(['m1']);
 	const chosen = 'derived/lyrics/m1-lrclib-word.json';
 	const others = ['derived/lyrics/m1-captions-line.json', 'derived/lyrics/m1-asr-word.json'];
@@ -231,7 +231,7 @@ test('unlinks EVERY lyrics candidate JSON, not only the chosen one (#762 F2)', (
 // turn while every phone and the TV kept rendering it, healing only when some later `queue:patch`
 // tripped the ws gap detector. Base-RED: base's published types are ["nowplaying:changed",
 // "media:status"] with no `queue:patch` at all.
-test('deleting a QUEUED, non-playing song broadcasts the authoritative queue (#762 F3)', () => {
+test('deleting a QUEUED, non-playing song broadcasts the authoritative queue (F3)', () => {
 	const { deps, state, published, hub } = harness(['m1', 'm2']);
 	seed(state, 'a', 'm1', 's1'); // the doomed turn
 	seed(state, 'b', 'm2', 's2'); // the survivor
@@ -254,7 +254,7 @@ test('deleting a QUEUED, non-playing song broadcasts the authoritative queue (#7
 
 // The companion half of F3's guard: the publish is conditioned on entries having actually been removed,
 // so deleting a song nobody queued does not bump every client through a no-op resync.
-test('deleting a song with NO queue entries publishes no queue:patch (#762 F3)', () => {
+test('deleting a song with NO queue entries publishes no queue:patch (F3)', () => {
 	const { deps, state, published } = harness(['m1', 'm2']);
 	seed(state, 'b', 'm2', 's2'); // unrelated turn; nothing points at m1
 
@@ -277,7 +277,7 @@ test('deleting a song with NO queue entries publishes no queue:patch (#762 F3)',
 //
 // Reads the real production file (not a fixture) and scans only the function BODY, so the docstrings
 // above it — which quote `m.lyricsRef` while explaining the defect — cannot satisfy or trip it.
-test('derivedRefsFor delegates the stored-ref enumeration instead of keeping a rival copy (#762 F2)', () => {
+test('derivedRefsFor delegates the stored-ref enumeration instead of keeping a rival copy (F2)', () => {
 	const src = readFileSync(new URL('./delete.ts', import.meta.url), 'utf8');
 	const start = src.indexOf('function derivedRefsFor');
 	expect(start).toBeGreaterThan(-1);

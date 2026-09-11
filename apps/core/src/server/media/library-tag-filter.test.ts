@@ -4,10 +4,10 @@
 //      (not other tags, not other kinds, not non-ready songs), so ?tag= narrows correctly.
 //   2. tagFacets() counts READY songs per 'tag' value, most-first, so the browse rail lists real tags.
 //   3. the 'tag' KIND is load-bearing: a genre-kind value must NOT surface through the tag filter/facet
-//      (the same wrong-kind defect #689 guarded on the read side).
+//      (the same wrong-kind defect already guarded on the read side).
 //   4. both sides of the filter narrow in SQL: the media read is the tagged ids, not the whole ready
 //      library. Counted in rows, not asserted in prose — see that section's own header.
-//   5. and the two docstrings that described the OLD one-sided read stay corrected (#798 prose).
+//   5. and the two docstrings that described the OLD one-sided read stay corrected.
 // Runtime, against a real migrated DB — the query shape is the thing under test, so exercise it.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -69,8 +69,8 @@ test('the tag filter reads the tag KIND, not genre — a genre value must not su
 	const repo = new MediaRepository(migratedDb());
 	repo.upsert(cooked('g'));
 	repo.setTags('g', 'genre', ['rock']); // a GENRE, not a tag
-	// byTag/tagFacets are tag-kind only; a genre value is invisible to them (the #121 fence keeps
-	// genre browse dead, and #690 does not reintroduce it).
+	// byTag/tagFacets are tag-kind only; a genre value is invisible to them (the genre fence keeps
+	// genre browse dead, and the tag filter does not reintroduce it).
 	expect(repo.byTag('rock')).toEqual([]);
 	expect(repo.tagFacets()).toEqual([]);
 });
@@ -92,7 +92,7 @@ test('tagFacets counts ready songs per tag, most-first', () => {
 	]);
 });
 
-// ── #798: the media side of a tag filter narrows in SQL too ────────────────────────────────────────
+// ── the media side of a tag filter narrows in SQL too ──────────────────────────────────────────────
 //
 // `readyTagged` narrowed only the `media_tags` side and then called `readySongs(db)` with no `extra`,
 // so every tag-filter request read the WHOLE ready library and ran the gate over all of it before the
@@ -232,7 +232,7 @@ test('readyTagged hands its media ids down to readySongs, unconditionally', () =
 	expect(tagged).not.toMatch(/readySongs\(\s*db\s*\)/);
 });
 
-// ── #798 prose: the two docstrings that described the OLD read ─────────────────────────────────────
+// ── prose: the two docstrings that described the OLD read ──────────────────────────────────────────
 //
 // Both docstrings were accurate before this change and are false after it, which is the defect class
 // `COMMON.md` files under `internal` ("a comment contradicting its code"). `readySongs`'s doc named

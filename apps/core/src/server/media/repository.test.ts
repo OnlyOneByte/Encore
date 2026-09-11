@@ -70,7 +70,7 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 	// either the toRow persist or the fromRow hydrate leaves this undefined and reds here.
 	expect(got.lyricsOverrideRef).toBe('derived/lyrics/m1-manual-word.json');
 	// the key/range/level profile is the third derived artifact — it must survive the JSON round-trip
-	// intact, INCLUDING the measured level: this column is the whole persistence path for #462, and a
+	// intact, INCLUDING the measured level: this column is the whole persistence path for the measured song profile, and a
 	// field dropped at this boundary is a measurement the room can never act on.
 	expect(got.songProfile).toEqual({
 		keyTonic: 7,

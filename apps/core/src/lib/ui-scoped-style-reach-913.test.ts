@@ -22,7 +22,7 @@
  *   - `touch-targets.test.ts` reads the RULE TEXT and found `min-height: var(--tap)` exactly where it
  *     expected it. It was mutation-proved and still green, because a rule that exists and a rule that
  *     applies are different claims and it only ever checked the first.
- *   - every other guard in #913's migration is a source scan, and the source was correct.
+ *   - every other guard in the shadcn migration is a source scan, and the source was correct.
  *
  * It was found by looking at a screenshot. This file is the cheap check that should have caught it.
  *
@@ -206,7 +206,7 @@ function scopedRuleClasses(css: string): Map<string, string> {
 	// reported as a defect. `styleOnly` in this same file already strips them, and this function did not, so
 	// a guard carrying a stripper in one helper still reported a defect from a comment read by another.
 	// Stripping comments first is a long-standing convention here rather than anything this branch worked
-	// out — around a hundred test files on main already do it. #913 still had to add it in five places, TWICE
+	// out — around a hundred test files on main already do it. The shadcn migration still had to add it in five places, TWICE
 	// in this file, which is a fair measure of how readily a text-scanning guard criminalises its own notes.
 	const css2 = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
 	const scoped = css2.replace(/:global\([^)]*\)/g, (m) => ' '.repeat(m.length));
@@ -274,7 +274,7 @@ test('the reach check actually catches the shape it was written for', () => {
 	expect(scopedRuleClasses(styleBlock(plainFix)).has('encore-slider')).toBe(true);
 });
 
-test('the reach check sees a class the naive scans missed (#913 blind spots)', () => {
+test('the reach check sees a class the naive scans missed (first-version blind spots)', () => {
 	/*
 	 * One arm per gap a reviewer found in this file's first version. Each source below is a shape the
 	 * original `[^>]*` / `class={cn("…` matcher walked straight past, so each would have let a dead rule
@@ -320,7 +320,7 @@ test('the reach check sees a class the naive scans missed (#913 blind spots)', (
 /**
  * Every `data-slot` name this tree STYLES must be a name this tree EMITS.
  *
- * This closes the other direction, and it is the direction #913's own fix opened. The defect at the
+ * This closes the other direction, and it is the direction the shadcn migration's own fix opened. The defect at the
  * top of this file was a rule that could not reach its element; the fix moved every such rule to
  * `:global([data-slot='…'])`. Nothing then checked that the markup still carries the attribute the
  * new selector keys on — so the fix mechanism was unguarded in exactly the way the bug had been.

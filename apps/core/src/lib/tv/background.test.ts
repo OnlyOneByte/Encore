@@ -64,7 +64,7 @@ test('solid ignores the singer, and singer ignores the room colour', () => {
 	expect(a).toBe(b);
 });
 
-// The `singer` glow KEPT the stage tier, and that is the deliberate half of #425: a room picks its own
+// The `singer` glow KEPT the stage tier, and that is the deliberate half of the stage-colour feature: a room picks its own
 // solid colour and is looking at the result, but nobody picks the singer glow — its hue comes from
 // somebody else's identity dot, so a bright field would arrive unasked and unexplained.
 test('singer follows the singer colour through the stage tier — the tier survives here', () => {
@@ -109,7 +109,7 @@ test('visualizer resolves to the stage floor, not to a colour', () => {
 // Reverting the `hueOfColor` derive to the old `settings.room.tvBackgroundHue` (a number that no longer
 // exists on the colour-typed settings) is what this pins: the contract below is the reason that derive
 // is hueOfColor and not nearestSingerHue.
-test('the visualizer angle recovers the stored stage colour hue; the solid stage is verbatim (#425 tv/+page wiring)', () => {
+test('the visualizer angle recovers the stored stage colour hue; the solid stage is verbatim (tv/+page wiring)', () => {
 	for (const h of SINGER_HUES) {
 		const stored = stageHueToHex(h); // what a room that picked hue h now stores as a colour
 		// The component derives this and hands it to VisualizerStage (tv/+page.svelte:83).
@@ -137,7 +137,7 @@ test('adding the visualizer style left the four colour styles untouched', () => 
 	);
 });
 
-// ── #782 stage dim (piece 3 of #425) ────────────────────────────────────────
+// ── stage dim (piece 3 of the stage-colour feature) ─────────────────────────
 
 test('an omitted dim defaults to 0 — every style renders exactly as before', () => {
 	// the new fourth arg is optional and defaults to 0, so every existing call site (and the tests above,

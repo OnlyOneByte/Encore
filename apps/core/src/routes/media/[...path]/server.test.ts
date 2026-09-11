@@ -1,5 +1,5 @@
 // GET /media/<ref> — the route serves HTTP byte ranges (206 + Content-Range) ONLY when the resolved
-// MediaStore answers size()/getRange(). Before #100 the object store answered neither, so this route
+// MediaStore answers size()/getRange(). The object store used to answer neither, so this route
 // took its degrade branch and returned a range-less full 200 — WebKit (Safari/iOS) then abandons the
 // resource on its `Range: bytes=0-1` probe and the TV silently never plays. These tests drive the
 // real GET handler against a real ObjectMediaStore (backed by an in-memory fake S3) and assert the
@@ -82,7 +82,7 @@ test('object store: a range-less GET is a 200 that ADVERTISES ranges (accept-ran
 	installStore(await objectStoreWith('stems/m1-instrumental.flac', '0123456789'));
 	const res = await call('stems/m1-instrumental.flac');
 	expect(res.status).toBe(200);
-	// advertising bytes on the 200 is what invites the element to seek at all — the pre-#100 bug was
+	// advertising bytes on the 200 is what invites the element to seek at all — the original bug was
 	// its ABSENCE on the object-store path
 	expect(res.headers.get('accept-ranges')).toBe('bytes');
 	expect(await res.text()).toBe('0123456789');

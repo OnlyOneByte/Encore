@@ -15,13 +15,13 @@
 //   3. It re-acquires on `visibilitychange`, because the platform drops the lock whenever the document
 //      hides and never restores it on its own — without this it works once and then stops.
 //
-// WHY A SOURCE SCAN (not a mount). #734 landed a happy-dom + Svelte-loader harness that CAN mount leaf
-// components (it stubs navigator.AudioContext and still reds on real defects), and #822 aliased the
+// WHY A SOURCE SCAN (not a mount). The mount rung landed a happy-dom + Svelte-loader harness that CAN mount leaf
+// components (it stubs navigator.AudioContext and still reds on real defects), and a follow-up aliased the
 // `$app`/`$env` virtual modules, so apps/core/src/routes/tv/+page.svelte now IMPORTS fine under the
 // harness — pinned by apps/core/src/lib/mount-rung.test.ts. Two things still stand between that import
 // and a mount of THIS route, and neither is in this file's scope: the component destructures a `data`
 // prop supplied by +page.server.ts's load (mounting it means constructing that payload), and it reads
-// `el.offsetHeight` for the card band, which THROWS on the mount rung — #822 made all six geometry
+// `el.offsetHeight` for the card band, which THROWS on the mount rung — that follow-up made all six geometry
 // APIs raise an error naming the rung instead of returning happy-dom's fabricated zero
 // (docs/ux/04-verification.md, XR-VER-03), so a mount here would fail at that read rather than
 // silently measure nothing. So the invariants here stay source scans over the component text, like
@@ -96,15 +96,15 @@ test('the wake-lock is RE-ACQUIRED on visibilitychange', () => {
 	const src = tvSource();
 	// The platform drops the lock when the document hides and does not restore it — so a listener
 	// re-requests when the page becomes visible again. No visibilitychange handler existed in this file
-	// before #478; removing the listener registration reds this.
+	// before this fix landed; removing the listener registration reds this.
 	expect(src).toMatch(/addEventListener\(\s*['"]visibilitychange['"]/);
 	// And the listener is torn down on cleanup — a matching removeEventListener — so a re-run does not
 	// stack a second handler.
 	expect(src).toMatch(/removeEventListener\(\s*['"]visibilitychange['"]/);
-	// The load-bearing part of #478 ("without this it works once and then stops"): the HANDLER BODY must
+	// The load-bearing part of the fix ("without this it works once and then stops"): the HANDLER BODY must
 	// re-acquire, gated on the page being visible again (a hide event also fires visibilitychange).
 	// A token-only check would stay green if someone kept the listener + the visible check but deleted
-	// the acquire() call inside — the exact half-fixed-#478 regression. So isolate the handler's body and
+	// the acquire() call inside — the exact half-fixed regression. So isolate the handler's body and
 	// assert it both checks visibility AND calls acquire(). Anchor on the visibilitychange handler arrow.
 	const onVisIdx = src.search(/const\s+onVisibility\s*=\s*\(\)\s*=>/);
 	expect(onVisIdx, 'a named visibilitychange handler (onVisibility) not found').toBeGreaterThan(-1);

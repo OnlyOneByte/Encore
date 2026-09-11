@@ -1,8 +1,8 @@
-// guard: the fifth gate is WIRED, and its register is not vacuous (issue #823 — XR-VER-02).
+// guard: the fifth gate is WIRED, and its register is not vacuous (XR-VER-02).
 //
 // ── WHY A SOURCE SCAN GUARDS A MEASURED GATE ───────────────────────────────────────────────────
 //
-// Issue #823 moved four measurement claims onto real headless Chromium. The measurement itself is in
+// The measured-design gate moved four measurement claims onto real headless Chromium. The measurement itself is in
 // `apps/core/e2e/gates/measured-design.mjs`, which needs a browser and a booted server and therefore
 // cannot run inside `bun test`. That leaves a gap this file closes, and it is the same gap the issue's
 // own triage named: a measured check nothing runs is not a gate.
@@ -59,7 +59,7 @@ const GATE_LIST_BRIEFS = [
 /**
  * EVERY brief a lane can be seeded from, derived by WALKING `docs/loop/` rather than hand-listed, plus the
  * repo handoff. A hand-listed population is how `/metrics` and `lib/charts` stayed invisible:
- * the guard was correct and simply never looked at them. #855 landed three new files into `docs/loop/`
+ * the guard was correct and simply never looked at them. Three new files landed into `docs/loop/`
  * DURING this PR's review and one of them (`REVIEW-ORCHESTRATOR.md`) carried the same stale count — a walk
  * picks that up on the next run with nobody remembering to extend a list.
  */
@@ -85,7 +85,7 @@ test('the measured-design gate imports the layout-rung driver, and names each cl
 });
 
 test('the measured-design gate has no skip path — a missing browser is a red gate, not a green one', () => {
-	// Owner ruling on #823 Q1 was A, chosen over B ("skips when no server or Chromium is present"),
+	// Owner ruling on Q1 was A, chosen over B ("skips when no server or Chromium is present"),
 	// because e2e/contract.test.ts:23 had already ruled that a permanently-skipped test is
 	// indistinguishable from the rot it was meant to catch. Every other e2e driver in this tree uses
 	// exit 2 for "the environment could not host this"; this gate must NOT, because exit 2 read as a
@@ -163,13 +163,13 @@ test('no brief still states a stale gate COUNT — the gap that let a partial up
 });
 
 test('the CDP driver exposes exactly ONE safe-area method, and every caller uses that name', () => {
-	// THE COLLISION THIS EXISTS FOR. #823 and #827 both needed a safe-area override and both added one to
+	// THE COLLISION THIS EXISTS FOR. Two branches both needed a safe-area override and both added one to
 	// the shared driver in the same hour: `setSafeAreaInsets` here, `safeAreaInsets` on main. Same
-	// body, same CDP call, two names — and the merge conflicted on the hunk. #823 dropped its own and
+	// body, same CDP call, two names — and the merge conflicted on the hunk. This side dropped its own and
 	// adopted the incumbent, so `cdp.mjs` is untouched by this PR. This arm is what stops a THIRD.
 	//
 	// It is the same defect class `e2e/lib/chromium.test.ts` guards for `findChromium`, which was
-	// copy-pasted into 15 drivers and drifted three ways (#617/#455) — except here the duplication would
+	// copy-pasted into 15 drivers and drifted three ways — except here the duplication would
 	// be two NAMES for one capability rather than two copies of one name, which no import check can see.
 	//
 	// Definition-only detection, mirroring that file's approach: match the method DEFINITIONS on the page
@@ -210,9 +210,9 @@ test('the CDP driver exposes exactly ONE safe-area method, and every caller uses
 	// Non-vacuity floor (XR-VER-05): TWO call sites today — this gate's live docked-band arm sets a
 	// simulated inset and then resets it. A walk that finds none would pass while enforcing nothing.
 	//
-	// XR-VER-06 RECORD — LOWERED 4 -> 2 by #903. The INVARIANT is untouched: one name for the capability,
+	// XR-VER-06 RECORD — LOWERED 4 -> 2 by the queue-sheet removal. The INVARIANT is untouched: one name for the capability,
 	// and every caller in the e2e tree spells it. What shrank is the POPULATION. The other two callers
-	// were #865's drawer probe (e2e/probes/spike827-queuesheet-drawer.mjs, deleted whole with the drawer
+	// were the drawer probe (e2e/probes/spike827-queuesheet-drawer.mjs, deleted whole with the drawer
 	// surface) and this gate's own sheet half (deleted with it, since it measured the peek's safe-area
 	// term on a component that no longer exists). Nothing is unenforced by the drop: the walk still
 	// covers the ENTIRE e2e tree, and `defined` above still pins the driver to exactly one method name,
@@ -249,7 +249,7 @@ test('every quarantined control carries a substantive reason and a real identity
 		if (q.was <= 0) offenders.push(`${who}: recorded at ${q.was}px — a zero measurement is UNMEASURED (XR-VER-03)`);
 	}
 	expect(offenders).toEqual([]);
-	// non-vacuity: the gate started with four known sub-floor controls. #863 resolved all four — three
+	// non-vacuity: the gate started with four known sub-floor controls. All four were later resolved — three
 	// CSS fixes and one false positive — so they moved from QUARANTINE to RETIRED rather than vanishing.
 	// Pin the COMBINED set at the original four so neither list can be silently emptied: dropping a
 	// quarantine entry without recording its resolution in RETIRED reds here. (XR-VER-06/07.)
@@ -263,7 +263,7 @@ test('the register mirrors the tokens it measures against, so the two cannot dri
 	// register imports a separate floor — is whether the token still holds the app's commitment.
 	expect(css).toMatch(/--tap:\s*[0-9.]+px\s*;/);
 	expect(TAP).toBeGreaterThanOrEqual(TAP_FLOOR);
-	// XR-VER-11 RECORD — the sheet-cap arm was RETIRED here in #903, not weakened. It asserted
+	// XR-VER-11 RECORD — the sheet-cap arm was RETIRED here with the queue-sheet removal, not weakened. It asserted
 	// `SHEET_CAP_FRACTION === 0.82` and that QueueSheet.svelte declared `max-height: 82dvh`; the drawer
 	// surface that owned that declaration was deleted, so the number had no source left to mirror and
 	// SHEET_CAP_FRACTION went with it out of the register. Nothing docked caps itself in a viewport

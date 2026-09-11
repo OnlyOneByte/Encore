@@ -21,7 +21,7 @@
 // of which pin a rendered driver from inside the suite.
 //
 // Comments are blanked before matching, so prose describing a number can neither satisfy nor trip an
-// assertion — the #850 fix's own comment names "320px" and "200%" repeatedly.
+// assertion — the /stats grid fix's own comment names "320px" and "200%" repeatedly.
 import { test, expect } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -71,7 +71,7 @@ test('the reflow probe measures at the criterion\u2019s own numbers: 320 CSS px 
 
 test('the reflow probe covers every XR-PH-02 surface, and /stats by name', () => {
 	// XR-PH-02's Acceptance named `/`, `/join`, `/settings`, `/stats` and the browse screen. `/join` was
-	// retired (#834 Q2-A) into the unjoined branch of `/`, so `measure('/', '/')` now IS the join
+	// retired (Q2-A) into the unjoined branch of `/`, so `measure('/', '/')` now IS the join
 	// surface — the four named surfaces are `/`, `/settings`, `/stats` and browse. A probe that silently
 	// stopped visiting one would report a green row over an unmeasured surface.
 	for (const surface of ['/settings', '/stats']) {
@@ -79,7 +79,7 @@ test('the reflow probe covers every XR-PH-02 surface, and /stats by name', () =>
 	}
 	expect(PROBE).toMatch(/measure\('\/',\s*'\/'\)/);
 	// The browse/results screen needs a session, so the probe joins from inside the page and then
-	// measures it like the other four (#857 fixed; it was quarantined here until the fix landed). Since
+	// measures it like the other four (the browse reflow is fixed; it was quarantined here until the fix landed). Since
 	// the search box is docked on `/` and results render in place, so the surface IS `/` — SEARCHED
 	// first so the real offender renders (see the non-vacuity test below), then measured in place
 	// (`skipNav`). The old `?browse=1` mode is gone.
@@ -99,7 +99,7 @@ test('the reflow probe FAILS on an overflow instead of merely reporting one', ()
 });
 
 test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender', () => {
-	// #857 fixed the browse-screen reflow, so the surface is now asserted like the other four rather
+	// The browse-screen reflow is fixed, so the surface is now asserted like the other four rather
 	// than recorded as a known overflow. The quarantine that used to live here reddened the day the fix
 	// landed (its arm asserted the surface STILL overflowed) and was deleted, per XR-VER-06/07 — a
 	// resolved quarantine is removed, never left to sit green over a fixed defect. Its machinery must be
@@ -114,7 +114,7 @@ test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender'
 	// is exactly why the first version of this arm was rejected. So the arm SEARCHES the browse screen
 	// first — via the shared `openBrowseFromHome` step and a `fill` of the contract's `SEL.search`
 	// hook — which surfaces the canned result set whose long-duration entries render the odd-duration
-	// chip, the widest #857 offender. It then waits for the rows to land (`SEL.songRow`) and bails rather
+	// chip, the widest browse-reflow offender. It then waits for the rows to land (`SEL.songRow`) and bails rather
 	// than measures if none did, so an empty read can never masquerade as a pass. With the fix reverted
 	// this arm reds ("over by 11px"); with it, green.
 	expect(PROBE).toMatch(/openBrowseFromHome\(page\)/);
@@ -127,7 +127,7 @@ test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender'
 });
 
 // ---------------------------------------------------------------------------------------------------
-// The #850 fix itself — pinned so a regression to a type-blind floor cannot pass unnoticed between
+// The /stats grid fix itself — pinned so a regression to a type-blind floor cannot pass unnoticed between
 // probe runs. This is the cheap always-on floor beneath the probe, and is NOT a substitute for it: it
 // cannot decide whether the page overflows, only whether the mechanism that stopped it is still there.
 // ---------------------------------------------------------------------------------------------------
@@ -143,7 +143,7 @@ test('the /stats tile grid floors its tracks in a TYPE-RELATIVE unit, never px',
 		// A px floor is fixed while the word it has to hold grows with the guest's text-size setting,
 		// so at 200% it stops bounding anything and the row overflows instead of reflowing.
 		expect(rule).not.toMatch(/minmax\(\s*[\d.]+px/);
-		// A fixed track count cannot give way at all — `1fr 1fr` is the exact shape that shipped #850.
+		// A fixed track count cannot give way at all — `1fr 1fr` is the exact shape that shipped the overflow.
 		expect(rule).toMatch(/repeat\(\s*auto-fit/);
 		expect(rule).toMatch(/[\d.]em\b/);
 		// And the floor must be bounded by the row, or a floor wider than the viewport becomes the
@@ -153,7 +153,7 @@ test('the /stats tile grid floors its tracks in a TYPE-RELATIVE unit, never px',
 });
 
 // ---------------------------------------------------------------------------------------------------
-// The #857 fix mechanisms, pinned as source scans. The browse arm above DRIVES and MEASURES the
+// The browse-reflow fix mechanisms, pinned as source scans. The browse arm above DRIVES and MEASURES the
 // odd-duration chip offender live and reds without its fix, so that one is not honour-system — the
 // scan here is its cheap always-on companion. The KEY control, by contrast, only manifests with a
 // now-playing song (it renders in the now-playing controls under live, WS-driven playback), which the
@@ -188,7 +188,7 @@ test('the odd-duration chip wraps its phrase instead of forcing the row wider', 
 });
 
 /*
- * RETIRED IN #903 — `the queue sheet floors its own reflow: its children can shrink below their
+ * RETIRED WITH THE DRAWER SURFACE — `the queue sheet floors its own reflow: its children can shrink below their
  * content`. It asserted `.sheet-surface > * { min-width: 0 }` in app.css, and that rule was
  * deleted with the drawer surface it dressed.
  *

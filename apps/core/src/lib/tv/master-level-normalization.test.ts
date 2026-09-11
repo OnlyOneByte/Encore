@@ -1,8 +1,8 @@
-// Regression + wiring guard for #462 PR3 -- the MASTER instrumental's loudness-normalization pulldown
+// Regression + wiring guard for PR3 -- the MASTER instrumental's loudness-normalization pulldown
 // must be applied at BOTH the native (`master.volume`) and routed (`masterGraph.setGain`) sites, and
 // must SURVIVE a transpose that builds the master graph.
 //
-// The shape is identical to the guide's #434 guard (guide-gain-after-transpose.test.ts), and for the
+// The shape is identical to the guide's guard (guide-gain-after-transpose.test.ts), and for the
 // identical reason: once a shift routes the master through WebAudio, `HTMLMediaElement.volume` is
 // bypassed and only the GainNode governs level; a freshly built PitchShiftGraph defaults desiredGain
 // to 1, so unless the level is re-applied when the graph is built, an attenuated song jumps to FULL
@@ -11,7 +11,7 @@
 //
 // Two halves:
 //   A. BEHAVIOURAL -- the real PitchShiftGraph primitive: a level set via setGain() BEFORE the graph
-//      is built lands in the GainNode once a shift builds it (the #434 carry, re-proven for the
+//      is built lands in the GainNode once a shift builds it (the guide's carry, re-proven for the
 //      master because the feature leans on it).
 //   B. SOURCE-SCAN -- the level lives inside .svelte effects bun cannot execute, so a text scan proves
 //      the fix is WIRED at all three sites: the dedicated level effect (native + routed), the pitch
@@ -157,7 +157,7 @@ test('guard: the pitch effect re-applies the master level after (re)building the
 	expect(region).toMatch(/masterGraph\s*=\s*new PitchShiftGraph/);
 	expect(region).toMatch(/masterGraph[?][.]setShift[(]\s*shift\s*[)]/);
 	// The load-bearing line: without it, a transpose builds the master graph at desiredGain 1 and the
-	// pulldown evaporates (the exact #434 shape, master-side).
+	// pulldown evaporates (the exact shape the guide's guard pins, master-side).
 	expect(region).toMatch(/masterGraph[?][.]setGain[(]\s*effectiveMasterLevel\s*[)]/);
 });
 

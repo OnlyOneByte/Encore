@@ -1,11 +1,11 @@
-// issue #433 — SOURCE-SCAN wiring guard for the worker-frame validation gate in apps/core/server.ts.
+// SOURCE-SCAN wiring guard for the worker-frame validation gate in apps/core/server.ts.
 //
 // WHY A SOURCE SCAN: the gate lives inside Bun.serve's `message(ws, raw)` closure. That closure is
 // not exported and only runs with a live socket + full app wiring, so it has no unit harness — the
 // exact file class the repo answers with a source scan reading production's own file (precedent:
-// singers/session-cookie-attributes.test.ts, PR #107/#205; realtime/telemetry-frame-lean.test.ts).
+// singers/session-cookie-attributes.test.ts; realtime/telemetry-frame-lean.test.ts).
 // worker-frame-validation.test.ts pins validateWorkerMessage itself and mirrors the gate, but a mirror
-// cannot prove server.ts CALLS it before the unguarded reads — that is the #224 gap. This guard closes
+// cannot prove server.ts CALLS it before the unguarded reads — that is the gap a mirror leaves. This guard closes
 // it: it asserts the real server.ts imports the validator, runs it as a reject-gate, and does so BEFORE
 // `'workerId' in msg` (the null-throw read) and before `app.workerHub.handle(` (the execute). Revert
 // the gate hunk and this reds; a commented-out gate cannot satisfy it (comments are blanked first).

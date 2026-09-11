@@ -13,11 +13,11 @@
 // RED when one comes back, one test per mechanism so a failure names which one.
 //
 // RETIREMENT RECORDED HERE (XR-VER-07). `routes/library-tag-filter-wiring.test.ts` is DELETED by this
-// change, not weakened. It pinned five render seams of the #690 tag filter — `facets.tags` state, a
+// change, not weakened. It pinned five render seams of the tag filter — `facets.tags` state, a
 // `browseFilter` that could hold a tag, `setBrowse('tag', …)`, the `?tag=` query and the tag rail
 // itself — every one of which is a mechanism direction B removes. Its premise was "the tag filter is
 // wired through the phone page"; the ruling is that the phone page has no tag filter. The SERVER half
-// of #690 is untouched and still guarded (`server/media/library-tag-filter.test.ts`,
+// of the tag filter is untouched and still guarded (`server/media/library-tag-filter.test.ts`,
 // `routes/api/library/library-tag-filter-wiring.test.ts`), which is why only one of the three
 // similarly-named files retires. The absence is pinned below so it cannot creep back in unnoticed.
 import { test, expect } from 'bun:test';
@@ -76,7 +76,7 @@ test('mechanisms 2+3 — the browse disclosure and both facet rails are gone fro
 	expect(PAGE).not.toContain('browse-toggle');
 	expect(PAGE).not.toContain('Browse by artist');
 	expect(PAGE).not.toContain('Browse by tag');
-	expect(PAGE).not.toContain('Browse by genre'); // #121's ruling still holds; this does not revive it
+	expect(PAGE).not.toContain('Browse by genre'); // the earlier ruling against genre browsing still holds; this does not revive it
 	expect(PAGE).not.toMatch(/\bbrowseFilter\b/);
 	expect(PAGE).not.toMatch(/\bbrowseOpen\b/);
 	expect(PAGE).not.toMatch(/\bsetBrowse\b/);
@@ -94,8 +94,8 @@ test('mechanisms 2+3 — the phone asks the library endpoint for the whole libra
 test('— the retired tag-filter wiring guard is deleted, and its server sibling is not', () => {
 	// A retired guard left in the suite is indistinguishable from one that is working (XR-VER-07).
 	expect(existsSync(join(HERE, 'library-tag-filter-wiring.test.ts'))).toBe(false);
-	// Its #689 sibling pins PER-ROW tag chips, which this change does not touch, and the server halves
-	// of #690 still hold. Deleting any of the three under cover of this ruling would be wrong.
+	// Its `library-tags-wiring` sibling pins PER-ROW tag chips, which this change does not touch, and
+	// the server halves of the tag filter still hold. Deleting any of the three under cover of this ruling would be wrong.
 	expect(existsSync(join(HERE, 'library-tags-wiring.test.ts'))).toBe(true);
 	expect(existsSync(join(HERE, 'api', 'library', 'library-tag-filter-wiring.test.ts'))).toBe(true);
 	expect(existsSync(join(HERE, '..', 'server', 'media', 'library-tag-filter.test.ts'))).toBe(true);
@@ -125,17 +125,17 @@ test('mechanism 4 — the readiness group headings are gone; the rows say it the
 // ── what replaced them: one docked box, one stack, growing upward ────────────────────────────────
 test('— search is a docked band in the thumb zone, publishing the measured --dock-h', () => {
 	// After </main>, so it sits below the content it docks under and the tab sequence follows the visual
-	// order (XR-PH-12). Since #902 it is gated on `{#if me}` — docked for a joined singer at all times,
+	// order (XR-PH-12). Since the search-dock rework it is gated on `{#if me}` — docked for a joined singer at all times,
 	// the sole band on this route.
 	expect(PAGE.indexOf('class="search-dock"')).toBeGreaterThan(PAGE.indexOf('</main>'));
 	expect(PAGE).toMatch(/\{#if me\}\s*<div class="search-dock" bind:clientHeight=\{dockH\}>/);
-	// ONE token, measured, and now ONE band (the `+ Add a turn` CTA that used to be home's band is gone,
-	// #902). A second `--search-dock-h`, or a hardcoded height, forks the geometry the measurement exists
+	// ONE token, measured, and now ONE band (the `+ Add a turn` CTA that used to be home's band went
+	// with that rework). A second `--search-dock-h`, or a hardcoded height, forks the geometry the measurement exists
 	// to keep single — and `main`'s padding, `--undo-dock` and `--error-dock` all read this one.
 	expect(PAGE).not.toContain('--search-dock-h');
 	const docks = PAGE.match(/bind:clientHeight=\{dockH\}/g) ?? [];
-	expect(docks.length).toBe(1); // the search dock, the only fixed band on this route since #902
-	// Re-anchored by #829: `6px`/`18px` are now `var(--space-xs)`/`var(--space-3xl)`, the same two values
+	expect(docks.length).toBe(1); // the search dock, the only fixed band on this route since that rework
+	// Re-anchored by the spacing-scale migration: `6px`/`18px` are now `var(--space-xs)`/`var(--space-3xl)`, the same two values
 	// read from the spacing scale in app.css. The claim is unchanged — main's padding is what consumes the
 	// measured --dock-h — so only its spelling moves. The `+ 28px` term stays a literal: 28 is not a scale
 	// step, so nothing owns it and there is nothing to name it.
@@ -201,8 +201,8 @@ test('— the empty state that named the library count survives the chip that us
 	expect(PAGE).toContain('Show all {empty.showAllCount}');
 });
 
-test('/#902 — no empty-state copy points at a search box above, or at a now-deleted shortcut list', () => {
-	// The box moved to the bottom, so "Search for a song above" became false. #902 then dropped
+test('/ — no empty-state copy points at a search box above, or at a now-deleted shortcut list', () => {
+	// The box moved to the bottom, so "Search for a song above" became false. That rework then dropped
 	// the empty-box shortcut list entirely — an empty box shows the live queue — so its "in the box
 	// below" prompt is gone too: neither direction is stated any more.
 	expect(PAGE).not.toContain('Search for a song above');

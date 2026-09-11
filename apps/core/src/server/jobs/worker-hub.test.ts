@@ -280,7 +280,7 @@ test('guard arm — #onFailed status: a failure while still assigned (not runnin
 });
 
 // ── the `!job` arm: a frame naming a jobId with NO row is swallowed, never throws ──────────────────
-// Sibling of #136 (the status/workerId arms). Every handler's guard is
+// Sibling of the guard on the status/workerId arms. Every handler's guard is
 //   if (!job || job.status !== '<expected>' || job.workerId !== msg.workerId) return;
 // and the tests above only ever drive frames whose jobId EXISTS, so `job` is always truthy and the
 // leading `!job` arm never fires. Delete it from any handler and the suite stays green — the exact
@@ -889,7 +889,7 @@ test('persists the variant-pick provenance from job:complete so a mis-pick is di
 				decidedBy: 'agreement',
 				votes: 2,
 				// The rejected candidates + their scores — the evidence that existed for one log line and
-				// is gone today. This is what separates #542 arm (b) from arm (c) for a real mis-pick.
+				// is gone today. This is what separates arm (b) from arm (c) for a real mis-pick.
 				rejected: [
 					{ label: 'lrclib-plain', score: 0.61 },
 					{ label: 'captions-stub', score: null }
@@ -900,7 +900,7 @@ test('persists the variant-pick provenance from job:complete so a mis-pick is di
 
 	hub.handle({ type: 'job:complete', workerId: 'w1', jobId: job.id, mediaUri: 'derived/lyrics/m1.json', selection });
 
-	// Retrievable from DURABLE state after the cook — the whole point of #669.
+	// Retrievable from DURABLE state after the cook — the whole point of persisting the selection.
 	const [a] = attempts.byMedia('m1');
 	const got = attemptSelection(a);
 	expect(got).not.toBeNull();

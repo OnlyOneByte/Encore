@@ -1,6 +1,6 @@
 // guard: the reaper-killed-cook fix is only real once app.ts WIRES the reaper's onFailed seam.
-// #90 settled the readiness gate; #303 makes the same hook also REPORT (broadcast media:status,
-// log one line, reclaim scratch) so a reaper-killed cook is not silent; #451 collapses that whole
+// The readiness gate came first; a follow-up makes the same hook also REPORT (broadcast media:status,
+// log one line, reclaim scratch) so a reaper-killed cook is not silent; the extraction collapses that whole
 // four-step epilogue — which was open-coded at THREE sites plus a fourth copy in a test — into ONE
 // exported function, reportTerminalFailure, called from all three. This guard moved WITH the seam:
 // its original header ("Change the seam and this guard moves") anticipated exactly this.
@@ -11,7 +11,7 @@
 //      over the app's mediaById + publish. getApp() stands up the whole app and has no unit harness,
 //      and reaper.test.ts supplies its OWN onFailed — so reverting app.ts's wiring leaves every reaper
 //      test green. Without this scan the fix could be silently unwired and ship green (the exact class
-//      of bug that let #303's reaper path ship silent).
+//      of bug that let the reaper path ship silent).
 //   2. reportTerminalFailure itself (make-karaoke.ts) still performs all FOUR epilogue steps. The
 //      behavioural test reaper-broadcast-on-failure.test.ts drives it end-to-end, but a step guarded
 //      behind a dead branch or reordered after an early return can still pass a broadcast-only

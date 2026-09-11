@@ -1,6 +1,6 @@
-// Guard: the components gallery keeps the four frames that are the RENDERED evidence for #634.
+// Guard: the components gallery keeps the four frames that are the RENDERED evidence for the singer-colour highlight.
 //
-// WHAT THE CARDS ARE FOR. #634 paints the lyric highlight in the current singer's colour, and the
+// WHAT THE CARDS ARE FOR. The singer-colour change paints the lyric highlight in the current singer's colour, and the
 // owner's ruling was to keep the hue and lean on the outline the reel already strokes instead of
 // deriving a legibility-safe variant. That ruling is only defensible if someone can SEE the words hold
 // up when the singer's colour collides with the stage behind them — so the gallery carries a pair that
@@ -23,10 +23,10 @@ import { SINGER_COLORS, lyricHighlightColor } from '@encore/shared';
 const PAGE = join(import.meta.dir, '+page.svelte');
 const src = readFileSync(PAGE, 'utf8');
 
-/** The `{#each …}` block holding the #634 cards, located by the property only those cards carry. */
+/** The `{#each …}` block holding the singer-colour cards, located by the property only those cards carry. */
 const block = /\{#each \[\{[^\]]*singer:[^\]]*\}\][^}]*\}/.exec(src);
 
-test('the gallery carries the #634 singer-colour cards, wired to the prop', () => {
+test('the gallery carries the singer-colour cards, wired to the prop', () => {
 	expect(block).not.toBeNull();
 	// The card's overlay is actually handed the per-card colour. Without this the four frames render
 	// identically and the evidence proves nothing — the exact failure this guard exists for.
@@ -42,7 +42,7 @@ test('the gallery carries the #634 singer-colour cards, wired to the prop', () =
 test('the cards isolate the change: one frame with no singer, one with a singer, same everything else', () => {
 	const cards = block![0];
 	// The BEFORE frame — `singer: null` renders the room accent, which is what every song painted
-	// before #634. Without it there is nothing to compare the singer frame against.
+	// before this change. Without it there is nothing to compare the singer frame against.
 	expect(cards).toMatch(/singer:\s*null/);
 	// …and at least one frame with a real singer colour.
 	expect(cards).toMatch(/singer:\s*(VIOLET|MINT)/);

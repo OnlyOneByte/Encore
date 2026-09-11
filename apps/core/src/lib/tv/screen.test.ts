@@ -84,14 +84,14 @@ describe('lyricsAdvancing', () => {
 		expect(lyricsAdvancing('playing', 'playing', true, false)).toBe(false);
 	});
 
-	it('freezes when autoplay was refused — silent behind the "tap to start" hint (#393 trigger 1)', () => {
+	it('freezes when autoplay was refused — silent behind the "tap to start" hint (trigger 1)', () => {
 		// A TV wall registers no gesture, master.play() rejects with NotAllowedError, the room stays silent,
 		// but the server frame still reports isPlaying: true. The element never fired `play`, so it never
 		// reported advancing, and the reel must not sweep.
 		expect(lyricsAdvancing('playing', 'playing', true, false)).toBe(false);
 	});
 
-	it('freezes when the current entry is not playable / its src has not landed (#393 trigger 2)', () => {
+	it('freezes when the current entry is not playable / its src has not landed (trigger 2)', () => {
 		// transportFor returns `idle` for a not-yet-cooked or src-less entry while tvScreen still returns
 		// `playing` for any current entry. Same idle element, same frozen reel.
 		expect(lyricsAdvancing('playing', 'playing', true, false)).toBe(false);
@@ -156,7 +156,7 @@ describe('lobbyRoster', () => {
  * `lyricsAdvancing`'s fourth input is unit-pinned above, but the pure function is only half the fix:
  * the value fed to it must be the MASTER element's real play/pause state, not the room's intent a
  * second time. That plumbing lives in two .svelte files with no unit harness, so it is pinned by a
- * source scan here — the same shape as the #64 autoplay guard and the #396 catalog-boundary guard.
+ * source scan here — the same shape as the autoplay guard and the catalog-boundary guard.
  * Blank comments first so prose describing the wiring cannot satisfy a scan.
  */
 function stripComments(src: string): string {

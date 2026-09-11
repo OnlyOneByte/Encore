@@ -52,7 +52,7 @@ function quickSpawn(code: number, stderrText = '') {
 	return proc as unknown as ReturnType<typeof Bun.spawn>;
 }
 
-test('a hung child is KILLED after the timeout and reported timedOut (#446 defect 3)', async () => {
+test('a hung child is KILLED after the timeout and reported timedOut (defect 3)', async () => {
 	const t0 = Date.now();
 	const r = await runCapturing(['sleep', 'forever'], 50, hungSpawn);
 	// Without the kill timer this awaits proc.exited forever and the test times out. With it, the
@@ -62,7 +62,7 @@ test('a hung child is KILLED after the timeout and reported timedOut (#446 defec
 	expect(Date.now() - t0).toBeLessThan(5000);
 });
 
-test('a child that exits before the timeout is NOT flagged timedOut (#446 defect 3)', async () => {
+test('a child that exits before the timeout is NOT flagged timedOut (defect 3)', async () => {
 	const r = await runCapturing(['echo', 'ok'], 5000, () => quickSpawn(0, 'some stderr'));
 	expect(r.timedOut).toBe(false);
 	expect(r.code).toBe(0);

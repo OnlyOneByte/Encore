@@ -1,4 +1,4 @@
-// The starvation half of #135, end to end. A cook filed while the singer's queue add was still in
+// The starvation half of the cook-priority work, end to end. A cook filed while the singer's queue add was still in
 // flight over a reconnecting socket is stamped NO_QUEUE_PRIORITY (nobody waiting yet). Once the add
 // lands, dispatch's `priority ASC, createdAt ASC` sort must NOT keep sorting it behind the
 // boot-time lyrics backfill forever. This drives the REAL JobRepository + the real hub add path

@@ -142,7 +142,7 @@ test('room_settings column defaults: lyrics_ball is off', () => {
 // to the baseline. An existing deployment restarts and re-runs runMigrations; drizzle replays only
 // migrations it has not recorded, so a new column belongs in a new numbered file. Editing 0000 in place
 // makes an existing DB replay the baseline and throw on CREATE TABLE of an already-existing table (an
-// availability failure, reproduced by the reviewer on PR #700). This pins the column reaches the schema
+// availability failure, reproduced by the reviewer in code review). This pins the column reaches the schema
 // through migration and round-trips. RED on base: no 0001, so the column is absent and the insert throws.
 test('job_attempts.selection is added by migration and round-trips', () => {
 	const { db, sqlite } = openDb(':memory:');
@@ -233,13 +233,13 @@ test('two rooms hold independent playback state, keyed by room_id', () => {
 // FRESH db (openDb + runMigrations), which is exactly the coverage gap that let an in-place baseline
 // edit pass: a rewritten 0000 is never re-applied to a db that already ran it (Drizzle keys on the
 // journal `when`, not the file hash), so `room_id` would never appear and boot hydrate() would throw.
-// This test models the real upgrade: apply ONLY the baseline (a pre-#655 deployment), write the
+// This test models the real upgrade: apply ONLY the baseline (a pre-0002 deployment), write the
 // old-shape 'singleton' row, THEN run the full migration set so 0002 actually runs — and asserts the
 // column arrives, the row is re-keyed onto the active room (not dropped), and persist/hydrate work.
 test('an EXISTING singleton database upgrades — 0002 adds room_id and re-keys the row onto the active room', () => {
 	const { db, sqlite } = openDb(':memory:');
 
-	// Phase 1 — a pre-#655 box: apply ONLY 0000 (baseline), with real Drizzle bookkeeping, by pointing
+	// Phase 1 — a pre-0002 box: apply ONLY 0000 (baseline), with real Drizzle bookkeeping, by pointing
 	// the migrator at a temp folder that holds just the baseline + its snapshot + a one-entry journal.
 	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
 	const baseDir = mkdtempSync(join(tmpdir(), 'encore-mig-base-'));
@@ -255,14 +255,14 @@ test('an EXISTING singleton database upgrades — 0002 adds room_id and re-keys 
 	runMigrations(db, baseDir);
 
 	// The old-shape data a running party would already hold: the deployment-wide singleton row, plus
-	// two rooms (the older is the active one #654's ensureActive resolves to).
+	// two rooms (the older is the active one ensureActive resolves to).
 	sqlite.run(`INSERT INTO rooms (id, code, created_at) VALUES ('roomA','AAAAAA',1000)`);
 	sqlite.run(`INSERT INTO rooms (id, code, created_at) VALUES ('roomB','BBBBBB',2000)`);
 	sqlite.run(
 		`INSERT INTO playback_state (id, current_entry_id, position_sec, is_playing, key_shift) VALUES ('singleton','qOLD',77,1,3)`
 	);
 
-	// Phase 2 — deploy #655: run the FULL migration set. 0000+0001 already recorded, so only 0002 runs.
+	// Phase 2 — deploy 0002: run the FULL migration set. 0000+0001 already recorded, so only 0002 runs.
 	runMigrations(db, real);
 
 	// The column arrived (proving 0002 was actually applied, not skipped like an in-place baseline edit).
@@ -337,22 +337,22 @@ test('two rooms hold independent queues, keyed by room_id (persist + hydrate)', 
 	expect(hydrate(db, 'roomB').entries.map((e) => e.id)).toEqual(['b1']);
 
 	// AND a room's write-behind replace only clears ITS OWN rows: re-persisting roomA's queue must not
-	// wipe roomB's. A global `delete` in the sink (the pre-#656 shape) would fail this.
+	// wipe roomB's. A global `delete` in the sink (the pre-0003 shape) would fail this.
 	sqlitePersistence(db, 'roomA').persist({ entries: [qe('a3', 'ana', 0)], playback: idle });
 	expect(hydrate(db, 'roomA').entries.map((e) => e.id)).toEqual(['a3']);
 	expect(hydrate(db, 'roomB').entries.map((e) => e.id)).toEqual(['b1']); // roomB untouched
 });
 
-// BLOCKING FIX — the EXISTING-database upgrade path (the trap #655/#669 warned about, and the
+// BLOCKING FIX — the EXISTING-database upgrade path (the trap the earlier room-keying migrations warned about, and the
 // one drizzle-kit's bare `ALTER TABLE ... ADD room_id NOT NULL` would fail on a DB with rows). Every
-// other test builds a FRESH db; this models the real upgrade: apply migrations up to 0002 (a pre-#656
+// other test builds a FRESH db; this models the real upgrade: apply migrations up to 0002 (a pre-0003
 // box), write old-shape roomless queue + singer rows, THEN run the full set so 0003 actually runs —
 // and asserts the columns arrive, the rows are RE-KEYED onto the active (oldest) room, and hydrate works.
 test('an EXISTING roomless database upgrades — 0003 adds room_id to queue_entries + singers and re-keys rows onto the active room', () => {
 	const { db, sqlite } = openDb(':memory:');
 
-	// Phase 1 — a pre-#656 box: apply only 0000..0002 by pointing the migrator at a temp folder holding
-	// just those files + their snapshots + a three-entry journal (the same idiom #655's upgrade test uses).
+	// Phase 1 — a pre-0003 box: apply only 0000..0002 by pointing the migrator at a temp folder holding
+	// just those files + their snapshots + a three-entry journal (the same idiom the 0002 upgrade test uses).
 	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
 	const baseDir = mkdtempSync(join(tmpdir(), 'encore-mig-656-'));
 	mkdirSync(join(baseDir, 'meta'), { recursive: true });
@@ -384,7 +384,7 @@ test('an EXISTING roomless database upgrades — 0003 adds room_id to queue_entr
 		`INSERT INTO queue_entries (id, media_id, singer_id, status, rotation_seq, added_at) VALUES ('qOLD','mOLD','sOLD','queued',0,500)`
 	);
 
-	// Phase 2 — deploy #656: run the FULL migration set. 0000..0002 already recorded, so only 0003 runs.
+	// Phase 2 — deploy 0003: run the FULL migration set. 0000..0002 already recorded, so only 0003 runs.
 	runMigrations(db, real);
 
 	// The columns arrived (proving 0003 was actually applied, not skipped like an in-place baseline edit).
@@ -419,12 +419,12 @@ test('an EXISTING roomless database upgrades — 0003 adds room_id to queue_entr
 	expect(new SingerRepository(db).listPublic('roomB')).toHaveLength(0);
 });
 
-// BLOCKING FIX -- the EXISTING-database upgrade path for room_settings. Before #728 every reader
+// BLOCKING FIX -- the EXISTING-database upgrade path for room_settings. Before the active-room re-key every reader
 // AND the writer route defaulted to DEFAULT_ROOM_ID ('main'), so a configured box wrote its
-// room_settings row under 'main'. #728 moved every reader (and the writer fallback) onto the active
+// room_settings row under 'main'. That change moved every reader (and the writer fallback) onto the active
 // room -- a minted ULID, not 'main' -- so without a re-key an upgraded box would look up the active
 // room, find no row, and silently serve defaults. This models the real upgrade: apply migrations up to
-// 0003 (a pre-#728 box), write an old-shape 'main' room_settings row, THEN run the full set so 0004
+// 0003 (a pre-0004 box), write an old-shape 'main' room_settings row, THEN run the full set so 0004
 // runs -- and asserts the row is RE-KEYED onto the active (oldest) room, carrying every value.
 test('an EXISTING main-keyed database upgrades -- 0004 re-keys room_settings onto the active room', () => {
 	const { db, sqlite } = openDb(':memory:');
@@ -472,9 +472,9 @@ test('an EXISTING main-keyed database upgrades -- 0004 re-keys room_settings ont
 	expect(rows.some((r) => r.room_id === 'main')).toBe(false);
 });
 
-// guard: a pre-#654 DB (a 'main' row but no rooms yet) has no active room to carry it onto, so
+// guard: a pre-rooms DB (a 'main' row but no rooms yet) has no active room to carry it onto, so
 // the re-key is guarded off and the row stays put rather than being dropped or the migration throwing.
-test('0004 leaves the main row untouched when no room exists yet (pre-#654 DB)', () => {
+test('0004 leaves the main row untouched when no room exists yet (pre-rooms DB)', () => {
 	const { db, sqlite } = openDb(':memory:');
 
 	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
@@ -502,10 +502,10 @@ test('0004 leaves the main row untouched when no room exists yet (pre-#654 DB)',
 	writeFileSync(join(baseDir, 'meta', '_journal.json'), JSON.stringify(baseJournal));
 	runMigrations(db, baseDir);
 
-	// a stray 'main' row and NO rooms row (pre-#654 shape)
+	// a stray 'main' row and NO rooms row (pre-rooms shape)
 	sqlite.run("INSERT INTO room_settings (room_id, song_intro_ms) VALUES ('main', 7000)");
 
-	// deploy #728: only 0004 runs, but with no room its guard drops the UPDATE.
+	// deploy the re-key: only 0004 runs, but with no room its guard drops the UPDATE.
 	runMigrations(db, real);
 
 	const rows = sqlite.query('SELECT room_id, song_intro_ms FROM room_settings').all() as {
@@ -521,15 +521,15 @@ test('0004 leaves the main row untouched when no room exists yet (pre-#654 DB)',
 // other test in this file that touches room_settings builds a FRESH db, which is exactly the coverage
 // gap that lets an in-place baseline edit pass: a rewritten 0000 is never re-applied to a db that
 // already ran it (drizzle keys on the journal `when`, not the file hash), so the new column would never
-// appear and the first `getRoom()` would throw at boot. #655 and #669 each shipped that. This models the
-// real upgrade: apply only 0000..0004 (a pre-#425 box), write old-shape rows carrying INTEGER hues, THEN
+// appear and the first `getRoom()` would throw at boot. Two earlier migrations each shipped that. This models the
+// real upgrade: apply only 0000..0004 (a pre-0005 box), write old-shape rows carrying INTEGER hues, THEN
 // run the full set so 0005 actually runs.
 //
 // What it has to prove is the party keeping its look across the upgrade, not merely that a column
 // arrived: each row's stored hue must land on the colour that hue was ALREADY rendering as, which is
 // `stageHueToHex(hue)`. Those expectations are computed from the shared function rather than transcribed
 // here, so the test cannot agree with a wrong migration by copying the same wrong literals — the exact
-// derive-your-own-expectation trap that let #165 ship.
+// derive-your-own-expectation trap that has let a defect ship here before.
 test('an EXISTING hue database upgrades — 0005 replaces tv_background_hue with the colour that hue rendered as', () => {
 	const { db, sqlite } = openDb(':memory:');
 
@@ -580,7 +580,7 @@ test('an EXISTING hue database upgrades — 0005 replaces tv_background_hue with
 		"INSERT INTO room_settings (room_id, tv_background_style, tv_background_hue, song_intro_ms) VALUES ('roomC','visualizer',120,7000)"
 	);
 
-	// Deploy #425: 0000..0004 are already recorded, so only 0005 runs.
+	// Deploy 0005: 0000..0004 are already recorded, so only 0005 runs.
 	runMigrations(db, real);
 
 	// The column swap actually happened — proving 0005 was applied rather than skipped the way an
@@ -613,7 +613,8 @@ test('an EXISTING hue database upgrades — 0005 replaces tv_background_hue with
 	expect(rows[2]!.tv_background_style).toBe('visualizer');
 	expect(rows[2]!.song_intro_ms).toBe(7000);
 
-	// The running code can now read those rooms through the real path — the thing that threw on #655.
+	// The running code can now read those rooms through the real path — the thing that threw on the
+	// earlier room-keying upgrade.
 	const repo = new SettingsRepository(db);
 	expect(repo.getRoom('roomA').tvBackgroundColor).toBe(stageHueToHex(240));
 	expect(repo.getRoom('roomB').tvBackgroundColor).toBe(stageHueToHex(345));
@@ -694,10 +695,10 @@ test('every WHEN arm of the 0005 backfill CASE equals stageHueToHex(hue)', () =>
 	expect(DEFAULT_STAGE_COLOR).toBe(stageHueToHex(240));
 });
 
-// — the EXISTING-database upgrade path for the stage dimmer. Piece 3 of #425 adds
+// — the EXISTING-database upgrade path for the stage dimmer. Piece 3 of the stage-background work adds
 // room_settings.tv_background_dim (a 0..1 REAL, NOT NULL default 0). Every other room_settings test
 // builds a FRESH db, the coverage gap that lets an in-place baseline edit pass; this models the real
-// upgrade: apply only 0000..0006 (a pre-#782 box), write old-shape rows with NO dim column, THEN run
+// upgrade: apply only 0000..0006 (a pre-0007 box), write old-shape rows with NO dim column, THEN run
 // the full set so 0007 actually runs. What it must prove: the column arrives, an existing row upgrades
 // to 0 (no dim — today's look, byte-identical), and the running code can read it back through the real
 // path. RED on base: no 0007, so tv_background_dim is absent and the SELECT below throws.
@@ -732,7 +733,7 @@ test('an EXISTING database upgrades — 0007 adds tv_background_dim defaulting t
 	writeFileSync(join(baseDir, 'meta', '_journal.json'), JSON.stringify(baseJournal));
 	runMigrations(db, baseDir);
 
-	// Sanity: this really IS the pre-#782 shape, so the test cannot pass by having skipped phase 1.
+	// Sanity: this really IS the pre-0007 shape, so the test cannot pass by having skipped phase 1.
 	const before = sqlite.query('PRAGMA table_info(room_settings)').all() as { name: string }[];
 	expect(before.some((c) => c.name === 'tv_background_color')).toBe(true);
 	expect(before.some((c) => c.name === 'tv_background_dim')).toBe(false);
@@ -748,7 +749,7 @@ test('an EXISTING database upgrades — 0007 adds tv_background_dim defaulting t
 		"INSERT INTO room_settings (room_id, tv_background_style, tv_background_color, song_intro_ms) VALUES ('roomB','visualizer','#281600',7000)"
 	);
 
-	// Deploy #782: 0000..0006 are already recorded, so only 0007 runs.
+	// Deploy 0007: 0000..0006 are already recorded, so only 0007 runs.
 	runMigrations(db, real);
 
 	// The column arrived — proving 0007 was applied, not skipped the way an in-place baseline edit would be.

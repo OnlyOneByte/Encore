@@ -1,7 +1,7 @@
-// Guard for #806's COMMENT-ONLY hunks — four doc sites that documented which axis the absolute
+// Guard for the wrong-song-axis COMMENT-ONLY hunks — four doc sites that documented which axis the absolute
 // wrong-song judgement is decided on, and named the wrong one.
 //
-// #800 split lyrics agreement into a RANKING score and BASELINE COVERAGE and moved that judgement onto
+// An earlier change split lyrics agreement into a RANKING score and BASELINE COVERAGE and moved that judgement onto
 // coverage, but `lyricsRank`'s doc still described tier 1 without saying which field it reads,
 // `isLikelyWrongSong`'s doc named a `winnerCoverage` carrier that no producer emitted, and
 // `SelectionRecord.winnerSuspect` still said the winner "scored below the wrong-song threshold" — the
@@ -13,7 +13,7 @@
 // `pin-base-prose-790.test.ts` and `spotify-enforcement-prose-742.test.ts` assert prose. Each assertion
 // is anchored on the doc block of the symbol it documents, so the same words elsewhere in the file
 // cannot satisfy it, and each is discriminating: reverting the corresponding hunk restores wording that
-// fails it. This is what pins #806's four comment-only hunks, which by construction cannot red a
+// fails it. This is what pins those four comment-only hunks, which by construction cannot red a
 // behavioural test.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -94,7 +94,7 @@ test('lyricsRank documents tier 1 as reading coverage, NOT the ranking score', (
 test('isLikelyWrongSong names carriers of the coverage axis that actually exist', () => {
 	const doc = docAbove(src(SITES.lyrics), 'export function isLikelyWrongSong(');
 	expect(doc).toMatch(/BASELINE COVERAGE/);
-	// Each named carrier must be a real member, not the phantom the old doc pointed at: before #806
+	// Each named carrier must be a real member, not the phantom the old doc pointed at: before the fix
 	// `winnerCoverage` appeared nowhere in the repository except that comment.
 	expect(doc).toMatch(/LyricsCandidate\.coverage/);
 	expect(doc).toMatch(/SelectionRecord\.winnerCoverage/);
@@ -106,7 +106,7 @@ test('SelectionRecord documents winnerSuspect on coverage and winnerScore as ran
 	const types = src(SITES.types);
 	const suspect = docAbove(types, 'winnerSuspect: boolean;');
 	expect(suspect).toMatch(/BASELINE COVERAGE/);
-	// The pre-#806 wording — "scored below the wrong-song threshold" — pointed at the ranking axis.
+	// The old wording — "scored below the wrong-song threshold" — pointed at the ranking axis.
 	expect(suspect).not.toMatch(/winner scored below/);
 
 	const score = docAbove(types, 'winnerScore: number | null;');

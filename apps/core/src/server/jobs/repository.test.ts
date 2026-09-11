@@ -256,7 +256,7 @@ test('findOutstandingForMedia: null for a media with no jobs at all', () => {
 	expect(repo.findOutstandingForMedia('media-unknown')).toBeNull();
 });
 
-// — reprioritize: the status-free priority write (#135 starvation half) —
+// — reprioritize: the status-free priority write (starvation half) —
 
 test('reprioritize lowers a queued job priority without a status change or ledger event', () => {
 	const { repo } = makeRepo();
@@ -293,7 +293,7 @@ test('reprioritize refuses a terminal job (no scheduling future)', () => {
 	expect(after.priority).toBe(5); // untouched — a finished cook has no queue position to fix
 });
 
-test('reprioritize works on an ASSIGNED job (regression #471/#525): the reconnect add lands during the ack window', () => {
+test('reprioritize works on an ASSIGNED job (event-typed-machine regression): the reconnect add lands during the ack window', () => {
 	// The starvation feature exists for a cook already in flight when the singer's queue `add`
 	// finally lands. "In flight" includes ASSIGNED (offered to a worker, ack still pending). Before
 	// the event-typed machine this was a raw db.update that never consulted the table; after it,
