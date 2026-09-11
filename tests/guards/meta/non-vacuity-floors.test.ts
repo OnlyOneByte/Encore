@@ -87,6 +87,22 @@ type Floor = {
  * and the two on the motion guard's new utility-class arm.
  */
 const FLOORS: Record<string, Floor[]> = {
+	'tests/guards/wiring/route-auth-posture.test.ts': [
+		{
+			subject: 'routes.length',
+			min: 10,
+			count: 1,
+			guards:
+				'the walk over routes/api. An empty walk yields no offenders, which reads exactly like a surface whose every gate is correct. 15 route modules at the time of writing.'
+		},
+		{
+			subject: 'methodsChecked',
+			min: 15,
+			count: 1,
+			guards:
+				'the per-method splitter actually parsing handlers. This is the sharper of the two: a splitter that returned nothing would leave the walk finding every file and the guard reporting every gate correct while checking none. Per-method granularity is the whole point, because settings/+server.ts gates PUT and leaves GET open.'
+		}
+	],
 	'tests/guards/docs/cited-paths-resolve.test.ts': [
 		{
 			subject: 'docs.length',
@@ -620,13 +636,13 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// guard's entire population was the two deleted drawer components), and +1 for the `scanned` floor
 	// on the drawer-deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
 	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
-	// prescribes rather than counted: raised absurdly high, read `Received: 57`.
+	// prescribes rather than counted: raised absurdly high, read `Received: 59`.
 	//
 	// 51 -> 55 when the test tree was reorganised: four floors were REGISTERED, none invented. Two belong
 	// to the new test-tree-deps guard, one is direction C's own `filesWalked`, and one is a floor on
 	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
 	// surfaced it. Both literals were re-measured, not incremented.
-	expect(located).toBeGreaterThanOrEqual(57);
+	expect(located).toBeGreaterThanOrEqual(59);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -717,7 +733,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(57);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(59);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {
