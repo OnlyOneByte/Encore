@@ -8,7 +8,7 @@
 //
 // Two arms, and they answer different questions:
 //   BEHAVIOURAL — the five readers agree with `readyToSing` about EIGHT seeded rows covering SEVEN
-//     distinct gate shapes (#799), against a real migrated DB and the real MediaRepository. Expected
+//     distinct gate shapes, against a real migrated DB and the real MediaRepository. Expected
 //     ids/counts are HARD-CODED from the seed, never derived by re-running `readyToSing`, so the test
 //     cannot agree with the code by construction. #763's own seed carried only one not-ready shape
 //     (mid-align), so every other arm of both gates rested entirely on the source scan.
@@ -59,7 +59,7 @@ const midAlign = (id: string): Media => ({
 	lyricsRef: undefined
 });
 
-// ── the four shapes #763's seed never held, one per remaining gate arm (#799) ──────────────────────
+// ── the four shapes #763's seed never held, one per remaining gate arm ──────────────────────
 //
 // The stems gate is `stemStatus === 'ready' && !!instrumentalRef` and the lyrics gate is
 // `lyricsStatus === 'ready' || !!lyricsRef`, so between them there are four ways to be not-ready that
@@ -110,7 +110,7 @@ const legacyLyricsRef = (id: string): Media => ({
 
 let repo: MediaRepository;
 
-describe('#763 — every browse reader answers readiness the same way', () => {
+describe('— every browse reader answers readiness the same way', () => {
 	beforeEach(() => {
 		repo = new MediaRepository(migratedDb());
 		// #763's measured three rows, plus the five #799 added so every gate arm has a seeded row:
@@ -260,7 +260,7 @@ describe('#763 — every browse reader answers readiness the same way', () => {
 
 // Non-vacuity sentinel: with every not-ready row absent, all the assertions above must PASS on base too
 // — so the redness above comes from the not-ready windows, not from the invariants being unsatisfiable.
-describe('#763 — the same invariants hold for a library of finished songs alone', () => {
+describe('— the same invariants hold for a library of finished songs alone', () => {
 	it('a finished-only library agrees across all five readers', () => {
 		const r = new MediaRepository(migratedDb());
 		r.upsert(finished('a'));
@@ -320,7 +320,7 @@ const NARROWING = /stemStatus\s*(?:,|===|==)\s*'ready'/g;
 const GATE = /\breadyToSing\b/g;
 const count = (re: RegExp, s: string) => s.match(re)?.length ?? 0;
 
-describe('#763 — readiness is defined once for the whole browse block', () => {
+describe('— readiness is defined once for the whole browse block', () => {
 	it('the shared helper exists and is where BOTH halves of the predicate live', () => {
 		const shared = body('readySongs');
 		expect(count(NARROWING, shared)).toBe(1);
@@ -338,7 +338,7 @@ describe('#763 — readiness is defined once for the whole browse block', () => 
 	// the point is what the PATTERN can see, and production holds exactly one match by the test above.
 	// Fixtures, not the real file, is also what lets the JS shape be checked at all: it does not exist
 	// in `repository.ts` and must not be added there to test for it.
-	describe('#799 — what the drift ban catches, and what it admits it does not', () => {
+	describe('— what the drift ban catches, and what it admits it does not', () => {
 		/** The pattern #793 shipped: the drizzle comma form only. Kept so the widening is pinned, not assumed. */
 		const PRE_799 = /stemStatus\s*,\s*'ready'/g;
 

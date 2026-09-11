@@ -1,5 +1,5 @@
 // Behavioural tests for `lyricHighlightColor` — the boundary between a stored singer colour and the
-// CSS custom property the TV lyric reel paints its highlight with (#634).
+// CSS custom property the TV lyric reel paints its highlight with.
 //
 // WHY THIS IS A SEPARATE FILE, and it is a mutation-proof requirement rather than tidiness. These tests
 // were first added to `colors.test.ts`, which imports its subjects BY NAME. Under `prove_per_hunk.py`
@@ -12,7 +12,7 @@
 // test — which is what the standard asks for. Measured both ways; see the proof table in the PR body.
 //
 // Every expected value below is a hard-coded literal. None is produced by calling `parseHex`/`toHex`/
-// `isLegibleSingerColor` and feeding the result back in, which is the failure mode (#165) that would let
+// `isLegibleSingerColor` and feeding the result back in, which is the failure mode that would let
 // these pass against an implementation that returned its input unchanged.
 import { test, expect } from 'bun:test';
 import * as colors from './colors';

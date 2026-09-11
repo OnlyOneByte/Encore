@@ -24,7 +24,7 @@ function stripComments(src: string): string {
 
 /*
  * The interactive-control derivation — `markupControls`, plus the bare-tag allowlist it consults —
- * lives in ./test-helpers (#841, XR-VER-14). It was a private copy here; it decides which CSS rules
+ * lives in ./test-helpers (XR-VER-14). It was a private copy here; it decides which CSS rules
  * this guard even looks at, so a drift between it and any other consumer silently narrows the
  * population one guard examines while the others keep their own answer.
  */
@@ -35,7 +35,7 @@ function stripComments(src: string): string {
  */
 const FILES = [
 	...svelteFiles(join(SRC, 'lib', 'components')),
-	// `lib/ui/` was NOT walked (issue #831). PageHeader.svelte is the single source for the back link on
+	// `lib/ui/` was NOT walked. PageHeader.svelte is the single source for the back link on
 	// four routes, and its box survived only on a hand-written pin below — so a second control added
 	// under lib/ui/ was invisible to this guard entirely. The walk closes that, and the pin it made
 	// redundant is retired with it.
@@ -44,7 +44,7 @@ const FILES = [
 	join(SRC, 'routes', 'settings', '+page.svelte'),
 	// The operator metrics pages are phone surfaces by their own CSS's admission (they harden for the
 	// 320px layout) and each has exactly one navigation control, yet neither was ever scanned — which
-	// is how both shipped at 32px (issue #140).
+	// is how both shipped at 32px.
 	join(SRC, 'routes', 'metrics', '+page.svelte'),
 	join(SRC, 'routes', 'metrics', '[mediaId]', '+page.svelte')
 ];
@@ -84,7 +84,7 @@ function* controlRules(): Generator<{ file: string; sel: string; body: string }>
 			// a ::pseudo-element (slider track/thumb) is a cosmetic sub-part, never the touch target
 			// itself — the interactive box is the parent selector, which is examined on its own rule.
 			if (sel.includes('::')) continue;
-			// derive "is this a control?" from the markup, not a literal allowlist (issue #400)
+			// derive "is this a control?" from the markup, not a literal allowlist
 			if (!sel.split(',').some((s) => subjectIsControl(s.trim(), ctrl))) continue;
 			// a rule that declares no box has not taken a position on target size
 			if (!/(min-height|height|padding)\s*:/.test(body)) continue;
@@ -113,16 +113,16 @@ test('every phone control that sizes its own box reaches the tap standard', () =
 	// a broken markup walk (empty tag/class sets) would silently measure nothing and pass vacuously;
 	// pin a floor so the guard fails loudly if the derivation ever stops finding controls.
 	expect(controlRulesSeen).toBeGreaterThan(10); // @nvf-floor controlRulesSeen
-	// …and pin the SCANNED POPULATION too (#841, XR-VER-14 Acceptance). FILES is a tree walk over
+	// …and pin the SCANNED POPULATION too (XR-VER-14 Acceptance). FILES is a tree walk over
 	// lib/components and lib/ui PLUS five hand-named route pages, so a walk that stops finding
 	// components still leaves five files — and five files carry enough control rules to clear the floor
 	// above. The two floors fail on different regressions: `controlRulesSeen` on a broken derivation,
-	// this one on a narrowed walk. 14 files today (12 before lib/ui/ joined the walk, issue #831).
+	// this one on a narrowed walk. 14 files today (12 before lib/ui/ joined the walk).
 	expect(FILES.length).toBeGreaterThanOrEqual(12); // @nvf-floor FILES.length
 });
 
 /**
- * THE EXPRESSION, not the number (issue #831, XR-PH-01).
+ * THE EXPRESSION, not the number (XR-PH-01).
  *
  * The test above pins the VALUE, and it was green on a repo where 15 control declarations across five
  * files spelled `44px` by hand. That is the whole defect this arm exists for: `--tap` and the controls
@@ -189,20 +189,20 @@ test('the controls that previously fell short declare the tap standard as the to
 
 	// the settings gear was ~18px, under even the 24px WCAG minimum
 	expect(declares(phone, 'gear', 'min-(?:width|height)')).toBe(true);
-	// the readiness chips were ~30px. Those chips are deleted (#833), but the `.chip` rule and this pin
+	// the readiness chips were ~30px. Those chips are deleted, but the `.chip` rule and this pin
 	// stay: the way back out of a non-matching search ("Show all N") is a `chip ok chip-icon` button.
 	expect(declares(phone, 'chip', 'min-height')).toBe(true);
-	// RETIRED (#833): the `.browse-toggle` pin. Direction B deleted the browse disclosure along with the
+	// RETIRED: the `.browse-toggle` pin. Direction B deleted the browse disclosure along with the
 	// artist and genre rails it hid, so the rule it named is gone from the phone stylesheet — the
 	// assertion could only fail, never bite. #831 had just re-pointed this pin at `var(--tap)`; that
 	// conversion is moot here rather than reverted, because the control it converted no longer exists.
 	// Nothing replaces it: the search field that took its place is covered by the rendered gate (see the
 	// measured-design quarantine entry for it) rather than by a declaration.
-	// RETIRED (#831): the hand-written back-link pin. The back link (formerly ~26px in settings and 32px
-	// on the audit page, issue #140) is the single shared PageHeader control adopted by /settings /stats
-	// /metrics /metrics/[mediaId] (#644), and `lib/ui/` is in FILES now — so both arms above examine it
+	// RETIRED: the hand-written back-link pin. The back link (formerly ~26px in settings and 32px
+	// on the audit page) is the single shared PageHeader control adopted by /settings /stats
+	// /metrics /metrics/[mediaId], and `lib/ui/` is in FILES now — so both arms above examine it
 	// like any other control, and a pin that duplicates the walk only hides whether the walk reaches it.
-	// the /metrics slowest-songs links and the audit-page back link were both 32px (issue #140), and
+	// the /metrics slowest-songs links and the audit-page back link were both 32px, and
 	// neither page was in FILES, so the structural test above never saw them. Pinned by name here.
 	expect(declares(metrics, 'cooks a', 'min-height')).toBe(true);
 
@@ -248,7 +248,7 @@ test('the stage-colour control is one full-size target with no sub-44px part (is
 });
 
 /**
- * THE HEIGHTLESS-INPUT HOLE (issue #863).
+ * THE HEIGHTLESS-INPUT HOLE.
  *
  * `controlRules()` above only looks at a rule that already declares a box (`min-height|height|padding`),
  * on the reasoning that a control sized by its content has "not taken a position on target size". That
@@ -268,11 +268,11 @@ test('the stage-colour control is one full-size target with no sub-44px part (is
  *
  *   - the checkbox/radio GLYPH (`.check input`, an 18px square): its tap target is the wrapping <label>,
  *     which carries `min-height: var(--tap)` and is examined as its own control. Resizing the glyph is
- *     the wrong fix (issue #863).
+ *     the wrong fix.
  *   - the range slider (`.hue input`): a different control with its own `height: var(--tap)` rule and
  *     track/thumb geometry, pinned by the #133/#425 arm above.
  */
-test('every text-entry control is sized to the tap floor by a var(--tap) rule (issue #863)', () => {
+test('every text-entry control is sized to the tap floor by a var(--tap) rule', () => {
 	// Each entry: the file, the SELECTOR TOKEN that identifies the control's sizing rule, and a human
 	// name. A control passes when at least one rule whose selector contains that token names var(--tap)
 	// on a height, OR sets an explicit height >= TAP.
@@ -298,7 +298,7 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule (i
 		/*
 		 * ── WHY VENDORED CONTROLS MUST BE LISTED HERE BY HAND (#913 S4) ────────────────────────────
 		 *
-		 * `controlRules()` above derives "is this a control?" from the file's own MARKUP (#400) — it
+		 * `controlRules()` above derives "is this a control?" from the file's own MARKUP — it
 		 * looks for a rule whose subject is an interactive TAG, or a class that markup puts on one. A
 		 * copied-in shadcn component satisfies neither: it renders `<TabsPrimitive.Trigger>`, a
 		 * COMPONENT, so no `button` tag ever appears for `markupControls` to find. On top of that,

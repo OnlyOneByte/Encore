@@ -35,7 +35,7 @@ const ROOTS = new Set(['/']);
 /**
  * Every routed page under src/routes, as { route, file, src }.
  *
- * Non-vacuity floor (issue #830, XR-VER-05). This walk had NO floor, and both consumers assert
+ * Non-vacuity floor (XR-VER-05). This walk had NO floor, and both consumers assert
  * `offenders` EMPTY (`:70` the single-h1 rule, `:80` the back affordance) — so a moved `routes/`, a
  * renamed `+page.svelte`, or a walk root typo made both pass with ZERO pages examined. That is the
  * exact shape that let /stats and /metrics ship as dead ends in the first place, reappearing one level

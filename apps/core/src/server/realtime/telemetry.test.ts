@@ -86,7 +86,7 @@ test('position-only telemetry updates position without advancing', () => {
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	handleTelemetry({ positionSec: 42.7 }, deps);
 	expect(state.playback.currentEntryId).toBe('q1'); // unchanged
-	expect(state.playback.positionSec).toBe(42.7); // tracked with sub-second precision (#718)
+	expect(state.playback.positionSec).toBe(42.7); // tracked with sub-second precision
 });
 
 test('held-slot: ended skips a not-ready file entry, plays the ready one', () => {
@@ -185,7 +185,7 @@ test('an ended with no entry id keeps legacy behaviour (backward compatible with
 	expect(state.playback.currentEntryId).toBe('q2');
 });
 
-test('a stale position frame naming the outgoing entry after an advance does NOT move the playhead (#125)', () => {
+test('a stale position frame naming the outgoing entry after an advance does NOT move the playhead', () => {
 	// q1 plays at ~87s, then a skip/ended advances to q2 (fresh position 0). The outgoing <audio>
 	// for q1 fires one more ontimeupdate across the round-trip + slot swap: a POSITION frame naming
 	// q1, which is no longer current. Before #125 it was written unconditionally (q2.positionSec=87)
@@ -208,7 +208,7 @@ test('a stale position frame naming the outgoing entry after an advance does NOT
 	expect(state.playback.currentEntryId).toBe('q2');
 });
 
-test('a position frame for the current entry still updates position (guard hoist does not break the live path) (#125)', () => {
+test('a position frame for the current entry still updates position (guard hoist does not break the live path)', () => {
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
@@ -216,7 +216,7 @@ test('a position frame for the current entry still updates position (guard hoist
 	expect(state.playback.positionSec).toBe(42.7); // #718: broadcast position keeps sub-second precision
 });
 
-test('an id-less position frame keeps legacy behaviour (older TV unaffected) (#125)', () => {
+test('an id-less position frame keeps legacy behaviour (older TV unaffected)', () => {
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
@@ -224,7 +224,7 @@ test('an id-less position frame keeps legacy behaviour (older TV unaffected) (#1
 	expect(state.playback.positionSec).toBe(33.3); // no id -> still applied (#718: sub-second kept)
 });
 
-test('the TV wires sendTelemetry through the pure telemetryFrame(status, current, …) so the stamp is reachable (#125, #130)', () => {
+test('the TV wires sendTelemetry through the pure telemetryFrame(status, current, …) so the stamp is reachable (#130)', () => {
 	// The server drop (player.ts) can only fire on a frame that CARRIES an entryId. Before #125 the
 	// TV stamped one only on `ended`, so position frames arrived id-less and the guard's first
 	// conjunct was false. #130 lifted the stamp out of this .svelte into the pure telemetryFrame()

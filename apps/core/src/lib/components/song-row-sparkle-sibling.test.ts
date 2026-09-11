@@ -1,4 +1,4 @@
-// guard (issue #194): the cooking sparkle must be a SIBLING of the title text, not a child of it.
+// guard: the cooking sparkle must be a SIBLING of the title text, not a child of it.
 //
 // SongRow's `.t` is a two-line clamp: `display: -webkit-box; -webkit-line-clamp: 2; overflow: hidden`.
 // A mark rendered INSIDE `.t` is laid out on the discarded third line of a two-line-clamped title, so
@@ -25,7 +25,7 @@ const src = stripComments(readFileSync(join(import.meta.dir, 'SongRow.svelte'), 
 // Collect EVERY rule for a class selector, matching the selector repeatedly and brace-matching each
 // body — the same read tests 2 and 3 rely on. Returns one entry per rule with its declaration body.
 //
-// #482 established the reason this must read every rule, not the first: SongRow declares its layout
+// established the reason this must read every rule, not the first: SongRow declares its layout
 // selectors more than once — a base rule PLUS a redeclaration inside `@media (max-width: 380px)` that
 // WINS the cascade at <=380px (same specificity, later in source). A first/any-match check is blind to
 // the override branch, so a media-query redeclaration can reopen a fixed defect with the gate green.
@@ -114,7 +114,7 @@ test('the cooking sparkle is a sibling of .t inside .title-line, never nested in
 	expect(sparkleAt).toBeLessThan(titleLineClose); // still inside .title-line
 });
 
-test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item, on EVERY rule (issue #551)', () => {
+test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item, on EVERY rule', () => {
 	// The layout contract that keeps the mark off the clamped line: a flex ROW whose mark cannot grow.
 	//
 	// #482 named the hole and #523 closed it for `.t` only (see test 3): every `.t` rule is now read.
@@ -166,17 +166,17 @@ test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item,
 	}
 });
 
-test('.t does not grow and always shrinks — the clamp box hugs its text so the mark stays adjacent, on EVERY .t rule (issue #334)', () => {
+test('.t does not grow and always shrinks — the clamp box hugs its text so the mark stays adjacent, on EVERY .t rule', () => {
 	// With flex-grow:1 (flex: 1) the two-line clamp box grew to fill the whole .title-line, pushing the
-	// flex:0 0 auto mark to the metadata column's right edge — up to 116px from a short title (#334).
+	// flex:0 0 auto mark to the metadata column's right edge — up to 116px from a short title.
 	// The mark's meaning is "this title is cooking", so it must sit beside the title, not float in the
 	// empty tail. .t must be flex: 0 1 auto — grow 0 AND shrink 1: grow 0 stops the clamp box filling the
 	// row and floating the mark out to the column's right edge, and shrink > 0 lets the box shrink to hug
-	// its (clamped) text so the mark still sits adjacent. Pinning grow alone (#389) left a hole: setting
+	// its (clamped) text so the mark still sits adjacent. Pinning grow alone left a hole: setting
 	// flex-shrink:0 / flex: 0 0 auto keeps grow 0 and passes, but the box stops shrinking and the mark is
 	// pushed back to the column right edge (title-length-independent) — #334 reopened, gate green.
 	//
-	// #482: SongRow declares .t TWICE — the base rule AND a redeclaration inside @media (max-width: 380px).
+	// SongRow declares .t TWICE — the base rule AND a redeclaration inside @media (max-width: 380px).
 	// The old guard used String.prototype.search, which returns only the FIRST match, so a `flex` written
 	// into that media-query rule (which WINS the cascade at <=380px, same specificity + later in source)
 	// was invisible. Read EVERY .t rule by matching the selector repeatedly, brace-match each body, and

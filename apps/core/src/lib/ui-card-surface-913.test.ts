@@ -1,9 +1,9 @@
 /*
- * THE SHARED `.card` SURFACE AND ITS CALLERS STAY TOGETHER (#913).
+ * THE SHARED `.card` SURFACE AND ITS CALLERS STAY TOGETHER.
  *
  * ── THE DEFECT THIS EXISTS FOR ──────────────────────────────────────────────────────────────────
  *
- * #913 S4 migrated 28 content cards onto shadcn's <Card.Root> and then deleted `.card` from app.css,
+ * S4 migrated 28 content cards onto shadcn's <Card.Root> and then deleted `.card` from app.css,
  * on the premise that nothing referenced it any more. Nine elements still did, and every one of them
  * lost its background, border and radius:
  *
@@ -94,7 +94,7 @@ function callersInTree(): string[] {
 	return [...out].sort();
 }
 
-test('while anything uses `card`, app.css defines it WITH a background (#913)', () => {
+test('while anything uses `card`, app.css defines it WITH a background', () => {
 	const callers = callersInTree();
 	// Non-vacuity: the population is real. An empty set would make the rule below unfalsifiable.
 	expect(callers.length).toBeGreaterThanOrEqual(8); // @nvf-floor callers.length
@@ -171,7 +171,7 @@ test('while anything uses `card`, app.css defines it WITH a background (#913)', 
 	).toEqual([]);
 });
 
-test('every `card` caller is enumerated, so a new one is a decision (#913)', () => {
+test('every `card` caller is enumerated, so a new one is a decision', () => {
 	const inTree = new Set(callersInTree());
 	const known = new Set(CALLERS.map((c) => c.file));
 
@@ -193,7 +193,7 @@ test('every `card` caller is enumerated, so a new one is a decision (#913)', () 
 	for (const c of CALLERS) expect(c.why.length, `${c.file} needs a substantive reason`).toBeGreaterThan(25);
 });
 
-test('a later rule that un-paints `card` is caught, not just a deleted one (#913)', () => {
+test('a later rule that un-paints `card` is caught, not just a deleted one', () => {
 	/*
 	 * Mutation proof for the override direction, which the `.exec()` version could not see. Deleting the
 	 * rule already redded; NEUTRALISING it with a second rule did not, and that is the more likely
@@ -217,7 +217,7 @@ test('a later rule that un-paints `card` is caught, not just a deleted one (#913
 	expect(lastOf(commented.replace(/\/\*[\s\S]*?\*\//g, ' '), 'background')).toMatch(/var\(--card\)/);
 });
 
-test('a class list inside a comment is not a caller (#913)', () => {
+test('a class list inside a comment is not a caller', () => {
 	/*
 	 * Both directions, so the stripper cannot become a hole: prose mentioning the class must not register a
 	 * caller, and real markup must still register one.
@@ -236,7 +236,7 @@ test('a class list inside a comment is not a caller (#913)', () => {
 	expect(tokens).toContain('card');
 });
 
-test('a higher-specificity or !important override is caught too (#913)', () => {
+test('a higher-specificity or !important override is caught too', () => {
 	/*
 	 * The two shapes the "last wins" model missed. Both are realistic accidents — a reset block, a theme
 	 * layer, a print stylesheet — and both un-paint all nine callers.

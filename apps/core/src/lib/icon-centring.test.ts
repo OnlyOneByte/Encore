@@ -34,9 +34,9 @@ const FILES = [
 	join(SRC, 'routes', 'settings', '+page.svelte')
 ];
 
-// Non-vacuity floor (issue #453): the scan below asserts `offenders` empty, so an empty FILES
+// Non-vacuity floor: the scan below asserts `offenders` empty, so an empty FILES
 // (a broken components walk) would pass vacuously. Components (9 since #834 added CodeEntry +
-// JoinLanding) + 2 routes today; `/join` was retired (#834), its join UI is now JoinLanding.
+// JoinLanding) + 2 routes today; `/join` was retired, its join UI is now JoinLanding.
 test('the icon-centring scan actually reads a non-empty surface', () => {
 	expect(FILES.length).toBeGreaterThan(7); // @nvf-floor FILES.length
 });

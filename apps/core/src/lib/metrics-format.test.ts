@@ -43,7 +43,7 @@ test('an unmapped job type or stage falls through to its raw name', () => {
 	expect(stageLabel('brand-new-stage')).toBe('brand-new-stage');
 });
 
-// THE BUG localStamp EXISTS FOR (#141). The audit log printed every instant as
+// THE BUG localStamp EXISTS FOR. The audit log printed every instant as
 // `new Date(ms).toISOString()...` — UTC, with the `Z` sliced off so nothing said so. West of
 // Greenwich the time was wrong, and for a US evening party (this box's own zone is CDT, UTC−5)
 // anything after 19:00 local rolled the printed DATE to the next day. The instant below is the

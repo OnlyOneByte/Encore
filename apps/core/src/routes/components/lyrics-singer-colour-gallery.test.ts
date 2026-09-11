@@ -1,7 +1,7 @@
 // Guard: the components gallery keeps the four frames that are the RENDERED evidence for #634.
 //
 // WHAT THE CARDS ARE FOR. #634 paints the lyric highlight in the current singer's colour, and the
-// owner's ruling was to keep the hue and lean on the outline the reel already strokes (#750) instead of
+// owner's ruling was to keep the hue and lean on the outline the reel already strokes instead of
 // deriving a legibility-safe variant. That ruling is only defensible if someone can SEE the words hold
 // up when the singer's colour collides with the stage behind them — so the gallery carries a pair that
 // isolates the change (room accent vs a singer's colour, same doc, same pinned position) and two

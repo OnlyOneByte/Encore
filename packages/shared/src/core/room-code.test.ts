@@ -1,4 +1,4 @@
-// Pins the shared room-code vocabulary (#834). The whole reason this module exists is that the phone's
+// Pins the shared room-code vocabulary. The whole reason this module exists is that the phone's
 // six-segment entry and the server's minting/validation now read ONE alphabet, so these assertions are
 // what stops the two ends from drifting — and each targets a single production hunk so a revert reds
 // exactly one test (per-hunk proof discipline).

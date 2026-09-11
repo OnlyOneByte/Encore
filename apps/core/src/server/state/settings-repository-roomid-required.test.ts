@@ -1,6 +1,6 @@
 // guard: SettingsRepository's four room-scoped methods (getRoom/setRoom/hasRoom/getEffective) must
 // take a REQUIRED roomId — no default initialiser at all — so a caller can never silently
-// address the default room 'main' (#728). A defaulted parameter is invisible to `tsc` by
+// address the default room 'main'. A defaulted parameter is invisible to `tsc` by
 // construction, so nothing forces the Nth call site; #653 already shipped that exact bug. This is the
 // same source-scan discipline the rooms chain used for the required listPublic(roomId) at
 // rooms/room-identity-wiring.test.ts. Deleting a default is behaviour-preserving, so no behavioural
@@ -60,14 +60,14 @@ const CALLER_PATHS = [
 ];
 const CALLERS = CALLER_PATHS.map((p) => stripComments(readFileSync(p, 'utf8')));
 
-test('ARM 1 — no room-scoped method defaults its roomId (#728)', () => {
+test('ARM 1 — no room-scoped method defaults its roomId', () => {
 	// The mechanism. On base this matches 4 times (getRoom/setRoom/hasRoom/getEffective at :65/:90/
 	// :102/:107); after the fix it must be gone entirely.
 	const defaults = [...REPO.matchAll(/roomId\s*:\s*string\s*=/g)];
 	expect(defaults.length).toBe(0);
 });
 
-test('ARM 2 — no production caller invokes a room method with an empty argument list (#728)', () => {
+test('ARM 2 — no production caller invokes a room method with an empty argument list', () => {
 	// Belt over the mechanism: count every bare-paren call across the seven caller files. On base this
 	// names all 12 unscoped sites; after the fix it must be 0. KNOWN LIMIT (stated, not left to be
 	// discovered): the empty-paren shape cannot see app.ts:203's setRoom(<body>) with a body but no
@@ -79,7 +79,7 @@ test('ARM 2 — no production caller invokes a room method with an empty argumen
 	expect(total).toBe(0);
 });
 
-test('sentinel — the repository and its four methods still exist (non-vacuous) (#728)', () => {
+test('sentinel — the repository and its four methods still exist (non-vacuous)', () => {
 	// If any of these fail the guard is testing the wrong file, not a green fix.
 	expect(REPO).toMatch(/export class SettingsRepository/);
 	for (const m of ['getRoom', 'setRoom', 'hasRoom', 'getEffective']) {
@@ -87,14 +87,14 @@ test('sentinel — the repository and its four methods still exist (non-vacuous)
 	}
 });
 
-test('ARM 3 — the repository no longer names DEFAULT_ROOM_ID at all, comments included (#737)', () => {
+test('ARM 3 — the repository no longer names DEFAULT_ROOM_ID at all, comments included', () => {
 	// PURE DELETION, so nothing behavioural can red: reverting it re-adds a symbol nothing calls and the
 	// suite stays green. This scan is the proof. RAW source on purpose — the docstring asserting 'main'
 	// IS "the default room's id" is itself the defect's other half, so a stripped read would let it back.
 	expect(REPO_RAW).not.toMatch(/DEFAULT_ROOM_ID/);
 });
 
-test('ARM 4 — no non-test production file under apps/core mentions DEFAULT_ROOM_ID (#737)', () => {
+test('ARM 4 — no non-test production file under apps/core mentions DEFAULT_ROOM_ID', () => {
 	// Wider than ARM 3: the constant must not come back anywhere a production caller could reach it.
 	// Only apps/core/drizzle/0004_rekey_room_settings.sql still names it, as shipped historical prose
 	// about the pre-#728 world; a .sql migration is not scanned here and must not be edited.
@@ -102,7 +102,7 @@ test('ARM 4 — no non-test production file under apps/core mentions DEFAULT_ROO
 	expect(offenders).toEqual([]);
 });
 
-test('sentinel — ARM 4 really walks the production tree (census not vacuous) (#737)', () => {
+test('sentinel — ARM 4 really walks the production tree (census not vacuous)', () => {
 	// A mis-pathed or empty file list would make ARM 4 pass by reading nothing. Require both a
 	// plausible file count and that the walk actually reached the repository under test.
 	expect(PROD_FILES.length).toBeGreaterThanOrEqual(50);
@@ -110,7 +110,7 @@ test('sentinel — ARM 4 really walks the production tree (census not vacuous) (
 	expect(PROD_FILES.some((f) => readFileSync(f, 'utf8').includes('export class SettingsRepository'))).toBe(true);
 });
 
-test('sentinel — the comment stripper blanks a signature it would otherwise match (#728)', () => {
+test('sentinel — the comment stripper blanks a signature it would otherwise match', () => {
 	// Proves the stripper actually neutralises comments: a commented-out defaulted signature matches raw
 	// (so ARM 1 could be fooled) but must NOT match once stripped.
 	const planted = "// getRoom(roomId: string = 'main'): RoomSettings {";
@@ -118,7 +118,7 @@ test('sentinel — the comment stripper blanks a signature it would otherwise ma
 	expect(/roomId\s*:\s*string\s*=/.test(stripComments(planted))).toBe(false);
 });
 
-test('sentinel — ARM 2 really walks the caller files (census not vacuous) (#728)', () => {
+test('sentinel — ARM 2 really walks the caller files (census not vacuous)', () => {
 	// The seven caller files must together contain at least 10 calls to the four methods (bare OR
 	// scoped), so an empty/mis-pathed file set cannot pass ARM 2 by reading nothing.
 	const anyCall = /\.(getRoom|setRoom|hasRoom|getEffective)\(/g;

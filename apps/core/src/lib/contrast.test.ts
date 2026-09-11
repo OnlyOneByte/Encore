@@ -60,7 +60,7 @@ function ratio(a: string, b: string): number {
  * buffer once, so the glyph's own pixel is a straight `alpha` lerp toward the page background --
  * the card surface underneath it is inside the same buffer and does not shield it.
  *
- * Cross-checked against painted pixels (#735, headless Chromium 151 at 390px, deviceScaleFactor 1):
+ * Cross-checked against painted pixels (headless Chromium 151 at 390px, deviceScaleFactor 1):
  * `--warn` at 0.55 over `--bg` predicts rgb(145,106,50) and measured rgb(145,106,50); the pending
  * card surface predicts rgb(19,19,30) and measured rgb(19,19,30).
  */
@@ -181,11 +181,11 @@ test('--on-accent passes AA on --accent (the actionable pair)', () => {
  * shipped as `color: var(--accent)` and the suite stayed green, because every other test here checks
  * whether a PAIR is safe and none checked whether this pair was in USE. A reviewer then proposed to
  * "fix" it by switching to the darker --accent-strong, which would have made the contrast worse while
- * looking like a remedy -- that token is now retired (#840, XR-COL-11), so the wrong remedy is no
+ * looking like a remedy -- that token is now retired (XR-COL-11), so the wrong remedy is no
  * longer reachable, but the wrong INSTINCT is. So this test scans for anyone using the fill as ink, the
  * same belt-and-braces shape as the --grad usage scan.
  *
- * ── RECORDED RULING FOR THE PALETTE MIGRATION (issue #830, XR-VER-07) ──────────────────────────────
+ * ── RECORDED RULING FOR THE PALETTE MIGRATION (XR-VER-07) ──────────────────────────────
  *
  * READ THIS BEFORE TOUCHING THE `toBeLessThan(AA_TEXT)` LOOP BELOW.
  *
@@ -238,7 +238,7 @@ test('the accent fill is a background by design, and nothing draws text in it', 
 	const files = [join(SRC, 'app.css'), ...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 	const offenders: string[] = [];
 	/*
-	 * #913: scan CSS, not script text. This walked whole-file text, which was safe while every `.svelte`
+	 * scan CSS, not script text. This walked whole-file text, which was safe while every `.svelte`
 	 * file held CSS only inside `<style>`. A vendored shadcn component puts Tailwind CLASS NAMES in a
 	 * `<script>` string (`outline-none select-none …`), and the declaration regex below matched inside
 	 * it and reported the whole variant map as a bad outline colour. An `outline` token in a class list
@@ -284,7 +284,7 @@ test('every focus outline is drawn in --focus, not --accent or the surface colou
 	// outline-offset / outline-width / outline-style (no colour), and a bare `outline: none|0` reset.
 	const outlineRule = /(?:^|[;\s])outline(?:-color)?:\s*([^;]+?)\s*(?:;|$)/g;
 	/*
-	 * #913: scan CSS, not script text. This walked whole-file text, which was safe while every `.svelte`
+	 * scan CSS, not script text. This walked whole-file text, which was safe while every `.svelte`
 	 * file held CSS only inside `<style>`. A vendored shadcn component puts Tailwind CLASS NAMES in a
 	 * `<script>` string (`outline-none select-none …`), and the declaration regex below matched inside
 	 * it and reported the whole variant map as a bad outline colour. An `outline` token in a class list
@@ -324,7 +324,7 @@ test('no rule puts a text color on var(--grad)', () => {
 	const files = [join(SRC, 'app.css'), ...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 	const offenders: string[] = [];
 	/*
-	 * #913: scan CSS, not script text. This walked whole-file text, which was safe while every `.svelte`
+	 * scan CSS, not script text. This walked whole-file text, which was safe while every `.svelte`
 	 * file held CSS only inside `<style>`. A vendored shadcn component puts Tailwind CLASS NAMES in a
 	 * `<script>` string (`outline-none select-none …`), and the declaration regex below matched inside
 	 * it and reported the whole variant map as a bad outline colour. An `outline` token in a class list
@@ -348,7 +348,7 @@ test('no rule puts a text color on var(--grad)', () => {
 });
 
 /*
- * ANCESTOR OPACITY -- the case this file's own stated premise misses (#735).
+ * ANCESTOR OPACITY -- the case this file's own stated premise misses.
  *
  * Every test above compares two TOKEN VALUES, which the header justifies with "contrast is a
  * property of the token VALUES, so it is decidable from the stylesheet". That holds only while
@@ -389,7 +389,7 @@ test('no card root dims its own subtree with opacity', () => {
 		/*
 		 * Surfaces this card root paints on ITSELF, seeded with `card`.
 		 *
-		 * #913 S4 note: that seed used to be justified as "the shared `.card` default from app.css", and
+		 * S4 note: that seed used to be justified as "the shared `.card` default from app.css", and
 		 * that rule is now deleted — every card is <Card.Root>. The seed is still correct, and for a
 		 * better reason: the component paints `bg-card`, which resolves through the semantic bridge to
 		 * the same `--card` token. So a card root still sits on `--card` whether or not it says so.

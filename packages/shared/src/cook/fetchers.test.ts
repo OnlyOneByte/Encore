@@ -67,7 +67,7 @@ test('sourceUriFor replaces the core-side source conditional', () => {
 });
 
 test('spotify is a SEARCH-only source: no fetch:spotify capability, and fetcherFor never yields it', () => {
-	// The librespot ACQUISITION half stays parked (issue #427) — there is deliberately no spotify
+	// The librespot ACQUISITION half stays parked — there is deliberately no spotify
 	// fetcher, so its bytes are never pulled. A spotify-sourced media falls back to the default
 	// downloader here as a defensive floor, but in practice a spotify result is never queued.
 	expect(FETCHERS.some((f) => f.capability === 'fetch:spotify')).toBe(false);

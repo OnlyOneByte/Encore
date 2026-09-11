@@ -90,7 +90,7 @@ function fakeEl(): HTMLMediaElement {
 	return {} as HTMLMediaElement;
 }
 
-test('#477: a routed master graph SURVIVES setShift(0) -- stays routed (song-change reset)', async () => {
+test('a routed master graph SURVIVES setShift(0) -- stays routed (song-change reset)', async () => {
 	const graph = new PitchShiftGraph(fakeEl());
 	await graph.setShift(1);
 	expect(graph.isRouted).toBe(true);
@@ -99,7 +99,7 @@ test('#477: a routed master graph SURVIVES setShift(0) -- stays routed (song-cha
 	expect(graph.isDegraded).toBe(false);
 });
 
-test('#477 control: detach() (the OLD per-song call) closes the context -- the silence path', async () => {
+test('control: detach() (the OLD per-song call) closes the context -- the silence path', async () => {
 	const graph = new PitchShiftGraph(fakeEl());
 	await graph.setShift(1);
 	expect(graph.isRouted).toBe(true);
@@ -134,17 +134,17 @@ function resetEffectBody(s: string): string {
 
 const TV = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
 
-test('#477 guard: the per-song reset resets the master graph via setShift(0)', () => {
+test('guard: the per-song reset resets the master graph via setShift(0)', () => {
 	const body = stripComments(resetEffectBody(TV));
 	expect(body).toMatch(/masterGraph[?][.]setShift[(]\s*0\s*[)]/);
 });
 
-test('#477 guard (mutation trap): the per-song reset must NOT detach the master graph', () => {
+test('guard (mutation trap): the per-song reset must NOT detach the master graph', () => {
 	const body = stripComments(resetEffectBody(TV));
 	expect(body).not.toMatch(/masterGraph[?][.]detach[(]/);
 });
 
-test('#477 guard (not-vacuous): the destroy effect still detaches BOTH graphs on slot unmount', () => {
+test('guard (not-vacuous): the destroy effect still detaches BOTH graphs on slot unmount', () => {
 	const stripped = stripComments(TV);
 	const destroyIdx = stripped.indexOf('return () => {');
 	expect(destroyIdx).toBeGreaterThanOrEqual(0);
@@ -159,7 +159,7 @@ test('#477 guard (not-vacuous): the destroy effect still detaches BOTH graphs on
 //    escaped in #477. Same two halves as above: A behavioural (the primitive survives), B source-scan
 //    (the reset is wired for the guide, and detach() moved to the genuine-unmount effect).
 
-test('#694: a routed GUIDE graph SURVIVES setShift(0) -- stays routed (song-change reset)', async () => {
+test('a routed GUIDE graph SURVIVES setShift(0) -- stays routed (song-change reset)', async () => {
 	const graph = new PitchShiftGraph(fakeEl());
 	await graph.setShift(1);
 	expect(graph.isRouted).toBe(true);
@@ -168,7 +168,7 @@ test('#694: a routed GUIDE graph SURVIVES setShift(0) -- stays routed (song-chan
 	expect(graph.isDegraded).toBe(false);
 });
 
-test('#694 control: detach() on the still-mounted guide element closes the context -- the silence path', async () => {
+test('control: detach() on the still-mounted guide element closes the context -- the silence path', async () => {
 	const graph = new PitchShiftGraph(fakeEl());
 	await graph.setShift(1);
 	expect(graph.isRouted).toBe(true);
@@ -180,7 +180,7 @@ test('#694 control: detach() on the still-mounted guide element closes the conte
 	expect(graph.isDegraded).toBe(false);
 });
 
-test('#694 guard: the per-song reset resets the GUIDE graph via setShift(0) and re-applies the level', () => {
+test('guard: the per-song reset resets the GUIDE graph via setShift(0) and re-applies the level', () => {
 	const body = stripComments(resetEffectBody(TV));
 	expect(body).toMatch(/guideGraph[?][.]setShift[(]\s*0\s*[)]/);
 	// The re-apply is load-bearing (#434: a fresh/reset graph defaults its gain to 1). It must use the
@@ -188,7 +188,7 @@ test('#694 guard: the per-song reset resets the GUIDE graph via setShift(0) and 
 	expect(body).toMatch(/guideGraph[?][.]setGain[(]\s*effectiveGuide\s*[)]/);
 });
 
-test('#694 guard (mutation trap): the per-song reset must NOT detach the guide graph', () => {
+test('guard (mutation trap): the per-song reset must NOT detach the guide graph', () => {
 	const body = stripComments(resetEffectBody(TV));
 	expect(body).not.toMatch(/guideGraph[?][.]detach[(]/);
 });
@@ -217,7 +217,7 @@ function guideUnmountEffectBody(s: string): string {
 	return s.slice(start, i + 1);
 }
 
-test('#694 guard (not-vacuous): a dedicated effect releases the guide graph when guideMountable goes false', () => {
+test('guard (not-vacuous): a dedicated effect releases the guide graph when guideMountable goes false', () => {
 	const stripped = stripComments(TV);
 	const body = guideUnmountEffectBody(stripped);
 	// It gates on guideMountable and detaches only on the false transition.
@@ -254,7 +254,7 @@ function masterUnmountEffectBody(s: string): string {
 	return s.slice(start, i + 1);
 }
 
-test('#825 guard: the element-unmount effect releases the master graph AND drops the reference', () => {
+test('guard: the element-unmount effect releases the master graph AND drops the reference', () => {
 	const stripped = stripComments(TV);
 	const body = masterUnmountEffectBody(stripped);
 	// Not-vacuous: this really is the `if (!master)` shadow-clear effect (renaming it away reds here).
@@ -266,7 +266,7 @@ test('#825 guard: the element-unmount effect releases the master graph AND drops
 	expect(body).toMatch(/masterGraph = undefined/);
 });
 
-test('#825 guard (symmetry): master graph is released in BOTH destroy and element unmount', () => {
+test('guard (symmetry): master graph is released in BOTH destroy and element unmount', () => {
 	// destroy alone is not enough -- it needs the whole slot torn down (a page reload), which no host
 	// would do. There must be more than one `masterGraph?.detach()` in the file: the destroy effect
 	// plus the element-unmount effect.

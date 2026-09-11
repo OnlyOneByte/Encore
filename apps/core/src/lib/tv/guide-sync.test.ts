@@ -224,7 +224,7 @@ describe('seekPlan — whenever the master jumps, the guide goes with it', () =>
 describe('TvPlayer applies the seek plan to BOTH elements', () => {
 	const src = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
 	/*
-	 * RE-ANCHORED (#396) — and this is not cosmetic, so do not move it back.
+	 * RE-ANCHORED — and this is not cosmetic, so do not move it back.
 	 *
 	 * This slice used to be `.split('if (!master || !media || !isPlayable(media) || seekSec ===
 	 * undefined) return;')[1]`, i.e. THE DELIMITER WAS THE DEFECTIVE LINE. Two consequences, both bad:
@@ -334,7 +334,7 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 });
 
 /*
- * -- the PRE-ROLL path: the start is not drift (#578) ---------------------------------------------
+ * -- the PRE-ROLL path: the start is not drift ---------------------------------------------
  *
  * The reported defect: the guide starts BEHIND the instrumental and stays behind. The pre-roll used
  * to align the guide to master.currentTime at EFFECT time and then call play(); the guide decoder
@@ -383,7 +383,7 @@ describe('prerollSeekTarget -- the guide locks onto the master at once, not over
  * with tau = 1 / GUIDE_RATE_GAIN. So a residual decays exponentially with that time-constant, and
  * the time to fall from an initial drift d0 to the deadband is tau * ln(d0 / GUIDE_DEADBAND_SEC).
  */
-describe('guideCorrection -- the trim band closes only asymptotically, which is why the pre-roll seeks (#578)', () => {
+describe('guideCorrection -- the trim band closes only asymptotically, which is why the pre-roll seeks', () => {
 	it('has time-constant tau = 1 / GUIDE_RATE_GAIN', () => {
 		const tau = 1 / GUIDE_RATE_GAIN;
 		// The trim ramp is linear in drift with slope -GUIDE_RATE_GAIN inside the band: a drift of
@@ -412,14 +412,14 @@ describe('guideCorrection -- the trim band closes only asymptotically, which is 
  * the guide decoder flush then outran the master. These assertions fail if the pre-roll stops
  * consulting the helper, reverts to the moving-target form, or stops re-taking the lock on canplay.
  */
-describe('TvPlayer takes the pre-roll lock-on when the guide can play, not at effect time (#578)', () => {
+describe('TvPlayer takes the pre-roll lock-on when the guide can play, not at effect time', () => {
 	const tv = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
 
 	it('the pre-roll decision comes from prerollSeekTarget, not an inline tolerance compare', () => {
 		expect(tv).toContain('prerollSeekTarget(');
 	});
 
-	it('aligns the pre-roll to the fixed helper target, never to the master moving playhead (#578)', () => {
+	it('aligns the pre-roll to the fixed helper target, never to the master moving playhead', () => {
 		// Scope the ban to alignGuidePreroll -- the governor syncGuide LEGITIMATELY reseeks to
 		// master.currentTime for continuous drift (the issue keeps that), so a whole-file ban would
 		// wrongly red on the governor. The pre-roll helper must seek to the fixed prerollSeekTarget
@@ -442,7 +442,7 @@ describe('TvPlayer takes the pre-roll lock-on when the guide can play, not at ef
 		// would leave the old guard green. Slice the `oncanplay={...}` block and assert the call lives
 		// INSIDE it, so the on-buffer-primed lock-on cannot be silently removed.
 		expect(tv).toContain('oncanplay={');
-		// #795: the master <audio> now also has an `oncanplay=` (the cold-mount resume), which precedes
+		// the master <audio> now also has an `oncanplay=` (the cold-mount resume), which precedes
 		// the guide's in source order — so anchor on the GUIDE element first, then slice ITS handler,
 		// rather than taking the first `oncanplay={` in the file.
 		const guideMarkup = tv.split('bind:this={vocals}')[1] ?? '';
@@ -463,7 +463,7 @@ describe('TvPlayer takes the pre-roll lock-on when the guide can play, not at ef
  * room never waits on the guide buffer. These assertions red on base (single level-gated wantsGuide
  * driving the mount) and pin the split.
  */
-describe('TvPlayer mounts the guide on mount-worthiness, gates readiness on the level (#586)', () => {
+describe('TvPlayer mounts the guide on mount-worthiness, gates readiness on the level', () => {
 	const tv = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
 
 	it('mount-worthiness is a distinct, level-INDEPENDENT derived', () => {
@@ -502,7 +502,7 @@ describe('TvPlayer mounts the guide on mount-worthiness, gates readiness on the 
 });
 
 /*
- * The measured guide offset (#766). The alignment ZERO POINT is `master + guideOffsetSec`, applied at
+ * The measured guide offset. The alignment ZERO POINT is `master + guideOffsetSec`, applied at
  * the three sites in TvPlayer so guide-sync.ts stays a pure policy function. Two things are pinned:
  *
  *   1. The policy functions still behave correctly WHEN the zero point is shifted — a stem held at a
@@ -514,7 +514,7 @@ describe('TvPlayer mounts the guide on mount-worthiness, gates readiness on the 
  *      shifted stem misaligned while every unit test on the pure functions stayed green. These
  *      assertions fail if any of the three sites stops folding the offset into its master zero point.
  */
-describe('guideCorrection holds a stem at its measured offset, not at zero (#766)', () => {
+describe('guideCorrection holds a stem at its measured offset, not at zero', () => {
 	it('a guide sitting exactly at the offset is HELD — the offset is the zero point, not drift', () => {
 		// Vocals at 10.030, master at 10.000, measured offset +30ms → zero point 10.030. Drift is 0, so
 		// hold. Without the offset the same reading is 30ms of drift, which is a trim — the misalignment
@@ -533,7 +533,7 @@ describe('guideCorrection holds a stem at its measured offset, not at zero (#766
 	});
 });
 
-describe('TvPlayer folds the measured offset into the guide zero point at all three sites (#766)', () => {
+describe('TvPlayer folds the measured offset into the guide zero point at all three sites', () => {
 	const tv = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
 
 	it('derives guideOffsetSecValue from the media snapshot via the shared helper', () => {

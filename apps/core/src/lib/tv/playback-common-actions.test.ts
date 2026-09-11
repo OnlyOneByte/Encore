@@ -1,4 +1,4 @@
-// Regression guard for the SILENT-AUDIO-AFTER-A-COMMON-ACTION class (#698) — the prevention split
+// Regression guard for the SILENT-AUDIO-AFTER-A-COMMON-ACTION class — the prevention split
 // out of #694. The same defect has shipped three times on the same two media elements, each caught
 // by a human at a party rather than a test:
 //
@@ -200,7 +200,7 @@ function readEl(el: HTMLAudioElement | undefined): ElState {
 }
 
 // ── the matrix ───────────────────────────────────────────────────────────────────────────────────
-test('#698 matrix: instrumental + guide stay audible and correctly gained across common room actions', async () => {
+test('matrix: instrumental + guide stay audible and correctly gained across common room actions', async () => {
 	const g2 = song('2');
 	const { props, audios } = makePlayer({ media: song('1'), guideLevel: 0.5 });
 	await settle();
@@ -234,7 +234,7 @@ test('#698 matrix: instrumental + guide stay audible and correctly gained across
 	await settle();
 	await assertInvariants('after resume', true, 0.5);
 
-	// Transpose up — routes BOTH elements. The guide must land at .5, not the default 1 (#434).
+	// Transpose up — routes BOTH elements. The guide must land at .5, not the default 1.
 	props.keyShift = 3;
 	await settle();
 	await assertInvariants('after transpose up (routed)', true, 0.5);

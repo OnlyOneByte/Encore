@@ -205,7 +205,7 @@ test('play still RESUMES a loaded-but-paused song (currentEntryId set) to isPlay
 	expect(state.playback.isPlaying).toBe(true);
 });
 
-// Reported (#619): the (currentEntryId, isPlaying) === (null, true) illegal state was closed at `play`
+// Reported: the (currentEntryId, isPlaying) === (null, true) illegal state was closed at `play`
 // but left OPEN at its sibling `restart` branch seven lines below in the same switch — a `restart` on a
 // null currentEntryId latched isPlaying:true (silent room shows a pause icon; persists across reboot
 // since store hydrate only clears the DANGLING non-null case). Twin of the `play` guard above.

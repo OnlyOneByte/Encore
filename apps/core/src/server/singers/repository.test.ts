@@ -3,7 +3,7 @@ import { test, expect } from 'bun:test';
 import { migratedDb } from '../db/test-db';
 import { SingerRepository, readSessionToken, mintSessionToken, SESSION_COOKIE } from './repository';
 
-// A singer is created IN a room now (#656). These tests exercise a single room, and the FK is not
+// A singer is created IN a room now. These tests exercise a single room, and the FK is not
 // enforced on this bun:sqlite DB, so a fixed literal room id is enough — no `rooms` row required.
 const ROOM = 'test-room';
 
@@ -49,7 +49,7 @@ test('session tokens are unique + URL-safe', () => {
 });
 
 test('readSessionToken parses our token out of a Cookie header', () => {
-	// The LIVE half of the old cookie-helpers test. sessionCookie() was deleted (#107): it was a
+	// The LIVE half of the old cookie-helpers test. sessionCookie() was deleted: it was a
 	// hand-rolled Set-Cookie serializer with no production caller — SvelteKit's cookies.set/.delete
 	// own serialization on every real path (join/leave +server.ts), so its attribute assertions were
 	// testing a dead copy. The live path's attributes are guarded in session-cookie-attributes.test.ts.
@@ -57,9 +57,9 @@ test('readSessionToken parses our token out of a Cookie header', () => {
 	expect(readSessionToken(null)).toBeUndefined();
 });
 
-// #656: the roster is scoped to a room — listPublic returns only THIS room's singers, and strips the
+// the roster is scoped to a room — listPublic returns only THIS room's singers, and strips the
 // server-side room_id key alongside the session token so the public shape is unchanged.
-test('#656: listPublic is scoped by room and strips the room key', () => {
+test('listPublic is scoped by room and strips the room key', () => {
 	const r = repo();
 	const a = r.create('Ana', '#f00', 1, 'roomA');
 	r.create('Ben', '#0f0', 2, 'roomB');

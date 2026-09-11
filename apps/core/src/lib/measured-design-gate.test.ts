@@ -58,7 +58,7 @@ const GATE_LIST_BRIEFS = [
 
 /**
  * EVERY brief a lane can be seeded from, derived by WALKING `docs/loop/` rather than hand-listed, plus the
- * repo handoff. A hand-listed population is how `/metrics` (#140) and `lib/charts` (#144) stayed invisible:
+ * repo handoff. A hand-listed population is how `/metrics` and `lib/charts` stayed invisible:
  * the guard was correct and simply never looked at them. #855 landed three new files into `docs/loop/`
  * DURING this PR's review and one of them (`REVIEW-ORCHESTRATOR.md`) carried the same stale count — a walk
  * picks that up on the next run with nobody remembering to extend a list.
@@ -77,7 +77,7 @@ test('the measured-design gate imports the layout-rung driver, and names each cl
 	// file imports the layout-rung driver". `cdp.mjs` IS the layout rung.
 	expect(gate).toMatch(/import \{[^}]*\bconnect\b[^}]*\} from '\.\.\/cdp\.mjs';/);
 	// …and the Chromium it drives is discovered through the single-sourced helper, not a private copy
-	// (#617). e2e/lib/chromium.test.ts bans a redefinition; this pins that this gate uses it.
+	//. e2e/lib/chromium.test.ts bans a redefinition; this pins that this gate uses it.
 	expect(gate).toMatch(/import \{ findChromium \} from '\.\.\/lib\/chromium\.mjs';/);
 	for (const claim of CLAIMS) {
 		expect(gate, `${GATE_REL} must carry a check naming ${claim}`).toContain(claim);
@@ -164,7 +164,7 @@ test('no brief still states a stale gate COUNT — the gap that let a partial up
 
 test('the CDP driver exposes exactly ONE safe-area method, and every caller uses that name', () => {
 	// THE COLLISION THIS EXISTS FOR. #823 and #827 both needed a safe-area override and both added one to
-	// the shared driver in the same hour: `setSafeAreaInsets` here, `safeAreaInsets` on main (#865). Same
+	// the shared driver in the same hour: `setSafeAreaInsets` here, `safeAreaInsets` on main. Same
 	// body, same CDP call, two names — and the merge conflicted on the hunk. #823 dropped its own and
 	// adopted the incumbent, so `cdp.mjs` is untouched by this PR. This arm is what stops a THIRD.
 	//
@@ -236,7 +236,7 @@ test('every quarantined control carries a substantive reason and a real identity
 		if (q.measured <= 0)
 			offenders.push(`${who}: recorded at ${q.measured}px — a zero measurement is UNMEASURED (XR-VER-03)`);
 	}
-	// A RETIRED entry (a control that WAS quarantined and is now resolved, #863) carries the same
+	// A RETIRED entry (a control that WAS quarantined and is now resolved) carries the same
 	// identity + substantive-reason bar. `was` is the number it measured while quarantined, so it
 	// must be a real sub-floor reading — a >= TAP `was` would mean it was never a defect.
 	for (const q of RETIRED) {
@@ -258,7 +258,7 @@ test('every quarantined control carries a substantive reason and a real identity
 
 test('the register mirrors the tokens it measures against, so the two cannot drift apart', () => {
 	const css = readFileSync(join(REPO, 'apps/core/src/app.css'), 'utf8');
-	// `TAP` is parsed out of this very declaration now (the register, issue #831), so asserting it
+	// `TAP` is parsed out of this very declaration now (the register), so asserting it
 	// equals TAP compares the value to itself. What is still a real question — and the reason the
 	// register imports a separate floor — is whether the token still holds the app's commitment.
 	expect(css).toMatch(/--tap:\s*[0-9.]+px\s*;/);
@@ -275,8 +275,8 @@ test('the register mirrors the tokens it measures against, so the two cannot dri
 });
 
 test('the gate derives its control set from roles, not from a class allowlist', () => {
-	// touch-targets.test.ts was corrected once already (#400) for deriving "is this a control?" from a
-	// literal allowlist, which is how /metrics (#140) and lib/charts (#144) stayed invisible. The
+	// touch-targets.test.ts was corrected once already for deriving "is this a control?" from a
+	// literal allowlist, which is how /metrics and lib/charts stayed invisible. The
 	// replacement must not re-introduce it: the selector has to name roles and element types.
 	for (const needed of ['button', 'a[href]', 'select', 'textarea', '[role="button"]']) {
 		expect(CONTROL_SELECTOR).toContain(needed);

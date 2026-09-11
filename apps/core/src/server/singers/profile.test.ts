@@ -31,7 +31,7 @@ const NOW = 1_700_000_000_000;
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 	const db = migratedDb();
 	const rooms = new RoomRepository(db);
-	// #654: doJoin resolves the room a join lands in, so the harness mints the single active room.
+	// doJoin resolves the room a join lands in, so the harness mints the single active room.
 	const activeRoomId = rooms.ensureActive(1_700_000_000_000).id;
 	const published: ServerEvent[] = [];
 	const jobs = new JobRepository(db);
@@ -96,11 +96,11 @@ test('a rename still collides with somebody else in the room', () => {
 	expect(() => assertNameFree(app, app.activeRoomId, 'dana', maya.id)).toThrow(NameTakenError);
 });
 
-// #656: name uniqueness is PER-ROOM. A name held by someone in ANOTHER room does not collide, and the
+// name uniqueness is PER-ROOM. A name held by someone in ANOTHER room does not collide, and the
 // check must be scoped to the room passed, not run deployment-wide over every singer. Bites the
 // room-scoped assertNameFree (and the listPublic(roomId) it now calls): with an unscoped roster this
 // throws NameTakenError because roomB's Dana would be seen from roomA.
-test('#656: a name taken in another room does not collide — uniqueness is per-party', () => {
+test('a name taken in another room does not collide — uniqueness is per-party', () => {
 	const { app } = appHarness();
 	// A second party on the same core. doJoin resolves a room by code, so mint one and join it.
 	const roomB = app.rooms.create(app.now() + 1);

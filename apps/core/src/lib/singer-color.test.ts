@@ -22,7 +22,7 @@ function stripComments(src: string): string {
 }
 
 /**
- * The four per-stop roles an interpolated colour can now carry (#840, XR-COL-24).
+ * The four per-stop roles an interpolated colour can now carry (XR-COL-24).
  *
  * The scans below used to look for the identifier `color` alone, which was complete while a stop was
  * ONE value. A stop now ships four — `fill`, `on_fill`, `accent_ink` and `accent2` — and the trap is
@@ -34,7 +34,7 @@ const COLOUR_ROLE = String.raw`(?:[cC]olor|[cC]olour|[fF]ill|[iI]nk|[aA]ccent|[h
 
 const FILES = [...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 
-// Non-vacuity floor (issue #453): both scans below assert `offenders` empty, so a walk returning
+// Non-vacuity floor: both scans below assert `offenders` empty, so a walk returning
 // nothing would pass vacuously. ~25 svelte files today.
 test('the singer-colour scans actually read a non-empty surface', () => {
 	expect(FILES.length).toBeGreaterThan(15); // @nvf-floor FILES.length

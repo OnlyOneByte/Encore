@@ -1,4 +1,4 @@
-// #776 — packages/shared/src is grouped into domain subdirectories (core/, queue/, lyrics/, cook/,
+// — packages/shared/src is grouped into domain subdirectories (core/, queue/, lyrics/, cook/,
 // presentation/), and `index.ts` re-exports each so `@encore/shared` import paths never move. THIS TEST
 // IS THE CONTRACT that the move preserved: the barrel's exported-name set is frozen here. A future move
 // that drops a re-export line, points it at the wrong subdir, or renames a symbol changes this set and

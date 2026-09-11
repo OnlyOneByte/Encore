@@ -1,4 +1,4 @@
-// GET /api/room-preview — the scanned-guest confirmation source (#834, XR-PH-14, Q1-B). Drives the
+// GET /api/room-preview — the scanned-guest confirmation source (XR-PH-14, Q1-B). Drives the
 // REAL handler against a real SingerRepository + PresenceTracker on a migrated in-memory DB.
 //
 // The load-bearing property is the INTERSECTION: presence is one GLOBAL tracker (not per-room) so

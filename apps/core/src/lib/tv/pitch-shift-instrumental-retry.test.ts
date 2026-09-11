@@ -91,7 +91,7 @@ function fakeEl(): HTMLMediaElement {
 	return {} as HTMLMediaElement;
 }
 
-test('#527: a graph that degraded pre-gesture RETRIES and routes once a context can resume', async () => {
+test('a graph that degraded pre-gesture RETRIES and routes once a context can resume', async () => {
 	// call chain: setShift(shift) -> build() -> new AudioContext().resume() -> state check.
 	const graph = new PitchShiftGraph(fakeEl());
 
@@ -110,7 +110,7 @@ test('#527: a graph that degraded pre-gesture RETRIES and routes once a context 
 	expect(graph.isDegraded).toBe(false);
 });
 
-test('#527 asymmetry: a FRESH graph (what the guide gets each song) always routes when resumable', async () => {
+test('asymmetry: a FRESH graph (what the guide gets each song) always routes when resumable', async () => {
 	// The guide's per-song fresh graph recovers because it never carries a stale `degraded`. Pinning
 	// this alongside the retry proves the fix removes the asymmetry, not that fresh graphs are special.
 	canResume = true;
@@ -120,7 +120,7 @@ test('#527 asymmetry: a FRESH graph (what the guide gets each song) always route
 	expect(fresh.isDegraded).toBe(false);
 });
 
-test('#527 not-vacuous control: resumable from the start routes on the first shift', async () => {
+test('not-vacuous control: resumable from the start routes on the first shift', async () => {
 	canResume = true;
 	const graph = new PitchShiftGraph(fakeEl());
 	await graph.setShift(2);
@@ -128,7 +128,7 @@ test('#527 not-vacuous control: resumable from the start routes on the first shi
 	expect(graph.isDegraded).toBe(false);
 });
 
-test('#527 safety: a retry that STILL cannot resume stays audible (degraded, not routed, no capture)', async () => {
+test('safety: a retry that STILL cannot resume stays audible (degraded, not routed, no capture)', async () => {
 	// If the gesture never comes, retrying must not create the permanent MediaElementSource into a dead
 	// context (= total silence). It re-arms degraded and leaves the element on its native output.
 	const graph = new PitchShiftGraph(fakeEl());

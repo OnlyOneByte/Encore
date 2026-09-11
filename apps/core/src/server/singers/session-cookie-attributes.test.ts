@@ -1,6 +1,6 @@
 // guard: the singer session cookie's security attributes live on the ONE writer the browser sees.
 //
-// THE DEFECT (#107). `sessionCookie(token, secure)` in repository.ts was a hand-rolled Set-Cookie
+// THE DEFECT. `sessionCookie(token, secure)` in repository.ts was a hand-rolled Set-Cookie
 // serializer that built Path/HttpOnly/SameSite=Lax/Max-Age/Secure — and NOTHING in production called
 // it. A whole-repo search for `sessionCookie(` returned exactly three sites: the definition and two
 // tests. The real cookie is written by SvelteKit's `cookies.set` at routes/api/join/+server.ts and
@@ -36,13 +36,13 @@ const ROUTES = join(import.meta.dir, '..', '..', 'routes', 'api');
 const JOIN = stripComments(readFileSync(join(ROUTES, 'join', '+server.ts'), 'utf8'));
 const LEAVE = stripComments(readFileSync(join(ROUTES, 'leave', '+server.ts'), 'utf8'));
 
-test('the join route sets the session cookie via SvelteKit cookies.set (the live writer) (#107)', () => {
+test('the join route sets the session cookie via SvelteKit cookies.set (the live writer)', () => {
 	// It must be the framework writer, not a hand-rolled Set-Cookie string, so SvelteKit owns
 	// serialization. sessionCookie() was deleted precisely because it duplicated this.
 	expect(JOIN).toMatch(/cookies\.set\(\s*SESSION_COOKIE/);
 });
 
-test('the live join cookie carries all five session-cookie attributes (#107)', () => {
+test('the live join cookie carries all five session-cookie attributes', () => {
 	// The attributes the dead sessionCookie() used to assert, now pinned on the path the browser sees.
 	expect(JOIN).toMatch(/path:\s*'\/'/); // Path=/
 	expect(JOIN).toMatch(/httpOnly:\s*true/); // HttpOnly
@@ -55,7 +55,7 @@ test('the live join cookie carries all five session-cookie attributes (#107)', (
 	expect(JOIN).toMatch(/secure:\s*publicOriginIsHttps\(/);
 });
 
-test('the leave route clears the cookie with a matching Path so the delete applies (#107)', () => {
+test('the leave route clears the cookie with a matching Path so the delete applies', () => {
 	// A cookie delete only clears a cookie whose Path matches the set; the leave route notes this and
 	// must keep Path=/ in step with the join set above.
 	expect(LEAVE).toMatch(/cookies\.delete\(\s*SESSION_COOKIE\s*,\s*\{\s*path:\s*'\/'\s*\}/);

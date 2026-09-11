@@ -1,4 +1,4 @@
-// guard: Chromium discovery must stay single-sourced (issue #617, follow-up to #455).
+// guard: Chromium discovery must stay single-sourced (follow-up to #455).
 //
 // `findChromium()` was copy-pasted into 15 e2e drivers and drifted: only two validated PW_CHROMIUM,
 // one hardcoded a personal home path, and the short variants dropped the /usr/bin fallback. The
@@ -16,7 +16,7 @@ const CANON = 'lib/chromium.mjs';
 /**
  * Every .mjs under e2e/, recursively, as paths relative to the e2e root.
  *
- * Non-vacuity floor (issue #830, XR-VER-05). This walk had NO floor, and two of its four consumers
+ * Non-vacuity floor (XR-VER-05). This walk had NO floor, and two of its four consumers
  * assert `offenders` EMPTY (`:40` the import rule, `:62` the personal-home-path ban) — so pointing the
  * walk at a missing directory, renaming the extension, or widening the prune list made both pass with
  * ZERO drivers examined, which is a green guard enforcing nothing. The other two tests self-anchor

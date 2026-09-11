@@ -326,7 +326,7 @@ describe('annotation persistence', () => {
 		expect(mediaFromSidecar(side).artistCredit).toBe('Lady Gaga ft. Beyoncé');
 	});
 
-	it('#672 — a LOW-confidence credit is not projected into the Media (LRCLIB tiebreak poison)', () => {
+	it('— a LOW-confidence credit is not projected into the Media (LRCLIB tiebreak poison)', () => {
 		// A no-separator title with a plausible uploader parses `uploader-fallback` at LOW confidence:
 		// artist is the uploader channel, which is a guess. The credit is still STORED verbatim (it is
 		// the raw billing and must survive re-annotation), but it must NOT reach the projected Media,
@@ -357,7 +357,7 @@ describe('annotation persistence', () => {
 		expect(side.canonical.artistCredit).toBe('Lady Gaga ft. Beyoncé'); // ...but not this
 	});
 
-	it('#672 — a YouTube citation round-trips as source "youtube" and is not re-parsed away', () => {
+	it('— a YouTube citation round-trips as source "youtube" and is not re-parsed away', () => {
 		// YouTube's OWN declared metadata is a citation (no MBID). It must persist with provenance
 		// by=youtube, project back with annotation.source=youtube, and survive a later re-parse of the
 		// raw title — the same never-regress the MusicBrainz path gets, via keepCited.

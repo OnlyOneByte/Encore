@@ -148,7 +148,7 @@ test('the contract exposes a hook for each surface the flow has to reach', () =>
 
 /*
  * Every .svelte source file under apps/core/src — the whole surface the flow can drive — comes from
- * `svelteFiles` in ../src/lib/test-helpers (#841, XR-VER-14). This file used to carry a local walker
+ * `svelteFiles` in ../src/lib/test-helpers (XR-VER-14). This file used to carry a local walker
  * that was a VERBATIM copy of it under a different name, so the two could disagree about what the
  * flow's surface even is while the design guards under src/lib kept the other answer.
  */
@@ -156,7 +156,7 @@ test('the contract exposes a hook for each surface the flow has to reach', () =>
 /*
  * `classPresent` — does a token appear as a CLASS in a Svelte source, via `class="…"`, a
  * `class:token` directive, or a `.token` rule in <style>? — is imported from
- * ../src/lib/test-helpers (#841, XR-VER-14), where its exact-token semantics (#682) are documented.
+ * ../src/lib/test-helpers (XR-VER-14), where its exact-token semantics are documented.
  * The `#682 G2` case below exercises the shared function directly, so a regression there reds here.
  */
 
@@ -225,7 +225,7 @@ function selectorResolves(selector: string, sources: string[]): boolean | null {
 			// A `:not(...)` EXCLUSION chain — checked first because it can prefix any other part shape
 			// (`:not(table):not(.note):not(.scroller)`, `.bars:not(.empty)`, `span:not(.x)`). Introduced
 			// for the p11-dashboards `.card h2 + :not(table):not(.note):not(.scroller)` chart-or-body
-			// read (#546). A `:not()` argument filters OUT elements, so it names nothing that HAS to be
+			// read. A `:not()` argument filters OUT elements, so it names nothing that HAS to be
 			// rendered; the positive anchor is the BASE written before the `:not()` chain. Peel every
 			// `:not(...)` suffix off and resolve only that base:
 			//   • a bare chain with no base (`:not(table)…`, the p11 case — the sibling it filters is
@@ -315,7 +315,7 @@ test('every SEL selector resolves to an anchor in the source (the guard, non-vac
 	// and this resolution disagree about what is source, and a dead selector living in a comment stays green.
 	const sources = guardSources();
 
-	// NON-VACUITY FLOOR on the SCANNED POPULATION (#841, XR-VER-14 Acceptance). `unresolved` and
+	// NON-VACUITY FLOOR on the SCANNED POPULATION (XR-VER-14 Acceptance). `unresolved` and
 	// `unmodelled` are both asserted EMPTY below, and an empty-array assertion is what a working guard
 	// produces AND what a guard reading nothing produces. Over a NARROWED walk — a moved directory, a
 	// copy-in path the walk misses — the surviving files can still carry every SEL anchor while whole
@@ -416,7 +416,7 @@ test('every settings id the flow drives exists as an element id', () => {
 	// comment prose must not count as an anchor. Without this the driver scans (which already strip, :47/:368)
 	// and this resolution disagree about what is source, and a dead selector living in a comment stays green.
 	const sources = guardSources();
-	// Non-vacuity floor (issue #453): filtering an empty SETTING_IDS yields [] and passes without
+	// Non-vacuity floor: filtering an empty SETTING_IDS yields [] and passes without
 	// resolving a single id. Assert the flow actually drives some settings ids.
 	expect(SEL.SETTING_IDS.length).toBeGreaterThan(0);
 	const missing = SEL.SETTING_IDS.filter((id) => !sources.some((s) => s.includes(`id="${id}"`)));
@@ -455,7 +455,7 @@ test('the scope-tab selector matches the id the settings page actually interpola
 /**
  * Every driver under `e2e/` and `e2e/probes/` — enumerated, not hand-listed. The previous version of
  * this guard named only `party.mjs` and `capture.mjs`, so the literal ban applied to 2 of the 24
- * drivers while `HARNESS.md` told every probe author the guard covered them all (#439). The other 22
+ * drivers while `HARNESS.md` told every probe author the guard covered them all. The other 22
  * spelled selectors out for themselves, unwatched — exactly the rot this file exists to stop, filed
  * from a read-only audit that counted 110+ such literals.
  *
@@ -477,7 +477,7 @@ function allDrivers(): string[] {
 const DRIVERS = allDrivers();
 
 /**
- * KNOWN OFFENDERS — the debt baseline (#439, migration split to a follow-up issue).
+ * KNOWN OFFENDERS — the debt baseline (migration split to a follow-up issue).
  *
  * Widening the ban from 2 drivers to all 24 surfaces the selectors the other 22 already spell out for
  * themselves. Fixing all of them — moving ~85 distinct selectors across 16 files into SEL and rewriting
@@ -509,7 +509,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 	'probes/p10-scaling.mjs': [
 		// STAYS - a bare tag query, not a UI hook.
 		'button',
-		// #547 (Group E of the #513 per-driver split, tail of #494) migrated the ten resolvable
+		// (Group E of the #513 per-driver split, tail of #494) migrated the ten resolvable
 		// selectors this driver used to spell out into SEL and rewrote the p10 data arrays to
 		// interpolate them, so they are gone from this list: the attract screen, the row card, the
 		// row chip, the three badqr notice lines, the two scoped lower-third lines, and the two
@@ -524,7 +524,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		//     waves anything through. p10 reads it only to enumerate the notice card's descendants for
 		//     an overflow check; it stays a literal.
 		//
-		// #682 completed #547's deferred cleanup of the three DEAD reads that were quarantined here:
+		// completed #547's deferred cleanup of the three DEAD reads that were quarantined here:
 		// '.b', '.filter-chip' and '.roster' named classes no component ever declared, so they were
 		// removed from p10's contrast targets outright ('.attract .idle-title' was repointed to
 		// SEL.stageHeadline and '.row .a' to '.row .byline'). They are no longer in the data arrays and
@@ -540,7 +540,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'h1',
 		'h2',
 		'table th'
-		// Group D of the #494 tail (#513) migrated this driver's four real hooks into SEL — .card
+		// Group D of the #494 tail migrated this driver's four real hooks into SEL — .card
 		// (SEL.dashCard), .card table (SEL.dashCardTable), .tile .n (SEL.dashTileNumber), and the
 		// `.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)` chart-or-body union
 		// (SEL.dashChartOrBody) — extending the resolver to model the `+` adjacent-sibling combinator
@@ -597,7 +597,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		// Tag-only / attribute-fragment reads, deliberately NOT selectors:
 		'[aria-label=', // truncated attribute-selector fragment built by string concat
 		'audio' // a bare tag query for the media element (see SEL.mediaEl for the union form)
-		// Group A of the #494 tail (#513) migrated the two combinator/descendant selectors that used to
+		// Group A of the #494 tail migrated the two combinator/descendant selectors that used to
 		// sit here into SEL (slotVisibleAudio, seekFill), extending the resolver to model a `>` child
 		// combinator and a bare-tag descendant. Groups B–E (#544–#547) track the rest of the tail.
 	],
@@ -732,7 +732,7 @@ test('the driver ban is not vacuous — it covers every driver, not a shrunk lis
 	expect(DRIVERS.some((d) => d.startsWith('probes/'))).toBe(true);
 });
 
-test('#513 Group A — p4-transport combinator/descendant selectors moved from KNOWN_OFFENDERS into SEL', () => {
+test('Group A — p4-transport combinator/descendant selectors moved from KNOWN_OFFENDERS into SEL', () => {
 	// Half 1: the two selectors are no longer quarantined for p4-transport. On base they sat in
 	// KNOWN_OFFENDERS (the driver spelled them out); after the migration the ONLY honest place they may
 	// live is SEL, so KNOWN_OFFENDERS must no longer wave them through.
@@ -757,7 +757,7 @@ test('#513 Group A — p4-transport combinator/descendant selectors moved from K
 	expect(selectorResolves('.nope-not-a-class audio', sources)).toBe(false);
 });
 
-test('#544 Group B — p8-presence .err[role=alert] moved from KNOWN_OFFENDERS into SEL', () => {
+test('Group B — p8-presence .err[role=alert] moved from KNOWN_OFFENDERS into SEL', () => {
 	// Half 1: the class + UNQUOTED-attribute compound is no longer quarantined for p8-presence. On base
 	// it sat in KNOWN_OFFENDERS (the probe spelled it out); after the migration the only honest place it
 	// may live is SEL, so KNOWN_OFFENDERS must no longer wave it through.
@@ -784,7 +784,7 @@ test('#544 Group B — p8-presence .err[role=alert] moved from KNOWN_OFFENDERS i
 	expect(selectorResolves('.err[data-x=alert]', sources)).toBe(false);
 });
 
-test('#545 Group C — the resolver still models a `tag.class` compound part (re-anchored by #833)', () => {
+test('Group C — the resolver still models a `tag.class` compound part (re-anchored by #833)', () => {
 	// RE-ANCHORED, ON THE RECORD (XR-VER-07). This test used to pin SEL.readyChip ('.chips button.ok')
 	// through two halves: that KNOWN_OFFENDERS no longer waved the literal through, and that the SEL
 	// entry resolved against real source. #833 deleted the readiness chip row, so both halves now name
@@ -807,7 +807,7 @@ test('#545 Group C — the resolver still models a `tag.class` compound part (re
 	expect(selectorResolves('.showall-row marquee.chip', sources)).toBe(false);
 });
 
-test('#546 Group D — p11-dashboards card/tile/chart selectors moved from KNOWN_OFFENDERS into SEL', () => {
+test('Group D — p11-dashboards card/tile/chart selectors moved from KNOWN_OFFENDERS into SEL', () => {
 	// Half 1: all four selectors are no longer quarantined for p11-dashboards. On base they sat in
 	// KNOWN_OFFENDERS (the probe spelled them out); after the migration the only honest place they may
 	// live is SEL, so KNOWN_OFFENDERS must no longer wave any of them through. The bare tags the driver
@@ -857,7 +857,7 @@ test('#546 Group D — p11-dashboards card/tile/chart selectors moved from KNOWN
 	expect(selectorResolves('.card h2 + :not(marquee)', sources)).toBe(true);
 });
 
-test('#547 Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS into SEL', () => {
+test('Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS into SEL', () => {
 	// Half 1: the ten resolvable selectors this driver used to spell out are no longer quarantined for
 	// p10-scaling. On base they sat in KNOWN_OFFENDERS (the probe spelled them out in its contrast
 	// targets/data arrays); after the migration the only honest place they may live is SEL, so
@@ -930,7 +930,7 @@ test('#547 Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDE
 });
 
 /*
- * #682 — G1: every string-literal contrast target in p10-scaling.mjs must resolve to a real source
+ * — G1: every string-literal contrast target in p10-scaling.mjs must resolve to a real source
  * anchor. The two `targets` arrays live inside `page.evaluate(`…`)` template literals in the driver,
  * which is outside `bun test` and so never runs here; nothing catches a target that names a class no
  * component declares (the loops skip a null querySelector, and p10 always exits 0). Five did exactly
@@ -967,7 +967,7 @@ function p10TargetLiterals(): { arrays: string[]; lits: string[] } {
 	return { arrays, lits };
 }
 
-test('#682 G1 — every literal p10-scaling contrast target resolves to a real anchor', () => {
+test('G1 — every literal p10-scaling contrast target resolves to a real anchor', () => {
 	const { arrays, lits } = p10TargetLiterals();
 	const sources = guardSources();
 
@@ -1011,14 +1011,14 @@ test('#682 G1 — every literal p10-scaling contrast target resolves to a real a
 });
 
 /*
- * #682 — G2: classPresent must reject a token that only appears as a fragment of a longer class or as
+ * — G2: classPresent must reject a token that only appears as a fragment of a longer class or as
  * an interpolated JS identifier. The old `class="[^"]*\b${t}\b[^"]*"` arm treated `-` as a word
  * boundary, so `class="badqr-b"` resolved the bare token `b`, and `class="pill {a.outcome}"` resolved
  * the variable `a`. Both are dead classes no element carries, yet the guard whose job is to red on a
  * vanished anchor waved them through. Each assertion is red on base and pinned against a real anchor
  * in the SAME source so the arm cannot be "fixed" by rejecting everything.
  */
-test('#682 G2 — classPresent rejects a hyphen-fragment or interpolated-identifier token', () => {
+test('G2 — classPresent rejects a hyphen-fragment or interpolated-identifier token', () => {
 	const joinBadge = readFileSync(join(CORE, 'src/lib/tv/JoinBadge.svelte'), 'utf8');
 	const auditPage = readFileSync(join(CORE, 'src/routes/metrics/[mediaId]/+page.svelte'), 'utf8');
 

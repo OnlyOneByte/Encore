@@ -35,7 +35,7 @@ function wired(): { jobs: JobRepository; ledger: AttemptLedger } {
 // Step 2 — the ledger hooks the machine (raw `transition` seals the attempt)
 // ————————————————————————————————————————————————————————————————————————
 
-test('#524 step2: a raw COMPLETE transition seals the open attempt ready (not just complete())', () => {
+test('step2: a raw COMPLETE transition seals the open attempt ready (not just complete())', () => {
 	const { jobs, ledger } = wired();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'w1', null, T0 + 1);
@@ -51,7 +51,7 @@ test('#524 step2: a raw COMPLETE transition seals the open attempt ready (not ju
 	expect(a.finishedAt).toBe(T0 + 3);
 });
 
-test('#524 step2: a raw FAIL transition seals failed and records the error from the patch', () => {
+test('step2: a raw FAIL transition seals failed and records the error from the patch', () => {
 	const { jobs, ledger } = wired();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'w1', null, T0 + 1);
@@ -64,7 +64,7 @@ test('#524 step2: a raw FAIL transition seals failed and records the error from 
 	expect(a.error).toBe('demucs OOM'); // pulled from patch.error by transition
 });
 
-test('#524 step2: a raw CANCEL transition seals canceled', () => {
+test('step2: a raw CANCEL transition seals canceled', () => {
 	const { jobs, ledger } = wired();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'w1', null, T0 + 1);
@@ -74,7 +74,7 @@ test('#524 step2: a raw CANCEL transition seals canceled', () => {
 	expect(ledger.byMedia('m1')[0].outcome).toBe('canceled'); // RED on base
 });
 
-test('#524 step2: a raw requeue event (REJECT) abandons the old attempt AND opens a fresh one', () => {
+test('step2: a raw requeue event (REJECT) abandons the old attempt AND opens a fresh one', () => {
 	const { jobs, ledger } = wired();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'w1', null, T0 + 1);
@@ -98,7 +98,7 @@ function ownedRunning(jobs: JobRepository): Job {
 	return jobs.accept(job.id, null, T0 + 2); // assigned → running
 }
 
-test('#524 step3: COMPLETE fires the slot-release hook with the owning worker', () => {
+test('step3: COMPLETE fires the slot-release hook with the owning worker', () => {
 	const { jobs } = wired();
 	const released: string[] = [];
 	jobs.setSlotReleaseHook((wid) => released.push(wid));
@@ -107,12 +107,12 @@ test('#524 step3: COMPLETE fires the slot-release hook with the owning worker', 
 	expect(released).toEqual(['w1']); // owner read from the pre-write row
 });
 
-// #555: FAIL is NOT a machine-release event, because it is not exclusively worker-reported — the
+// FAIL is NOT a machine-release event, because it is not exclusively worker-reported — the
 // reaper's exhausted-attempts branch and the unservable-TTL branch also call fail(). Releasing off
 // the FAIL event freed the slot of a worker that was still holding the job whenever the reaper fired.
 // The worker-REPORTED terminal FAIL releases explicitly at its one call site (#onFailed's terminal
 // branch), so a raw FAIL transition through the machine must free NOTHING here.
-test('#555 step3: FAIL does NOT fire the machine slot-release hook (released at the worker-report call site)', () => {
+test('step3: FAIL does NOT fire the machine slot-release hook (released at the worker-report call site)', () => {
 	const { jobs } = wired();
 	const released: string[] = [];
 	jobs.setSlotReleaseHook((wid) => released.push(wid));
@@ -121,7 +121,7 @@ test('#555 step3: FAIL does NOT fire the machine slot-release hook (released at 
 	expect(released).toEqual([]); // reaper/unservable fail must not over-free a live worker's slot
 });
 
-test('#524 step3: REJECT (assigned→queued) releases the slot though the patch clears workerId', () => {
+test('step3: REJECT (assigned→queued) releases the slot though the patch clears workerId', () => {
 	const { jobs } = wired();
 	const released: string[] = [];
 	jobs.setSlotReleaseHook((wid) => released.push(wid));
@@ -131,7 +131,7 @@ test('#524 step3: REJECT (assigned→queued) releases the slot though the patch 
 	expect(released).toEqual(['w1']); // captured before the patch nulled workerId
 });
 
-test('#524 step3: CANCEL does NOT release the slot (cancel.ts double-free guard preserved)', () => {
+test('step3: CANCEL does NOT release the slot (cancel.ts double-free guard preserved)', () => {
 	const { jobs } = wired();
 	const released: string[] = [];
 	jobs.setSlotReleaseHook((wid) => released.push(wid));
@@ -140,7 +140,7 @@ test('#524 step3: CANCEL does NOT release the slot (cancel.ts double-free guard 
 	expect(released).toEqual([]); // cancel deliberately leaves the worker to free its own slot
 });
 
-test('#524 step3: reaper/boot requeue events (LEASE_EXPIRED, RECOVER) do NOT release the slot', () => {
+test('step3: reaper/boot requeue events (LEASE_EXPIRED, RECOVER) do NOT release the slot', () => {
 	for (const event of ['LEASE_EXPIRED', 'RECOVER'] as const) {
 		const { jobs } = wired();
 		const released: string[] = [];
@@ -155,13 +155,13 @@ test('#524 step3: reaper/boot requeue events (LEASE_EXPIRED, RECOVER) do NOT rel
 // Step 4 — one shared exhausted-attempts predicate
 // ————————————————————————————————————————————————————————————————————————
 
-test('#524 step4: attemptsExhausted is the ceiling — false below maxAttempts, true at and above', () => {
+test('step4: attemptsExhausted is the ceiling — false below maxAttempts, true at and above', () => {
 	expect(attemptsExhausted(2, 3)).toBe(false);
 	expect(attemptsExhausted(3, 3)).toBe(true);
 	expect(attemptsExhausted(4, 3)).toBe(true);
 });
 
-test('#524 step4: the reaper progress-lease-expiry branch routes its exhaustion check through the predicate', () => {
+test('step4: the reaper progress-lease-expiry branch routes its exhaustion check through the predicate', () => {
 	// A running job with a dead lease and attempts one below max: the shared predicate says NOT
 	// exhausted, so sweep requeues rather than fails; at max it fails. This pins that leases.sweep
 	// and worker-hub agree on the SAME ceiling.

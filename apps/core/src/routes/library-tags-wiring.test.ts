@@ -1,4 +1,4 @@
-// guard (#689): the tag map from /api/library is WIRED through the phone page onto the library row.
+// guard: the tag map from /api/library is WIRED through the phone page onto the library row.
 //
 // THE DEFECT CLASS this guards is Encore's most-repeated one: a mechanism (the server's tags map, the
 // SongRow tags prop) built and unit-tested, but never CALLED from the render path that needs it. The
@@ -16,15 +16,15 @@ function stripComments(src: string): string {
 }
 const PAGE = stripComments(readFileSync(join(import.meta.dir, '+page.svelte'), 'utf8'));
 
-test('the page holds a libraryTags map keyed by mediaId (#689)', () => {
+test('the page holds a libraryTags map keyed by mediaId', () => {
 	expect(PAGE).toMatch(/let\s+libraryTags\s*=\s*\$state<Record<string,\s*string\[\]>>\(\{\}\)/);
 });
 
-test('loadLibrary stores the wire tags map (stops discarding j.tags) (#689)', () => {
+test('loadLibrary stores the wire tags map (stops discarding j.tags)', () => {
 	expect(PAGE).toMatch(/libraryTags\s*=\s*j\.tags\s*\?\?\s*\{\}/);
 });
 
-test('rowMeta threads the song tags through the shared row shape (#689)', () => {
+test('rowMeta threads the song tags through the shared row shape', () => {
 	// The single place SongRow props are assembled. tags must be read by the song's id so every call
 	// site (ready/cooking/raw/popular/recent) gets it — SongRow itself only paints them on a ready row.
 	const m = PAGE.match(/const\s+rowMeta\s*=\s*\(m:\s*Media\)\s*=>\s*\(\{([\s\S]*?)\}\);/);

@@ -34,7 +34,7 @@ const SITES = [
 
 const sources = new Map(SITES.map((rel) => [rel, readFileSync(join(REPO, rel), 'utf8')]));
 
-test('#742 F2 non-vacuous: all five named sites exist, are non-empty, and still discuss spotify', () => {
+test('F2 non-vacuous: all five named sites exist, are non-empty, and still discuss spotify', () => {
 	// Without this sentinel a moved or renamed file passes every scan below on an empty read, and the
 	// guard silently stops guarding.
 	for (const rel of SITES) {
@@ -81,7 +81,7 @@ function isDenial(window: string): boolean {
 	return /\b(does\s+not|do\s+not|doesn.t|never|no\s+longer|not)\s+refus/i.test(window);
 }
 
-test('#742 F2 no site ASSERTS that fetcherFor refuses a spotify source (it returns the default)', () => {
+test('F2 no site ASSERTS that fetcherFor refuses a spotify source (it returns the default)', () => {
 	// Anchored on the mechanism, within ~80 characters, so a re-introduction under different wording is
 	// still caught — the false claim is the pairing of that function name with a refusal verb, however
 	// it is phrased.
@@ -96,7 +96,7 @@ test('#742 F2 no site ASSERTS that fetcherFor refuses a spotify source (it retur
 	}
 });
 
-test('#742 F2 the guard DISCRIMINATES — it still flags the exact prose that shipped', () => {
+test('F2 the guard DISCRIMINATES — it still flags the exact prose that shipped', () => {
 	// Without this the two rules above could be passing because the matcher never fires. Replay the five
 	// original sentences verbatim: each must be caught, and each must survive its correction. This is
 	// the not-vacuous arm for a scan whose subject is prose.
@@ -116,7 +116,7 @@ test('#742 F2 the guard DISCRIMINATES — it still flags the exact prose that sh
 	expect(materializationClaim.replace(/\s+/g, ' ')).toMatch(/not\s+materiali[sz]ed/i);
 });
 
-test('#742 F2 the denial is PRESENT where the false claim did the most damage', () => {
+test('F2 the denial is PRESENT where the false claim did the most damage', () => {
 	// The positive half of the rule above: silence would satisfy the ban while leaving the next author
 	// free to re-derive the same wrong conclusion from the `if (source === 'spotify') return
 	// DEFAULT_FETCHER` line, which reads as a refusal until something says otherwise. fetchers.ts owns
@@ -127,7 +127,7 @@ test('#742 F2 the denial is PRESENT where the false claim did the most damage', 
 	expect(fetchers).toMatch(/floor/i);
 });
 
-test('#742 F2 no site claims a spotify hit is not materialized into a queueable media', () => {
+test('F2 no site claims a spotify hit is not materialized into a queueable media', () => {
 	// /api/search materializes EVERY hit (`[...local, ...yt, ...spotify].map(...)`), sets it in
 	// mediaById and upserts it, so it is durable and queueable. The fetchers.ts comment denied exactly
 	// that, seven lines above the route comment that describes it.
@@ -138,7 +138,7 @@ test('#742 F2 no site claims a spotify hit is not materialized into a queueable 
 	}
 });
 
-test('#742 F2 the sites name the real authority instead', () => {
+test('F2 the sites name the real authority instead', () => {
 	// The positive half: correcting the prose to say nothing at all would pass the two bans above while
 	// leaving a reader with no pointer to where the rule actually lives. Every site must name it.
 	for (const rel of SITES) {
@@ -146,7 +146,7 @@ test('#742 F2 the sites name the real authority instead', () => {
 	}
 });
 
-test('#742 F2 the measurements the false claims contradicted still hold', () => {
+test('F2 the measurements the false claims contradicted still hold', () => {
 	// These are the numbers that made the prose false, and they are DELIBERATE — the fetcher floor keeps
 	// `fetcherFor`'s return type total. So this pins them rather than "fixing" them: asserting
 	// `fetcherFor('spotify') !== DEFAULT_FETCHER` would pin the opposite of the ratified design, which
@@ -158,7 +158,7 @@ test('#742 F2 the measurements the false claims contradicted still hold', () => 
 	);
 });
 
-test('#742 F2 the ratified DECISION itself is untouched', () => {
+test('F2 the ratified DECISION itself is untouched', () => {
 	// The issue upholds #427 and must not reopen it. Only the sentence describing HOW the rule is
 	// enforced was wrong. If a later edit weakens the decision, this reds.
 	const decisions = sources.get('docs/DECISIONS.md')!;

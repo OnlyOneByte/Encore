@@ -15,7 +15,7 @@ import { existsSync } from 'node:fs';
 import { appSrc, read as readRepoFile } from '@encore/test-support';
 import { join } from 'node:path';
 
-// Anchored on `appSrc` rather than on this file's own location (#775). The previous form was
+// Anchored on `appSrc` rather than on this file's own location. The previous form was
 // `dirname(fileURLToPath(import.meta.url))` then `join(HERE, '..', '..')` to mean apps/core/src — a
 // statement about where the TEST lived, embedded in a statement about where the SOURCE lived. Moving the
 // file broke it, and the four assertions that read a file broke LOUDLY while the one asserting a file is

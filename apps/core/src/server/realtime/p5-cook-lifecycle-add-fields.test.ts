@@ -1,8 +1,8 @@
 // guard: the p5-cook-lifecycle probe's queueViaWs add op must mint ALL SIX QueueEntry fields the
 // validateCommand add arm requires, so the probe's scenarios reach the cook-lifecycle behaviour
-// they exist to check instead of dying at setup on an op:reject (#394).
+// they exist to check instead of dying at setup on an op:reject.
 //
-// THE DEFECT (#394): queueViaWs (apps/core/e2e/probes/p5-cook-lifecycle.mjs) built its add-op entry
+// THE DEFECT: queueViaWs (apps/core/e2e/probes/p5-cook-lifecycle.mjs) built its add-op entry
 // as { id, mediaId, singerId, source: 'phone', requestedBy: 'guest' } — three real QueueEntry
 // fields plus two that are NOT QueueEntry fields at all. It was missing addedAt, status and
 // rotationSeq. hub.ts's add arm rejects a non-finite addedAt ('invalid addedAt', :164) and any
@@ -10,7 +10,7 @@
 // `queue add rejected: ...` at :201 — every scenario in the probe died at setup. The two other add
 // producers in e2e/ (p2-guiding-track.mjs, p11-dashboards.mjs) both mint all six and are accepted;
 // only p5 was stale. The addedAt guard landed in #305 (the #188 fix) and the status narrowing in
-// #324 AFTER queueViaWs was written, so the frame silently rotted.
+// AFTER queueViaWs was written, so the frame silently rotted.
 //
 // WHY A SOURCE SCAN: the probe is a live-server .mjs script with no unit harness and no runner in
 // bun test — there is no pure function to exercise, so nothing behavioural can pin it. This asserts
@@ -65,7 +65,7 @@ const ENTRY = addEntryLiteral(PROBE);
 // test below anchors status/rotationSeq to the schema so this list cannot silently drift.
 const REQUIRED_FIELDS = ['id', 'mediaId', 'singerId', 'status', 'rotationSeq', 'addedAt'] as const;
 
-test('the p5 queueViaWs add entry carries all six required QueueEntry fields (#394)', () => {
+test('the p5 queueViaWs add entry carries all six required QueueEntry fields', () => {
 	// Not vacuous: the isolated literal must actually be the small entry object, not the whole file.
 	expect(ENTRY.length).toBeGreaterThan(0);
 	expect(ENTRY.length).toBeLessThan(400);
@@ -78,7 +78,7 @@ test('the p5 queueViaWs add entry carries all six required QueueEntry fields (#3
 	}
 });
 
-test('the status the p5 frame mints is a member of the queue_entries status enum (#394)', () => {
+test('the status the p5 frame mints is a member of the queue_entries status enum', () => {
 	// The add arm demands status === 'queued' specifically; assert the literal mints a member of the
 	// column's own enum (source of truth), so this guard tracks the schema rather than a hand-copied
 	// string. 'queued' is the one value a client may mint (hub.ts :165).
@@ -89,7 +89,7 @@ test('the status the p5 frame mints is a member of the queue_entries status enum
 	expect(status).toBe('queued');
 });
 
-test('the p5 add entry does NOT carry non-QueueEntry fields that only mislead (#394)', () => {
+test('the p5 add entry does NOT carry non-QueueEntry fields that only mislead', () => {
 	// source / requestedBy are not QueueEntry fields — applyOp inserts op.entry verbatim and the
 	// six-column persistence mapping drops them, so their presence in the frame is pure noise that
 	// masked the real gap. Keep the frame to the schema's own fields.

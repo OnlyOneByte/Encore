@@ -58,7 +58,7 @@ function token(name: string): string {
 // The two surfaces production measures a dot against, read FROM production rather than restated. The
 // literals that used to sit here were tied to `--bg`/`--card` by a trailing comment only, so either
 // token could change and three contrast tests would keep passing while measuring colours the app no
-// longer paints (#819). The token-drift guard below is what now keeps this pair honest.
+// longer paints. The token-drift guard below is what now keeps this pair honest.
 const [BG, CARD] = SURFACES;
 
 test('parseHex accepts 3- and 6-digit hex and rejects everything else', () => {
@@ -94,7 +94,7 @@ test('the surfaces production measures against are the tokens app.css declares',
 	expect([...measured]).toEqual([token('bg'), token('card')]);
 	// Same guard for the stage-guard centre: `ACCENT2` is a browser-bundled copy of `--accent2`, and
 	// `ACCENT2_HUE` (and the whole stage ramp built on it) is derived from it. Move the token and this
-	// reds, naming the value — without it, the guard darkens the wrong hues and no other test bites (#845).
+	// reds, naming the value — without it, the guard darkens the wrong hues and no other test bites.
 	expect(ACCENT2).toBe(token('accent2'));
 });
 
@@ -305,7 +305,7 @@ test('presetTabStopIndex always yields exactly one in-range tab stop', () => {
 	}
 });
 
-// #215: the arrow-key handler used to anchor movement on a bare `indexOf(value)`, which returns -1
+// the arrow-key handler used to anchor movement on a bare `indexOf(value)`, which returns -1
 // for a wheel hex, while the tab stop anchored on presetTabStopIndex (falls back to 0). After a wheel
 // pick the two disagreed: the focus ring sat on swatch 0 but arrow movement computed from -1, so the
 // FIRST ArrowRight did not move (checked 0) and ArrowLeft skipped mint (7), landing on purple (6).
@@ -385,11 +385,11 @@ test('hueToHex fully reduces chroma into sRGB gamut, even from a high starting c
 // The constant is a hand-written literal because SQL cannot run an OKLCH conversion — the SQLite column
 // default and the 0005 migration's backfill both need these bytes. This is the guard that stops the
 // duplication rotting: change the stage tier and this reds rather than leaving the schema behind.
-test('DEFAULT_STAGE_COLOR is exactly what the old hue-240 default rendered as (#425)', () => {
+test('DEFAULT_STAGE_COLOR is exactly what the old hue-240 default rendered as', () => {
 	expect(DEFAULT_STAGE_COLOR).toBe(stageHueToHex(240));
 });
 
-test('normalizeStageColor canonicalises to 6-digit lowercase hex (#425)', () => {
+test('normalizeStageColor canonicalises to 6-digit lowercase hex', () => {
 	// the pin's surviving reason: this value is interpolated straight into a style attribute, and a
 	// 3-digit hex concatenated with alpha digits is what silently dropped the singer halo once already
 	expect(normalizeStageColor('#ABC', DEFAULT_STAGE_COLOR)).toBe('#aabbcc');
@@ -397,7 +397,7 @@ test('normalizeStageColor canonicalises to 6-digit lowercase hex (#425)', () => 
 	expect(normalizeStageColor('  #001d31  ', DEFAULT_STAGE_COLOR)).toBe('#001d31');
 });
 
-test('normalizeStageColor keeps the caller current colour for anything unparseable (#425)', () => {
+test('normalizeStageColor keeps the caller current colour for anything unparseable', () => {
 	// a junk write must not reset a choice the room already made — the rule every other setting follows
 	for (const junk of [
 		'rebeccapurple',
@@ -419,7 +419,7 @@ test('normalizeStageColor keeps the caller current colour for anything unparseab
 // "drop the lightness/chroma legibility pin"; the sibling `normalizeSingerColor` still enforces one, so
 // a reviewer cannot tell the two apart by reading either function alone. If someone reinstates a bound
 // on the stage — copying the singer validator, most likely — this reds and names why it must not.
-test('normalizeStageColor does NOT gate on legibility, unlike the singer validator (#425)', () => {
+test('normalizeStageColor does NOT gate on legibility, unlike the singer validator', () => {
 	// white is the extreme case: brighter than anything the retired stage tier could emit, and rejected
 	// outright by the singer rule it sits next to.
 	expect(normalizeStageColor('#ffffff', DEFAULT_STAGE_COLOR)).toBe('#ffffff');
@@ -436,7 +436,7 @@ function hueGap(a: number, b: number): number {
 	return Math.min(d, 360 - d);
 }
 
-test('hueOfColor recovers the hue of a stage-tier colour, which nearestSingerHue cannot (#425)', () => {
+test('hueOfColor recovers the hue of a stage-tier colour, which nearestSingerHue cannot', () => {
 	// The visualizers build a palette by hue ARITHMETIC around the room's colour, so they need an angle
 	// back out of the stored hex. MEASURED, not assumed: atan2 of the OKLab chromatic axes is scale-free
 	// and round-trips every legal stop within one wheel step, while nearestSingerHue compares those axes
@@ -454,7 +454,7 @@ test('hueOfColor recovers the hue of a stage-tier colour, which nearestSingerHue
 	expect(sawNearestMismatch).toBe(true);
 });
 
-test('hueOfColor is independent of lightness and chroma, and greys have no hue (#425)', () => {
+test('hueOfColor is independent of lightness and chroma, and greys have no hue', () => {
 	// scale-freedom is the whole property that makes it work across tiers, so assert it directly
 	for (const h of [0, 75, 165, 240, 345]) {
 		const wheel = hueOfColor(hueToHex(h, SINGER_L, 0.16));
@@ -467,20 +467,20 @@ test('hueOfColor is independent of lightness and chroma, and greys have no hue (
 
 // ── #782 stage dim (piece 3 of #425) ────────────────────────────────────────
 
-test('#782: dimTowardBlack with dim 0 returns the colour untouched', () => {
+test('dimTowardBlack with dim 0 returns the colour untouched', () => {
 	// 0 is the default, so this is the invisible-migration promise at the pixel level: no dim = no change.
 	for (const c of ['#000000', '#001d31', '#7c5cff', '#ff5cae', '#ffffff', '#123456']) {
 		expect(dimTowardBlack(c, 0)).toBe(c);
 	}
 });
 
-test('#782: dimTowardBlack with dim 1 pulls any colour to black', () => {
+test('dimTowardBlack with dim 1 pulls any colour to black', () => {
 	for (const c of ['#001d31', '#7c5cff', '#ffffff', '#123456']) {
 		expect(dimTowardBlack(c, 1)).toBe('#000000');
 	}
 });
 
-test('#782: dimTowardBlack scales every channel by (1 - dim), rounded', () => {
+test('dimTowardBlack scales every channel by (1 - dim), rounded', () => {
 	// white at 0.5 → each channel 255 * 0.5 = 127.5 → 128 (0x80). Derived from the rule, not transcribed
 	// from a fixture, so a wrong scaling reds rather than agreeing with a matching constant.
 	expect(dimTowardBlack('#ffffff', 0.5)).toBe('#808080');
@@ -491,7 +491,7 @@ test('#782: dimTowardBlack scales every channel by (1 - dim), rounded', () => {
 	expect(dimTowardBlack('#abc', 0)).toBe('#aabbcc');
 });
 
-test('#782: dimTowardBlack is monotone — more dim is never brighter on any channel', () => {
+test('dimTowardBlack is monotone — more dim is never brighter on any channel', () => {
 	const c = '#7c5cff';
 	let prev = parseHex(dimTowardBlack(c, 0))!;
 	for (let d = 0.1; d <= 1.0001; d += 0.1) {
@@ -501,13 +501,13 @@ test('#782: dimTowardBlack is monotone — more dim is never brighter on any cha
 	}
 });
 
-test('#782: dimTowardBlack clamps an out-of-range dim into [0,1] rather than inverting', () => {
+test('dimTowardBlack clamps an out-of-range dim into [0,1] rather than inverting', () => {
 	// a negative dim must not BRIGHTEN (f > 1), and a dim past 1 must not go negative — both clamp.
 	expect(dimTowardBlack('#336699', -0.5)).toBe('#336699');
 	expect(dimTowardBlack('#336699', 2)).toBe('#000000');
 });
 
-test('#782: dimTowardBlack returns an unparseable input verbatim (the token safety net)', () => {
+test('dimTowardBlack returns an unparseable input verbatim (the token safety net)', () => {
 	// stageBackgroundCss only ever hands it a hex, but a CSS-variable gradient string must pass through
 	// unchanged rather than throw — a pure function cannot darken a var().
 	const grad = 'radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%)';
@@ -515,7 +515,7 @@ test('#782: dimTowardBlack returns an unparseable input verbatim (the token safe
 	expect(dimTowardBlack('rebeccapurple', 0.5)).toBe('rebeccapurple');
 });
 
-test('#782: normalizeStageDim clamps to [0,1], rounds to a hundredth, and keeps the base on junk', () => {
+test('normalizeStageDim clamps to [0,1], rounds to a hundredth, and keeps the base on junk', () => {
 	expect(DEFAULT_STAGE_DIM).toBe(0);
 	expect(MIN_STAGE_DIM).toBe(0);
 	expect(MAX_STAGE_DIM).toBe(1);
@@ -533,16 +533,16 @@ test('#782: normalizeStageDim clamps to [0,1], rounds to a hundredth, and keeps 
 	}
 });
 
-// ── duet part colours (#692) ───────────────────────────────────────────────
+// ── duet part colours ───────────────────────────────────────────────
 //
-// The visible half of the duet feature: the worker (#691) writes an abstract `part` letter on each
+// The visible half of the duet feature: the worker writes an abstract `part` letter on each
 // line of a CONFIDENT duet and NOTHING on a solo/undiarized song, and `duetPartColors` maps those
 // letters onto DISTINCT, LEGIBLE colours drawn from the singer-identity palette. This is the pure,
 // mutation-strong half of the discriminating test the issue asks for — the rendered `--reel-part`
 // wiring is scanned in `apps/core/src/lib/tv/lyrics-duet-part-wiring.test.ts` and the pixels are in
 // the PR's CDP frames. Reverting `duetPartColors` reds these.
 
-test('a diarized duet gets two DISTINCT, LEGIBLE part colours (#692)', () => {
+test('a diarized duet gets two DISTINCT, LEGIBLE part colours', () => {
 	// A confident two-part duet: lines carry "A"/"B" as the worker's attribution would write them.
 	const lines = [{ part: 'A' }, { part: 'B' }, { part: 'A' }, { part: 'B' }];
 	const colours = duetPartColors(lines);
@@ -561,7 +561,7 @@ test('a diarized duet gets two DISTINCT, LEGIBLE part colours (#692)', () => {
 	expect(SINGER_COLORS as readonly string[]).toContain(b);
 });
 
-test('part colours are assigned by ORDER OF APPEARANCE and are stable per doc (#692)', () => {
+test('part colours are assigned by ORDER OF APPEARANCE and are stable per doc', () => {
 	// "B" opens the song here, so it takes the first palette colour — content-driven, deterministic,
 	// and identical on a re-render of the same doc.
 	const opensWithB = duetPartColors([{ part: 'B' }, { part: 'A' }, { part: 'B' }]);
@@ -576,7 +576,7 @@ test('part colours are assigned by ORDER OF APPEARANCE and are stable per doc (#
 	expect([...duetPartColors([{ part: 'B' }, { part: 'A' }])]).toEqual([...opensWithB].slice(0, 2));
 });
 
-test('an UNDIARIZED song gets NO part colour — the single-colour fallback, by absence (#692)', () => {
+test('an UNDIARIZED song gets NO part colour — the single-colour fallback, by absence', () => {
 	// No line carries a part (a solo, or a song diarization could not split): the map is EMPTY, which
 	// the reel reads as "keep the single-colour path" — an undiarized song renders exactly as today.
 	expect(duetPartColors([{}, {}, {}]).size).toBe(0);

@@ -1,8 +1,8 @@
-// #567 — pitch-shift.ts is the most heavily cross-referenced module in the TV tree, and its own
+// — pitch-shift.ts is the most heavily cross-referenced module in the TV tree, and its own
 // comments (plus its callers') cite it by coordinate and by identifier. Both idioms rot: a documented
 // method can be renamed or never have existed (the lifecycle docstring named a phantom `attach()`),
 // and a `pitch-shift.ts:<line>` citation drifts the moment a line is inserted above it. This is the
-// #318/#376/#395/#465 untrue-comment / rotted-citation class. This guard makes both machine-checkable.
+// /#376/#395/#465 untrue-comment / rotted-citation class. This guard makes both machine-checkable.
 //
 // Comment stripping is INVERTED here, on purpose: the defect lives IN the comments, so stripping them
 // would blind the guard to its whole subject — same reasoning doc-accuracy.test.ts states in its header.

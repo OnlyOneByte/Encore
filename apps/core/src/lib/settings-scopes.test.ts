@@ -84,7 +84,7 @@ test('the scope tabs are reachable and named for assistive tech', () => {
 	const src = readFileSync(SETTINGS, 'utf8');
 
 	/*
-	 * #913 S4: this used to assert the hand-rolled implementation's exact SPELLING —
+	 * S4: this used to assert the hand-rolled implementation's exact SPELLING —
 	 * `tabindex={tab === t.id ? 0 : -1}`, `aria-selected={tab === t.id}`, and a grep for ArrowRight.
 	 * Those expressions are gone: the tablist is Bits UI's now.
 	 *

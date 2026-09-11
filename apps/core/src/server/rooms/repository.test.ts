@@ -1,4 +1,4 @@
-// RoomRepository — the rooms table's first production writer + reader (#652, Rooms 1/7).
+// RoomRepository — the rooms table's first production writer + reader (Rooms 1/7).
 // On base origin/main NO writer or reader exists (only two fixtures touch the table), so the
 // round-trip pin below cannot even be authored against base: RoomRepository does not exist there.
 import { test, expect } from 'bun:test';
@@ -99,7 +99,7 @@ test('mintRoomCode yields a code over the unambiguous alphabet only', () => {
 	}
 });
 
-// ── ensureActive: the single-room mint-or-reuse the join path lands a bare join in (#654) ──────────
+// ── ensureActive: the single-room mint-or-reuse the join path lands a bare join in ──────────
 test('ensureActive mints a room on first boot', () => {
 	const { db, repo } = freshRepo();
 	expect(db.select().from(rooms).all()).toHaveLength(0);

@@ -1,5 +1,5 @@
 // guard: the TV lyric highlight is painted in the CURRENT SINGER's colour, and that colour actually
-// reaches the per-word spans (#634).
+// reaches the per-word spans.
 //
 // THE FEATURE. The reel used to paint both highlight treatments in the room-wide accent:
 // `--reel-line: var(--accent2)` and `--reel-now: var(--accent2)`. #634 replaces the source of that
@@ -65,7 +65,7 @@ test('the wiring scan reads two non-empty sources', () => {
 	expect(routeSrc().length).toBeGreaterThan(2000);
 });
 
-test('the overlay takes a singerColor prop and defaults it to no singer (#634)', () => {
+test('the overlay takes a singerColor prop and defaults it to no singer', () => {
 	const src = overlaySrc();
 	// Declared on the Props interface as nullable — "nobody is up" has to be expressible.
 	expect(src).toMatch(/singerColor\?:\s*string\s*\|\s*null\s*;/);
@@ -74,7 +74,7 @@ test('the overlay takes a singerColor prop and defaults it to no singer (#634)',
 	expect(src).toMatch(/singerColor\s*=\s*null/);
 });
 
-test('the overlay resolves the highlight colour through the shared helper, not the raw prop (#634)', () => {
+test('the overlay resolves the highlight colour through the shared helper, not the raw prop', () => {
 	const src = overlaySrc();
 	// The helper is imported from the shared package…
 	expect(src).toMatch(/import\s*\{[^}]*\blyricHighlightColor\b[^}]*\}\s*from\s*['"]@encore\/shared['"]/);
@@ -84,7 +84,7 @@ test('the overlay resolves the highlight colour through the shared helper, not t
 	expect(src).toMatch(/\$derived\s*\(\s*lyricHighlightColor\s*\(\s*singerColor\s*\)\s*\)/);
 });
 
-test('the resolved colour is appended as --reel-singer, and only when there is one (#634)', () => {
+test('the resolved colour is appended as --reel-singer, and only when there is one', () => {
 	const src = overlaySrc();
 	// The custom property is emitted into the SAME inline style string the rest of the type rides, and
 	// it is CONDITIONAL: with no legible singer colour nothing is written, so the stylesheet's own
@@ -95,7 +95,7 @@ test('the resolved colour is appended as --reel-singer, and only when there is o
 	expect(src).toMatch(/style=\{typeStyle\}/);
 });
 
-test('both highlight treatments read the reel colour chain, and neither names --accent2 any more (#634, layered by #692)', () => {
+test('both highlight treatments read the reel colour chain, and neither names --accent2 any more (layered by #692)', () => {
 	const src = overlaySrc();
 	// The default: the room accent, declared once.
 	expect(src).toMatch(/--reel-singer:\s*var\(--accent2\)\s*;/);
@@ -151,7 +151,7 @@ test('the provenance comment no longer claims the highlight is pink (#634 commen
 	expect(raw).toMatch(/leaving it on `--reel-singer` would mean the `line` treatment/);
 });
 
-test('the TV route hands the overlay the current singer — the non-test caller (#634)', () => {
+test('the TV route hands the overlay the current singer — the non-test caller', () => {
 	const src = routeSrc();
 	// The route already derives the current singer's stored colour for the stage glow and the
 	// lower-third dot; #634's whole wiring is that the reel is given the same value. Reverting this ONE

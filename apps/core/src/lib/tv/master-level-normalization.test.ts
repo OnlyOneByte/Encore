@@ -100,7 +100,7 @@ function fakeEl(): HTMLMediaElement {
 	return {} as HTMLMediaElement;
 }
 
-test('#462: a master level set BEFORE the graph is built lands in the GainNode when a shift builds it', async () => {
+test('a master level set BEFORE the graph is built lands in the GainNode when a shift builds it', async () => {
 	// An attenuated song (gain 0.5) then a transpose: the pulldown must survive into the GainNode, not
 	// reset to full volume.
 	const graph = new PitchShiftGraph(fakeEl());
@@ -112,7 +112,7 @@ test('#462: a master level set BEFORE the graph is built lands in the GainNode w
 	expect(lastCtx!.gains[0].gain.value).toBeCloseTo(0.5, 6);
 });
 
-test('#462 control: WITHOUT the pre-set level, a freshly built master graph defaults to full volume', async () => {
+test('control: WITHOUT the pre-set level, a freshly built master graph defaults to full volume', async () => {
 	// The state the bug leaves if the re-apply is missing: the graph builds at desiredGain 1, so an
 	// attenuated song plays at full volume once transposed. This makes the assertion above meaningful.
 	const graph = new PitchShiftGraph(fakeEl());
@@ -129,7 +129,7 @@ function stripComments(s: string): string {
 
 const TV = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
 
-test('#462: the level effect applies the master level at BOTH the native and routed sites', () => {
+test('the level effect applies the master level at BOTH the native and routed sites', () => {
 	// The dedicated master-level $effect: `master.volume = effectiveMasterLevel` (native path) AND
 	// `masterGraph?.setGain(effectiveMasterLevel)` (routed path). Both, because WebAudio capture
 	// bypasses .volume once a shift exists. Deleting either line reds this.
@@ -152,7 +152,7 @@ function pitchEffectMasterRegion(s: string): string {
 	return s.slice(at, guideAt >= 0 ? guideAt : at + 400);
 }
 
-test('#462 guard: the pitch effect re-applies the master level after (re)building the master graph', () => {
+test('guard: the pitch effect re-applies the master level after (re)building the master graph', () => {
 	const region = stripComments(pitchEffectMasterRegion(TV));
 	expect(region).toMatch(/masterGraph\s*=\s*new PitchShiftGraph/);
 	expect(region).toMatch(/masterGraph[?][.]setShift[(]\s*shift\s*[)]/);
@@ -161,7 +161,7 @@ test('#462 guard: the pitch effect re-applies the master level after (re)buildin
 	expect(region).toMatch(/masterGraph[?][.]setGain[(]\s*effectiveMasterLevel\s*[)]/);
 });
 
-test('#462 guard: the per-song reset re-applies the master level in place (graph is reset, not detached)', () => {
+test('guard: the per-song reset re-applies the master level in place (graph is reset, not detached)', () => {
 	// A song change resets the master graph in place with setShift(0); a graph defaults its gain to 1,
 	// so the level must be re-asserted here too, exactly as the guide is (setGain(effectiveGuide)).
 	const stripped = stripComments(TV);
@@ -172,7 +172,7 @@ test('#462 guard: the per-song reset re-applies the master level in place (graph
 	expect(region).toMatch(/masterGraph[?][.]setGain[(]\s*effectiveMasterLevel\s*[)]/);
 });
 
-test('#462: effectiveMasterLevel is derived clamped to [0,1] (attenuate-only, never a boost)', () => {
+test('effectiveMasterLevel is derived clamped to [0,1] (attenuate-only, never a boost)', () => {
 	// The prop is clamped in the component too, so a route bug cannot push the master above unity.
 	const stripped = stripComments(TV);
 	expect(stripped).toMatch(
@@ -180,7 +180,7 @@ test('#462: effectiveMasterLevel is derived clamped to [0,1] (attenuate-only, ne
 	);
 });
 
-test('#462: the TV route resolves masterLevel from the loudness gain and passes it to both slots', () => {
+test('the TV route resolves masterLevel from the loudness gain and passes it to both slots', () => {
 	// The decision lives in the route (it owns the library catalog + the room toggle); the player is a
 	// pure applier. Prove the route wires the pure gain function to a per-slot masterLevel prop.
 	const route = readFileSync(join(import.meta.dir, '../../routes/tv/+page.svelte'), 'utf8');

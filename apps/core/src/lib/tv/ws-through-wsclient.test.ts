@@ -1,6 +1,6 @@
 // guard: the TV route drives its realtime channel through the shared, tested WsClient -- the client
 // with the heartbeat, liveness watchdog (#presumeDead), capped-backoff reconnect and page-lifecycle
-// rebinding -- and holds NO hand-rolled socket lifecycle of its own. (#449)
+// rebinding -- and holds NO hand-rolled socket lifecycle of its own.
 //
 // THE DEFECT. The TV route hand-rolled its own connect()/onclose/backoff socket: it had reconnect but
 // none of the heartbeat, liveness watchdog, or page-lifecycle rebinding the tested WsClient gives the
@@ -31,7 +31,7 @@ function stripComments(src: string): string {
 const TV_ROUTE = join(import.meta.dir, '..', '..', 'routes', 'tv', '+page.svelte');
 const tvSrc = () => stripComments(readFileSync(TV_ROUTE, 'utf8'));
 
-test('the TV route constructs and opens a WsClient for role=tv (#449)', () => {
+test('the TV route constructs and opens a WsClient for role=tv', () => {
 	const src = tvSrc();
 	expect(src).toMatch(/import\s*\{[^}]*\bWsClient\b[^}]*\}\s*from\s*['"]\$lib\/ws\/client['"]/);
 	expect(src).toMatch(/new\s+WsClient\s*\(/);
@@ -40,7 +40,7 @@ test('the TV route constructs and opens a WsClient for role=tv (#449)', () => {
 	expect(src).toMatch(/onEvent\s*:/);
 });
 
-test('no hand-rolled socket lifecycle remains on the TV route (#449)', () => {
+test('no hand-rolled socket lifecycle remains on the TV route', () => {
 	const src = tvSrc();
 	expect(src).not.toMatch(/new\s+WebSocket\s*\(/);
 	expect(src).not.toMatch(/\.onclose\s*=/);
@@ -48,7 +48,7 @@ test('no hand-rolled socket lifecycle remains on the TV route (#449)', () => {
 	expect(src).not.toMatch(/Math\.min\s*\(\s*500\s*\*\s*2\s*\*\*/);
 });
 
-test('TV telemetry drops silently via WsClient.send quiet (#449)', () => {
+test('TV telemetry drops silently via WsClient.send quiet', () => {
 	const src = tvSrc();
 	expect(src).toMatch(/\.send\s*\([^)]*telemetryFrame[\s\S]*?quiet\s*:\s*true/);
 });

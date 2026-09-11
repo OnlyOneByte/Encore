@@ -69,7 +69,7 @@ test('the first assignment (no previous src) always changes', () => {
 // the element still holds a src is the transient catalog-churn pass, never a real departure (that
 // unmounts the element). It must be a no-op.
 
-test('#251: a not-playable pass over a REAL src does NOT change (no clear) — the reset', () => {
+test('a not-playable pass over a REAL src does NOT change (no clear) — the reset', () => {
 	const real = fileSrc(m());
 	// Old contract (2-arg) reported changed:true here (real -> '') and cleared the element. Now the
 	// not-playable pass keeps the src the element already holds.
@@ -78,7 +78,7 @@ test('#251: a not-playable pass over a REAL src does NOT change (no clear) — t
 	expect(src).toBe(real);
 });
 
-test('#251: a not-playable pass keeps a REAL src even if `next` is non-empty', () => {
+test('a not-playable pass keeps a REAL src even if `next` is non-empty', () => {
 	// Defensive: playable=false wins regardless of what `next` resolved to, so a churn pass that also
 	// produced a stale string cannot sneak a write through.
 	const real = fileSrc(m());
@@ -87,7 +87,7 @@ test('#251: a not-playable pass keeps a REAL src even if `next` is non-empty', (
 	expect(src).toBe(real);
 });
 
-test('#251: not-playable with no prior src still does not write', () => {
+test('not-playable with no prior src still does not write', () => {
 	const { src, changed } = nextVideoSrc(null, '', false);
 	expect(changed).toBe(false);
 	expect(src).toBe('');

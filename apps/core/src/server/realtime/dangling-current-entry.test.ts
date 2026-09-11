@@ -156,7 +156,7 @@ test('hydrate() leaves a currentEntryId that DOES resolve untouched', () => {
 // green while resurrecting issue #128 (the recovery never fires on the reported path). This scan pins
 // that the arm FIRES the recovery, and that the recovery predicate keys on RESOLUTION rather than
 // nullness — the latter now asserted at player.ts, which is where #803 made the predicate live in
-// exactly one place. Same technique as session-cookie-attributes.test.ts (#107) on
+// exactly one place. Same technique as session-cookie-attributes.test.ts on
 // routes/api/join/+server.ts, a file with the identical no-harness problem. Comments are blanked so a
 // commented-out call cannot satisfy it.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -171,12 +171,12 @@ function stripComments(src: string): string {
 const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));
 const PLAYER = stripComments(readFileSync(join(import.meta.dir, 'player.ts'), 'utf8'));
 
-test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying on resolution not nullness (#128)', () => {
+test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying on resolution not nullness', () => {
 	// The recovery must be wired to the client queue path (handleQueueCommand is the sole prune that
 	// can retire the playing entry) and fire reconcileOnReady.
 	expect(SERVER).toMatch(/handleQueueCommand\(/);
 	expect(SERVER).toMatch(/reconcileOnReady\(deps\)/);
-	// THE PINNED PREDICATE, now at its single home (#803). The gate tests whether the current id
+	// THE PINNED PREDICATE, now at its single home. The gate tests whether the current id
 	// RESOLVES to a live entry (`!entries.some((e) => e.id === currentEntryId)`), so a dangling
 	// (non-null) id triggers recovery. The pre-fix `!state.playback.currentEntryId` form — which reads
 	// a dangling id as "busy" and never recovers — must NOT be what guards the recovery block.
@@ -186,7 +186,7 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 	const fnIdx = PLAYER.indexOf('export function reconcileOnReady(');
 	expect(fnIdx).toBeGreaterThanOrEqual(0);
 	const body = PLAYER.slice(fnIdx);
-	// #848: the predicate is now the shared `entryResolves` helper (state/store.ts); recovery keys on
+	// the predicate is now the shared `entryResolves` helper (state/store.ts); recovery keys on
 	// its result. Pin the CALL, not a re-inlined `.some(...)` — a re-inlined copy here would be the
 	// drift #848 removed.
 	expect(body).toMatch(
@@ -197,7 +197,7 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 	// the silent-half-edit hazard live again.
 	expect(SERVER).not.toMatch(/\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*[\w.]*playback\.currentEntryId/);
 
-	// THE PINNED ORDER (#261): presence of the call is not enough — it must run AFTER
+	// THE PINNED ORDER: presence of the call is not enough — it must run AFTER
 	// handleQueueCommand, which is the prune that retires the playing entry. If it is hoisted ABOVE
 	// the call it evaluates the PRE-remove state (the playing id still resolves), so recovery never
 	// fires and #128 re-opens with every assertion above still green. Slice the queue:command arm out
@@ -229,7 +229,7 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 // assertions are ABOUT the comment, so blanking comments would make every check vacuous.
 const STORE = readFileSync(join(import.meta.dir, '..', 'state', 'store.ts'), 'utf8');
 
-test("hydrate()'s heal comment (store.ts) tells the truth about boot recovery (#254)", () => {
+test("hydrate()'s heal comment (store.ts) tells the truth about boot recovery", () => {
 	// Non-vacuous: the heal the comment describes must actually be present, or the checks below
 	// would pass against a file that no longer has the code they document.
 	expect(STORE).toMatch(/currentEntryId:\s*null,\s*isPlaying:\s*false/);
@@ -289,7 +289,7 @@ function collectNonTestSources(): string[] {
 // A reconcileOnReady CALL, distinct from its `export function reconcileOnReady(` DEFINITION (player.ts).
 const RECONCILE_CALL = /(?<!function\s)\breconcileOnReady\s*\(/;
 
-test('reconcileOnReady is called from exactly the three non-boot sites: queue:command, onMediaReady, and the #639 entry-delete (#342)', () => {
+test('reconcileOnReady is called from exactly the three non-boot sites: queue:command, onMediaReady, and the #639 entry-delete', () => {
 	// The set of NON-TEST files in apps/core that CALL reconcileOnReady must be exactly server.ts (the
 	// queue:command arm) and src/server/app.ts (the onMediaReady handler). A reconcile added anywhere
 	// else — e.g. a new boot module — reds this; deleting the last call in app.ts reds it too.
@@ -331,7 +331,7 @@ test('reconcileOnReady is called from exactly the three non-boot sites: queue:co
 	expect(inside).toBe(1);
 });
 
-test('the play/pause transport button still allows a ready queue while nothing plays (#342)', () => {
+test('the play/pause transport button still allows a ready queue while nothing plays', () => {
 	// The comment's third recovery route — "or a manual play … the play control stays enabled because a
 	// non-empty queue satisfies its gate" — is the play button's gate. restart and skip are stricter
 	// (they need a PLAYING entry), so after a boot heal (nowEntry null, queue ready) the play button is

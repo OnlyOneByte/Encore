@@ -64,14 +64,14 @@ function filesMatching(pattern: RegExp): string[] {
 		.sort();
 }
 
-test('the census actually covers this package, including the harness-less Bun.serve entry (#803)', () => {
+test('the census actually covers this package, including the harness-less Bun.serve entry', () => {
 	// Non-vacuous scaffolding for every arm below: a walk that silently collected nothing, or that
 	// missed server.ts (outside src/) or player.ts, would make all four censuses pass at zero.
 	expect(SOURCES.length).toBeGreaterThanOrEqual(50);
 	const rel = SOURCES.map(REL);
 	expect(rel).toContain('server.ts');
 	expect(rel).toContain('src/server/realtime/player.ts');
-	// #848: a walk BLIND to store.ts is exactly how #803's census missed the third copy, so assert
+	// a walk BLIND to store.ts is exactly how #803's census missed the third copy, so assert
 	// store.ts's membership rather than assume it.
 	expect(rel).toContain('src/server/state/store.ts');
 	// And the stripper must really blank comments, or a commented-out copy would count as a live one.
@@ -91,19 +91,19 @@ test('the census actually covers this package, including the harness-less Bun.se
 // ── ARM 1: the #128 recovery predicate is written ONCE ─────────────────────────────────────────────
 // Anchored on `currentEntryId` alone, NOT on a receiver spelling: #803's `[\w.]*playback\.`
 // pattern could not see store.ts's `this.#playback.` copy, which is the hole #848 closed. After the
-// #848 extraction the predicate is the bare-parameter comparison inside `entryResolves`
+// extraction the predicate is the bare-parameter comparison inside `entryResolves`
 // (state/store.ts), so anchoring on the field name is what makes this census survive the relocation
 // and still find a receiver-prefixed re-inlined copy if one ever comes back.
 const RECOVERY_PREDICATE = /\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*[\w.#]*currentEntryId/;
 
-test('the #128 recovery predicate exists in exactly one production file, store.ts (#803, #848)', () => {
+test('the #128 recovery predicate exists in exactly one production file, store.ts (#848)', () => {
 	// Base (pre-#848) FAILS with 2: src/server/realtime/player.ts and src/server/state/store.ts, the
 	// two byte-identical-modulo-receiver copies #848 consolidated into `entryResolves`. #803 had
 	// already removed server.ts's third copy. After #848 the sole home is the extracted helper.
 	expect(filesMatching(RECOVERY_PREDICATE)).toEqual(['src/server/state/store.ts']);
 });
 
-test('ARM 1 cannot be satisfied by deleting the invariant — the resolution test still exists (#128)', () => {
+test('ARM 1 cannot be satisfied by deleting the invariant — the resolution test still exists', () => {
 	// Sentinel. A census counting sites passes at ZERO, so deleting the predicate outright would
 	// satisfy ARM 1 while re-opening #128. Require the resolution form to be present in store.ts,
 	// inside the exported `entryResolves` helper that both askers now call.
@@ -126,7 +126,7 @@ test('ARM 1 cannot be satisfied by deleting the invariant — the resolution tes
 // Delete the disclosure and the duplication grows back for the same reason it grew the first time.
 const PLAYER_RAW = readFileSync(join(import.meta.dir, 'player.ts'), 'utf8');
 
-test('player.ts discloses where the recovery predicate is single-sourced (#803, #848)', () => {
+test('player.ts discloses where the recovery predicate is single-sourced (#848)', () => {
 	// Non-vacuous: anchor on the symbol the prose documents, so a rename reds here rather than passing
 	// over a comment that no longer sits beside anything.
 	const fnIdx = PLAYER_RAW.indexOf('export function reconcileOnReady(');
@@ -167,7 +167,7 @@ function queueCommandArm(): string {
 	return SERVER.slice(caseIdx, breakIdx);
 }
 
-test("server.ts's queue:command arm calls reconcileOnReady unconditionally, deciding nothing itself (#803)", () => {
+test("server.ts's queue:command arm calls reconcileOnReady unconditionally, deciding nothing itself", () => {
 	const arm = queueCommandArm();
 	// Base FAILS all three: the arm carried `if (!state.entries.some(...)) reconcileOnReady(deps);`
 	// with `else emitNowPlaying(deps);`.
@@ -180,9 +180,9 @@ test("server.ts's queue:command arm calls reconcileOnReady unconditionally, deci
 	expect(arm).not.toMatch(/reconcileOnReady\(deps\)[^\n]*\belse\b/);
 });
 
-test('PINNED ORDER (#261): the reconcile still runs AFTER handleQueueCommand (#803)', () => {
+test('PINNED ORDER: the reconcile still runs AFTER handleQueueCommand', () => {
 	// #261 is the measured proof this matters: HOISTING the call above handleQueueCommand re-opened
-	// #128 in full with the whole suite green, because the reconcile then reads the PRE-remove state
+	// in full with the whole suite green, because the reconcile then reads the PRE-remove state
 	// where the playing id still resolves. handleQueueCommand is the sole prune that can retire the
 	// playing entry, so the ordering IS the fix. Indexes are taken inside the arm, which also pins
 	// that the call is in the queue:command arm at all rather than merely somewhere in the file.
@@ -200,19 +200,19 @@ test('PINNED ORDER (#261): the reconcile still runs AFTER handleQueueCommand (#8
 const UPNEXT_PROJECTION = /upNextAfter\(\s*cur\?\.id\s*\?\?\s*null,/;
 const NOWPLAYING_LITERAL = /type:\s*'nowplaying:changed'/;
 
-test('the upNext projection exists in exactly one production file, player.ts (#803)', () => {
+test('the upNext projection exists in exactly one production file, player.ts', () => {
 	// Base FAILS with 2 (player.ts's emitNowPlaying + server.ts's hello arm).
 	expect(filesMatching(UPNEXT_PROJECTION)).toEqual(['src/server/realtime/player.ts']);
 });
 
-test('the nowplaying:changed payload is stated in exactly one production file, player.ts (#803)', () => {
+test('the nowplaying:changed payload is stated in exactly one production file, player.ts', () => {
 	// Base FAILS with 2. Counted per FILE, not per occurrence: player.ts legitimately names the
 	// literal twice after the fix — once in nowPlayingEvent's `Extract<ServerEvent, …>` return type
 	// and once in the returned object — and an occurrence count would read that as unfixed.
 	expect(filesMatching(NOWPLAYING_LITERAL)).toEqual(['src/server/realtime/player.ts']);
 });
 
-test('ARM 3/4 cannot be satisfied by dropping the resync frame — hello still sends three frames (#803)', () => {
+test('ARM 3/4 cannot be satisfied by dropping the resync frame — hello still sends three frames', () => {
 	// Sentinel. Deleting the `hello` arm's nowplaying frame outright would also collapse both censuses
 	// to one file, while silently regressing every reconnecting client to no nowplaying state at all.
 	// Require the resync to still send queue:sync, playback:state and the nowplaying frame — and the
@@ -229,7 +229,7 @@ test('ARM 3/4 cannot be satisfied by dropping the resync frame — hello still s
 	expect(SERVER).toMatch(/import\s*\{[^}]*\bnowPlayingEvent\b[^}]*\}\s*from\s*'\.\/src\/server\/realtime\/player'/);
 });
 
-test('the typed-builder precedent this follows still exists: syncEvent (#803)', () => {
+test('the typed-builder precedent this follows still exists: syncEvent', () => {
 	// nowPlayingEvent is modelled on hub.ts's syncEvent — a typed event builder with the identical
 	// `Extract<ServerEvent, { type: … }>` return shape, called by this same hello arm one line above.
 	// If that precedent is ever removed the shape here should be revisited, not silently diverge.
@@ -238,7 +238,7 @@ test('the typed-builder precedent this follows still exists: syncEvent (#803)', 
 	expect(HUB).toMatch(/Extract<ServerEvent,\s*\{\s*type:\s*'queue:sync'\s*\}>/);
 });
 
-test('nowPlayingEvent has a non-test caller (#803)', () => {
+test('nowPlayingEvent has a non-test caller', () => {
 	// A builder nothing calls is dead weight, and the whole point of the extraction is that the
 	// resync path goes through it. Grep the production set, excluding player.ts's own definition.
 	const callers = SOURCES.filter((f) => REL(f) !== 'src/server/realtime/player.ts').filter((f) =>

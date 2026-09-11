@@ -1,4 +1,4 @@
-// guard: the reconnect-starvation fix (#135) is only real once server.ts WIRES the add seam.
+// guard: the reconnect-starvation fix is only real once server.ts WIRES the add seam.
 //
 // reprioritizeCookForMedia is unit-tested through the hub (reprioritize-cook.test.ts drives
 // handleQueueCommand -> onEntryAdded -> the helper), but the seam it hangs on — HubDeps.onEntryAdded
@@ -26,18 +26,18 @@ function stripComments(src: string): string {
 // where buildHubDeps (the single HubDeps composition site, #460 §3) now wires this seam.
 const APP = stripComments(readFileSync(join(import.meta.dir, '..', 'app.ts'), 'utf8'));
 
-test('app.ts imports reprioritizeCookForMedia (#179)', () => {
+test('app.ts imports reprioritizeCookForMedia', () => {
 	expect(APP).toMatch(/import\s*\{\s*reprioritizeCookForMedia\s*\}\s*from\s*'\.\/jobs\/reprioritize-cook'/);
 });
 
-test('app.ts buildHubDeps wires HubDeps.onEntryAdded to reprioritizeCookForMedia (#179)', () => {
+test('app.ts buildHubDeps wires HubDeps.onEntryAdded to reprioritizeCookForMedia', () => {
 	// The add-side seam must be filled — an unwired onEntryAdded means the cook never gets un-starved.
 	// Params carry type annotations in the factory (mediaId: string, entries: QueueEntry[]).
 	expect(APP).toMatch(/onEntryAdded:\s*\(mediaId(?::\s*string)?,\s*entries(?::\s*QueueEntry\[\])?\)\s*=>/);
 	expect(APP).toMatch(/reprioritizeCookForMedia\(mediaId,\s*\{/);
 });
 
-test('the wired hook passes the job ledger, the post-add entries, and a dispatch kick (#179)', () => {
+test('the wired hook passes the job ledger, the post-add entries, and a dispatch kick', () => {
 	// Without app.jobs it cannot find the outstanding cook; without the *unfiltered* post-add entries
 	// soonestSeqFor sees no queued turn and returns NO_QUEUE_PRIORITY (the cook stays starved); without
 	// dispatch() the un-stuck cook waits for an unrelated trigger. Pin all three in ONE anchored match
@@ -47,7 +47,7 @@ test('the wired hook passes the job ledger, the post-add entries, and a dispatch
 	// (the onEntryRemoved cancelJobsForMedia wiring, upNextAfter(..., state.entries, ...), and the
 	// /harness/phone dev-page <script> string), so the guard stayed 3/3 green with the hook mutated to
 	// `entries: entries.filter((e) => e.status === 'playing')` — the exact type-valid partial that
-	// restores the #135 starvation bug (#309). This mirrors reaper-onfailed-wiring.test.ts's single
+	// restores the #135 starvation bug. This mirrors reaper-onfailed-wiring.test.ts's single
 	// anchored /onFailed:...settleGatesForFailedJob(job, mediaById)/.
 
 	// Not-vacuous sentinel: the hook opening must be present, so a broken/empty read reds here first.

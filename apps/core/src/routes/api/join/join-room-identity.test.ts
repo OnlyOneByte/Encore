@@ -1,5 +1,5 @@
 // POST /api/join must carry a room code through to doJoin, refuse an unknown code with 404, and return
-// the room the join landed in to the caller (#654). These drive the REAL POST handler against a
+// the room the join landed in to the caller. These drive the REAL POST handler against a
 // real RoomRepository + SingerRepository on an in-memory migrated DB, so the pinned mechanism is
 // end-to-end: the request's `code` reaches the room resolution and the resolved roomId reaches the
 // response body.

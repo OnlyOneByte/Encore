@@ -1,4 +1,4 @@
-// guard: the fuzz driver's gestureless policy must be COMPLETE about the gesture (#591). Three
+// guard: the fuzz driver's gestureless policy must be COMPLETE about the gesture. Three
 // findings, one root cause — the policy was honest about the --autoplay-policy FLAG but never
 // delivered the one real GESTURE #332 made available, so it (A) excused a blocked TV too narrowly,
 // (B) never unblocked one, and (C) misreported the state when I6 did fire.

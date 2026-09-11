@@ -1,4 +1,4 @@
-// XR-PH-17 / XR-PH-18 / XR-PH-19 (issue #836) — the own-picks reorder mode, tested where its logic
+// XR-PH-17 / XR-PH-18 / XR-PH-19 — the own-picks reorder mode, tested where its logic
 // actually lives. These are the "pure predicate" checks the requirements name: `bunfig.toml` cannot
 // mount a component importing `$app` (lib/tv/wake-lock.test.ts:18-27, restated as XR-PH-21), so a
 // predicate inlined in `routes/+page.svelte` could only be tested by RECONSTRUCTING it here — which

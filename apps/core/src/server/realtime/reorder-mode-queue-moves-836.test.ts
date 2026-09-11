@@ -1,4 +1,4 @@
-// XR-PH-19 (issue #836) — the reorder mode against the REAL server, not a fixture.
+// XR-PH-19 — the reorder mode against the REAL server, not a fixture.
 //
 // The requirement names this mechanism explicitly: "a harness test drives real ops through
 // `handleQueueCommand` to produce the invalidating states (the `AuthoritativeState` + `HubDeps` idiom

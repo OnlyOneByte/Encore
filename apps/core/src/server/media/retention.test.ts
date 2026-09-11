@@ -192,7 +192,7 @@ describe('evictDerived', () => {
 	});
 
 	it('counts the vocals stem under the CURRENT extensions, not just when they happen to match', () => {
-		// The modern layout is BOTH stems FLAC (#480). derivedBytesOf must count the vocals stem via
+		// The modern layout is BOTH stems FLAC. derivedBytesOf must count the vocals stem via
 		// vocalsKey, which now names -vocals.flac; the ext-blind "-instrumental."→"-vocals." swap also
 		// resolves it here because the two stems share .flac. derivedBytesOf feeds planEviction's cap
 		// comparison, so undercounting means retention concludes there is nothing to reclaim while the
@@ -207,7 +207,7 @@ describe('evictDerived', () => {
 	});
 
 	it('counts an INTERIM cook (flac instrumental + m4a vocals) via the stored m.vocalsRef', () => {
-		// #480 regression pin: flipping VOCALS_EXT to .flac makes BOTH vocalsKey and the ext-blind swap
+		// regression pin: flipping VOCALS_EXT to .flac makes BOTH vocalsKey and the ext-blind swap
 		// derive -vocals.flac, so neither names the .m4a vocals stem an interim cook actually left on
 		// disk (this PR deliberately does not recompress it). The ONLY thing that still counts it is the
 		// STORED m.vocalsRef. This is the real on-disk layout, not a synthetic one. Deleting m.vocalsRef
@@ -295,11 +295,11 @@ describe('evictDerived', () => {
 		);
 	});
 
-	it('counts AND evicts the retained raw caption track the cap claims to bound (#709)', () => {
+	it('counts AND evicts the retained raw caption track the cap claims to bound', () => {
 		// THE F1 PIN. #684 shipped ENCORE_KEEP_RAW_CAPTIONS retention, whose docstring claims the track
 		// "inherits the retention the cap already bounds" — but eviction here is ref-driven and
 		// derivedRefsOf enumerated no raw-caption key, so derivedBytesOf undercounted (the identical
-		// #496/#442 undercount) and evictDerived orphaned the file on disk PERMANENTLY: retention strips
+		// /#442 undercount) and evictDerived orphaned the file on disk PERMANENTLY: retention strips
 		// the song to un-cooked and the raw caption survives the eviction with nothing left pointing at it.
 		// The worker writes it to derived/captions/<kind>/<id>.captions.<ext> keyed per media id (no ref
 		// stored on Media), so derivedRefsOf enumerates CAPTION_KINDS × KNOWN_CAPTION_EXTS via rawCaptionKey.
@@ -339,7 +339,7 @@ const stripComments = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, 
 const mediaSrcDir = _join(import.meta.dir);
 const readSrc = (name: string) => _readFileSync(_join(mediaSrcDir, name), 'utf8');
 
-describe('#496 §1 — evictDerived reports only bytes it actually freed', () => {
+describe('§1 — evictDerived reports only bytes it actually freed', () => {
 	it('counts ZERO bytes for a file it could not delete, and leaves it on disk', () => {
 		// The reachable trigger: a derived file `existsSync` can see but `rmSync` cannot dispose of.
 		// `force` suppresses ENOENT only; EACCES/EPERM/EROFS/EBUSY still throw. We reproduce EACCES by
@@ -380,7 +380,7 @@ describe('#496 §1 — evictDerived reports only bytes it actually freed', () =>
 	});
 });
 
-describe('#496 §2 — the vocals ref is derived in exactly one place', () => {
+describe('§2 — the vocals ref is derived in exactly one place', () => {
 	it('the -instrumental.->-vocals. substitution appears exactly ONCE in production source', () => {
 		// GUARD 1: comments stripped, scan retention.ts / vocals-backfill.ts / paths.ts. BASE = 3
 		// (retention.ts: 2, vocals-backfill.ts: 1). After the extraction into paths.ts it is 1.
@@ -420,7 +420,7 @@ describe('#496 §2 — the vocals ref is derived in exactly one place', () => {
 // not be installed on the box: the fake IS the ffmpeg the transcoder spawns.
 import { chmodSync as _chmodSync } from 'node:fs';
 
-describe('#601 — the legacy-stem recompress encoder matches its .flac destination', () => {
+describe('— the legacy-stem recompress encoder matches its .flac destination', () => {
 	// Write a fake `ffmpeg` that appends every argv it receives (one JSON array per invocation) to
 	// $argvLog, then produces the requested output file so the transcoder's success path runs. Returns
 	// the absolute path to the fake bin.
@@ -469,7 +469,7 @@ describe('#601 — the legacy-stem recompress encoder matches its .flac destinat
 		expect(ca).toBeGreaterThan(-1);
 		expect(argv[ca + 1]).toBe('flac');
 
-		// And it must NOT carry the retired AAC encoder or its bitrate knob (#502) into a .flac container.
+		// And it must NOT carry the retired AAC encoder or its bitrate knob into a .flac container.
 		expect(argv).not.toContain('aac');
 		expect(argv).not.toContain('192k');
 		// `-movflags +faststart` is an MP4/MOV concern that is dead once the output is FLAC.

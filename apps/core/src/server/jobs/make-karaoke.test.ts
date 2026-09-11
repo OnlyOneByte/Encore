@@ -389,7 +389,7 @@ test('re-tapping a song already cooking is never counted against its own owner (
 // from the job ledger (the thing being bounded), which does not depend on the second transport.
 // NOTE: `cook()` is not used here on purpose — it adds an entry, which is exactly the transport that
 // is absent in this window. We call requestMakeKaraoke WITHOUT ever touching state.entries.
-test('#135: the per-singer cap holds even when NO queue entry exists (dropped add over a reconnecting socket)', () => {
+test('the per-singer cap holds even when NO queue entry exists (dropped add over a reconnecting socket)', () => {
 	const d = deps();
 	// alice taps Sing on MAX distinct songs while her socket is reconnecting: the cook lands, the
 	// add never does, so state.entries stays empty for all of them.
@@ -409,7 +409,7 @@ test('#135: the per-singer cap holds even when NO queue entry exists (dropped ad
 	expect(d.mediaById.get('over')!.stemStatus).toBe('none'); // never flipped to cooking
 });
 
-test('#135: a dropped-add cook is attributed to its requester in the ledger, and only to them', () => {
+test('a dropped-add cook is attributed to its requester in the ledger, and only to them', () => {
 	const d = deps();
 	// No entries added — pure HTTP cook, socket down.
 	d.mediaById.set('a1', media('a1'));
@@ -434,10 +434,10 @@ test('a spotify-sourced media is refused a cook (search-only; audio comes from Y
 	expect(m.stemStatus).toBe('none'); // never flipped to queued
 });
 
-// #766: setMediaGuideOffset stores a measured guide/instrumental offset, value-or-nothing. It must
+// setMediaGuideOffset stores a measured guide/instrumental offset, value-or-nothing. It must
 // write a finite number (0 included), and must NOT wipe an existing measurement when the wire carries
 // no number — the stems-upgrade case where a declined re-measure arrives as undefined.
-test('#766: setMediaGuideOffset stores a finite offset (0 included) and coerces to a whole ms', () => {
+test('setMediaGuideOffset stores a finite offset (0 included) and coerces to a whole ms', () => {
 	const mediaById = new Map<string, Media>();
 	const m = media('go1', { stemStatus: 'ready', instrumentalRef: 'stems/go1-instrumental.flac', vocalsRef: 'stems/go1-vocals.flac' });
 	mediaById.set('go1', m);
@@ -449,7 +449,7 @@ test('#766: setMediaGuideOffset stores a finite offset (0 included) and coerces 
 	expect(m.guideOffsetMs).toBe(-25);
 });
 
-test('#766: setMediaGuideOffset leaves an existing offset untouched on a non-number (declined re-measure)', () => {
+test('setMediaGuideOffset leaves an existing offset untouched on a non-number (declined re-measure)', () => {
 	const mediaById = new Map<string, Media>();
 	const m = media('go2', { guideOffsetMs: 42 });
 	mediaById.set('go2', m);
@@ -462,7 +462,7 @@ test('#766: setMediaGuideOffset leaves an existing offset untouched on a non-num
 	expect(m.guideOffsetMs).toBe(42);
 });
 
-test('#766: setMediaGuideOffset is a no-op for an unknown media id', () => {
+test('setMediaGuideOffset is a no-op for an unknown media id', () => {
 	const mediaById = new Map<string, Media>();
 	expect(setMediaGuideOffset('missing', 30, mediaById)).toBe(false);
 });

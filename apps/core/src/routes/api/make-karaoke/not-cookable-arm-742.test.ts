@@ -60,7 +60,7 @@ function call(mediaId: string) {
 	} as never);
 }
 
-test('#742 the route names the reason for a Spotify media (was the generic catch-all 409)', async () => {
+test('the route names the reason for a Spotify media (was the generic catch-all 409)', async () => {
 	const mediaById = new Map<string, Media>();
 	mediaById.set('sp1', media('sp1', { source: 'spotify', sourceRef: SPOTIFY_TRACK_ID }));
 	installApp(mediaById);
@@ -76,14 +76,14 @@ test('#742 the route names the reason for a Spotify media (was the generic catch
 	expect(body.error).toBeTruthy();
 });
 
-test('#742 CONTROL: an unknown media still gets its own arm (the new arm did not swallow it)', async () => {
+test('CONTROL: an unknown media still gets its own arm (the new arm did not swallow it)', async () => {
 	installApp(new Map<string, Media>());
 	const res = await call('nope');
 	expect(res.status).toBe(409);
 	expect(((await res.json()) as { error?: string }).error).toBe('unknown media');
 });
 
-test('#742 CONTROL: a YouTube media still starts a cook through this route', async () => {
+test('CONTROL: a YouTube media still starts a cook through this route', async () => {
 	// Non-vacuous: the new arm must not refuse everything. Same route, same harness, one field different.
 	const mediaById = new Map<string, Media>();
 	mediaById.set('yt1', media('yt1'));

@@ -1,4 +1,4 @@
-// #252 — a COOKING song must obey the search-match filter. The Cooking group used to be re-derived
+// — a COOKING song must obey the search-match filter. The Cooking group used to be re-derived
 // from the whole live status map and the whole catalog with no reference to the query, so a song
 // someone else was cooking appeared under an UNRELATED search ("I want it that way" under "never
 // gonna give you up"). The server already returns a query-scoped `cooking` group; the group's

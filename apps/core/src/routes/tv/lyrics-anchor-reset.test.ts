@@ -1,4 +1,4 @@
-// guard (issue #868): every song change opens the new turn with the lyrics reel parked on the old
+// guard: every song change opens the new turn with the lyrics reel parked on the old
 // song's last lines and the progress bar two-thirds full, for ~260ms, and for one frame the reel
 // renders the PREVIOUS song's lyrics under the new song's title.
 //
@@ -39,7 +39,7 @@ function functionBody(src: string, name: string): string {
 	return '';
 }
 
-test('#868 F1/F2: applyNowPlaying resets the drawn-position anchor on the entry change', () => {
+test('F1/F2: applyNowPlaying resets the drawn-position anchor on the entry change', () => {
 	const clean = stripComments(ROUTE);
 
 	// Sentinel 1 (not vacuous): applyNowPlaying is the nowplaying:changed handler. If this dispatch
@@ -63,7 +63,7 @@ test('#868 F1/F2: applyNowPlaying resets the drawn-position anchor on the entry 
 	expect(/\bdurationSec\s*=\s*0\b/.test(body)).toBe(true);
 });
 
-test('#868 F3: LyricsOverlay clears the cached doc on a ref change, not only when the ref goes falsy', () => {
+test('F3: LyricsOverlay clears the cached doc on a ref change, not only when the ref goes falsy', () => {
 	const clean = stripComments(OVERLAY);
 
 	// Sentinel (not vacuous): the fetch effect keys on a ref change via `loadedRef`, and the derived

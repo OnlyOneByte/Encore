@@ -1,4 +1,4 @@
-// CodeEntry behaviour (#834, XR-PH-14) at the MOUNT rung: the six-segment typed path's LOGIC —
+// CodeEntry behaviour (XR-PH-14) at the MOUNT rung: the six-segment typed path's LOGIC —
 // keystroke rejection of the excluded alphabet, auto-advance, backspace, a whole-code paste, and the
 // completion callback. Driven with REAL InputEvent/KeyboardEvent/ClipboardEvent, because that logic is
 // pure DOM-event handling and does not measure geometry.
@@ -120,7 +120,7 @@ test('a paste with punctuation is cleaned to the admitted characters', () => {
 });
 
 
-// ── AC2 (issue #834): "5 of 6 segments filled -> Continue disabled" ───────────────────────────────
+// ── AC2: "5 of 6 segments filled -> Continue disabled" ───────────────────────────────
 // The criterion is delivered at JoinLanding.svelte's `disabled={!canJoin}`, but nothing pinned it:
 // `canJoin` is referenced nowhere else, so `disabled={false}` left the whole suite green. This mounts
 // the REAL JoinLanding (unjoined, no `?room`), fills the name so the ONLY thing gating Continue is the
@@ -132,14 +132,14 @@ async function mountLandingForAc2() {
 	const instance = mount(JoinLanding, { target });
 	flushSync();
 	const segs = () => [...target.querySelectorAll('input.segment')] as HTMLInputElement[];
-	// #913: the field is <Input> now, so its appearance (and `.name-input`) lives in the component.
+	// the field is <Input> now, so its appearance (and `.name-input`) lives in the component.
 	// `data-slot` is shadcn's own contract for the rendered element and survives a re-vendor.
 	const nameInput = target.querySelector("input[data-slot='input']") as HTMLInputElement;
 	const continueBtn = () => target.querySelector('.submit-slot button') as HTMLButtonElement;
 	return { target, instance, segs, nameInput, continueBtn };
 }
 
-test('AC2 — Continue is disabled at 5 of 6 code characters, enabled at 6 (#834)', async () => {
+test('AC2 — Continue is disabled at 5 of 6 code characters, enabled at 6', async () => {
 	(await stateStub()).resetPage(); // bare `/`, no ?room — the typed path
 	const { instance, segs, nameInput, continueBtn } = await mountLandingForAc2();
 	try {

@@ -66,7 +66,7 @@ test('hello → welcome handshake + dispatch of a waiting job', () => {
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
 
 	const welcome = cmdsOfType(sent, 'worker:welcome')[0] as Extract<WorkerCommand, { type: 'worker:welcome' }>;
-	// heartbeatIntervalSec is HALF the 30s progress lease (#308): a worker honouring it has room for
+	// heartbeatIntervalSec is HALF the 30s progress lease: a worker honouring it has room for
 	// one dropped tick before breaching. The derived-value invariant is pinned in vocabulary-parity.test.ts.
 	expect(welcome).toMatchObject({ type: 'worker:welcome', ackTimeoutSec: 10, heartbeatIntervalSec: 15 });
 	expect(welcome.mediaStore).toEqual({ kind: 'local' }); // default single-box store
@@ -802,7 +802,7 @@ test('#90 TTL: a dead align cook settles the LYRICS gate on an already-playable 
 	expect(mediaById.get('m1')!.stemStatus).toBe('ready'); // playable instrumental untouched
 });
 
-test('#524: a worker-reported release frees EXACTLY one slot — never double-frees via both machine and handler', () => {
+test('a worker-reported release frees EXACTLY one slot — never double-frees via both machine and handler', () => {
 	// Slot release now rides the machine (transition), so the handlers dropped their explicit
 	// registry.releaseSlot() calls. A concurrency=2 worker holding TWO in-flight jobs makes a double
 	// free observable that a concurrency=1 worker's Math.min clamp would hide: completing ONE job must
@@ -829,7 +829,7 @@ test('#524: a worker-reported release frees EXACTLY one slot — never double-fr
 	expect(jobs.byId(b.id)!.status).toBe('assigned'); // the other job still held by w1 (dispatched, not yet accepted)
 });
 
-test('#524: job:reject frees EXACTLY one slot on a two-slot worker (no double-free via machine + handler)', () => {
+test('job:reject frees EXACTLY one slot on a two-slot worker (no double-free via machine + handler)', () => {
 	// Same double-free probe as the complete case, on the REJECT path (#onReject). On a concurrency=2
 	// worker holding two assigned jobs, a reject of ONE must return slotsFree to 1 net — the rejected
 	// job's slot back, then reclaimed by the redispatch of the SAME job to the still-free second slot.
@@ -848,7 +848,7 @@ test('#524: job:reject frees EXACTLY one slot on a two-slot worker (no double-fr
 	expect(jobs.byId(a.id)!.status).toBe('assigned'); // redispatched, still owned by w1
 });
 
-test('#524: a terminal job:failed frees EXACTLY one slot on a two-slot worker (no double-free)', () => {
+test('a terminal job:failed frees EXACTLY one slot on a two-slot worker (no double-free)', () => {
 	// The terminal (non-retryable) #onFailed branch releases through the machine (FAIL). On a
 	// concurrency=2 worker holding two jobs, failing ONE non-retryably must leave slotsFree at 1, not
 	// 2. Pins the #onFailed release-removal hunk (the explicit release dropped from the shared prologue).
@@ -865,12 +865,12 @@ test('#524: a terminal job:failed frees EXACTLY one slot on a two-slot worker (n
 	expect(registry.get('w1')!.slotsFree).toBe(1); // EXACTLY one freed
 });
 
-// #669 — a lyrics mis-pick must be diagnosable from durable state, not just the cook log. The worker
+// — a lyrics mis-pick must be diagnosable from durable state, not just the cook log. The worker
 // carries the VariantChoice provenance on job:complete; the hub must persist it on the align attempt so
 // /metrics/<mediaId> can later say WHICH candidate lost and whether a baseline even voted. On base the
 // wire field is dropped end-to-end (no AttemptFacts.selection, no column, no attemptSelection), so the
 // round-trip below reds: attemptSelection() returns null because nothing was stored.
-test('persists the variant-pick provenance from job:complete so a mis-pick is diagnosable later (#669)', () => {
+test('persists the variant-pick provenance from job:complete so a mis-pick is diagnosable later', () => {
 	const { hub, jobs, attempts } = harness();
 	const job = jobs.enqueue('m1', 'align', 0, T0);
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });

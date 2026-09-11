@@ -1,4 +1,4 @@
-// PIN (#427): a Spotify resolver result appears in the merged /api/search output.
+// PIN: a Spotify resolver result appears in the merged /api/search output.
 //
 // This exercises the exact merge the route runs: resultToMedia materializes a spotify-sourced
 // SearchResult (source-tagged 'spotify'), and partitionSearch surfaces it in the `unacquired`

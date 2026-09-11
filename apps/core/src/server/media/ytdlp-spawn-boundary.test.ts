@@ -1,7 +1,7 @@
-// #767 — the timed-child-process BOUNDARY must have exactly one implementation, and neither exit of
+// — the timed-child-process BOUNDARY must have exactly one implementation, and neither exit of
 // ytdlp.ts may throw its failure away.
 //
-// #446 extracted the pattern into media/spawn-capture.ts and migrated three call sites onto it, but
+// extracted the pattern into media/spawn-capture.ts and migrated three call sites onto it, but
 // the site it was extracted FROM — ytDlpSearch — was left hand-rolled, so the repo shipped two
 // implementations of "spawn with a kill timer" and the second one discarded the one thing the shared
 // one keeps (`timedOut`). Nothing forces the migration: `Bun.spawn` is a global, so tsc cannot see a
@@ -80,7 +80,7 @@ const SEARCH = sliceFunction(YTDLP, 'ytDlpSearch');
 
 // ── ARM 1: one timed-spawn implementation, in the file that owns the boundary ────────────────────
 
-test('#767 ARM 1: no production file under apps/core/src calls Bun.spawn( except spawn-capture.ts', () => {
+test('ARM 1: no production file under apps/core/src calls Bun.spawn( except spawn-capture.ts', () => {
 	const offenders: string[] = [];
 	for (const f of PRODUCTION) {
 		if (f.rel.split(sep).join(sep) === SPAWN_CAPTURE_REL) continue;
@@ -94,17 +94,17 @@ test('#767 ARM 1: no production file under apps/core/src calls Bun.spawn( except
 
 // ── ARM 2: neither exit of ytdlp.ts discards its failure ────────────────────────────────────────
 
-test('#767 ARM 2: the availability probe BINDS its error and warns, rather than swallowing it', () => {
+test('ARM 2: the availability probe BINDS its error and warns, rather than swallowing it', () => {
 	expect(/catch\s*\{/.test(AVAILABLE)).toBe(false); // `} catch { _available = false; }` on base
 	expect(AVAILABLE).toMatch(/catch\s*\(\s*[A-Za-z_$][\w$]*\s*\)\s*\{[\s\S]*?console\.warn\(/);
 });
 
-test('#767 ARM 2: the search BINDS its spawn error and warns, rather than swallowing it', () => {
+test('ARM 2: the search BINDS its spawn error and warns, rather than swallowing it', () => {
 	expect(/catch\s*\{/.test(SEARCH)).toBe(false); // `} catch { return []; }` on base
 	expect(SEARCH).toMatch(/catch\s*\(\s*[A-Za-z_$][\w$]*\s*\)\s*\{[\s\S]*?console\.warn\(/);
 });
 
-test('#767 ARM 2: the search routes through runCapturing and reports timedOut', () => {
+test('ARM 2: the search routes through runCapturing and reports timedOut', () => {
 	// The migration itself: the shared boundary is called, and the field the hand-rolled copy threw
 	// away is read. Without this, ARM 1 could be satisfied by inlining a kill timer around a
 	// non-global spawner.
@@ -114,7 +114,7 @@ test('#767 ARM 2: the search routes through runCapturing and reports timedOut', 
 
 // ── Sentinels: all PASS on base, so no arm above can go green vacuously ──────────────────────────
 
-test('#767 sentinel 1: spawn-capture.ts still exports runCapturing with a kill timer and timedOut', () => {
+test('sentinel 1: spawn-capture.ts still exports runCapturing with a kill timer and timedOut', () => {
 	// Deleting the helper would empty ARM 1 rather than satisfy it. This reds instead.
 	expect(SPAWN_CAPTURE).toMatch(/export\s+async\s+function\s+runCapturing\(/);
 	expect(SPAWN_CAPTURE).toMatch(/setTimeout\(/);
@@ -127,20 +127,20 @@ test('#767 sentinel 1: spawn-capture.ts still exports runCapturing with a kill t
 	expect(/Bun\.spawn\s*\(/.test(SPAWN_CAPTURE)).toBe(false);
 });
 
-test('#767 sentinel 2: at least three production files import runCapturing', () => {
+test('sentinel 2: at least three production files import runCapturing', () => {
 	// Deleting the search feature (or the loudness/retention call sites) must not be a way to satisfy
 	// ARM 1. Measured at 3: media/loudness.ts, media/retention.ts, media/ytdlp.ts.
 	const importers = PRODUCTION.filter((f) => /from\s+'\.\/spawn-capture'/.test(f.src)).map((f) => f.rel);
 	expect(importers.length).toBeGreaterThanOrEqual(3);
 });
 
-test('#767 sentinel 3: both ytdlp.ts regions were actually found', () => {
+test('sentinel 3: both ytdlp.ts regions were actually found', () => {
 	// A rename or a deletion must red here rather than silently emptying ARM 2's haystack.
 	expect(AVAILABLE.length).toBeGreaterThan(200);
 	expect(SEARCH.length).toBeGreaterThan(200);
 });
 
-test('#767 sentinel 4: the comment stripper removes a planted Bun.spawn( and a planted bare catch', () => {
+test('sentinel 4: the comment stripper removes a planted Bun.spawn( and a planted bare catch', () => {
 	const planted = [
 		'/* Bun.spawn( and catch { inside a block comment',
 		'   spanning lines */',
@@ -153,7 +153,7 @@ test('#767 sentinel 4: the comment stripper removes a planted Bun.spawn( and a p
 	expect(stripped.split('\n')).toHaveLength(3);
 });
 
-test('#767 sentinel 5: the production file list is real and includes the file under guard', () => {
+test('sentinel 5: the production file list is real and includes the file under guard', () => {
 	expect(PRODUCTION.length).toBeGreaterThan(50);
 	expect(PRODUCTION.map((f) => f.rel)).toContain(join('server', 'media', 'ytdlp.ts'));
 	expect(PRODUCTION.map((f) => f.rel)).toContain(SPAWN_CAPTURE_REL);

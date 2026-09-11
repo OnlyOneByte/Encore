@@ -210,7 +210,7 @@ test('an out-of-order playback:state does not rewind rev (Fix 1)', () => {
 	expect(store.rev).toBe(9);
 });
 
-// The readyState guard is the whole reason send.ts exists (#871). It funnels every phone command and
+// The readyState guard is the whole reason send.ts exists. It funnels every phone command and
 // every TV telemetry frame, and a real WebSocket throws InvalidStateError from send() while it is
 // CONNECTING/CLOSING/CLOSED — which happens on first connect, every reconnect, and after a mobile
 // freeze. This drives #sock into a non-OPEN state and proves WsClient.send GUARDS it (skips the send,
@@ -219,7 +219,7 @@ test('an out-of-order playback:state does not rewind rev (Fix 1)', () => {
 // Discriminating: revert client.ts:115 to the pre-fix `this.#sock?.send(JSON.stringify(e))` and this
 // reds — that raw form calls send() directly, so FakeSocket throws InvalidStateError, and the throw
 // escapes client.send() instead of being turned into a clean `false`.
-test('send on a non-OPEN socket is guarded, not thrown (#871)', () => {
+test('send on a non-OPEN socket is guarded, not thrown', () => {
 	const h = makeClient();
 	h.client.open();
 	// The socket exists but has not fired onopen — a real WebSocket is CONNECTING here and send() throws.

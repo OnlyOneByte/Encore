@@ -93,7 +93,7 @@ const IDIOMS: Record<Condition, { name: string; find: (src: string) => boolean }
 	error: [
 		{ name: 'a `role="alert"` region', find: (s) => /role\s*=\s*["']alert["']/.test(s) },
 		/*
-		 * #913 S5: a `toast.error(...)` call is a designed error state too. The home route's error surface
+		 * S5: a `toast.error(...)` call is a designed error state too. The home route's error surface
 		 * is sonner's now, and sonner renders the region with its own `role="alert"` at RUNTIME -- which a
 		 * source scan cannot see, so without this idiom the guard reports a route that HAS a working
 		 * designed error state as having none. This recognises a new spelling of the same claim rather than

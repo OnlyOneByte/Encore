@@ -1,7 +1,7 @@
 // guard: the fuzz driver's checkI4 must SKIP under a gestureless autoplay refusal (master paused at
-// t=0, preload burst only) before it judges the lyrics highlight against the playhead (#331).
+// t=0, preload burst only) before it judges the lyrics highlight against the playhead.
 //
-// THE DEFECT (#331): e2e/fuzz.mjs runs gestureless by default (--autoplay-policy is deliberately OFF,
+// THE DEFECT: e2e/fuzz.mjs runs gestureless by default (--autoplay-policy is deliberately OFF,
 // "without the flag this is a television; with it, it is not"). In that state the browser refuses
 // autoplay and the master sits paused at currentTime=0 with only its preload burst decoded, while the
 // server says isPlaying and the reel advances off the server intent. checkI4 had no skip for that
@@ -56,14 +56,14 @@ function checkI4Body(src: string): string {
 
 const BODY = checkI4Body(PROBE);
 
-test('checkI4 exists and still computes the cue-vs-window judgement (#331, not vacuous)', () => {
+test('checkI4 exists and still computes the cue-vs-window judgement (not vacuous)', () => {
 	// The load-bearing judgement must still be present — the fix skips a refused master, it does NOT
 	// delete I4's ability to bite. cue = playhead + LEAD_SEC, compared against the line window.
 	expect(BODY).toMatch(/const\s+cue\s*=\s*w\.master\.currentTime\s*\+\s*LEAD_SEC/);
 	expect(BODY).toMatch(/the lyrics highlight is on a line whose window does not contain the playhead/);
 });
 
-test('checkI4 skips under a gestureless autoplay refusal (#331)', () => {
+test('checkI4 skips under a gestureless autoplay refusal', () => {
 	// The skip must be present and must be a skip() (not a violation) carrying the refusal reason.
 	expect(BODY).toMatch(/if\s*\(\s*autoplayRefused\(w\)\s*\)/);
 	expect(BODY).toMatch(/skip\(\s*[\s\S]*?'I4'[\s\S]*?the browser refused autoplay/);

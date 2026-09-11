@@ -85,7 +85,7 @@ function withoutComments(src: string): string {
 		.replace(/(^|[\s;{])\/\/[^\n]*/g, '$1 ');
 }
 
-describe('#913 a semantic fill is never minted into app source as ink', () => {
+describe('a semantic fill is never minted into app source as ink', () => {
 	const files = sources();
 
 	test('no app file uses a banned ink utility', () => {

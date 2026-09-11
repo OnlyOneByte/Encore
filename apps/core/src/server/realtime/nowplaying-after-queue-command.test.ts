@@ -6,7 +6,7 @@
 // `handlePlayerCommand`. A QUEUE mutation produced none: `handleQueueCommand` publishes `queue:patch`
 // alone (hub.ts), and apps/core/server.ts's `queue:command` arm only called `reconcileOnReady` when the
 // current entry no longer RESOLVED — i.e. only when the room was idle or the playing entry had been
-// pruned (#128).
+// pruned.
 //
 // So while a song plays, an add / remove / move changes WHO PLAYS NEXT and nothing re-broadcasts it.
 // The TV keeps rendering the previous `upNext` until the song ends: it can name a song that has been
@@ -31,11 +31,11 @@
 //     apps/core/server.ts. server.ts contains no `emitNowPlaying` on base, so this half is RED on base
 //     and it is what makes the production hunks mutation-proven. Same technique as
 //     dangling-current-entry.test.ts (the #128 gate on this very line) and
-//     session-cookie-attributes.test.ts (#107).
+//     session-cookie-attributes.test.ts.
 //
 // EXPECTED VALUES ARE HARD-CODED entry ids ('q3', null, 'q4', never 'q2'), never re-derived by calling
 // `upNextAfter` — a test that recomputed the projection with the same function the code uses could not
-// detect a wrong projection at all (#165).
+// detect a wrong projection at all.
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from './hub';
 import { reconcileOnReady, emitNowPlaying } from './player';
@@ -112,7 +112,7 @@ function advertisedUpNextId(published: ServerEvent[]): string | null | undefined
 
 /**
  * server.ts's `queue:command` arm as it stands AFTER #803: an UNCONDITIONAL reconcileOnReady. The
- * #636 re-emit still happens on the "current resolves" path — reconcileOnReady skips its recovery
+ * re-emit still happens on the "current resolves" path — reconcileOnReady skips its recovery
  * block and falls through to the single emitNowPlaying at its tail (player.ts) — which is why the
  * hand-written `else emitNowPlaying(deps)` this arm used to carry was redundant, and why the
  * unconditional call cannot double-broadcast. The recovery predicate is no longer copied here.
@@ -133,7 +133,7 @@ function queueCommandArmPreFix(cmd: ClientCommand, deps: HubDeps) {
 	if (!deps.state.entries.some((e) => e.id === deps.state.playback.currentEntryId)) reconcileOnReady(deps);
 }
 
-test('a queue mutation mid-song re-broadcasts the TRUE next, and never the cooking entry holding the head slot (#636)', () => {
+test('a queue mutation mid-song re-broadcasts the TRUE next, and never the cooking entry holding the head slot', () => {
 	const { state, deps, published } = harness();
 
 	// s2's song is queued FIRST but is still cooking, so it holds the head of the rotation and every
@@ -180,7 +180,7 @@ test('a queue mutation mid-song re-broadcasts the TRUE next, and never the cooki
 	expect(published.filter((e) => e.type === 'nowplaying:changed').every((e) => e.upNext?.id !== 'q2')).toBe(true);
 });
 
-test('without the else, a mid-song queue mutation leaves the advertised next naming a song that has left the queue (#636)', () => {
+test('without the else, a mid-song queue mutation leaves the advertised next naming a song that has left the queue', () => {
 	// The defect itself, with the pre-fix arm. This is why the fix belongs at THIS seam: the only
 	// producer of a `nowplaying:changed` broadcast is a playback transition, so a queue transition
 	// silently strands the value the TV renders and pre-warms.
@@ -215,7 +215,7 @@ test('without the else, a mid-song queue mutation leaves the advertised next nam
 // blanked first so a commented-out call cannot satisfy it (the explanatory comment beside the fix
 // names the call, so this is load-bearing here, not boilerplate).
 //
-// #803 RETARGETED this guard. The re-emit used to be an `else emitNowPlaying(deps)` hanging off a
+// RETARGETED this guard. The re-emit used to be an `else emitNowPlaying(deps)` hanging off a
 // second hand-written copy of the #128 recovery predicate; the copy was the defect, so the `else`
 // went with it. The #636 PROPERTY is unchanged and is what is pinned below — after a queue:command
 // that needed no recovery, exactly one nowplaying:changed is still published — but it is now carried
@@ -235,7 +235,7 @@ function stripComments(src: string): string {
 const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));
 const PLAYER = stripComments(readFileSync(join(import.meta.dir, 'player.ts'), 'utf8'));
 
-test('server.ts re-emits nowplaying after a queue:command that did NOT need recovery (#636)', () => {
+test('server.ts re-emits nowplaying after a queue:command that did NOT need recovery', () => {
 	// Non-vacuous: the seam this property hangs on must still be here. If the queue:command arm is
 	// renamed or moved, this reds rather than passing over nothing.
 	expect(SERVER).toMatch(/handleQueueCommand\(evt\.command/);

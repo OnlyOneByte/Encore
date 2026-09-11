@@ -1,4 +1,4 @@
-// guard (#689): GET /api/library must surface each library song's descriptive tags, so the phone
+// guard: GET /api/library must surface each library song's descriptive tags, so the phone
 // library row can show them WITHOUT a second round-trip. This is the READ/display half of #632; the
 // WRITE half (kind:'tag' rows from the sidecar) already lands via setTags in app.ts.
 //
@@ -24,19 +24,19 @@ function stripComments(src: string): string {
 
 const SRC = stripComments(readFileSync(join(import.meta.dir, '+server.ts'), 'utf8'));
 
-test('the route reads tags with the tag KIND, not the genre default (#689)', () => {
+test('the route reads tags with the tag KIND, not the genre default', () => {
 	// tagsOf(id) defaults to 'genre'; the sidecar write path is setTags(id, "tag", …). A read that
 	// omits the kind returns genres and the tag chips stay empty forever — this reds that form.
 	expect(SRC).toMatch(/\.tagsOf\(\s*[^,]+,\s*'tag'\s*\)/);
 });
 
-test('the route builds a mediaId→tags map over the LIBRARY list (#689)', () => {
+test('the route builds a mediaId→tags map over the LIBRARY list', () => {
 	// A `tags` record, populated by iterating the library (not the cooking list, not the whole catalog).
 	expect(SRC).toMatch(/const\s+tags\s*:\s*Record<string,\s*string\[\]>\s*=\s*\{\}/);
 	expect(SRC).toMatch(/for\s*\(\s*const\s+\w+\s+of\s+library\s*\)/);
 });
 
-test('the tags map is RETURNED in the /api/library payload (#689)', () => {
+test('the tags map is RETURNED in the /api/library payload', () => {
 	// The map must reach the wire. Pin `tags,` (shorthand) inside the json({...}) response next to
 	// `library` — a built-but-unreturned map is the wired-to-nothing form.
 	const m = SRC.match(/return\s+json\(\{([\s\S]*?)\}\);/);

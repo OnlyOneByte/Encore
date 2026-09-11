@@ -1,5 +1,5 @@
 /*
- * ── THE TAILWIND TOOLCHAIN'S OWN GUARDS (issue #853) ───────────────────────────────────────────────
+ * ── THE TAILWIND TOOLCHAIN'S OWN GUARDS ───────────────────────────────────────────────
  *
  * Installing Tailwind into an app with ~4,950 lines of hand-written CSS required three decisions, and
  * each one is silent when it breaks. That is what this file is for. None of these arms tests Tailwind;
@@ -32,7 +32,7 @@ import { join } from 'node:path';
 import { svelteFiles, styleFiles, SKIP_DIRS } from './test-helpers';
 
 const SRC = join(import.meta.dir, '..');
-// repo root: apps/core/src/lib -> up four -> repo. Used to walk for any tailwind.config.* (issue #859).
+// repo root: apps/core/src/lib -> up four -> repo. Used to walk for any tailwind.config.*.
 const REPO = join(SRC, '..', '..', '..');
 const APP_CSS_PATH = join(SRC, 'app.css');
 const APP_CSS = readFileSync(APP_CSS_PATH, 'utf8');
@@ -104,7 +104,7 @@ function themeBlocks(css: string): string[] {
 }
 
 /*
- * ── THE COLOUR-TOKEN VOCABULARY (issue #859, XR-COL-14) ────────────────────────────────────────────
+ * ── THE COLOUR-TOKEN VOCABULARY (XR-COL-14) ────────────────────────────────────────────
  *
  * The value-bridge arm below must red on a `@theme` entry that FORWARDS to one of the app's own colour
  * tokens (`--color-x: var(--accent)` mints `text-accent` just as surely as a literal hex does). The
@@ -149,7 +149,7 @@ const COLOUR_TOKEN_RE_G = new RegExp(COLOUR_TOKEN_RE.source, 'g');
 function colourOffences(name: string, value: string): string[] {
 	const out: string[] = [];
 	/*
-	 * #913: a `--color-*` name is no longer an offence by itself — the semantic layer (`--color-primary`
+	 * a `--color-*` name is no longer an offence by itself — the semantic layer (`--color-primary`
 	 * and friends) is registered deliberately so vendored components work unedited, and the ink
 	 * direction is banned by NAME in `shadcn-ink-ban-913.test.ts` instead. What stays an offence is
 	 * registering a PLAYER HUE, because those vary per stop and `onFill`/`ink` differ for 13 of the 48 —
@@ -177,7 +177,7 @@ function colourOffences(name: string, value: string): string[] {
 }
 
 /*
- * ── SCAN ANY TAILWIND CONFIG, NOT JUST app.css (issue #859) ────────────────────────────────────────
+ * ── SCAN ANY TAILWIND CONFIG, NOT JUST app.css ────────────────────────────────────────
  *
  * This setup is Tailwind v4 CSS-first: the theme lives in app.css's `@theme` block and there is no
  * `tailwind.config.*` (a JS config would be the v3 shape — app.css says so at its bridge comment). But
@@ -244,7 +244,7 @@ function configColourOffences(src: string, rel: string): string[] {
 	return out;
 }
 
-describe('#853 the @theme block registers no colour', () => {
+describe('the @theme block registers no colour', () => {
 	it('finds the @theme block at all — the other arm is worthless if this regex stops matching', () => {
 		const blocks = themeBlocks(CSS);
 		expect(blocks.length).toBeGreaterThanOrEqual(1);
@@ -285,7 +285,7 @@ describe('#853 the @theme block registers no colour', () => {
 		 * The `ball`-marker lesson applies here too: the check is on what the declaration IS, not on
 		 * whether its name looks colour-ish.
 		 *
-		 * XR-COL-14 (#859) widens this two ways over the #853 original: the value-bridge now catches the
+		 * XR-COL-14 widens this two ways over the #853 original: the value-bridge now catches the
 		 * per-stop INK tokens (`--on-accent`, `--on-fill-N`) that the anchored family list used to miss,
 		 * and the scan covers any `tailwind.config.*` in the tree as well as app.css's `@theme`, since a
 		 * v3-shape config would register colours entirely outside app.css. `mintSurfaces` counts every
@@ -315,7 +315,7 @@ describe('#853 the @theme block registers no colour', () => {
 		expect(mintSurfaces).toBeGreaterThanOrEqual(1); // @nvf-floor mintSurfaces
 	});
 
-	it('MUTATION: registering a player hue in @theme reds the arm above (issue #859)', () => {
+	it('MUTATION: registering a player hue in @theme reds the arm above', () => {
 		/*
 		 * The arm is only worth its floor if it actually fires. Prove it: take the real app.css, splice
 		 * a player-hue registration into its `@theme inline` block in each of the shapes the guard must
@@ -351,7 +351,7 @@ describe('#853 the @theme block registers no colour', () => {
 		expect(COLOUR_TOKEN_RE.test('var(--on-fill-7)')).toBe(true);
 	});
 
-	it('MUTATION: a v3-shape tailwind.config that registers colours reds the config scan (issue #859)', () => {
+	it('MUTATION: a v3-shape tailwind.config that registers colours reds the config scan', () => {
 		// The other half of #859: prove the config-file leg fires on a reintroduced v3 config. In-process
 		// against configColourOffences, so no file is written into the tree.
 		const cfg = "export default { theme: { extend: { colors: { accent: '#7254e6' } } } };";
@@ -368,7 +368,7 @@ describe('#853 the @theme block registers no colour', () => {
 	});
 });
 
-describe('#853 Preflight stays out until someone decides otherwise', () => {
+describe('Preflight stays out until someone decides otherwise', () => {
 	it('does not import preflight.css', () => {
 		/*
 		 * Both spellings, because either one would bring the reset in: the explicit part import, and
@@ -388,7 +388,7 @@ describe('#853 Preflight stays out until someone decides otherwise', () => {
 	});
 });
 
-describe('#853 utilities are minted from the copy-in target only', () => {
+describe('utilities are minted from the copy-in target only', () => {
 	it('disables Tailwind source auto-detection', () => {
 		/*
 		 * `source(none)` is what stops the whole-repo scan. Without it Tailwind harvested 50 utilities
@@ -428,7 +428,7 @@ describe('#853 utilities are minted from the copy-in target only', () => {
 
 		/** Every whitespace-separated static class token in a `class="…"`, interpolations blanked. */
 		/*
-		 * #913 S3: strip comments FIRST. This scanned raw text, so a component's own documentation
+		 * S3: strip comments FIRST. This scanned raw text, so a component's own documentation
 		 * naming a class — `<label class="check">` in the Checkbox's deviation header — was collected as
 		 * a class the component USES, and reported as a collision with the app. A guard that criminalises
 		 * its own explanation teaches people to stop writing the explanation. The mutation arm below
@@ -477,7 +477,7 @@ describe('#853 utilities are minted from the copy-in target only', () => {
 	});
 });
 
-describe('#841 the copy-in target is genuinely in guard scope', () => {
+describe('the copy-in target is genuinely in guard scope', () => {
 	/*
 	 * The claim in `test-helpers.ts` is that a new source directory is in scope BY CONSTRUCTION,
 	 * because every walk is unconditionally recursive and there is no include-allowlist. #853 created

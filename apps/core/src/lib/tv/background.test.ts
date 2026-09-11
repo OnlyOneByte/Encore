@@ -36,18 +36,18 @@ test('gradient is the room glow, expressed in the existing tokens', () => {
 	expect(css).toContain('radial-gradient');
 });
 
-// #425 — this test is the INVERSE of the one it replaces. It used to assert that `solid` rendered the
+// — this test is the INVERSE of the one it replaces. It used to assert that `solid` rendered the
 // stored value THROUGH `stageHueToHex`, which was the legibility pin: the room named an angle and the
 // stage tier decided the brightness, so no room could wash out the lyric reel. The owner retired that
-// bound (ruling B) because the reel now defends itself with its own stroked outline (#750, b764d92).
+// bound (ruling B) because the reel now defends itself with its own stroked outline (b764d92).
 // So the assertion flips: the stored colour must reach the CSS untouched.
-test('solid renders the room colour VERBATIM — no tier, no guard (#425)', () => {
+test('solid renders the room colour VERBATIM — no tier, no guard', () => {
 	for (const colour of ['#000000', '#001d31', '#7c5cff', '#ff5cae', '#ffffff']) {
 		expect(stageBackgroundCss('solid', colour, null)).toBe(colour);
 	}
 });
 
-test('solid can reach a colour the retired stage tier could not produce (#425)', () => {
+test('solid can reach a colour the retired stage tier could not produce', () => {
 	// The point of the ruling, stated as a test rather than a comment: white is now reachable, and the
 	// old pin PROVABLY could not emit it — every hue at STAGE_BG_L (0.22) is far darker than white, so a
 	// stage generated through the tier can never equal it. If someone reinstated the pin on this path,
@@ -67,7 +67,7 @@ test('solid ignores the singer, and singer ignores the room colour', () => {
 // The `singer` glow KEPT the stage tier, and that is the deliberate half of #425: a room picks its own
 // solid colour and is looking at the result, but nobody picks the singer glow — its hue comes from
 // somebody else's identity dot, so a bright field would arrive unasked and unexplained.
-test('singer follows the singer colour through the stage tier — the tier survives here (#425)', () => {
+test('singer follows the singer colour through the stage tier — the tier survives here', () => {
 	for (const dot of SINGER_COLORS) {
 		const css = stageBackgroundCss('singer', DEFAULT_STAGE_COLOR, dot);
 		expect(css).toContain(stageHueToHex(nearestSingerHue(dot)));
@@ -98,7 +98,7 @@ test('visualizer resolves to the stage floor, not to a colour', () => {
 	expect(stageBackgroundCss('visualizer', DEFAULT_STAGE_COLOR, '#ff5cae')).toBe('#000');
 });
 
-// #425 — pins the `tv/+page.svelte` derive `tvBackgroundHue = hueOfColor(tvBackgroundColor)` (:83) and
+// — pins the `tv/+page.svelte` derive `tvBackgroundHue = hueOfColor(tvBackgroundColor)` (:83) and
 // the `:619` call `stageBackgroundCss(style, tvBackgroundColor, …)`. Those two live in a .svelte file,
 // which the from-root `bun test` lane cannot render, so reverting either only breaks the build — not a
 // proof. This asserts the pure CONTRACT the component wires together, in a headless test, so the
@@ -139,7 +139,7 @@ test('adding the visualizer style left the four colour styles untouched', () => 
 
 // ── #782 stage dim (piece 3 of #425) ────────────────────────────────────────
 
-test('#782: an omitted dim defaults to 0 — every style renders exactly as before', () => {
+test('an omitted dim defaults to 0 — every style renders exactly as before', () => {
 	// the new fourth arg is optional and defaults to 0, so every existing call site (and the tests above,
 	// which pass three args) keeps its result. This is the invisible-migration promise for the wiring.
 	for (const s of TV_BACKGROUND_STYLES) {
@@ -149,7 +149,7 @@ test('#782: an omitted dim defaults to 0 — every style renders exactly as befo
 	}
 });
 
-test('#782: dim darkens the solid room colour toward black', () => {
+test('dim darkens the solid room colour toward black', () => {
 	// solid is the room's own colour, and the dim is a lightness control on it (owner ruling Q2 = A).
 	expect(stageBackgroundCss('solid', '#ffffff', null, 0)).toBe('#ffffff');
 	expect(stageBackgroundCss('solid', '#ffffff', null, 0.5)).toBe(dimTowardBlack('#ffffff', 0.5));
@@ -158,7 +158,7 @@ test('#782: dim darkens the solid room colour toward black', () => {
 	expect(stageBackgroundCss('solid', '#336699', null, 0.6)).toBe(dimTowardBlack('#336699', 0.6));
 });
 
-test('#782: dim darkens the singer glow inner colour but keeps the geometry and the outer token', () => {
+test('dim darkens the singer glow inner colour but keeps the geometry and the outer token', () => {
 	const dot = '#5cb8ff';
 	const undimmed = stageBackgroundCss('singer', DEFAULT_STAGE_COLOR, dot, 0);
 	const dimmed = stageBackgroundCss('singer', DEFAULT_STAGE_COLOR, dot, 0.5);
@@ -172,7 +172,7 @@ test('#782: dim darkens the singer glow inner colour but keeps the geometry and 
 	expect(dimmed).not.toBe(undimmed);
 });
 
-test('#782: dim is a no-op on the styles that resolve to no chosen colour', () => {
+test('dim is a no-op on the styles that resolve to no chosen colour', () => {
 	// off and visualizer are already the black floor — dimming black is still black.
 	expect(stageBackgroundCss('off', DEFAULT_STAGE_COLOR, null, 1)).toBe('#000');
 	expect(stageBackgroundCss('visualizer', DEFAULT_STAGE_COLOR, '#ff5cae', 1)).toBe('#000');
@@ -186,7 +186,7 @@ test('#782: dim is a no-op on the styles that resolve to no chosen colour', () =
 	);
 });
 
-test('#782: dim 1 collapses the solid stage to the same black as off', () => {
+test('dim 1 collapses the solid stage to the same black as off', () => {
 	// the ruling is "toward black", so full dim on solid must actually reach black — indistinguishable
 	// from off on the pixel, which is the honest end of the range.
 	expect(stageBackgroundCss('solid', '#7c5cff', null, 1)).toBe('#000000');

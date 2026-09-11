@@ -124,11 +124,11 @@ test('drops the index row and clears the runtime catalog; unknown id is a no-op 
 
 // Regression for issue #636: deleting a NON-playing entry changes who plays next, so the delete path
 // must re-broadcast nowplaying:changed too. reconcileOnReady fires only on the wasPlaying path (the
-// dangling-current case, #639); the far more common non-playing delete published queue:removed +
+// dangling-current case); the far more common non-playing delete published queue:removed +
 // media:status with NO nowplaying:changed, so the TV's advertised upNext kept naming the deleted
 // song. The `else emitNowPlaying(hub)` on delete.ts's wasPlaying gate closes it. Base-RED: on base the
 // delete path emits no nowplaying:changed on this branch, so the assertion inverts (no such event).
-test('deleting a NON-playing entry re-broadcasts the true next (#636)', () => {
+test('deleting a NON-playing entry re-broadcasts the true next', () => {
 	// p is playing; the room's upNext is q1. Delete q1 (NOT the playing entry): truth becomes q2.
 	const { deps, state, published } = harness(['m-p', 'm-q1', 'm-q2']);
 	seed(state, 'p', 'm-p');

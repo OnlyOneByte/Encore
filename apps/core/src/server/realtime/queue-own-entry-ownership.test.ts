@@ -80,7 +80,7 @@ test('with the current policy a singer may reorder SOMEONE ELSE\u2019S entry (st
 	expect(validateCommand(cmd({ op: 'move', id: 'other1', toSeq: 0 }), harness())).toBeNull();
 });
 
-// #856 step 4: move-to-index is the CROSS-SINGER reorder. Same ownership scope as `move` — own entry
+// step 4: move-to-index is the CROSS-SINGER reorder. Same ownership scope as `move` — own entry
 // needs no capability, another singer's is gated on queue:reorder-any (reachable under today's can()).
 test('with the current policy a singer may move-to-index their OWN entry', () => {
 	expect(validateCommand(cmd({ op: 'move-to-index', id: 'own1', toIdx: 0 }), harness())).toBeNull();
@@ -131,7 +131,7 @@ function switchArm(src: string, op: string): string {
 //        lives INSIDE the "not my entry" block, so an owner never reaches it.
 //   (ii) EARLY-RETURN form — `if (<var>.singerId === deps.actorSingerId) return null;` before the gate
 //        — an owner short-circuits out, so can() is likewise unreachable for an owner.
-// #372: the previous assertion only required an ownership *substring* to appear EARLIER in the arm
+// the previous assertion only required an ownership *substring* to appear EARLIER in the arm
 // text than the can() substring. Text order is not enclosure: hoisting the comparison into a `const`
 // used for an audit log (owner still falls through to can()) keeps "before" true while breaking the
 // property, and rewriting the guard to the (ii) early-return form (which STRENGTHENS the property)

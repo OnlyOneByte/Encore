@@ -189,7 +189,7 @@ test('connection edges are reported once each, so the UI can show an offline cue
 /** Sockets that opened and have not since been closed -- i.e. real live subscribers. */
 const liveSockets = (sockets: FakeSocket[]) => sockets.filter((s) => !s.closed);
 
-test('a wake during a reconnect does not leave a second live socket (issue #114)', () => {
+test('a wake during a reconnect does not leave a second live socket', () => {
 	const h = makeClient();
 	h.client.open();
 	h.sockets[0]!.fireOpen();
@@ -216,7 +216,7 @@ test('a wake during a reconnect does not leave a second live socket (issue #114)
 	expect(h.client.connected).toBe(true);
 });
 
-test('the surviving socket keeps its heartbeat after a wake-orphaned socket closes (issue #114)', () => {
+test('the surviving socket keeps its heartbeat after a wake-orphaned socket closes', () => {
 	const h = makeClient();
 	h.client.open();
 	h.sockets[0]!.fireOpen();

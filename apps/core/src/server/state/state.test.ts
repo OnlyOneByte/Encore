@@ -15,7 +15,7 @@ const entry = (singerId: string, addedAt: number): QueueEntry => ({
 	addedAt
 });
 
-// Playback is keyed by room (#655): the write-behind sink and boot-hydrate both name a room. These
+// Playback is keyed by room: the write-behind sink and boot-hydrate both name a room. These
 // tests exercise one room, so a single fixed id is enough — the FK is not enforced on this bun:sqlite
 // DB, so no `rooms` row is required for the playback write to land.
 const TEST_ROOM = 'test-room';
@@ -74,7 +74,7 @@ test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
 });
 
 test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND flush', () => {
-	// `playback_state.room_id` (#655) is the same for every flush in a room, so the FIRST flush
+	// `playback_state.room_id` is the same for every flush in a room, so the FIRST flush
 	// inserts and EVERY later flush takes the onConflictDoUpdate `set` arm. That arm is a hand-duplicated copy of the `.values()`
 	// field list; a field added to one and forgotten in the other would persist once and then freeze
 	// at its boot value, with every other test (all single-flush) still green. This drives the arm.
@@ -105,7 +105,7 @@ test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND f
 	const reloaded = new AuthoritativeState();
 	// Hydrate with the persisted entries alongside playback, exactly as boot does. currentEntryId
 	// names entries[1], so passing the real entries keeps it resolvable — an EMPTY entries array here
-	// would trip hydrate's dangling-id self-heal (issue #128) and null the very field we round-trip.
+	// would trip hydrate's dangling-id self-heal and null the very field we round-trip.
 	const { entries: reloadedEntries, playback } = hydrate(db, TEST_ROOM);
 	reloaded.hydrate(reloadedEntries as unknown as QueueEntry[], playback);
 
@@ -142,7 +142,7 @@ test('setPosition does NOT bump rev (Finding #1 — no resync storm from ontimeu
 	expect(s.playback.positionSec).toBe(42); // tracked (final write is a whole second)
 });
 
-test('setPosition keeps sub-second precision in-memory + clamps negative (#718)', () => {
+test('setPosition keeps sub-second precision in-memory + clamps negative', () => {
 	const s = new AuthoritativeState();
 	s.setPosition(-5);
 	expect(s.playback.positionSec).toBe(0); // a negative playhead is nonsense, clamp it
@@ -152,7 +152,7 @@ test('setPosition keeps sub-second precision in-memory + clamps negative (#718)'
 	expect(s.playback.positionSec).toBe(7.99);
 });
 
-test('a sub-second telemetry frame is never broadcast as exact 0, yet persists as an integer (#718)', () => {
+test('a sub-second telemetry frame is never broadcast as exact 0, yet persists as an integer', () => {
 	// The producer bug: store.setPosition(0.6) floored to 0, and guide-sync.ts's `restartToZero`
 	// clause treats an exact 0 (with the master past the pre-roll tolerance) as an unambiguous
 	// rewind. So for the first ~1.25s of every song, any command that bumped rev (key/guide/pause)
@@ -200,7 +200,7 @@ test('applyQueueOp prunes terminal entries from the authoritative queue (Finding
 
 // — #345: server-owned monotonic addedAt (nextAddedAt) —
 
-test('#345: nextAddedAt is strictly increasing even when called faster than the clock ticks', () => {
+test('nextAddedAt is strictly increasing even when called faster than the clock ticks', () => {
 	const s = new AuthoritativeState();
 	const a = s.nextAddedAt();
 	const b = s.nextAddedAt();
@@ -209,7 +209,7 @@ test('#345: nextAddedAt is strictly increasing even when called faster than the 
 	expect(c).toBeGreaterThan(b);
 });
 
-test('#345: hydrate seeds nextAddedAt ABOVE the max persisted stamp (survives restart)', () => {
+test('hydrate seeds nextAddedAt ABOVE the max persisted stamp (survives restart)', () => {
 	const s = new AuthoritativeState();
 	// Persisted state from before the reboot carries a stamp far in the future of Date.now(): the
 	// next server stamp must sit ABOVE it, or a restart-then-add re-opens the very jump this fixes.
@@ -219,7 +219,7 @@ test('#345: hydrate seeds nextAddedAt ABOVE the max persisted stamp (survives re
 	expect(next).toBeGreaterThan(future);
 });
 
-test('#345: hydrate seed also counts terminal (done/skipped) rows a later add must clear', () => {
+test('hydrate seed also counts terminal (done/skipped) rows a later add must clear', () => {
 	const s = new AuthoritativeState();
 	const future = Date.now() + 5_000_000_000;
 	const done: QueueEntry = {

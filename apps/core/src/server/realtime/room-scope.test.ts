@@ -1,4 +1,4 @@
-// #657 room isolation — the deterministic two-room proof for the pure decision layer.
+// room isolation — the deterministic two-room proof for the pure decision layer.
 //
 // Two parties, A and B, on ONE core that is authoritatively serving room A (servedRoomId = A). The
 // isolation contract this file pins, all decidable without a socket:

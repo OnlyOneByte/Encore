@@ -58,7 +58,7 @@ function deps(): MakeKaraokeDeps & { mediaById: Map<string, Media> } {
 	return { jobs: new JobRepository(db), mediaById: new Map(), state: new AuthoritativeState(), now: () => T0 };
 }
 
-test('#742 cookState answers not-cookable for a Spotify media (it answered cookable)', () => {
+test('cookState answers not-cookable for a Spotify media (it answered cookable)', () => {
 	// THE base-red assertion the issue names. `requestMakeKaraoke`'s docstring tells callers to ask
 	// cookState to tell its refusals apart; for this refusal that promise was false, which is what let
 	// every caller act as though a cook were about to start.
@@ -67,7 +67,7 @@ test('#742 cookState answers not-cookable for a Spotify media (it answered cooka
 	expect(cookState('sp1', d)).toBe('not-cookable');
 });
 
-test('#742 CONTROL: an identical YouTube media still answers cookable (not vacuous)', () => {
+test('CONTROL: an identical YouTube media still answers cookable (not vacuous)', () => {
 	// Without this, a fix that made cookState answer 'not-cookable' for EVERYTHING would pass the
 	// assertion above. The two media differ only in `source`.
 	const d = deps();
@@ -75,7 +75,7 @@ test('#742 CONTROL: an identical YouTube media still answers cookable (not vacuo
 	expect(cookState('yt1', d)).toBe('cookable');
 });
 
-test('#742 the verdict is a property of the SONG, not of room state', () => {
+test('the verdict is a property of the SONG, not of room state', () => {
 	// Answered ahead of playing/ready/over-limit deliberately: those are states a song passes THROUGH,
 	// and this one it can never leave. A Spotify media that somehow held the current slot must still
 	// report not-cookable rather than 'playing', or a caller reading the state would treat it as a
@@ -87,7 +87,7 @@ test('#742 the verdict is a property of the SONG, not of room state', () => {
 	expect(cookState('sp1', d)).toBe('not-cookable');
 });
 
-test('#742 requestMakeKaraoke still refuses, and now refuses OFF THE STATE', () => {
+test('requestMakeKaraoke still refuses, and now refuses OFF THE STATE', () => {
 	// Behaviour-preserving half: the standalone `media.source === 'spotify'` check moved up into
 	// cookState, so the refusal must be unchanged from the caller's point of view — null, and the media
 	// never flipped to `queued` (a flip with no job is its own deadlock: rotation holds the slot for a
@@ -101,7 +101,7 @@ test('#742 requestMakeKaraoke still refuses, and now refuses OFF THE STATE', () 
 	expect(d.jobs.listByStatus('queued')).toHaveLength(0);
 });
 
-test('#742 the singer keeps their turn: a Sing tap on a Spotify row books NOTHING', () => {
+test('the singer keeps their turn: a Sing tap on a Spotify row books NOTHING', () => {
 	// The END-TO-END trigger from the issue, driven through the REAL pieces the phone uses: the
 	// affordance gate (`canCook`, from the four SongRow `onmake` sites), the real `cookAndQueue`
 	// queue-first ordering, and the real authoritative state + rotation.
@@ -147,7 +147,7 @@ test('#742 the singer keeps their turn: a Sing tap on a Spotify row books NOTHIN
 	expect(next).toBeNull();
 });
 
-test('#742 CONTROL: the same tap on a YouTube row DOES take the turn and start the cook', () => {
+test('CONTROL: the same tap on a YouTube row DOES take the turn and start the cook', () => {
 	// The fix must not close the ordinary path. Same harness, one field different — this is what proves
 	// the guard above discriminates on `source` rather than on the harness refusing to do anything.
 	// Also base-red on its own: base's one-parameter `canCook` cannot answer a call that names the
@@ -176,7 +176,7 @@ test('#742 CONTROL: the same tap on a YouTube row DOES take the turn and start t
 	expect(nextPlayable(d.state.entries, d.mediaById).held.map((e) => e.id)).toEqual(['q1']);
 });
 
-test('#742 isCookableSource is the one authority, and the fetcher floor is deliberately unchanged', () => {
+test('isCookableSource is the one authority, and the fetcher floor is deliberately unchanged', () => {
 	// The rule has to live in ONE place or it drifts back into five assertions and one enforcement.
 	// `fetcherFor('spotify')` still returning the default downloader is CORRECT and must not become the
 	// guard: it is a floor that keeps the return type total, and the issue says so explicitly. Asserting

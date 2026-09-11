@@ -1,4 +1,4 @@
-// guard: the TV must HOLD THE SCREEN AWAKE while a song is on stage, and release it when idle. (#478)
+// guard: the TV must HOLD THE SCREEN AWAKE while a song is on stage, and release it when idle.
 //
 // THE DEFECT. Nothing in the app held the screen on — a full-state search for wake/awake/screensaver
 // returned zero hits — so the OS screensaver blanked the room mid-song. A long instrumental break with
@@ -49,7 +49,7 @@ function tvSource(): string {
 	return stripComments(readFileSync(TV_ROUTE, 'utf8'));
 }
 
-test('the /tv route acquires a screen wake lock and releases it on cleanup (#478)', () => {
+test('the /tv route acquires a screen wake lock and releases it on cleanup', () => {
 	const src = tvSource();
 	// It requests the SCREEN wake lock — the only lock type that keeps the display on.
 	expect(src).toMatch(/navigator\.wakeLock\b[\s\S]*?\.request\(\s*['"]screen['"]\s*\)/);
@@ -69,7 +69,7 @@ test('the /tv route acquires a screen wake lock and releases it on cleanup (#478
 	expect(region).toMatch(/return\s*\(\)\s*=>/);
 });
 
-test('the wake-lock effect is FEATURE-DETECT guarded so it is inert without the API (#478)', () => {
+test('the wake-lock effect is FEATURE-DETECT guarded so it is inert without the API', () => {
 	const src = tvSource();
 	// The guard bails when the API is absent — secure-context only, so undefined on every plain-HTTP
 	// LAN room and during SSR (no navigator). Removing the guard reds this; it mirrors the
@@ -79,7 +79,7 @@ test('the wake-lock effect is FEATURE-DETECT guarded so it is inert without the 
 	);
 });
 
-test('the wake-lock is gated on being on-stage, not held forever (#478)', () => {
+test('the wake-lock is gated on being on-stage, not held forever', () => {
 	const src = tvSource();
 	// The effect reads the on-stage flag (!isAttract) and returns early when idle, so attract/lobby
 	// release the lock rather than pinning the screen awake with nothing playing. `!isAttract` is the
@@ -92,7 +92,7 @@ test('the wake-lock is gated on being on-stage, not held forever (#478)', () => 
 	expect(region).toMatch(/if\s*\(\s*!playing\s*\)\s*return/);
 });
 
-test('the wake-lock is RE-ACQUIRED on visibilitychange (#478)', () => {
+test('the wake-lock is RE-ACQUIRED on visibilitychange', () => {
 	const src = tvSource();
 	// The platform drops the lock when the document hides and does not restore it — so a listener
 	// re-requests when the page becomes visible again. No visibilitychange handler existed in this file

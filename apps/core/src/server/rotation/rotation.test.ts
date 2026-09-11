@@ -26,7 +26,7 @@ const m = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-// Fairness is decided at INSERT time now (#856): the queue is a stored ordered list, and `reseq`
+// Fairness is decided at INSERT time now: the queue is a stored ordered list, and `reseq`
 // only renumbers it. So these drive real adds through the shared reducer and assert the resulting
 // stored list, rather than handing `reseq` a pile of entries and expecting it to sort them.
 const insertAll = (adds: QueueEntry[], order: 'fair' | 'fcfs' = 'fair') =>

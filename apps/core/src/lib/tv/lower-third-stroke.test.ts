@@ -1,8 +1,8 @@
 // Guard: the TV lower-third (singer name, key, provenance marker) carries a hard OUTLINE, not only a
-// soft glow — so it stays legible on ANY stage colour a room now picks (issue #425, piece 2).
+// soft glow — so it stays legible on ANY stage colour a room now picks (piece 2).
 //
 // THE DEFECT this pins. #425 piece 2 lets a room store a real stage COLOUR, including white. Piece 1
-// (#750) stroked the lyric REEL for exactly this reason — but it stroked ONLY the reel
+// stroked the lyric REEL for exactly this reason — but it stroked ONLY the reel
 // (LyricsOverlay.svelte). The `.lower-third` block in tv/+page.svelte had `NO CARD` and leaned solely
 // on `text-shadow: 0 2px 14px rgba(0,0,0,.9)`, a blurred shadow that dissolves against a bright field
 // of similar luminance. On a white stage the white singer name measured ~1.10:1 and the amber
@@ -45,7 +45,7 @@ function lowerThirdRule(): string {
 	return m![1]!;
 }
 
-test('the lower-third is stroked so the singer name/key/marker stay legible on any background (#425)', () => {
+test('the lower-third is stroked so the singer name/key/marker stay legible on any background', () => {
 	const body = lowerThirdRule();
 	// A real outline, not just the blurred glow. Reverting this line reds here.
 	const stroke = [...body.matchAll(/-webkit-text-stroke:\s*([^;]+);/g)].map((m) => m[1]!.trim());
@@ -55,7 +55,7 @@ test('the lower-third is stroked so the singer name/key/marker stay legible on a
 	expect(stroke[0]).toContain('var(--scrim-strong)');
 });
 
-test('the lower-third stroke paints BEHIND the glyph so it does not eat the ink (#425)', () => {
+test('the lower-third stroke paints BEHIND the glyph so it does not eat the ink', () => {
 	// paint-order: stroke fill is load-bearing — the default (fill then stroke on top) thickens the
 	// type. Removing this line reds here.
 	expect(lowerThirdRule()).toMatch(/paint-order:\s*stroke\s+fill\s*;/);
@@ -64,7 +64,7 @@ test('the lower-third stroke paints BEHIND the glyph so it does not eat the ink 
 // The machine-checkable half of the reviewer's CDP measurement: prove the stroke colour actually
 // clears the body-text bar against WHITE — the room's brightest legal stage, and the case that
 // measured 1.10:1 before the fix. This is arithmetic, so it bites without a browser.
-test('the lower-third stroke colour clears WCAG body contrast on a white stage (#425)', () => {
+test('the lower-third stroke colour clears WCAG body contrast on a white stage', () => {
 	// --scrim-strong, read from app.css so a change to the token is caught here rather than assumed.
 	const css = readFileSync(join(import.meta.dir, '..', '..', 'app.css'), 'utf8');
 	const m = css.match(/--scrim-strong:\s*rgba?\(([^)]+)\)\s*;/);

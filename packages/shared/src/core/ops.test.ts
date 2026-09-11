@@ -56,7 +56,7 @@ test('applyOp does not mutate its input (pure)', () => {
 });
 
 // ── applyAndReseq is pure: it never mutates its input array or its entries ──────────
-// This immutability is what makes snapshot-based rollback total (issue #101): #onReject restores a
+// This immutability is what makes snapshot-based rollback total: #onReject restores a
 // reference to the pre-op array, so the forward op must not have mutated the objects that array
 // held. `move` is the case that mattered — it routes through reorderWithinSinger, which rewrites
 // addedAt; if it did so in place, a captured snapshot would already carry the permuted stamps.
@@ -85,7 +85,7 @@ test('applyAndReseq(add) and (remove) also leave the input untouched', () => {
 	expect(JSON.stringify(rem0)).toBe(remFrozen);
 });
 
-// #856 step 4 — the `move-to-index` union member is a TYPE + comment hunk: reverting it alone leaves
+// step 4 — the `move-to-index` union member is a TYPE + comment hunk: reverting it alone leaves
 // the suite green (nothing runtime-observable), which is the R2 pure-addition exception, not a defect.
 // The behavioural reducer path is pinned by rotation.test.ts + the applyOp fallback above; this is the
 // source-scan guard for the vocabulary itself, so the op cannot silently vanish from the wire contract.
@@ -94,7 +94,7 @@ const opsSrc = readFileSync(new URL('./ops.ts', import.meta.url), 'utf8').replac
 	/\/\*[\s\S]*?\*\//g,
 	''
 ).replace(/(^|[^:])\/\/[^\n]*/g, '$1');
-test('#856 step 4: the QueueOp union carries move-to-index (id + numeric toIdx)', () => {
+test('step 4: the QueueOp union carries move-to-index (id + numeric toIdx)', () => {
 	const m = opsSrc.match(/export type QueueOp =[\s\S]*?status: EntryStatus \};/);
 	expect(m).not.toBeNull(); // non-vacuous: the union must exist
 	expect(m![0]).toContain("op: 'move-to-index'");

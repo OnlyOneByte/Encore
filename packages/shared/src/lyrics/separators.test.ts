@@ -85,7 +85,7 @@ describe('separator registry', () => {
 		expect(ids).toContain('htdemucs_6s');
 	});
 
-	it('offers audiosep as a live-selectable mel-band engine with instrumental_becruily (#483)', () => {
+	it('offers audiosep as a live-selectable mel-band engine with instrumental_becruily', () => {
 		// Owner ruling #483 Option A: python-audio-separator adopted ALONGSIDE roformer, with the
 		// mel-band instrumental_becruily checkpoint live-selectable (NOT upgrade-only like ensemble).
 		const audiosep = getEngine('audiosep');
@@ -256,7 +256,7 @@ describe('room scope', () => {
 		expect(normalizeRoomSettings({ songIntroEnabled: 'yes' as never }, off).songIntroEnabled).toBe(false);
 	});
 
-	it('loudnessNormalization ships OFF and is a plain boolean toggle (#462)', () => {
+	it('loudnessNormalization ships OFF and is a plain boolean toggle', () => {
 		// Opt-in: the default reproduces today's TV (every song at unity).
 		expect(DEFAULT_ROOM_SETTINGS.loudnessNormalization).toBe(false);
 		expect(normalizeRoomSettings({ loudnessNormalization: true }).loudnessNormalization).toBe(true);
@@ -422,7 +422,7 @@ describe('lyrics presentation registries', () => {
 	});
 
 	it('the defaults reproduce the TV that shipped before this setting existed', () => {
-		// A bouncing ball + word-by-word pink was hardcoded; the lead now ships at 0 (#629). Regressing these silently
+		// A bouncing ball + word-by-word pink was hardcoded; the lead now ships at 0. Regressing these silently
 		// changes every existing room on upgrade.
 		expect(DEFAULT_LYRICS_BALL).toBe('off');
 		expect(DEFAULT_LYRICS_HIGHLIGHT).toBe('word');
@@ -785,45 +785,45 @@ describe('tv background styles', () => {
 	// #425 replaced the stored hue ANGLE with a real colour, so this block replaces the quantiser
 	// assertions that used to live here. The angle needed wrapping and snapping because every number had
 	// a meaning once wrapped; a colour is either parseable or it is not, so the rule is normalise-or-keep.
-	it('normalises the stage colour to canonical hex rather than storing what was sent (#425)', () => {
+	it('normalises the stage colour to canonical hex rather than storing what was sent', () => {
 		expect(normalizeRoomSettings({ tvBackgroundColor: '#ABC' }).tvBackgroundColor).toBe('#aabbcc');
 		expect(normalizeRoomSettings({ tvBackgroundColor: '#AABBCC' }).tvBackgroundColor).toBe('#aabbcc');
 		expect(normalizeRoomSettings({ tvBackgroundColor: '#001d31' }).tvBackgroundColor).toBe('#001d31');
 	});
 
-	it('accepts a colour the retired hue pin could never have produced (#425)', () => {
+	it('accepts a colour the retired hue pin could never have produced', () => {
 		// the ruling, as an assertion: brightness is no longer bounded here, because the lyric reel now
-		// carries its own stroke (#750) instead of the field being restricted to spare it
+		// carries its own stroke instead of the field being restricted to spare it
 		expect(normalizeRoomSettings({ tvBackgroundColor: '#ffffff' }).tvBackgroundColor).toBe('#ffffff');
 		expect(normalizeRoomSettings({ tvBackgroundColor: '#ff0000' }).tvBackgroundColor).toBe('#ff0000');
 	});
 
-	it('falls back on a stage colour that is not a parseable hex (#425)', () => {
+	it('falls back on a stage colour that is not a parseable hex', () => {
 		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundColor: '#002215' };
 		for (const junk of ['rebeccapurple', 'rgb(1,2,3)', '#7c5cff30', '#12', '', 240, NaN, null, undefined, {}]) {
 			expect(normalizeRoomSettings({ tvBackgroundColor: junk as never }, room).tvBackgroundColor).toBe('#002215');
 		}
 	});
 
-	it('the default stage colour is what the old hue-240 default rendered as (#425)', () => {
+	it('the default stage colour is what the old hue-240 default rendered as', () => {
 		// an existing box that never opened Settings must look byte-identical after the migration
 		expect(DEFAULT_ROOM_SETTINGS.tvBackgroundColor).toBe(DEFAULT_STAGE_COLOR);
 		expect(DEFAULT_STAGE_COLOR).toBe(stageHueToHex(240));
 	});
 
-	it('every normalized stage colour is one shape the CSS layer can assume (#425)', () => {
+	it('every normalized stage colour is one shape the CSS layer can assume', () => {
 		for (const raw of ['#abc', '#AABBCC', '#000', '#ffffff', 'junk', '']) {
 			const c = normalizeRoomSettings({ tvBackgroundColor: raw as never }).tvBackgroundColor;
 			expect(c).toMatch(/^#[0-9a-f]{6}$/);
 		}
 	});
 
-	// #782 (piece 3 of #425): the stage dimmer, a 0..1 fraction normalised beside the colour it dims.
-	it('the default stage dim is 0 — no dim, today TV exactly (#782)', () => {
+	// (piece 3 of #425): the stage dimmer, a 0..1 fraction normalised beside the colour it dims.
+	it('the default stage dim is 0 — no dim, today TV exactly', () => {
 		expect(DEFAULT_ROOM_SETTINGS.tvBackgroundDim).toBe(0);
 	});
 
-	it('normalises the stage dim: clamps to 0..1, rounds to a hundredth (#782)', () => {
+	it('normalises the stage dim: clamps to 0..1, rounds to a hundredth', () => {
 		expect(normalizeRoomSettings({ tvBackgroundDim: 0 }).tvBackgroundDim).toBe(0);
 		expect(normalizeRoomSettings({ tvBackgroundDim: 1 }).tvBackgroundDim).toBe(1);
 		expect(normalizeRoomSettings({ tvBackgroundDim: 0.5 }).tvBackgroundDim).toBe(0.5);
@@ -832,7 +832,7 @@ describe('tv background styles', () => {
 		expect(normalizeRoomSettings({ tvBackgroundDim: 5 }).tvBackgroundDim).toBe(1);
 	});
 
-	it('keeps the room current dim on a junk write, like every other field (#782)', () => {
+	it('keeps the room current dim on a junk write, like every other field', () => {
 		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundDim: 0.35 };
 		for (const junk of ['0.5', NaN, Infinity, null, undefined, {}]) {
 			expect(normalizeRoomSettings({ tvBackgroundDim: junk as never }, room).tvBackgroundDim).toBe(0.35);

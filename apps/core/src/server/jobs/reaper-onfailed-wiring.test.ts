@@ -31,13 +31,13 @@ function stripComments(src: string): string {
 const APP = stripComments(readFileSync(join(import.meta.dir, '..', 'app.ts'), 'utf8'));
 const MK = stripComments(readFileSync(join(import.meta.dir, 'make-karaoke.ts'), 'utf8'));
 
-test('app.ts imports reportTerminalFailure — the one shared terminal-fail epilogue (#451)', () => {
+test('app.ts imports reportTerminalFailure — the one shared terminal-fail epilogue', () => {
 	expect(APP).toMatch(/import\s*\{[^}]*\breportTerminalFailure\b[^}]*\}\s*from\s*'\.\/jobs\/make-karaoke'/);
 });
 
-test('app.ts wires the JobReaper onFailed hook through reportTerminalFailure over mediaById + publish (#451)', () => {
+test('app.ts wires the JobReaper onFailed hook through reportTerminalFailure over mediaById + publish', () => {
 	// An unwired onFailed means a reaper-killed cook never settles its gate → readyToSing never flips
-	// → rotation holds the queue entry forever (#90), AND stays silent (#303). Isolate the onFailed
+	// → rotation holds the queue entry forever (#90), AND stays silent. Isolate the onFailed
 	// hook and pin that it delegates to the shared epilogue with the reaper cause and both deps.
 	const start = APP.indexOf('onFailed:');
 	expect(start).toBeGreaterThanOrEqual(0);
@@ -54,7 +54,7 @@ test('app.ts wires the JobReaper onFailed hook through reportTerminalFailure ove
 	expect(APP).toMatch(/onFailed:\s*\(job\)\s*=>\s*reportTerminalFailure\(job,\s*'reaper'/);
 });
 
-test('reportTerminalFailure performs all four terminal-fail epilogue steps (#451)', () => {
+test('reportTerminalFailure performs all four terminal-fail epilogue steps', () => {
 	// Isolate the function body so a match cannot be satisfied by unrelated make-karaoke.ts code.
 	const sig = MK.indexOf('export function reportTerminalFailure');
 	expect(sig).toBeGreaterThanOrEqual(0);
@@ -93,6 +93,6 @@ test('reportTerminalFailure performs all four terminal-fail epilogue steps (#451
 	expect(fn).toMatch(/media=\$\{job\.mediaId\}/);
 	expect(fn).toMatch(/attempts=\$\{job\.attempts\}/);
 	expect(fn).toMatch(/reason=/);
-	// (4) reclaim the job's scratch — the step the TTL branch used to omit (#451).
+	// (4) reclaim the job's scratch — the step the TTL branch used to omit.
 	expect(fn).toMatch(/cleanJobWork\(job\.id\)/);
 });

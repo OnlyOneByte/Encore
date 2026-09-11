@@ -78,7 +78,7 @@ function palette(): Map<string, string> {
 /**
  * The full guest-visible .svelte surface, computed ONCE. Every scan below iterates it; a
  * `.filter(bad).toEqual([])` / `missing.toEqual([])` scan passes vacuously if the walk returns
- * nothing, so pin a floor here (issue #453). If a refactor moves files out of src/, this reds
+ * nothing, so pin a floor here. If a refactor moves files out of src/, this reds
  * loudly instead of silently guarding nothing. 25 files today; floor well below that.
  */
 const FILES = svelteFiles(SRC);
@@ -96,7 +96,7 @@ test('no component hard-codes a colour the palette already owns', () => {
 	// a letterbox bar, or contrast-critical lyric text over video would assert a relationship that is
 	// not there, and would break the moment --on-accent stopped being white.
 	//
-	// #840 MADE THAT LAST CLAUSE LIVE. `--on-accent` is no longer a constant: it is the current stop's
+	// MADE THAT LAST CLAUSE LIVE. `--on-accent` is no longer a constant: it is the current stop's
 	// `on_fill`, and across the 48-stop registry that is 36 DARK / 12 white. It reads #ffffff today only
 	// because the seeded stop's ink is white. So the carve-out is not a convenience -- it is what keeps
 	// every unrelated white in the tree from being rewritten into a token that will stop being white.
@@ -236,7 +236,7 @@ test('a component never references a token that exists only in the @theme bridge
 	// `:root` token, so the reference short-circuits and is never reported. It asks "is this name
 	// written in app.css", and the question here is "is this name EMITTED".
 	//
-	// #829 makes the trap materially easier to step on, which is why the guard lands with it: the
+	// makes the trap materially easier to step on, which is why the guard lands with it: the
 	// bridge keys it adds are deliberate near-homophones of their `:root` sources (--spacing-sm beside
 	// --space-sm, --text-ph-sm beside --ph-text-sm, --duration-fast beside --motion-fast). The spelling
 	// has to differ -- a bridge entry naming itself is a self-reference that resolves to nothing -- so
@@ -303,7 +303,7 @@ test('every @theme bridge entry forwards to a real :root token, and never to its
 });
 
 /*
- * ══ THE FIVE NON-COLOUR DIMENSION RULES (issue #829) ══════════════════════════════════════════════
+ * ══ THE FIVE NON-COLOUR DIMENSION RULES ══════════════════════════════════════════════
  *
  * These are the colour scans' siblings, and they enforce the SAME decidable rule for the same reason:
  * a literal must not duplicate a value that already has a token. Nothing above them changed shape --
@@ -618,7 +618,7 @@ test('the phone type ladder never reaches a TV surface', () => {
 	expect(offences).toEqual([]);
 });
 
-test('every @media width literal in source is a declared breakpoint (#852)', () => {
+test('every @media width literal in source is a declared breakpoint', () => {
 	// THE SIXTH NON-COLOUR DIMENSION (#829 named it, #852 lands it). The defect this closes: the seven
 	// `@media` width queries in source branch at four widths (380/520/768/1200), the reviewer checklist
 	// names three others (390/820/1440), and NOTHING compared either list against a declaration — so a
@@ -670,7 +670,7 @@ test('every @media width literal in source is a declared breakpoint (#852)', () 
 			}
 		}
 	}
-	// NON-VACUITY FLOOR (#830, registered in non-vacuity-floors.test.ts). The scan derives its own
+	// NON-VACUITY FLOOR (registered in non-vacuity-floors.test.ts). The scan derives its own
 	// scope by walking, so an empty walk (a moved src/ dir, a renamed extension) would find zero
 	// literals and pass while examining nothing — the exact vacuity that dimension's floors guard. Seven
 	// width queries exist today; the floor sits at 7 so a walk that stops seeing `@media` reds instead.
@@ -720,7 +720,7 @@ test('the colour picker wires its swatch tabindex to presetTabStopIndex', () => 
 });
 
 test('the colour picker anchors arrow movement on nextSwatchIndex, not a bare indexOf', () => {
-	// THE BUG THIS BOUNDS (#215). The tab stop reads presetTabStopIndex (falls back to swatch 0 for a
+	// THE BUG THIS BOUNDS. The tab stop reads presetTabStopIndex (falls back to swatch 0 for a
 	// wheel value), but the arrow-key handler used to compute its base from a bare
 	// `(SINGER_COLORS as ...).indexOf(value)`, which is -1 for any wheel hex. After a hue pick the two
 	// disagreed: focus sat on swatch 0 while movement started from -1, so the first ArrowRight did not
@@ -778,7 +778,7 @@ test('form controls never sit below the 16px iOS zoom threshold', () => {
 	// zoom back out. The settings page shipped `select, .text { font-size: 0.9rem }` (14.4px) and a
 	// 0.86rem LAN-address field, so tapping either left the whole surface zoomed and off-centre.
 	//
-	// THE VALUE IS RESOLVED THROUGH A TOKEN, NOT ONLY READ AS A LITERAL (#829). Before the type ladder
+	// THE VALUE IS RESOLVED THROUGH A TOKEN, NOT ONLY READ AS A LITERAL. Before the type ladder
 	// existed every control stated its size as a literal and a regex over the declaration was the whole
 	// job. Tokenising them made this scan BLIND rather than red: `.searchbox input` became
 	// `font-size: var(--ph-text-base)`, the literal match failed, `continue` fired, and the control
@@ -870,21 +870,21 @@ test('both documentElement custom-property writes (--undo-h, --dock-h) tear down
 	// mount-and-unmount; comments stripped so the rationale prose cannot satisfy or trip it. Reverting
 	// any $effect teardown below reds this.
 	//
-	// SCOPE (#903): the original --peek-h site was the queue sheet, deleted with the drawer surface, so
+	// SCOPE: the original --peek-h site was the queue sheet, deleted with the drawer surface, so
 	// this guard now covers the two writers that remain — routes/+page.svelte's --undo-h (the SAME leak
 	// shape: a setProperty $effect with no cleanup, skewing the --error-dock stack after the route
-	// unmounts, fixed + pinned in the #460 tail §17) and its --dock-h (#832, the docked band's measured
+	// unmounts, fixed + pinned in the #460 tail §17) and its --dock-h (the docked band's measured
 	// height, the same leak shape on a third site). The leak CLASS is documented in full at --dock-h's
 	// declaration in routes/+page.svelte. Each site must both WRITE its property and RETURN a cleanup
 	// that removeProperty's it; reverting either teardown reds this.
 	/*
-	 * #913 S5 RETIRED the `--undo-h` site (XR-VER-07). It was a real instance of this leak class — a
+	 * S5 RETIRED the `--undo-h` site (XR-VER-07). It was a real instance of this leak class — a
 	 * setProperty $effect publishing the undo toast's measured height, skewing the --error-dock stack
 	 * after the route unmounted — and it no longer exists: the toasts are sonner's, sonner stacks its
 	 * own, and there is no second surface to offset. The property, its measurement and its teardown were
 	 * all deleted rather than ported, so a guard for its teardown can no longer fail.
 	 *
-	 * `--dock-h` (#832) is untouched and is still the site this guard protects. The leak CLASS is
+	 * `--dock-h` is untouched and is still the site this guard protects. The leak CLASS is
 	 * documented in full at its declaration in routes/+page.svelte.
 	 */
 	const sites: Array<{ file: string; prop: string }> = [{ file: 'routes/+page.svelte', prop: '--dock-h' }];
@@ -908,8 +908,8 @@ test('both documentElement custom-property writes (--undo-h, --dock-h) tear down
 		);
 	}
 });
-test('the phone header truncates a long display name instead of growing the row (#109)', () => {
-	// THE BUG (#109): the header is a nowrap flex row and the ONE child whose width is user-supplied --
+test('the phone header truncates a long display name instead of growing the row', () => {
+	// THE BUG: the header is a nowrap flex row and the ONE child whose width is user-supplied --
 	// the display name -- rendered raw with no truncation. A single unbroken token has a min-content
 	// width equal to its full rendered width, so with CSS automatic minimum sizing flex-shrink cannot
 	// take it below that: the row grows the document instead, and the settings gear -- the only entry
@@ -947,7 +947,7 @@ test('the phone header truncates a long display name instead of growing the row 
 	const dot = page.match(/\.me-dot\s*\{([^}]*)\}/);
 	expect(dot![1]!).toMatch(/flex:\s*0 0 auto/);
 	const gear = page.match(/\.gear\s*\{([^}]*)\}/);
-	// var(--tap), not the number: touch-targets.test.ts owns the spelling rule (#831) and this pin must
+	// var(--tap), not the number: touch-targets.test.ts owns the spelling rule and this pin must
 	// not be the one place a bare literal still satisfies a guard.
 	expect(gear![1]!).toMatch(/min-width:\s*var\(--tap\)/);
 });
@@ -988,7 +988,7 @@ test('every identity-dot rule declares a non-shrinking flex basis', () => {
 });
 
 test('a route page block that caps its width also centres it under the app-shell', () => {
-	// THE BUG THIS EXISTS FOR (issue #145). The layout mounts each route's page block as a direct child
+	// THE BUG THIS EXISTS FOR. The layout mounts each route's page block as a direct child
 	// of `.app-shell` (routes/+layout.svelte:12), which is a `display:flex; flex-direction:column;
 	// margin:0 auto` centred column. A flex item that sets a `max-width` but no inline auto margin is
 	// laid out at the cross-axis START, so the cap takes width off the RIGHT only and the block hangs to

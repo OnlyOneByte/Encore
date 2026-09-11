@@ -1,4 +1,4 @@
-// #658 one-TV-per-room — the pure decision test for which room a TV binds to. Socket-free, like
+// one-TV-per-room — the pure decision test for which room a TV binds to. Socket-free, like
 // room-scope.test.ts. Two rooms A and B on a box serving A (activeRoomId = A).
 //
 // On BASE (pre-#658) this module does not exist: a TV carries no roomId at all and is an unscoped

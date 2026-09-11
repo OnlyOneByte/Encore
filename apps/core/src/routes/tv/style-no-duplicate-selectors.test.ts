@@ -3,7 +3,7 @@
 // NB filename: SvelteKit reserves `+`-prefixed names inside routes/, so this cannot be
 // `+page.test.ts`; it colocates with the page it guards without being treated as a route.
 //
-// WHY THIS EXISTS (issue #127). The lower-third once rendered a "now singing card" with a block-level
+// WHY THIS EXISTS. The lower-third once rendered a "now singing card" with a block-level
 // artist row. That design was deleted, but a whole second copy of its rule block survived inside the
 // same <style> — re-declaring `.ls-name` / `.ls-song` / `.ls-artist` / `.ls-key` LATER in source than
 // the live rules, so by the cascade its declarations silently won. The load-bearing one added

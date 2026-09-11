@@ -102,7 +102,7 @@ function seed(app: EncoreApp, mediaById: Map<string, Media>, id: string, mediaId
 	});
 }
 
-test('leaving re-broadcasts the true next when a departing singer had the advertised next (#636)', () => {
+test('leaving re-broadcasts the true next when a departing singer had the advertised next', () => {
 	const { app, published, mediaById } = appHarness();
 	const dana = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] }).singer;
 	const maya = doJoin(app, { displayName: 'Maya', color: SINGER_COLORS[1] }).singer;
@@ -134,7 +134,7 @@ test('leaving re-broadcasts the true next when a departing singer had the advert
 	expect(np!.upNext?.id).not.toBe('q-dana');
 });
 
-test('a leave that removes nothing does not broadcast a spurious nowplaying (#636)', () => {
+test('a leave that removes nothing does not broadcast a spurious nowplaying', () => {
 	// The emit is guarded on doomed.length > 0: a singer with no queued songs leaving changes no
 	// ordering, so no nowplaying:changed should go out. Prevents the guard from degrading into an
 	// unconditional re-emit on every leave.

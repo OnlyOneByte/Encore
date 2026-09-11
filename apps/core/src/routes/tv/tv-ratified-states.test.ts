@@ -1,4 +1,4 @@
-// guard (issue #826): the ratified TV states hold their load-bearing invariants — the ones a green
+// guard: the ratified TV states hold their load-bearing invariants — the ones a green
 // suite otherwise cannot see and that a still screenshot cannot prove.
 //
 // Source scans over the TV route + app.css, in the same shape as stage-scale.test.ts / motion.test.ts.

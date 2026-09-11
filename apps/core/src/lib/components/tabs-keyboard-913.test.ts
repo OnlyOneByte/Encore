@@ -71,7 +71,7 @@ test('a roving tabindex puts exactly ONE tab in the tab order (the ARIA tabs pat
 	expect(selected(host).filter((s) => s === 'true')).toHaveLength(1);
 });
 
-test('ArrowRight, Home and End move the selection AND the tab stop together (#913, was onTabKey)', () => {
+test('ArrowRight, Home and End move the selection AND the tab stop together (was onTabKey)', () => {
 	const host = render();
 	expect(selected(host)).toEqual(['true', 'false', 'false']);
 

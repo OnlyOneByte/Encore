@@ -45,7 +45,7 @@ test('valid add broadcasts queue:patch with new rev + causedBy', () => {
 	expect(patch).not.toBeNull();
 	expect(patch!.patch.rev).toBe(1);
 	expect(patch!.patch.causedBy).toBe(cmd.clientOpId);
-	// The server re-stamps the add's addedAt server-side (#345), so the canonical op is NOT byte-equal
+	// The server re-stamps the add's addedAt server-side, so the canonical op is NOT byte-equal
 	// to the client's — the ServerPatch contract declares ops as "server may rewrite". It IS the same
 	// op otherwise: same id/mediaId/singerId/status, only addedAt is server-owned.
 	const canon = patch!.patch.ops[0]!;
@@ -135,7 +135,7 @@ const addCmdWith = (entryId: string, mediaId: string, singerId: string, addedAt:
 	op: { op: 'add', entry: { id: entryId, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt } }
 });
 
-test('#345: a forged below-everyone addedAt does NOT put the forger at the head of the round', () => {
+test('a forged below-everyone addedAt does NOT put the forger at the head of the round', () => {
 	const { state, mk } = multiHarness();
 	// s1 adds honestly first.
 	handleQueueCommand(addCmdWith('q1', 'm1', 's1', 1700000000000), mk('s1'));
@@ -151,7 +151,7 @@ test('#345: a forged below-everyone addedAt does NOT put the forger at the head 
 	expect(order).toEqual(['q1', 'q2']);
 });
 
-test('#345: a legitimate later add still lands AFTER an earlier one (fix is not clamp-everything)', () => {
+test('a legitimate later add still lands AFTER an earlier one (fix is not clamp-everything)', () => {
 	const { state, mk } = multiHarness();
 	// Two honest adds by two singers, in join order s1 then s2, both with plausible client stamps.
 	handleQueueCommand(addCmdWith('q1', 'm1', 's1', 1700000000000), mk('s1'));
@@ -166,7 +166,7 @@ test('#345: a legitimate later add still lands AFTER an earlier one (fix is not 
 	expect(state.entries).toHaveLength(2);
 });
 
-test('#345: server stamps are strictly increasing across two adds in the same singerId', () => {
+test('server stamps are strictly increasing across two adds in the same singerId', () => {
 	const { state, deps } = harness();
 	const p1 = handleQueueCommand(addCmd('q1'), deps)!;
 	const p2 = handleQueueCommand(addCmd('q2'), deps)!;

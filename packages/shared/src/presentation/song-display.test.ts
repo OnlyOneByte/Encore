@@ -49,7 +49,7 @@ test('null / undefined media degrade to an empty title and no artist, never thro
 // guard: the display-title rule (`titleCanonical ?? …title`) lives ONLY in songDisplay — the two API
 // routes that used to open-code it must go through the helper, so the next change to "what title a
 // guest sees" is a single edit. songDisplay opens by calling itself "the single migration point";
-// this makes that claim machine-checkable (#530). A behavioural test cannot red for this — all
+// this makes that claim machine-checkable. A behavioural test cannot red for this — all
 // copies agree today, so the suite does not move when they are consolidated — hence a comment-
 // stripped source scan.
 import { readFileSync } from 'node:fs';

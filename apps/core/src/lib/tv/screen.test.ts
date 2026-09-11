@@ -75,12 +75,12 @@ describe('lyricsAdvancing', () => {
 		expect(lyricsAdvancing('waiting', 'waiting', true, true)).toBe(false);
 	});
 
-	// #393 — THE MISSING QUADRANT. The room INTENDS to play (`isPlaying === true`) while the master
+	// — THE MISSING QUADRANT. The room INTENDS to play (`isPlaying === true`) while the master
 	// element is NOT advancing. `isPlaying` is the server's word, not the element's; without the fourth
 	// input the reel swept forward on wall-clock over a silent stage. This is the case no prior test
 	// covered, which is why "scrolling words, silent room" shipped with the suite green. Each of the two
 	// reachable triggers reduces to the SAME shape here: `elementAdvancing === false`.
-	it('does NOT advance when the room intends to play but the element is not running (#393)', () => {
+	it('does NOT advance when the room intends to play but the element is not running', () => {
 		expect(lyricsAdvancing('playing', 'playing', true, false)).toBe(false);
 	});
 
@@ -151,7 +151,7 @@ describe('lobbyRoster', () => {
 });
 
 /*
- * #393 the wiring — the honest element-advancing signal reaches the gate.
+ * the wiring — the honest element-advancing signal reaches the gate.
  *
  * `lyricsAdvancing`'s fourth input is unit-pinned above, but the pure function is only half the fix:
  * the value fed to it must be the MASTER element's real play/pause state, not the room's intent a
@@ -166,7 +166,7 @@ function stripComments(src: string): string {
 		.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
-describe('#393 the element-advancing signal is wired from the master element to the gate', () => {
+describe('the element-advancing signal is wired from the master element to the gate', () => {
 	const here = import.meta.dir;
 	const route = stripComments(readFileSync(join(here, '..', '..', 'routes', 'tv', '+page.svelte'), 'utf8'));
 	const player = stripComments(readFileSync(join(here, 'TvPlayer.svelte'), 'utf8'));
@@ -197,7 +197,7 @@ describe('#393 the element-advancing signal is wired from the master element to 
 	});
 });
 
-describe('cookStep (issue #826, XR-TV-15)', () => {
+describe('cookStep (XR-TV-15)', () => {
 	// The still-cooking takeover shows THREE steps while the media model has FIVE stages, so the
 	// collapse is a real mapping. It must be TOTAL over MediaStatus so the takeover never renders with
 	// no step marked, and the labels are guest words shared in shape with the phone.

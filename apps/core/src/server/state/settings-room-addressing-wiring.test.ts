@@ -1,4 +1,4 @@
-// guard (#728, reviewer advisory A1): making roomId REQUIRED stops a caller silently defaulting to
+// guard (reviewer advisory A1): making roomId REQUIRED stops a caller silently defaulting to
 // 'main', but it does not by itself pin WHICH room each production reader addresses — the source-scan
 // guard checks the call SHAPE, not the room VALUE, so it stays green whether a reader passes the live
 // room or the literal 'main'. This is the differential that pins the room VALUE: write a setting to the
@@ -51,7 +51,7 @@ const perFrame = {
 	hasOp: () => false
 };
 
-test('the live room is a minted id, not the literal "main" (#728)', () => {
+test('the live room is a minted id, not the literal "main"', () => {
 	const db = migratedDb();
 	const app = installApp(db, 'placeholder');
 	const active = app.rooms.ensureActive(1);
@@ -59,7 +59,7 @@ test('the live room is a minted id, not the literal "main" (#728)', () => {
 	expect(active.id).not.toBe('main');
 });
 
-test('buildHubDeps().getSettings() reads the ACTIVE room, not \u0027main\u0027 (#728, A1)', () => {
+test('buildHubDeps().getSettings() reads the ACTIVE room, not \u0027main\u0027 (A1)', () => {
 	const db = migratedDb();
 	// bootstrap a real active room and install the app pointing at it
 	const active = new RoomRepository(db).ensureActive(1);
@@ -79,7 +79,7 @@ test('buildHubDeps().getSettings() reads the ACTIVE room, not \u0027main\u0027 (
 	expect(getSettings!().room.songIntroMs).not.toBe(2222);
 });
 
-test('another room is unaffected — the read is scoped, not global (#728)', () => {
+test('another room is unaffected — the read is scoped, not global', () => {
 	const db = migratedDb();
 	const active = new RoomRepository(db).ensureActive(1);
 	const app = installApp(db, active.id);
@@ -97,7 +97,7 @@ test('another room is unaffected — the read is scoped, not global (#728)', () 
 	expect(app.settings.getRoom(other.id).songIntroMs).toBe(3333);
 });
 
-test('assertNameFree reads presence grace from the ACTIVE room, not \u0027main\u0027 (#728, A1)', () => {
+test('assertNameFree reads presence grace from the ACTIVE room, not \u0027main\u0027 (A1)', () => {
 	const db = migratedDb();
 	const active = new RoomRepository(db).ensureActive(1);
 	const app = installApp(db, active.id);
@@ -117,7 +117,7 @@ test('assertNameFree reads presence grace from the ACTIVE room, not \u0027main\u
 
 import { PUT as putRoomHandler } from '../../routes/api/settings/room/+server';
 
-test('writer->reader seam: a param-less PUT lands where buildHubDeps().getSettings() reads (#728)', async () => {
+test('writer->reader seam: a param-less PUT lands where buildHubDeps().getSettings() reads', async () => {
 	// The regression the readers-only fix opened: the phone settings page fetches /api/settings/room
 	// with NO ?roomId=. This drives the REAL PUT handler that bare way, then reads through the REAL
 	// buildHubDeps().getSettings() path — the two must agree on the room. BASE-RED: with the writer

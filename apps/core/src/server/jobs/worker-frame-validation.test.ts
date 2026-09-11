@@ -55,7 +55,7 @@ function gate(raw: string, hub: WorkerHub): 'dropped' | 'handled' {
 }
 
 // ── Unguarded read #1: a null body ────────────────────────────────────────────────────────────
-test('#433 read 1: JSON.parse(null) body is rejected, never reaches the workerId read', () => {
+test('read 1: JSON.parse(null) body is rejected, never reaches the workerId read', () => {
 	const { hub } = harness();
 	expect(validateWorkerMessage(null)).not.toBeNull();
 	// The raw `'workerId' in null` that server.ts did throws — prove the pre-guard hazard is real:
@@ -65,7 +65,7 @@ test('#433 read 1: JSON.parse(null) body is rejected, never reaches the workerId
 });
 
 // ── Unguarded read #2: capabilities as a number ───────────────────────────────────────────────
-test('#433 read 2: worker:hello with capabilities:1 is rejected before [...capabilities]', () => {
+test('read 2: worker:hello with capabilities:1 is rejected before [...capabilities]', () => {
 	const { hub, sent } = harness();
 	const frame = { type: 'worker:hello', workerId: 'w', capabilities: 1, concurrency: 1, version: '1' };
 	expect(validateWorkerMessage(frame)).not.toBeNull();
@@ -76,7 +76,7 @@ test('#433 read 2: worker:hello with capabilities:1 is rejected before [...capab
 });
 
 // ── Unguarded read #3: capabilities as a string ───────────────────────────────────────────────
-test('#433 read 3: worker:hello with capabilities:"stems" (string) is rejected before .join', () => {
+test('read 3: worker:hello with capabilities:"stems" (string) is rejected before .join', () => {
 	const { hub, sent } = harness();
 	const frame = { type: 'worker:hello', workerId: 'w', capabilities: 'stems', concurrency: 1, version: '1' };
 	expect(validateWorkerMessage(frame)).not.toBeNull();
@@ -85,30 +85,30 @@ test('#433 read 3: worker:hello with capabilities:"stems" (string) is rejected b
 });
 
 // ── Assorted malformed shapes the same three reads would trip on ───────────────────────────────
-test('#433: a frame missing workerId is rejected', () => {
+test('a frame missing workerId is rejected', () => {
 	expect(validateWorkerMessage({ type: 'worker:heartbeat', slotsFree: 1, runningJobIds: [] })).not.toBeNull();
 });
-test('#433: a non-object / primitive body is rejected', () => {
+test('a non-object / primitive body is rejected', () => {
 	expect(validateWorkerMessage(42)).not.toBeNull();
 	expect(validateWorkerMessage('hello')).not.toBeNull();
 	expect(validateWorkerMessage([])).not.toBeNull();
 });
-test('#433: an unknown frame type is rejected (never falls through handle())', () => {
+test('an unknown frame type is rejected (never falls through handle())', () => {
 	expect(validateWorkerMessage({ type: 'worker:evil', workerId: 'w' })).not.toBeNull();
 });
-test('#433: heartbeat with a non-array runningJobIds is rejected', () => {
+test('heartbeat with a non-array runningJobIds is rejected', () => {
 	expect(
 		validateWorkerMessage({ type: 'worker:heartbeat', workerId: 'w', slotsFree: 1, runningJobIds: 'x' })
 	).not.toBeNull();
 });
-test('#433: job:progress with a non-number pct is rejected', () => {
+test('job:progress with a non-number pct is rejected', () => {
 	expect(
 		validateWorkerMessage({ type: 'job:progress', workerId: 'w', jobId: 'j', stage: 'separating', pct: 'lots' })
 	).not.toBeNull();
 });
 
 // ── A well-formed frame still passes and is handled (the guard is not over-broad) ──────────────
-test('#433: a valid worker:hello passes validation and is handled normally', () => {
+test('a valid worker:hello passes validation and is handled normally', () => {
 	const { hub, sent } = harness();
 	const frame = { type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 2, version: '1.0' };
 	expect(validateWorkerMessage(frame)).toBeNull();

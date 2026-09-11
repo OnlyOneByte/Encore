@@ -1,5 +1,5 @@
-// #622 — a comment can point a reader to another file for a symbol ("`X` in `foo.ts`") and rot when
-// that symbol MOVES file. Symbol naming (#581) does not protect a cross-file pointer: `lyrics-engines.ts`
+// — a comment can point a reader to another file for a symbol ("`X` in `foo.ts`") and rot when
+// that symbol MOVES file. Symbol naming does not protect a cross-file pointer: `lyrics-engines.ts`
 // named `tvProgressStyle` and `resolveLyricsPresentation` "in separators.ts" by symbol, and both rotted
 // when `0addb65` moved the config layer into `settings.ts`. Same class as #567's rotted citations.
 //
@@ -9,7 +9,7 @@
 // inversion: apps/core/.../leave/doc-accuracy.test.ts; for the SCANNED + length sentinel shape:
 // apps/core/src/lib/tv/pitch-shift-doc-accuracy.test.ts (PR #580).
 //
-// #776: the package's production modules now live in domain subdirectories (core/, queue/, lyrics/,
+// the package's production modules now live in domain subdirectories (core/, queue/, lyrics/,
 // cook/, presentation/). The scan RECURSES so a subdir module is still covered, and a comment that
 // cites a bare filename ("in separators.ts") resolves against a filename → path index so a pointer
 // keeps resolving after its target moved subdir. This file itself stays at the package root.
@@ -160,7 +160,7 @@ test('every in-file symbol pointer in a comment names the file whose CODE holds 
 	// ── non-vacuity sentinels: the machinery must actually be extracting and resolving. ──
 	// (1) enough pointers extracted at all.
 	expect(pointers.length, 'pointer extraction produced too few pointers').toBeGreaterThanOrEqual(5);
-	// (1b) the scan recursed into the domain subdirs (#776), so a nested module is covered.
+	// (1b) the scan recursed into the domain subdirs, so a nested module is covered.
 	expect(SCANNED.some((f) => f.includes('/')), 'scan did not recurse into subdirectories').toBe(true);
 	// (1c) no ambiguous duplicate basenames — the resolver assumes one path per filename.
 	expect(byBasename.size, 'duplicate module basename would make citations ambiguous').toBe(SCANNED.length);
@@ -180,7 +180,7 @@ test('every in-file symbol pointer in a comment names the file whose CODE holds 
 	//     must NOT resolve.
 	const planted = '// nonexistent __PLANTED_PROOF_SYMBOL__ appears only here in prose\n';
 	expect(new RegExp('\\b__PLANTED_PROOF_SYMBOL__\\b').test(stripComments(planted))).toBe(false);
-	// (5) the missing-in-package arm discriminates (#776): a citation of a MISSPELLED package module
+	// (5) the missing-in-package arm discriminates: a citation of a MISSPELLED package module
 	//     (a name that exists nowhere in the repo) must FAIL, while a citation of a real cross-package
 	//     file (`hub.ts`, in apps/core) is out of remit and must PASS. Without this the recursion's
 	//     basename resolver would let `rotaton.ts` (a typo of rotation.ts) pass silently.

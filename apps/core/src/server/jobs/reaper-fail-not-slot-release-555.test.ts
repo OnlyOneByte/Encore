@@ -61,7 +61,7 @@ function busyWorkerHoldingDeadAndLive(jobs: JobRepository, registry: WorkerRegis
 	return { a, b };
 }
 
-test("#555: the reaper terminal FAIL does NOT free a live worker's slot", () => {
+test("the reaper terminal FAIL does NOT free a live worker's slot", () => {
 	const { jobs, registry } = fleet();
 	const { a } = busyWorkerHoldingDeadAndLive(jobs, registry);
 	expect(registry.get('w1')!.slotsFree).toBe(0); // both slots occupied
@@ -75,7 +75,7 @@ test("#555: the reaper terminal FAIL does NOT free a live worker's slot", () => 
 	expect(registry.get('w1')!.slotsFree).toBe(0); // RED ON BASE: base frees it (0 → 1) — a live worker is at 2/2
 });
 
-test('#555: no phantom assignment lands on the still-busy worker after a reaper FAIL', () => {
+test('no phantom assignment lands on the still-busy worker after a reaper FAIL', () => {
 	const { jobs, registry } = fleet();
 	busyWorkerHoldingDeadAndLive(jobs, registry);
 	// A third song is waiting in the queue.

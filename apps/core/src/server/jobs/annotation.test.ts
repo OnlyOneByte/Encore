@@ -93,7 +93,7 @@ test('an unrecognised confidence is treated as medium, never as high', () => {
 	expect(m.annotation?.confidence).toBe('medium');
 });
 
-// #672: YouTube's OWN declared credit is a citation, applied through the same path. It carries NO
+// YouTube's OWN declared credit is a citation, applied through the same path. It carries NO
 // MBID (YouTube mints none), and the never-regress rule protects it exactly like a MusicBrainz one.
 const YT = { source: 'youtube', artist: 'a-ha', title: 'Take On Me', confidence: 'high' };
 

@@ -102,7 +102,7 @@ function fakeEl(): HTMLMediaElement {
 	return {} as HTMLMediaElement;
 }
 
-test('#434: a guide level set BEFORE the graph is built lands in the GainNode when a shift builds it', async () => {
+test('a guide level set BEFORE the graph is built lands in the GainNode when a shift builds it', async () => {
 	// Order mirrors the incremental repro: level first (setGain remembers it in desiredGain), then a
 	// transpose builds the graph.
 	const graph = new PitchShiftGraph(fakeEl());
@@ -115,7 +115,7 @@ test('#434: a guide level set BEFORE the graph is built lands in the GainNode wh
 	expect(lastCtx!.gains[0].gain.value).toBeCloseTo(0.3, 6);
 });
 
-test("#434 control: WITHOUT the pre-set level, a freshly built graph's GainNode defaults to full volume", async () => {
+test("control: WITHOUT the pre-set level, a freshly built graph's GainNode defaults to full volume", async () => {
 	// This is the state the bug leaves: the graph builds with desiredGain === 1 (full volume). It is
 	// the control that makes the behavioural assertion above meaningful.
 	const graph = new PitchShiftGraph(fakeEl());
@@ -151,14 +151,14 @@ function guideBranchBody(s: string): string {
 
 const TV = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
 
-test('#434 guard: the pitch effect re-applies the room level to the guide graph via setGain(effectiveGuide)', () => {
+test('guard: the pitch effect re-applies the room level to the guide graph via setGain(effectiveGuide)', () => {
 	const body = stripComments(guideBranchBody(TV));
 	// It must build/keep the graph AND set its gain from the resolved level in the same branch.
 	expect(body).toMatch(/guideGraph\s*=\s*new PitchShiftGraph/);
 	expect(body).toMatch(/guideGraph[?][.]setGain[(]\s*effectiveGuide\s*[)]/);
 });
 
-test('#434 guard (not-vacuous): the level effect still owns the level for the native/pre-build path', () => {
+test('guard (not-vacuous): the level effect still owns the level for the native/pre-build path', () => {
 	// The graph-path reapply (test above) is ADDITIVE: the original gain effect must keep setting the
 	// guide gain too, so the level is applied on the native path and remembered before any graph is
 	// built. Its body reads `vocals` and `effectiveGuide` and sets BOTH the element volume and the

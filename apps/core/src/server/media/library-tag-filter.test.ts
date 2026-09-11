@@ -1,4 +1,4 @@
-// guard (#690): the library tag FILTER reads the media_tags byKindValue index, not a client-side pass.
+// guard: the library tag FILTER reads the media_tags byKindValue index, not a client-side pass.
 // This pins the repository half:
 //   1. byTag(value) returns exactly the READY songs carrying that 'tag'-kind value — and NOTHING else
 //      (not other tags, not other kinds, not non-ready songs), so ?tag= narrows correctly.
@@ -6,7 +6,7 @@
 //   3. the 'tag' KIND is load-bearing: a genre-kind value must NOT surface through the tag filter/facet
 //      (the same wrong-kind defect #689 guarded on the read side).
 //   4. both sides of the filter narrow in SQL: the media read is the tagged ids, not the whole ready
-//      library (#798). Counted in rows, not asserted in prose — see that section's own header.
+//      library. Counted in rows, not asserted in prose — see that section's own header.
 //   5. and the two docstrings that described the OLD one-sided read stay corrected (#798 prose).
 // Runtime, against a real migrated DB — the query shape is the thing under test, so exercise it.
 import { test, expect } from 'bun:test';
@@ -35,7 +35,7 @@ const cooked = (id: string): Media => ({
 // a song still cooking — stems not ready. Must never appear in a tag filter or count toward a facet.
 const cooking = (id: string): Media => ({ ...cooked(id), stemStatus: 'queued', instrumentalRef: undefined });
 
-test('byTag returns exactly the ready songs carrying that tag-kind value (#690)', () => {
+test('byTag returns exactly the ready songs carrying that tag-kind value', () => {
 	const repo = new MediaRepository(migratedDb());
 	repo.upsert(cooked('a'));
 	repo.upsert(cooked('b'));
@@ -55,7 +55,7 @@ test('byTag returns exactly the ready songs carrying that tag-kind value (#690)'
 	expect(repo.byTag('nonexistent')).toEqual([]);
 });
 
-test('byTag excludes non-ready songs even when they carry the tag (#690)', () => {
+test('byTag excludes non-ready songs even when they carry the tag', () => {
 	const repo = new MediaRepository(migratedDb());
 	repo.upsert(cooked('ready'));
 	repo.upsert(cooking('cooking'));
@@ -65,7 +65,7 @@ test('byTag excludes non-ready songs even when they carry the tag (#690)', () =>
 	expect(repo.byTag('duet').map((m) => m.id)).toEqual(['ready']);
 });
 
-test('the tag filter reads the tag KIND, not genre — a genre value must not surface (#690)', () => {
+test('the tag filter reads the tag KIND, not genre — a genre value must not surface', () => {
 	const repo = new MediaRepository(migratedDb());
 	repo.upsert(cooked('g'));
 	repo.setTags('g', 'genre', ['rock']); // a GENRE, not a tag
@@ -75,7 +75,7 @@ test('the tag filter reads the tag KIND, not genre — a genre value must not su
 	expect(repo.tagFacets()).toEqual([]);
 });
 
-test('tagFacets counts ready songs per tag, most-first (#690)', () => {
+test('tagFacets counts ready songs per tag, most-first', () => {
 	const repo = new MediaRepository(migratedDb());
 	repo.upsert(cooked('a'));
 	repo.upsert(cooked('b'));
@@ -141,7 +141,7 @@ function libraryOf30(repo: MediaRepository): void {
 	repo.setTags('s07', 'tag', ['ballad']);
 }
 
-test('byTag reads only the tagged media rows, not the whole ready library (#798)', () => {
+test('byTag reads only the tagged media rows, not the whole ready library', () => {
 	const { db, reads, reset } = countingDb();
 	const repo = new MediaRepository(db);
 	libraryOf30(repo);
@@ -159,7 +159,7 @@ test('byTag reads only the tagged media rows, not the whole ready library (#798)
 	expect(reads).toEqual([1]);
 });
 
-test('tagFacets counts from the tagged rows only (#798)', () => {
+test('tagFacets counts from the tagged rows only', () => {
 	const { db, reads, reset } = countingDb();
 	const repo = new MediaRepository(db);
 	libraryOf30(repo);
@@ -174,7 +174,7 @@ test('tagFacets counts from the tagged rows only (#798)', () => {
 	expect(reads).toEqual([2]);
 });
 
-test('a tag nothing carries reads ZERO media rows — the empty case must not skip the narrowing (#798)', () => {
+test('a tag nothing carries reads ZERO media rows — the empty case must not skip the narrowing', () => {
 	const { db, reads, reset } = countingDb();
 	const repo = new MediaRepository(db);
 	libraryOf30(repo);
@@ -188,7 +188,7 @@ test('a tag nothing carries reads ZERO media rows — the empty case must not sk
 	expect(reads).toEqual([0]);
 });
 
-test('the push-down is pure: identical answers across every readiness state (#798)', () => {
+test('the push-down is pure: identical answers across every readiness state', () => {
 	// Parity, hard-coded rather than derived: these expectations hold under BOTH shapes, which is
 	// what makes the change a push-down and not a behaviour change. Six seeded states, four queries.
 	const repo = new MediaRepository(migratedDb());
@@ -217,7 +217,7 @@ test('the push-down is pure: identical answers across every readiness state (#79
  *  guards below have the comments as their subject. */
 const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'repository.ts'), 'utf8');
 
-test('readyTagged hands its media ids down to readySongs, unconditionally (#798)', () => {
+test('readyTagged hands its media ids down to readySongs, unconditionally', () => {
 	// Shape ban beside the row-count pins: the regression has exactly two spellings, and both are
 	// cheap to read out of the real source. Reads the production file, comments stripped so the
 	// docstring describing the old shape is not mistaken for the old shape.
@@ -250,7 +250,7 @@ function docAbove(name: string): string {
 	return m[1];
 }
 
-test('#798 prose non-vacuous: the file and both docstrings are really there', () => {
+test('prose non-vacuous: the file and both docstrings are really there', () => {
 	// Without this sentinel a renamed helper passes every scan below on an empty read, and the guard
 	// silently stops guarding.
 	expect(SRC.length).toBeGreaterThan(200);
@@ -258,7 +258,7 @@ test('#798 prose non-vacuous: the file and both docstrings are really there', ()
 	expect(docAbove('readyTagged').length).toBeGreaterThan(200);
 });
 
-test("readySongs's docstring no longer attributes `extra` to the artist filter alone (#798)", () => {
+test("readySongs's docstring no longer attributes `extra` to the artist filter alone", () => {
 	const doc = docAbove('readySongs');
 	// The base sentence, which became false the moment readyTagged started passing an `extra`.
 	expect(SRC).not.toContain("(the artist filter's index push-down)");
@@ -266,7 +266,7 @@ test("readySongs's docstring no longer attributes `extra` to the artist filter a
 	expect(doc).toMatch(/readyTagged/);
 });
 
-test("readyTagged's docstring says BOTH sides narrow, and names the empty-case trap (#798)", () => {
+test("readyTagged's docstring says BOTH sides narrow, and names the empty-case trap", () => {
 	const doc = docAbove('readyTagged');
 	// The media half of the claim — absent on base, where the doc discussed only the tag rows.
 	expect(doc).toMatch(/BOTH sides narrow in SQL/);

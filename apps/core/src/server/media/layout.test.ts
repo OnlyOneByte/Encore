@@ -40,7 +40,7 @@ describe('keys', () => {
 		expect(audioKey('m1', 'm4a')).toBe('audio/m1.m4a');
 		// the two stems get different formats: lossless where it is heard, lossy where it is not
 		expect(instrumentalKey('m1')).toBe('derived/stems/m1-instrumental.flac');
-		// both stems are lossless FLAC now (#480): one codec, one container, a sample-exact common start
+		// both stems are lossless FLAC now: one codec, one container, a sample-exact common start
 		expect(vocalsKey('m1')).toBe('derived/stems/m1-vocals.flac');
 		// a pre-policy song keeps its own extension — the ref is stored per media, not re-derived
 		expect(instrumentalKey('m1', 'wav')).toBe('derived/stems/m1-instrumental.wav');

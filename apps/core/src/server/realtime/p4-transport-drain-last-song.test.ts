@@ -1,7 +1,7 @@
 // guard: the p4-transport probe's SINGLE-COOKED-SONG arm must DRAIN every queued turn before it
-// asserts "no current entry", not issue one skip and assert (#264).
+// asserts "no current entry", not issue one skip and assert.
 //
-// THE DEFECT (#264): p4-transport.mjs takes its `else` arm when only ONE song was COOKED
+// THE DEFECT: p4-transport.mjs takes its `else` arm when only ONE song was COOKED
 // (secondReadyId === null). The count of COOKED media and the count of QUEUED turns are different
 // things — a room can hold one cooked song yet several waiting turns on it (a second singer's turn,
 // or an entry left behind by an interrupted earlier run). The old arm issued exactly ONE
@@ -60,7 +60,7 @@ function elseArmBody(src: string): string {
 
 const ARM = elseArmBody(PROBE);
 
-test('the single-cooked-song arm exists and contains the T6a no-current assertion (#264, not vacuous)', () => {
+test('the single-cooked-song arm exists and contains the T6a no-current assertion (not vacuous)', () => {
 	expect(ARM).toContain('skip on the sole (last) song');
 	expect(ARM).toMatch(/currentEntryId\s*===\s*null/);
 });
@@ -126,7 +126,7 @@ function drainBody(arm: string, whole: string): string {
 
 const DRAIN = drainBody(ARM, PROBE);
 
-test('the single-cooked-song arm DRAINS the queue: reads currentEntryId, skips, breaks when empty (#264)', () => {
+test('the single-cooked-song arm DRAINS the queue: reads currentEntryId, skips, breaks when empty', () => {
 	// Not vacuous: the drain body we resolved must actually skip and read the playhead.
 	expect(DRAIN).toMatch(/clickByLabel\(\s*['"]skip['"]\s*\)/);
 	expect(DRAIN).toMatch(/currentEntryId/);

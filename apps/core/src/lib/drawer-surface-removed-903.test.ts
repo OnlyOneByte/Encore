@@ -66,7 +66,7 @@ function sourceFiles(): string[] {
 	return out;
 }
 
-test('#903: both drawer components are gone from disk', () => {
+test('both drawer components are gone from disk', () => {
 	expect(existsSync(join(SRC, 'lib/components/QueueSheet.svelte'))).toBe(false);
 	expect(existsSync(join(SRC, 'lib/components/QueueSheetDrawer.svelte'))).toBe(false);
 	// Not vacuous: a sibling component that MUST still exist, so a wrong SRC root (which would make the
@@ -75,7 +75,7 @@ test('#903: both drawer components are gone from disk', () => {
 	expect(existsSync(join(SRC, 'lib/components/NowPlayingHero.svelte'))).toBe(true);
 });
 
-test('#903: no live code imports, renders or reads the deleted drawer surface', () => {
+test('no live code imports, renders or reads the deleted drawer surface', () => {
 	const files = sourceFiles();
 	const offenders: string[] = [];
 	let scanned = 0;
@@ -121,7 +121,7 @@ test('#903: no live code imports, renders or reads the deleted drawer surface', 
 	expect(scanned).toBeGreaterThanOrEqual(100); // @nvf-floor scanned
 });
 
-test('#903: vaul-svelte stays gone, and bits-ui is present only because something imports it', () => {
+test('vaul-svelte stays gone, and bits-ui is present only because something imports it', () => {
 	/*
 	 * RE-SCOPED BY #913 S3 (XR-VER-07). This asserted all THREE packages stay absent: `vaul-svelte`,
 	 * `bits-ui` and `@internationalized/date`. That was right when written — bits-ui was there for
@@ -149,7 +149,7 @@ test('#903: vaul-svelte stays gone, and bits-ui is present only because somethin
 	}
 });
 
-test('#903: the band contract SURVIVED the deletion — --dock-h is still published and measured', () => {
+test('the band contract SURVIVED the deletion — --dock-h is still published and measured', () => {
 	// This is the arm that stops the file above from being satisfied by deleting everything. The
 	// invariant #903 preserved is the band contract; if the successor mechanism goes too, that is a
 	// regression, not a further cleanup.

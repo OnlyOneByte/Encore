@@ -1,4 +1,4 @@
-// #658 one-TV-per-room, at the TV loader: the TV route RESOLVES which room it shows. A bare /tv shows
+// one-TV-per-room, at the TV loader: the TV route RESOLVES which room it shows. A bare /tv shows
 // the served room (covered by join-qr-room-code.test.ts); an explicit ?room=<code> shows THAT room,
 // and its code is what the client then binds the WS to. Unknown code falls back to the served room.
 //

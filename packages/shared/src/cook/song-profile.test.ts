@@ -320,7 +320,7 @@ describe('wire normalization', () => {
 		expect(normalizeSongProfile(EMPTY_SONG_PROFILE)).toEqual(EMPTY_SONG_PROFILE);
 	});
 
-	// ── the measured level (#462) ──────────────────────────────────────────────────
+	// ── the measured level ──────────────────────────────────────────────────
 	// A LEVEL is trusted only inside the window a real BS.1770 measurement can occupy. Every bound
 	// below is hard-coded from the standard rather than computed from the exported constants, so
 	// widening the window in the validator cannot silently widen the test with it.

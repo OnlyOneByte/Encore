@@ -1,6 +1,6 @@
 // guard: the tv:telemetry frame stays lean — the fields #129 removed do not come back.
 //
-// THE DEFECT (#129). tv:telemetry is a ~4Hz hot-path stream. Two of its five payload fields —
+// THE DEFECT. tv:telemetry is a ~4Hz hot-path stream. Two of its five payload fields —
 // `durationSec` and `bufferedNextPct` — were declared on the shared wire contract, forwarded through
 // server.ts into TvTelemetry, and read by NOTHING (handleTelemetry reads only positionSec, entryId
 // and ended, the last derived at the forwarder from status). `bufferedNextPct` was additionally
@@ -24,7 +24,7 @@
 // literal), and the repo-wide claim below is made TRUE by walking the whole production tree rather
 // than a hand-picked file list, so a fourth site added later is covered without editing this file.
 // Matches the repo's source-scan-guard precedents (session-cookie-attributes.test.ts + stripComments,
-// #107; the repo walk mirrors task-number-hygiene.test.ts, #55).
+// ; the repo walk mirrors task-number-hygiene.test.ts, #55).
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -43,7 +43,7 @@ const EVENTS = stripComments(
 );
 const PLAYER = stripComments(readFileSync(join(import.meta.dir, 'player.ts'), 'utf8'));
 const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));
-// The client-side producer of the frame (#280). It declares its OWN copy of the wire type
+// The client-side producer of the frame. It declares its OWN copy of the wire type
 // (`TelemetryFrame`) and builds the object literal that gets JSON.stringify'd to the server — so the
 // shared union is never applied to the value and typecheck cannot catch a field added to both this
 // interface and this literal. import.meta.dir === apps/core/src/server/realtime; four up is apps/core.
@@ -65,14 +65,14 @@ const TV_TELEMETRY_IFACE = (() => {
 	return m ? m[0] : '';
 })();
 
-// The producer's own TelemetryFrame interface body, isolated the same way (#280) — so an unrelated
+// The producer's own TelemetryFrame interface body, isolated the same way — so an unrelated
 // interface in telemetry.ts (e.g. StampableEntry) cannot falsely trip these checks.
 const PRODUCER_IFACE = (() => {
 	const m = PRODUCER.match(/export interface TelemetryFrame\s*\{[\s\S]*?\n\}/);
 	return m ? m[0] : '';
 })();
 
-// The `return { ... }` object literal telemetryFrame() builds and hands to JSON.stringify (#280).
+// The `return { ... }` object literal telemetryFrame() builds and hands to JSON.stringify.
 // This is the second half of the issue's two-line mutant: the field is added to the interface AND
 // stamped into this literal. Isolated so an unrelated return elsewhere in the file cannot count.
 const PRODUCER_LITERAL = (() => {
@@ -80,16 +80,16 @@ const PRODUCER_LITERAL = (() => {
 	return m ? m[0] : '';
 })();
 
-test('the tv:telemetry wire frame declaration was found (guard is not vacuous) (#129)', () => {
+test('the tv:telemetry wire frame declaration was found (guard is not vacuous)', () => {
 	expect(TELEMETRY_VARIANT).not.toBe('');
 	expect(TV_TELEMETRY_IFACE).not.toBe('');
-	// #280: the producer's own interface and its built literal must both be located, or the
+	// the producer's own interface and its built literal must both be located, or the
 	// producer-scan below would pass vacuously on an empty slice.
 	expect(PRODUCER_IFACE).not.toBe('');
 	expect(PRODUCER_LITERAL).not.toBe('');
 });
 
-test('the tv:telemetry wire frame no longer declares the dead durationSec/bufferedNextPct fields (#129)', () => {
+test('the tv:telemetry wire frame no longer declares the dead durationSec/bufferedNextPct fields', () => {
 	expect(TELEMETRY_VARIANT).not.toMatch(/durationSec/);
 	expect(TELEMETRY_VARIANT).not.toMatch(/bufferedNextPct/);
 	// The fields that survive — the frame still carries these and the server reads/derives from them.
@@ -100,7 +100,7 @@ test('the tv:telemetry wire frame no longer declares the dead durationSec/buffer
 	expect(TELEMETRY_VARIANT).toMatch(/entryId\?/);
 });
 
-test('the TvTelemetry handler type carries only what handleTelemetry reads (#129)', () => {
+test('the TvTelemetry handler type carries only what handleTelemetry reads', () => {
 	// handleTelemetry (player.ts) reads exactly positionSec, entryId and ended. durationSec, status
 	// and bufferedNextPct were copied in and never read — they must not be back on this type.
 	expect(TV_TELEMETRY_IFACE).not.toMatch(/durationSec/);
@@ -110,7 +110,7 @@ test('the TvTelemetry handler type carries only what handleTelemetry reads (#129
 	expect(TV_TELEMETRY_IFACE).toMatch(/ended\?/);
 });
 
-test('the server.ts forwarder does not copy the dead fields into TvTelemetry, only derives ended (#129)', () => {
+test('the server.ts forwarder does not copy the dead fields into TvTelemetry, only derives ended', () => {
 	// The one handleTelemetry({...}) call the forwarder builds.
 	const m = SERVER.match(/handleTelemetry\(\s*\{[^}]*\}/);
 	expect(m).not.toBeNull();
@@ -121,15 +121,15 @@ test('the server.ts forwarder does not copy the dead fields into TvTelemetry, on
 	expect(forwarded).not.toMatch(/status:\s*evt\.status/);
 	expect(forwarded).toMatch(/ended:\s*evt\.status\s*===\s*'ended'/);
 	expect(forwarded).toMatch(/positionSec:\s*evt\.positionSec/);
-	// #295: the middle link of the producer -> wire -> FORWARDER -> handler chain. Without the
+	// the middle link of the producer -> wire -> FORWARDER -> handler chain. Without the
 	// entryId stamp here, player.ts:280's `t.entryId !== undefined` drop goes inert for every
 	// frame (t.entryId is optional, so any unstamped form typechecks) and #70/#125 both re-open
 	// silently. The producer and handler ends are pinned; nothing pinned this middle site.
 	expect(forwarded).toMatch(/entryId:\s*evt\.entryId/);
 });
 
-test('the client-side producer (lib/tv/telemetry.ts) does not carry the dead fields (#280, #129)', () => {
-	// #280: telemetry.ts is where `<audio>.buffered` is available, so it is the natural place a
+test('the client-side producer (lib/tv/telemetry.ts) does not carry the dead fields (#129)', () => {
+	// telemetry.ts is where `<audio>.buffered` is available, so it is the natural place a
 	// developer would re-add `bufferedNextPct: 100` — and it was NOT scanned before. The two-line
 	// mutant adds the field to BOTH the interface and the return literal; pin both.
 	expect(PRODUCER_IFACE).not.toMatch(/durationSec/);
@@ -141,7 +141,7 @@ test('the client-side producer (lib/tv/telemetry.ts) does not carry the dead fie
 	expect(PRODUCER_LITERAL).toMatch(/positionSec/);
 });
 
-// #280: make the "exists nowhere in production" claim TRUE by walking the whole production tree,
+// make the "exists nowhere in production" claim TRUE by walking the whole production tree,
 // mirroring task-number-hygiene.test.ts (#55). The old version scanned three hand-picked files and
 // missed the producer telemetry.ts; a fixed list would miss the NEXT new site too. The walk excludes
 // *.test.ts so this guard's own references (and any other test citing the field from git history)
@@ -162,7 +162,7 @@ function productionFiles(dir: string, out: string[]): string[] {
 	return out;
 }
 
-test('bufferedNextPct — the hardcoded-100 field — exists nowhere in production, repo-wide (#280, #129)', () => {
+test('bufferedNextPct — the hardcoded-100 field — exists nowhere in production, repo-wide (#129)', () => {
 	// The sharpest regression is resurrecting the field a future reader would trust: a hardcoded 100
 	// that always answers "next song fully buffered". Walk the whole production tree so the test's own
 	// name ("exists nowhere ... repo-wide") is honest — not a claim over three hand-picked files.

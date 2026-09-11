@@ -82,11 +82,11 @@ function putQueueOrder(order: string) {
 	return PUT({ request, cookies: { get: () => 'ignored' }, url } as never);
 }
 
-test('a queueOrder change leaves the queue and the advertised next alone (#636, #856)', async () => {
+test('a queueOrder change leaves the queue and the advertised next alone (#856)', async () => {
 	const { settings, state, mediaById, published } = installApp();
 	settings.setRoom({ queueOrder: 'fcfs' }, ROOM);
 
-	// singer A queues a1, a2; singer B queues b1. Under the STORED-LIST model (#856) the queue is the
+	// singer A queues a1, a2; singer B queues b1. Under the STORED-LIST model the queue is the
 	// source of truth, so flipping the algorithm cannot rearrange songs already standing — it would
 	// throw away every reorder anyone had made. #636 asked for the advertised next to stay honest
 	// across a flip; it now stays honest because nothing moves.
@@ -107,7 +107,7 @@ test('a queueOrder change leaves the queue and the advertised next alone (#636, 
 	expect(nps.length).toBe(0);
 });
 
-test('a settings PUT that does not reorder emits no nowplaying (#636)', async () => {
+test('a settings PUT that does not reorder emits no nowplaying', async () => {
 	// The emit is inside `if (reordered)`. Re-selecting the SAME order reorders nothing, so no
 	// nowplaying:changed should go out — guards the fix against degrading into an unconditional emit.
 	const { settings, state, mediaById, published } = installApp();

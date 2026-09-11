@@ -1,7 +1,7 @@
 // PUT /api/settings/room must ADDRESS the room named by `?roomId=`, not always the default room.
 //
 // The repository (SettingsRepository.setRoom/getRoom/getEffective) has always been keyed by an
-// explicit roomId; the bug (#653) was that this endpoint called setRoom(body)/getEffective() with
+// explicit roomId; the bug was that this endpoint called setRoom(body)/getEffective() with
 // NO id, so every write — whatever room it meant — landed on the literal room id 'main'. These tests
 // drive the REAL PUT handler against a REAL SettingsRepository on an in-memory migrated DB, so the
 // pinned mechanism is end-to-end: the query param reaches the repository call.
@@ -23,7 +23,7 @@ function installApp(settings: SettingsRepository, activeRoomId = 'active-room') 
 		// A joined singer: can(actor,'settings:write-room') passes iff singerId is truthy.
 		singers: { bySessionToken: () => ({ id: 'singer-1' }) },
 		settings,
-		// An omitted ?roomId= now falls back to the LIVE room, not the literal 'main' (#728).
+		// An omitted ?roomId= now falls back to the LIVE room, not the literal 'main'.
 		activeRoomId,
 		publish: () => {},
 		// reorder() returning null skips the queue:patch branch — irrelevant to room addressability.
@@ -71,8 +71,8 @@ test('the response body reflects the ADDRESSED room, not the default room', asyn
 	expect(payload.room.songIntroMs).toBe(5000);
 });
 
-test('an absent roomId writes the ACTIVE room, not the literal "main" (#728)', async () => {
-	// #728: the phone settings page fetches /api/settings/room with NO ?roomId=. Before #728 that
+test('an absent roomId writes the ACTIVE room, not the literal "main"', async () => {
+	// the phone settings page fetches /api/settings/room with NO ?roomId=. Before #728 that
 	// bare write landed on 'main' while every reader read the active room — the write was silently
 	// discarded (host toggles a control, gets 200, nothing changes). The fallback is now
 	// app.activeRoomId, so the bare write lands where the readers look.

@@ -23,18 +23,18 @@ function stripComments(src: string): string {
 // import.meta.dir === apps/core/src/server/jobs → three levels up to apps/core, then server.ts.
 const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));
 
-test('#433: server.ts imports validateWorkerMessage from worker-hub', () => {
+test('server.ts imports validateWorkerMessage from worker-hub', () => {
 	expect(SERVER).toMatch(
 		/import\s*\{[^}]*\bvalidateWorkerMessage\b[^}]*\}\s*from\s*'\.\/src\/server\/jobs\/worker-hub'/
 	);
 });
 
-test('#433: server.ts runs validateWorkerMessage as a reject-gate (non-null → return)', () => {
+test('server.ts runs validateWorkerMessage as a reject-gate (non-null → return)', () => {
 	// Pin the EXPRESSION, not a bare mention: a call whose non-null result short-circuits with return.
 	expect(SERVER).toMatch(/if\s*\(\s*validateWorkerMessage\([^)]*\)\s*!==\s*null\s*\)\s*return\s*;/);
 });
 
-test('#433: the gate precedes both unguarded reads (workerId-in-msg and workerHub.handle)', () => {
+test('the gate precedes both unguarded reads (workerId-in-msg and workerHub.handle)', () => {
 	const gate = SERVER.search(/validateWorkerMessage\([^)]*\)\s*!==\s*null/);
 	const workerIdRead = SERVER.search(/'workerId'\s+in\s+msg/);
 	const execute = SERVER.search(/app\.workerHub\.handle\(/);

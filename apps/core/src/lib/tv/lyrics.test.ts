@@ -139,7 +139,7 @@ test('coarse LINE timing alone is not flagged unverified when text is authoritat
 	expect(isAutoTranscribed(prov({ timing: 'line' }))).toBe(false);
 });
 
-// ── provenance TAG: name the source for EVERY kind, not just ASR (#635) ────────────────
+// ── provenance TAG: name the source for EVERY kind, not just ASR ────────────────
 //
 // Owner ruling (a): provenance ONLY -- a source label, never a confidence/quality score. Today the
 // card names a source in exactly ONE case (ASR); these pin that it names the source in ALL of them,
@@ -393,8 +393,8 @@ test('a multi-word short line is never treated as an orphan', () => {
 // ── the lead offset ────────────────────────────────────────────────────────────
 import { LYRICS_LEAD_SEC } from './lyrics';
 
-test('the default lead is 0 — the global lead is opt-in per room (#629)', () => {
-	// #629 owner ruling: a single global lead is a band-aid, so it ships OFF by default. The per-room
+test('the default lead is 0 — the global lead is opt-in per room', () => {
+	// owner ruling: a single global lead is a band-aid, so it ships OFF by default. The per-room
 	// lyricsLeadMs setting is the opt-in. Hard literal, not `.toBe(SOME_CONST)`, so this pins the value
 	// rather than tautologically re-reading whatever the constant happens to be.
 	expect(LYRICS_LEAD_SEC).toBe(0);
@@ -446,7 +446,7 @@ test('parseLyricsDoc ignores a blank/non-string romanization (if-available, neve
 	expect(doc!.lines[1]!.romanization).toBeUndefined();
 });
 
-// ── duet part attribution (#691) ──────────────────────────────────────────────
+// ── duet part attribution ──────────────────────────────────────────────
 // The worker's diarization writes a `part` letter on each line of a CONFIDENT duet; a solo /
 // undiarized song carries none, which reads as one colour. The TV side just has to carry it through
 // parse and resegmentation faithfully — it never invents one.

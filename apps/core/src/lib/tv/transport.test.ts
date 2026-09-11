@@ -79,7 +79,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		expect(call).toContain('songToken(entryId,');
 		expect(call).toContain('fileSrc(media)');
 		expect(call).not.toContain('hasSrc: !!currentSrc');
-		// #701 regression trap: the reader must NOT be the src-only helper — that is exactly the shape that
+		// regression trap: the reader must NOT be the src-only helper — that is exactly the shape that
 		// stayed stale-true across a same-song advance and left turn 2 silent.
 		expect(call).not.toContain('hasSrc: slotHoldsSrc(');
 		// and it must be a $derived, so both the master and the guide effect track it
@@ -125,7 +125,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	});
 
 	/*
-	 * #251. A next-up cook reaching a stage rebroadcasts queue:sync; the TV rebuilds its catalog and the
+	 * . A next-up cook reaching a stage rebroadcasts queue:sync; the TV rebuilds its catalog and the
 	 * PLAYING slot's media reads momentarily null / not-yet-isPlayable for a churn pass. On the old
 	 * contract the assign effect resolved that pass to '' and, since the element still held the real
 	 * src, CLEARED it (removeAttribute -> reassign -> reload at 0 — the currently-playing song jumped
@@ -139,7 +139,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		.replace(/<!--[\s\S]*?-->/g, '')
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
-	test('#251: the src decision is told whether the media is playable', () => {
+	test('the src decision is told whether the media is playable', () => {
 		// The pivot of the fix: `playable` is computed and passed to the decision, so a not-playable
 		// churn pass returns changed:false instead of clearing.
 		expect(code).toContain('const playable = !!media && isPlayable(media)');
@@ -148,7 +148,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		expect(code).not.toContain("master.removeAttribute('src')");
 	});
 
-	test('#251: currentSrc is not clobbered on a not-playable pass', () => {
+	test('currentSrc is not clobbered on a not-playable pass', () => {
 		// The bookkeeping the transport gates on must survive a churn pass, so its write is guarded on
 		// `playable` rather than assigned unconditionally to a possibly-empty `resolved`. (#701 moved the
 		// write inside a `if (playable) { ... }` block that also records `currentEntryId`; the guard on the
@@ -160,7 +160,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		expect(code).not.toMatch(/\}\s*\n\s*currentSrc = resolved;/);
 	});
 
-	test('#701: currentEntryId is written in lockstep with currentSrc, so the held token cannot go half-stale', () => {
+	test('currentEntryId is written in lockstep with currentSrc, so the held token cannot go half-stale', () => {
 		// The transport reader compares an entry-scoped token; recording the src without the entry it
 		// belongs to would leave turn 2 of a twice-queued song holding turn 1's entry id and reintroduce
 		// the silent-second-turn edge. Both shadow writes must live in the SAME playable-guarded block.
@@ -168,7 +168,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	});
 
 	/*
-	 * #674 — draining the room UNMOUNTS the master (`{#if media && isPlayable(media)}`), but `currentSrc`
+	 * — draining the room UNMOUNTS the master (`{#if media && isPlayable(media)}`), but `currentSrc`
 	 * is a component-level shadow that outlives the element. Re-adding the SAME just-ended song resolves
 	 * to the byte-identical src, so `slotHoldsSrc(currentSrc, …)` reads `true` on a fresh, src-less
 	 * element: the transport is `'play'` on its first pass, races the src assignment, is aborted, and —
@@ -180,7 +180,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	 * Comments are stripped so the prose above (which names the old and new shapes) can neither satisfy
 	 * nor trip it.
 	 */
-	test('#674: both src+entry shadows are reset when the master element unmounts, not left to go stale', () => {
+	test('both src+entry shadows are reset when the master element unmounts, not left to go stale', () => {
 		// A guard against the shadows that survive the drain. The reset must fire on the ABSENCE of the
 		// binding (`!master`) — a genuine unmount — and clear BOTH the src shadow (so a re-added same-song
 		// element does not read a stale hasSrc:true — #674) and the entry shadow (#701's held token half).
@@ -194,7 +194,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 });
 
 /*
- * #374 — "skip the only queued song, add another, nothing plays until you pause/unpause"; more
+ * — "skip the only queued song, add another, nothing plays until you pause/unpause"; more
  * broadly, only the FIRST song of a TV page ever plays. The server is correct (verified quiescent):
  * it settles to currentEntryId=null,isPlaying=false and then auto-starts the new song. The defect is
  * the INPUT the TvPlayer derived feeds `transportFor`: it passed `hasSrc: !!currentSrc`, which only
@@ -232,7 +232,7 @@ describe("slotHoldsSrc — the element is holding THIS song's src, not merely SO
 	});
 });
 
-describe('#374: the transport across a song change on one page', () => {
+describe('the transport across a song change on one page', () => {
 	const A = '/media/song-a-instrumental.wav';
 	const B = '/media/song-b-instrumental.wav';
 	// The slot state at the moment the new song B has arrived as `media` but the assign effect has not
@@ -278,7 +278,7 @@ describe('#374: the transport across a song change on one page', () => {
 });
 
 /*
- * #701 — "queue a song TWICE and its second turn never plays". Turn 1 and turn 2 are two separate
+ * — "queue a song TWICE and its second turn never plays". Turn 1 and turn 2 are two separate
  * `QueueEntry`s (distinct client-minted ids) but ONE media record, so `fileSrc(media)` — and thus the
  * element's held src — is BYTE-IDENTICAL across the advance. #374's fix compared src strings, so on a
  * same-song advance `slotHoldsSrc(currentSrc, wanted)` is `true` on BOTH sides: no value edge, the
@@ -290,7 +290,7 @@ describe('#374: the transport across a song change on one page', () => {
  *
  * These are the pure-helper tests; the wiring guard above pins that TvPlayer actually passes the token.
  */
-describe('#701: the transport across a SAME-SONG advance (a song queued twice)', () => {
+describe('the transport across a SAME-SONG advance (a song queued twice)', () => {
 	const SRC = '/media/song-a-instrumental.wav';
 	const E1 = '01J000000000000000000TURN1';
 	const E2 = '01J000000000000000000TURN2';
@@ -344,7 +344,7 @@ describe('#701: the transport across a SAME-SONG advance (a song queued twice)',
 		expect(before).not.toBe(after); // a genuine value edge — the effect re-runs and play() replays
 	});
 
-	test('#374 still holds under the entry-scoped input: two DIFFERENT songs also take the edge', () => {
+	test('still holds under the entry-scoped input: two DIFFERENT songs also take the edge', () => {
 		const SRC_B = '/media/song-b-instrumental.wav';
 		const held = songToken(E1, SRC); // holding song A / entry 1
 		const wantedB = songToken(E2, SRC_B); // wanting song B / entry 2

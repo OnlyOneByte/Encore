@@ -5,7 +5,7 @@
 // neither copy applied a lower clamp: `Math.floor(0.5)` is `0`, so a fractional value in `(0, 1)`
 // survived the `<= 0` gate and collapsed the window to zero length — `windowStart === now`, an empty
 // series, and the impossible `0` echoed straight back to the client as if it were the honoured
-// request (#530). The shared `clampDays` now applies `Math.max(1, …)`, so the documented lower bound
+// request. The shared `clampDays` now applies `Math.max(1, …)`, so the documented lower bound
 // is true. This drives the REAL GET handlers and asserts the returned window is >= 1.
 import { test, expect, afterEach } from 'bun:test';
 import { GET as statsGET } from './stats/+server';

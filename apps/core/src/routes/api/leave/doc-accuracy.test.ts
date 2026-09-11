@@ -1,7 +1,7 @@
 // guard: the leave route's header comment must name only routes that exist.
 //
 // This repo has a documented habit of comments asserting behaviour the code does not deliver
-// (issue #122). The offender here was a header that documented `GET /api/leave/preview` — a route
+//. The offender here was a header that documented `GET /api/leave/preview` — a route
 // that has never existed. Under SvelteKit's filesystem router the GET/POST handlers in this file
 // answer `/api/leave` (the directory), not a `/preview` sub-route, and there is no `preview/`
 // directory on disk. This guard makes that class of drift machine-checkable:

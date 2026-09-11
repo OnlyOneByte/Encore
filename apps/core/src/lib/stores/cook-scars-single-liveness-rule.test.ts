@@ -1,4 +1,4 @@
-// guard: cook-scars.ts must expose exactly ONE "is this scar alive" rule (#870).
+// guard: cook-scars.ts must expose exactly ONE "is this scar alive" rule.
 //
 // The module used to export a second liveness predicate, `scarActive`, with zero non-test callers. It
 // was the one a reader would reach for (the only one NAMED after the question) yet it answered
@@ -26,17 +26,17 @@ const SRC_PATH = join(import.meta.dir, 'cook-scars.ts');
 const SRC_RAW = readFileSync(SRC_PATH, 'utf8');
 const SRC = stripComments(SRC_RAW);
 
-test('cook-scars.ts parses — a source scan is blind to a SyntaxError (#870)', () => {
+test('cook-scars.ts parses — a source scan is blind to a SyntaxError', () => {
 	expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(SRC_RAW)).not.toThrow();
 });
 
-test('the dead scarActive predicate is gone — no re-export, no re-declaration (#870)', () => {
+test('the dead scarActive predicate is gone — no re-export, no re-declaration', () => {
 	// Any occurrence of the identifier in live code is a regression: the module had exactly one
 	// export of it and no internal use, so a correct tree mentions it nowhere outside comments.
 	expect(SRC).not.toMatch(/\bscarActive\b/);
 });
 
-test('pruneScars is the single live liveness rule and keeps its media term (#870)', () => {
+test('pruneScars is the single live liveness rule and keeps its media term', () => {
 	// Isolate pruneScars's body so the assertion cannot be satisfied by unrelated code.
 	const sig = SRC.indexOf('export function pruneScars');
 	expect(sig).toBeGreaterThanOrEqual(0);
@@ -61,7 +61,7 @@ test('pruneScars is the single live liveness rule and keeps its media term (#870
 	expect(body).toMatch(/scar\.expiresAt\s*>\s*now\s*&&\s*scar\.media/);
 });
 
-test('the expiry comparison lives ONLY inside pruneScars — no restated liveness rule under any name (#870)', () => {
+test('the expiry comparison lives ONLY inside pruneScars — no restated liveness rule under any name', () => {
 	// The literal-name arm above stops `scarActive` coming back verbatim, but #870's finding is that
 	// the *expression* was wrong, not merely that the name was unused. Re-adding the same discredited
 	// comparison under a new name (e.g. `isScarLive`) would slip past a name scan and is exactly the
@@ -100,7 +100,7 @@ test('the expiry comparison lives ONLY inside pruneScars — no restated livenes
 	expect(pruneBody).toMatch(/expiresAt\s*[<>]/);
 });
 
-test('the three live entry points survive — deleting the module reds instead of vacuously passing (#870)', () => {
+test('the three live entry points survive — deleting the module reds instead of vacuously passing', () => {
 	// Non-vacuity sentinel: the reachable API this module exists for. activeScars is the only one the
 	// app calls; recordScar and clearScar are the other two entry points that route through pruneScars.
 	expect(SRC).toMatch(/export function activeScars\b/);

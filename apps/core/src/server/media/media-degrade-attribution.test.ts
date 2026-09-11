@@ -1,8 +1,8 @@
-// #872 — a media degrade boundary must be ATTRIBUTABLE: the graceful-degrade return value stays
+// — a media degrade boundary must be ATTRIBUTABLE: the graceful-degrade return value stays
 // exactly as documented ([] for an absent/failed source, 502 for a dead thumbnail upstream), but the
 // FAILURE REASON must not be thrown away, or six different causes collapse to one indistinguishable
 // observation. This directory has fixed exactly this class three times already — retention.ts:284
-// (#496), sidecar.ts:343, and ytdlp.ts (#767) — and each fix stopped at its own file. spotify.ts and
+//, sidecar.ts:343, and ytdlp.ts — and each fix stopped at its own file. spotify.ts and
 // thumbs.ts are the siblings #767 explicitly deferred ("a different file cluster and a future pass's
 // business"); this guard pins them so a fourth silent copy cannot re-appear.
 //
@@ -78,7 +78,7 @@ const REGIONS: [string, string, string][] = [
 
 // ── ARM 1: every catch inside a media degrade boundary binds its error ────────────────────────────
 
-test('#872 ARM 1: no bare `catch {` inside appToken / spotifySearch / serveThumb', () => {
+test('ARM 1: no bare `catch {` inside appToken / spotifySearch / serveThumb', () => {
 	const offenders: string[] = [];
 	for (const [file, name, region] of REGIONS) {
 		const src = file === 'spotify.ts' ? SPOTIFY : THUMBS;
@@ -92,7 +92,7 @@ test('#872 ARM 1: no bare `catch {` inside appToken / spotifySearch / serveThumb
 
 // ── ARM 2: every `!res.ok` refusal in those regions names res.status in its own statement ──────────
 
-test('#872 ARM 2: every `!res.ok` refusal in a guarded region names res.status', () => {
+test('ARM 2: every `!res.ok` refusal in a guarded region names res.status', () => {
 	const offenders: string[] = [];
 	for (const [file, name, region] of REGIONS) {
 		const src = file === 'spotify.ts' ? SPOTIFY : THUMBS;
@@ -121,7 +121,7 @@ test('#872 ARM 2: every `!res.ok` refusal in a guarded region names res.status',
 
 // ── ARM 3: a specific failure cause is OBSERVABLE — the discriminating behavioural check ──────────
 
-test('#872 ARM 3: distinct Spotify token failures (401, 200-no-token) are observable, clean empty is not', async () => {
+test('ARM 3: distinct Spotify token failures (401, 200-no-token) are observable, clean empty is not', async () => {
 	const { spotifySearch, _resetSpotifyToken } = await import('./spotify');
 	const env = { clientId: 'id', clientSecret: 'secret' };
 
@@ -178,14 +178,14 @@ test('#872 ARM 3: distinct Spotify token failures (401, 200-no-token) are observ
 
 // ── Sentinels: all PASS on base, so no arm above can go green vacuously ───────────────────────────
 
-test('#872 sentinel 1: all three regions were sliced and each holds real code (>150 chars)', () => {
+test('sentinel 1: all three regions were sliced and each holds real code (>150 chars)', () => {
 	// A rename or deletion reds here rather than silently emptying ARM 1/ARM 2's haystack.
 	expect(APP_TOKEN.length).toBeGreaterThan(150);
 	expect(SPOTIFY_SEARCH.length).toBeGreaterThan(150);
 	expect(SERVE_THUMB.length).toBeGreaterThan(150);
 });
 
-test('#872 sentinel 2: isAllowedThumbUrl sits OUTSIDE the guarded regions and keeps its bare catch', () => {
+test('sentinel 2: isAllowedThumbUrl sits OUTSIDE the guarded regions and keeps its bare catch', () => {
 	// ARM 1 must neither be satisfiable by rewriting isAllowedThumbUrl nor demand that its legitimate
 	// `try { new URL(u) } catch { return false }` predicate change — it is not a degrade boundary.
 	const guard = sliceFunction(THUMBS, 'isAllowedThumbUrl');
@@ -194,7 +194,7 @@ test('#872 sentinel 2: isAllowedThumbUrl sits OUTSIDE the guarded regions and ke
 	expect(SERVE_THUMB.includes(guard)).toBe(false); // and it is not inside the guarded region
 });
 
-test('#872 sentinel 3: the anchors still exist and each region still holds the degrade it attributes', () => {
+test('sentinel 3: the anchors still exist and each region still holds the degrade it attributes', () => {
 	// Deleting the feature must red rather than pass.
 	expect(SPOTIFY).toMatch(/export\s+async\s+function\s+spotifySearch\(/);
 	expect(SPOTIFY).toMatch(/export\s+function\s+spotifyEnv\(/);
@@ -204,7 +204,7 @@ test('#872 sentinel 3: the anchors still exist and each region still holds the d
 	expect(SERVE_THUMB).toMatch(/status:\s*502/); // thumb proxy's degrade status
 });
 
-test('#872 sentinel 4: the comment stripper removes a planted bare catch and !res.ok, preserving lines', () => {
+test('sentinel 4: the comment stripper removes a planted bare catch and !res.ok, preserving lines', () => {
 	const planted = [
 		'/* } catch { and if (!res.ok) return null; in a block comment',
 		'   line two */',
@@ -216,7 +216,7 @@ test('#872 sentinel 4: the comment stripper removes a planted bare catch and !re
 	expect(stripped.split('\n')).toHaveLength(3); // line count preserved so citations match grep -n
 });
 
-test('#872 sentinel 5: the creds-unset default exit is deliberately silent (not swept into an arm)', () => {
+test('sentinel 5: the creds-unset default exit is deliberately silent (not swept into an arm)', () => {
 	// :122 (spotifyEnv → null) is the documented default deployment; a structural guard cannot decide
 	// "this early return names a reason", and a warn per keystroke would be noise. Pin that it stays
 	// a plain `return []` with no res.status/console.warn attached to the creds-unset branch.

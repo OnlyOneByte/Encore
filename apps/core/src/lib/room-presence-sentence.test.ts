@@ -1,4 +1,4 @@
-// Pins the scanned-guest confirmation, in words (#834, XR-PH-14, Q1-B). This is the one screen a
+// Pins the scanned-guest confirmation, in words (XR-PH-14, Q1-B). This is the one screen a
 // non-sighted guest who scanned cannot otherwise perceive, so the sentence is the acceptance — and it
 // must NEVER re-present the code. Each assertion targets one branch of the builder.
 import { test, expect } from 'bun:test';

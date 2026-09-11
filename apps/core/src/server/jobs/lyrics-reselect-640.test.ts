@@ -1,4 +1,4 @@
-// #640 — requestLyricsReselect makes a finished align RE-RUNNABLE and pins the human pick.
+// — requestLyricsReselect makes a finished align RE-RUNNABLE and pins the human pick.
 //
 // The load-bearing property: a completed `align` occupies the dedup slot (`ready` is not slot-freeing),
 // so a bare enqueue would hand back the OLD job and nothing would run. requestLyricsReselect must

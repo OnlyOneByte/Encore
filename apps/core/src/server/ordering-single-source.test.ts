@@ -1,6 +1,6 @@
 // guard: the server derives the room's ordering from the ONE exported source, not a hand copy.
 //
-// THE DEFECT (#184). The `Ordering` a room runs on was assembled TWICE. `orderingOf(deps)` in
+// THE DEFECT. The `Ordering` a room runs on was assembled TWICE. `orderingOf(deps)` in
 // realtime/hub.ts is the exported source, and its docstring says it exists "so there is exactly one
 // place that decides what the server considers the current ordering — a second source is how the
 // server would come to pick a different next than the queue every client is looking at." But
@@ -43,13 +43,13 @@ function orderingGetter(): string {
 	return m![0];
 }
 
-test('app.ts constructs AuthoritativeState (non-vacuous sentinel) (#184)', () => {
+test('app.ts constructs AuthoritativeState (non-vacuous sentinel)', () => {
 	// If this ever stops matching, the two behavioural assertions below are meaningless — so pin the
 	// thing they scan is actually present. This is the composition root's one authoritative state.
 	expect(APP).toMatch(/new AuthoritativeState\(/);
 });
 
-test('the room ordering is derived through the single orderingOf source, not restated (#184)', () => {
+test('the room ordering is derived through the single orderingOf source, not restated', () => {
 	// PRESENCE: the ordering getter fed to AuthoritativeState must call the exported orderingOf, and
 	// orderingOf must be imported from the realtime hub (the one place that decides the ordering).
 	const getter = orderingGetter();
@@ -57,7 +57,7 @@ test('the room ordering is derived through the single orderingOf source, not res
 	expect(APP).toMatch(/import\s*\{[^}]*\borderingOf\b[^}]*\}\s*from\s*'\.\/realtime\/hub'/);
 });
 
-test('app.ts does NOT hand-assemble a second ordering copy (#184)', () => {
+test('app.ts does NOT hand-assemble a second ordering copy', () => {
 	// ABSENCE: the mutants the issue lists live inside a hand-written ordering literal — an object with
 	// both `order:` and `lastSungAt:` keys fed to the state. Once app.ts routes through orderingOf,
 	// that literal is gone. Re-introducing either shape (a full literal, or building lastSungAt from

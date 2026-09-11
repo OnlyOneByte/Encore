@@ -1,4 +1,4 @@
-// guard: the XR-PH-02 reflow row has a RENDERED guard, and it cannot be quietly defanged (#850).
+// guard: the XR-PH-02 reflow row has a RENDERED guard, and it cannot be quietly defanged.
 //
 // THE BUG THIS EXISTS FOR. `/stats` overflowed a 320px viewport by 8px at 200% text scale — an SC
 // 1.4.10 Reflow failure — while `phone-inventory.test.ts`'s XR-PH-02 arm was green. That arm was not
@@ -36,7 +36,7 @@ const CORE = join(import.meta.dir, '..', '..');
 const PROBE_PATH = join(CORE, 'e2e', 'probes', 'p15-phone-reflow.mjs');
 const STATS_PATH = join(CORE, 'src', 'routes', 'stats', '+page.svelte');
 
-test('the rung-L reflow probe exists and this guard is not vacuous (#850)', () => {
+test('the rung-L reflow probe exists and this guard is not vacuous', () => {
 	// A renamed or deleted probe must red HERE, with the path in the message, rather than leaving every
 	// assertion below to fail-open on an empty string.
 	expect(existsSync(PROBE_PATH)).toBe(true);
@@ -45,7 +45,7 @@ test('the rung-L reflow probe exists and this guard is not vacuous (#850)', () =
 
 const PROBE = stripComments(readFileSync(PROBE_PATH, 'utf8'));
 
-test('the reflow probe measures on the LAYOUT rung, not the mount rung (#850)', () => {
+test('the reflow probe measures on the LAYOUT rung, not the mount rung', () => {
 	// XR-VER-02's Check: a measurement-classified entry must import the layout-rung driver. happy-dom
 	// returns an all-zero DOMRect, so the same assertions on rung M are a permanent silent green.
 	expect(PROBE).toMatch(/from\s*'\.\.\/cdp\.mjs'/);
@@ -55,7 +55,7 @@ test('the reflow probe measures on the LAYOUT rung, not the mount rung (#850)', 
 	expect(PROBE).toMatch(/findChromium\s*\(/);
 });
 
-test('the reflow probe measures at the criterion\u2019s own numbers: 320 CSS px and 200% text (#850)', () => {
+test('the reflow probe measures at the criterion\u2019s own numbers: 320 CSS px and 200% text', () => {
 	// 320 is SC 1.4.10's width. A probe quietly retargeted to 390px would pass while the criterion
 	// failed, which is the whole defect class this row exists for.
 	expect(PROBE).toMatch(/VIEWPORT_W\s*=\s*320\b/);
@@ -69,7 +69,7 @@ test('the reflow probe measures at the criterion\u2019s own numbers: 320 CSS px 
 	expect(PROBE).toMatch(/scrollWidth\s*<=\s*m\.clientWidth/);
 });
 
-test('the reflow probe covers every XR-PH-02 surface, and /stats by name (#850)', () => {
+test('the reflow probe covers every XR-PH-02 surface, and /stats by name', () => {
 	// XR-PH-02's Acceptance named `/`, `/join`, `/settings`, `/stats` and the browse screen. `/join` was
 	// retired (#834 Q2-A) into the unjoined branch of `/`, so `measure('/', '/')` now IS the join
 	// surface — the four named surfaces are `/`, `/settings`, `/stats` and browse. A probe that silently
@@ -80,14 +80,14 @@ test('the reflow probe covers every XR-PH-02 surface, and /stats by name (#850)'
 	expect(PROBE).toMatch(/measure\('\/',\s*'\/'\)/);
 	// The browse/results screen needs a session, so the probe joins from inside the page and then
 	// measures it like the other four (#857 fixed; it was quarantined here until the fix landed). Since
-	// #902 the search box is docked on `/` and results render in place, so the surface IS `/` — SEARCHED
+	// the search box is docked on `/` and results render in place, so the surface IS `/` — SEARCHED
 	// first so the real offender renders (see the non-vacuity test below), then measured in place
 	// (`skipNav`). The old `?browse=1` mode is gone.
 	expect(PROBE).toMatch(/measure\('browse \(joined \/, searched\)',\s*'\/',\s*\{\s*skipNav:\s*true\s*\}\)/);
 	expect(PROBE).toMatch(/'\/api\/join'/);
 });
 
-test('the reflow probe FAILS on an overflow instead of merely reporting one (#850)', () => {
+test('the reflow probe FAILS on an overflow instead of merely reporting one', () => {
 	// The distinction that matters: a driver that prints FAIL and exits 0 is a report, not a guard.
 	expect(PROBE).toMatch(/process\.exit\(1\)/);
 	// Exit 2 is reserved for "the environment could not host this", and must never be reached by a
@@ -98,7 +98,7 @@ test('the reflow probe FAILS on an overflow instead of merely reporting one (#85
 	expect(PROBE).toMatch(/build['"],\s*['"]client/);
 });
 
-test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender (#857)', () => {
+test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender', () => {
 	// #857 fixed the browse-screen reflow, so the surface is now asserted like the other four rather
 	// than recorded as a known overflow. The quarantine that used to live here reddened the day the fix
 	// landed (its arm asserted the surface STILL overflowed) and was deleted, per XR-VER-06/07 — a
@@ -112,7 +112,7 @@ test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender 
 	// NON-VACUITY + DISCRIMINATION (XR-VER-05). An EMPTY joined room renders no rows, so a bare browse
 	// measurement is a clean 320 over an unexercised layout — a green guard insensitive to the fix, which
 	// is exactly why the first version of this arm was rejected. So the arm SEARCHES the browse screen
-	// first — via the shared `openBrowseFromHome` step (#832) and a `fill` of the contract's `SEL.search`
+	// first — via the shared `openBrowseFromHome` step and a `fill` of the contract's `SEL.search`
 	// hook — which surfaces the canned result set whose long-duration entries render the odd-duration
 	// chip, the widest #857 offender. It then waits for the rows to land (`SEL.songRow`) and bails rather
 	// than measures if none did, so an empty read can never masquerade as a pass. With the fix reverted
@@ -134,7 +134,7 @@ test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender 
 
 const STATS = stripComments(readFileSync(STATS_PATH, 'utf8'));
 
-test('the /stats tile grid floors its tracks in a TYPE-RELATIVE unit, never px (#850)', () => {
+test('the /stats tile grid floors its tracks in a TYPE-RELATIVE unit, never px', () => {
 	const rules = [...STATS.matchAll(/grid-template-columns:\s*([^;]+);/g)].map((m) => m[1].trim());
 	// Non-vacuity: both the base rule and the phone override must be found, or the assertions below
 	// are checking an empty list.
@@ -170,13 +170,13 @@ const APP_CSS = stripComments(readFileSync(APP_CSS_PATH, 'utf8'));
 const PAGE = stripComments(readFileSync(PAGE_PATH, 'utf8'));
 const SONG_ROW = stripComments(readFileSync(SONG_ROW_PATH, 'utf8'));
 
-test('the odd-duration chip wraps its phrase instead of forcing the row wider (#857)', () => {
+test('the odd-duration chip wraps its phrase instead of forcing the row wider', () => {
 	// The offender the browse arm above measures. Every other SongRow chip is a short token, so `.chip`'s
 	// blanket `white-space: nowrap` is fine for them — but this one carries a whole phrase ("Longer than a
 	// song"), and nowrap made its min-content width its FULL width (~230px at 200%), so it could not shrink
 	// and pushed the browse page past 320px. It must be allowed to wrap, like `.chip.state` already is.
 	/*
-	 * #913 S6: the chip is <Badge> now, so the claim reads in two places instead of one rule. The
+	 * S6: the chip is <Badge> now, so the claim reads in two places instead of one rule. The
 	 * component must OFFER a wrapping tone, and this row must ASK for it on the phrase-carrying chip —
 	 * a component that can wrap is useless if the call site does not opt in, and an opt-in is useless if
 	 * the component ignores it. Checking both is what the single `.chip.odd-dur` rule used to do.
@@ -189,7 +189,7 @@ test('the odd-duration chip wraps its phrase instead of forcing the row wider (#
 
 /*
  * RETIRED IN #903 — `the queue sheet floors its own reflow: its children can shrink below their
- * content (#857)`. It asserted `.sheet-surface > * { min-width: 0 }` in app.css, and that rule was
+ * content`. It asserted `.sheet-surface > * { min-width: 0 }` in app.css, and that rule was
  * deleted with the drawer surface it dressed.
  *
  * XR-VER-06 record. (a) The invariant: a `left:0; right:0` fixed box only honours min(max-width,
@@ -206,7 +206,7 @@ test('the odd-duration chip wraps its phrase instead of forcing the row wider (#
  * re-add a floor for that band rather than reviving this one.
  */
 
-test('the key row wraps and its ±semitone buttons can shrink at 200% text (#857)', () => {
+test('the key row wraps and its ±semitone buttons can shrink at 200% text', () => {
 	// The now-playing key control, named in the issue's offender list. It renders only under live
 	// playback, which the probe cannot start — so it is pinned here rather than measured. `.key` is a
 	// flex row of two `flex: 1` buttons whose label is the single unbreakable word "semitone"; at 200%

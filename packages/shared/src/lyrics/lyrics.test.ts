@@ -73,7 +73,7 @@ test('a text identified as ANOTHER SONG ranks below every honest guess', () => {
 	// preferred it — it has a numeric agreement, a baseline has none. So the room kept seeing words
 	// already proven wrong while the words actually heard sat unshown beside them.
 	//
-	// The convicting axis is `coverage`, not `agreement` (#806). A genuinely different song is low on
+	// The convicting axis is `coverage`, not `agreement`. A genuinely different song is low on
 	// BOTH (measured: coverage 0.2745, rank score 0.1521), so both are set here — but only coverage is
 	// thresholded, which the guard below proves by moving them apart.
 	const suspect = {
@@ -88,7 +88,7 @@ test('a text identified as ANOTHER SONG ranks below every honest guess', () => {
 	expect(pickBestLyrics([suspect, baseline])).toBe(baseline);
 });
 
-test('#806 a LOW RANK SCORE with high coverage is NOT another song — it is a partial baseline', () => {
+test('a LOW RANK SCORE with high coverage is NOT another song — it is a partial baseline', () => {
 	// THE REGRESSION. YouTube's ASR suppresses sung vocals, so a baseline that heard only part of the
 	// song is the normal case here, and a correct authored lookup graded against one scores low on the
 	// RANKING axis by construction. Measured through the real align plan: agreement 0.1857 while the
@@ -197,7 +197,7 @@ test('tokenizer strips LRC stamps, markers, and punctuation', () => {
 	expect(lyricsTokens('[00:12.50]Hello, world! [Chorus]')).toEqual(['hello', 'world']);
 });
 
-test('tokenizer NFKC-folds so Unicode form-variants tokenise alike (#540, mirrors the Python side)', () => {
+test('tokenizer NFKC-folds so Unicode form-variants tokenise alike (mirrors the Python side)', () => {
 	// composed vs decomposed: "Beyonce\u0301" (e + combining acute) vs "Beyonc\u00e9" (single codepoint)
 	expect(lyricsTokens('Beyonce\u0301')).toEqual(lyricsTokens('Beyonc\u00e9'));
 	// full-width Latin folds to ASCII, and a ligature (U+FB01 fi) expands
@@ -258,7 +258,7 @@ test('agreement matches the shared cross-language corpus (parity with the Python
 	}
 });
 
-test('the parity corpus keeps a case only MULTIPLICITY can score (#801)', () => {
+test('the parity corpus keeps a case only MULTIPLICITY can score', () => {
 	// WHY THIS GUARD EXISTS. The row above pins what `agreement` COMPUTES; this pins that the table still
 	// contains a row capable of telling a multiset intersection from a set one. Without it, deleting that
 	// row leaves every remaining case scoring identically under either overlap, so replacing
@@ -315,7 +315,7 @@ test('hasUsableTiming is true for word/line, false for none', () => {
 // Matched as a DECLARATION, not as a substring: the surviving constant's own doc comment names
 // SUSPECT_AGREEMENT on purpose, to tell a reader still carrying 0.25 in their head that the axis moved.
 // A bare substring scan would fire on that prose and make the guard unfalsifiable.
-test('lyrics.ts no longer declares the retired SUSPECT_AGREEMENT (#542)', () => {
+test('lyrics.ts no longer declares the retired SUSPECT_AGREEMENT', () => {
 	const source = readFileSync(join(import.meta.dir, 'lyrics.ts'), 'utf-8');
 	expect(source).toMatch(/export const SUSPECT_COVERAGE\s*=/);
 	expect(source).not.toMatch(/export const SUSPECT_AGREEMENT\s*=/);

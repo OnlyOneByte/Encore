@@ -1,4 +1,4 @@
-// guard: a graceful shutdown whose state flush FAILED must exit NON-ZERO (#473).
+// guard: a graceful shutdown whose state flush FAILED must exit NON-ZERO.
 //
 // THE DEFECT. server.ts's gracefulShutdown() caught an error from state.flushNow()/reaper.stop()/
 // server.stop(), logged it, and then ran process.exit(0) REGARDLESS. A failed flush -- the case where
@@ -46,7 +46,7 @@ function shutdownBody(src: string): string {
 	return src.slice(open, i + 1);
 }
 
-test('gracefulShutdown does NOT exit(0) unconditionally -- a failed flush exits non-zero (#473)', () => {
+test('gracefulShutdown does NOT exit(0) unconditionally -- a failed flush exits non-zero', () => {
 	const body = shutdownBody(stripComments(readFileSync(SERVER, 'utf8')));
 	// The catch must RECORD failure rather than only log it: an ok-style flag assigned inside the catch.
 	expect(body).toMatch(/catch\s*\([^)]*\)\s*\{[\s\S]*?\bok\s*=\s*false/);

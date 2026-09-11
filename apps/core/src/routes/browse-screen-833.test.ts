@@ -1,4 +1,4 @@
-// THE BROWSE SCREEN, DIRECTION B (issue #833) — the deletion is the invariant.
+// THE BROWSE SCREEN, DIRECTION B — the deletion is the invariant.
 //
 // WHY A SOURCE SCAN, AND WHERE IT STOPS. What direction B changes on this screen is which markup and
 // which state EXIST: three readiness chips, an artist rail, a genre rail and two group headings are
@@ -44,7 +44,7 @@ const RAW = readFileSync(join(HERE, '+page.svelte'), 'utf8');
 const PAGE = stripComments(RAW);
 
 // ── mechanism 1: the three readiness chips ───────────────────────────────────────────────────────
-test('#833 mechanism 1 — the readiness chip row is gone, and so is the state behind it', () => {
+test('mechanism 1 — the readiness chip row is gone, and so is the state behind it', () => {
 	// The row itself, by the group label every driven flow used to find it with.
 	expect(PAGE).not.toContain('Filter by readiness');
 	expect(PAGE).not.toMatch(/class="chips"/);
@@ -61,8 +61,8 @@ test('#833 mechanism 1 — the readiness chip row is gone, and so is the state b
 	expect(PAGE).toMatch(/libraryCount: library\.length/);
 });
 
-test('#833 mechanism 1 — every group renders unconditionally, so nothing is hidden behind a chip', () => {
-	// The ready and cooking groups are gated on `searchActive` (#902) and on having rows — never on a
+test('mechanism 1 — every group renders unconditionally, so nothing is hidden behind a chip', () => {
+	// The ready and cooking groups are gated on `searchActive` and on having rows — never on a
 	// filter. This is the arm that fails if a "quick" reinstatement re-adds a gate without the chips.
 	expect(PAGE).toContain('{#if searchActive && cookingRows.length}');
 	// `accountedFor` subtracts BOTH groups from the shortcut lists unconditionally: with a filter, a
@@ -72,7 +72,7 @@ test('#833 mechanism 1 — every group renders unconditionally, so nothing is hi
 });
 
 // ── mechanisms 2 and 3: the artist rail and the genre/tag rail ───────────────────────────────────
-test('#833 mechanisms 2+3 — the browse disclosure and both facet rails are gone from the phone', () => {
+test('mechanisms 2+3 — the browse disclosure and both facet rails are gone from the phone', () => {
 	expect(PAGE).not.toContain('browse-toggle');
 	expect(PAGE).not.toContain('Browse by artist');
 	expect(PAGE).not.toContain('Browse by tag');
@@ -83,7 +83,7 @@ test('#833 mechanisms 2+3 — the browse disclosure and both facet rails are gon
 	expect(PAGE).not.toMatch(/\bfacets\b/);
 });
 
-test('#833 mechanisms 2+3 — the phone asks the library endpoint for the whole library, unfiltered', () => {
+test('mechanisms 2+3 — the phone asks the library endpoint for the whole library, unfiltered', () => {
 	// The narrowing was server-side (?artist= / ?tag=), so the fetch is where a rail would have to come
 	// back through. One unqualified request, no query string built from a filter.
 	expect(PAGE).toMatch(/fetch\('\/api\/library'\)/);
@@ -91,7 +91,7 @@ test('#833 mechanisms 2+3 — the phone asks the library endpoint for the whole 
 	expect(PAGE).not.toMatch(/\?tag=/);
 });
 
-test('#833 — the retired tag-filter wiring guard is deleted, and its server sibling is not', () => {
+test('— the retired tag-filter wiring guard is deleted, and its server sibling is not', () => {
 	// A retired guard left in the suite is indistinguishable from one that is working (XR-VER-07).
 	expect(existsSync(join(HERE, 'library-tag-filter-wiring.test.ts'))).toBe(false);
 	// Its #689 sibling pins PER-ROW tag chips, which this change does not touch, and the server halves
@@ -102,7 +102,7 @@ test('#833 — the retired tag-filter wiring guard is deleted, and its server si
 });
 
 // ── mechanism 4: the group headings that re-announced the readiness axis ─────────────────────────
-test('#833 mechanism 4 — the readiness group headings are gone; the rows say it themselves', () => {
+test('mechanism 4 — the readiness group headings are gone; the rows say it themselves', () => {
 	// These two restated, in prose, the chip directly above them. SongRow paints a readiness chip per
 	// row, so the axis is still visible — it is just not announced twice.
 	expect(PAGE).not.toContain('Ready to sing');
@@ -114,7 +114,7 @@ test('#833 mechanism 4 — the readiness group headings are gone; the rows say i
 	// members — so it is not duplication and is deliberately kept.
 	expect(PAGE).toContain('Needs karaoke · has vocals');
 	// The zero-query shortcut lists (Popular tonight / Recently queued) were dropped with the browse
-	// mode (#902): an empty box shows the live QUEUE now, so their headings are gone from this route.
+	// mode: an empty box shows the live QUEUE now, so their headings are gone from this route.
 	expect(PAGE).not.toContain('Popular tonight');
 	expect(PAGE).not.toContain('Recently queued');
 	// …and the `.grouphead-mark` rule they were the only users of goes with them — a dead CSS selector
@@ -123,7 +123,7 @@ test('#833 mechanism 4 — the readiness group headings are gone; the rows say i
 });
 
 // ── what replaced them: one docked box, one stack, growing upward ────────────────────────────────
-test('#833 — search is a docked band in the thumb zone, publishing the measured --dock-h', () => {
+test('— search is a docked band in the thumb zone, publishing the measured --dock-h', () => {
 	// After </main>, so it sits below the content it docks under and the tab sequence follows the visual
 	// order (XR-PH-12). Since #902 it is gated on `{#if me}` — docked for a joined singer at all times,
 	// the sole band on this route.
@@ -145,14 +145,14 @@ test('#833 — search is a docked band in the thumb zone, publishing the measure
 	expect(PAGE).toContain('aria-label="Search a song or artist"');
 });
 
-test('#833 — the results stack UPWARD: every result list is emitted with its best match last', () => {
+test('— the results stack UPWARD: every result list is emitted with its best match last', () => {
 	// The ranking is reversed in the DOM, which is what keeps DOM order equal to visual order
 	// (XR-PH-12). A `column-reverse` container would paint the column against its DOM order and invert
 	// the focus sequence with it, so the ban is part of the claim.
 	expect(PAGE).toMatch(/\{@const readyStack = \[\.\.\.readyResults\]\.reverse\(\)\}/);
 	expect(PAGE).toMatch(/\{@const cookingStack = \[\.\.\.cookingRows\]\.reverse\(\)\}/);
 	expect(PAGE).toMatch(/\{@const rawRows = unaccounted\(rawResults\)\.reverse\(\)\}/);
-	// The zero-query shortcut stacks (popularRows / recentRows) were dropped with the browse mode (#902).
+	// The zero-query shortcut stacks (popularRows / recentRows) were dropped with the browse mode.
 	expect(PAGE).not.toContain('popularRows');
 	expect(PAGE).not.toContain('recentRows');
 	expect(PAGE).not.toContain('column-reverse');
@@ -164,7 +164,7 @@ test('#833 — the results stack UPWARD: every result list is emitted with its b
 	expect(main.indexOf('cookingStack')).toBeLessThan(main.indexOf('readyStack'));
 });
 
-test('#833 — the bottom-anchored column reserves the top for the back control', () => {
+test('— the bottom-anchored column reserves the top for the back control', () => {
 	// Bottom-anchored, or one line of content sits at the top of an empty screen instead of beside the
 	// thumb. The MECHANISM is the auto bottom margin on the back control: in a flex column it both keeps
 	// that control at the top and pushes every later sibling to the bottom. A `justify-content: flex-end`
@@ -178,7 +178,7 @@ test('#833 — the bottom-anchored column reserves the top for the back control'
 	expect(PAGE).toMatch(/main:has\(> \.backrow\) \{\s*display: grid;\s*align-content: end;/);
 });
 
-test('#833 — a stack that grows upward is scrolled to, instantly and only when the set changes', () => {
+test('— a stack that grows upward is scrolled to, instantly and only when the set changes', () => {
 	// Bottom-anchored content longer than the viewport starts at its TOP, which is the far end of the
 	// ranking: without this the best match renders below the fold. Keyed on the shape of the rendered
 	// set, so scrolling up to read further is not fought on every frame.
@@ -191,7 +191,7 @@ test('#833 — a stack that grows upward is scrolled to, instantly and only when
 	expect(PAGE).not.toMatch(/behavior:\s*'smooth'/);
 });
 
-test('#833 — the empty state that named the library count survives the chip that used to reach it', () => {
+test('— the empty state that named the library count survives the chip that used to reach it', () => {
 	// `readyEmptyState` said "None of your N karaoke songs match X" plus a way back. It was the Ready
 	// CHIP's empty state; the chip is gone and the condition it was really about — a query the ready
 	// library cannot answer — is now stated directly. Deleting it instead would have taken the only
@@ -201,15 +201,15 @@ test('#833 — the empty state that named the library count survives the chip th
 	expect(PAGE).toContain('Show all {empty.showAllCount}');
 });
 
-test('#833/#902 — no empty-state copy points at a search box above, or at a now-deleted shortcut list', () => {
-	// The box moved to the bottom (#833), so "Search for a song above" became false. #902 then dropped
+test('/#902 — no empty-state copy points at a search box above, or at a now-deleted shortcut list', () => {
+	// The box moved to the bottom, so "Search for a song above" became false. #902 then dropped
 	// the empty-box shortcut list entirely — an empty box shows the live queue — so its "in the box
 	// below" prompt is gone too: neither direction is stated any more.
 	expect(PAGE).not.toContain('Search for a song above');
 	expect(PAGE).not.toContain('Search for a song in the box below');
 });
 
-test('#833 — the docked box survives the on-screen keyboard, by the one mechanism that can say so', () => {
+test('— the docked box survives the on-screen keyboard, by the one mechanism that can say so', () => {
 	// The acceptance bullet is "the input remains visible and no result row is occluded with the keyboard
 	// up". A `position: fixed; bottom: 0` band cannot satisfy it under the DEFAULT viewport behaviour
 	// (`resizes-visual`): the layout viewport keeps its full height, so the band sits under the keyboard.
@@ -224,7 +224,7 @@ test('#833 — the docked box survives the on-screen keyboard, by the one mechan
 });
 
 // ── non-vacuity ─────────────────────────────────────────────────────────────────────────────────
-test('#833 — this guard really read the route, and really stripped its comments', () => {
+test('— this guard really read the route, and really stripped its comments', () => {
 	// Every arm above is an absence, and an absence is what an empty string is full of. Two floors: the
 	// file was read, and the stripper did not blank it.
 	expect(RAW.length).toBeGreaterThan(40000);

@@ -1,4 +1,4 @@
-// runtime companion to library-tags-wiring.test.ts (#689). The library route reads a song's tags via
+// runtime companion to library-tags-wiring.test.ts. The library route reads a song's tags via
 // `app.media.tagsOf(id, 'tag')`. This pins the property that read DEPENDS on and that the wiring scan
 // cannot see: the 'tag' KIND matters. tagsOf defaults to 'genre', and the sidecar write path stores
 // under 'tag' — so a read with the wrong (or defaulted) kind returns NOTHING even though tags exist.
@@ -23,7 +23,7 @@ const cooked = (id: string): Media => ({
 	songProfile: { ...EMPTY_SONG_PROFILE }
 });
 
-test("tagsOf(id, 'tag') returns exactly the tag-kind values setTags wrote (#689)", () => {
+test("tagsOf(id, 'tag') returns exactly the tag-kind values setTags wrote", () => {
 	const repo = new MediaRepository(migratedDb());
 	repo.upsert(cooked('m1'));
 	repo.setTags('m1', 'tag', ['Acoustic', '80s', 'duet']);
@@ -31,7 +31,7 @@ test("tagsOf(id, 'tag') returns exactly the tag-kind values setTags wrote (#689)
 	expect(repo.tagsOf('m1', 'tag').sort()).toEqual(['80s', 'acoustic', 'duet']);
 });
 
-test("the default 'genre' read does NOT see tag-kind values — the kind argument is load-bearing (#689)", () => {
+test("the default 'genre' read does NOT see tag-kind values — the kind argument is load-bearing", () => {
 	const repo = new MediaRepository(migratedDb());
 	repo.upsert(cooked('m1'));
 	repo.setTags('m1', 'tag', ['acoustic']);
@@ -40,7 +40,7 @@ test("the default 'genre' read does NOT see tag-kind values — the kind argumen
 	expect(repo.tagsOf('m1', 'tag')).toEqual(['acoustic']);
 });
 
-test('a song with no tags yields an empty array, so its row omits the chips (#689)', () => {
+test('a song with no tags yields an empty array, so its row omits the chips', () => {
 	const repo = new MediaRepository(migratedDb());
 	repo.upsert(cooked('m2'));
 	expect(repo.tagsOf('m2', 'tag')).toEqual([]);

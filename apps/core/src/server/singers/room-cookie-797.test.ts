@@ -1,4 +1,4 @@
-// #797 F1 — the room cookie is gone, and no production source may claim the room-scoping chain reads
+// F1 — the room cookie is gone, and no production source may claim the room-scoping chain reads
 // one.
 //
 // `ROOM_COOKIE = 'encore_room'` was written by /api/join on every join, with a 30-day `maxAge`, and had
@@ -67,7 +67,7 @@ const sources = new Map(FILES.map((p) => [p, readFileSync(p, 'utf8')]));
 /** The cookie, by constant name or by its literal value. */
 const NAMES_THE_COOKIE = /ROOM_COOKIE|['"`]encore_room['"`]/;
 
-test('#797 F1 non-vacuous: the scan really walks apps/core/src and can see cookie code', () => {
+test('F1 non-vacuous: the scan really walks apps/core/src and can see cookie code', () => {
 	// A scan that found no files, or files it could not read, would pass every ban below on silence.
 	expect(FILES.length).toBeGreaterThan(100);
 	const sessionHits = FILES.filter((p) => /SESSION_COOKIE/.test(stripComments(sources.get(p)!)));
@@ -78,12 +78,12 @@ test('#797 F1 non-vacuous: the scan really walks apps/core/src and can see cooki
 	);
 });
 
-test('#797 F1 no production source names the room cookie in CODE', () => {
+test('F1 no production source names the room cookie in CODE', () => {
 	const hits = FILES.filter((p) => NAMES_THE_COOKIE.test(stripComments(sources.get(p)!))).map(rel);
 	expect(hits).toEqual([]);
 });
 
-test('#797 F1 the stripper DISCRIMINATES — a comment mention passes, real code does not', () => {
+test('F1 the stripper DISCRIMINATES — a comment mention passes, real code does not', () => {
 	// The load-bearing control. Without it the ban above could be green because the stripper eats
 	// everything, and the honest explanatory prose could not be told apart from a re-added cookie.
 	const inAComment = "// the room cookie #654 set (ROOM_COOKIE = 'encore_room') had no reader";
@@ -97,7 +97,7 @@ test('#797 F1 the stripper DISCRIMINATES — a comment mention passes, real code
 	expect(NAMES_THE_COOKIE.test(stripComments("const PARTY_COOKIE = 'encore_room';"))).toBe(true);
 });
 
-test('#797 F1 the corrective prose is PRESENT where a reader would look', () => {
+test('F1 the corrective prose is PRESENT where a reader would look', () => {
 	// The negative arm alone is satisfied by silence, and silence is what let #654's design outlive the
 	// decision that replaced it. Both files that used to write or credit the cookie must now say the
 	// room comes from the resolved join, not from a cookie.
@@ -130,7 +130,7 @@ const isDenial = (w: string): boolean =>
 	/\b(no|never|not|zero|nothing|does\s+not|doesn.t|had\s+no|without)\b[^.]{0,60}\bread/i.test(w) ||
 	/\bread[a-z]*\b[^.]{0,60}\b(no|never|nothing)\b/i.test(w);
 
-test('#797 F1 no production source ASSERTS that anything reads a room cookie', () => {
+test('F1 no production source ASSERTS that anything reads a room cookie', () => {
 	// Anchored on the CLAIM, not the identifier, so re-introducing #654's design under a new constant
 	// name is still caught. A denial is allowed on purpose — the corrected comments have to be able to
 	// name the mechanism they rule out, and the test above requires them to.
@@ -140,7 +140,7 @@ test('#797 F1 no production source ASSERTS that anything reads a room cookie', (
 	}
 });
 
-test('#797 F1 the prose ban DISCRIMINATES — it still flags the exact sentences that shipped', () => {
+test('F1 the prose ban DISCRIMINATES — it still flags the exact sentences that shipped', () => {
 	// Replay the two comments verbatim from base. If the matcher stopped firing, the rule above would be
 	// green on a tree that had re-added them.
 	const shipped = [
@@ -158,7 +158,7 @@ test('#797 F1 the prose ban DISCRIMINATES — it still flags the exact sentences
 	expect(readingWindows(corrected).filter((w) => !isDenial(w))).toEqual([]);
 });
 
-test('#797 F1 the mechanism that DID win is still the one the code uses', () => {
+test('F1 the mechanism that DID win is still the one the code uses', () => {
 	// Pins the replacement rather than only the absence: if a later change starts resolving a room from
 	// anything but the session token, this stops being the right guard and should red loudly.
 	const roomScope = sources.get(join(SRC, 'server', 'realtime', 'room-scope.ts'))!;
@@ -217,14 +217,14 @@ function neverToldWindows(src: string): string[] {
  */
 const contradictsIt = (w: string): boolean => /\bDOES\b|\bdoes\s+learn\b|\bin\s+fact\b|\bis\s+false\b/.test(w);
 
-test('#797 F2 no production source claims a phone is never told its own room', () => {
+test('F2 no production source claims a phone is never told its own room', () => {
 	for (const p of FILES) {
 		const asserted = neverToldWindows(sources.get(p)!).filter((w) => !contradictsIt(w));
 		expect({ file: rel(p), asserted }).toEqual({ file: rel(p), asserted: [] });
 	}
 });
 
-test('#797 F2 the claim ban DISCRIMINATES — it still flags both sentences that shipped', () => {
+test('F2 the claim ban DISCRIMINATES — it still flags both sentences that shipped', () => {
 	// Replay them verbatim from base. Without this the rule above could be green because the matcher
 	// never fires on the shape it is meant to catch.
 	const shipped = [
@@ -242,7 +242,7 @@ test('#797 F2 the claim ban DISCRIMINATES — it still flags both sentences that
 	).toEqual([]);
 });
 
-test('#797 F2 both docstrings now say where a phone DOES learn its room', () => {
+test('F2 both docstrings now say where a phone DOES learn its room', () => {
 	// The positive half: deleting the false parenthetical and saying nothing would satisfy the ban above
 	// while leaving `listPublic`'s asymmetry unexplained, which is what the finding is about. Each of the
 	// two blocks is asserted separately so a correction to one cannot cover for the other.

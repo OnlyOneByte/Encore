@@ -4,7 +4,7 @@
 // this file NO test supplied either through HubDeps — the tracker methods were exercised directly
 // (plays.test.ts calls tracker.onNowPlaying(...), popularity.test.ts calls p.recordAdd(...)),
 // leaving the one line that FEEDS each tracker unasserted. Each hook could be turned into a no-op
-// and the whole core suite stayed byte-identical to baseline (#123).
+// and the whole core suite stayed byte-identical to baseline.
 //
 // The sibling hooks on these same paths already ARE wire-tested — `onSang` in
 // queue-order-wiring.test.ts, `onEntryRemoved` by the jobs suite — so these two were the gap.
@@ -76,7 +76,7 @@ function harness() {
 			seen.add(id);
 			return false;
 		},
-		hasOp: (id) => seen.has(id) // non-recording peek — mirrors server.ts (#490)
+		hasOp: (id) => seen.has(id) // non-recording peek — mirrors server.ts
 	};
 	let clock = 1000;
 	return { state, deps, plays, playsLogged, popularity, published };

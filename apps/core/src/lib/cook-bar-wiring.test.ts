@@ -49,7 +49,7 @@ test('SongRow derives its cook bar from overallCookPct (#80)', () => {
 	// … and actually feed the helper's output into the bar's scaleX, not the raw pct.
 	expect(src).toMatch(/const\s+barPct\s*=\s*\$derived\(.*overallCookPct/);
 	/*
-	 * #913 S6: the bar is <Progress value={barPct}>, so the helper's output is handed over as a value
+	 * S6: the bar is <Progress value={barPct}>, so the helper's output is handed over as a value
 	 * rather than baked into a scaleX at the call site. The claim is the same and still the point: the
 	 * BAR takes the unrounded float — Progress translates by it, so a smooth fill needs the precision —
 	 * and only the guest-facing readout rounds, or it prints "31.200000000000003%" (#80).

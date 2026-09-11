@@ -117,7 +117,7 @@ test('the DB partial unique index enforces dedup even if the app check is bypass
 	expect(repo.findLive('media-1', 'stems')!.id).toBe(live.id); // still the one live job
 });
 
-test('requeue distinguishes REJECT from LEASE_EXPIRED through the machine (#471)', () => {
+test('requeue distinguishes REJECT from LEASE_EXPIRED through the machine', () => {
 	const { repo } = makeRepo();
 
 	// A worker REJECT is only legal from `assigned` — the machine now knows it is a distinct event,

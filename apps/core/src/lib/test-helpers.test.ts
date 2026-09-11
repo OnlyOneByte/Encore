@@ -11,7 +11,7 @@
  * A copy that drifts — a different glob, a missed directory, an extra exclusion — silently narrows one
  * guard's population while every other copy keeps its own answer. The guard keeps passing, on a
  * smaller surface, and nothing says so. That is not hypothetical here: `motion.test.ts` needed its
- * scope widened in isolation (#177) precisely because its `styleFiles` was private, and no other
+ * scope widened in isolation precisely because its `styleFiles` was private, and no other
  * guard's scope moved with it.
  *
  * Consolidating is a REFACTOR, so `bun test` cannot tell whether it happened: reverting any one file
@@ -26,7 +26,7 @@
  *
  * KNOWN LIMIT, stated so nobody reads more into a green run than it means. Arm 1 is keyed on the five
  * NAMES, so a rival walker reintroduced under a DIFFERENT name is not caught. Three consumers carry
- * exactly such a walker today — `tsSources` (components/motion.test.ts, #830), `tsFiles`
+ * exactly such a walker today — `tsSources` (components/motion.test.ts), `tsFiles`
  * (ui/icons.test.ts), `allDrivers` (e2e/contract.test.ts) — and this file is green with all three
  * present. Banning any second recursive directory walk in a consumer is the arm that would close it,
  * and it cannot land until those three are consolidated or carried on an annotated baseline; that is

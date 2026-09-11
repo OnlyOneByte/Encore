@@ -1,6 +1,6 @@
 // Pure state-machine — every legal edge from §2 allowed, everything else (incl. terminal escape
 // and illegal self-loops) rejected. The machine is now keyed on the EVENT that causes a transition,
-// not just the status pair (#471): the event-level block below asserts the distinctions a status
+// not just the status pair: the event-level block below asserts the distinctions a status
 // pair cannot express — a REJECT vs a LEASE_EXPIRED that both land on `queued`, and REPRIORITIZE as
 // a legal in-machine self-loop rather than an escape hatch.
 import { test, expect } from 'bun:test';
@@ -31,7 +31,7 @@ test('cancel is legal from every non-terminal state', () => {
 test('every non-terminal status self-loops via REPRIORITIZE; running also via PROGRESS (#471/#525)', () => {
 	expect(canTransition('running', 'running')).toBe(true); // PROGRESS and/or REPRIORITIZE
 	expect(canTransition('queued', 'queued')).toBe(true); // REPRIORITIZE — now a legal internal edge
-	expect(canTransition('assigned', 'assigned')).toBe(true); // REPRIORITIZE during the ack window (#525)
+	expect(canTransition('assigned', 'assigned')).toBe(true); // REPRIORITIZE during the ack window
 });
 
 test('terminal states have no outgoing edges', () => {
@@ -55,7 +55,7 @@ test('assertTransition throws with a precise reason', () => {
 	expect(() => assertTransition('queued', 'assigned')).not.toThrow();
 });
 
-// — event-typed machine (#471): the distinctions a status pair could not express —
+// — event-typed machine: the distinctions a status pair could not express —
 
 test('REJECT and LEASE_EXPIRED are DISTINGUISHABLE events that both land on queued', () => {
 	// The whole point of #471: pre-fix, both of these were the single status pair `assigned → queued`
@@ -87,7 +87,7 @@ test('REPRIORITIZE is a legal in-machine self-loop on EVERY non-terminal status 
 	}
 });
 
-test('RECOVER (boot recovery) is legal from every in-flight status, since both are interrupted (#525)', () => {
+test('RECOVER (boot recovery) is legal from every in-flight status, since both are interrupted', () => {
 	// recoverOnBoot() resets BOTH assigned and running jobs to queued after a core restart — their
 	// owning WS sessions are gone. RECOVER must therefore be legal from both, or boot recovery of an
 	// assigned-but-not-yet-accepted job throws.

@@ -1,8 +1,8 @@
 // guard: the TV route feeds its VISUALIZER an ANGLE derived from the room's stored stage COLOUR, and
-// feeds its SOLID stage that colour verbatim (#425).
+// feeds its SOLID stage that colour verbatim.
 //
 // THE CHANGE. #425 replaced the room's stored `tvBackgroundHue: number` with `tvBackgroundColor:
-// string` (a real hex; the legibility pin moved onto the lyric reel's own stroke, #750). Two wirings in
+// string` (a real hex; the legibility pin moved onto the lyric reel's own stroke). Two wirings in
 // tv/+page.svelte turn on that:
 //   - the visualizers build their palette by hue ARITHMETIC (`stageHueToHex(hue + deg)`), so they still
 //     need an angle. The route derives it with `hueOfColor(tvBackgroundColor)`, NOT `nearestSingerHue`
@@ -36,7 +36,7 @@ function stripComments(src: string): string {
 const TV_ROUTE = join(import.meta.dir, '..', '..', 'routes', 'tv', '+page.svelte');
 const tvSrc = () => stripComments(readFileSync(TV_ROUTE, 'utf8'));
 
-test('the TV route derives the visualizer angle from the stored colour via hueOfColor (#425)', () => {
+test('the TV route derives the visualizer angle from the stored colour via hueOfColor', () => {
 	const src = tvSrc();
 	// hueOfColor is imported from the shared package…
 	expect(src).toMatch(/import\s*\{[^}]*\bhueOfColor\b[^}]*\}\s*from\s*['"]@encore\/shared['"]/);
@@ -45,7 +45,7 @@ test('the TV route derives the visualizer angle from the stored colour via hueOf
 	expect(src).toMatch(/\$derived\s*\(\s*hueOfColor\s*\(\s*tvBackgroundColor\s*\)\s*\)/);
 });
 
-test('the TV route reads the stored stage COLOUR, not the retired hue angle (#425)', () => {
+test('the TV route reads the stored stage COLOUR, not the retired hue angle', () => {
 	const src = tvSrc();
 	// the colour field is read off settings…
 	expect(src).toMatch(/settings\.room\.tvBackgroundColor/);
@@ -54,7 +54,7 @@ test('the TV route reads the stored stage COLOUR, not the retired hue angle (#42
 	expect(src).not.toMatch(/settings\.room\.tvBackgroundHue/);
 });
 
-test('the TV route passes the colour to stageBackgroundCss, and never nearestSingerHue on this path (#425)', () => {
+test('the TV route passes the colour to stageBackgroundCss, and never nearestSingerHue on this path', () => {
 	const src = tvSrc();
 	// the stage CSS is resolved from the colour, not from an angle (solid renders it verbatim).
 	expect(src).toMatch(/stageBackgroundCss\s*\(\s*resolvedBackground\s*,\s*tvBackgroundColor\s*,/);

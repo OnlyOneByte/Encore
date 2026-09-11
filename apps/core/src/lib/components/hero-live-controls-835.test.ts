@@ -1,4 +1,4 @@
-// XR-PH-15's honest degradation, measured on the render (issue #835).
+// XR-PH-15's honest degradation, measured on the render.
 //
 // The relocation itself landed with #832: the guide level, the key row and the range bar are already
 // LIVE controls for the playing song, already in the hero's disclosure BODY, and
@@ -42,7 +42,7 @@ function render<P extends Record<string, unknown>>(Comp: unknown, props: P): HTM
 }
 
 /*
- * #913: `openTools` was deleted with the four arms that used it. Opening the disclosure is only
+ * `openTools` was deleted with the four arms that used it. Opening the disclosure is only
  * meaningful for a claim about what is INSIDE it, and every such claim now runs on the layout rung in
  * `apps/core/e2e/probes/p16-hero-live-controls.mjs` — the hero cannot be mounted here at all while its
  * disclosure is a Bits UI Collapsible, which reads getBoundingClientRect (XR-VER-03).
@@ -51,7 +51,7 @@ function render<P extends Record<string, unknown>>(Comp: unknown, props: P): HTM
 const NOTE = 'No isolated vocals for this song, so the guiding track stays off. Key and vocal range still work.';
 
 /*
- * ── FOUR ARMS MOVED TO THE LAYOUT RUNG (#913, XR-VER-03/XR-VER-07) ───────────────────────────────
+ * ── FOUR ARMS MOVED TO THE LAYOUT RUNG (XR-VER-03/XR-VER-07) ───────────────────────────────
  *
  * These four claims used to mount the hero here:
  *
@@ -83,7 +83,7 @@ const NOTE = 'No isolated vocals for this song, so the guiding track stays off. 
 // ── the arms where no sentence is owed ───────────────────────────────────────────────────────────
 
 test('nothing playing offers no live control and no sentence about one', () => {
-	// `hasSong` already gates the disclosure (#832). The note must not escape that gate and explain a
+	// `hasSong` already gates the disclosure. The note must not escape that gate and explain a
 	// control that is not on screen — an idle room stating "the guiding track stays off" is noise.
 	const host = render(HeroControls, { available: false, controlsNote: NOTE, hasSong: false });
 	expect(host.querySelector('.tools')).toBeNull();
@@ -117,14 +117,14 @@ test('the route derives the sentence from a media row, not from the flag alone (
 	expect(hero).toContain('{controlsNote}');
 });
 
-test('#253 stays reversed-proof: the reason is on the hero, NOT back inside GuidingTrack', () => {
+test('stays reversed-proof: the reason is on the hero, NOT back inside GuidingTrack', () => {
 	// The whole point of arm D. `drawer-ui-cleanup-253.test.ts` bans this phrase from the component and
 	// pins its hint to `available ? … : ''`; this asserts the same boundary from the other side, so a
 	// future edit that relocates the sentence into the component reds here as well as there.
 	//
 	// Non-vacuity first: a component that had been deleted or renamed would satisfy every ban below by
 	// being absent, which is the failure mode a bare `not.toMatch` cannot distinguish from compliance.
-	// #913: was `class="gt-slider"`. The control is <Slider variant="guiding"> now, whose geometry
+	// was `class="gt-slider"`. The control is <Slider variant="guiding"> now, whose geometry
 	// lives in ui/slider. This arm cares that the CONTROL is still present, not how it is spelled.
 	expect(GUIDING_TRACK).toContain('<Slider');
 	expect(GUIDING_TRACK).toContain('variant="guiding"');

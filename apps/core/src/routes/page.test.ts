@@ -20,7 +20,7 @@ const SONNER = join(import.meta.dir, '..', 'lib', 'components', 'ui', 'sonner', 
 /** Body of the first `<style>`-scoped rule whose selector matches `sel`. */
 function ruleBody(src: string, sel: string): string | null {
 	/*
-	 * #913 S5: escape EVERY regex metacharacter, not just `.` and `\`. An attribute selector such as
+	 * S5: escape EVERY regex metacharacter, not just `.` and `\`. An attribute selector such as
 	 * `[data-sonner-toast] [data-button]` was otherwise compiled with its brackets intact and matched as
 	 * a character class, so the rule was reported missing from a file that plainly declares it.
 	 */
@@ -31,7 +31,7 @@ function ruleBody(src: string, sel: string): string | null {
 
 test('the Undo toast control reaches the tap floor (padding-only guard gap)', () => {
 	/*
-	 * #913 S5: the control moved into ui/sonner, so this reads THERE. Undo is a real toast ACTION now
+	 * S5: the control moved into ui/sonner, so this reads THERE. Undo is a real toast ACTION now
 	 * rather than a button this page positions, and sonner renders it with its own `[data-button]`
 	 * attribute — which is what the rule is keyed on, because sonner's own attribute survives a
 	 * re-vendor where a class of ours would not.
@@ -46,7 +46,7 @@ test('the Undo toast control reaches the tap floor (padding-only guard gap)', ()
 	// The floor must come from a height the box actually reserves, not from padding the structural guard
 	// cannot resolve. Pre-fix this rule had only `padding` and no height → this assertion is RED.
 	// Accepts the TOKEN as well as a literal at or above the floor, because the control now names
-	// var(--tap) (#831) — the number-only regex here would have failed the correct spelling.
+	// var(--tap) — the number-only regex here would have failed the correct spelling.
 	const heights = [...body!.matchAll(/(?:min-)?height:\s*([0-9.]+)px/g)].map((x) => Number(x[1]));
 	const tokened = /(?:min-)?height:\s*var\(--tap\)/.test(body!);
 	expect(tokened || heights.some((h) => h >= TAP)).toBe(true);
@@ -65,7 +65,7 @@ test('the docked toast declares a width a phone can actually use (#913 S5, was t
 	 * "title - artist" then wrapped at half the viewport and grew tall enough to collide with the toast
 	 * above it.
 	 *
-	 * #913 S5 handed positioning to sonner, so the two rules this used to read are gone -- but the
+	 * S5 handed positioning to sonner, so the two rules this used to read are gone -- but the
 	 * hazard belongs to ANY centred fixed toast, not to those rules, and sonner's own default width is a
 	 * fixed 356px box. So the claim is re-aimed rather than retired: the Toaster must declare a
 	 * VIEWPORT-RELATIVE width, which is what stops a long title wrapping into a tall stack on a narrow

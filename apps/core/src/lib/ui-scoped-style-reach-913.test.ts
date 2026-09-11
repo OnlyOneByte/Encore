@@ -1,5 +1,5 @@
 /*
- * A SCOPED RULE IN THE VENDORED TREE MUST BE ABLE TO REACH WHAT IT STYLES (#913).
+ * A SCOPED RULE IN THE VENDORED TREE MUST BE ABLE TO REACH WHAT IT STYLES.
  *
  * ── THE DEFECT THIS EXISTS FOR ──────────────────────────────────────────────────────────────────
  *
@@ -220,7 +220,7 @@ function scopedRuleClasses(css: string): Map<string, string> {
 	return found;
 }
 
-test('no scoped rule styles a class it hands to a child component (#913)', () => {
+test('no scoped rule styles a class it hands to a child component', () => {
 	const files = [...new Set([...svelteFiles(UI), ...APP.flatMap(svelteFiles)])];
 	// Non-vacuity: measured, not guessed — 62 files under ui/ (19 components), 76 under lib/components
 	// including those, and 9 under routes/, deduping to 85. A walk that drops materially below that lost a
@@ -252,7 +252,7 @@ test('no scoped rule styles a class it hands to a child component (#913)', () =>
 	expect(offenders).toEqual([]);
 });
 
-test('the reach check actually catches the shape it was written for (#913)', () => {
+test('the reach check actually catches the shape it was written for', () => {
 	/*
 	 * Mutation proof, on synthetic sources rather than by editing a component: the arm above must fire on
 	 * the exact defect that shipped, and stay quiet on both legitimate fixes for it.
@@ -359,7 +359,7 @@ function styleOnly(src: string): string {
 	return blocks.join('\n').replace(/\/\*[\s\S]*?\*\//g, ' ');
 }
 
-test('every data-slot styled via :global is emitted by markup in this tree (#913)', () => {
+test('every data-slot styled via :global is emitted by markup in this tree', () => {
 	const styled = new Map<string, string[]>();
 	for (const f of svelteFiles(UI)) {
 		const src = styleOnly(readFileSync(f, 'utf8'));
@@ -387,7 +387,7 @@ test('every data-slot styled via :global is emitted by markup in this tree (#913
 	expect(unreachable).toEqual([]);
 });
 
-test('the data-slot reach check fails when the attribute is dropped (#913)', () => {
+test('the data-slot reach check fails when the attribute is dropped', () => {
 	/*
 	 * Mutation proof, run against strings rather than the tree: the check must red on a rule whose slot
 	 * nothing emits, and stay quiet when the emitter is present anywhere — including a DIFFERENT file,
@@ -415,7 +415,7 @@ test('the data-slot reach check fails when the attribute is dropped (#913)', () 
 	expect(slots.filter((x) => !nowEmitted.has(x))).toEqual([]);
 });
 
-test('the tv() consumer test survives hoisting the variants call (#913)', () => {
+test('the tv() consumer test survives hoisting the variants call', () => {
 	/*
 	 * The hole this closes: moving `tabsListVariants({ variant })` out of the tag and into a script-level
 	 * `const` made the base invisible to a text scan of the tag, so a scoped rule on it shipped green.
@@ -457,7 +457,7 @@ test('the tv() consumer test survives hoisting the variants call (#913)', () => 
 	expect(classesOnChildComponents(onElement).has('encore-elem')).toBe(false);
 });
 
-test('a commented-out rule is not read as a live scoped rule (#913)', () => {
+test('a commented-out rule is not read as a live scoped rule', () => {
 	// The guard must not red on its own documentation, and must still see the real rule beside it.
 	const commented = `<style>
 	/* .encore-seg { min-height: var(--tap); } was replaced by the data-slot rule */

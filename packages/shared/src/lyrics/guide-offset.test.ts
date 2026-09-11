@@ -1,4 +1,4 @@
-// guideOffsetSec (#766): the pure absent-safe conversion of the measured guide/instrumental offset from
+// guideOffsetSec: the pure absent-safe conversion of the measured guide/instrumental offset from
 // stored milliseconds to the seconds the client aligns in. The whole point of this helper is the DEFAULT:
 // a song with no measured offset (the entire existing library on the day this lands) must resolve to 0, so
 // the client holds the guide exactly as today. Keeping the default here — not at each TvPlayer call site —

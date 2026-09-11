@@ -1,7 +1,7 @@
 // guard: the #64 tap-to-start affordance — the ONLY route out of a silent TV — is exercisable e2e
 // ONLY if the CDP driver can deliver a REAL user gesture, and only if some probe actually uses it.
 //
-// #332: every click verb in apps/core/e2e/cdp.mjs is a synthetic `el.click()` through
+// every click verb in apps/core/e2e/cdp.mjs is a synthetic `el.click()` through
 // Runtime.evaluate, which dispatches an UNTRUSTED event and grants NO user activation, so it can
 // never unblock autoplay. The fix adds a `realClick(x, y)` verb that dispatches a trusted
 // mousePressed/mouseReleased pair through the CDP Input domain, and a gestureless probe
@@ -35,7 +35,7 @@ test('the CDP driver files are non-empty (guard is not vacuous)', () => {
 	expect(PROBE.length).toBeGreaterThan(1000);
 });
 
-test('cdp.mjs exposes a realClick verb that delivers a TRUSTED gesture via CDP Input (#332)', () => {
+test('cdp.mjs exposes a realClick verb that delivers a TRUSTED gesture via CDP Input', () => {
 	// The verb must exist by name...
 	expect(CDP).toMatch(/async\s+realClick\s*\(\s*x\s*,\s*y\s*\)/);
 	// ...and it must use the Input domain, not another synthetic el.click(). A trusted click is a
@@ -52,7 +52,7 @@ test('cdp.mjs exposes a realClick verb that delivers a TRUSTED gesture via CDP I
 	expect(iRelease).toBeGreaterThan(iPress);
 });
 
-test('a probe actually EXERCISES the tap-to-start affordance with realClick (#332)', () => {
+test('a probe actually EXERCISES the tap-to-start affordance with realClick', () => {
 	// The verb existing is not coverage; a probe must call it against the /tv stage. Without this a
 	// dead verb ships green and #64 keeps its zero coverage.
 	expect(PROBE).toMatch(/\.realClick\s*\(/);

@@ -10,7 +10,7 @@
  * component library that relocates markup) turns those guards GREEN rather than red.
  *
  * The repo's answer is a NON-VACUITY FLOOR: an assertion on the SIZE of what was actually examined.
- * `/metrics` (issue #140) and `lib/charts` both escaped hand-listed `FILES` arrays exactly this way, and
+ * `/metrics` and `lib/charts` both escaped hand-listed `FILES` arrays exactly this way, and
  * the floors were planted afterwards, one guard at a time.
  *
  * Which leaves one hole, and it is the hole this file closes:
@@ -173,7 +173,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 1,
 			count: 1,
 			guards:
-				'the surfaces the XR-COL-14 colour ban examines (#859) — every app.css `@theme` block plus every tailwind.config.* in the tree. The arm reports an empty offenders array both when the tree is clean AND when it scanned nothing (Tailwind uninstalled, the @theme regex stopped matching, the config walk lost its root), so this counts what was actually seen. Its firing means the rule went UNENFORCEABLE, which XR-VER-06 requires be loud rather than a vacuous pass.'
+				'the surfaces the XR-COL-14 colour ban examines — every app.css `@theme` block plus every tailwind.config.* in the tree. The arm reports an empty offenders array both when the tree is clean AND when it scanned nothing (Tailwind uninstalled, the @theme regex stopped matching, the config walk lost its root), so this counts what was actually seen. Its firing means the rule went UNENFORCEABLE, which XR-VER-06 requires be loud rather than a vacuous pass.'
 		}
 	],
 	'apps/core/src/lib/task-number-hygiene.test.ts': [
@@ -232,7 +232,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 10,
 			count: 1,
 			guards:
-				'the population of the EXPRESSION arm (#831, XR-PH-01), which filters harder than the value arm above \u2014 control rules that declare a width/height, not merely a box. A derivation that stopped finding box rules would report zero bare-literal offenders and pass, which is the exact vacuity that let 15 hand-written `44px` declarations sit under a green value guard.'
+				'the population of the EXPRESSION arm (XR-PH-01), which filters harder than the value arm above \u2014 control rules that declare a width/height, not merely a box. A derivation that stopped finding box rules would report zero bare-literal offenders and pass, which is the exact vacuity that let 15 hand-written `44px` declarations sit under a green value guard.'
 		}
 	],
 	'apps/core/src/lib/components/motion.test.ts': [
@@ -254,68 +254,68 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 200,
 			count: 1,
 			guards:
-				'the var() population behind the @theme-only reference ban (#829). A @theme key emits no custom property, so a component naming one paints nothing; a regex slip here would report zero offences from zero readings'
+				'the var() population behind the @theme-only reference ban. A @theme key emits no custom property, so a component naming one paints nothing; a regex slip here would report zero offences from zero readings'
 		},
 		{
 			subject: 'forwardsChecked',
 			min: 30,
 			count: 1,
 			guards:
-				'the bridge entries whose right-hand side is resolved (#829) — catches an entry forwarding to itself, or to a :root token that does not exist. Reading no values would pass both silently'
+				'the bridge entries whose right-hand side is resolved — catches an entry forwarding to itself, or to a :root token that does not exist. Reading no values would pass both silently'
 		},
 		{
 			subject: 'spacingDeclsSeen',
 			min: 200,
 			count: 1,
 			guards:
-				'the gap/margin/padding declarations examined by the spacing-scale duplication scan (#829). Every offence it can report comes from this walk'
+				'the gap/margin/padding declarations examined by the spacing-scale duplication scan. Every offence it can report comes from this walk'
 		},
 		{
 			subject: 'fontDeclsSeen',
 			min: 60,
 			count: 1,
-			guards: 'the font-size declarations examined by the phone type-ladder duplication scan (#829)'
+			guards: 'the font-size declarations examined by the phone type-ladder duplication scan'
 		},
 		{
 			subject: 'leadingDeclsSeen',
 			min: 8,
 			count: 1,
 			guards:
-				'the line-height declarations examined by the leading-scale duplication scan (#829). Deliberately the lowest floor here — the tree carries only ~15, which is why the dimension drifted unnoticed'
+				'the line-height declarations examined by the leading-scale duplication scan. Deliberately the lowest floor here — the tree carries only ~15, which is why the dimension drifted unnoticed'
 		},
 		{
 			subject: 'motionDeclsSeen',
 			min: 10,
 			count: 1,
-			guards: 'the transition/animation declarations examined by the motion-scale duplication scan (#829)'
+			guards: 'the transition/animation declarations examined by the motion-scale duplication scan'
 		},
 		{
 			subject: 'zDeclsSeen',
 			min: 15,
 			count: 1,
 			guards:
-				'the z-index declarations examined by the bare-integer ban (#829). Unlike its four siblings that rule is a TOTAL ban, so an empty walk would report a fully compliant tree'
+				'the z-index declarations examined by the bare-integer ban. Unlike its four siblings that rule is a TOTAL ban, so an empty walk would report a fully compliant tree'
 		},
 		{
 			subject: 'TV.length',
 			min: 5,
 			count: 1,
 			guards:
-				'the TV file population behind the phone-ladder ban (#829). Tokenisation made `font-size: var(--ph-text-2xs)` an idiomatic green way to write a 10.88px font on a wall, invisible to the ten-foot floor in tv/stage-scale.test.ts; an empty TV walk would report a compliant stage'
+				'the TV file population behind the phone-ladder ban. Tokenisation made `font-size: var(--ph-text-2xs)` an idiomatic green way to write a 10.88px font on a wall, invisible to the ten-foot floor in tv/stage-scale.test.ts; an empty TV walk would report a compliant stage'
 		},
 		{
 			subject: 'rungsChecked',
 			min: 10,
 			count: 1,
 			guards:
-				'the adjacent-tier comparisons behind the ladder-ordering assertion (#829). This is what still pins #424/#473 — their guards used to assert the literals 7/8/10 and now assert tier NAMES, so the order itself is only checked here. LOWERED 11 -> 10 by #903, loudly and on the record (XR-VER-06): the INVARIANT is unchanged, the POPULATION shrank. --z-sheet-scrim (9) and --z-sheet (10) were the queue sheet\u2019s two tiers, and the drawer surface that was their only reader was deleted, so the phone ladder went from five tiers (four rungs) to three (two rungs) while TV\u2019s eight rungs are untouched. Nothing became unenforced: the sibling `unplaced` assertion still proves NO z-* token escapes a ladder, so a re-added sheet tier reds there rather than joining un-ordered'
+				'the adjacent-tier comparisons behind the ladder-ordering assertion. This is what still pins #424/#473 — their guards used to assert the literals 7/8/10 and now assert tier NAMES, so the order itself is only checked here. LOWERED 11 -> 10 by #903, loudly and on the record (XR-VER-06): the INVARIANT is unchanged, the POPULATION shrank. --z-sheet-scrim (9) and --z-sheet (10) were the queue sheet\u2019s two tiers, and the drawer surface that was their only reader was deleted, so the phone ladder went from five tiers (four rungs) to three (two rungs) while TV\u2019s eight rungs are untouched. Nothing became unenforced: the sibling `unplaced` assertion still proves NO z-* token escapes a ladder, so a re-added sheet tier reds there rather than joining un-ordered'
 		},
 		{
 			subject: 'literalsFound',
 			min: 7,
 			count: 1,
 			guards:
-				'the @media width-literal walk behind the breakpoint-membership guard (#852). The scan derives its scope by walking apps/*/src + packages/*/src, so an emptied walk would report zero non-member widths from zero readings — seven `@media` width queries exist today'
+				'the @media width-literal walk behind the breakpoint-membership guard. The scan derives its scope by walking apps/*/src + packages/*/src, so an emptied walk would report zero non-member widths from zero readings — seven `@media` width queries exist today'
 		}
 	],
 	'apps/core/src/lib/tv/stage-scale.test.ts': [
@@ -399,7 +399,7 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 		{
 			subject: 'scanned',
 			reason:
-				'RETIRED BY #903 with the guard it floored: `a keydown handler that preventDefault()s on a snippet host early-returns on foreign targets (#301)`. XR-VER-06 record. (a) The invariant: an inline-arrow onkeydown that cancels the event must early-return on `e.target !== e.currentTarget`, so a key pressed on a child control is not swallowed by its host. (b) What left scope: its ENTIRE population. QueueSheet.svelte and QueueSheetDrawer.svelte were measured to be the only two files under apps/core/src matching an inline-arrow onkeydown that calls preventDefault(, and both were deleted with the drawer surface — so the scan would have examined 0 files and this floor (>= 1) would have fired every run. (c) What covers it now: NOTHING, because there is nothing left to cover — no surviving surface has a preventDefault-ing inline keydown host. The floor was doing its job by firing; it is retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires. If such a host reappears, restore the guard AND this floor together rather than reviving one alone.'
+				'RETIRED BY #903 with the guard it floored: `a keydown handler that preventDefault()s on a snippet host early-returns on foreign targets`. XR-VER-06 record. (a) The invariant: an inline-arrow onkeydown that cancels the event must early-return on `e.target !== e.currentTarget`, so a key pressed on a child control is not swallowed by its host. (b) What left scope: its ENTIRE population. QueueSheet.svelte and QueueSheetDrawer.svelte were measured to be the only two files under apps/core/src matching an inline-arrow onkeydown that calls preventDefault(, and both were deleted with the drawer surface — so the scan would have examined 0 files and this floor (>= 1) would have fired every run. (c) What covers it now: NOTHING, because there is nothing left to cover — no surviving surface has a preventDefault-ing inline keydown host. The floor was doing its job by firing; it is retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires. If such a host reappears, restore the guard AND this floor together rather than reviving one alone.'
 		},
 		{
 			subject: 'the dvh sheet-cap scan (every bottom-docked sheet caps its height in dvh, not vh)',
@@ -409,7 +409,7 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 	],
 	'apps/core/src/lib/phone-reflow-rung-l.test.ts': [
 		{
-			subject: 'the sheet-level reflow floor (.sheet-surface > * min-width: 0, #857)',
+			subject: 'the sheet-level reflow floor (.sheet-surface > * min-width: 0)',
 			reason:
 				'RETIRED BY #903. XR-VER-06 record. (a) The invariant: a `left:0; right:0` fixed box only honours min(max-width, viewport) while its flex children CAN shrink to it, because a flex child\u2019s automatic minimum is its min-content width — an unbreakable control label at 200% text sized the sheet by content it could not shrink below (436px inside a 320px viewport, SC 1.4.10 Reflow). (b) What left scope: `.sheet-surface` and its children, the only box the rule ever dressed, deleted with the drawer surface. (c) What covers the survivors: nothing asserts this on the docked band, DELIBERATELY. `.cta-dock` / `.search-dock` are a flex row holding ONE 44px control rather than a column of unbreakable labels, and neither declares min-width: 0 — so re-pointing the scan at them would assert a declaration that does not exist and demand production CSS for a defect nobody has measured. The band\u2019s reflow is covered where it is real: the rung-L probe arms measure the live pages at 320 CSS px and 200% text and FAIL on overflow. If a future band grows a multi-control column, add a floor for that band rather than reviving this one.'
 		}
@@ -430,7 +430,7 @@ const PENDING_RULING: { file: string; anchor: string; ruling: string }[] = [
 	/*
 	 * RESOLVED AND REMOVED BY #903 — the QueueSheet drawer-port ruling that lived here.
 	 *
-	 * Its anchor was `RECORDED RULING FOR THE QUEUESHEET DRAWER PORT (#827)` in design-system.test.ts,
+	 * Its anchor was `RECORDED RULING FOR THE QUEUESHEET DRAWER PORT` in design-system.test.ts,
 	 * and its call was RE-ANCHOR, DO NOT DELETE for the dvh sheet-cap scan and the `.peek` env() scan.
 	 * That call was right for the change it anticipated — a PORT, where both sheets still existed at a
 	 * new address. What actually happened was a REMOVAL: #903 deleted the drawer surface outright, so
@@ -537,7 +537,7 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// retire one to `RETIRED`, lower it by the same amount. Measured directly rather than counted by
 	// eye: temporarily raise this literal absurdly high, run this file alone, and read `Received: N`.
 	// 38 as of #829 (29 on its base once #831 added `boxRulesSeen`; +9 for the nine enumerating scans
-	// #829 adds to design-system.test.ts — five dimension-duplication scans, the two @theme bridge scans,
+	// adds to design-system.test.ts — five dimension-duplication scans, the two @theme bridge scans,
 	// the ladder-ordering rungs, and the phone-ladder-on-TV ban). +1 for #852's breakpoint-membership
 	// `literalsFound` floor, and +1 for #859's `mintSurfaces` floor on the XR-COL-14 colour ban
 	// (tailwind-toolchain.test.ts), giving 40. Measured the way this comment prescribes, not counted:
@@ -554,7 +554,7 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
-test('every registered floor is tagged at its site, and every tag is registered (issue #849, option C)', () => {
+test('every registered floor is tagged at its site, and every tag is registered (option C)', () => {
 	// The bidirectional per-site anchor. The `located` literal above catches a DELETED registration
 	// (both a deleted source floor and a deleted-together entry+source drop `located` below 41). What it
 	// cannot catch is a floor planted in FLOORS that points at no real assertion — `assertedLiterals`

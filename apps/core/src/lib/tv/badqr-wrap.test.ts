@@ -58,7 +58,7 @@ test('the advertised address is a block on its own line so the sentence cannot o
 	expect(addr).toMatch(/overflow-wrap:\s*anywhere/);
 });
 
-// The CORNER placement, the one that renders mid-song while somebody is singing (#357).
+// The CORNER placement, the one that renders mid-song while somebody is singing.
 //
 // THE SECOND BUG. `.corner` (`:118`) was written for the QR treatment — a QR tile beside a text block —
 // and declares `display: flex; align-items: center; gap: 14px`. The unreachable ALERT reuses the
@@ -73,7 +73,7 @@ test('the advertised address is a block on its own line so the sentence cannot o
 // the alert, which then falls back to the default block flow and stacks its children on their own lines.
 // The rendered proof (before/after A/B frames at 720p/1080p/4K, overflow 175px -> 0, fix sentence
 // 55.4% -> 100% visible at 720p) is in the PR body.
-test('the QR-treatment flex layout is scoped away from the unreachable alert (#357)', () => {
+test('the QR-treatment flex layout is scoped away from the unreachable alert', () => {
 	// The `.corner` flex row (display:flex + align-items:center + gap) must be scoped :not(.badqr) so it
 	// applies only to the QR wrapper, never to the alert that reuses the `corner` class for its pin.
 	// LOAD-BEARING: no `.corner` rule that is NOT scoped `:not(.badqr)` may declare flex — an unscoped
@@ -86,7 +86,7 @@ test('the QR-treatment flex layout is scoped away from the unreachable alert (#3
 	expect(qrCorner).toMatch(/display:\s*flex/);
 });
 
-test('the unreachable corner alert declares no row layout, so its parts stack (#357)', () => {
+test('the unreachable corner alert declares no row layout, so its parts stack', () => {
 	// The alert card itself must not turn into a flex/grid ROW; block flow is what stacks the three parts.
 	const badqr = ruleBody(CSS, '.badqr');
 	const badqrCorner = ruleBody(CSS, '.badqr.corner');

@@ -1,5 +1,5 @@
 // guard: the two hand-assembled HubDeps compositions must fill every optional hook the interface
-// declares — a PARITY guard against HubDeps itself, not a thirteenth one-hook wiring guard (#528).
+// declares — a PARITY guard against HubDeps itself, not a thirteenth one-hook wiring guard.
 //
 // HubDeps (hub.ts) has 3 required fields and 12 OPTIONAL ones. Because every optional key is
 // type-legal to omit, a composition site can silently drop a hook and the whole apps/core suite stays
@@ -8,7 +8,7 @@
 // no test reads the composition, so none can tell a wired bag from an empty one. Measured in #528:
 // deleting any of 11 keys from the old hand-written server.ts bag left 1452 pass / 0 fail; only
 // onEntryAdded reds, and only because #179/#309 wrote a one-hook guard for it. Same class three times
-// (#123, #179/#309, #295), each closing ONE hole. This guard closes the class.
+// (#179/#309), each closing ONE hole. This guard closes the class.
 //
 // Post-#460 §3 the per-frame bag was folded into ONE factory, app.ts's
 // `buildHubDeps(app, perFrame): HubDeps` — now the single place every optional hook is wired to its
@@ -77,13 +77,13 @@ const FACTORY_DEPS = literalBody(
 const RECONCILE = literalBody(APP, /reconcileOnReady\s*\(\s*\{/);
 
 // ── Not-vacuous sentinels: a rename/move must red LOUDLY, never let the scan pass over nothing ─────
-test('#528 sentinel: HubDeps declares optional hooks, including onEntryAdded and hasOp', () => {
+test('sentinel: HubDeps declares optional hooks, including onEntryAdded and hasOp', () => {
 	expect(OPTIONAL_KEYS.length).toBeGreaterThanOrEqual(11);
 	expect(OPTIONAL_KEYS).toContain('onEntryAdded');
 	expect(OPTIONAL_KEYS).toContain('hasOp');
 });
 
-test('#528 sentinel: both production composition literals were located', () => {
+test('sentinel: both production composition literals were located', () => {
 	// Non-empty bodies prove the anchors matched; a moved/renamed literal reds here first.
 	expect(FACTORY_DEPS.length).toBeGreaterThan(0);
 	expect(RECONCILE.length).toBeGreaterThan(0);
@@ -93,7 +93,7 @@ test('#528 sentinel: both production composition literals were located', () => {
 	}
 });
 
-test('#460 §3: server.ts wires the live frame path through buildHubDeps(app, {...perFrame})', () => {
+test('§3: server.ts wires the live frame path through buildHubDeps(app, {...perFrame})', () => {
 	// The factory being COMPLETE is only load-bearing if the live WS frame path actually calls it.
 	// Pin that server.ts assembles `const deps: HubDeps = buildHubDeps(app, { ... })` — so a revert to
 	// a hand-written bag (which would escape the factory-scoped parity check above) reds here, and the
@@ -107,8 +107,8 @@ test('#460 §3: server.ts wires the live frame path through buildHubDeps(app, {.
 
 // ── Parity: every optional hook HubDeps declares must be filled by the buildHubDeps factory ───────
 // The factory is the SINGLE composition site now, so filling every optional key here wires it for
-// every WS frame; a dropped hook reds exactly as it did against the old hand-written bag (#528).
-test('#528: app.ts buildHubDeps factory fills EVERY optional HubDeps hook', () => {
+// every WS frame; a dropped hook reds exactly as it did against the old hand-written bag.
+test('app.ts buildHubDeps factory fills EVERY optional HubDeps hook', () => {
 	const missing = OPTIONAL_KEYS.filter((k) => !new RegExp(`(^|[\\s,{])${k}\\s*:`).test(FACTORY_DEPS));
 	expect(missing).toEqual([]);
 });
@@ -118,7 +118,7 @@ test('#528: app.ts buildHubDeps factory fills EVERY optional HubDeps hook', () =
 // getSettings are load-bearing (app.ts comment: without them it picks with fair rotation while every
 // client sees the room's chosen order); onNowPlaying + onSang carry play-tracking / least-recently-
 // sung through the reconcile path. Pin exactly those four so dropping any reds.
-test('#528: app.ts reconcileOnReady fills its load-bearing hooks (listSingers, getSettings, onNowPlaying, onSang)', () => {
+test('app.ts reconcileOnReady fills its load-bearing hooks (listSingers, getSettings, onNowPlaying, onSang)', () => {
 	for (const k of ['listSingers', 'getSettings', 'onNowPlaying', 'onSang']) {
 		expect(RECONCILE).toMatch(new RegExp(`(^|[\\s,{])${k}\\s*:`));
 	}

@@ -7,7 +7,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { styleFiles, svelteFiles } from '../test-helpers';
 
-// ALLOWLIST, not a denylist (issue #290): the file header states the rule positively —
+// ALLOWLIST, not a denylist: the file header states the rule positively —
 // animations/transitions may touch ONLY GPU-composited properties. Flag anything animated
 // that is not in this set, so `transition: all` (which animates width/height/…) and every
 // layout prop outside a fixed denylist (max-height, inset, gap, flex-basis, font-size, …) red.
@@ -23,14 +23,14 @@ const COMPOSITED_PROPS = new Set([
 
 // every .svelte AND .css file under a directory — the CSS lives in both component <style> blocks
 // and the shared design system (src/app.css), so a scan restricted to .svelte is blind to app.css.
-// The walk itself is `styleFiles` in ../test-helpers (#841, XR-VER-14): it was a private copy here,
+// The walk itself is `styleFiles` in ../test-helpers (XR-VER-14): it was a private copy here,
 // which is why widening this guard's scope in #177 left every other guard's scope untouched.
 function assertScanIntact(files: string[]): void {
 	expect(files.some((f) => f.endsWith('app.css'))).toBe(true);
 	expect(files.some((f) => f.includes(join('lib', 'tv')) && f.endsWith('.svelte'))).toBe(true);
 }
 
-// non-test .ts sources, for the utility-name net at the bottom of this file (issue #830): a class list
+// non-test .ts sources, for the utility-name net at the bottom of this file: a class list
 // can be composed in TypeScript as easily as in markup, and a scan restricted to .svelte is blind to it.
 function tsSources(dir: string): string[] {
 	const out: string[] = [];
@@ -48,7 +48,7 @@ function tsSources(dir: string): string[] {
 // (issue #287 gap 1 / #290 :55,:67). All three tests use this stripper — test 3 now scans Svelte
 // markup for `style:animation` directives too, so it needs `<!-- -->` blanked (issue #615 advisory 1).
 /*
- * #913 S6: the two NAME-scanning arms below read through this too, not just the declaration scans.
+ * S6: the two NAME-scanning arms below read through this too, not just the declaration scans.
  * They flagged a vendored component's own DEVIATIONS header for quoting `transition-all` while
  * explaining that it had been removed — the fourth time in this migration that a guard has
  * criminalised its own documentation. A guard that punishes the explanation teaches people to stop
@@ -69,7 +69,7 @@ function animatedProps(css: string, isSvelte: boolean): string[] {
 	return props;
 }
 
-// REGION SPLIT (issue #699). The #648 CSS-vs-markup discriminator was LEXICAL, not regional: it
+// REGION SPLIT. The #648 CSS-vs-markup discriminator was LEXICAL, not regional: it
 // blanked every tag (a less-than-to-greater-than strip) then boundary-scanned the result. That class
 // was UNBOUNDED, so ONE less-than anywhere in a stylesheet blanked every transition: up to the next
 // greater-than, dropping test 1 primary layout catch for the rest of the file (issue #699 finding 1).
@@ -296,7 +296,7 @@ test('@keyframes animate only GPU-composited properties', () => {
 	expect(bad).toEqual([]);
 });
 
-// guard (issue #148): every `animation:` declaration must honour Reduce Motion. An animation is
+// guard: every `animation:` declaration must honour Reduce Motion. An animation is
 // suppressible if it is EITHER declared inside an `@media (prefers-reduced-motion: no-preference)`
 // block, OR paired with an `@media (prefers-reduced-motion: reduce) { … animation: none }` reset that
 // covers ITS OWN selector in the SAME file. `animation: none` declarations are themselves the reset
@@ -304,13 +304,13 @@ test('@keyframes animate only GPU-composited properties', () => {
 // ran under Reduce Motion while app.css's guarded `.pop-in` helper had no callers. Source-decidable in
 // the same shape as the scans above.
 //
-// The exemption is SELECTOR-scoped, not file-scoped (issue #242): a reduce reset for `.hero .qr`
+// The exemption is SELECTOR-scoped, not file-scoped: a reduce reset for `.hero .qr`
 // exempts only `.hero .qr`, so a NEW unguarded animation added to the same file on a different
 // selector still reds — the reset no longer waves the whole file through. Mutation proof: unguarding
 // any animation (moving it out of the no-preference block, dropping its reduce reset, or adding a new
 // animation on a selector no reduce block covers) reds this test.
 // True when a media prelude fires ONLY when motion is allowed, never under Reduce Motion
-// (issue #481). A media query LIST is an OR (issue #590): `@media (prefers-reduced-motion:
+//. A media query LIST is an OR: `@media (prefers-reduced-motion:
 // no-preference), (min-width: 700px)` fires when EITHER branch matches, so on any >=700px viewport
 // it fires under Reduce Motion — exactly the state the block must not fire in, and every TV is
 // >=700px wide. A list is therefore motion-allowed only when EVERY top-level-comma branch is;
@@ -406,7 +406,7 @@ function normSelector(s: string): string {
 }
 
 // A reduce reset only WINS when the OS asks for reduced motion, so the reset @media must fire in
-// exactly that state and no narrower one (issue #337). A bare substring test on the prelude accepts
+// exactly that state and no narrower one. A bare substring test on the prelude accepts
 // three preludes CSS discards: `@media not (prefers-reduced-motion: reduce)` (fires when motion is
 // ALLOWED — inverted), and `@media (prefers-reduced-motion: reduce) and (min-width: 5000px)` (fires
 // only on a 5000px viewport). Qualify a prelude as a reset carrier ONLY when it names the reduce
@@ -422,7 +422,7 @@ function isUnconditionalReduce(prelude: string): boolean {
 // carrying the prelude text that opened it (the selector, or an at-rule prelude like `@media …`).
 // A block is a plain style RULE (as opposed to an at-rule container) when its prelude does not start
 // with `@`; only those own `animation:` declarations. `underReduce` is true when any ancestor prelude
-// is an UNCONDITIONAL `prefers-reduced-motion: reduce` @media (issue #337) — a `not`-inverted or
+// is an UNCONDITIONAL `prefers-reduced-motion: reduce` @media — a `not`-inverted or
 // extra-`and`-gated reduce prelude does NOT count, since its reset does not win under Reduce Motion.
 function ruleBlocks(css: string): Rule[] {
 	const rules: Rule[] = [];
@@ -465,7 +465,7 @@ function ruleBlocks(css: string): Rule[] {
 }
 
 // The selectors a reduce reset covers, mapped to the source OFFSET of the reset's own body
-// (issue #337). A reset only wins the cascade when it sits AFTER the animation it defeats — a media
+//. A reset only wins the cascade when it sits AFTER the animation it defeats — a media
 // query adds no specificity, so at equal specificity the later declaration wins. We therefore record
 // each covered selector's reset `bodyStart` (the EARLIEST, if a selector is reset more than once — a
 // later reset cannot rescue an animation the earliest reset already fails to cover). The caller
@@ -537,10 +537,10 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 				continue;
 			}
 			const guarded = spans.some(([s, e]) => at >= s && at < e);
-			// exempt only when the declaration's OWN selector has a reduce reset (issue #242): a reset
+			// exempt only when the declaration's OWN selector has a reduce reset: a reset
 			// for one selector no longer waves the whole file through. A grouped owner `.a, .b` is
 			// exempt only if EVERY part is reset — a partial reset does not cover the whole rule.
-			// Each part's reset must ALSO sit AFTER the animation in source order (issue #337): a reset
+			// Each part's reset must ALSO sit AFTER the animation in source order: a reset
 			// placed above the rule it means to defeat loses the cascade at equal specificity, so it is
 			// not coverage even though it names the selector. `resetSelectors` maps selector -> reset
 			// offset; `> at` is the cascade-wins test.
@@ -596,7 +596,7 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 		// motion under Reduce Motion unless hand-gated — the #148 defect in another spelling. Like an inline
 		// style, no `@media` wrapper or reduce reset can cover a directive, so the DIRECTIVE is what is
 		// rejected (not its properties, which do not exist in source), in the same direct-report shape
-		// #590 §2 / #615 §2 built. `transition:` alone was previously caught by ACCIDENT (test 1's CSS scan
+		// §2 / #615 §2 built. `transition:` alone was previously caught by ACCIDENT (test 1's CSS scan
 		// had no left boundary and misread the function name `slide` as a property); §2 moved that scan to
 		// tag-stripped text, so THIS scan is what replaces it, with a message that names the DIRECTIVE.
 		// Scan MARKUP ONLY: strip `<style>…</style>` first, so a compact CSS `transition:transform` can
@@ -605,7 +605,7 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 		// function-name letter after the colon; modifier/parameter forms (`transition:slide|global`,
 		// `in:fly={{ y: 200 }}`) share this prefix and are caught too.
 		if (f.endsWith('.svelte')) {
-			// Advisory (issue #699): blank style= attribute VALUE interiors before the directive scan, so an
+			// Advisory: blank style= attribute VALUE interiors before the directive scan, so an
 			// inline compact style= transition (a space then transition:transform) is not misread as a directive
 			// -- a real directive lives in markup OUTSIDE any style= value and survives the blanking.
 			const markup = blankBalancedStyleBraces(
@@ -622,7 +622,7 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 });
 
 /*
- * ── The utility-class arm (issue #830, XR-VER-15) ──────────────────────────────────────────────────
+ * ── The utility-class arm (XR-VER-15) ──────────────────────────────────────────────────
  *
  * THE INVISIBILITY TRAP THIS CLOSES. Every scan above reads CSS DECLARATIONS or Svelte DIRECTIVES. A
  * Tailwind-style utility class expresses the same motion with NEITHER: `class="transition-all"` puts no
@@ -862,7 +862,7 @@ test('no motion utility name appears anywhere in source, in any position', () =>
  * attribute, both arms would go quietly green on a real offender, which is the worst outcome this file
  * has. So the boundary is asserted directly rather than trusted.
  */
-test('stripAllComments hides a utility named in prose and keeps one written in code (#913)', () => {
+test('stripAllComments hides a utility named in prose and keeps one written in code', () => {
 	const inComment = '<!-- we deleted transition-all here -->\n<div class="grid"></div>';
 	expect(stripAllComments(inComment)).not.toContain('transition-all');
 	expect(stripAllComments(inComment)).toContain('grid');

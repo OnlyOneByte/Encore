@@ -1,4 +1,4 @@
-// guard (issue #826, XR-TV-16/17): the attract phrase SET is admissible by construction, and the
+// guard (XR-TV-16/17): the attract phrase SET is admissible by construction, and the
 // shuffled bag is a per-pass permutation with no repeat until the whole set has shown.
 //
 // Both are DATA claims, decidable without a DOM: the admission rule reads the exported array's string

@@ -66,7 +66,7 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 	expect(got.sourceRef).toBe('vid-m1'); // ORIGIN identity survives the cook (search dedupe key)
 	// the derived artifacts must survive too, or a library song replays with no lyrics
 	expect(got.lyricsRef).toBe('lyrics/m1-aligned.json');
-	// #640: the human's lyrics override is an index column that must survive the round trip — reverting
+	// the human's lyrics override is an index column that must survive the round trip — reverting
 	// either the toRow persist or the fromRow hydrate leaves this undefined and reds here.
 	expect(got.lyricsOverrideRef).toBe('derived/lyrics/m1-manual-word.json');
 	// the key/range/level profile is the third derived artifact — it must survive the JSON round-trip
@@ -232,7 +232,7 @@ test('setTags is atomic: a throw between delete and insert leaves the ORIGINAL t
 	expect(r.tagsOf('m1', 'genre').sort()).toEqual(['pop', 'rock']);
 });
 
-test('remove() hard-deletes the media row AND its tags in one transaction (#639)', () => {
+test('remove() hard-deletes the media row AND its tags in one transaction', () => {
 	const r = repo();
 	r.upsert(cooked('m1'));
 	r.upsert(cooked('m2'));

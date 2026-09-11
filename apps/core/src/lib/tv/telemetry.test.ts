@@ -7,7 +7,7 @@ import { telemetryFrame } from './telemetry';
 
 const entry = { id: 'q7' };
 
-describe('telemetryFrame stamps the current entry on every frame (#70/#125, #130)', () => {
+describe('telemetryFrame stamps the current entry on every frame (#70/#125)', () => {
 	test('an `ended` frame carries current.id — the frame #70 drops when it is stale', () => {
 		const f = telemetryFrame('ended', entry, 100);
 		// The stamp is what makes the server's #70 drop reachable; without it the ended branch

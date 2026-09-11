@@ -1,4 +1,4 @@
-// #658 one-TV-per-room, the CLIENT half: the TV must pass its resolved room code on the WS URL so the
+// one-TV-per-room, the CLIENT half: the TV must pass its resolved room code on the WS URL so the
 // server can bind the socket to that room (tvRoomId). This is a source scan because the TV WsClient
 // wiring cannot be exercised headlessly in the bun runner (no socket/DOM harness) — same pattern as
 // this dir's style-no-duplicate-selectors.test.ts and the room-scope-wiring guard on server.ts.
@@ -17,7 +17,7 @@ test('the TV opens its WS as role=tv (#658 keeps the TV role)', () => {
 	expect(SRC).toMatch(/\/ws\?role=tv/);
 });
 
-test('the TV WS URL binds to the resolved room by passing its code as ?room=<code> (#658)', () => {
+test('the TV WS URL binds to the resolved room by passing its code as ?room=<code>', () => {
 	// The room the loader resolved rides on data.roomCode; the client must forward it as a room param
 	// on the same WS URL, url-encoded. Reverting the binding back to a bare role=tv reds here.
 	expect(SRC).toMatch(/data\.roomCode/);

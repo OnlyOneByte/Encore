@@ -1,4 +1,4 @@
-// Rendered-DOM guards for the phone home screen direction A builds (issue #832).
+// Rendered-DOM guards for the phone home screen direction A builds.
 //
 // These MOUNT the two new components under the repo's happy-dom + compiled-Svelte harness
 // (test-setup/, wired by the root bunfig.toml) rather than scanning their source, because every claim
@@ -50,7 +50,7 @@ const PLAYING = {
 };
 
 // ── the hero is a hero, not a row ────────────────────────────────────────────────────────────────
-test('the hero renders the playing song as a heading, with the singer named (#832)', () => {
+test('the hero renders the playing song as a heading, with the singer named', () => {
 	const host = render(NowPlayingHero, PLAYING);
 	const h1 = host.querySelector('h1');
 	expect(h1?.textContent).toBe('Bohemian Rhapsody');
@@ -81,7 +81,7 @@ test('an unknown song length hides the progress row rather than pinning a bar at
 	const fill = known.querySelector('.track > i') as HTMLElement | null;
 	expect(fill).not.toBeNull();
 	// 30s of 120s is a quarter. Written out, not computed with progressFraction — the same operation
-	// the component performs cannot be the source of the expectation (#165).
+	// the component performs cannot be the source of the expectation.
 	expect(fill!.getAttribute('style')).toContain('scaleX(0.25)');
 	// scaleX, not width: a width animation triggers layout every frame, which motion.test.ts forbids.
 	expect(fill!.getAttribute('style')).not.toContain('width:');
@@ -243,7 +243,7 @@ test('the pending state is signalled on the row SURFACE, not by dimming its subt
 });
 
 // ── the gallery is where these states get looked at ──────────────────────────────────────────────
-test('the gallery carries the hero and BOTH position branches, adjacent (#832)', () => {
+test('the gallery carries the hero and BOTH position branches, adjacent', () => {
 	/*
 	 * A fixture's absence is invisible to every runtime assertion in the suite, which is exactly how
 	 * #735's two `pending` rules shipped unreadable: nothing ever rendered them, so nobody measured

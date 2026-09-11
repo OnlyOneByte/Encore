@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 /*
  * ─────────────────────────────────────────────────────────────────────────────────────────────────────
- * EVERY CLASS IN APP MARKUP RESOLVES TO A RULE (#913)
+ * EVERY CLASS IN APP MARKUP RESOLVES TO A RULE
  * ─────────────────────────────────────────────────────────────────────────────────────────────────────
  *
  * A class token that matches no rule renders NOTHING, and nothing about it looks wrong in source. It is
@@ -138,7 +138,7 @@ function unresolvedTokens(): Record<string, string[]> {
 	return out;
 }
 
-test('every static class in app markup resolves to a rule that can reach it (#913)', () => {
+test('every static class in app markup resolves to a rule that can reach it', () => {
 	const files = svelteFiles(join(SRC, 'lib'))
 		.concat(svelteFiles(join(SRC, 'routes')))
 		.filter((f) => !f.includes(VENDORED));
@@ -159,7 +159,7 @@ test('every static class in app markup resolves to a rule that can reach it (#91
 	).toEqual([]);
 });
 
-test('the pre-existing list stays honest in both directions (#913)', () => {
+test('the pre-existing list stays honest in both directions', () => {
 	const unresolved = unresolvedTokens();
 
 	// A recorded token that now resolves must LEAVE the list, or the list rots into a record of what used
@@ -176,7 +176,7 @@ test('the pre-existing list stays honest in both directions (#913)', () => {
 	}
 });
 
-test('the resolution check catches the shapes it can reach (#913)', () => {
+test('the resolution check catches the shapes it can reach', () => {
 	/*
 	 * Mutation proof on synthetic sources, so a refactor of this file cannot quietly stop detecting them.
 	 *
@@ -252,7 +252,7 @@ test('the resolution check catches the shapes it can reach (#913)', () => {
  */
 const ENCORE_PREFIX = /^encore-/;
 
-test('every `encore-*` class in the vendored tree has a rule (#913)', () => {
+test('every `encore-*` class in the vendored tree has a rule', () => {
 	const global = globallyDefined();
 	// Named distinctly from the app-side arm's `files`: two floors in one file with the same subject are
 	// indistinguishable to the anti-laundering check in non-vacuity-floors.test.ts, which matches on it.

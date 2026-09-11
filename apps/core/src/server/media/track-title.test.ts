@@ -87,7 +87,7 @@ describe('confidence and provenance', () => {
 	});
 });
 
-// #672: the uploader-confirmed rule tested containment in EITHER direction (`u.includes(side) ||
+// the uploader-confirmed rule tested containment in EITHER direction (`u.includes(side) ||
 // side.includes(u)`). The `side.includes(u)` half was the garbage generator: a channel name appearing
 // ANYWHERE inside a longer side promoted the WHOLE side to artist at `high` confidence, taking the
 // correct artist (on the other side) into the title. Measured across the real 2273-sidecar library, 24
@@ -100,7 +100,7 @@ describe('confidence and provenance', () => {
 // artist "No Vocal" is not a containment artifact but a genuine trailing qualifier with no separator
 // signal — that shape is out of scope for this rule (it would need the rejected suffix heuristic).
 // The LEFT-side and EXACT cases below pin the OTHER two behaviours the fix must preserve.
-describe('#672 — a channel name inside a longer side must not promote the whole side to artist', () => {
+describe('— a channel name inside a longer side must not promote the whole side to artist', () => {
 	it('"Sophia George - Girlie Girlie (1986) • TopPop" by uploader "TopPop"', () => {
 		// r.includes(u): "girlie girlie 1986 toppop" contains "toppop", so the RIGHT side was promoted
 		// whole to artist at high confidence. The artist is on the LEFT.

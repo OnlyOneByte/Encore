@@ -1,4 +1,4 @@
-// #834 Q2-A: `/` is the landing page. An unjoined visitor used to be bounced client-side to `/join`
+// Q2-A: `/` is the landing page. An unjoined visitor used to be bounced client-side to `/join`
 // (`goto('/join')` in onMount); now `/join` is retired and the home route renders the JoinLanding state
 // in place. This source-scan pins both halves — the bounce is GONE, and the unjoined branch renders
 // JoinLanding — because mounting the full home route needs its whole WS/store machinery, which is a

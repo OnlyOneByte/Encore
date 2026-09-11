@@ -285,11 +285,11 @@ describe('the ledger is observability, never a failure mode', () => {
 // bare-row-count window with the time window `finishedSince` + `countFinished`, and the semantics it
 // still offered are the ones #472 measured as wrong (a straddling cook reports complete with an
 // understated span). A public method on an exported class is invisible to the unused-EXPORT sweep
-// (#554), so nothing else in the repo would catch its reintroduction. This source scan does: it reds
+//, so nothing else in the repo would catch its reintroduction. This source scan does: it reds
 // on base, where `allFinished(` still exists at attempts.ts:142. Comments are blanked so the two
 // surviving textual references (the `finishedSince` docstring and the metrics-route comment, both
 // explaining why the time window replaced it) cannot satisfy the match.
-describe('the removed row-count window stays removed (#556)', () => {
+describe('the removed row-count window stays removed', () => {
 	const stripComments = (src: string): string => {
 		const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 		return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
@@ -306,11 +306,11 @@ describe('the removed row-count window stays removed (#556)', () => {
 	});
 });
 
-// #669 — the variant-pick provenance must reach DURABLE state, not just the cook log. This bites the
+// — the variant-pick provenance must reach DURABLE state, not just the cook log. This bites the
 // whole worker→core persist mapping at the ledger seam: AttemptFacts.selection, pickFacts carrying it,
 // the open() null default, and the new job_attempts.selection column (regenerated baseline). RED on
 // base: no such field on AttemptFacts, no column — reportFacts drops it and the read comes back null.
-describe('attempt ledger — variant-pick provenance (#669)', () => {
+describe('attempt ledger — variant-pick provenance', () => {
 	const RECORD = JSON.stringify({
 		baselineFallback: false,
 		winnerSuspect: false,

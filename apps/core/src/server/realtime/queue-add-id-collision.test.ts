@@ -15,7 +15,7 @@
 //
 // Load-bearing evidence is the END-TO-END property driven through the real validateCommand +
 // handleQueueCommand + AuthoritativeState, with onEntryRemoved/onEntryAdded recorders wired the way
-// server.ts wires them. This mirrors queue-add-shape.test.ts (#188), the sibling guard in this arm.
+// server.ts wires them. This mirrors queue-add-shape.test.ts, the sibling guard in this arm.
 import { test, expect } from 'bun:test';
 import { validateCommand, handleQueueCommand, type HubDeps } from './hub';
 import { AuthoritativeState } from '../state/store';
@@ -155,7 +155,7 @@ test('CONTROL: a legitimate remove of q1 still fires onEntryRemoved (the cook-ca
 	expect(removedCalls[0][0]).toBe('m1'); // m1 lost its claim -> cancelJobsForMedia would run
 });
 
-// #371 — the singerId half of hub.ts's identity compare (existing.singerId !== op.entry.singerId)
+// — the singerId half of hub.ts's identity compare (existing.singerId !== op.entry.singerId)
 // is asserted by nothing above: every collision the file drives ALSO differs on mediaId, so the
 // mediaId disjunct alone decides them. The one case only the singerId half rejects is a SAME-MEDIA,
 // DIFFERENT-SINGER collision on a still-'queued' entry: a second guest names the victim's public
@@ -164,14 +164,14 @@ test('CONTROL: a legitimate remove of q1 still fires onEntryRemoved (the cook-ca
 // already parameterizes mediaId, so overwriteQ1('m1') is the whole payload change: existing q1=s1/m1
 // (queued) vs incoming s2/m1 (queued) — equal media, equal status, so ONLY the singerId disjunct can
 // reject it. Deleting that disjunct leaves the shipped six tests green and REDS exactly these two.
-test('#371: validateCommand rejects a SAME-MEDIA, different-singer collision — only the singerId half can (turn theft)', () => {
+test('validateCommand rejects a SAME-MEDIA, different-singer collision — only the singerId half can (turn theft)', () => {
 	const { deps } = harness(); // actor s2, existing q1 = s1/m1 (queued)
 	// Incoming carries q1's id, s2's own singerId (so :111 impersonation passes) and the SAME media m1.
 	// mediaId and status both match the existing row, so the singerId disjunct is the sole rejector.
 	expect(validateCommand(overwriteQ1('m1'), deps)).toBe('entry id already taken: q1');
 });
 
-test('#371 END-TO-END: the same-media steal is NOT applied/broadcast and s1 still holds the turn', () => {
+test('END-TO-END: the same-media steal is NOT applied/broadcast and s1 still holds the turn', () => {
 	const { published, state, deps } = harness();
 	const sent: unknown[] = [];
 	const patch = handleQueueCommand(overwriteQ1('m1'), deps, (e) => sent.push(e));
@@ -188,7 +188,7 @@ test('#371 END-TO-END: the same-media steal is NOT applied/broadcast and s1 stil
 	expect(state.entries.map((e) => e.id).sort()).toEqual(['q1', 'q2']);
 });
 
-// #370 — RESIDUAL of #285's identical-identity carve-out. The carve-out (identical singerId+mediaId
+// — RESIDUAL of #285's identical-identity carve-out. The carve-out (identical singerId+mediaId
 // re-add is allowed) compared only (singerId, mediaId) — not status — while applyOp's add branch
 // rewrites the matched row WHOLE (op.entry, not a merge). So a joined phone can re-add its OWN live
 // song with a fresh clientOpId and status:'queued', and the server re-lands 'queued' on an entry it
@@ -223,7 +223,7 @@ function playingHarness() {
 	return { ...h, app };
 }
 
-test('#370: an identical-identity re-add of the LIVE entry is rejected — does NOT downgrade it to queued', () => {
+test('an identical-identity re-add of the LIVE entry is rejected — does NOT downgrade it to queued', () => {
 	const { deps, state } = playingHarness();
 	// Precondition: q1 really is playing.
 	expect(state.entries.find((e) => e.id === 'q1')!.status).toBe('playing');
@@ -231,7 +231,7 @@ test('#370: an identical-identity re-add of the LIVE entry is rejected — does 
 	expect(validateCommand(readdLiveQ1, deps)).toBe('entry id already taken: q1');
 });
 
-test('#370 END-TO-END: the live re-add is not applied/broadcast, stays playing, and Leave keeps it', () => {
+test('END-TO-END: the live re-add is not applied/broadcast, stays playing, and Leave keeps it', () => {
 	const { published, state, deps, app } = playingHarness();
 	const sent: unknown[] = [];
 	const patch = handleQueueCommand(readdLiveQ1, deps, (e) => sent.push(e));
@@ -253,7 +253,7 @@ test('#370 END-TO-END: the live re-add is not applied/broadcast, stays playing, 
 	expect(state.entries.some((e) => e.id === 'q1')).toBe(true);
 });
 
-test('#370 CONTROL: doLeave on an UNTOUCHED playing harness already keeps q1 — the re-add is what changed it on base', () => {
+test('CONTROL: doLeave on an UNTOUCHED playing harness already keeps q1 — the re-add is what changed it on base', () => {
 	// Load-bearing control: with no re-add at all, Leave keeps the live song. So the ONLY thing that
 	// makes base remove it is the re-add downgrading it — proving the frame, not the harness, is the cause.
 	const { app } = playingHarness();

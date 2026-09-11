@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { GUIDE_PREROLL_ALIGN_SEC, SEEK_JUMP_SEC, resumeSeekTarget } from './guide-sync';
 
 /*
- * #795 — reloading the TV page mid-song desynced audio playback.
+ * — reloading the TV page mid-song desynced audio playback.
  *
  * Measured cause (triage): the room's position (`playback:state.positionSec`) is delivered BEFORE the
  * <audio> master exists on a cold mount, because the element is gated on the `nowplaying:changed` the
@@ -23,7 +23,7 @@ import { GUIDE_PREROLL_ALIGN_SEC, SEEK_JUMP_SEC, resumeSeekTarget } from './guid
  * autoplay-recovery.test.ts).
  */
 
-describe('resumeSeekTarget — a cold-mounted master resumes to the room position (#795)', () => {
+describe('resumeSeekTarget — a cold-mounted master resumes to the room position', () => {
 	it('seeks when the room is meaningfully ahead of a fresh element at 0 (the bug: reload mid-song)', () => {
 		// The measured case: room at 6s, fresh master at ~0. Base drops this entirely.
 		const plan = resumeSeekTarget(0, 6);
@@ -67,7 +67,7 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, (_m, p1) => p1 + '');
 }
 
-describe('TvPlayer.svelte is wired to resume on a cold mount (#795)', () => {
+describe('TvPlayer.svelte is wired to resume on a cold mount', () => {
 	const raw = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
 	const src = stripComments(raw);
 
@@ -102,7 +102,7 @@ describe('TvPlayer.svelte is wired to resume on a cold mount (#795)', () => {
 		expect(fn).toContain('untrack(() => master)');
 	});
 
-	it('guards applyResume on the ACTIVE, playable slot like applySeek — the prewarm regression (#795)', () => {
+	it('guards applyResume on the ACTIVE, playable slot like applySeek — the prewarm regression', () => {
 		// The regression the cold-mount fix opened: the prewarming (hidden, INACTIVE) slot reaches
 		// canplay, so without applySeek's `active`/playable guard, applyResume parks the NEXT song's
 		// element at the outgoing song's position, corrupting the room position on advance. applyResume

@@ -119,7 +119,7 @@ function lineOf(src: string, index: number): number {
 const FILES = [...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 
 /**
- * Non-vacuity floor (issue #453). Five ban scans below iterate FILES and assert `offenders`
+ * Non-vacuity floor. Five ban scans below iterate FILES and assert `offenders`
  * empty; a broken walk returning [] would pass every one of them silently. Pin the file count and
  * the client-lib .ts count the copy scan uses. ~25 svelte + ~26 client .ts today.
  */

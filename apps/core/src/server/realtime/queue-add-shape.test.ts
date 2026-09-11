@@ -4,7 +4,7 @@
 // HOW THIS CLASS IS FOUND: the same way as the singerId crash (hub.ts) and the telemetry positionSec
 // crash (player.ts) — driving the real server. `applyOp`'s add arm inserts `op.entry` VERBATIM (only
 // rotationSeq is server-owned), so a client-supplied `addedAt` and `status` reach the queue unchanged.
-// What the columns ACTUALLY enforce at the write-behind flush is narrow (measured, #317): status is
+// What the columns ACTUALLY enforce at the write-behind flush is narrow (measured): status is
 // `text ... NOT NULL` with NO CHECK constraint (drizzle's `enum:` is compile-time only), and addedAt is
 // `integer NOT NULL`. So the failure modes SPLIT: a missing/undefined addedAt or null status throws
 // NOT NULL and takes the server process down asynchronously; but an off-enum status string and a

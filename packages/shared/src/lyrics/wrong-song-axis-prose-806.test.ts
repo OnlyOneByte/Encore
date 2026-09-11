@@ -50,7 +50,7 @@ function docAbove(source: string, anchor: string): string {
 	return before.slice(open, close + 2);
 }
 
-test('#806 non-vacuous: both documented files exist, are non-trivial, and still discuss the axis split', () => {
+test('non-vacuous: both documented files exist, are non-trivial, and still discuss the axis split', () => {
 	for (const rel of Object.values(SITES)) {
 		expect(src(rel).length).toBeGreaterThan(2000);
 		expect(src(rel)).toContain('coverage');
@@ -64,7 +64,7 @@ test('#806 non-vacuous: both documented files exist, are non-trivial, and still 
 	expect(lyricsRank({ ...base, agreement: 0.2 })).toBe(5);
 });
 
-test('#806 LyricsCandidate.agreement is documented as a RANKING axis that answers no wrong-song question', () => {
+test('LyricsCandidate.agreement is documented as a RANKING axis that answers no wrong-song question', () => {
 	const doc = docAbove(src(SITES.lyrics), 'agreement?: number;');
 	expect(doc).toMatch(/RANKING axis/);
 	// The reason a low value here is not evidence of a wrong song, which is the whole defect.
@@ -72,7 +72,7 @@ test('#806 LyricsCandidate.agreement is documented as a RANKING axis that answer
 	expect(doc).toMatch(/reads `coverage`/);
 });
 
-test('#806 LyricsCandidate.coverage is documented as the one axis the wrong-song judgement may threshold', () => {
+test('LyricsCandidate.coverage is documented as the one axis the wrong-song judgement may threshold', () => {
 	const doc = docAbove(src(SITES.lyrics), 'coverage?: number;');
 	expect(doc).toMatch(/BASELINE COVERAGE/);
 	expect(doc).toMatch(/wrong-song judgement may threshold/);
@@ -81,7 +81,7 @@ test('#806 LyricsCandidate.coverage is documented as the one axis the wrong-song
 	expect(doc).toMatch(/isLikelyWrongSong/);
 });
 
-test('#806 lyricsRank documents tier 1 as reading coverage, NOT the ranking score', () => {
+test('lyricsRank documents tier 1 as reading coverage, NOT the ranking score', () => {
 	const doc = docAbove(src(SITES.lyrics), 'export function lyricsRank(');
 	expect(doc).toMatch(/reads `coverage`, NOT `agreement`/);
 	// The consequence of getting it wrong, named so a future reader does not re-swap it.
@@ -91,7 +91,7 @@ test('#806 lyricsRank documents tier 1 as reading coverage, NOT the ranking scor
 	expect(doc).toMatch(/breaksTie/);
 });
 
-test('#806 isLikelyWrongSong names carriers of the coverage axis that actually exist', () => {
+test('isLikelyWrongSong names carriers of the coverage axis that actually exist', () => {
 	const doc = docAbove(src(SITES.lyrics), 'export function isLikelyWrongSong(');
 	expect(doc).toMatch(/BASELINE COVERAGE/);
 	// Each named carrier must be a real member, not the phantom the old doc pointed at: before #806
@@ -102,7 +102,7 @@ test('#806 isLikelyWrongSong names carriers of the coverage axis that actually e
 	expect(src(SITES.types)).toMatch(/\n\twinnerCoverage\?: number \| null;/);
 });
 
-test('#806 SelectionRecord documents winnerSuspect on coverage and winnerScore as ranking only', () => {
+test('SelectionRecord documents winnerSuspect on coverage and winnerScore as ranking only', () => {
 	const types = src(SITES.types);
 	const suspect = docAbove(types, 'winnerSuspect: boolean;');
 	expect(suspect).toMatch(/BASELINE COVERAGE/);

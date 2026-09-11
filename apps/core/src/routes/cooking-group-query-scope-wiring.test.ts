@@ -1,6 +1,6 @@
-// guard: the query-scope for the Cooking group (#252) is WIRED into the phone page.
+// guard: the query-scope for the Cooking group is WIRED into the phone page.
 //
-// THE DEFECT (#252). A COOKING song showed up under a search it did not match — searching "never
+// THE DEFECT. A COOKING song showed up under a search it did not match — searching "never
 // gonna give you up" still listed a cooking "I want it that way" — because the Cooking group's
 // id-selection was an inline `$derived.by` that scanned the WHOLE live status map and the WHOLE
 // catalog with no reference to `query`. The server already returns a query-scoped `cooking` group;
@@ -33,11 +33,11 @@ function stripComments(src: string): string {
 // import.meta.dir === apps/core/src/routes.
 const PAGE = stripComments(readFileSync(join(import.meta.dir, '+page.svelte'), 'utf8'));
 
-test('the page imports the query-scope helper it wires (#252)', () => {
+test('the page imports the query-scope helper it wires', () => {
 	expect(PAGE).toMatch(/import\s*\{[^}]*\bcookingGroupIds\b[^}]*\}\s*from\s*'\$lib\/readiness'/);
 });
 
-test('the Cooking group is derived through cookingGroupIds, scoped by the query (#252)', () => {
+test('the Cooking group is derived through cookingGroupIds, scoped by the query', () => {
 	// The derivation must delegate to the pure helper and hand it BOTH the query flag and the server's
 	// query-matched group. Deleting the delegation or dropping either input reds this.
 	expect(PAGE).toMatch(/const\s+cookingRows\s*=\s*\$derived\.by\(/);
@@ -48,7 +48,7 @@ test('the Cooking group is derived through cookingGroupIds, scoped by the query 
 	expect(PAGE).toMatch(/cookingGroupIds\(\s*\{[\s\S]{0,220}\bcookingResults\b/);
 });
 
-test('the query-blind inline union is GONE from the cookingRows derivation (#252)', () => {
+test('the query-blind inline union is GONE from the cookingRows derivation', () => {
 	// The exact reintroduction the bug would take: re-deriving the group by scanning the whole catalog
 	// for `readinessFor(m) === 'cooking'` (or the whole status map) INSIDE the cookingRows derivation,
 	// ignoring the query. Capture cookingRows' body and forbid that form there.
@@ -60,7 +60,7 @@ test('the query-blind inline union is GONE from the cookingRows derivation (#252
 	expect(body).not.toMatch(/for\s*\(\s*const\s*\[[^\]]*\]\s*of\s*mediaStatus\s*\)/);
 });
 
-test('cookingResults holds the server query-matched group and is set/cleared on the search path (#252)', () => {
+test('cookingResults holds the server query-matched group and is set/cleared on the search path', () => {
 	// The state that carries the query-scoping.
 	expect(PAGE).toMatch(/let\s+cookingResults\s*=\s*\$state<Media\[\]>\(\[\]\)/);
 	// runSearch stores the wire's cooking group into it (this is "stop discarding it").
@@ -70,7 +70,7 @@ test('cookingResults holds the server query-matched group and is set/cleared on 
 	expect(PAGE).toMatch(/if\s*\(!q\)\s*\{[\s\S]{0,160}cookingResults\s*=\s*\[\]/);
 });
 
-test('a failed search clears cookingResults so no stale query-scoped group lingers (#252)', () => {
+test('a failed search clears cookingResults so no stale query-scoped group lingers', () => {
 	// The search catch branch resets readyResults/rawResults; cookingResults must reset with them, or a
 	// group scoped to a query that then failed would keep rendering under whatever the box shows next.
 	// Pin the reset inside the non-abort error branch (showError names it), next to the sibling resets.

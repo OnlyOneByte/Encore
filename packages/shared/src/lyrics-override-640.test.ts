@@ -1,4 +1,4 @@
-// #640 — the human-override resolver layered ABOVE pickBestLyrics. Pins that:
+// — the human-override resolver layered ABOVE pickBestLyrics. Pins that:
 //   • an override present in the set OUTRANKS the ranker (the one thing that may show a lower rank);
 //   • a stale override (ref no longer in the set) falls back to the ranking, never blanks the overlay;
 //   • no override behaves exactly as pickBestLyrics did (never-regress untouched);

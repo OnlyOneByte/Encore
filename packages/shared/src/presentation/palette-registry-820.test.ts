@@ -10,7 +10,7 @@ import registry from './player-palette-48.json';
  * The 48-stop player palette registry (`XR-COL-01`), and the guards that keep its published figures
  * describing the surfaces the app actually paints (`XR-COL-04`).
  *
- * WHY THIS FILE EXISTS (#820). The registry's figures were generated against the MOCKUP's surfaces
+ * WHY THIS FILE EXISTS. The registry's figures were generated against the MOCKUP's surfaces
  * — `#060a18 / #131a2e / #1a2238` — not the app's `--bg / --card / --card2`. Nothing measured the
  * difference, so six stops shipped their `accent_ink` below AA on the real `--card`: Cobalt 4.473,
  * Denim 4.477, Rose 4.477, Orchid 4.481, Magenta 4.483, Fuchsia 4.490. The generator now READS the

@@ -60,7 +60,7 @@ test('no TV type is sized below the ten-foot floor with a literal size', () => {
 });
 
 /*
- * #821 / XR-TV-01/02 — the TV type floor lives in exactly ONE declaration and the whole ladder is rem.
+ * / XR-TV-01/02 — the TV type floor lives in exactly ONE declaration and the whole ladder is rem.
  *
  * The floor test above only rejects a literal size BELOW the ten-foot floor, so it would happily pass
  * a hard-coded `44px` on the stage — which is precisely the drift #821 closes: a px font-size anywhere
@@ -72,7 +72,7 @@ test('no TV type is sized below the ten-foot floor with a literal size', () => {
 const TV_ROOT_FLOOR_RE =
 	/^calc\(\s*max\(\s*2\.7vh\s*,\s*20px\s*\)\s*\*\s*clamp\(\s*0\.8\s*,\s*var\(--ui-scale\)\s*,\s*1\.6\s*\)\s*\)$/;
 
-test('#821 no TV font-size is a px literal or a per-token viewport term — the floor is the one exception', () => {
+test('no TV font-size is a px literal or a per-token viewport term — the floor is the one exception', () => {
 	const offenders: string[] = [];
 	let rootFloorsSeen = 0;
 	for (const f of FILES) {
@@ -107,7 +107,7 @@ test('#821 no TV font-size is a px literal or a per-token viewport term — the 
 	expect(offenders).toEqual([]);
 });
 
-test('#821 the TV type ladder in app.css is rem off the root — no tier carries a viewport term', () => {
+test('the TV type ladder in app.css is rem off the root — no tier carries a viewport term', () => {
 	const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
 	// XR-TV-02's enumerated type tokens: each must be a bare rem multiple, none may carry vh/vw/vmin.
 	// (--tv-safe-* and --tv-qr are the named geometry exemption and are intentionally NOT in this list.)
@@ -266,7 +266,7 @@ test('the --tv-qr token exists and scales the QR in vmin, not a fixed px', () =>
 });
 
 /*
- * The fullscreen button's tap floor, bound to the TOKEN (issue #831, XR-PH-01).
+ * The fullscreen button's tap floor, bound to the TOKEN (XR-PH-01).
  *
  * `touch-targets.test.ts` walks the PHONE surfaces only, deliberately — the TV's controls are not a
  * phone in someone's hand — so `.fs-btn` sat outside every touch guard while its own comment claimed
@@ -366,7 +366,7 @@ test('the measured card height overrides --tv-chrome-h on the stage', () => {
 	const clean = stripComments(TV_ROUTE);
 	// the override must be written from the measured value and applied to the .tv container. The style
 	// binding is now `tvStyle`, which COMPOSES `chromeBandStyle` (the measured --tv-chrome-h) with the
-	// measured --tv-upnext-h (#889); assert both the composition and that .tv reads the composed value.
+	// measured --tv-upnext-h; assert both the composition and that .tv reads the composed value.
 	expect(/--tv-chrome-h:\s*calc\(/.test(clean)).toBe(true);
 	expect(/const\s+tvStyle\s*=\s*\$derived\(/.test(clean)).toBe(true);
 	expect(/tvStyle[\s\S]*chromeBandStyle/.test(clean)).toBe(true);
@@ -452,7 +452,7 @@ test('the pitch-shift graph teardown runs per song change — and not on media i
 	expect(/media\?\.id/.test(teardown)).toBe(true);
 	// And it must EARLY-RETURN when the id is unchanged, so a new object for the same song is a no-op.
 	expect(/if\s*\(\s*id\s*===\s*resetForId\s*\)\s*return;/.test(teardown)).toBe(true);
-	// #477 / #694: NEITHER the master NOR the guide graph is detached on a song change. Both their
+	// / #694: NEITHER the master NOR the guide graph is detached on a song change. Both their
 	// <audio> elements survive a song-to-song transition -- the master lives as long as the SLOT, and
 	// on a SKIP the guide element stays mounted too (guideMountable holds for both songs, so Svelte
 	// keeps the same element; #694). detach() cannot restore the native path (the element is a
@@ -552,7 +552,7 @@ test('the unverified tint overrides variables only — it never re-selects a wor
  * is the runnable e2e at e2e/lobby-overlap.mjs (`bun run e2e:lobby`) \u2014 it FAILS 6/9 against base and
  * 2/9 with the cap removed, so it pins both halves of the fix; before/after frames are in the PR body.
  */
-test('#826 the lobby roster strip wraps the full roster in flow — not absolutely docked, not clipped', () => {
+test('the lobby roster strip wraps the full roster in flow — not absolutely docked, not clipped', () => {
 	// RETARGETED from #98 (XR-TV-14/XR-TV-20). #98's design capped the roster and folded the surplus
 	// into a "+N more" chip, and this guard pinned that cap. #826 ratifies the OPPOSITE: the lobby shows
 	// EVERY guest with no truncation, because the point of the roster is that it must not degrade as the
@@ -567,14 +567,14 @@ test('#826 the lobby roster strip wraps the full roster in flow — not absolute
 	// over the address. In flow it cannot overlap the stack, so it must be neither.
 	expect(/position:\s*absolute/.test(stripBlock)).toBe(false);
 	expect(/bottom:\s*0/.test(stripBlock)).toBe(false);
-	// #826: it WRAPS the full roster (every guest), rather than nowrap-ing to one clipped row.
+	// it WRAPS the full roster (every guest), rather than nowrap-ing to one clipped row.
 	expect(/flex-wrap:\s*wrap/.test(stripBlock)).toBe(true);
 	// And it never hard-clips: a full roster is shown, not cut off — a clip is exactly the degradation
-	// #826 forbids (the surplus was the first casualty of a raw overflow:hidden).
+	// forbids (the surplus was the first casualty of a raw overflow:hidden).
 	expect(/overflow:\s*hidden/.test(stripBlock)).toBe(false);
 });
 
-test('#826 the lobby shows the whole roster with a chip step-down rule, never a "+N more" fold', () => {
+test('the lobby shows the whole roster with a chip step-down rule, never a "+N more" fold', () => {
 	// RETARGETED from #98 (XR-TV-14). #98 bounded the roster with MAX_CHIPS and a "+N more" fold; #826
 	// ratifies showing EVERY guest, so the fold is gone and the step-down (chips shrink above a
 	// threshold) is what keeps a big party inside the title-safe band. This guard now pins the

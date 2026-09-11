@@ -15,7 +15,7 @@
 // nothing else in the tree renders a pull-up sheet. The two arms that remain here are untouched, and
 // they are why this file survives rather than going with them.
 //
-// #517: the original assertions decided "is the deleted thing back?" by matching the EXACT deleted
+// the original assertions decided "is the deleted thing back?" by matching the EXACT deleted
 // class name or English sentence, so they red on a byte-identical revert (control C1) but pass on any
 // FUNCTIONALLY-EQUIVALENT reintroduction (a rewording, a rename, or a second spelling). So each
 // removal now ALSO carries a STRUCTURAL, name-independent assertion; the literal matchers are kept.
@@ -34,9 +34,9 @@ function read(rel: string): string {
 	return strip(readFileSync(join(import.meta.dir, rel), 'utf8'));
 }
 
-test('#253: GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the control', () => {
+test('GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the control', () => {
 	const code = read('GuidingTrack.svelte');
-	// #913: was `class="gt-slider"`. The control is <Slider variant="guiding"> now, whose geometry
+	// was `class="gt-slider"`. The control is <Slider variant="guiding"> now, whose geometry
 	// lives in ui/slider. This arm cares that the CONTROL is still present, not how it is spelled.
 	expect(code).toContain('<Slider');
 	expect(code).toContain('variant="guiding"');
@@ -50,10 +50,10 @@ test('#253: GuidingTrack drops the out-of-place "No isolated vocals" line, keeps
 	expect(code).toMatch(/\{#if hint\}\s*<p class="gt-hint">/);
 });
 
-test('#253: ProcessingCard drops the per-stage status pills, keeps bar + stage line', () => {
+test('ProcessingCard drops the per-stage status pills, keeps bar + stage line', () => {
 	const code = read('ProcessingCard.svelte');
 	expect(code).toContain('class="progress"');
-	// #913 S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
+	// S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
 	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged.
 	expect(code).toContain('<Progress');
 	expect(code).toContain('class="stage"');

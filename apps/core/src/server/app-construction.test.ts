@@ -1,4 +1,4 @@
-// §4 (#460): getApp() declared plays, reaper and workerHub as non-optional on EncoreApp but filled
+// §4: getApp() declared plays, reaper and workerHub as non-optional on EncoreApp but filled
 // them with `null as never`, patching the real values in after the object literal. The circularity is
 // real — workerHub closes over app.toWorker/publish, reaper needs workerHub.dispatch — but `null as
 // never` LIED to the type system: any read of app.reaper between the literal and its patch got null

@@ -30,7 +30,7 @@ const SERVER = stripComments(readFileSync(SERVER_PATH, 'utf8'));
 // SyntaxError is in the code, so parse the real bytes.
 const SERVER_RAW = readFileSync(SERVER_PATH, 'utf8');
 
-test('server.ts actually PARSES — a source scan is blind to a SyntaxError in the prod entrypoint (#657)', () => {
+test('server.ts actually PARSES — a source scan is blind to a SyntaxError in the prod entrypoint', () => {
 	// server.ts is the standalone prod entry (`bun run server.ts`) and cannot be imported into bun:test
 	// (it calls Bun.serve + process.exit), so the wiring assertions read it as TEXT — which passes
 	// happily on a file that does not compile. That is exactly how a `break` illegally crossing the
@@ -41,16 +41,16 @@ test('server.ts actually PARSES — a source scan is blind to a SyntaxError in t
 	expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(SERVER_RAW)).not.toThrow();
 });
 
-test('server.ts imports the room-scope isolation helpers (#657) and the TV-room resolver (#658)', () => {
+test('server.ts imports the room-scope isolation helpers and the TV-room resolver', () => {
 	expect(SERVER).toMatch(
 		/import\s*\{[^}]*\bisForeignRoom\b[^}]*\bsubscribeTopicFor\b[^}]*\bbroadcastTopicFor\b[^}]*\}\s*from\s*['"]\.\/src\/server\/realtime\/room-scope['"]/
 	);
-	// #658: the TV-room resolver is imported too — dropping it (while the usage stays) fails to
+	// the TV-room resolver is imported too — dropping it (while the usage stays) fails to
 	// compile, which a source scan is blind to, so pin the import here alongside the #657 helpers.
 	expect(SERVER).toMatch(/import\s*\{[^}]*\btvRoomId\b[^}]*\}\s*from\s*['"]\.\/src\/server\/rooms\/tv-room['"]/);
 });
 
-test('the WS upgrade captures a roomId scope onto the socket, not just the id (#657, re-anchored #658)', () => {
+test('the WS upgrade captures a roomId scope onto the socket, not just the id (re-anchored #658)', () => {
 	// The scope key: every socket carries a roomId on SocketData. Dropping the roomId capture would
 	// leave every socket unscoped, so isForeignRoom could never fire. #658 changed where the value
 	// comes from — a phone still gets it from its session token (me?.roomId), but a TV (no cookie)
@@ -61,28 +61,28 @@ test('the WS upgrade captures a roomId scope onto the socket, not just the id (#
 	// role + singerId are set, and roomId is on the data object (property shorthand `roomId` or an
 	// explicit `roomId: <expr>`). The old inline `roomId: me?.roomId` shape is subsumed by this.
 	expect(SERVER).toMatch(/data:\s*\{\s*role,\s*singerId:\s*[\w.?]+,\s*roomId(\s*:\s*[\w.?]+)?\s*\}/);
-	// #658 seam: the roomId the socket binds to is computed, and the TV branch resolves it via
+	// seam: the roomId the socket binds to is computed, and the TV branch resolves it via
 	// tvRoomId(...) rather than leaving a TV an unscoped spectator. Reverting the TV branch back to a
 	// bare `me?.roomId` (so a TV is always unscoped again) reds here.
 	expect(SERVER).toMatch(/const\s+roomId\s*=/);
 	expect(SERVER).toMatch(/role\s*===\s*'tv'[\s\S]{0,120}tvRoomId\(/);
 });
 
-test('websocket.open subscribes to the socket own room topic via subscribeTopicFor (#657)', () => {
+test('websocket.open subscribes to the socket own room topic via subscribeTopicFor', () => {
 	// A per-room subscribe, keyed on the socket's roomId + the served room — NOT a single shared topic.
 	expect(SERVER).toMatch(/ws\.subscribe\(\s*subscribeTopicFor\(\s*ws\.data\.roomId\s*,\s*app\.activeRoomId\s*\)\s*\)/);
 	// and the old single-shared-topic subscribe is gone (the exact pre-#657 shape).
 	expect(SERVER).not.toMatch(/ws\.subscribe\(\s*ROOM_TOPIC\s*\)/);
 });
 
-test('the broadcast sink publishes to the served room topic via broadcastTopicFor (#657)', () => {
+test('the broadcast sink publishes to the served room topic via broadcastTopicFor', () => {
 	// The delivery half: one publish reaches only the served room's subscribers.
 	expect(SERVER).toMatch(/server\.publish\(\s*broadcastTopicFor\(\s*app\.activeRoomId\s*\)/);
 	// and no live publish routes through the single legacy ROOM_TOPIC anymore (crossing the boundary).
 	expect(SERVER).not.toMatch(/server\.publish\(\s*ROOM_TOPIC\b/);
 });
 
-test('the client message switch refuses a foreign-room socket before it reads or mutates (#657)', () => {
+test('the client message switch refuses a foreign-room socket before it reads or mutates', () => {
 	// The gate must sit BEFORE `switch (evt.type)` so hello/queue/player/telemetry are all covered by it.
 	const gate = SERVER.indexOf('isForeignRoom(ws.data.roomId, app.activeRoomId)');
 	expect(gate, 'foreign-room gate not found').toBeGreaterThan(-1);

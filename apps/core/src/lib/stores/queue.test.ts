@@ -64,7 +64,7 @@ test('reject rolls back the optimistic add via the recorded inverse', () => {
 // RED on base: base rolled back via applyOp(inverse) which only touches rotationSeq while the
 // forward move (applyAndReseq -> reorderWithinSinger) had permuted addedAt, so the addedAt
 // permutation survived and re-derived the rejected order.
-test('reject rolls back an optimistic MOVE to the exact pre-move state (#101)', () => {
+test('reject rolls back an optimistic MOVE to the exact pre-move state', () => {
 	// Seed three of my own songs through the real store, each CONFIRMED by the server so the queue
 	// is settled (matches the issue's quiet-party repro: a rejected move is then the only pending op).
 	const { store } = makeStore();
@@ -100,7 +100,7 @@ test('reject rolls back an optimistic MOVE to the exact pre-move state (#101)', 
 
 // Guards the rollback rebase: rejecting an EARLIER pending op must keep a LATER still-pending op
 // applied, and must not double-apply the earlier ops already baked into the rejected op's snapshot.
-test('reject of an earlier pending op preserves a later still-pending op (#101)', () => {
+test('reject of an earlier pending op preserves a later still-pending op', () => {
 	const { store } = makeStore();
 	store.addSong('m1'); // id0 entry, id1 opId (pending A)
 	store.removeEntry('id0'); // id2 opId (pending B) — remove the row A added; both still pending
@@ -118,7 +118,7 @@ test('reject of an earlier pending op preserves a later still-pending op (#101)'
 // our pending move and its reject; the reject must keep that add, not discard it.
 // RED on the frozen-snapshot draft (rolled back to m1,m2,m3, dropping sam-song); GREEN once the
 // rebase loops refresh each pending op's snapshot to the rebased pre-op state.
-test('reject rolls back to CURRENT truth, preserving a server patch that arrived meanwhile (#168)', () => {
+test('reject rolls back to CURRENT truth, preserving a server patch that arrived meanwhile', () => {
 	const { store } = makeStore();
 	// Seed + confirm three of my songs so the queue is settled.
 	store.addSong('m1'); // id0/id1
@@ -161,7 +161,7 @@ test('reject rolls back to CURRENT truth, preserving a server patch that arrived
 });
 
 // Issue #869 Finding 1: #onSync must refresh each pending op's rollback target to CURRENT truth,
-// exactly as #onPatch does (#168) — the two share #rebasePending. This is the reconnect path:
+// exactly as #onPatch does — the two share #rebasePending. This is the reconnect path:
 // resendPending fires on every queue:sync, so a reject after a resync rolls back through here.
 // RED with the snapshot-refresh in #rebasePending removed on the #onSync path: the reject would
 // then roll back to a stale pre-sync world and silently drop the entries the resync brought.
@@ -327,7 +327,7 @@ test('queue:patch with authoritative entries snaps to server order (no flicker),
 // the WS gap detector reads (getLastRev at client.ts:161); if a lower-rev queue:patch rewinds it, the
 // next legitimate patch is measured against a stale expected and discarded, forcing a full resync to
 // every phone — the exact storm #noteRev's advance-only rule was written to stop, reintroduced here.
-test('a lower-rev queue:patch does NOT rewind rev, and the next real patch still applies (issue #115)', () => {
+test('a lower-rev queue:patch does NOT rewind rev, and the next real patch still applies', () => {
 	const { store } = makeStore();
 
 	// server advances the shared counter to 10 via a playback:state (advance-only path).
@@ -362,7 +362,7 @@ test('a lower-rev queue:patch does NOT rewind rev, and the next real patch still
 	expect(store.entries.map((e) => e.id)).toEqual(['z']);
 });
 
-// #856 step 4: moveToIndex emits a `move-to-index` op (a GLOBAL queued index, crossing singers) and
+// step 4: moveToIndex emits a `move-to-index` op (a GLOBAL queued index, crossing singers) and
 // applies it optimistically this frame through the same applyAndReseq reducer the server runs.
 test('moveToIndex emits move-to-index and pulls the entry to the global index this frame', () => {
 	const { store, sent } = makeStore();

@@ -1,8 +1,8 @@
 // guard: EVERY add op an e2e .mjs harness script mints must carry all six QueueEntry fields the
 // validateCommand add arm requires — { id, mediaId, singerId, status, rotationSeq, addedAt } — so a
-// future contract move REDS this guard instead of silently killing a probe at setup (#452).
+// future contract move REDS this guard instead of silently killing a probe at setup.
 //
-// THE SYSTEMIC DEFECT (#452, from #394). Nothing in `bun test` invokes apps/core/e2e/ — the probes
+// THE SYSTEMIC DEFECT (from #394). Nothing in `bun test` invokes apps/core/e2e/ — the probes
 // are live-server scripts run by hand. So when the add contract moved (addedAt made finite in #305,
 // status narrowed to 'queued' in #324), a probe whose add frame predated the move kept sending a
 // stale frame that validateCommand now REJECTS: queueViaWs threw at setup and EVERY scenario in the
@@ -11,7 +11,7 @@
 // probe, so a probe added tomorrow, or a contract field added tomorrow, is covered without a human
 // remembering to widen a hand-maintained list.
 //
-// AUDIT AT AUTHORING (#452). Driving every current probe's add frame through the real validateCommand
+// AUDIT AT AUTHORING. Driving every current probe's add frame through the real validateCommand
 // (a throwaway harness, since deleted) returned null (ACCEPTED) for all three probes that mint one —
 // p2-guiding-track, p11-dashboards, and p5-cook-lifecycle (the #394 reference). fuzz.mjs drives the
 // real UI (page.click) so the client's own addSong builds the frame — no raw add literal. p8 and p9
@@ -120,7 +120,7 @@ function hasKey(literal: string, field: string): boolean {
 
 const MJS_FILES = collectMjs(E2E_DIR);
 
-test('the e2e directory is walked and add frames are found (non-vacuous) (#452)', () => {
+test('the e2e directory is walked and add frames are found (non-vacuous)', () => {
 	// Sentinel: a broken walk that finds nothing must not pass vacuously (fuzz + party + probes/*).
 	expect(MJS_FILES.length).toBeGreaterThan(10);
 	// At least the three known producers (p2, p11, p5) mint an add frame; if a refactor removes ALL
@@ -129,7 +129,7 @@ test('the e2e directory is walked and add frames are found (non-vacuous) (#452)'
 	expect(total).toBeGreaterThanOrEqual(3);
 });
 
-test('every e2e .mjs add frame carries all six required QueueEntry fields (#452)', () => {
+test('every e2e .mjs add frame carries all six required QueueEntry fields', () => {
 	const offenders: string[] = [];
 	for (const file of MJS_FILES) {
 		const rel = file.slice(E2E_DIR.length + 1);
@@ -146,7 +146,7 @@ test('every e2e .mjs add frame carries all six required QueueEntry fields (#452)
 	expect(offenders).toEqual([]);
 });
 
-test('every e2e .mjs add frame mints status: a member of the queue_entries enum, i.e. queued (#452)', () => {
+test('every e2e .mjs add frame mints status: a member of the queue_entries enum, i.e. queued', () => {
 	const enumValues = queueEntries.status.enumValues as readonly string[];
 	const offenders: string[] = [];
 	for (const file of MJS_FILES) {

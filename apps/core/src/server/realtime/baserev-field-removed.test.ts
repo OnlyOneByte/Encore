@@ -50,7 +50,7 @@ function clientCommandBody(): string {
 	return src.slice(open + 1, end);
 }
 
-test('ClientCommand no longer carries baseRev, and still carries its live fields (#348)', () => {
+test('ClientCommand no longer carries baseRev, and still carries its live fields', () => {
 	const body = clientCommandBody();
 	// The live fields stay — proves we sliced the real interface, not an empty match.
 	expect(body).toMatch(/\bclientOpId\b/);
@@ -74,7 +74,7 @@ function collectSources(root: string): string[] {
 	return out;
 }
 
-test('no non-test source under apps/core references baseRev (#348)', () => {
+test('no non-test source under apps/core references baseRev', () => {
 	const files = collectSources(CORE_SRC);
 	// Sentinel: a broken walk that finds nothing must not pass vacuously.
 	expect(files.length).toBeGreaterThan(50);
@@ -89,7 +89,7 @@ test('no non-test source under apps/core references baseRev (#348)', () => {
 
 // The three .ts/.svelte scans above do NOT reach the e2e harness: `apps/core/e2e/**/*.mjs` are
 // live-server scripts invoked by nothing in `bun test`, so #348 left three of them still sending or
-// documenting the dead field (#411). This scan closes that gap — precedent for widening a source-scan
+// documenting the dead field. This scan closes that gap — precedent for widening a source-scan
 // guard to `.mjs` is #408 (task-number-hygiene.test.ts).
 //
 // It bans the AFFIRMATIVE declaration `baseRev:` (a property/send), not the bare word: after the
@@ -113,7 +113,7 @@ function collectMjs(root: string): string[] {
 	return out;
 }
 
-test('no e2e .mjs harness script sends the dead baseRev field (#411)', () => {
+test('no e2e .mjs harness script sends the dead baseRev field', () => {
 	const files = collectMjs(E2E_DIR);
 	// Sentinel: a broken walk that finds nothing must not pass vacuously (fuzz + party + probes/*).
 	expect(files.length).toBeGreaterThan(10);

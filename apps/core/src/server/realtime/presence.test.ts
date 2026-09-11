@@ -250,7 +250,7 @@ describe('membership rides the sync handshake', () => {
 });
 
 describe('membership: the discredited socket-count predicate stays deleted', () => {
-	// #126: PresenceTracker.isOnline() and .count() were dead (zero non-test callers) AND isOnline()
+	// PresenceTracker.isOnline() and .count() were dead (zero non-test callers) AND isOnline()
 	// returned exactly the `sockets > 0` predicate this file's header documents as the ORIGINAL BUG —
 	// the locked-phone eviction the three-state here/away/gone policy exists to replace. They were the
 	// cheapest-to-reach presence check and were wrong, so their re-introduction is the trap this pins.
@@ -281,7 +281,7 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 	// candidate becomes the modifier (`public sockets(…)` → `public`), immediately followed by a SPACE
 	// rather than `(`/`=`, so the match fails at that position and the member drops out of the harvested
 	// set entirely — a false EXEMPT (a smuggled member goes unseen by the allowlist), not a false RED
-	// (#417). Interface fields and private
+	//. Interface fields and private
 	// #members are not matched (# prefix, and the interface lives above the class start). Reads names off
 	// the source so the test cannot derive its expectation the way the class does.
 	const MEMBER_MODIFIERS = /(?:public|private|protected|readonly|static)\s+/.source;
@@ -309,13 +309,13 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 		const BARE_MEMBERSHIP_BOOL =
 			/(?:return\s+|=>\s*)(?!.*\.(?:filter|map|some|every|reduce|find)\s*\()[^\n;]*\bsockets\b[^\n;]*(?:>\s*0|>=\s*1|!==?\s*0)/;
 		const BOOLEAN_WRAP = /(?:return\s+|=>\s*)Boolean\s*\([^\n;]*\bsockets\b/;
-		// Const-indirection hop (#417): the single-line bans above cannot span a newline, so a membership
+		// Const-indirection hop: the single-line bans above cannot span a newline, so a membership
 		// bool smuggled into an ALREADY-ALLOWLISTED bool-returner via a local const —
 		// `const n = …sockets…;` then `return n > 0;` (or `>= 1`, `!== 0`) — evaded both the shape ban
 		// (name allowed, comparison text on a different line from `sockets`) and the allowlist (the name is
 		// legitimate). Bind the local to the `sockets` read, then require a return/arrow comparison on that
 		// SAME identifier; `[\s\S]*?` (lazy) lets the two sit on different lines within the method body.
-		// #465: an optional `const b = a;` rebind hop is followed so the two-hop smuggle
+		// an optional `const b = a;` rebind hop is followed so the two-hop smuggle
 		// (`const a = …sockets…; const b = a; return b > 0;`) also reds; and a negative lookahead on the
 		// binding RHS exempts a list-returning combinator (`const n = […].filter(…).length; return n > 0;`
 		// counts online singers — an honest list op, not a per-singer membership bool), matching the

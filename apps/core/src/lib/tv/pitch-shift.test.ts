@@ -50,7 +50,7 @@ test('grainLookahead / readLag: the read pointer must lag the write head, and by
 	expect(readLag(1024, 256, 1.5)).toBe(1536 + ALIGN_SEARCH + 256);
 });
 
-// ── §1 (#460): setShift must have an in-flight guard so a double transpose builds ONE graph ──────
+// ── §1: setShift must have an in-flight guard so a double transpose builds ONE graph ──────
 // The AUDIBLE path can't run in bun (no audio hardware), but the re-entrancy defect is pure control
 // flow: build() reads `routed` at entry, but `routed` only flips AFTER `await ctx.resume()` and
 // `await addModule(...)`. Two setShift(non-zero) calls landing in that async window (two playback:state

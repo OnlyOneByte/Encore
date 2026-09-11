@@ -1,4 +1,4 @@
-// §2 (#460): four pitch helpers were production-dead — SEMITONES_PER_OCTAVE, hannWindow, synthesisHop
+// §2: four pitch helpers were production-dead — SEMITONES_PER_OCTAVE, hannWindow, synthesisHop
 // and sampleAt had zero non-test references anywhere in apps/ or packages/. The worklet does NOT import
 // them: it runs in a separate AudioWorkletGlobalScope and carries its OWN hann window, its own
 // SYNTH_HOP = GRAIN / OVERLAP, and its own inline lerp. sampleAt was the sharp one — its old test

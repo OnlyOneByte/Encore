@@ -5,7 +5,7 @@ import type { Media } from '@encore/shared';
 import { cookIsTerminal, mergeCatalog, snapshot } from './catalog';
 
 /*
- * #396 — "when a song finishes PROCESSING, the currently playing song's playhead jumps back to an
+ * — "when a song finishes PROCESSING, the currently playing song's playhead jumps back to an
  * earlier part". Reported, "fixed", and reported again four times.
  *
  * THE CALL CHAIN, from the processing-finish event to the perturbation this PR removes:
@@ -56,7 +56,7 @@ function media(over: Partial<Media> = {}): Media {
 	} as Media;
 }
 
-describe('#396 the catalog boundary — cook churn cannot reach a playing song', () => {
+describe('the catalog boundary — cook churn cannot reach a playing song', () => {
 	it('preserves object identity for a song whose fields did not change', () => {
 		const playing = media({ id: 'playing' });
 		const prev = new Map([['playing', playing]]);
@@ -110,7 +110,7 @@ describe('#396 the catalog boundary — cook churn cannot reach a playing song',
 	});
 });
 
-describe('#396 the seek effect depends on playback intent, never on the catalog', () => {
+describe('the seek effect depends on playback intent, never on the catalog', () => {
 	/** The TRIGGERING effect: from its opening to the `applySeek` call it exists to make. */
 	const trigger = (() => {
 		const upto = player.split('applySeek(target);')[0];
@@ -184,7 +184,7 @@ describe('#396 the seek effect depends on playback intent, never on the catalog'
 	});
 });
 
-describe('#396 the TV route has exactly one catalog writer, and the cook path is not it', () => {
+describe('the TV route has exactly one catalog writer, and the cook path is not it', () => {
 	const code = stripComments(route);
 
 	it('assigns mediaCatalog in exactly one place, through mergeCatalog', () => {

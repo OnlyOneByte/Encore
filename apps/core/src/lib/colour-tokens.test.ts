@@ -1,5 +1,5 @@
 /*
- * ── THE COLOUR TOKEN LAYER UNDER THE 48-STOP PALETTE (issue #840) ──────────────────────────────────
+ * ── THE COLOUR TOKEN LAYER UNDER THE 48-STOP PALETTE ──────────────────────────────────
  *
  * `XR-COL-10` through `XR-COL-13` and `XR-COL-24`. Three of Encore's encoded colour prohibitions change
  * MEANING under the 48-stop palette and one disappears, and every one of them fails silently:
@@ -93,7 +93,7 @@ function stripSvelteComments(src: string): string {
 
 // ── XR-COL-11 — the retirement is real ─────────────────────────────────────────────────────────────
 
-describe('#840 --accent-strong is retired, not carried forward (XR-COL-11)', () => {
+describe('--accent-strong is retired, not carried forward (XR-COL-11)', () => {
 	/**
 	 * Acceptance 1, both halves. A declaration left behind is a second accent nothing rules between; a
 	 * `var()` read left behind resolves to NOTHING and paints the element's inherited background, which
@@ -122,7 +122,7 @@ describe('#840 --accent-strong is retired, not carried forward (XR-COL-11)', () 
 	});
 
 	/**
-	 * Non-vacuity (issue #453). The scan above reports offenders from a file walk, so a walk that found
+	 * Non-vacuity. The scan above reports offenders from a file walk, so a walk that found
 	 * nothing would pass while proving nothing. 25 files today; floor well below.
 	 */
 	test('the retirement scan actually reads the component surface', () => {
@@ -141,7 +141,7 @@ describe('#840 --accent-strong is retired, not carried forward (XR-COL-11)', () 
 
 // ── XR-COL-24 / acceptance 2 — all four roles reach CSS ────────────────────────────────────────────
 
-describe('#840 every per-stop role reaches CSS as a custom property (XR-COL-24)', () => {
+describe('every per-stop role reaches CSS as a custom property (XR-COL-24)', () => {
 	/**
 	 * Acceptance 2. Not just the fill: a component that needs `on_fill` and cannot reach it as a custom
 	 * property will reach for a literal, and a literal is exactly what stops tracking the stop.
@@ -164,7 +164,7 @@ describe('#840 every per-stop role reaches CSS as a custom property (XR-COL-24)'
 
 // ── XR-COL-12 / acceptance 3 — one pair, never separately ──────────────────────────────────────────
 
-describe('#840 a fill and its ink are emitted as one pair (XR-COL-12)', () => {
+describe('a fill and its ink are emitted as one pair (XR-COL-12)', () => {
 	/**
 	 * The `:root` seed is a REGISTRY PAIR, not two independently chosen hexes.
 	 *
@@ -267,7 +267,7 @@ describe('#840 a fill and its ink are emitted as one pair (XR-COL-12)', () => {
 
 // ── XR-COL-10 — accent ink stays distinct, and the surface gap that blocks wiring it ───────────────
 
-describe('#840 --accent-ink remains a required, distinct token (XR-COL-10)', () => {
+describe('--accent-ink remains a required, distinct token (XR-COL-10)', () => {
 	/** It is still declared, and it is still NOT the fill. Collapsing the two is the failure. */
 	test('it is declared, and it is not a copy of the fill', () => {
 		expect(token('accent-ink').toLowerCase()).not.toBe(token('accent').toLowerCase());

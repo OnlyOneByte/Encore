@@ -70,7 +70,7 @@ test('GRACEFUL DEGRADE: search returns [] when yt-dlp is unavailable (no throw)'
 });
 
 /*
- * #767 — the four ways this function returns nothing must be TELLABLE APART.
+ * — the four ways this function returns nothing must be TELLABLE APART.
  *
  * Before the fix the timeout was a hand-rolled `setTimeout(proc.kill())` whose result was discarded,
  * the spawn sat outside its own `try`, the exit code was never read and stderr was spawned as
@@ -133,7 +133,7 @@ const TWO_LINES_PLUS_TRUNCATED = [
 	'{"id":"ccc","tit' // the third line, cut off mid-write by the kill — parseSearchJson drops it
 ].join('\n');
 
-test('#767 a search KILLED by the kill timer is reported as a timeout, not as a short page', async () => {
+test('a search KILLED by the kill timer is reported as a timeout, not as a short page', async () => {
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
 		const r = await ytDlpSearch('hung query', 12, {
@@ -156,7 +156,7 @@ test('#767 a search KILLED by the kill timer is reported as a timeout, not as a 
 	}
 });
 
-test('#767 a search that CANNOT SPAWN is logged and degrades, instead of escaping the function', async () => {
+test('a search that CANNOT SPAWN is logged and degrades, instead of escaping the function', async () => {
 	// The real trigger: yt-dlp present at the first probe (positive, cached for the process lifetime
 	// on purpose) and gone by the time a search runs — `Bun.spawn` throws ENOENT synchronously, and
 	// the old spawn sat outside its own `try`, so the rejection left this file entirely.
@@ -179,7 +179,7 @@ test('#767 a search that CANNOT SPAWN is logged and degrades, instead of escapin
 	}
 });
 
-test('#767 a non-zero yt-dlp exit is attributed WITH its stderr', async () => {
+test('a non-zero yt-dlp exit is attributed WITH its stderr', async () => {
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
 		const r = await ytDlpSearch('bad', 12, {
@@ -196,7 +196,7 @@ test('#767 a non-zero yt-dlp exit is attributed WITH its stderr', async () => {
 	}
 });
 
-test('#767 a GENUINELY empty result set stays silent — that is what makes the other lines mean something', async () => {
+test('a GENUINELY empty result set stays silent — that is what makes the other lines mean something', async () => {
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
 		const r = await ytDlpSearch('no such song', 12, {

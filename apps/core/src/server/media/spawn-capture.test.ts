@@ -1,4 +1,4 @@
-// #446 defect 3: the three previously-untimed Bun.spawn sites (ytdlp availability, loudness probe,
+// defect 3: the three previously-untimed Bun.spawn sites (ytdlp availability, loudness probe,
 // retention transcoder) must be killed if the child hangs — on the DETACHED boot chain a hung ffmpeg
 // stalls every later pass SILENTLY forever, and a hang is not a rejection so the chain's .catch never
 // fires. runCapturing adds the kill timer (the ratified pattern already on yt-dlp search).

@@ -1,4 +1,4 @@
-// #446 defect 1: the boot maintenance chain must ISOLATE each pass. One pass failing/hanging must not
+// defect 1: the boot maintenance chain must ISOLATE each pass. One pass failing/hanging must not
 // disable the passes after it, and a failure must be visible + NAMED (not one terminal catch that
 // cannot say which of six passes died). Two halves: the runner's behaviour (here, in a pure harness)
 // and the app.ts wiring that this runner is what the boot chain uses (source scan — getApp() has no

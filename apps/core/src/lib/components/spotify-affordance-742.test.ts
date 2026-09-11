@@ -30,7 +30,7 @@ const pageRaw = read('src/routes/+page.svelte');
 const songRow = stripComments(songRowRaw);
 const page = stripComments(pageRaw);
 
-test('#742 non-vacuous: both surfaces were really read and still contain their action wiring', () => {
+test('non-vacuous: both surfaces were really read and still contain their action wiring', () => {
 	// A moved or renamed file must fail loudly here rather than letting every scan below pass on an
 	// empty string.
 	expect(songRowRaw.length).toBeGreaterThan(2000);
@@ -39,7 +39,7 @@ test('#742 non-vacuous: both surfaces were really read and still contain their a
 	expect(page).toMatch(/<SongRow/);
 });
 
-test('#742 every Sing site asks a gate that can SEE the media, not readiness alone', () => {
+test('every Sing site asks a gate that can SEE the media, not readiness alone', () => {
 	// The defect in one line: `canCook(r)` answered a per-item capability from a check that could not
 	// see `Media.source`, so a Spotify row offered Sing exactly like a YouTube row. Every call site must
 	// now pass the media. Counting them is what stops a fix that converts one of the four and leaves the
@@ -58,7 +58,7 @@ test('#742 every Sing site asks a gate that can SEE the media, not readiness alo
 	expect(page).not.toMatch(/canCook\(\s*r\s*\)/);
 });
 
-test('#742 every row that can offer a turn also declares whether the song is cookable at all', () => {
+test('every row that can offer a turn also declares whether the song is cookable at all', () => {
 	// `cookable` is what removes the ADD affordance. Same count as the Sing sites: since #902 the raw
 	// search-results block plus the cooking block (the empty-box shortcut lists that used to add two
 	// more were dropped). It must be derived from the shared authority, not re-implemented with a local
@@ -73,7 +73,7 @@ test('#742 every row that can offer a turn also declares whether the song is coo
 	expect(imports.join(' ')).toMatch(/\bisCookableSource\b/);
 });
 
-test('#742 SongRow disables the add button when the song can never be cooked', () => {
+test('SongRow disables the add button when the song can never be cooked', () => {
 	// Without this the row falls through from the withheld Sing branch to a live "＋ Turn" and books the
 	// dead turn anyway — the fix would be cosmetic.
 	const addBtn = songRow.match(/<button\s+class="add"[\s\S]*?<\/button/);
@@ -85,7 +85,7 @@ test('#742 SongRow disables the add button when the song can never be cooked', (
 	expect(songRow).toMatch(/cookable\s*=\s*true/);
 });
 
-test('#742 the disabled add also LOOKS unavailable — disabled alone reads as broken', () => {
+test('the disabled add also LOOKS unavailable — disabled alone reads as broken', () => {
 	// `.add` carries the app's actionable signal (a green border and a green mark). A full-strength green
 	// ＋ that does nothing when tapped reads as the app being broken, not as an action that is
 	// unavailable — and on a phone there is no hover to reveal the `title` that explains it. So the
@@ -102,7 +102,7 @@ test('#742 the disabled add also LOOKS unavailable — disabled alone reads as b
 	expect(rule![0]).not.toMatch(/danger/);
 });
 
-test('#742 SongRow SAYS why, on screen — a title attribute is unreachable on a phone', () => {
+test('SongRow SAYS why, on screen — a title attribute is unreachable on a phone', () => {
 	// An unexplained disabled control reads as the app being broken. The reason has to be in the chip
 	// line (rendered text), not only in `title`, because these rows are only ever used on a touch
 	// surface where there is no hover.

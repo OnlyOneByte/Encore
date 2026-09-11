@@ -26,7 +26,7 @@ import { PlayLog } from '../media/play-log';
 function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRepository; activeRoomId: string } {
 	const db = migratedDb();
 	const rooms = new RoomRepository(db);
-	// #654: doJoin resolves the room a join lands in, so the harness mints the single active room.
+	// doJoin resolves the room a join lands in, so the harness mints the single active room.
 	const activeRoomId = rooms.ensureActive(1_700_000_000_000).id;
 	const published: ServerEvent[] = [];
 	const attempts = new AttemptLedger(db);
@@ -85,7 +85,7 @@ test('valid join creates a singer and broadcasts singer:joined', () => {
 	expect(ev.singer.id).toBe(singer.id);
 });
 
-test('the singer:joined broadcast carries NO session token (#796)', () => {
+test('the singer:joined broadcast carries NO session token', () => {
 	// The frame reaches every socket in the room, including a cookie-less spectator that never joined.
 	// The session token IS the whole auth axis (bySessionToken resolves who you are), so a token on
 	// this wire hands any listener the credential to impersonate the new singer. Serialise it exactly
@@ -222,7 +222,7 @@ test('distinct names are unaffected', () => {
 	expect(() => doJoin(app, { displayName: 'Maya', color: SINGER_COLORS[1] })).not.toThrow();
 });
 
-// ── room identity: minting + join-by-code (#654) ───────────────────────────────
+// ── room identity: minting + join-by-code ───────────────────────────────
 // Before this issue nothing wrote the rooms table and doJoin ignored any code: every join landed in
 // one implicit singleton party. The identity layer mints a room and lets a phone join a SPECIFIC one
 // by its code (the QR encodes it), returning WHICH room the join landed in. Playback/queue/singers

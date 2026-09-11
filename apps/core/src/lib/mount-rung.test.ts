@@ -1,4 +1,4 @@
-// guard: the MOUNT-RUNG harness contract (#822) — `docs/ux/04-verification.md` XR-VER-01 and XR-VER-03.
+// guard: the MOUNT-RUNG harness contract — `docs/ux/04-verification.md` XR-VER-01 and XR-VER-03.
 //
 // TWO THINGS ARE PINNED HERE, and they pull in opposite directions on purpose.
 //
@@ -81,7 +81,7 @@ beforeEach(async () => {
 // Derived from the tree, not hand-listed, so a component that starts importing a virtual module is
 // covered the moment it lands. Carries a non-vacuity floor (XR-VER-05): a walk that finds nothing
 // must fail rather than pass with zero files examined.
-test('every component importing a $app/$env virtual module loads under the mount rung (#822)', async () => {
+test('every component importing a $app/$env virtual module loads under the mount rung', async () => {
 	const importers: { file: string; specifiers: string[] }[] = [];
 	for (const file of sourceFiles(SRC)) {
 		const specifiers = [...readFileSync(file, 'utf8').matchAll(KIT_IMPORT)].map((m) => m[1]!);
@@ -103,7 +103,7 @@ test('every component importing a $app/$env virtual module loads under the mount
 		expect(typeof mod.default, `${file} did not load a component`).toBe('function');
 	}
 	/*
-	 * #913 S3: 20s, up from bun's 5s default. This test imports EVERY component that touches a
+	 * S3: 20s, up from bun's 5s default. This test imports EVERY component that touches a
 	 * SvelteKit virtual module, and the settings route now pulls in Bits UI — whose `.svelte` sources
 	 * are compiled on demand by the preload's loader. Warm, the whole set loads in ~2.5s; a cold
 	 * compile of that graph crossed 5s and timed out. The budget is for compile variance in a
@@ -116,7 +116,7 @@ test('every component importing a $app/$env virtual module loads under the mount
 // with its neighbours. Each asserts the SHAPE the app actually consumes, not merely that the import
 // resolved — a stub that resolves to an empty module would still break every consumer.
 
-test('$app/navigation is stubbed and records navigations instead of swallowing them (#822)', async () => {
+test('$app/navigation is stubbed and records navigations instead of swallowing them', async () => {
 	const nav = await navStub();
 	expect(typeof nav.goto).toBe('function');
 	expect(typeof nav.replaceState).toBe('function');
@@ -128,7 +128,7 @@ test('$app/navigation is stubbed and records navigations instead of swallowing t
 	expect(nav.calls[0]!.args[0]).toBe('/somewhere');
 });
 
-test('$app/state is stubbed with a real URL and params, settable per test (#822)', async () => {
+test('$app/state is stubbed with a real URL and params, settable per test', async () => {
 	const state = await stateStub();
 	expect(state.page.url).toBeInstanceOf(URL);
 	state.setPage({ url: '/join?room=ABCD', params: { mediaId: 'm-7' } });
@@ -139,7 +139,7 @@ test('$app/state is stubbed with a real URL and params, settable per test (#822)
 	expect(state.page.url.searchParams.get('room')).toBeNull();
 });
 
-test('$app/environment is stubbed with browser true, so client-only work runs (#822)', async () => {
+test('$app/environment is stubbed with browser true, so client-only work runs', async () => {
 	const env = await environmentStub();
 	// `browser` must be TRUE: the harness installs a DOM and mounts with Svelte's CLIENT runtime, so a
 	// component that guards its browser-only work on this flag has to run that work here or the mount
@@ -149,7 +149,7 @@ test('$app/environment is stubbed with browser true, so client-only work runs (#
 	expect(typeof env.version).toBe('string');
 });
 
-test('$env/dynamic/public is stubbed as a settable record (#822)', async () => {
+test('$env/dynamic/public is stubbed as a settable record', async () => {
 	const pub = await publicEnvStub();
 	expect(pub.env.PUBLIC_ANYTHING).toBeUndefined();
 	pub.setEnv({ PUBLIC_ANYTHING: 'yes' });
@@ -158,14 +158,14 @@ test('$env/dynamic/public is stubbed as a settable record (#822)', async () => {
 	expect(pub.env.PUBLIC_ANYTHING).toBeUndefined();
 });
 
-test('an unstubbed SvelteKit virtual module fails with a message naming the stub directory (#822)', async () => {
+test('an unstubbed SvelteKit virtual module fails with a message naming the stub directory', async () => {
 	// `$app/forms` has no first-party importer, so this is the message the NEXT one gets — a missing
 	// stub, not a broken component.
 	await expect(import('$app/forms')).rejects.toThrow(/test-setup\/kit/);
 });
 
 // ── 3. A route component mounts, and both stubs are wired through it ──────────────────────────
-test('the landing join surface mounts, reads the stubbed page.url, and its goto lands in the stub (#822)', async () => {
+test('the landing join surface mounts, reads the stubbed page.url, and its goto lands in the stub', async () => {
 	const { setPage } = await stateStub();
 	const { calls } = await navStub();
 	// `/join` was retired (#834 Q2-A); its join UI is the JoinLanding component rendered in the
@@ -187,7 +187,7 @@ test('the landing join surface mounts, reads the stubbed page.url, and its goto 
 
 	try {
 		// Effects ran and the component rendered — the mount half of XR-VER-01.
-		// #913: the field is <Input>, whose appearance lives in the component, so `.name-input` is gone.
+		// the field is <Input>, whose appearance lives in the component, so `.name-input` is gone.
 		// `data-slot` is shadcn's own contract for the rendered element and survives a re-vendor.
 		const input = target.querySelector("input[data-slot='input']") as HTMLInputElement | null;
 		expect(input, 'JoinLanding mounted but rendered no name field').not.toBeNull();
@@ -201,7 +201,7 @@ test('the landing join surface mounts, reads the stubbed page.url, and its goto 
 		input!.value = 'Maya';
 		input!.dispatchEvent(new DomEvent('input', { bubbles: true }));
 		flushSync();
-		// #913 S1 moved `.submit`'s page layout to a `.submit-slot` wrapper and the button itself to
+		// S1 moved `.submit`'s page layout to a `.submit-slot` wrapper and the button itself to
 		// <Button>, whose element carries `data-slot="button"`. The class is no longer on the control.
 		const submit = target.querySelector('.submit-slot button') as HTMLButtonElement | null;
 		expect(submit, 'JoinLanding rendered no submit button').not.toBeNull();
@@ -225,7 +225,7 @@ test('the landing join surface mounts, reads the stubbed page.url, and its goto 
 });
 
 // ── 4. XR-VER-01 clause 2: the capability boundary stays written down ─────────────────────────
-test('the preload documents the mount rung and where measurement is decidable (#822, XR-VER-01)', () => {
+test('the preload documents the mount rung and where measurement is decidable (XR-VER-01)', () => {
 	const src = readFileSync(PRELOAD, 'utf8');
 	// Only the file's HEADER counts — the code below it names these things incidentally (the stub
 	// table, the throw message), and a boundary that lives only inside an error string is not written
@@ -259,7 +259,7 @@ const GEOMETRY_PROPS = [
 	'scrollHeight'
 ] as const;
 
-test('all six geometry APIs fail loudly on the mount rung (#822, XR-VER-03)', () => {
+test('all six geometry APIs fail loudly on the mount rung (XR-VER-03)', () => {
 	const el = document.createElement('div');
 	document.body.appendChild(el);
 	try {
@@ -292,7 +292,7 @@ test('all six geometry APIs fail loudly on the mount rung (#822, XR-VER-03)', ()
 });
 
 // ── 6. The no-op ResizeObserver stays absent, and the patch is not coupled to the DOM install ─
-test('ResizeObserver is not installed, so bind:clientHeight has no silent path to 0 (#822, XR-VER-03)', () => {
+test('ResizeObserver is not installed, so bind:clientHeight has no silent path to 0 (XR-VER-03)', () => {
 	// happy-dom ships a ResizeObserver whose `observe()` is `// TODO: Not implemented`, so a
 	// `bind:clientHeight` would never fire and the bound value would sit at its initial value forever.
 	// Copying it onto globalThis would turn a loud ReferenceError at mount into a measurement of
@@ -313,7 +313,7 @@ test('ResizeObserver is not installed, so bind:clientHeight has no silent path t
 });
 
 // ── 7. The retired blocker claim must not come back ───────────────────────────────────────────
-test('no test still documents the $app/$env virtual modules as un-aliased (#822)', () => {
+test('no test still documents the $app/$env virtual modules as un-aliased', () => {
 	// wake-lock.test.ts carried the blocker ("the harness does not alias the `$app`/`$env` virtual
 	// modules, so importing the component fails outright"). It is false as of this change, and a
 	// stale blocker is what kept a real mount off the table. Prose-accuracy guard, the shape

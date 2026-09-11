@@ -271,7 +271,7 @@ describe('sample-size honesty', () => {
 	});
 });
 
-describe('#472 — the read window no longer understates the boundary cook', () => {
+describe('— the read window no longer understates the boundary cook', () => {
 	// A cook whose earlier steps finished before the window opened is handed to perCook missing those
 	// rows. Its span would then be measured from the earliest SURVIVING step (too short) while still
 	// passing the sealed===list completeness test over the rows that happened to be fetched. That is

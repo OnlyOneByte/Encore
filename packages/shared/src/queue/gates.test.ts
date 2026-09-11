@@ -130,7 +130,7 @@ test('isCooking is gate-driven — it catches a song sitting between two gates',
 // guard: gates.ts holds ONE cook vocabulary, and it is not this one — the dead guest-facing labels
 // #175 removed do not come back.
 //
-// THE DEFECT (#175). gates.ts carried a SECOND guest-facing cook vocabulary: a `pendingLabel` field
+// THE DEFECT. gates.ts carried a SECOND guest-facing cook vocabulary: a `pendingLabel` field
 // on CookGate ('Separating vocals' / 'Timing lyrics') read only by `currentGateLabel`, which itself
 // had zero non-test callers. The phone's real cook sub-line is apps/core/src/lib/cook-phrasing.ts
 // (wired to SongRow, ProcessingCard, TvLobby and tv/+page.svelte) — its header asserts it is "the ONE
@@ -162,21 +162,21 @@ function stripComments(src: string): string {
 // import.meta.dir === packages/shared/src.
 const GATES_SRC = stripComments(readFileSync(join(import.meta.dir, 'gates.ts'), 'utf8'));
 
-test('gates.ts source was read (guard is not vacuous) (#175)', () => {
+test('gates.ts source was read (guard is not vacuous)', () => {
 	// A sentinel that must be present regardless of this fix, so an empty/misread file cannot make the
 	// absence checks below pass vacuously.
 	expect(GATES_SRC).toMatch(/export const GATES/);
 	expect(GATES_SRC).toMatch(/export function readyToSing/);
 });
 
-test('gates.ts no longer carries the dead second cook vocabulary (#175)', () => {
+test('gates.ts no longer carries the dead second cook vocabulary', () => {
 	// The phone's cook copy lives ONLY in apps/core/src/lib/cook-phrasing.ts. gates.ts must not
 	// re-declare a guest-facing label field or the caller-less function that read it.
 	expect(GATES_SRC).not.toMatch(/pendingLabel/);
 	expect(GATES_SRC).not.toMatch(/currentGateLabel/);
 });
 
-test('the live half of the gate table survives — this is a scoped deletion, not a gutting (#175)', () => {
+test('the live half of the gate table survives — this is a scoped deletion, not a gutting', () => {
 	// CookGate.stage is read at apps/core/src/server/jobs/media-status.ts; done/required drive
 	// readyToSing/pendingGates/isCooking. Those must stay, so the guard cannot be satisfied by
 	// deleting the whole table.

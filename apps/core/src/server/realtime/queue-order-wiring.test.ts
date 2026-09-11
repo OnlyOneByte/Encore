@@ -38,7 +38,7 @@ const entry = (id: string, singerId: string, addedAt: number, mediaId = 'm1'): Q
 	addedAt
 });
 
-// #656: singers are room-scoped; this wiring test exercises a single room, FK not enforced.
+// singers are room-scoped; this wiring test exercises a single room, FK not enforced.
 const ROOM = 'test-room';
 
 /** A real DB + the same wiring app.ts builds, so this exercises the actual seam, not a mock of it. */
@@ -97,7 +97,7 @@ test('the chosen algorithm survives a write and a re-read', () => {
 });
 
 test('changing the algorithm leaves the standing queue alone — only later adds use the new rule', () => {
-	// THE STORED-LIST MODEL (#856). The queue is the source of truth, so switching the algorithm can
+	// THE STORED-LIST MODEL. The queue is the source of truth, so switching the algorithm can
 	// no longer re-sort songs already queued: that would throw away every reorder anyone had made.
 	// The new rule takes effect at the next INSERT.
 	const h = harness('fair');
@@ -163,7 +163,7 @@ test('starting a song stamps the singer, and the stamp steers the NEXT add, not 
 	handlePlayerCommand({ cmd: 'play' }, h.deps);
 	expect(h.state.playback.currentEntryId).toBe('a1');
 	expect(h.singers.byId(ana.id)!.lastSungAt).toBeGreaterThan(0);
-	// THE STORED-LIST MODEL (#856): sing history moving does NOT re-sort songs already queued. The
+	// THE STORED-LIST MODEL: sing history moving does NOT re-sort songs already queued. The
 	// queue everyone is looking at holds its order — it used to become ['b1','b2','a2'] here, which
 	// silently rearranged rows nobody touched. The stamp is still load-bearing: it is an input to the
 	// INSERT rule, which `queue-order.test.ts` pins directly (a never-sung singer is placed ahead of
@@ -201,7 +201,7 @@ test('the stamp records only THAT a singer sang, never what', () => {
 	h.singers.markSang(ana.id, 777);
 	const row = h.singers.byId(ana.id)!;
 	expect(row.lastSungAt).toBe(777);
-	// roomId (#656) is a scoping key, not song history — its presence does not cross the privacy line
+	// roomId is a scoping key, not song history — its presence does not cross the privacy line
 	// the test guards (no media/entry id on the singer row).
 	expect(Object.keys(row).sort()).toEqual([
 		'color',

@@ -58,7 +58,7 @@ function metaInner(code: string): string {
 	throw new Error('the row-sharing container is never closed');
 }
 
-test('#176: the progress block is NOT nested inside .meta (which shares the row with .actions)', () => {
+test('the progress block is NOT nested inside .meta (which shares the row with .actions)', () => {
 	const inner = metaInner(CODE);
 	// The row-sharing container must not carry the progress bar or the stage line — that is exactly
 	// the squeeze this issue fixed. Reverting the fix puts them back here and reds this test.
@@ -66,11 +66,11 @@ test('#176: the progress block is NOT nested inside .meta (which shares the row 
 	expect(inner).not.toContain('class="stage"');
 });
 
-test('#176: the card is a grid and the .progress block spans every column', () => {
+test('the card is a grid and the .progress block spans every column', () => {
 	// not-vacuous sentinel: the .progress block must exist and hold the bar.
 	const progIdx = CODE.indexOf('<div class="progress">');
 	expect(progIdx).toBeGreaterThanOrEqual(0);
-	// #913 S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
+	// S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
 	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged.
 	expect(CODE.slice(progIdx)).toContain('<Progress');
 

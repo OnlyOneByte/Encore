@@ -131,7 +131,7 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots (
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// #736: the hint must not outlive the room.
+// the hint must not outlive the room.
 //
 // THE DEFECT. `{#if autoplayBlocked}` was the ONLY gate on the full-screen tap-to-start overlay — it
 // carried no term for "there is something to play". The latch has exactly two writers, both per-slot
@@ -153,7 +153,7 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots (
 // block is a property of the component text. The rendered proof (the scrim is gone and the join card is
 // the topmost element at its own centre after the drain) is the CDP capture in the PR body.
 
-test('the /tv autoplay hint is scoped to the on-stage band, so it cannot outlive the room (#736)', () => {
+test('the /tv autoplay hint is scoped to the on-stage band, so it cannot outlive the room', () => {
 	const src = stripComments(readFileSync(TV_ROUTE, 'utf8'));
 
 	// Non-vacuity: the derived this guard requires the overlay to consult must exist, and be the room's
@@ -183,7 +183,7 @@ test('the /tv autoplay hint is scoped to the on-stage band, so it cannot outlive
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// #473: the silent-room case must be VISIBLE to the operator, not just logged.
+// the silent-room case must be VISIBLE to the operator, not just logged.
 //
 // THE DEFECT. The else branch of the play()-rejection catch (a decode failure, an AbortError from a
 // real src change — anything NOT NotAllowedError) is the ONE case where the room goes silent with no
@@ -197,7 +197,7 @@ test('the /tv autoplay hint is scoped to the on-stage band, so it cannot outlive
 // only by those callbacks. These are source-scan guards for the same reason as the #64 ones above:
 // no jsdom, so the wiring is a property of the component text.
 
-test('TvPlayer FIRES onplaybackfailed from the non-recoverable else branch, active+visible only (#473)', () => {
+test('TvPlayer FIRES onplaybackfailed from the non-recoverable else branch, active+visible only', () => {
 	const src = stripComments(readFileSync(TV_PLAYER, 'utf8'));
 	// The callback is a real destructured prop, not merely declared in the interface — so the parent's
 	// handler is the one invoked. A trailing comma OR end-of-list entry.
@@ -212,7 +212,7 @@ test('TvPlayer FIRES onplaybackfailed from the non-recoverable else branch, acti
 	expect(elseRegion).toMatch(/if\s*\(\s*active\s*&&\s*visible\s*\)\s*onplaybackfailed\?\.\(/);
 });
 
-test('the /tv route renders an on-screen silent-room panel fed only by the slots, and clears it (#473)', () => {
+test('the /tv route renders an on-screen silent-room panel fed only by the slots, and clears it', () => {
 	const src = stripComments(readFileSync(TV_ROUTE, 'utf8'));
 	// A page-level latch holding the failure reason — a real $state so the {#if} tracks it.
 	expect(src).toMatch(/let\s+playbackFailedReason\s*:\s*string\s*\|\s*null\s*=\s*\$state\(null\)/);

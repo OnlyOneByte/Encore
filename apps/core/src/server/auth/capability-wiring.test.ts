@@ -3,7 +3,7 @@
 // five capabilities that promise was false: `queue:remove-any` and `queue:reorder-any` had NO asker —
 // the queue's remove/move ops were gated by membership only (hub.ts's actorSingerId check) and never
 // consulted can(). So narrowing can() to add a host gate would silently leave remove/reorder open to
-// every joined singer, exactly the operations those two capabilities were named for (issue #106).
+// every joined singer, exactly the operations those two capabilities were named for.
 //
 // There is nothing to assert BEHAVIOURALLY today: can() returns Boolean(actor?.singerId), so with the
 // wiring in place remove/move still succeed for any joined singer (Angelo's "every joined singer is a
@@ -12,7 +12,7 @@
 // `if (!can(...)) return` guard shape, not merely a call whose result is discarded (an inert call would
 // re-open the bug the moment can() is narrowed).
 //
-// #220: the earlier version matched each capability string against the WHOLE validateCommand body, so
+// the earlier version matched each capability string against the WHOLE validateCommand body, so
 // three defect-preserving edits to hub.ts all stayed GREEN — a false safety that materialises the day
 // can() is narrowed per capabilities.ts:9-11:
 //   M1  swap the two strings between arms (remove arm gates 'queue:reorder-any', move arm gates
@@ -57,7 +57,7 @@ function switchArm(body: string, op: string): string {
 	const start = src.indexOf(label);
 	expect(start).toBeGreaterThan(-1); // non-vacuous: the arm must exist
 	const after = src.slice(start + label.length);
-	// #220: a terminator MUST follow the arm. The old fallback (`nextCase === -1 ? after`) sliced to the
+	// a terminator MUST follow the arm. The old fallback (`nextCase === -1 ? after`) sliced to the
 	// END of validateCommand's body when no `case '`/`default:` label followed — so making an op the last
 	// arm degraded the assertion back to the whole-body scan this guard replaces (a decoy gate after the
 	// switch would satisfy it). Fail loudly instead: every op's arm here is followed by another `case '`
@@ -82,7 +82,7 @@ function gateFor(cap: string): RegExp {
 }
 
 test("validateCommand's 'remove' arm gates through can('queue:remove-any') — arm-scoped", () => {
-	// #220: scoped to the remove arm, so swapping strings (M1), moving the gate to another arm (M2),
+	// scoped to the remove arm, so swapping strings (M1), moving the gate to another arm (M2),
 	// or replacing it with `return null` (M3) all red — the gate must live in THIS arm.
 	expect(switchArm(validateCommandBody(hubSrc), 'remove')).toMatch(gateFor('queue:remove-any'));
 });

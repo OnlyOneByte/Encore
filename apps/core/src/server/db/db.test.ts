@@ -76,11 +76,11 @@ test('media defaults: stemStatus none', () => {
 	expect(row.stemStatus).toBe('none');
 });
 
-// #766: guide_offset_ms is added by migration 0006, NULLABLE with no default — a row that omits it
+// guide_offset_ms is added by migration 0006, NULLABLE with no default — a row that omits it
 // reads back null ("never measured", which the client maps to 0), and a stored signed value (0
 // included, a measured "aligned") round-trips. RED on base: the media baseline has no guide_offset_ms
 // column, so this insert/read cannot preserve it.
-test('#766: media.guide_offset_ms defaults null and round-trips a signed value (0 included)', () => {
+test('media.guide_offset_ms defaults null and round-trips a signed value (0 included)', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
 	db.insert(media).values({ id: 'g0', source: 'youtube', sourceRef: 'a', title: 'A', durationSec: 200 }).run();
@@ -100,10 +100,10 @@ test('#766: media.guide_offset_ms defaults null and round-trips a signed value (
 	expect(byId.get('g3')).toBe(0); // measured, aligned — distinct from null
 });
 
-// #640: media.lyrics_override_ref arrives via migration 0010 (not a baseline edit), defaults null
+// media.lyrics_override_ref arrives via migration 0010 (not a baseline edit), defaults null
 // ("no human override → the ranking decides"), and round-trips a stored ref. RED on base: the media
 // baseline has no lyrics_override_ref column, so this insert/read cannot preserve it.
-test('#640: media.lyrics_override_ref defaults null and round-trips a stored ref', () => {
+test('media.lyrics_override_ref defaults null and round-trips a stored ref', () => {
 	const { db, sqlite } = openDb(':memory:');
 	runMigrations(db);
 	const cols = (sqlite.query('PRAGMA table_info(media)').all() as { name: string }[]).map((c) => c.name);
@@ -124,7 +124,7 @@ test('#640: media.lyrics_override_ref defaults null and round-trips a stored ref
 	expect(byId.get('o1')).toBe('derived/lyrics/o1-manual-word.json');
 });
 
-// #398: the room_settings.lyrics_ball COLUMN default is 'off' (owner decision C — flip the marker
+// the room_settings.lyrics_ball COLUMN default is 'off' (owner decision C — flip the marker
 // default to No marker, keep the styles). This pins the SQLite column default itself: a raw insert
 // that omits lyrics_ball must read back 'off'. Reverting schema.ts's .default('off') -> 'bounce'
 // reds this. (The app read path never hits this default — getRoom returns DEFAULT_ROOM_SETTINGS for
@@ -138,13 +138,13 @@ test('room_settings column defaults: lyrics_ball is off', () => {
 	expect(row.lyricsBall).toBe('off');
 });
 
-// #669 — the job_attempts.selection column must arrive as an INCREMENTAL migration (0001), not an edit
+// — the job_attempts.selection column must arrive as an INCREMENTAL migration (0001), not an edit
 // to the baseline. An existing deployment restarts and re-runs runMigrations; drizzle replays only
 // migrations it has not recorded, so a new column belongs in a new numbered file. Editing 0000 in place
 // makes an existing DB replay the baseline and throw on CREATE TABLE of an already-existing table (an
 // availability failure, reproduced by the reviewer on PR #700). This pins the column reaches the schema
 // through migration and round-trips. RED on base: no 0001, so the column is absent and the insert throws.
-test('job_attempts.selection is added by migration and round-trips (#669)', () => {
+test('job_attempts.selection is added by migration and round-trips', () => {
 	const { db, sqlite } = openDb(':memory:');
 	runMigrations(db);
 
@@ -192,12 +192,12 @@ test('job_attempts.selection is added by migration and round-trips (#669)', () =
 	expect(a2.selection).toBeNull();
 });
 
-// #655: playback_state is KEYED BY ROOM. Two rooms each hold their own now-playing / position /
+// playback_state is KEYED BY ROOM. Two rooms each hold their own now-playing / position /
 // key-shift / background — the mechanism is the `room_id` primary key replacing the single
 // 'singleton' row. On base this REDS: the old table has one PK-'singleton' row, so the second
 // insert collides on the primary key (one shared row per deployment) and hydrate can only ever
 // return one room's playback for both.
-test('#655: two rooms hold independent playback state, keyed by room_id', () => {
+test('two rooms hold independent playback state, keyed by room_id', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
 	const now = 1_700_000_000_000;
@@ -229,14 +229,14 @@ test('#655: two rooms hold independent playback state, keyed by room_id', () => 
 	expect(b?.keyShift).toBe(-3);
 });
 
-// #655 BLOCKING FIX — the EXISTING-database upgrade path. Every other test in this file builds a
+// BLOCKING FIX — the EXISTING-database upgrade path. Every other test in this file builds a
 // FRESH db (openDb + runMigrations), which is exactly the coverage gap that let an in-place baseline
 // edit pass: a rewritten 0000 is never re-applied to a db that already ran it (Drizzle keys on the
 // journal `when`, not the file hash), so `room_id` would never appear and boot hydrate() would throw.
 // This test models the real upgrade: apply ONLY the baseline (a pre-#655 deployment), write the
 // old-shape 'singleton' row, THEN run the full migration set so 0002 actually runs — and asserts the
 // column arrives, the row is re-keyed onto the active room (not dropped), and persist/hydrate work.
-test('#655: an EXISTING singleton database upgrades — 0002 adds room_id and re-keys the row onto the active room', () => {
+test('an EXISTING singleton database upgrades — 0002 adds room_id and re-keys the row onto the active room', () => {
 	const { db, sqlite } = openDb(':memory:');
 
 	// Phase 1 — a pre-#655 box: apply ONLY 0000 (baseline), with real Drizzle bookkeeping, by pointing
@@ -293,11 +293,11 @@ test('#655: an EXISTING singleton database upgrades — 0002 adds room_id and re
 	expect(h.playback?.currentEntryId).toBe('qOLD');
 });
 
-// #656: queue_entries is KEYED BY ROOM. Two rooms each hold their own queue + rotation — the mechanism
+// queue_entries is KEYED BY ROOM. Two rooms each hold their own queue + rotation — the mechanism
 // is the `room_id` column plus the write-behind sink and boot-hydrate both scoping by room_id. On base
 // this REDS: queue_entries has no room_id, so the two rooms' entries land in ONE undifferentiated
 // table and hydrate(roomA)/hydrate(roomB) each return BOTH rooms' entries — a shared deployment queue.
-test('#656: two rooms hold independent queues, keyed by room_id (persist + hydrate)', () => {
+test('two rooms hold independent queues, keyed by room_id (persist + hydrate)', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
 	const now = 1_700_000_000_000;
@@ -343,12 +343,12 @@ test('#656: two rooms hold independent queues, keyed by room_id (persist + hydra
 	expect(hydrate(db, 'roomB').entries.map((e) => e.id)).toEqual(['b1']); // roomB untouched
 });
 
-// #656 BLOCKING FIX — the EXISTING-database upgrade path (the trap #655/#669 warned about, and the
+// BLOCKING FIX — the EXISTING-database upgrade path (the trap #655/#669 warned about, and the
 // one drizzle-kit's bare `ALTER TABLE ... ADD room_id NOT NULL` would fail on a DB with rows). Every
 // other test builds a FRESH db; this models the real upgrade: apply migrations up to 0002 (a pre-#656
 // box), write old-shape roomless queue + singer rows, THEN run the full set so 0003 actually runs —
 // and asserts the columns arrive, the rows are RE-KEYED onto the active (oldest) room, and hydrate works.
-test('#656: an EXISTING roomless database upgrades — 0003 adds room_id to queue_entries + singers and re-keys rows onto the active room', () => {
+test('an EXISTING roomless database upgrades — 0003 adds room_id to queue_entries + singers and re-keys rows onto the active room', () => {
 	const { db, sqlite } = openDb(':memory:');
 
 	// Phase 1 — a pre-#656 box: apply only 0000..0002 by pointing the migrator at a temp folder holding
@@ -419,14 +419,14 @@ test('#656: an EXISTING roomless database upgrades — 0003 adds room_id to queu
 	expect(new SingerRepository(db).listPublic('roomB')).toHaveLength(0);
 });
 
-// #728 BLOCKING FIX -- the EXISTING-database upgrade path for room_settings. Before #728 every reader
+// BLOCKING FIX -- the EXISTING-database upgrade path for room_settings. Before #728 every reader
 // AND the writer route defaulted to DEFAULT_ROOM_ID ('main'), so a configured box wrote its
 // room_settings row under 'main'. #728 moved every reader (and the writer fallback) onto the active
 // room -- a minted ULID, not 'main' -- so without a re-key an upgraded box would look up the active
 // room, find no row, and silently serve defaults. This models the real upgrade: apply migrations up to
 // 0003 (a pre-#728 box), write an old-shape 'main' room_settings row, THEN run the full set so 0004
 // runs -- and asserts the row is RE-KEYED onto the active (oldest) room, carrying every value.
-test('#728: an EXISTING main-keyed database upgrades -- 0004 re-keys room_settings onto the active room', () => {
+test('an EXISTING main-keyed database upgrades -- 0004 re-keys room_settings onto the active room', () => {
 	const { db, sqlite } = openDb(':memory:');
 
 	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
@@ -472,9 +472,9 @@ test('#728: an EXISTING main-keyed database upgrades -- 0004 re-keys room_settin
 	expect(rows.some((r) => r.room_id === 'main')).toBe(false);
 });
 
-// #728 guard: a pre-#654 DB (a 'main' row but no rooms yet) has no active room to carry it onto, so
+// guard: a pre-#654 DB (a 'main' row but no rooms yet) has no active room to carry it onto, so
 // the re-key is guarded off and the row stays put rather than being dropped or the migration throwing.
-test('#728: 0004 leaves the main row untouched when no room exists yet (pre-#654 DB)', () => {
+test('0004 leaves the main row untouched when no room exists yet (pre-#654 DB)', () => {
 	const { db, sqlite } = openDb(':memory:');
 
 	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
@@ -517,7 +517,7 @@ test('#728: 0004 leaves the main row untouched when no room exists yet (pre-#654
 	expect(rows[0]!.song_intro_ms).toBe(7000);
 });
 
-// #425 — the EXISTING-database upgrade path for `tv_background_hue` → `tv_background_color`. Every
+// — the EXISTING-database upgrade path for `tv_background_hue` → `tv_background_color`. Every
 // other test in this file that touches room_settings builds a FRESH db, which is exactly the coverage
 // gap that lets an in-place baseline edit pass: a rewritten 0000 is never re-applied to a db that
 // already ran it (drizzle keys on the journal `when`, not the file hash), so the new column would never
@@ -530,7 +530,7 @@ test('#728: 0004 leaves the main row untouched when no room exists yet (pre-#654
 // `stageHueToHex(hue)`. Those expectations are computed from the shared function rather than transcribed
 // here, so the test cannot agree with a wrong migration by copying the same wrong literals — the exact
 // derive-your-own-expectation trap that let #165 ship.
-test('#425: an EXISTING hue database upgrades — 0005 replaces tv_background_hue with the colour that hue rendered as', () => {
+test('an EXISTING hue database upgrades — 0005 replaces tv_background_hue with the colour that hue rendered as', () => {
 	const { db, sqlite } = openDb(':memory:');
 
 	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
@@ -620,11 +620,11 @@ test('#425: an EXISTING hue database upgrades — 0005 replaces tv_background_hu
 	expect(repo.getRoom('roomC').tvBackgroundStyle).toBe('visualizer');
 });
 
-// #425 companion: a hand-edited DB holding an OFF-STEP hue has no colour to carry, so it must land on
+// companion: a hand-edited DB holding an OFF-STEP hue has no colour to carry, so it must land on
 // the default rather than on NULL — the column is NOT NULL, so there is no third outcome, and silently
 // defaulting an illegal value is what the settings validator already does with one. Split from the test
 // above because this exercises the CASE's ELSE arm, which the 24 legal values never reach.
-test('#425: 0005 defaults an off-step or out-of-range hue instead of leaving it unmapped', () => {
+test('0005 defaults an off-step or out-of-range hue instead of leaving it unmapped', () => {
 	const { db, sqlite } = openDb(':memory:');
 
 	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
@@ -671,13 +671,13 @@ test('#425: 0005 defaults an off-step or out-of-range hue instead of leaving it 
 	}
 });
 
-// #425 advisory: the 0005 migration's CASE backfills each of the 24 legal stored hues to the colour
+// advisory: the 0005 migration's CASE backfills each of the 24 legal stored hues to the colour
 // `stageHueToHex` renders it as, transcribed as literals because SQL cannot run OKLCH. The migration
 // comment claims "a guard test asserts each of these 24 pairs still equals stageHueToHex(hue)" — this
 // IS that guard. It parses every `WHEN <hue> THEN '<hex>'` arm out of the .sql and re-derives each
 // with stageHueToHex, so a change to the stage tier that leaves the migration behind reds here rather
 // than silently shipping a wrong backfill on the 23 rows the upgrade test does not spot-check.
-test('#425: every WHEN arm of the 0005 backfill CASE equals stageHueToHex(hue)', () => {
+test('every WHEN arm of the 0005 backfill CASE equals stageHueToHex(hue)', () => {
 	const sql = readFileSync(join(import.meta.dir, '..', '..', '..', 'drizzle', '0005_tv_background_color.sql'), 'utf8');
 	const arms = [...sql.matchAll(/WHEN\s+(\d+)\s+THEN\s+'(#[0-9a-fA-F]{6})'/g)].map((m) => ({
 		hue: Number(m[1]),
@@ -694,14 +694,14 @@ test('#425: every WHEN arm of the 0005 backfill CASE equals stageHueToHex(hue)',
 	expect(DEFAULT_STAGE_COLOR).toBe(stageHueToHex(240));
 });
 
-// #782 — the EXISTING-database upgrade path for the stage dimmer. Piece 3 of #425 adds
+// — the EXISTING-database upgrade path for the stage dimmer. Piece 3 of #425 adds
 // room_settings.tv_background_dim (a 0..1 REAL, NOT NULL default 0). Every other room_settings test
 // builds a FRESH db, the coverage gap that lets an in-place baseline edit pass; this models the real
 // upgrade: apply only 0000..0006 (a pre-#782 box), write old-shape rows with NO dim column, THEN run
 // the full set so 0007 actually runs. What it must prove: the column arrives, an existing row upgrades
 // to 0 (no dim — today's look, byte-identical), and the running code can read it back through the real
 // path. RED on base: no 0007, so tv_background_dim is absent and the SELECT below throws.
-test('#782: an EXISTING database upgrades — 0007 adds tv_background_dim defaulting to 0 (no dim)', () => {
+test('an EXISTING database upgrades — 0007 adds tv_background_dim defaulting to 0 (no dim)', () => {
 	const { db, sqlite } = openDb(':memory:');
 
 	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');

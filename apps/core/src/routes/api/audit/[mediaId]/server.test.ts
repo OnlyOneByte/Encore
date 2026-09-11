@@ -1,4 +1,4 @@
-// #669 — the audit endpoint must surface the variant-pick provenance so /metrics/<mediaId> can
+// — the audit endpoint must surface the variant-pick provenance so /metrics/<mediaId> can
 // answer a mis-pick from state. toAudit is the mapper the GET handler runs per attempt; this pins that
 // it carries selection through. RED on base: toAudit has no selection field (and attemptSelection does
 // not exist), so a reverted mapper drops it.
@@ -34,7 +34,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 	};
 }
 
-describe('toAudit — selection provenance (#669)', () => {
+describe('toAudit — selection provenance', () => {
 	it('surfaces the parsed selection record when the attempt recorded one', () => {
 		const selection = JSON.stringify({
 			baselineFallback: false,

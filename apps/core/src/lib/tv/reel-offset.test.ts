@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { reelOffset } from './reel-offset';
 
-// The invariant this pins (issue #270): the LINE BEING SUNG must stay visible on the reel across every
+// The invariant this pins: the LINE BEING SUNG must stay visible on the reel across every
 // legal combination of Text size, Lines-sung and Lines-ahead — never scrolled off the top the way the
 // unclamped bias did once the reel's max-height cap started binding.
 //
@@ -41,7 +41,7 @@ function geom(before: number, after: number, rowHeight: number, band: number) {
 const BAND = 508; // ~508.2px band from the issue (1280x800, innerHeight 713)
 const ROW_AT_SCALE: Record<number, number> = { 100: 91, 150: 137, 200: 182, 250: 228, 300: 273 };
 
-describe('reelOffset — the sung row stays on the reel (#270)', () => {
+describe('reelOffset — the sung row stays on the reel', () => {
 	it('keeps the current row fully visible at the default 2/2 split at every Text size (control)', () => {
 		for (const scale of Object.keys(ROW_AT_SCALE).map(Number)) {
 			const rh = ROW_AT_SCALE[scale];
@@ -134,7 +134,7 @@ describe('reelOffset — the sung row stays on the reel (#270)', () => {
 });
 
 // ---------------------------------------------------------------------------------------------------
-// #671: the sung row must land in the UNMASKED window, not merely inside the band. The band includes
+// the sung row must land in the UNMASKED window, not merely inside the band. The band includes
 // the two edge-fade ramps (LyricsOverlay masks 1.9em == one row to transparent at each edge that HAS
 // context rows). #270 clamped to [0, band] and so parked the sung row congruent with a ramp, so the
 // line being sung rendered fainter than the line after it. This guard measures the row against the
@@ -182,7 +182,7 @@ function baseOffsetBandClamp(rowTop: number, rowHeight: number, band: number, be
 	return offset;
 }
 
-describe('reelOffset - the sung row lands in the UNMASKED window, not inside a fade ramp (#671)', () => {
+describe('reelOffset - the sung row lands in the UNMASKED window, not inside a fade ramp', () => {
 	it('keeps a NON-ZERO fully-opaque fraction of the sung row across the whole legal grid', () => {
 		for (const before of [0, 1, 2, 3]) {
 			for (const after of [0, 1, 2, 3, 4]) {
@@ -346,7 +346,7 @@ describe('LyricsOverlay is wired to the clamp (#270 — the fix must stay on the
 		expect(/-\s*viewportEl\.clientHeight\s*\/\s*2\s*-\s*bias\s*\)/.test(CODE)).toBe(false);
 	});
 
-	// #671 render-path wiring: reelOffset now takes the rendered ramp depths, and the pure clamp only
+	// render-path wiring: reelOffset now takes the rendered ramp depths, and the pure clamp only
 	// insets the sung row out of a ramp if measureReel actually PASSES them. Reverting measureReel to the
 	// pre-#671 call (no fadeTop/fadeBot) leaves the grid test green (the args default to 0 => [0, band]),
 	// this repo's built-but-unwired shape — so pin the two args at the call site by source scan.
@@ -358,7 +358,7 @@ describe('LyricsOverlay is wired to the clamp (#270 — the fix must stay on the
 		expect(/fadeBot\s*:\s*linesAfter\s*>\s*0\s*\?/.test(CODE)).toBe(true);
 	});
 
-	// #671 F2: the two ramps must be CAPPED so they cannot consume the whole band and leave no opaque
+	// F2: the two ramps must be CAPPED so they cannot consume the whole band and leave no opaque
 	// plateau. Pin the capped fade var; reverting to the uncapped `--lyrics-row-h * on` form reds this.
 	it('caps each edge-fade ramp so the unmasked window can always hold one row (F2)', () => {
 		expect(/--lyrics-fade-cap\s*:\s*min\(/.test(CODE)).toBe(true);

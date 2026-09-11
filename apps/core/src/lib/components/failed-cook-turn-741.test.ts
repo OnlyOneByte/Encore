@@ -25,7 +25,7 @@ const readiness = stripComments(readFileSync(join(import.meta.dir, '..', 'readin
 
 // ── F1: the .sing branch must consume `inQueue`, and singThis must skip the queue step on a retry ──
 
-test('#741 F1: the .sing button consumes inQueue via a retryCook term (was silently discarded)', () => {
+test('F1: the .sing button consumes inQueue via a retryCook term (was silently discarded)', () => {
 	// On base the .sing branch took no inQueue term at all — no disabled, no class, no alternate
 	// label — while its .add sibling had all three. The retry state has to be DERIVED from inQueue,
 	// or the button cannot tell a first tap from a re-cook of a turn already held.
@@ -35,7 +35,7 @@ test('#741 F1: the .sing button consumes inQueue via a retryCook term (was silen
 	expect(m![1]).toMatch(/\binQueue\b/); // …and only when a turn is already queued
 });
 
-test('#741 F1: the retry state reaches the .sing markup (label, title and class)', () => {
+test('F1: the retry state reaches the .sing markup (label, title and class)', () => {
 	// The derived term is dead unless the template reads it. Its aria-label must change (a bare mark
 	// otherwise announces "Sing this", promising a turn the action no longer takes), and it must carry
 	// a class so the two states are not pixel-identical.
@@ -55,7 +55,7 @@ test('#741 F1: the retry state reaches the .sing markup (label, title and class)
 	expect(songRow).toMatch(/\.sing\.retry\s*\{[^}]*box-shadow[^}]*var\(--danger-line\)/);
 });
 
-test('#741 F1: singThis passes hasQueuedTurn so the retry does not queue a second turn', () => {
+test('F1: singThis passes hasQueuedTurn so the retry does not queue a second turn', () => {
 	// The route must thread inMyQueue into cookAndQueue's hasQueuedTurn, or the queue step always
 	// runs and the double-turn bug stands regardless of the helper's logic.
 	const m = page.match(/function\s+singThis\([\s\S]*?\n\t\}/);
@@ -63,13 +63,13 @@ test('#741 F1: singThis passes hasQueuedTurn so the retry does not queue a secon
 	expect(m![0]).toMatch(/hasQueuedTurn\s*:\s*inMyQueue\(mediaId\)/);
 });
 
-test('#741 F1: CookAndQueueSteps declares the hasQueuedTurn field the retry reads', () => {
+test('F1: CookAndQueueSteps declares the hasQueuedTurn field the retry reads', () => {
 	// A type-only hunk (the interface member) whose runtime effect is proven by cook-and-queue.test.ts;
 	// pinned here by source scan so reverting the declaration reds a test rather than only a typecheck.
 	expect(cookAndQueue).toMatch(/hasQueuedTurn\?\s*:\s*boolean/);
 });
 
-test('#741 F2: queueCardKind is exported from readiness with a failed verdict', () => {
+test('F2: queueCardKind is exported from readiness with a failed verdict', () => {
 	// The selector's runtime behaviour is proven in readiness.test.ts; this scan pins the exported
 	// definition itself, so reverting the function (which only breaks the build in the prover) is
 	// still caught as a named test failure.
@@ -81,7 +81,7 @@ test('#741 F2: queueCardKind is exported from readiness with a failed verdict', 
 
 // ── F2: the queue list must select a card via queueCardKind, and render a failed card ─────────────
 
-test('#741 F2: the queue list selects its card via queueCardKind (not an in-flight-only test)', () => {
+test('F2: the queue list selects its card via queueCardKind (not an in-flight-only test)', () => {
 	// On base the entry chose ProcessingCard vs plain QueueRow with `cooking(e.mediaId)`, which
 	// returned null for a failed media — so a dead turn rendered as a plain waiting row. The selection
 	// must go through queueCardKind, reading BOTH the catalog media and the live status.
@@ -95,7 +95,7 @@ test('#741 F2: the queue list selects its card via queueCardKind (not an in-flig
 	expect(imp![1]).toMatch(/\bqueueCardKind\b/);
 });
 
-test('#741 F2: the orphaned cooking() predicate is gone (its null-on-failed test was the bug)', () => {
+test('F2: the orphaned cooking() predicate is gone (its null-on-failed test was the bug)', () => {
 	// Pure deletion (§3): cooking() was the failed-blind selector, and it had exactly one call site,
 	// which now goes through queueCardKind. A literal-name scan is not enough here — the finding was
 	// that the PREDICATE was wrong, not merely unused — so also ban its discredited body under any
@@ -107,7 +107,7 @@ test('#741 F2: the orphaned cooking() predicate is gone (its null-on-failed test
 	);
 });
 
-test('#741 F2: ProcessingCard renders a distinct failed treatment', () => {
+test('F2: ProcessingCard renders a distinct failed treatment', () => {
 	// The card must be able to SAY the cook died, not just render a stalled 0% bar. A `failed` term
 	// derived from status, a class on the card, and the bar suppressed on that branch.
 	const m = processingCard.match(/const\s+failed\s*=\s*\$derived\(([^;]*)\);/);
@@ -115,14 +115,14 @@ test('#741 F2: ProcessingCard renders a distinct failed treatment', () => {
 	expect(m![1]).toMatch(/status\s*===\s*'failed'/);
 	expect(processingCard).toMatch(/class:failed=\{failed\}/);
 	// on the failed branch the progress bar is not rendered (a bar near 0 reads as a stalled cook).
-	// #913 S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
+	// S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
 	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged.
 	expect(processingCard).toMatch(/\{#if\s+failed\}[\s\S]*?\{:else\}[\s\S]*?<Progress/);
 	// and it takes the shared danger family, not a fourth palette.
 	expect(processingCard).toMatch(/\.proc\.failed\s*\{[^}]*var\(--danger-line\)/);
 });
 
-test('#741 F2: ProcessingCard suppresses the in-flight sparkle on a failed card', () => {
+test('F2: ProcessingCard suppresses the in-flight sparkle on a failed card', () => {
 	// The sparkle means "work is happening". A dead cook has none, so it is gated behind !failed.
 	// Reverting this leaves the sparkle painting next to "Couldn't make karaoke", which reads as a
 	// cook still in progress.

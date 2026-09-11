@@ -1,4 +1,4 @@
-// Wiring guards for the direction-A phone home shell (issue #832).
+// Wiring guards for the direction-A phone home shell.
 //
 // WHY A SOURCE SCAN. What these pin are SYNTAX claims about `routes/+page.svelte` — which component
 // renders where, what is gated on what, which value is fed to which prop. The route imports
@@ -25,7 +25,7 @@ const RAW = readFileSync(new URL('./+page.svelte', import.meta.url), 'utf8');
 const PAGE = stripComments(RAW);
 
 // ── the queue IS home ────────────────────────────────────────────────────────────────────────────
-test('home renders the now-playing HERO, and the queue sheet is gone from this route (#832)', () => {
+test('home renders the now-playing HERO, and the queue sheet is gone from this route', () => {
 	expect(PAGE).toContain('<NowPlayingHero');
 	// The whole sheet rationale ("at a party you are either browsing or checking the queue, so the two
 	// should not fight over one scroll") is what direction A INVERTS, so the sheet must not still be
@@ -39,7 +39,7 @@ test('the rotation rows render inside <main>, not inside a pull-up sheet', () =>
 	expect(main).toContain('<QueueRow');
 	expect(main).toContain('<ProcessingCard');
 	// …and behind the home branch, so the results overlay does not stack the queue under it. Since the
-	// owner correction (#902) home is `{#if !searchActive}` — the queue shows with an empty search box.
+	// owner correction home is `{#if !searchActive}` — the queue shows with an empty search box.
 	const homeStart = main.indexOf('{#if !searchActive}');
 	expect(homeStart).toBeGreaterThanOrEqual(0);
 	expect(main.indexOf('{#each queued as e, i (e.id)}')).toBeGreaterThan(homeStart);
@@ -53,7 +53,7 @@ test('the live singing controls came WITH the hero, into its disclosure body (XR
 	 * correct only while `controls()` is the ONLY snippet on the page — a property of today's markup,
 	 * not of the claim.
 	 *
-	 * #913 S5 demonstrated the fragility: trying the vocal-range disclosure on Bits UI's Collapsible
+	 * S5 demonstrated the fragility: trying the vocal-range disclosure on Bits UI's Collapsible
 	 * introduced a nested `child` snippet inside `controls()`, and this arm immediately reported
 	 * <RangeBar> missing from a page that plainly renders it. That migration was reverted for unrelated
 	 * reasons, so no nested snippet exists here today — the hardening is kept because the next one will
@@ -114,8 +114,8 @@ test('the docked search band reserves its band in flow instead of overlapping ro
 	expect(PAGE).not.toContain('var(--peek-h)');
 });
 
-test('the search dock is docked on home for a joined singer, and the + Add a turn CTA is gone (#902)', () => {
-	// THE OWNER CORRECTION (2026-09-09, #902). The search box IS the add affordance, docked at the bottom
+test('the search dock is docked on home for a joined singer, and the + Add a turn CTA is gone', () => {
+	// THE OWNER CORRECTION (2026-09-09). The search box IS the add affordance, docked at the bottom
 	// AT ALL TIMES for a joined singer — so it renders on `{#if me}`, unconditional on any search/mode
 	// state, and the whole `+ Add a turn` interstitial (`.cta-dock` / `.cta` / `openBrowse`) is deleted.
 	expect(PAGE).toMatch(/\{#if me\}\s*<div class="search-dock" bind:clientHeight=\{dockH\}>/);
@@ -140,8 +140,8 @@ test('the search dock is docked on home for a joined singer, and the + Add a tur
 	expect(mainCss).not.toContain('env(safe-area-inset-bottom)');
 });
 
-// ── results are IN PLACE, driven by the query, with no navigation (#902) ─────────────────────────
-test('the results view is driven by the query in place, with no browse mode or ?browse=1 (#902)', () => {
+// ── results are IN PLACE, driven by the query, with no navigation ─────────────────────────
+test('the results view is driven by the query in place, with no browse mode or ?browse=1', () => {
 	// THE OWNER CORRECTION. Pre-#902 browsing was a `?browse=1` push whose only job was a history entry
 	// so Back returned to the queue. #902 renders results IN PLACE over the queue while the box has a
 	// query, so there is no navigation and no mode: the split is `searchActive`, derived from `query`.
@@ -163,11 +163,11 @@ test('the results view is driven by the query in place, with no browse mode or ?
 	expect(PAGE).not.toContain('!browsing');
 });
 
-test('every result surface is gated on searchActive — an empty box shows the queue, not a result list (#902)', () => {
+test('every result surface is gated on searchActive — an empty box shows the queue, not a result list', () => {
 	/*
 	 * The claim is unchanged in spirit from #832/#833 and still load-bearing: if any result block loses
 	 * its gate, home shows the library list under an empty box instead of the live queue. Only the gate
-	 * moved — from `{#if browsing}` (the retired mode) to `{#if searchActive}` (query-driven, #902).
+	 * moved — from `{#if browsing}` (the retired mode) to `{#if searchActive}` (query-driven).
 	 * Weakening this to "some gate exists" would be the wrong answer: the point is that EVERY result
 	 * block is gated, so the check counts them.
 	 */
@@ -189,7 +189,7 @@ test('every result surface is gated on searchActive — an empty box shows the q
 	expect(main.indexOf('{#if searchActive')).toBeLessThan(firstRow);
 
 	// The search box is NOT in <main>: it is the docked band, after </main>, present in BOTH views now
-	// (#902), so the thumb can reach it wherever the stack is scrolled to.
+	//, so the thumb can reach it wherever the stack is scrolled to.
 	expect(main).not.toContain('class="card searchbox"');
 	expect(PAGE.indexOf('class="search-dock"')).toBeGreaterThan(PAGE.indexOf('</main>'));
 	expect(PAGE).toMatch(/\{#if me\}\s*<div class="search-dock"/);
@@ -207,7 +207,7 @@ test('the shell imports what it is built from — a missing one is a build break
 	// These are the three hunks a `bun test` run cannot see: nothing imports this route, so reverting an
 	// import reds `build`/`typecheck` and leaves the suite green. Asserted here as the syntax claims
 	// they are, so each is pinned to a named test rather than to a gate a reviewer has to re-run.
-	// The `$app/state` `page` import is GONE (#902): the results view is query-driven in place, so the
+	// The `$app/state` `page` import is GONE: the results view is query-driven in place, so the
 	// route no longer reads the browse query off the URL. (Asserted on the specifier alone, not the
 	// whole import statement, so this comment cannot itself read as a virtual-module import.)
 	expect(PAGE).not.toContain('$app/state');
@@ -226,7 +226,7 @@ test('the shell imports what it is built from — a missing one is a build break
 });
 
 // ── the transport's CSS went with the buttons ────────────────────────────────────────────────────
-test('the route no longer declares the transport styles the hero now owns (#832)', () => {
+test('the route no longer declares the transport styles the hero now owns', () => {
 	// A PURE DELETION, so reverting it re-adds rules nothing selects and the suite stays green — the
 	// exit-20 case §3 names, closed by scanning the real production file. Two arms, because the finding
 	// is not only "unused": the block held four of this route's `44px` literals, and XR-PH-01's whole
@@ -244,7 +244,7 @@ test('the route no longer declares the transport styles the hero now owns (#832)
 });
 
 // ── the docked-band token has ONE meaning, and the prose says which ──────────────────────────────
-test('everything docked measures from --dock-h, and the rationale names that token (#832)', () => {
+test('everything docked measures from --dock-h, and the rationale names that token', () => {
 	// A comment that contradicts its code is a defect class in this repo, and this rationale is
 	// load-bearing prose: it tells the next author that the safe-area inset arrives THROUGH the token
 	// and that adding a second env() term doubles the gap. Naming the retired --peek-h there would send

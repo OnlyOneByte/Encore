@@ -1,4 +1,4 @@
-// Guard: the TV page's full-screen affordance (#424, owner ruling C).
+// Guard: the TV page's full-screen affordance (owner ruling C).
 //
 // NB filename: SvelteKit reserves `+`-prefixed names inside routes/, so this cannot be
 // `+page.test.ts`; it colocates with the page it guards without being treated as a route.
@@ -51,7 +51,7 @@ function scriptBody(s: string): string {
 }
 const script = stripComments(scriptBody(raw));
 
-test('toggleFullscreen toggles via document.fullscreenElement, not a one-way request (#424)', () => {
+test('toggleFullscreen toggles via document.fullscreenElement, not a one-way request', () => {
 	// PINS the toggle helper hunk. The affordance is ONE control for both directions, so the request
 	// must be gated on `document.fullscreenElement`: without that gate pressing `f` twice is a no-op on
 	// the second press instead of leaving fullscreen, and the corner button could never restore the
@@ -82,7 +82,7 @@ test('the autoplay-recovery tap requests fullscreen as a free rider (#424 ruling
 	expect(btn![0]).toMatch(/autoplayBlocked\s*=\s*false/);
 });
 
-test('a fading corner button (.fs-btn) is wired to controlsVisible and the toggle (#424)', () => {
+test('a fading corner button (.fs-btn) is wired to controlsVisible and the toggle', () => {
 	// PINS the button markup hunk AND its fade wiring. `class:shown={controlsVisible}` is what makes the
 	// button self-hide after idle rather than becoming permanent chrome on a wall — the explicit cost the
 	// issue attached to ruling C — and the onclick is what makes it do anything. Both are asserted on the
@@ -95,7 +95,7 @@ test('a fading corner button (.fs-btn) is wired to controlsVisible and the toggl
 	expect(script).toMatch(/let\s+controlsVisible\s*=\s*\$state\(/);
 });
 
-test('.fs-btn sits on the --z-tv-card tier — above the reel and video, below the overlays and the hint (#424)', () => {
+test('.fs-btn sits on the --z-tv-card tier — above the reel and video, below the overlays and the hint', () => {
 	// PINS the CSS hunk, which is the constraint the issue spells out: the button must not occlude the
 	// lower-third or the join QR, and must sit below the autoplay hint (10). z 7 is the documented
 	// persistent-chrome tier — above the lyrics reel (6) and the player slots (1/2) so it stays tappable
@@ -108,7 +108,7 @@ test('.fs-btn sits on the --z-tv-card tier — above the reel and video, below t
 	expect(rule![1]!).toMatch(/z-index\s*:\s*var\(--z-tv-card\)\s*;/);
 });
 
-test('.fs-btn and the corner join QR do NOT share the same bottom-right anchor (#889)', () => {
+test('.fs-btn and the corner join QR do NOT share the same bottom-right anchor', () => {
 	// PINS the #889 fix hunk: the fullscreen button and the during-playback join QR are BOTH z-tv-card
 	// (tier 7) persistent chrome, and both are position:absolute. Before #889 both anchored to
 	// `right: var(--tv-safe-x); bottom: var(--tv-safe-y)`, so at equal z-index the later-in-DOM button

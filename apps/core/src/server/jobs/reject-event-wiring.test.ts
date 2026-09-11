@@ -61,7 +61,7 @@ function methodBody(src: string, name: string): string {
 	return src.slice(open, end + 1);
 }
 
-test('#onReject requeues with the REJECT event, not the LEASE_EXPIRED default (#471)', () => {
+test('#onReject requeues with the REJECT event, not the LEASE_EXPIRED default', () => {
 	const body = methodBody(HUB, 'onReject');
 	// The requeue in the reject handler MUST pass 'REJECT' as the causing event. Dropping it (back to
 	// the LEASE_EXPIRED default) reds here — the collapse #471 fixes.

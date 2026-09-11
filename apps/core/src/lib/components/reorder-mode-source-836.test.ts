@@ -1,4 +1,4 @@
-// XR-PH-20 / XR-PH-03 / XR-PH-06 (issue #836) — the parts of the reorder mode whose acceptance is a
+// XR-PH-20 / XR-PH-03 / XR-PH-06 — the parts of the reorder mode whose acceptance is a
 // statement about the SOURCE, scanned here because they are claims about what the template can never
 // do rather than about a value it computes.
 //
@@ -8,7 +8,7 @@
 // requirement is that no state removes them.
 //
 // Every test asserts a SENTINEL first (that it is reading the file and the thing it judges is present),
-// so a rename or a moved block reds the guard instead of silently passing over an empty scan (#830).
+// so a rename or a moved block reds the guard instead of silently passing over an empty scan.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,7 +18,7 @@ const PAGE = join(import.meta.dir, '..', '..', 'routes', '+page.svelte');
 const row = () => readFileSync(ROW, 'utf8');
 const page = () => readFileSync(PAGE, 'utf8');
 /*
- * #913 S1b moved the grip's own declarations out of QueueRow and into the shared Button, so the file
+ * S1b moved the grip's own declarations out of QueueRow and into the shared Button, so the file
  * that must be scanned for XR-PH-17's `cursor: grab` is now this one. The invariant is UNCHANGED — the
  * declaration is still on the grip control and on no row — only its address moved.
  */
@@ -186,7 +186,7 @@ test('XR-PH-17 · the grip binding goes through the predicate, never a literal',
 // scans are what keeps them from coming back. They are a floor, not a proof: the rendered rung for
 // XR-PH-18's target count and XR-PH-19's focus return is still owed (XR-PH-21).
 
-test('#836 driven-find 1 · the drag listens on window, not on the grip element', () => {
+test('driven-find 1 · the drag listens on window, not on the grip element', () => {
 	// Opening the mode inserts the drop slots, so Svelte re-renders the rows and the pressed grip becomes
 	// a DETACHED node. Listeners bound to it delivered nothing: the drag produced no move and the release
 	// never arrived, so a real drag moved no row and never closed the mode.
@@ -204,7 +204,7 @@ test('#836 driven-find 1 · the drag listens on window, not on the grip element'
 	expect(/setPointerCapture/.test(body)).toBe(false);
 });
 
-test('#836 driven-find 2 · the dragged row is transparent to hit-testing', () => {
+test('driven-find 2 · the dragged row is transparent to hit-testing', () => {
 	// The row is translated to sit under the finger with `z-index: 2`, so it was the topmost element at
 	// the pointer and `elementFromPoint` returned IT instead of the drop slot beneath — a drag released
 	// squarely on a legal target committed nothing.
@@ -213,7 +213,7 @@ test('#836 driven-find 2 · the dragged row is transparent to hit-testing', () =
 	expect(/pointer-events:\s*none/.test(rule![1]!)).toBe(true);
 });
 
-test('#836 driven-find 3 · the drag-active state is separate from the mode subject', () => {
+test('driven-find 3 · the drag-active state is separate from the mode subject', () => {
 	// `.moving` carries `pointer-events: none`, so if it applied for the life of the mode the row's own
 	// grip stayed untouchable after the first tap and no later drag could start. The prop must therefore
 	// read BOTH the subject and the active-drag flag.
@@ -226,7 +226,7 @@ test('#836 driven-find 3 · the drag-active state is separate from the mode subj
 	expect(exit![0]).toContain('dragging = false');
 });
 
-test('#836 driven-find 4 · a tap opens the mode and leaves it open', () => {
+test('driven-find 4 · a tap opens the mode and leaves it open', () => {
 	// Treating every release as a drop made a tap open and immediately close the mode: `hoverSlot` starts
 	// at the row's own index, so the release resolved to "move to where you already are".
 	const src = stripComments(page());
@@ -235,7 +235,7 @@ test('#836 driven-find 4 · a tap opens the mode and leaves it open', () => {
 	expect(fn![0]).toContain('travelled <= TAP_SLOP_PX');
 });
 
-test('#836 driven-find 5 · focus return is re-found by attribute, not by a held element', () => {
+test('driven-find 5 · focus return is re-found by attribute, not by a held element', () => {
 	// The grip the guest pressed is a detached node by the time the mode closes, so focusing the captured
 	// reference put focus nowhere — `activeElement` was `<body>` after Escape.
 	const src = stripComments(page());
@@ -246,7 +246,7 @@ test('#836 driven-find 5 · focus return is re-found by attribute, not by a held
 	expect(exit![0]).toContain('tick().then(');
 });
 
-test('#836 · the cooking row dims too, with a surface and not opacity', () => {
+test('· the cooking row dims too, with a surface and not opacity', () => {
 	// Another guest's cooking song is one of the rows the mode has to de-emphasise — found by driving the
 	// mode, where the only non-mine row on screen was a ProcessingCard and stayed at full weight.
 	const src = stripComments(readFileSync(join(import.meta.dir, 'ProcessingCard.svelte'), 'utf8'));
@@ -343,13 +343,13 @@ test('XR-PH-18 · every release is routed through dropTarget rather than passed 
 	expect(/target !== null/.test(body)).toBe(true);
 });
 
-// #856 step 4 — the cross-singer arrow wiring, pinned so reverting the call site reds. The arrow
+// step 4 — the cross-singer arrow wiring, pinned so reverting the call site reds. The arrow
 // hunk at +page.svelte moveGlobal is individually-revertible-green otherwise: swapping
 // `store?.moveToIndex(id, i + delta)` back to `store?.moveEntry(...)` undoes the whole feature (arrows
 // go back to own-picks) yet the behavioural suite stays green, because no test reads the UI call site.
-// This scan is that missing pin. The drag mode's exitReorder still calls moveEntry (own-picks, #836) —
+// This scan is that missing pin. The drag mode's exitReorder still calls moveEntry (own-picks) —
 // distinct path — so this asserts moveGlobal SPECIFICALLY emits moveToIndex.
-test('#856 step 4 · the up/down arrows are wired to moveGlobal, which emits store.moveToIndex', () => {
+test('step 4 · the up/down arrows are wired to moveGlobal, which emits store.moveToIndex', () => {
 	const src = stripComments(page());
 	// (1) both arrow handlers route through moveGlobal (not moveMine / moveEntry).
 	expect(/onup=\{\(\)\s*=>\s*moveGlobal\(/.test(src)).toBe(true);

@@ -1,4 +1,4 @@
-// Guard: the TV lyric reel carries a hard OUTLINE, not only a soft glow (issue #425, piece 1).
+// Guard: the TV lyric reel carries a hard OUTLINE, not only a soft glow (piece 1).
 //
 // THE DEFECT. The owner ruled (2026-09-06) to drop the pinned stage lightness/chroma and instead
 // keep the lyrics readable on ANY background by stroking the text. Before this fix `.lyrics` had

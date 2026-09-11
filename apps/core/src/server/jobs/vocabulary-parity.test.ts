@@ -77,7 +77,7 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 			const assigns = [...src.matchAll(/out\.artifacts\[["'](\w+)["']\]\s*=/g)].map((m) => m[1]!);
 			expect(assigns).toContain('stems');
 			expect(assigns).toContain('songProfile');
-			// guideOffsetMs (#766) is a SIBLING too — a measurement, not a file — and is guarded the same
+			// guideOffsetMs is a SIBLING too — a measurement, not a file — and is guarded the same
 			// way, so a future edit that nested it inside `stems` reds here instead of at a party.
 			expect(assigns).toContain('guideOffsetMs');
 			// ...and never reaches through stems to do it.
@@ -97,7 +97,7 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 		expect(hub).toContain('artifacts?.songProfile');
 		// The exact drift that shipped once. Guard the shape, not just the presence of a read.
 		expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*songProfile/);
-		// guideOffsetMs (#766) is read the same way — top-level, never through stems.
+		// guideOffsetMs is read the same way — top-level, never through stems.
 		expect(hub).toContain('artifacts?.guideOffsetMs');
 		expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*guideOffsetMs/);
 	});
@@ -106,7 +106,7 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 /**
  * Every artifact key the worker WRITES must be a member of `JobArtifacts` — the whole class of drift
  * that stalled cooks when `songProfile` shipped undeclared and, most recently, `source` (a `fetch`
- * job's retained-original key) rode this frame written, undeclared and unread (#459). This scan is
+ * job's retained-original key) rode this frame written, undeclared and unread. This scan is
  * broader than the `songProfile`-placement guard above: it covers ALL `steps/*.py`, not just
  * `separate.py`, and asserts subset-of-`JobArtifacts` rather than one hard-coded key. Reads both sides
  * as TEXT so it runs in the ordinary `bun test` gate with no Python interpreter and no `@encore/shared`
@@ -414,7 +414,7 @@ describe('worker ML keepalive stays under the core progress lease', () => {
 	});
 
 	/**
-	 * The OTHER side of the same wire, previously unguarded (#308): the core ADVERTISES
+	 * The OTHER side of the same wire, previously unguarded: the core ADVERTISES
 	 * `heartbeatIntervalSec` in the welcome handshake (worker-hub.ts). A worker that HONOURS the
 	 * advertised value paces its own `job:progress` by it, so the advertised interval is bound by the
 	 * SAME margin the worker constant above is: at the full lease, a worker doing exactly as told
@@ -463,7 +463,7 @@ describe('worker ML keepalive stays under the core progress lease', () => {
 
 /**
  * The STEM EXTENSION / KEY MIRROR is the last cross-language contract in the media layer guarded only
- * by prose (#440). Both sides declare it MUST agree byte-for-byte:
+ * by prose. Both sides declare it MUST agree byte-for-byte:
  *
  *  - core `apps/core/src/server/media/paths.ts` — `INSTRUMENTAL_EXT`, `VOCALS_EXT`, and the key
  *    builders `audioKey` / `instrumentalKey` / `vocalsKey` (what goes in the DB and on the wire).
@@ -584,7 +584,7 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 		expect(worker).toBe(audioKey(ID, 'wav'));
 	});
 
-	test('the retained raw caption key agrees byte-for-byte (#709)', () => {
+	test('the retained raw caption key agrees byte-for-byte', () => {
 		// raw_caption_path(media_dir, media_id, kind, ext="vtt") is the FOURTH path builder that crosses
 		// this seam; #684 shipped it with no parity guard, and retention.ts enumerates it per (kind, ext)
 		// to count and evict the retained track. Check BOTH kinds and BOTH known exts so a drift on either
@@ -610,7 +610,7 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 		expect(pyStrConst('INSTRUMENTAL_EXT').length).toBeGreaterThan(0);
 		expect(pyStrConst('VOCALS_EXT').length).toBeGreaterThan(0);
 		// A renamed segment or dropped `kind` in raw_caption_path would let a bare comparison pass
-		// vacuously; pin the concrete shape (#709).
+		// vacuously; pin the concrete shape.
 		const rawCap = pyPathRef('raw_caption_path', { media_id: ID, kind: 'captions', ext: 'vtt' });
 		expect(rawCap).toMatch(/^derived\/captions\/captions\/.+\.captions\..+$/);
 	});
@@ -693,7 +693,7 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
  * side and forget the TS mirror and `normalizeSongProfile` drops it on the floor at the boundary: the
  * cook still completes, the gate is still satisfied, nothing errors, and the measurement is simply
  * never seen — which is exactly how `meanDb` came to be parsed, tested and discarded for a year
- * (#462). Add it on the TS side and forget Python and every song reads null forever.
+ *. Add it on the TS side and forget Python and every song reads null forever.
  *
  * Three-way, because two of the three can agree while the declared type disagrees: the Python source,
  * the TS interface DECLARATION (read as text, since a type is erased at runtime), and the runtime keys

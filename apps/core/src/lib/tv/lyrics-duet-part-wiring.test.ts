@@ -1,7 +1,7 @@
 // guard: the TV lyric highlight paints a diarized duet's two PARTS in two distinct legible colours,
-// and that colour actually reaches the reel — the visible half of the duet feature (#692).
+// and that colour actually reaches the reel — the visible half of the duet feature.
 //
-// THE FEATURE. The worker's diarization (#691) writes an abstract `part` letter ("A", "B") on each
+// THE FEATURE. The worker's diarization writes an abstract `part` letter ("A", "B") on each
 // line of a CONFIDENT duet, and NOTHING on a solo or a song it could not split. #692 paints each
 // part in its own colour as it is sung, so two singers see which lines are theirs without agreeing in
 // advance. The colours come from the singer-identity palette (`SINGER_COLORS`) through the same

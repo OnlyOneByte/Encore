@@ -30,7 +30,7 @@ function harness() {
 			seen.add(id);
 			return false;
 		},
-		hasOp: (id) => seen.has(id), // non-recording peek — mirrors server.ts (#490)
+		hasOp: (id) => seen.has(id), // non-recording peek — mirrors server.ts
 		actorSingerId: 's1'
 	};
 	return { published, state, deps };
@@ -91,7 +91,7 @@ test('distinct clientOpIds both apply', () => {
 
 const removeCmd = (clientOpId: string, id: string): ClientCommand => ({ clientOpId, op: { op: 'remove', id } });
 
-test('#490 Finding 1: a resent already-applied REMOVE is re-acked, not rejected (its entry is now pruned)', () => {
+test('Finding 1: a resent already-applied REMOVE is re-acked, not rejected (its entry is now pruned)', () => {
 	const { published, state, deps } = harness();
 	// Seed two adds through the real seam, then apply + record a remove of q1.
 	handleQueueCommand(addCmd('a1', 'q1'), deps);
@@ -119,7 +119,7 @@ test('#490 Finding 1: a resent already-applied REMOVE is re-acked, not rejected 
 	expect(state.entries.map((e) => e.id)).toEqual(['q2']);
 });
 
-test('#490 Finding 2: a resent already-applied ADD is re-acked once its entry has STARTED playing', () => {
+test('Finding 2: a resent already-applied ADD is re-acked once its entry has STARTED playing', () => {
 	const { published, state, deps } = harness();
 	const add = addCmd('k1', 'q1');
 	handleQueueCommand(add, deps); // applies; ledger records 'k1'
@@ -147,7 +147,7 @@ test('#490 Finding 2: a resent already-applied ADD is re-acked once its entry ha
 	expect(state.entries).toHaveLength(1);
 });
 
-test('#490 CONTROL: a genuinely-new INVALID op (never applied, not in the ledger) is still rejected', () => {
+test('CONTROL: a genuinely-new INVALID op (never applied, not in the ledger) is still rejected', () => {
 	const { published, deps } = harness();
 	// A remove of an entry that never existed: unseen clientOpId, so the ledger cannot re-ack it — it
 	// must reject, proving the ledger only short-circuits ALREADY-APPLIED ops, not all failures.
@@ -162,7 +162,7 @@ test('#490 CONTROL: a genuinely-new INVALID op (never applied, not in the ledger
 	expect(published.some((e) => e.type === 'queue:patch')).toBe(false);
 });
 
-test('#490 REGRESSION: a resent genuinely-INVALID op is rejected AGAIN, never falsely re-acked (the ledger must not record a never-applied op)', () => {
+test('REGRESSION: a resent genuinely-INVALID op is rejected AGAIN, never falsely re-acked (the ledger must not record a never-applied op)', () => {
 	// The blocking regression the first cut introduced: the validation-failure re-ack path used the
 	// record-on-check `seenOp`, so REJECTING a never-applied op wrote its clientOpId into the ledger —
 	// and its resend (the same lost-message window #490 is about: reject lost, op stays pending,

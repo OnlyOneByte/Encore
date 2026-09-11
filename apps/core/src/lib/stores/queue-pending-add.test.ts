@@ -66,7 +66,7 @@ test('the pending mark clears when the server rejects the add', () => {
 	expect(store.entries).toHaveLength(0); // rolled back
 });
 
-test('a pending REORDER marks its row as move — not as an add, and not as nothing (#832, XR-PH-10)', () => {
+test('a pending REORDER marks its row as move — not as an add, and not as nothing (XR-PH-10)', () => {
 	const { store } = makeStore();
 	store.addSong('m1'); // id0 entry, id1 opId
 	store.onServerEvent({ type: 'queue:patch', patch: { rev: 1, ops: [], causedBy: 'id1' } });
@@ -105,7 +105,7 @@ const GALLERY = readFileSync(new URL('../../routes/components/+page.svelte', imp
 test('the +page.svelte call sites gate pending on the real pending set, not the placeholder seq', () => {
 	// The dead comparison is gone entirely...
 	expect(PAGE).not.toContain('rotationSeq === Number.MAX_SAFE_INTEGER');
-	// ...and both QueueRow and ProcessingCard read the store's pending KIND for that row (#832). `?? null`
+	// ...and both QueueRow and ProcessingCard read the store's pending KIND for that row. `?? null`
 	// matters: `undefined` would leave the prop at its own default rather than stating "confirmed".
 	const wired = PAGE.match(/pending=\{pendingKind\.get\(e\.id\) \?\? null\}/g) ?? [];
 	expect(wired.length).toBe(2);
@@ -119,7 +119,7 @@ test('+page.svelte declares the unconfirmed $state set and refreshes it on every
 	expect(PAGE).toMatch(/pendingKind\s*=\s*store\.pendingKindById/);
 });
 
-test('QueueRow takes the pending KIND, defaults it, and derives one label from it (#832)', () => {
+test('QueueRow takes the pending KIND, defaults it, and derives one label from it', () => {
 	// The type and the default are TYPE-level and default-level facts: reverting either changes no
 	// runtime behaviour the suite can observe (a boolean `true` still renders the add marker), so they
 	// are asserted here as the syntax claims they are. The RENDERED difference between the two kinds is
@@ -165,7 +165,7 @@ test('ProcessingCard renders the "adding…" marker gated on pending, and styles
 });
 
 /*
- * #735 §D: the component gallery must carry a PENDING ProcessingCard, and a source scan is the only
+ * §D: the component gallery must carry a PENDING ProcessingCard, and a source scan is the only
  * thing that can hold it. Both `pending` rules shipped in #304 unreadable (the cook readout at
  * 3.76:1, the singer dot at 2.57:1) specifically BECAUSE nothing ever rendered a pending cooking
  * card: the gallery's only pending fixture was a QueueRow, so the reviewer who found the defect had
@@ -183,7 +183,7 @@ test('the component gallery renders a pending ProcessingCard so the state is eye
 	expect(pendingCards.length).toBeGreaterThanOrEqual(1);
 });
 
-test('the component gallery renders a pending REORDER row, so the new state is eyes-on (#832)', () => {
+test('the component gallery renders a pending REORDER row, so the new state is eyes-on', () => {
 	// Same reasoning as the fixture above, which #735 had to add after both `pending` rules shipped
 	// unreadable BECAUSE nothing ever rendered that state: a state with no fixture is judged by nobody.
 	// `moving…` vs `adding…` is a one-word difference on an identical surface, which is exactly the kind

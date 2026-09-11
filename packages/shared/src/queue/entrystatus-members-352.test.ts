@@ -1,4 +1,4 @@
-// #352: 'waiting' and 'skipped' were two EntryStatus members that never had a writer anywhere in the
+// 'waiting' and 'skipped' were two EntryStatus members that never had a writer anywhere in the
 // repo (only three values are ever minted: queued/playing/done). Removing them is a pure vocabulary
 // deletion, so nothing BEHAVIOURAL reds if a member comes back — this source-scan guard is the
 // load-bearing regression trap. It reads the two contract files, ISOLATES the specific declaration
@@ -21,7 +21,7 @@ const readSrc = (rel: string): string => readFileSync(join(import.meta.dir, rel)
 const REMOVED = ["'waiting'", "'skipped'"] as const;
 const LIVE = ["'queued'", "'playing'", "'done'"] as const;
 
-test('#352: the EntryStatus union in types.ts holds exactly queued/playing/done', () => {
+test('the EntryStatus union in types.ts holds exactly queued/playing/done', () => {
 	const src = stripComments(readSrc('../core/types.ts'));
 	const m = src.match(/export type EntryStatus =[^;]*;/);
 	expect(m).not.toBeNull(); // not-vacuous: the declaration must exist
@@ -30,7 +30,7 @@ test('#352: the EntryStatus union in types.ts holds exactly queued/playing/done'
 	for (const live of LIVE) expect(decl).toContain(live); // survival: not satisfiable by deleting the type
 });
 
-test('#352: the drizzle queue_entries.status enum mirrors exactly queued/playing/done', () => {
+test('the drizzle queue_entries.status enum mirrors exactly queued/playing/done', () => {
 	// schema.ts lives in apps/core; reach it relative to this shared test file.
 	const src = stripComments(readSrc('../../../../apps/core/src/server/db/schema.ts'));
 	// isolate the status column's own enum:[...] array, not any other enum in the file.
@@ -41,7 +41,7 @@ test('#352: the drizzle queue_entries.status enum mirrors exactly queued/playing
 	for (const live of LIVE) expect(arr).toContain(live);
 });
 
-test('#352: the two isTerminal predicates carry no dead "skipped" arm', () => {
+test('the two isTerminal predicates carry no dead "skipped" arm', () => {
 	// The shared canonical predicate.
 	const rot = stripComments(readSrc('./rotation.ts'));
 	const rm = rot.match(/export function isTerminal\([^)]*\)[^{]*\{([^}]*)\}/);

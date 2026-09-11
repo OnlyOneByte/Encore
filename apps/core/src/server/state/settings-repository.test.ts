@@ -17,8 +17,8 @@ function freshRepo() {
 }
 
 describe('SettingsRepository', () => {
-	it('a room-scoped write addresses the given room, not the literal "main" (#728)', () => {
-		// MECHANISM (#728): every room-scoped method used to DEFAULT its roomId to the literal 'main',
+	it('a room-scoped write addresses the given room, not the literal "main"', () => {
+		// MECHANISM: every room-scoped method used to DEFAULT its roomId to the literal 'main',
 		// so an omitting caller silently addressed 'main' with the compiler saying nothing (12 of 13
 		// production sites did exactly that; the bug shipped as #653). roomId is now REQUIRED, so this test
 		// pins the property that makes the requirement meaningful: a write keyed to some OTHER room lands in
@@ -225,12 +225,12 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		expect(after.tvProgressStyle).toBe('edge');
 	});
 
-	// #425 — replaces 'the stored hue is always one the wheel can render'. The column is text now, so
+	// — replaces 'the stored hue is always one the wheel can render'. The column is text now, so
 	// what a round trip has to prove changed: not that the value snapped to a legal angle, but that an
 	// arbitrary colour reaches SQLite and comes back byte-identical (a TEXT column that silently truncated
 	// or a getRoom that forgot the field would both read back as the default), and that a junk write
 	// cannot poison it.
-	it('an arbitrary stage colour survives SQLite verbatim, and junk cannot poison it (#425)', () => {
+	it('an arbitrary stage colour survives SQLite verbatim, and junk cannot poison it', () => {
 		const repo = freshRepo();
 		// white — unreachable under the retired hue pin, so this also proves the pin is gone end to end
 		expect(repo.setRoom({ tvBackgroundColor: '#ffffff' }, 'main').tvBackgroundColor).toBe('#ffffff');
@@ -243,11 +243,11 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		expect(repo.getRoom('main').tvBackgroundColor).toBe('#aabbcc');
 	});
 
-	// #782 — the stage dimmer. Same hazard as the colour above: getRoom rebuilds its normalizer input
+	// — the stage dimmer. Same hazard as the colour above: getRoom rebuilds its normalizer input
 	// field-by-field, so a column dropped from the SELECT reads back as the default (0) no matter what
 	// was written. A real round trip is the only thing that catches it, and a junk write must keep the
 	// room's current dim rather than resetting it.
-	it('the stage dim survives SQLite verbatim, clamps, and junk cannot poison it (#782)', () => {
+	it('the stage dim survives SQLite verbatim, clamps, and junk cannot poison it', () => {
 		const repo = freshRepo();
 		expect(repo.getRoom('main').tvBackgroundDim).toBe(0); // default: no dim
 		expect(repo.setRoom({ tvBackgroundDim: 0.5 }, 'main').tvBackgroundDim).toBe(0.5);

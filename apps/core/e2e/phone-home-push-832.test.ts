@@ -46,12 +46,12 @@ test('the contract names the way to the docked search box, and homeReady resolve
 	expect(SEL.homeReady).toBe('.search-dock');
 	const ids = HOOKS.map((h) => h.id);
 	expect(ids).toContain('homeReady');
-	// `openBrowse` was RETIRED with the `+ Add a turn` button (#902) — it must not linger in SEL or HOOKS.
+	// `openBrowse` was RETIRED with the `+ Add a turn` button — it must not linger in SEL or HOOKS.
 	expect('openBrowse' in SEL).toBe(false);
 	expect(ids).not.toContain('openBrowse');
 });
 
-test('the shared post-join helper reaches the docked search box with no click (#902)', () => {
+test('the shared post-join helper reaches the docked search box with no click', () => {
 	const helper = join(E2E, 'lib', 'phone.mjs');
 	expect(existsSync(helper)).toBe(true);
 	const src = readFileSync(helper, 'utf8');
@@ -67,7 +67,7 @@ test('the shared post-join helper reaches the docked search box with no click (#
 	expect(src).toContain('export async function openBrowseFromHome');
 });
 
-test('no driver waits for the search box as its post-join readiness signal (#832)', () => {
+test('no driver waits for the search box as its post-join readiness signal', () => {
 	// THE DEFECT, stated as a scan. `search` is not on `/`, so a `waitFor` on it straight after joining
 	// waits forever. The joined-home signal is `homeReady`; reaching `search` is `openBrowseFromHome`.
 	const offenders: string[] = [];
@@ -90,7 +90,7 @@ test('no driver waits for the search box as its post-join readiness signal (#832
 	expect(offenders).toEqual([]);
 });
 
-test('every driver that types into search reaches the browse screen first (#832)', () => {
+test('every driver that types into search reaches the browse screen first', () => {
 	// The other half: a `fill` on a screen that does not have the field throws on a null element. The
 	// helper is a no-op when the field is already there, so calling it defensively costs one 250ms probe
 	// and makes this property mechanical rather than a thing each author has to remember.

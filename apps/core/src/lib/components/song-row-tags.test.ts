@@ -1,4 +1,4 @@
-// guard (#689): a library song's descriptive tags render as chips on the row — and ONLY on a READY
+// guard: a library song's descriptive tags render as chips on the row — and ONLY on a READY
 // row. Same discipline as the sparkle-sibling guard: Encore has no jsdom, so every SongRow UI
 // invariant is a decidable property of the component source. This reads SongRow.svelte and pins:
 //   1. the `tags` prop exists (interface + destructure),
@@ -19,13 +19,13 @@ function stripComments(src: string): string {
 }
 const src = stripComments(readFileSync(join(import.meta.dir, 'SongRow.svelte'), 'utf8'));
 
-test('SongRow accepts a tags prop and destructures it (#689)', () => {
+test('SongRow accepts a tags prop and destructures it', () => {
 	expect(src).toMatch(/tags\?\s*:\s*string\[\]/); // interface member
 	// destructured out of $props so the template can read it
 	expect(src).toMatch(/let\s*\{[\s\S]*\btags\b[\s\S]*\}\s*:\s*Props\s*=\s*\$props\(\)/);
 });
 
-test('showTags is gated on a READY row AND a non-empty tag list (#689)', () => {
+test('showTags is gated on a READY row AND a non-empty tag list', () => {
 	// Both halves are load-bearing: readiness==='ready' keeps tags off raw/cooking rows (a candidate
 	// upload has no library tags worth showing), and the length check keeps an empty list from
 	// rendering an empty .chips row. Mutating either half reds this.
@@ -36,7 +36,7 @@ test('showTags is gated on a READY row AND a non-empty tag list (#689)', () => {
 	expect(expr).toMatch(/tags[\s\S]*\.length\s*>\s*0/);
 });
 
-test('the tag chips render, keyed, guarded by showTags, inside the .chips wrapper (#689)', () => {
+test('the tag chips render, keyed, guarded by showTags, inside the .chips wrapper', () => {
 	// the {#each} over tags, each a chip, keyed so nodes are reused
 	expect(src).toMatch(
 		/\{#if\s+showTags\}\{#each\s+tags!?\s+as\s+tag\s*\(tag\)\}<Badge variant="tag">\{tag\}<\/Badge>\{\/each\}\{\/if\}/
@@ -46,9 +46,9 @@ test('the tag chips render, keyed, guarded by showTags, inside the .chips wrappe
 	expect(src).toMatch(/\{#if[^}]*\bshowTags\b[^}]*\}\s*\n?\s*<div class="chips">/);
 });
 
-test('the tag chip is a NEUTRAL family, not a status tint (#689)', () => {
+test('the tag chip is a NEUTRAL family, not a status tint', () => {
 	/*
-	 * #913 S6: the tone lives in ui/badge now, as the `tag` variant's own rules. The claim is unchanged
+	 * S6: the tone lives in ui/badge now, as the `tag` variant's own rules. The claim is unchanged
 	 * and still the point — a tag is a describing word, not a warning — so it is asserted against the
 	 * rules that actually paint it rather than against a class SongRow no longer writes.
 	 */

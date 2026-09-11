@@ -51,16 +51,16 @@ describe('candidateVocalsRefs', () => {
 		expect(new Set(refs).size).toBe(refs.length);
 	});
 
-	// #480 CRUX: flipping VOCALS_EXT to FLAC changes only what NEW cooks resolve. A stored legacy .m4a
+	// CRUX: flipping VOCALS_EXT to FLAC changes only what NEW cooks resolve. A stored legacy .m4a
 	// vocals ref must keep resolving as-is (it is never re-derived, only new output uses the constant),
 	// and a legacy .m4a-instrumental cook must still surface its .m4a vocals sibling. Existing m4a files
 	// are never recompressed (retention.ts isLegacyStemRef is WAV-only); only new stems land as .flac.
-	it('#480: a legacy m4a-instrumental cook still surfaces its .m4a vocals sibling (never re-derived)', () => {
+	it('a legacy m4a-instrumental cook still surfaces its .m4a vocals sibling (never re-derived)', () => {
 		const legacyM4a = m('a', { instrumentalRef: 'derived/stems/a-instrumental.m4a' });
 		expect(candidateVocalsRefs(legacyM4a)).toContain('derived/stems/a-vocals.m4a');
 	});
 
-	it('#496 G4: a FLAC-instrumental interim cook still surfaces its .m4a vocals sibling', () => {
+	it('G4: a FLAC-instrumental interim cook still surfaces its .m4a vocals sibling', () => {
 		// The finding #488 re-measured: once VOCALS_EXT is .flac, an ext-blind swap on a .flac
 		// instrumental names only -vocals.flac, so a row that never stored a ref and left an interim
 		// .m4a vocals stem on disk becomes unfindable. The fallback must offer EVERY known vocals
@@ -70,7 +70,7 @@ describe('candidateVocalsRefs', () => {
 	});
 });
 
-describe('#480: a stored legacy vocals ref is honored unchanged', () => {
+describe('a stored legacy vocals ref is honored unchanged', () => {
 	it('backfill skips a song that already has a stored .m4a vocals ref — it plays via that ref', () => {
 		expect(needsVocalsBackfill([m('a', { vocalsRef: 'derived/stems/a-vocals.m4a' })])).toEqual([]);
 	});

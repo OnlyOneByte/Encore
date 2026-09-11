@@ -1,4 +1,4 @@
-// #834 Q2-A retired `/join`, so the settings-behind-join gate now redirects an UNJOINED visitor to the
+// Q2-A retired `/join`, so the settings-behind-join gate now redirects an UNJOINED visitor to the
 // landing page `/` (which hosts the join UI), carrying `?next=` so `safeNextPath` at `/` returns them
 // to the tab they asked for after joining. Before this the redirect targeted `/join?next=`, and the
 // open-redirect guard lived on `/join`; the whole point of Q2-A is that both move to `/`.

@@ -25,7 +25,7 @@ const makeKaraokeCode = stripComments(makeKaraokeRaw);
 const readinessRaw = readFileSync(join(CORE, 'lib', 'readiness.ts'), 'utf8');
 const songRowRaw = readFileSync(join(CORE, 'lib', 'components', 'SongRow.svelte'), 'utf8');
 
-test('#742 non-vacuous: the three production files were really read', () => {
+test('non-vacuous: the three production files were really read', () => {
 	// A rename or a move must fail loudly here rather than letting every scan below pass on an empty read.
 	expect(makeKaraokeRaw.length).toBeGreaterThan(4000);
 	expect(readinessRaw.length).toBeGreaterThan(2000);
@@ -36,7 +36,7 @@ test('#742 non-vacuous: the three production files were really read', () => {
 	expect(songRowRaw).toMatch(/\{#if onmake\}/);
 });
 
-test('#742 CookState DECLARES not-cookable (the member the compiler does not force)', () => {
+test('CookState DECLARES not-cookable (the member the compiler does not force)', () => {
 	// Type-only hunk. Its runtime effect is proven in spotify-not-cookable-742.test.ts; this pins the
 	// declaration itself. Reverting it makes cookState return a value outside its own union — a
 	// typecheck failure and nothing else, which `bun test` would sail straight past.
@@ -50,7 +50,7 @@ test('#742 CookState DECLARES not-cookable (the member the compiler does not for
 	}
 });
 
-test('#742 the standalone source check is GONE from requestMakeKaraoke', () => {
+test('the standalone source check is GONE from requestMakeKaraoke', () => {
 	// The relocated predicate. `prove_per_hunk.py` reports this hunk WEAK rather than PINNED because the
 	// replacement is split across two hunks: reverting only the second re-adds the old
 	// `const state = cookState(…)` beside the one the first hunk moved up, so the revert breaks the build
@@ -69,7 +69,7 @@ test('#742 the standalone source check is GONE from requestMakeKaraoke', () => {
 	expect(makeKaraokeCode).toMatch(/if\s*\(!isCookableSource\(media\.source\)\)\s*return 'not-cookable';/);
 });
 
-test('#742 ARM 2 DISCRIMINATES — the ban catches a renamed copy of the old check', () => {
+test('ARM 2 DISCRIMINATES — the ban catches a renamed copy of the old check', () => {
 	// Proving the ban is not vacuous, per §3: a literal-name scan that cannot see a renamed
 	// reintroduction is a guard in name only. These are the shapes a future author would most plausibly
 	// write, and each must be caught by the same expressions asserted above.
@@ -111,7 +111,7 @@ function summaryOf(doc: string): string {
 	return doc.split(/\n\s*\*\s*\n/)[0] ?? doc;
 }
 
-test("#742 requestMakeKaraoke's docstring no longer makes a promise it breaks", () => {
+test("requestMakeKaraoke's docstring no longer makes a promise it breaks", () => {
 	// Prose hunk. The docstring told callers to ask `cookState` to tell its refusals apart, and for THIS
 	// refusal that was false — which is what let every caller act as though a cook were about to start.
 	// The sentence is load-bearing documentation of an invariant, so it is pinned like one.
@@ -125,7 +125,7 @@ test("#742 requestMakeKaraoke's docstring no longer makes a promise it breaks", 
 	expect(reasons![0]).toMatch(/metadata-only|not-cookable/i);
 });
 
-test("#742 canCook's docstring SUMMARY states that it reads the media, not readiness alone", () => {
+test("canCook's docstring SUMMARY states that it reads the media, not readiness alone", () => {
 	// Prose hunk on the client gate. The signature change is pinned by behaviour
 	// (spotify-not-cookable-742.test.ts) and by the four template call sites
 	// (spotify-affordance-742.test.ts); this pins the reason, because the next author to add a fifth row
@@ -142,7 +142,7 @@ test("#742 canCook's docstring SUMMARY states that it reads the media, not readi
 	expect(readinessRaw).toMatch(/export function canCook\(m: Media, r: Readiness\): boolean/);
 });
 
-test('#742 SongRow DECLARES the cookable prop (type-only, so nothing else pins it)', () => {
+test('SongRow DECLARES the cookable prop (type-only, so nothing else pins it)', () => {
 	// Type-only hunk in the Props interface. Its rendered effect is pinned in
 	// spotify-affordance-742.test.ts; reverting the declaration alone breaks only the typecheck.
 	expect(songRowRaw).toMatch(/cookable\?\s*:\s*boolean;/);
