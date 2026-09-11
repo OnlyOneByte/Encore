@@ -1,7 +1,7 @@
 # Encore — Decisions and fences
 
 > **Purpose.** Ratified design decisions, the deliberately-parked scope fence, and the lyrics-chain
-> model. This is *why the shape is what it is* and *what not to pick up* — the reasoning the canonical
+> model. This is _why the shape is what it is_ and _what not to pick up_ — the reasoning the canonical
 > docs deliberately do not carry. Open work is tracked in **GitHub issues**; how the system works now
 > is [`ARCHITECTURE.md`](ARCHITECTURE.md); how to operate it safely is [`HANDOFF.md`](HANDOFF.md).
 
@@ -12,12 +12,12 @@
 Four upstream projects were surveyed. **All four are MIT licensed**, so direct dependency,
 vendoring, and copying with attribution are all open to us — no licence blocker anywhere.
 
-| Project | Verdict | Why |
-|---|---|---|
-| [`python-audio-separator`](https://github.com/nomadkaraoke/python-audio-separator) | **Adopt as a dependency** | The separation engine under `karaoke-gen`, on PyPI. Wraps the UVR model family (MDX-Net, VR Arch, Demucs, MDXC/RoFormer). |
-| [`karaoke-lyrics-processor`](https://github.com/nomadkaraoke/karaoke-lyrics-processor) | **Adopt for half the job** | Length-bounds and cleans lyric lines. We keep its bounding/parens/punctuation and supply the boundary split it gets wrong. → shipped |
-| [`flacfetch`](https://github.com/nomadkaraoke/flacfetch) | **Borrow one idea** | Its provider+ranking pattern already landed independently as `lyrics_chain.acquire()` + `pickBestLyrics`. Its stream-quality heuristic has not. → shipped |
-| [`karaoke-gen`](https://github.com/nomadkaraoke/karaoke-gen) | **Ideas only, no dependency** | Mostly scope we do not want (4K render, CDG packaging, YouTube/Dropbox upload). Its **human review stage** is the keeper. → **Deferred** |
+| Project                                                                                | Verdict                       | Why                                                                                                                                                       |
+| -------------------------------------------------------------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`python-audio-separator`](https://github.com/nomadkaraoke/python-audio-separator)     | **Adopt as a dependency**     | The separation engine under `karaoke-gen`, on PyPI. Wraps the UVR model family (MDX-Net, VR Arch, Demucs, MDXC/RoFormer).                                 |
+| [`karaoke-lyrics-processor`](https://github.com/nomadkaraoke/karaoke-lyrics-processor) | **Adopt for half the job**    | Length-bounds and cleans lyric lines. We keep its bounding/parens/punctuation and supply the boundary split it gets wrong. → shipped                      |
+| [`flacfetch`](https://github.com/nomadkaraoke/flacfetch)                               | **Borrow one idea**           | Its provider+ranking pattern already landed independently as `lyrics_chain.acquire()` + `pickBestLyrics`. Its stream-quality heuristic has not. → shipped |
+| [`karaoke-gen`](https://github.com/nomadkaraoke/karaoke-gen)                           | **Ideas only, no dependency** | Mostly scope we do not want (4K render, CDG packaging, YouTube/Dropbox upload). Its **human review stage** is the keeper. → **Deferred**                  |
 
 **Adopted ALONGSIDE `bs-roformer-infer` — both engines, not one over the other (issue #483, owner
 ruling Q1(b)).** The ruling is settled, and the dependency has **LANDED**: `python-audio-separator` is
@@ -37,6 +37,7 @@ through `bs-roformer-infer` — a model-registry gap, not a case for removing th
 
 **Why adding `python-audio-separator` is the highest-value change.** Two independent wins from one
 dependency:
+
 1. **Instrumental quality.** The owner reports crash-cymbal artifacts on a 5.1.2 system. That damage
    is done by `htdemucs`' vocal mask, and **no codec change reaches it** — FLAC cannot recover what
    separation discarded. A better model is the only lever that does.
@@ -62,7 +63,7 @@ Unicode-space cleanup.
 
 **Validated against this repo's own artifacts, not just synthetic text.** Of the over-long lines in
 this repo's ASR artifacts, a first version splitting only on sentence ends and `", <conjunction>"` left
-**91% untouched**. Whisper is *not* unpunctuated (83% of those lines carry `.,!?`) but its full stop
+**91% untouched**. Whisper is _not_ unpunctuated (83% of those lines carry `.,!?`) but its full stop
 lands at the END of a segment with nothing after it to split off. Adding a greedy re-pack at **bare
 commas** (whisper puts them at breath boundaries) and a **capitalised line-opener** rule took the share
 fully resolved with no bisection from **3% → 47%**, and improved **8% → 71%**. Openers are a CLOSED set
@@ -103,14 +104,14 @@ this line remains not adopted; only the search half is superseded.
 **Shipped and verified.** The durable explanation lives in [`ARCHITECTURE.md`](ARCHITECTURE.md) §6–§7.
 The decisions, so they are not re-litigated:
 
-| # | Decision | Ratified |
-|---|---|---|
-| — | **MusicBrainz is an annotator, not a catalog.** Search stays yt-dlp; identification runs after the download and only enriches a media that already exists. | yes |
-| — | **Nothing plays unprocessed.** No embed path, no raw-source path, no per-source exception for local files. `playMode` is gone. | yes |
-| — | **One row per song is NOT a requirement.** With best-effort identification, grouping two uploads is probabilistic, and merging on a weak signal collapses two different songs. No Song table, no `songKey`. | yes |
-| D4 | **Refuse rather than guess.** A weak match keeps the normalizer's values and records nothing. | yes |
-| D7 | Columns-only migration; no sidecar re-shape (`playMode` was derived on read, never stored). | yes |
-| D9 | Confidence from duration: ±2s → `high`, ±5s → `medium`, else nothing. ±2s because that is LRCLIB's own matching tolerance. | yes |
+| #   | Decision                                                                                                                                                                                                    | Ratified |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| —   | **MusicBrainz is an annotator, not a catalog.** Search stays yt-dlp; identification runs after the download and only enriches a media that already exists.                                                  | yes      |
+| —   | **Nothing plays unprocessed.** No embed path, no raw-source path, no per-source exception for local files. `playMode` is gone.                                                                              | yes      |
+| —   | **One row per song is NOT a requirement.** With best-effort identification, grouping two uploads is probabilistic, and merging on a weak signal collapses two different songs. No Song table, no `songKey`. | yes      |
+| D4  | **Refuse rather than guess.** A weak match keeps the normalizer's values and records nothing.                                                                                                               | yes      |
+| D7  | Columns-only migration; no sidecar re-shape (`playMode` was derived on read, never stored).                                                                                                                 | yes      |
+| D9  | Confidence from duration: ±2s → `high`, ±5s → `medium`, else nothing. ±2s because that is LRCLIB's own matching tolerance.                                                                                  | yes      |
 
 **Withdrawn, with the cost named.** The Song/Version split, the versions popup, a per-song default
 rendition, and lyrics text shared across renditions were all specced and then cut. The one that actually
@@ -124,7 +125,7 @@ to a 1991 hits compilation and "Bohemian Rhapsody" to an undated bootleg — a s
 partial and the recording is chosen by duration. A trustworthy album needs a second release-group
 lookup; until then D4 applies.
 
-**Known gap, not a bug to rediscover.** Media materialised *before* canonicals were parsed at
+**Known gap, not a bug to rediscover.** Media materialised _before_ canonicals were parsed at
 materialize time never got them, and search reuses an existing row rather than re-materialising it — so
 those songs are never annotated without a backfill pass.
 
@@ -137,26 +138,27 @@ The current-system summary is [`ARCHITECTURE.md`](ARCHITECTURE.md) §8; this kee
 
 **Text quality and timing fidelity are INDEPENDENT axes.**
 
-| Source | Text | Timing it yields unaided |
-|---|---|---|
-| LRCLIB `syncedLyrics` (LRC) | authoritative | **line-level** — no ML, no audio at all |
-| LRCLIB plain / YouTube captions | good | none — needs forced alignment |
-| ASR on the vocals stem | **dubious** | line-level (segment bounds) |
+| Source                          | Text          | Timing it yields unaided                |
+| ------------------------------- | ------------- | --------------------------------------- |
+| LRCLIB `syncedLyrics` (LRC)     | authoritative | **line-level** — no ML, no audio at all |
+| LRCLIB plain / YouTube captions | good          | none — needs forced alignment           |
+| ASR on the vocals stem          | **dubious**   | line-level (segment bounds)             |
 
 **Corrected by measurement:** ASR does **not** yield word-level timing. Whisper's `transcribe()` returns
 segment bounds and **zero words**; word timings come only from the separate `align()` pass. So **the
 aligner is the single source of word timings for every tier** — one timing layer, N text sources.
 
 Consequences that shape any change here:
+
 - **Line-level sync is the floor, word-level the ideal.** Raw LRC clears the floor with zero ML and
-  zero audio, so lyrics can be ready *before* the instrumental.
+  zero audio, so lyrics can be ready _before_ the instrumental.
 - **ASR always runs, not just as a fallback** — it is a validation signal. LRCLIB's real failure mode
-  is a confident *wrong* match, and comparing ASR of what is actually sung against the looked-up text
+  is a confident _wrong_ match, and comparing ASR of what is actually sung against the looked-up text
   is what catches it. It also supplies the `language` that `align()` would otherwise guess as `'en'`.
 - **Ranking puts authoritative-text-with-line-timings ABOVE ASR-text-with-word-timings.** Wrong words
   are a failure — you cannot sing them; correct words with coarse highlighting is the accepted minimum.
 - **ASR is the worst tier for words while looking the most finished.** So provenance labelling matters
-  *most* exactly where the output looks most polished.
+  _most_ exactly where the output looks most polished.
 
 ---
 
@@ -189,13 +191,13 @@ degrades past ~8 guests and exposes every guest's picks to the room).
 
 **Drag reorder is additive, never a replacement.** SC 2.5.7 Dragging Movements (AA) requires a
 single-pointer alternative, so the up/down buttons stay. Because `move`'s `toSeq` is an index into
-*the singer's own* QUEUED picks, a guest's songs are **not adjacent** in a flat list — so drag must
+_the singer's own_ QUEUED picks, a guest's songs are **not adjacent** in a flat list — so drag must
 enter a **mode** that dims other guests' rows and exposes only the guest's own legal slots. Do not
 reintroduce the `cursor:grab` that was removed for appearing on another guest's song as the sole
 affordance.
 
 **Singing controls are LIVE controls for the currently-playing song**, on the now-playing hero —
-not setup for an upcoming turn. That is what makes *who may touch them mid-song* a live authority
+not setup for an upcoming turn. That is what makes _who may touch them mid-song_ a live authority
 question rather than a hypothetical one.
 
 ### TV — split-panel attract, full roster lobby, full-screen takeovers
@@ -211,7 +213,7 @@ nothing shifts when playback starts, and there is one thing to test rather than 
   headroom is ~12 before chip size must step down.
 - **Transient states are full-screen takeovers**, one colour family each so they cannot be
   confused: **accent** for Next up (singer name the hero at 132 px), **warn** for Still processing
-  (bounded 3-step progress), **danger** for Skipping (names what is going *and* what replaces it).
+  (bounded 3-step progress), **danger** for Skipping (names what is going _and_ what replaces it).
   **The join block survives every takeover**, dimmed — a song change is exactly when a new guest
   looks up, so blanking the code then would lose the join path when it is most wanted.
 
@@ -225,13 +227,15 @@ accessible fallback is the reference rather than a lesser version of it. Measure
 **≤ 24 characters** (84 px/900 in 820 px; a 30-character control overflows to three lines).
 
 **The TV cannot be themed to one player.** The stage is shared, so it keeps neutral chrome and
-spends a player's colour only where it *identifies* someone — singer dot, roster chip, now-singing
+spends a player's colour only where it _identifies_ someone — singer dot, roster chip, now-singing
 line. This is the one surface where "your colour is your accent" does not apply.
 
 ### TV type floor — and it can land independently
 
 ```css
-:root { font-size: calc(max(2.7vh, 20px) * var(--ui-scale)); }
+:root {
+	font-size: calc(max(2.7vh, 20px) * var(--ui-scale));
+}
 ```
 
 Whole ladder in `rem` off that, so the floor lives in exactly one declaration. `--ui-scale` is a
@@ -256,9 +260,9 @@ reports 0 and cannot help. A hardcoded percentage is the only option.
 Chosen because **copy-in puts component CSS in `src/`**, where the source-scan design guards can
 still see and edit it. A headless dependency moves that CSS into `node_modules`, where a 38 px
 button, a 14 px input, a `vh` sheet cap and a `content: '✕'` all become **invisible rather than
-illegal**. **Scope — REVISED 2026-09-09 (#913).** This section previously read *"a library replaces ~1,060 of
+illegal**. **Scope — REVISED 2026-09-09 (#913).** This section previously read _"a library replaces ~1,060 of
 ~4,950 hand-written CSS lines (21%); the ~2,404-line TV tree is out of scope; the single clear win is
-`QueueSheet`."* Both halves of that justification are now dead: **#903 deleted `QueueSheet`**, and the
+`QueueSheet`."_ Both halves of that justification are now dead: **#903 deleted `QueueSheet`**, and the
 copy-in rationale had already been retracted in place for the drawer (see the correction directly
 below). That left a toolchain installed, fenced and guarded since #853 and used by **nothing**.
 
@@ -266,7 +270,7 @@ The owner's ruling is to **adopt shadcn-svelte for the primitive layer across th
 21 inputs, 16 selects, 11 range inputs and the alert/disclosure surfaces, sliced S0–S5 in #913. What
 stays hand-rolled is not "not yet" but **not ever, unless something changes**: the whole TV tree (a
 ten-foot surface with its own type ladder has no business borrowing phone primitives), `SongRow`,
-`RangeBar`, and the composites `NowPlayingHero` / `ProcessingCard` / `QueueRow` — whose *primitives*
+`RangeBar`, and the composites `NowPlayingHero` / `ProcessingCard` / `QueueRow` — whose _primitives_
 migrate while the components themselves remain.
 
 Two constraints discovered while building S1, both structural rather than stylistic:
@@ -301,7 +305,7 @@ in `apps/core/src/lib/non-vacuity-floors.test.ts`'s `PENDING_RULING`. Compoundin
 side: Preflight is off (below), so a copied-in drawer cannot assume the reset ran either — it arrives
 with neither the utilities' reset nor a readable stylesheet of its own.
 
-**Tailwind restriction:** registering a colour in `@theme` mints the *whole* utility family, with
+**Tailwind restriction:** registering a colour in `@theme` mints the _whole_ utility family, with
 no per-family opt-out. Keep `--accent`, `--grad` and the player hues in `:root` and **never
 register them**; use `@theme` for non-colour tokens only.
 
@@ -322,7 +326,7 @@ the 36 computed properties Preflight writes on every element of 8 surfaces, and 
 fallout: **74 `<h2>` headings** dropped from weight 700 to 400 and lost their bottom margin (Preflight
 unstyles every heading), 75 buttons lost padding, 24 buttons and 21 inputs changed colour via
 `color: inherit`, and the lyrics overlay's `.word.done` changed hue. Most of that is Preflight
-*undoing* deliberate styling rather than supplying anything missing — `app.css` already sets
+_undoing_ deliberate styling rather than supplying anything missing — `app.css` already sets
 `box-sizing: border-box` on `*` itself, which is Preflight's largest single contribution. Option B
 (enable it, fix the fallout) stays available as its own issue once the redesign surfaces settle;
 taking it now would put a global restyle underneath four issues already contending on
@@ -349,10 +353,10 @@ the rejected Uniform variant destroyed, and separates neighbours 1.6× better.
 
 Consequences that must not be lost: `onFill` is **36 dark / 12 white**, per-stop and not one rule.
 `ink` **differs from `fill` for 13 of 48**, so `--accent-ink` stays a required distinct token.
-`--accent-strong` **loses its job** (with per-stop `onFill`, the fill *is* the strong value).
+`--accent-strong` **loses its job** (with per-stop `onFill`, the fill _is_ the strong value).
 `--on-accent` **stops being a constant** and becomes per-stop, so the adjacency discipline matters
-*more* — there are now 48 pairs. `--grad`'s decoration-only ban **stands** but becomes a per-stop
-question. The picker becomes a **discrete 48-swatch grid**, because a colour *between* two stops
+_more_ — there are now 48 pairs. `--grad`'s decoration-only ban **stands** but becomes a per-stop
+question. The picker becomes a **discrete 48-swatch grid**, because a colour _between_ two stops
 has no validated ink and no measured contrast. The colour **name** is the non-colour carrier of
 identity for a colour-blind guest, so it stays visible in the picker and the roster.
 
@@ -369,19 +373,19 @@ The palette generator measured against `bg #060a18 / card #131a2e`. **`app.css` 
 `--bg: #0b0b12` and `--card: #1a1a28`.** Re-measured on the real tokens, six stops miss the 4.5
 floor as accent-as-ink:
 
-| Stop | vs real `--card` | vs mockup surface |
-|---|---|---|
-| Cobalt | **4.473** | 4.501 |
-| Denim | **4.477** | 4.505 |
-| Rose | **4.477** | 4.504 |
-| Orchid | **4.481** | 4.509 |
-| Magenta | **4.483** | 4.510 |
-| Fuchsia | **4.490** | 4.517 |
+| Stop    | vs real `--card` | vs mockup surface |
+| ------- | ---------------- | ----------------- |
+| Cobalt  | **4.473**        | 4.501             |
+| Denim   | **4.477**        | 4.505             |
+| Rose    | **4.477**        | 4.504             |
+| Orchid  | **4.481**        | 4.509             |
+| Magenta | **4.483**        | 4.510             |
+| Fuchsia | **4.490**        | 4.517             |
 
 The reported worst case was 4.50 — a margin of ~0.00 — so any surface drift at all was going to
 cross it. **This is the same defect class as the `colors.test.ts` landmine**: a contrast measurement
 bound to a duplicated surface value rather than to the token the app paints. The palette direction
-is unaffected; the *numbers* must be regenerated with the app's real surfaces as the input, and the
+is unaffected; the _numbers_ must be regenerated with the app's real surfaces as the input, and the
 generator must read them rather than restate them.
 
 ### ⚠ Correction: the rendered-DOM prerequisite is two rungs, not one
@@ -401,12 +405,12 @@ The design handoff listed these as open. They are not, and the mechanism in each
 ships:
 
 - **A host concept exists**, centralised in `server/auth/capabilities.ts` as `can(actor, cap)`,
-  carrying the owner's dated ruling: *"Today every joined singer is a host. That is Angelo's call
+  carrying the owner's dated ruling: _"Today every joined singer is a host. That is Angelo's call
   (2026-09-04) … there is no operator to be, and inventing an admin password for a party is worse
-  than the exposure."* Gating it later is an edit **there and nowhere else**.
+  than the exposure."_ Gating it later is an edit **there and nowhere else**.
 - **Cross-singer reorder is expressed directly, and pinning is gone** — #856 step 3 deleted pinning
   outright: the `move-global` and `unpin` ops, the `pinnedSeq` column, and `rotation.ts:placePins`
-  went with it. The queue is now a single stored ordered list and *is* the source of truth, so a
+  went with it. The queue is now a single stored ordered list and _is_ the source of truth, so a
   reorder rewrites that list in place and is durable by construction — there is nothing left to pin.
   `queue:reorder-any` survives as the capability gating a `move` on an entry the actor does not own.
   What remains is wiring the phone arrows and drag to one "move to index" op that rewrites the stored
@@ -421,32 +425,195 @@ assumed. Those are the named-decision rows in [`ux/05-concurrency.md`](ux/05-con
 
 ---
 
+## Ratified: what a guard may couple to (decided 2026-09-11, after the #913 remediation)
+
+**Audience: anyone writing or reviewing a guard in this repo.** These five rules come out of fixing
+the post-#913 UI defects, and each one is stated because a guard that broke it either _let a real
+defect ship_ or _blocked the correct fix_. They are not style preferences — every one has a measured
+consequence below.
+
+They are written to outlive any particular suite. A test-suite refactor was in flight when this was
+ratified, so where a file or line count is quoted it is a snapshot taken on the #913 remediation
+branch; if the number has moved, the rule still stands and the number is just evidence of how it was
+found. Treat these as requirements on new guards, and as the review checklist for existing ones.
+
+The single sentence they all reduce to: **a test may couple to a contract, never to an implementation
+detail.** A class name, a source string, a current count, and a vendored file's internals are all
+implementation details.
+
+### 1. Never key a test on a styling class
+
+**Measured state:** 81 of 93 `SEL` entries in `e2e/contract.ts` are class-based; only 6 use
+`data-*` / `role` / `aria`. A further ~11 source-scan assertions pin `class="…"` literals directly
+(`class="bar"`, `class="stage"`, `class="t"`, `class="jt-url"`, …).
+
+**What it cost.** `LyricsReselect` shipped `<button class="chip">` when the only rule in the tree was
+`.chip.ghost`, so the confirm button rendered as ~21px native OS chrome on a dark sheet. The class
+survived with no rule _because a test was holding it up_ —
+`lyrics-reselect-640.test.ts` selected `.reselect-acts .chip:not(.ghost)`, so `.chip` looked load-bearing
+while styling nothing. Separately, `failed-process-turn-741.test.ts` requires the literal
+`<button class="sing"` and `spotify-affordance-742.test.ts` requires `class="add"`, which is why
+SongRow's two action buttons **could not** be migrated to the shared `Button` at all: a `class:`
+directive is not valid on a component, so the guard and the refactor are mutually exclusive.
+
+**The rule.** Address a control by what it does or what a user perceives. Best to worst:
+
+1. accessible role + name — `getByRole('button', { name: /make karaoke/ })`
+2. an explicit action hook — `[data-act="confirm-delete"]`
+3. `data-testid`
+4. **never** a class that also carries styling
+
+Prefer (1) where the harness allows: it cannot rot without a real a11y regression, so the test and the
+user experience fail together. Worked examples on the remediation branch: `routes/admin/+page.svelte`
+(`data-act="arm-delete"` / `"confirm-delete"`, with per-song `aria-label`s) and
+`lib/components/LyricsReselect.svelte` (`data-act="confirm"`).
+
+**Ratchet, not a big bang.** Do NOT convert all 81 entries in one PR — a huge diff with no behaviour
+change is expensive to review for zero user value. Convert an entry when you touch its control, and
+pin the direction so it can only improve:
+
+```ts
+// contract.test.ts — new SEL entries may not be class-only
+expect(classOnlyEntries.length).toBeLessThanOrEqual(81); // ratchet: never grows
+```
+
+### 2. A guard asserts rendered behaviour or a declared contract — not source text
+
+**What it cost.** `stage-scale.test.ts` records the failure mode in its own comments: a _presence_
+scan cannot see a loosened **value**, and `max-height: 14vh → 999vh` stayed green. Source scans also
+produce false confidence in the other direction — `touch-targets.test.ts` passed for a build in which
+the rule it read compiled to `.encore-slider.svelte-<hash>`, matching nothing, because the root was a
+Bits UI component and Svelte put the hash on no element. The 28px thumb overflowed every settings
+slider and a screenshot found it, not the suite.
+
+**The rule.** Geometry, contrast and layout claims belong in the real-Chromium register that already
+exists (`e2e/gates/measured-design.mjs` + `measured-design-register.mjs`, `bun run gate:measured`).
+Do not build a second test stack for this — migrate claims into that register and shrink the
+source-scan guards to _structural_ facts (a prop exists, a token is referenced, an element is a
+sibling rather than a descendant). Where a rendered measurement is genuinely unavailable, say so in
+the test rather than substituting a regex that looks equivalent.
+
+### 3. A non-vacuity floor asserts that a subject EXISTS — never how many
+
+**What it cost.** `design-system.test.ts` guarded the singer identity dot with `seen >= 2`, counting
+`.who i` rules. The dot existed as four byte-identical copies; collapsing them into one shared
+`.singer-dot` rule — **the correct refactor** — took the count to 0 and red the guard. A floor that
+punishes deduplication is inverted, and deduplication is a stated goal.
+
+**The rule.** A floor exists to catch _"the scan found nothing, so it passed blindly"_. So assert
+`>= 1` subject and let the offence list carry the invariant:
+
+```ts
+expect(dotRules.length).toBeGreaterThanOrEqual(1); // it is declared SOMEWHERE
+expect(offenders).toEqual([]); // and every declaration satisfies the rule
+```
+
+Scope floors (`filesScanned >= 30`) are legitimate and different — they pin the _population walked_,
+which must not silently shrink. Occurrence floors on a pattern you might legitimately dedupe are the
+ones to avoid. `non-vacuity-floors.test.ts` currently holds 56 floors; the ones with `min: 10 / 15 /
+20 / 30` are worth auditing against this distinction.
+
+### 4. Vendored components are wrapped, never edited
+
+**Measured state:** 61 vendored `.svelte` files, of which **42 differ from the registry** and only
+**19 carry an `ENCORE DEVIATION` header**. `ui/README.md` claims every deviation is enforced by a
+named test; no test references the header at all.
+
+**What it cost.** `shadcn-svelte add --overwrite` silently reverts 42 files with a green suite. The
+sharpest single loss is functional rather than visual: `button.svelte`'s `touch-action: none` is what
+makes the drag-reorder's `pointerdown` fire, and a re-pull drops it. Two latent defects also came from
+editing rather than wrapping — `item-title.svelte` shipped `line-clamp-1` **and** `flex`, and in the
+built bundle `.flex{display:flex}` is emitted at byte 3363 after `.line-clamp-1` at 3117, so the clamp
+never applied; `field-label.svelte`'s hand-added `:global` margin is the only thing separating 50
+controls on `/settings`, two files away from the page it rescues.
+
+**The rule.** Keep `lib/components/ui/**` pristine and put Encore's choices in a wrapper one layer up:
+
+```
+lib/components/ui/button/button.svelte   ← PRISTINE, re-pullable forever
+lib/ui/ActionButton.svelte               ← Encore's action vocabulary, built ON Button
+```
+
+A wrapper also solves the `class:` problem from §1: it takes `retry` as a **prop** and computes the
+class internally, so the control can be a component and still express its states. Product semantics —
+"accent means this processes for a minute, green means queue it now" — belong in the app's own
+component, never as single-use variants inside a shared primitive.
+
+**Land the header guard regardless of §4's progress**: while any vendored file is edited, a test must
+assert it carries a deviation header naming what a re-pull would lose. That is ~1 hour of work and it
+converts `--overwrite` from a landmine into a decision.
+
+### 5. Adopt a library's composition model, or do not adopt the library
+
+**What it cost.** `/settings` uses `Field.Label` 27× and `Field.Description` 23× with **zero**
+`Field` / `Field.Group` / `Field.Set`. shadcn puts the gap on the wrapper (`Field` is `gap-3`,
+`Field.Group` is `gap-7`) and ships marginless leaves, so on registry CSS that stacks 50 controls
+flush. It only rendered because the missing rhythm was hand-patched into the leaf components. 61 leaf
+call sites remain tree-wide.
+
+**The rule.** Use the parts as composed, or use none of them. Cherry-picking leaves gives you the
+library's structure _and_ the maintenance of its spacing.
+
+The corollary is that a primitive is not chosen by its NAME. `Item.Group` is a vertical stack; the
+`/metrics` `.kv` strip is a four-cell horizontal comparison grid, so adopting it would have stacked the
+cells into rows — and under `source(none)` a className passed into a component mints nothing, so it
+cannot be overridden back. Three separate callers correctly refused `Item.Description` for the same
+reason: its `line-clamp-2` is live, and the clamped line was load-bearing copy
+(`MyPositionCard`'s position sentence, `JoinLanding`'s SC 3.3.8 scan instruction).
+
+### Two invariants that must survive any suite rewrite
+
+Both shipped past a fully green suite, and both are mutation-proven on the #913 remediation branch as
+`lib/class-reachable-alone-913.test.ts` and `lib/field-rhythm-913.test.ts`. The FILES are disposable;
+the invariants are not. If a suite refactor lands first and these two files rebase away, re-derive them
+in whatever shape the new suite uses — and re-run the mutations, because both of these guards had bugs
+that only a mutation caught (one passed by never running).
+
+1. **An element's class list must be matchable by some rule.** For class list `L`, some selector must
+   contain a compound whose class-set is a SUBSET of `L`. `.chip.ghost` requires `{chip, ghost}`, which
+   is not a subset of `{chip}` — the defect. Note the naive phrasing ("every class written alone must
+   be reachable alone") is WRONG and produces false positives on the ordinary modifier idiom
+   (`class="stage bad"` with `.stage.bad`, plus four others) — the element is styled because it also
+   carries a base class that has its own rule.
+2. **A marginless primitive leaf must have something that spaces it** — a wrapper, a local gap, or a
+   recorded substitute. Absence of a construct is invisible to a scan looking for what IS written,
+   which is exactly why the `/settings` collapse shipped.
+
+### Not decided here
+
+**Preflight.** Currently off, which forces every vendored component to assume a reset it does not get
+(one live consequence found and fixed: no form control inherited the app font). Enabling it owes the
+evidence bar recorded at `lib/tailwind-toolchain.test.ts` — 9,892 computed-value changes / 2,696 moved
+boxes. Half-off is the expensive state, but nothing above is blocked by resolving it.
+
+---
+
 ## Deferred — do NOT pick these up
 
 Parked deliberately. These return only if the owner says so.
 
 - **Audio-REACTIVE visualizers** — the time-driven ones shipped; making them respond to the sound did
   not. What shipped: four renderers (plasma, starfield, ripples, phase curves) as pure functions of `t`,
-  selectable per room. What is still parked, and why each was designed *around* rather than solved:
-  - *Real FFT.* Still needs an `AudioContext` on the TV. `/tv` has no gesture handler, but `TvPlayer`
-    also swallows its autoplay rejection, so the app *already* depends on the TV permitting unmuted
+  selectable per room. What is still parked, and why each was designed _around_ rather than solved:
+  - _Real FFT._ Still needs an `AudioContext` on the TV. `/tv` has no gesture handler, but `TvPlayer`
+    also swallows its autoplay rejection, so the app _already_ depends on the TV permitting unmuted
     autoplay — an `AudioContext` is the same bet, not a new one. The real work is the graph: one
     `MediaElementAudioSourceNode` per `<video>` (two slots, each recreated when its `{#if}` toggles),
     following whichever slot is audible across a gapless swap, and reaching `ctx.destination` or **the
     song goes silent**. See HANDOFF gotcha 18.
-  - *`bars` and `scope`.* Deliberately absent from `TV_VISUALIZERS`, and a test pins the exclusion by
+  - _`bars` and `scope`._ Deliberately absent from `TV_VISUALIZERS`, and a test pins the exclusion by
     id. They assert they are drawing the signal; nothing reads it. They arrive **with** real analysis or
     not at all — and that test is the thing to delete, on purpose, in the commit that adds it.
-  - *Score-reactive modulation.* Has no data to react to at all: scoring was REMOVED outright.
-  - *Visualizers on the no-lyrics screens* (lobby, `waiting`, interstitial). The ratified band for
+  - _Score-reactive modulation._ Has no data to react to at all: scoring was REMOVED outright.
+  - _Visualizers on the no-lyrics screens_ (lobby, `waiting`, interstitial). The ratified band for
     backgrounds is playing-only; extending it is a separate decision.
-  One incidental note that is load-bearing for any FFT work: it is possible at all only because
-  `TvPlayer.fileSrc` hardcodes `/media/${ref}` instead of `MediaStore.url(ref)`, so the media element is
-  always same-origin. Switch the TV to presigned object-store URLs and every FFT visualizer silently
-  goes flat with no error.
+    One incidental note that is load-bearing for any FFT work: it is possible at all only because
+    `TvPlayer.fileSrc` hardcodes `/media/${ref}` instead of `MediaStore.url(ref)`, so the media element is
+    always same-origin. Switch the TV to presigned object-store URLs and every FFT visualizer silently
+    goes flat with no error.
 - **Milkdrop-class WebGL preset rendering.** A hand-rolled fragment shader if ever, not `butterchurn`:
-  this project vendored Lucide *path geometry* rather than accept a webfont, to stay offline-LAN-safe.
-- **Human lyrics review UI** (idea from `karaoke-gen`). Provenance *labelling* shipped; review is the
+  this project vendored Lucide _path geometry_ rather than accept a webfont, to stay offline-LAN-safe.
+- **Human lyrics review UI** (idea from `karaoke-gen`). Provenance _labelling_ shipped; review is the
   next rung up, with `SOURCE_MANUAL` already reserved in `lyrics_chain.py`. Needs a core endpoint +
   phone UI + storage, so it is a feature, not a commit.
 - **Lossless source audio via trackers/Spotify** (`flacfetch`) — see above; the owner's call.
