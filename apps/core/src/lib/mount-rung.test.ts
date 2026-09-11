@@ -102,7 +102,14 @@ test('every component importing a $app/$env virtual module loads under the mount
 		const mod = (await import(file)) as { default: unknown };
 		expect(typeof mod.default, `${file} did not load a component`).toBe('function');
 	}
-});
+	/*
+	 * #913 S3: 20s, up from bun's 5s default. This test imports EVERY component that touches a
+	 * SvelteKit virtual module, and the settings route now pulls in Bits UI — whose `.svelte` sources
+	 * are compiled on demand by the preload's loader. Warm, the whole set loads in ~2.5s; a cold
+	 * compile of that graph crossed 5s and timed out. The budget is for compile variance in a
+	 * dependency, not for the app getting slower, so it is stated once here rather than raised globally.
+	 */
+}, 20_000);
 
 // ── 2. Each stub module's own contract ────────────────────────────────────────────────────────
 // One test per stub, so a deleted or hollowed-out stub is named by the failure rather than lumped in
@@ -180,7 +187,9 @@ test('the landing join surface mounts, reads the stubbed page.url, and its goto 
 
 	try {
 		// Effects ran and the component rendered — the mount half of XR-VER-01.
-		const input = target.querySelector('input.name-input') as HTMLInputElement | null;
+		// #913: the field is <Input>, whose appearance lives in the component, so `.name-input` is gone.
+		// `data-slot` is shadcn's own contract for the rendered element and survives a re-vendor.
+		const input = target.querySelector("input[data-slot='input']") as HTMLInputElement | null;
 		expect(input, 'JoinLanding mounted but rendered no name field').not.toBeNull();
 
 		// Drive the real action. `bind:value` listens for `input`; the submit handler reads

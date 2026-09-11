@@ -278,9 +278,59 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule (i
 	// on a height, OR sets an explicit height >= TAP.
 	const CONTROLS: { file: string; token: RegExp; name: string }[] = [
 		{ file: join(SRC, 'routes', '+page.svelte'), token: /\.searchbox\s+input\b/, name: 'the dock search input' },
-		{ file: join(SRC, 'routes', 'settings', '+page.svelte'), token: /(^|[\s,{])select\b/m, name: 'the settings selects' },
-		{ file: join(SRC, 'routes', 'settings', '+page.svelte'), token: /\.text\b/, name: 'the join-address field (.text)' },
-		{ file: join(SRC, 'routes', 'settings', '+page.svelte'), token: /\.name-input\b/, name: 'the display-name field (.name-input)' }
+		/*
+		 * RE-ANCHORED BY #913 S2 (XR-VER-07). These three controls were `select`, `.text` and `.name-input`
+		 * rules inside settings/+page.svelte. They are now <NativeSelect> and <Input>, and their appearance
+		 * moved INTO those components — Svelte's scoped CSS cannot reach an element inside a child
+		 * component, and under `source(none)` a utility written at a call site is minted by nothing, so the
+		 * appearance had nowhere else to go.
+		 *
+		 * The floor itself is UNCHANGED and still spelled `min-height: var(--tap)`; only the file moved. The
+		 * guard follows the control rather than the file, which is what it was for: this arm is what caught
+		 * the move, reporting `no sizing rule found (selector moved?)` exactly as written.
+		 *
+		 * All three share the base `.encore-field` rule that carries the floor; the `comfortable` and `mono`
+		 * variants only tweak padding and font, so the token deliberately matches the base rule too — the
+		 * check is "is the floor reached anywhere", which is why a variant needs no floor of its own.
+		 */
+		{ file: join(SRC, 'lib', 'components', 'ui', 'native-select', 'native-select.svelte'), token: /\.encore-field\b/, name: 'the settings selects (NativeSelect)' },
+		{ file: join(SRC, 'lib', 'components', 'ui', 'input', 'input.svelte'), token: /\.encore-field\b/, name: 'the settings text fields (Input)' },
+		/*
+		 * ── WHY VENDORED CONTROLS MUST BE LISTED HERE BY HAND (#913 S4) ────────────────────────────
+		 *
+		 * `controlRules()` above derives "is this a control?" from the file's own MARKUP (#400) — it
+		 * looks for a rule whose subject is an interactive TAG, or a class that markup puts on one. A
+		 * copied-in shadcn component satisfies neither: it renders `<TabsPrimitive.Trigger>`, a
+		 * COMPONENT, so no `button` tag ever appears for `markupControls` to find. On top of that,
+		 * `subjectIsControl` strips `:global(...)` and `[attr]` before looking, so a rule written as
+		 * `:global([data-slot='tabs-trigger'])` — the only way to reach an element a child component
+		 * renders — cleans down to nothing and is skipped.
+		 *
+		 * The consequence was measured, not assumed: moving the settings tabs' `min-height: var(--tap)`
+		 * out of the page and into ui/tabs left a 38px pill PASSING this whole file. The floor had gone
+		 * unguarded silently, which is the exact shape #863 exists to catch.
+		 *
+		 * So every vendored control that owns its own box is named here explicitly. `gate:measured` is
+		 * the real backstop — it hit-tests a live render — but it skips wherever Chromium is absent, and
+		 * a floor that only one rung can see is a floor most runs do not check.
+		 */
+		{
+			file: join(SRC, 'lib', 'components', 'ui', 'tabs', 'tabs-trigger.svelte'),
+			token: /tabs-trigger/,
+			name: "the settings scope tabs (Tabs.Trigger)"
+		},
+		{
+			file: join(SRC, 'lib', 'components', 'ui', 'slider', 'slider.svelte'),
+			/*
+			 * `data-slot`, not a class. The rule was `.encore-slider` until a screenshot showed it applying
+			 * to nothing: the root is a Bits UI component, so Svelte's scope hash lands on no element and
+			 * the whole rule was dead in the build — WHILE THIS ARM PASSED, because it reads the rule text
+			 * and the text was correct. `ui-scoped-style-reach-913.test.ts` is the check for that gap; this
+			 * token follows the rule to the selector that actually reaches the element.
+			 */
+			token: /data-slot='slider'/,
+			name: 'the settings sliders (Slider)'
+		}
 	];
 	const reachesFloor = (body: string): boolean => {
 		if (expressesTap(body)) return true; // var(--tap) on width/height

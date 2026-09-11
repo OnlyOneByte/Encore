@@ -34,9 +34,11 @@
 // Wired via the root `bunfig.toml` `[test] preload`, so it runs ONCE before the suite and forks
 // nothing. Zero production change; no existing test imports a Svelte file, so nothing else changes.
 import { plugin, Transpiler } from 'bun';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { Window } from 'happy-dom';
 import { compile, compileModule } from 'svelte/compiler';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 // ── 1. DOM globals ────────────────────────────────────────────────────────────────────────────
 const g = globalThis as unknown as Record<string, unknown>;
@@ -159,6 +161,124 @@ plugin({
 		}
 	}
 });
+
+// ── 3b. The bare `svelte` specifier, for DEPENDENCIES ────────────────────────────────────────
+//
+// #913 S3. Bits UI — which shadcn's Checkbox, Switch and Slider are built on — ships `.svelte` source
+// that imports `getContext`/`setContext` from the bare `svelte` specifier. Under `bun test` that
+// resolves to Svelte's SERVER build (the `default` export condition), whose context stack is not the
+// one a client `mount()` populates. The result is `lifecycle_outside_component: getContext(...) can
+// only be used during component initialisation` the moment such a component mounts — so BEFORE this,
+// no Bits UI component could be mounted at all, and any route importing one failed the mount rung.
+//
+// `svelte-client.ts` already solves this for the test ENTRY file, and its comment explains why a
+// plugin cannot: `onResolve` does not intercept the entry's own bare imports. A dependency's imports
+// are a different case — those DO go through the plugin — so registering the specifier as a module
+// redirects every non-entry `import … from 'svelte'` to the client entry the mount actually uses.
+//
+// Scoped to the EXACT specifier: `svelte/internal/client`, `svelte/compiler` and `svelte/server` are
+// untouched, so a test that deliberately wants the server build still gets it.
+// Checked rather than assumed: this bypasses svelte's export map to reach into its source tree, so a
+// release that stops shipping `src/` would otherwise kill every component test with a
+// nonexistent-module error naming no cause. The runed block below fails loudly for the same reason.
+const SVELTE_CLIENT_ENTRY = join(
+	dirname(createRequire(import.meta.url).resolve('svelte/package.json')),
+	'src/index-client.js'
+);
+if (!existsSync(SVELTE_CLIENT_ENTRY)) {
+	throw new Error(
+		`test-setup: svelte's client entry is missing at ${SVELTE_CLIENT_ENTRY}.\n` +
+			"This preload redirects the bare `svelte` specifier there so a dependency's `import { getContext }\n" +
+			"from 'svelte'` resolves to the CLIENT build rather than the server one — without it no Bits UI\n" +
+			'component can mount. If svelte no longer ships src/, point this at the exported client entry.'
+	);
+}
+plugin({
+	name: 'svelte-bare-specifier-is-client',
+	setup(build) {
+		build.module('svelte', () => ({
+			contents: `export * from ${JSON.stringify(SVELTE_CLIENT_ENTRY)};`,
+			loader: 'js'
+		}));
+	}
+});
+
+// ── 3c. `runed`, for svelte-sonner ────────────────────────────────────────────────────────────
+//
+// #913 S5. svelte-sonner's `dist/internal/ctx.js` imports the bare specifier `runed`. bun installs it
+// — it is a declared dependency of svelte-sonner, present in the store AND linked as a sibling — but
+// under `bun test` the resolution from inside bun's ISOLATED store fails anyway:
+//
+//   Cannot find package 'runed' from …/.bun/svelte-sonner@…/node_modules/svelte-sonner/dist/internal/ctx.js
+//
+// Declaring it in apps/core AND at the workspace root, and a forced reinstall, all left it failing, so
+// this is the test runtime's module resolution rather than the manifest. The consequence is not
+// cosmetic: the home route imports the Toaster, so WITHOUT this the #822 mount rung cannot load
+// `routes/+page.svelte` at all.
+//
+// Same mechanism and same reason as the `svelte` alias above — a DEPENDENCY's bare import does go
+// through the plugin — and scoped to the exact specifier, so nothing else is affected.
+// RESOLVED FROM SVELTE-SONNER'S OWN PEER DIRECTORY, not by scanning the store.
+//
+// The first version of this sorted every `runed@*` directory in bun's store and took the lexically
+// greatest. That is wrong twice over. `bun.lock` carries THREE distinct runed resolutions — 0.35.1 for
+// bits-ui/svelte-toolbelt, 0.37.1 for layerchart, 0.28.0 for svelte-sonner — and `build.module` is keyed
+// on the SPECIFIER, so all three collapse onto whichever file this picks. Sorting picked 0.37.1, nine
+// minors above the `^0.28.0` svelte-sonner declares, and under 0.x every minor is breaking: the one
+// dependency this alias exists for was the one getting an out-of-range module, so a green mount proved
+// nothing about the graph vite actually builds. Worse, the pick was a function of INSTALL HISTORY rather
+// than the lockfile — this box's store holds five runed versions where the lock declares three, so any
+// future `runed@0.4x` landing in the store would silently move every Bits UI component under test.
+//
+// bun already publishes the right answer: it links each dependency's own resolution as a sibling inside
+// the importer's peer directory. Following that link is deterministic, matches the lockfile, and needs no
+// semver range parsing.
+const RUNED_ENTRY = (() => {
+	let ssPkg: string;
+	try {
+		ssPkg = createRequire(join(import.meta.dir, '..', 'apps', 'core') + '/').resolve(
+			'svelte-sonner/package.json'
+		);
+	} catch {
+		return null;
+	}
+	// <store>/svelte-sonner@X/node_modules/svelte-sonner/package.json -> …/node_modules/runed
+	const peerDir = join(dirname(dirname(ssPkg)), 'runed');
+	for (const entry of [join(peerDir, 'dist', 'index.js'), join(peerDir, 'dist', 'index.svelte.js')]) {
+		if (existsSync(entry)) return entry;
+	}
+	return null;
+})();
+if (!RUNED_ENTRY) {
+	/*
+	 * FAIL LOUDLY, like the geometry hardening a hundred lines above does.
+	 *
+	 * This used to be `if (RUNED_ENTRY)` — a silent skip. The plugin simply never registered, and the home
+	 * route's mount test died with bun's bare `Cannot find package 'runed'`, naming nothing about the
+	 * cause. That is the exact failure this file goes out of its way to prevent everywhere else, and it is
+	 * reachable in practice: `bun install --linker=hoisted`, a differently-rooted CI cache, or a store
+	 * rename all produce it.
+	 */
+	throw new Error(
+		"test-setup: could not resolve `runed` from svelte-sonner's own dependency directory.\n" +
+			'svelte-sonner imports the bare specifier `runed`, and bun cannot resolve it out of its isolated\n' +
+			'store at test time, so this preload aliases it. Without the alias no Bits UI component mounts and\n' +
+			'the #822 mount rung cannot load routes/+page.svelte at all.\n' +
+			'Run `bun install --frozen-lockfile` from the repo root. If you installed with --linker=hoisted,\n' +
+			'the sibling link this reads does not exist and the resolution needs revisiting.'
+	);
+}
+{
+	plugin({
+		name: 'runed-bare-specifier',
+		setup(build) {
+			build.module('runed', () => ({
+				contents: `export * from ${JSON.stringify(RUNED_ENTRY)};`,
+				loader: 'js'
+			}));
+		}
+	});
+}
 
 // ── 4. Svelte loader ──────────────────────────────────────────────────────────────────────────
 const transpiler = new Transpiler({ loader: 'ts' });

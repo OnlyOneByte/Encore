@@ -1,9 +1,12 @@
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
 	import { overallCookPct, SINGER_COLORS } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
 	import type { MediaStatus } from '@encore/shared';
 	import { cookStageLabel } from '$lib/cook-phrasing';
+	import { Progress } from '$lib/components/ui/progress';
+	import * as Item from '$lib/components/ui/item';
 	interface Props {
 		// Queue-slot number + the singer who asked for it. Both absent when the card renders OUTSIDE
 		// the rotation list — a song cooking for someone else's turn still needs somewhere to show its
@@ -83,11 +86,28 @@
 	const overall = $derived(overallCookPct(status, pct));
 </script>
 
-<div class="qrow proc card list-row" class:pending={pending} class:failed={failed} class:dimmed={dimmed}>
-	<div class="seq">
+<!--
+	#913 S8: <Item.Root> supplies the row grammar through Item's own `child` snippet, so this file keeps
+	the row ELEMENT — its conditional state classes cannot become a component's props, because a `class:`
+	directive is not valid on a component and a class handed to one is scoped to the caller. `bare`
+	because `.card` paints the row and `.list-row` lays it out.
+
+	The root's `class` attribute stays STATIC: contrast.test.ts derives the row's classes by splitting it
+	on whitespace, so an interpolation there can hand it a token it then uses as a regex.
+-->
+<Item.Root variant="bare" size="bare">
+	{#snippet child({ props })}
+		<div
+			{...props}
+			class="qrow proc card list-row"
+			class:pending={pending}
+			class:failed={failed}
+			class:dimmed={dimmed}
+		>
+			<Item.Media><div class="seq">
 		{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}
-	</div>
-	<div class="meta">
+	</div></Item.Media>
+			<Item.Content>
 		<div class="t">
 			{title}{#if !failed}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
 		</div>
@@ -107,23 +127,23 @@
 					>{/if}
 			</div>
 		{/if}
-	</div>
+				</Item.Content>
 	{#if !pending && (onremove || reorderable)}
-		<div class="actions">
+		<Item.Actions data-align="start">
 			{#if reorderable}
-				<button class="act icon-btn" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
-					><Icon name="arrow-up" /></button
+				<Button variant="outline" size="icon" press="ink" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
+					><Icon name="arrow-up" /></Button
 				>
-				<button class="act icon-btn" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
-					><Icon name="arrow-down" /></button
+				<Button variant="outline" size="icon" press="ink" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
+					><Icon name="arrow-down" /></Button
 				>
 			{/if}
 			{#if onremove}
-				<button class="remove icon-btn" aria-label="remove from queue" onclick={() => onremove?.()}
-					><Icon name="close" /></button
+				<Button variant="outline" size="icon" press="accent2" aria-label="remove from queue" onclick={() => onremove?.()}
+					><Icon name="close" /></Button
 				>
 			{/if}
-		</div>
+		</Item.Actions>
 	{/if}
 	<div class="progress">
 		{#if failed}
@@ -132,13 +152,21 @@
 			     karaoke", tinted as a failure so the card is legible as broken at a glance. -->
 			<div class="stage bad" aria-live="polite"><span>{stageLabel}</span></div>
 		{:else}
-			<div class="bar"><i style="transform:scaleX({overall / 100})"></i></div>
+			<div class="bar-slot"><Progress value={overall} aria-label="Cook progress" /></div>
 			<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
 		{/if}
 	</div>
 </div>
+	{/snippet}
+</Item.Root>
 
 <style>
+	/*
+	 * #913 S8: `.meta` and `.actions` moved to ui/item as Encore's shared row grammar — both were
+	 * verbatim duplicates of QueueRow's. `.seq`, `.t` and `.who` STAY, because they declare COLOUR and
+	 * contrast.test.ts reasons about this row by reading those rules in this file (its exclusion list
+	 * names "the .seq bubble" directly, and a sibling arm reads the singer dot's own rule).
+	 */
 	/* .list-row gives the padding, margin and gap; ProcessingCard overrides its display to a two-row
 	   grid. Row 1: seq (auto) / title+singer (1fr) / actions (auto). Row 2: the progress block, spanning
 	   every column so it always gets the card's full inner width — the actions cluster can no longer eat
@@ -212,10 +240,6 @@
 		color: var(--ink-dim);
 		flex: 0 0 auto;
 	}
-	.meta {
-		flex: 1;
-		min-width: 0;
-	}
 	.t {
 		font-weight: 600;
 	}
@@ -270,23 +294,17 @@
 		border-radius: 50%;
 		background: var(--singer);
 	}
-	.bar {
-		height: 6px;
-		border-radius: 6px;
-		background: var(--card-tint2);
-		overflow: hidden;
+	/*
+	 * #913 S6: `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
+	 * so this consolidated a duplicate. The swap also buys what neither hand-rolled bar had:
+	 * `role="progressbar"` with aria-valuenow, so a cook's progress is finally visible to assistive
+	 * tech. Spacing from the element above stays HERE, because that is this component's layout rather
+	 * than the bar's own metric.
+	 */
+	.bar-slot {
 		margin-top: 9px;
 	}
 	/* GPU-composited fill: scaleX from the left edge, never animates layout width */
-	.bar > i {
-		display: block;
-		height: 100%;
-		width: 100%;
-		background: var(--grad);
-		border-radius: 6px;
-		transform-origin: left center;
-		transition: transform var(--motion-slow) ease;
-	}
 	.stage {
 		display: flex;
 		justify-content: space-between;
@@ -298,23 +316,6 @@
 	   finishes cooking and its card becomes a row. The card is taller than a row, so the cluster aligns
 	   to the title line (flex-start) rather than the card's centre — its own comment already claimed
 	   this, but align-items:center floated the buttons mid-card. */
-	.actions {
-		display: flex;
-		align-items: flex-start;
-		gap: var(--space-sm);
-		flex: 0 0 auto;
-	}
-	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css. */
-	.act:disabled {
-		opacity: 0.35;
-		cursor: default;
-	}
-	.act:not(:disabled):active {
-		transform: scale(0.9);
-		color: var(--ink);
-	}
-	.remove:active {
-		transform: scale(0.9);
-		color: var(--accent2);
-	}
+	/* Sizing, radius, surface and glyph size come from <Button variant="icon"> in components/ui/button.
+	   `.icon-btn` in app.css was deleted in #913 S1b when its ten consumers became that variant. */
 </style>

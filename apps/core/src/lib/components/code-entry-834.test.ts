@@ -132,7 +132,9 @@ async function mountLandingForAc2() {
 	const instance = mount(JoinLanding, { target });
 	flushSync();
 	const segs = () => [...target.querySelectorAll('input.segment')] as HTMLInputElement[];
-	const nameInput = target.querySelector('input.name-input') as HTMLInputElement;
+	// #913: the field is <Input> now, so its appearance (and `.name-input`) lives in the component.
+	// `data-slot` is shadcn's own contract for the rendered element and survives a re-vendor.
+	const nameInput = target.querySelector("input[data-slot='input']") as HTMLInputElement;
 	const continueBtn = () => target.querySelector('.submit-slot button') as HTMLButtonElement;
 	return { target, instance, segs, nameInput, continueBtn };
 }

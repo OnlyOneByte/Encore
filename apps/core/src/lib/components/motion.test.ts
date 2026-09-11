@@ -47,6 +47,13 @@ function tsSources(dir: string): string[] {
 // comment (e.g. tv/+page.svelte's 'not a transition: work in progress' note) must not false-positive
 // (issue #287 gap 1 / #290 :55,:67). All three tests use this stripper — test 3 now scans Svelte
 // markup for `style:animation` directives too, so it needs `<!-- -->` blanked (issue #615 advisory 1).
+/*
+ * #913 S6: the two NAME-scanning arms below read through this too, not just the declaration scans.
+ * They flagged a vendored component's own DEVIATIONS header for quoting `transition-all` while
+ * explaining that it had been removed — the fourth time in this migration that a guard has
+ * criminalised its own documentation. A guard that punishes the explanation teaches people to stop
+ * writing it. The mutation arm at the end of this file proves the stripping does not blind the scan.
+ */
 function stripAllComments(src: string): string {
 	return src.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
 }
@@ -799,7 +806,7 @@ test('no utility class expresses motion the declaration scans cannot see', () =>
 	const offenders: string[] = [];
 	for (const f of svelte) {
 		const isCopyIn = f.includes(UI_COPY_IN);
-		const markup = markupRegion(stripAllComments(readFileSync(f, 'utf8')));
+		const markup = markupRegion(stripAllComments(stripAllComments(readFileSync(f, 'utf8'))));
 		for (const { where, tokens } of classLists(markup)) {
 			for (const o of utilityOffenders(tokens)) {
 				if (isCopyIn && o.startsWith('unresolvable class expression')) continue;
@@ -839,9 +846,32 @@ test('no motion utility name appears anywhere in source, in any position', () =>
 
 	const offenders: string[] = [];
 	for (const f of netFiles) {
-		for (const m of stripAllComments(readFileSync(f, 'utf8')).matchAll(NET)) {
+		for (const m of stripAllComments(stripAllComments(readFileSync(f, 'utf8'))).matchAll(NET)) {
 			offenders.push(`${f}: motion utility name \`${m[0]}\` in source`);
 		}
 	}
 	expect(offenders).toEqual([]);
+});
+
+/*
+ * THE STRIPPER MUST HIDE PROSE WITHOUT BLINDING THE SCAN (#913 S6).
+ *
+ * The two name-scanning arms above read through `stripAllComments`, so a component may DOCUMENT that
+ * it removed a motion utility without being reported for naming it. That concession is only safe while
+ * the stripper touches comments and nothing else: if a future edit widened it into markup or a class
+ * attribute, both arms would go quietly green on a real offender, which is the worst outcome this file
+ * has. So the boundary is asserted directly rather than trusted.
+ */
+test('stripAllComments hides a utility named in prose and keeps one written in code (#913)', () => {
+	const inComment = '<!-- we deleted transition-all here -->\n<div class="grid"></div>';
+	expect(stripAllComments(inComment)).not.toContain('transition-all');
+	expect(stripAllComments(inComment)).toContain('grid');
+
+	const inBlockComment = '/* transition-colors was removed */\nconst c = "flex";';
+	expect(stripAllComments(inBlockComment)).not.toContain('transition-colors');
+	expect(stripAllComments(inBlockComment)).toContain('flex');
+
+	// …and a utility in a real class attribute SURVIVES the stripper, so the scan still sees it.
+	const inCode = '<div class="transition-all grid"></div>';
+	expect(stripAllComments(inCode)).toContain('transition-all');
 });

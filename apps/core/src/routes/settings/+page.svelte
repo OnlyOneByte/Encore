@@ -21,6 +21,14 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
+	import { Input } from '$lib/components/ui/input';
+	import { NativeSelect } from '$lib/components/ui/native-select';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Slider } from '$lib/components/ui/slider';
+	import * as Tabs from '$lib/components/ui/tabs';
+	import * as Card from '$lib/components/ui/card';
+	import * as Field from '$lib/components/ui/field';
+	import * as Collapsible from '$lib/components/ui/collapsible';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -115,21 +123,11 @@
 		replaceState(`?tab=${id}`, {});
 	}
 
-	/** Arrow keys move between tabs, which is what a tablist is expected to do from a keyboard. */
-	function onTabKey(e: KeyboardEvent) {
-		const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-		let next: TabId | null = null;
-		if (delta !== 0) {
-			const i = TABS.findIndex((t) => t.id === tab);
-			next = TABS[(i + delta + TABS.length) % TABS.length]!.id;
-		} else if (e.key === 'Home') next = TABS[0]!.id;
-		else if (e.key === 'End') next = TABS[TABS.length - 1]!.id;
-		if (!next) return;
-		e.preventDefault();
-		showTab(next);
-		// Move focus with the selection, or the ring is left behind on the tab you just left.
-		document.getElementById(`tab-${next}`)?.focus();
-	}
+	/*
+	 * #913 S4: `onTabKey` was deleted here. It implemented ArrowLeft/Right with wraparound, Home, End,
+	 * and moved focus to follow the selection — all of which Bits UI's tablist does, verified by a real
+	 * mount rather than assumed. `showTab` below is what remains Encore's: the URL sync.
+	 */
 
 	// Local state, not a plain derived, because a write is applied optimistically before the server
 	// answers. The effect re-adopts `data` so a load re-run (client-side nav back here, or
@@ -458,39 +456,41 @@
 		fix that survives adding a fourth room control is to stop rendering them together.
 	-->
 		<!--
-		`tabindex="-1"` on the list itself for the same reason ColourPicker's radiogroup carries one: the
-		arrow-key handler lives on the container, and an interactive role needs to be focusable to own it.
-		The tabs themselves use a roving tabindex, so Tab enters the group once and arrows move inside it.
-	-->
-		<div class="seg" role="tablist" aria-label="Settings scope" tabindex="-1" onkeydown={onTabKey}>
-			{#each TABS as t (t.id)}
-				<button
-					class="tab"
-					class:on={tab === t.id}
-					id="tab-{t.id}"
-					role="tab"
-					aria-selected={tab === t.id}
-					aria-controls="panel-{t.id}"
-					tabindex={tab === t.id ? 0 : -1}
-					onclick={() => showTab(t.id)}
-				>
-					{t.label}
-				</button>
-			{/each}
-		</div>
+		#913 S4: a Bits UI tablist. The roving tabindex, ArrowLeft/Right, Home and End that used to live
+		in `onTabKey` are the primitive's now — verified by mounting it rather than trusted: ArrowRight,
+		End and Home each move BOTH `aria-selected` and the tabindex, which is the pairing the old
+		handler had to remember to do by hand ("move focus with the selection, or the ring is left behind
+		on the tab you just left").
 
-		{#if tab === 'you'}
+		`showTab` stays, because the URL sync is Encore's and no primitive can know about it: it is what
+		makes a scope survive a reload and a shared link.
+	-->
+		<Tabs.Root value={tab} onValueChange={(v) => showTab(v as TabId)}>
+			<Tabs.List aria-label="Settings scope">
+				{#each TABS as t (t.id)}
+					<!--
+						The explicit id is load-bearing: Bits UI would generate its own, and both
+						`SEL.settingsTab(id)` (`#tab-<id>`) and capture.mjs, which clicks it and then reads
+						`aria-selected`, resolve THIS spelling.
+					-->
+					<Tabs.Trigger id="tab-{t.id}" value={t.id}>{t.label}</Tabs.Trigger>
+				{/each}
+			</Tabs.List>
+
+			<Tabs.Content value="you">
 			<!-- ── YOU ────────────────────────────────────────────────────────── -->
 			<div class="panel" id="panel-you" role="tabpanel" aria-labelledby="tab-you" tabindex="-1">
-				<div class="card">
-					<h2 class="cardhead">Who you are</h2>
-					<div class="cardbody">
-						<label class="field" for="profile-name">Your name</label>
-						<input
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Who you are</Card.Title>
+	</Card.Header>
+	<Card.Content>
+						<Field.Label for="profile-name">Your name</Field.Label>
+						<Input
 							id="profile-name"
-							class="name-input"
+							variant="comfortable"
 							type="text"
-							maxlength="32"
+							maxlength={32}
 							autocomplete="off"
 							placeholder="e.g. Dana"
 							bind:value={name}
@@ -509,19 +509,21 @@
 								{#if saving}Saving…{:else}Save{/if}
 							</Button>
 						</div>
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
 				<!--
 				Its own card, below the reversible one: leaving cannot be undone, so the boundary is drawn
 				rather than implied by being last in a list.
 			-->
-				<div class="card">
-					<h2 class="cardhead">Leaving</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Leaving</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						{#if !confirmingLeave}
 							<button class="leave" onclick={askLeave}>Leave the room</button>
-							<p class="hint">Your queued songs go with you.</p>
+							<Field.Description>Your queued songs go with you.</Field.Description>
 						{:else}
 							<p class="leave-warn" role="alert">{leaveWarning}</p>
 							<div class="pair">
@@ -531,8 +533,8 @@
 								</button>
 							</div>
 						{/if}
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
 				<!--
 				The same footer exit the other two tabs have. Save is disabled until something is dirty, so
@@ -541,14 +543,17 @@
 			-->
 				<button class="done" onclick={() => goto('/')}>Done</button>
 			</div>
-		{:else if tab === 'party'}
+			</Tabs.Content>
+			<Tabs.Content value="party">
 			<!-- ── PARTY ──────────────────────────────────────────────────────── -->
 			<div class="panel" id="panel-party" role="tabpanel" aria-labelledby="tab-party" tabindex="-1">
-				<div class="card">
-					<h2 class="cardhead">Rotation</h2>
-					<div class="cardbody">
-						<label class="field" for="queue-order">Who sings next</label>
-						<select
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Rotation</Card.Title>
+	</Card.Header>
+	<Card.Content>
+						<Field.Label for="queue-order">Who sings next</Field.Label>
+						<NativeSelect
 							id="queue-order"
 							value={settings.room.queueOrder}
 							onchange={(e) => onroom({ queueOrder: e.currentTarget.value as QueueOrderId })}
@@ -556,37 +561,39 @@
 							{#each QUEUE_ORDERS as o (o.id)}
 								<option value={o.id}>{o.label}</option>
 							{/each}
-						</select>
-						{#if queueOrderNote}<p class="hint">{queueOrderNote}</p>{/if}
+						</NativeSelect>
+						{#if queueOrderNote}<Field.Description>{queueOrderNote}</Field.Description>{/if}
 
-						<label class="field" for="presence-grace">
+						<Field.Label for="presence-grace">
 							Keep people in the room for · {graceLabel}
-						</label>
-						<input
+						</Field.Label>
+						<Slider
 							id="presence-grace"
-							type="range"
+							type="single"
 							min={MIN_PRESENCE_GRACE_MINUTES}
 							max={MAX_PRESENCE_GRACE_MINUTES}
-							step="15"
+							step={15}
 							value={settings.room.presenceGraceMinutes}
-							oninput={(e) => liveRoom('presenceGraceMinutes', Number(e.currentTarget.value))}
-							onchange={(e) => onroom({ presenceGraceMinutes: Number(e.currentTarget.value) })}
+							onValueChange={(v) => liveRoom('presenceGraceMinutes', v)}
+							onValueCommit={(v) => onroom({ presenceGraceMinutes: v })}
 						/>
-						<p class="hint">A locked phone is not someone leaving, so they stay on the roster this long.</p>
-					</div>
-				</div>
+						<Field.Description>A locked phone is not someone leaving, so they stay on the roster this long.</Field.Description>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">Cook quality</h2>
-					<div class="cardbody">
-						<label class="field" for="quality-ceiling">Cap this room at</label>
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Cook quality</Card.Title>
+	</Card.Header>
+	<Card.Content>
+						<Field.Label for="quality-ceiling">Cap this room at</Field.Label>
 						<!--
 						A ceiling, offered as real engine+model pairings valued by their rank, not a raw
 						integer. The value is the `qualityRank`; the empty option is `null` = no cap. The
 						resolver picks the best live pairing AT OR UNDER this, so these are exactly the
 						ceilings it can honour.
 					-->
-						<select
+						<NativeSelect
 							id="quality-ceiling"
 							value={settings.room.maxQualityRank ?? ''}
 							onchange={(e) =>
@@ -598,30 +605,32 @@
 							{#each qualityCeilings as c (c.rank)}
 								<option value={c.rank}>Up to {c.label}</option>
 							{/each}
-						</select>
+						</NativeSelect>
 						<!--
 						Downward-only, and this is where a party learns it: the server's default is already
 						bounded by what the worker fleet can run, so a room can only ask for the same or less.
 					-->
-						<p class="hint">
+						<Field.Description>
 							Only ever lowers cook quality below the server's default, to keep a busy queue moving. It cannot raise it.
-						</p>
+						</Field.Description>
 						{#if capAboveDefault}
 							<p class="warn">
 								This cap is at or above the server's current default, so it changes nothing. Pick a lower one to
 								actually cap this room.
 							</p>
 						{/if}
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">The TV</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>The TV</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<div class="pair">
 							<div class="cell">
-								<label class="field" for="tv-background">Background</label>
-								<select
+								<Field.Label for="tv-background">Background</Field.Label>
+								<NativeSelect
 									id="tv-background"
 									value={settings.room.tvBackgroundStyle}
 									onchange={(e) => onroom({ tvBackgroundStyle: e.currentTarget.value as TvBackgroundStyle })}
@@ -629,11 +638,11 @@
 									{#each TV_BACKGROUND_STYLES as s (s.id)}
 										<option value={s.id}>{s.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 							<div class="cell">
-								<label class="field" for="tv-progress">Song progress</label>
-								<select
+								<Field.Label for="tv-progress">Song progress</Field.Label>
+								<NativeSelect
 									id="tv-progress"
 									value={settings.room.tvProgressStyle}
 									onchange={(e) => onroom({ tvProgressStyle: e.currentTarget.value as TvProgressStyle })}
@@ -641,19 +650,19 @@
 									{#each TV_PROGRESS_STYLES as s (s.id)}
 										<option value={s.id}>{s.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 						</div>
-						{#if tvBackgroundNote}<p class="hint">{tvBackgroundNote}</p>{/if}
-						{#if tvProgressNote}<p class="hint">{tvProgressNote}</p>{/if}
+						{#if tvBackgroundNote}<Field.Description>{tvBackgroundNote}</Field.Description>{/if}
+						{#if tvProgressNote}<Field.Description>{tvProgressNote}</Field.Description>{/if}
 
 						<!--
 						Gated, not disabled: a visualizer picker means nothing for a black stage, and a control
 						that does nothing for the current selection implies it does something.
 					-->
 						{#if settings.room.tvBackgroundStyle === 'visualizer'}
-							<label class="field" for="tv-visualizer">Which visualizer</label>
-							<select
+							<Field.Label for="tv-visualizer">Which visualizer</Field.Label>
+							<NativeSelect
 								id="tv-visualizer"
 								value={settings.room.tvVisualizer}
 								onchange={(e) => onroom({ tvVisualizer: e.currentTarget.value as TvVisualizerId })}
@@ -661,16 +670,16 @@
 								{#each TV_VISUALIZERS as v (v.id)}
 									<option value={v.id}>{v.label}</option>
 								{/each}
-							</select>
-							{#if tvVisualizerNote}<p class="hint">{tvVisualizerNote}</p>{/if}
+							</NativeSelect>
+							{#if tvVisualizerNote}<Field.Description>{tvVisualizerNote}</Field.Description>{/if}
 						{/if}
 
 						<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
 						{#if settings.room.tvBackgroundStyle === 'solid' || settings.room.tvBackgroundStyle === 'visualizer'}
-							<label class="field field-swatch" for="tv-background-color">
+							<Field.Label data-inline for="tv-background-color">
 								Background colour
 								<span class="swatch" style="background: {tvBackgroundPreview}" aria-hidden="true"></span>
-							</label>
+							</Field.Label>
 							<!--
 							A real colour input, not the hue slider this was until #425: the room names a colour
 							outright now rather than an angle rendered at a pinned lightness. oninput/onchange are
@@ -687,9 +696,9 @@
 								onchange={(e) => onroom({ tvBackgroundColor: e.currentTarget.value })}
 							/>
 
-							<label class="field" for="tv-background-dim">
+							<Field.Label for="tv-background-dim">
 								Dim · {Math.round(settings.room.tvBackgroundDim * 100)}%
-							</label>
+							</Field.Label>
 							<!--
 							Dims the stage colour toward black (#782, owner ruling Q2 = A) — a lightness control, not
 							a layer over the video. Split oninput/onchange like every other slider here (#134): the
@@ -697,57 +706,59 @@
 							only the committed `change` writes and broadcasts. Stored 0..1, shown as a percent; the
 							range spans the full 0..100 the server clamp accepts.
 						-->
-							<input
+							<Slider
 								id="tv-background-dim"
-								type="range"
-								min="0"
-								max="100"
-								step="1"
+								type="single"
+								min={0}
+								max={100}
+								step={1}
 								value={Math.round(settings.room.tvBackgroundDim * 100)}
-								oninput={(e) => liveRoom('tvBackgroundDim', Number(e.currentTarget.value) / 100)}
-								onchange={(e) => onroom({ tvBackgroundDim: Number(e.currentTarget.value) / 100 })}
+								onValueChange={(v) => liveRoom('tvBackgroundDim', v / 100)}
+								onValueCommit={(v) => onroom({ tvBackgroundDim: v / 100 })}
 							/>
-							<p class="hint">How far the stage colour is darkened toward black. 0% is the colour itself.</p>
+							<Field.Description>How far the stage colour is darkened toward black. 0% is the colour itself.</Field.Description>
 						{/if}
 
-						<label class="check">
-							<input
-								type="checkbox"
+						<label class="check" for="song-intro-on">
+							<Checkbox
+								id="song-intro-on"
 								checked={settings.room.songIntroEnabled}
-								onchange={(e) => onroom({ songIntroEnabled: e.currentTarget.checked })}
+								onCheckedChange={(v) => onroom({ songIntroEnabled: v })}
 							/>
 							Song intro before each turn
 						</label>
-						<p class="hint">A card naming the song, artist and singer.</p>
+						<Field.Description>A card naming the song, artist and singer.</Field.Description>
 
-						<label class="field" class:dim={!settings.room.songIntroEnabled} for="song-intro-ms">
+						<Field.Label data-dim={!settings.room.songIntroEnabled || undefined} for="song-intro-ms">
 							Intro holds for · {(settings.room.songIntroMs / 1000).toFixed(1)}s
-						</label>
+						</Field.Label>
 						<!--
 					  The range MUST match the server clamp exactly (MIN/MAX_SONG_INTRO_MS). A slider narrower
 					  than the clamp has shipped here before: the UI silently refuses values the server takes.
 					-->
-						<input
+						<Slider
 							id="song-intro-ms"
-							type="range"
+							type="single"
 							min={MIN_SONG_INTRO_MS}
 							max={MAX_SONG_INTRO_MS}
 							step={SONG_INTRO_STEP_MS}
 							disabled={!settings.room.songIntroEnabled}
 							value={settings.room.songIntroMs}
-							oninput={(e) => liveRoom('songIntroMs', Number(e.currentTarget.value))}
-							onchange={(e) => onroom({ songIntroMs: Number(e.currentTarget.value) })}
+							onValueChange={(v) => liveRoom('songIntroMs', v)}
+							onValueCommit={(v) => onroom({ songIntroMs: v })}
 						/>
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">Lyrics on the TV</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Lyrics on the TV</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<div class="pair">
 							<div class="cell">
-								<label class="field" for="lyrics-highlight">Highlight</label>
-								<select
+								<Field.Label for="lyrics-highlight">Highlight</Field.Label>
+								<NativeSelect
 									id="lyrics-highlight"
 									value={settings.room.lyricsHighlight}
 									onchange={(e) => onroom({ lyricsHighlight: e.currentTarget.value as LyricsHighlightId })}
@@ -755,11 +766,11 @@
 									{#each LYRICS_HIGHLIGHTS as h (h.id)}
 										<option value={h.id}>{h.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 							<div class="cell">
-								<label class="field" for="lyrics-ball">Marker</label>
-								<select
+								<Field.Label for="lyrics-ball">Marker</Field.Label>
+								<NativeSelect
 									id="lyrics-ball"
 									value={settings.room.lyricsBall}
 									onchange={(e) => onroom({ lyricsBall: e.currentTarget.value as LyricsBallStyleId })}
@@ -767,11 +778,11 @@
 									{#each LYRICS_BALL_STYLES as s (s.id)}
 										<option value={s.id}>{s.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 						</div>
-						{#if highlightNote}<p class="hint">{highlightNote}</p>{/if}
-						{#if ballNote}<p class="hint">{ballNote}</p>{/if}
+						{#if highlightNote}<Field.Description>{highlightNote}</Field.Description>{/if}
+						{#if ballNote}<Field.Description>{ballNote}</Field.Description>{/if}
 
 						<!--
 						Say when a choice is not being honoured. The server's sync mode decides whether per-word
@@ -787,8 +798,8 @@
 
 						<div class="pair">
 							<div class="cell">
-								<label class="field" for="lyrics-font">Font</label>
-								<select
+								<Field.Label for="lyrics-font">Font</Field.Label>
+								<NativeSelect
 									id="lyrics-font"
 									value={settings.room.lyricsFont}
 									onchange={(e) => onroom({ lyricsFont: e.currentTarget.value as LyricsFontId })}
@@ -796,11 +807,11 @@
 									{#each LYRICS_FONTS as f (f.id)}
 										<option value={f.id}>{f.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 							<div class="cell">
-								<label class="field" for="lyrics-case">Letter case</label>
-								<select
+								<Field.Label for="lyrics-case">Letter case</Field.Label>
+								<NativeSelect
 									id="lyrics-case"
 									value={settings.room.lyricsCase}
 									onchange={(e) => onroom({ lyricsCase: e.currentTarget.value as LyricsCaseId })}
@@ -808,109 +819,111 @@
 									{#each LYRICS_CASES as c (c.id)}
 										<option value={c.id}>{c.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 						</div>
-						{#if fontNote}<p class="hint">{fontNote}</p>{/if}
-						{#if caseNote}<p class="hint">{caseNote}</p>{/if}
+						{#if fontNote}<Field.Description>{fontNote}</Field.Description>{/if}
+						{#if caseNote}<Field.Description>{caseNote}</Field.Description>{/if}
 
-						<label class="field" for="lyrics-scale">Text size · {settings.room.lyricsScalePct}%</label>
-						<input
+						<Field.Label for="lyrics-scale">Text size · {settings.room.lyricsScalePct}%</Field.Label>
+						<Slider
 							id="lyrics-scale"
-							type="range"
+							type="single"
 							min={MIN_LYRICS_SCALE_PCT}
 							max={MAX_LYRICS_SCALE_PCT}
-							step="5"
+							step={5}
 							value={settings.room.lyricsScalePct}
-							oninput={(e) => liveRoom('lyricsScalePct', Number(e.currentTarget.value))}
-							onchange={(e) => onroom({ lyricsScalePct: Number(e.currentTarget.value) })}
+							onValueChange={(v) => liveRoom('lyricsScalePct', v)}
+							onValueCommit={(v) => onroom({ lyricsScalePct: v })}
 						/>
 						<!--
 						Says PERCENT OF, not a size, because that is what it is: the TV already picks a size from
 						its own height and this scales it. "48px" would mean nothing on a different screen.
 					-->
-						<p class="hint">Relative to the size the TV picks for its own screen.</p>
+						<Field.Description>Relative to the size the TV picks for its own screen.</Field.Description>
 
-						<label class="field" for="lyrics-lead">
+						<Field.Label for="lyrics-lead">
 							Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
-						</label>
-						<input
+						</Field.Label>
+						<Slider
 							id="lyrics-lead"
-							type="range"
-							min="0"
+							type="single"
+							min={0}
 							max={MAX_LYRICS_LEAD_MS}
-							step="50"
+							step={50}
 							value={settings.room.lyricsLeadMs}
-							oninput={(e) => liveRoom('lyricsLeadMs', Number(e.currentTarget.value))}
-							onchange={(e) => onroom({ lyricsLeadMs: Number(e.currentTarget.value) })}
+							onValueChange={(v) => liveRoom('lyricsLeadMs', v)}
+							onValueCommit={(v) => onroom({ lyricsLeadMs: v })}
 						/>
 
 						<div class="pair">
 							<div class="cell">
-								<label class="field" for="lyrics-before">Lines sung · {settings.room.lyricsLinesBefore}</label>
-								<input
+								<Field.Label for="lyrics-before">Lines sung · {settings.room.lyricsLinesBefore}</Field.Label>
+								<Slider
 									id="lyrics-before"
-									type="range"
-									min="0"
+									type="single"
+									min={0}
 									max={MAX_LYRICS_LINES_BEFORE}
-									step="1"
+									step={1}
 									value={settings.room.lyricsLinesBefore}
-									oninput={(e) => liveRoom('lyricsLinesBefore', Number(e.currentTarget.value))}
-									onchange={(e) => onroom({ lyricsLinesBefore: Number(e.currentTarget.value) })}
+									onValueChange={(v) => liveRoom('lyricsLinesBefore', v)}
+									onValueCommit={(v) => onroom({ lyricsLinesBefore: v })}
 								/>
 							</div>
 							<div class="cell">
-								<label class="field" for="lyrics-after">Lines ahead · {settings.room.lyricsLinesAfter}</label>
-								<input
+								<Field.Label for="lyrics-after">Lines ahead · {settings.room.lyricsLinesAfter}</Field.Label>
+								<Slider
 									id="lyrics-after"
-									type="range"
-									min="0"
+									type="single"
+									min={0}
 									max={MAX_LYRICS_LINES_AFTER}
-									step="1"
+									step={1}
 									value={settings.room.lyricsLinesAfter}
-									oninput={(e) => liveRoom('lyricsLinesAfter', Number(e.currentTarget.value))}
-									onchange={(e) => onroom({ lyricsLinesAfter: Number(e.currentTarget.value) })}
+									onValueChange={(v) => liveRoom('lyricsLinesAfter', v)}
+									onValueCommit={(v) => onroom({ lyricsLinesAfter: v })}
 								/>
 							</div>
 						</div>
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">Sound</h2>
-					<div class="cardbody">
-						<label class="field" for="guide-default">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Sound</Card.Title>
+	</Card.Header>
+	<Card.Content>
+						<Field.Label for="guide-default">
 							Guiding track · {Math.round(settings.room.guideLevelDefault * 100)}%
-						</label>
-						<input
+						</Field.Label>
+						<Slider
 							id="guide-default"
-							type="range"
-							min="0"
-							max="100"
-							step="1"
+							type="single"
+							min={0}
+							max={100}
+							step={1}
 							value={Math.round(settings.room.guideLevelDefault * 100)}
-							oninput={(e) => liveRoom('guideLevelDefault', Number(e.currentTarget.value) / 100)}
-							onchange={(e) => onroom({ guideLevelDefault: Number(e.currentTarget.value) / 100 })}
+							onValueChange={(v) => liveRoom('guideLevelDefault', v / 100)}
+							onValueCommit={(v) => onroom({ guideLevelDefault: v / 100 })}
 						/>
-						<p class="hint">Starting vocal level. Singers can change it per song.</p>
+						<Field.Description>Starting vocal level. Singers can change it per song.</Field.Description>
 						{#if settings.room.guideLevelDefault > 0}
-							<p class="hint">Only songs cooked with their vocals kept can offer a guide.</p>
+							<Field.Description>Only songs cooked with their vocals kept can offer a guide.</Field.Description>
 						{/if}
 
-						<label class="check">
-							<input
-								type="checkbox"
+						<label class="check" for="loudness-norm">
+							<Checkbox
+								id="loudness-norm"
 								checked={settings.room.loudnessNormalization}
-								onchange={(e) => onroom({ loudnessNormalization: e.currentTarget.checked })}
+								onCheckedChange={(v) => onroom({ loudnessNormalization: v })}
 							/>
 							Even out loud songs
 						</label>
-						<p class="hint">
+						<Field.Description>
 							Turns down the few songs that are much louder than the rest, so you stop reaching for the volume. Quiet
 							songs are left alone.
-						</p>
-					</div>
-				</div>
+						</Field.Description>
+					</Card.Content>
+</Card.Root>
 
 				<!--
 				/stats is the GUEST page, so it is the one dashboard safe to reach from a surface any phone
@@ -923,17 +936,20 @@
 
 				<button class="done" onclick={() => goto('/')}>Done</button>
 			</div>
-		{:else}
+			</Tabs.Content>
+			<Tabs.Content value="server">
 			<!-- ── SERVER ─────────────────────────────────────────────────────── -->
 			<div class="panel" id="panel-server" role="tabpanel" aria-labelledby="tab-server" tabindex="-1">
 				<p class="scope-note">Affects every room on this server.</p>
 
-				<div class="card">
-					<h2 class="cardhead">Making karaoke</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Making karaoke</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<!-- Stacked for the same measured reason as the lyrics engine below: "BS-RoFormer 1297". -->
-						<label class="field" for="engine">Stem splitter</label>
-						<select
+						<Field.Label for="engine">Stem splitter</Field.Label>
+						<NativeSelect
 							id="engine"
 							value={settings.global.defaultEngine}
 							onchange={(e) => pickEngine(e.currentTarget.value)}
@@ -941,10 +957,10 @@
 							{#each liveEngines as engine (engine.id)}
 								<option value={engine.id}>{engine.label}</option>
 							{/each}
-						</select>
+						</NativeSelect>
 
-						<label class="field" for="model">Model</label>
-						<select
+						<Field.Label for="model">Model</Field.Label>
+						<NativeSelect
 							id="model"
 							value={settings.global.defaultModel}
 							onchange={(e) => onglobal({ defaultModel: e.currentTarget.value })}
@@ -952,14 +968,14 @@
 							{#each liveModels as model (model.id)}
 								<option value={model.id}>{model.label}</option>
 							{/each}
-						</select>
-						{#if liveNote}<p class="hint">{liveNote}</p>{/if}
+						</NativeSelect>
+						{#if liveNote}<Field.Description>{liveNote}</Field.Description>{/if}
 						{#if liveSlow}
 							<p class="warn">Slow on CPU — around 45 minutes per song. Better suited to upgrades.</p>
 						{/if}
 
-						<label class="field" for="fetcher">Where audio comes from</label>
-						<select
+						<Field.Label for="fetcher">Where audio comes from</Field.Label>
+						<NativeSelect
 							id="fetcher"
 							value={settings.global.defaultFetcher}
 							onchange={(e) => onglobal({ defaultFetcher: e.currentTarget.value as FetcherId })}
@@ -967,8 +983,8 @@
 							{#each defaultFetchers as f (f.id)}
 								<option value={f.id}>{f.label}</option>
 							{/each}
-						</select>
-						{#if fetcherNote}<p class="hint">{fetcherNote}</p>{/if}
+						</NativeSelect>
+						{#if fetcherNote}<Field.Description>{fetcherNote}</Field.Description>{/if}
 						<!--
 						Explicit blast radius, matched to the splitter warning above it: this is the acquirer
 						EVERY new cook downloads its source through, and a worker that cannot run it fails the
@@ -977,12 +993,14 @@
 						<p class="warn">
 							Changes where every new cook gets its audio. A worker that cannot run it will fail the download.
 						</p>
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">Lyrics engine</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Lyrics engine</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<!--
 						NOT paired two-up like the room controls, and measured rather than assumed: at 390px a
 						half-width select leaves ~120px for its text, and these registries carry the app's
@@ -990,8 +1008,8 @@
 						The room's pairs were checked at the same width and fit. A truncated option is worse
 						than a longer page, and this is the tab you visit once.
 					-->
-						<label class="field" for="asr-model">Reader</label>
-						<select
+						<Field.Label for="asr-model">Reader</Field.Label>
+						<NativeSelect
 							id="asr-model"
 							value={settings.global.asrModel}
 							onchange={(e) => onglobal({ asrModel: e.currentTarget.value as GlobalSettings['asrModel'] })}
@@ -999,14 +1017,14 @@
 							{#each ASR_MODELS as model (model.id)}
 								<option value={model.id}>{model.label} · {model.params}</option>
 							{/each}
-						</select>
-						{#if asrNote}<p class="hint">{asrNote}</p>{/if}
+						</NativeSelect>
+						{#if asrNote}<Field.Description>{asrNote}</Field.Description>{/if}
 						{#if asrSlow}
 							<p class="warn">A big reader needs real memory and adds minutes to every cook on a CPU box.</p>
 						{/if}
 
-						<label class="field" for="sync-mode">Timing</label>
-						<select
+						<Field.Label for="sync-mode">Timing</Field.Label>
+						<NativeSelect
 							id="sync-mode"
 							value={settings.global.syncMode}
 							onchange={(e) => onglobal({ syncMode: e.currentTarget.value as GlobalSettings['syncMode'] })}
@@ -1014,18 +1032,20 @@
 							{#each SYNC_MODES as mode (mode.id)}
 								<option value={mode.id}>{mode.label}</option>
 							{/each}
-						</select>
-						{#if syncNote}<p class="hint">{syncNote}</p>{/if}
-					</div>
-				</div>
+						</NativeSelect>
+						{#if syncNote}<Field.Description>{syncNote}</Field.Description>{/if}
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">Joining</h2>
-					<div class="cardbody">
-						<label class="field" for="join-origin">Address phones join at</label>
-						<input
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Joining</Card.Title>
+	</Card.Header>
+	<Card.Content>
+						<Field.Label for="join-origin">Address phones join at</Field.Label>
+						<Input
 							id="join-origin"
-							class="text"
+							variant="mono"
 							type="text"
 							inputmode="url"
 							autocomplete="off"
@@ -1036,45 +1056,52 @@
 							bind:value={joinDraft}
 							onchange={commitJoinOrigin}
 						/>
-						<p class="hint" id="join-origin-hint">
+						<Field.Description id="join-origin-hint">
 							What the TV's QR code points at. Empty means <strong>{data.joinOriginFallback}</strong>.
-						</p>
+						</Field.Description>
 						{#if joinError}<p class="warn" role="alert">{joinError}</p>{/if}
 						{#if joinSchemeMismatch}
 							<p class="warn">This party runs over plain http, so phones cannot open an https address.</p>
 						{/if}
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<button
-						class="disclose"
-						aria-expanded={advancedOpen}
-						aria-controls="advanced-body"
-						onclick={() => (advancedOpen = !advancedOpen)}
-					>
+				<Card.Root>
+	<Card.Content>
+					<!--
+						#913 S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> STAYS
+						here via Bits UI's `child` snippet — `.disclose` is scoped CSS in this file, and a class handed
+						to a component is scoped to the CALLER and stripped there as unused.
+					-->
+					<Collapsible.Root bind:open={advancedOpen}>
+						<Collapsible.Trigger>
+							{#snippet child({ props })}
+								<button class="disclose" {...props}>
 						<Icon name={advancedOpen ? 'chevron-down' : 'chevron-right'} />
 						Advanced
 						<span class="disclose-now">
 							{settings.global.enqueueUpgrade ? 'Re-cook on' : 'Re-cook off'}
-						</span>
-					</button>
+									</span>
+								</button>
+							{/snippet}
+						</Collapsible.Trigger>
 
-					{#if advancedOpen}
-						<div class="cardbody" id="advanced-body">
-							<label class="check">
-								<input
-									type="checkbox"
-									checked={settings.global.enqueueUpgrade}
-									onchange={(e) => onglobal({ enqueueUpgrade: e.currentTarget.checked })}
-								/>
+						<Collapsible.Content>
+							{#snippet child({ props })}
+								<Card.Content id="advanced-body" {...props}>
+							<label class="check" for="enqueue-upgrade">
+							<Checkbox
+								id="enqueue-upgrade"
+								checked={settings.global.enqueueUpgrade}
+								onCheckedChange={(v) => onglobal({ enqueueUpgrade: v })}
+							/>
 								Re-cook at higher quality after each song
 							</label>
-							<p class="hint">Runs from the audio already saved — no re-download.</p>
+							<Field.Description>Runs from the audio already saved — no re-download.</Field.Description>
 
 							<!-- Stacked: these default to the roformer names, the longest labels in any registry. -->
-							<label class="field" for="upgrade-engine">Upgrade splitter</label>
-							<select
+							<Field.Label for="upgrade-engine">Upgrade splitter</Field.Label>
+							<NativeSelect
 								id="upgrade-engine"
 								value={settings.global.upgradeEngine}
 								onchange={(e) => pickUpgradeEngine(e.currentTarget.value)}
@@ -1082,10 +1109,10 @@
 								{#each SEPARATOR_ENGINES as engine (engine.id)}
 									<option value={engine.id}>{engine.label}</option>
 								{/each}
-							</select>
+							</NativeSelect>
 
-							<label class="field" for="upgrade-model">Upgrade model</label>
-							<select
+							<Field.Label for="upgrade-model">Upgrade model</Field.Label>
+							<NativeSelect
 								id="upgrade-model"
 								value={settings.global.upgradeModel}
 								onchange={(e) => onglobal({ upgradeModel: e.currentTarget.value })}
@@ -1093,14 +1120,18 @@
 								{#each upgradeModels as model (model.id)}
 									<option value={model.id}>{model.label}</option>
 								{/each}
-							</select>
+							</NativeSelect>
 
 							{#if settings.global.enqueueUpgrade && !upgradeIsBetter}
 								<p class="warn">This is not better than the splitter above, so no upgrade will run.</p>
 							{/if}
-						</div>
-					{/if}
-				</div>
+						</Card.Content>
+							{/snippet}
+						</Collapsible.Content>
+					</Collapsible.Root>
+
+				</Card.Content>
+</Card.Root>
 
 				<!--
 				/metrics is ungated (there is no operator identity — any phone can POST /api/join), so it
@@ -1114,7 +1145,8 @@
 
 				<button class="done" onclick={() => goto('/')}>Done</button>
 			</div>
-		{/if}
+			</Tabs.Content>
+		</Tabs.Root>
 	</main>
 </div>
 
@@ -1138,59 +1170,24 @@
 	}
 
 	/* ── the scope tabs ─────────────────────────────────────────────────── */
-	.seg {
-		display: flex;
-		gap: var(--space-2xs);
-		margin: var(--space-2xs) 0 var(--space-lg);
-		padding: var(--space-2xs);
-		background: var(--card);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-pill);
-	}
-	.tab {
-		flex: 1;
-		/* var(--tap), not a smaller literal: touch-targets.test.ts checks every `button` rule that
-		   declares a box, and a 38px pill would be the one control on the page under the 44px floor. */
-		min-height: var(--tap);
-		border: 0;
-		border-radius: var(--radius-pill);
-		background: none;
-		color: var(--ink-dim);
-		/* 16px so iOS does not auto-zoom when the tab takes focus, same as every control below. */
-		font-size: var(--ph-text-base);
-		font-weight: 700;
-		cursor: pointer;
-	}
-	.tab.on {
-		/* --accent + --on-accent is the certified pair that carries a label: 5.09:1 (#840, XR-COL-12 —
-		   the fill and its ink are set together, never separately). */
-		background: var(--accent);
-		color: var(--on-accent);
-	}
+	/*
+	 * #913 S4: `.seg`, `.tab` and `.tab.on` left this file. Their appearance is ui/tabs's now, keyed on
+	 * shadcn's `data-slot` — scoped CSS cannot reach an element a child component renders. Both guarded
+	 * facts moved with it verbatim: `min-height: var(--tap)` (XR-PH-01) and the certified
+	 * --accent/--on-accent pair at 5.09:1 (#840, XR-COL-12).
+	 */
 
 	/* ── cards ──────────────────────────────────────────────────────────── */
 	/*
 	 * The same `.card` shape the remote uses for every row, so this page stops reading as a different
 	 * application. The uppercase head matches the remote's `.grouphead` treatment.
 	 */
-	.card {
-		background: var(--card);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		margin-bottom: var(--space-md);
-	}
-	.cardhead {
-		margin: 0;
-		padding: var(--space-lg) var(--space-lg) 0;
-		font-size: var(--ph-text-2xs);
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-	}
-	.cardbody {
-		padding: var(--space-3xs) var(--space-lg) var(--space-lg);
-	}
+	/*
+	 * #913 S4: `.card`, `.cardhead` and `.cardbody` left this file for ui/card. The visual change is
+	 * accepted deliberately — shadcn's card is a ring rather than a border, with its own spacing scale
+	 * and a normal-weight title where Encore's was small uppercase tracking. What it buys is the
+	 * Header/Title/Content structure this page was already hand-rolling eleven times.
+	 */
 	/* Only the server scope needs saying out loud; "You" and "Party" say it in the tab. */
 	.scope-note {
 		margin: 0 0 var(--space-md) var(--space-3xs);
@@ -1221,67 +1218,26 @@
 		}
 	}
 
-	.field {
-		display: block;
-		margin: var(--space-lg) 0 var(--space-2xs);
-		font-size: 0.82rem;
-		color: var(--ink-dim);
-	}
+	/*
+	 * #913 S4: `.field`, `.field-swatch`, `.hint` and the `.dim` label state left this file for
+	 * ui/field. The vertical rhythm they carried moved with them, because the registry's label has no
+	 * margins and 27 stacked fields would otherwise collapse against each other.
+	 */
 	/* The duration is inert while the intro is off; the label recedes with its control. */
-	.field.dim {
-		opacity: 0.5;
-	}
 	/* A trailing 1em swatch after flowing text can wrap onto its own line at 320px, reading as an orphan
 	   dot. A flex row keeps text and swatch together and lets them wrap as a unit if ever needed. */
-	.field-swatch {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-	}
-	select,
-	.text,
-	.name-input,
-	input[type='range'] {
-		width: 100%;
-		box-sizing: border-box;
-	}
-	select,
-	.text,
-	.name-input {
-		padding: 9px var(--space-md);
-		border-radius: var(--radius-btn);
-		border: 1px solid var(--line);
-		background: var(--card2);
-		color: var(--ink);
-		/* The tap floor for every settings field (#863): the padding here sized the box to 41px (select,
-		   UA default) and 35px (.text), both short of var(--tap). A native select's box is browser-owned,
-		   so this is verified on a real render by gate:measured rather than trusted. box-sizing:border-box
-		   above keeps the padding inside the floor. .name-input's own larger padding stays above it. */
-		min-height: var(--tap);
-		/* 16px, not 0.9rem (14.4px): iOS Safari auto-zooms on focusing any control under 16px and never
-		   zooms back out, leaving the operator stuck at 1.3x for the rest of the session. */
-		font-size: var(--ph-text-base);
-	}
-	/* A LAN address is read character by character to check it, so keep the digits monospaced and stop
-	   iOS from title-casing what the user types. The name field deliberately does NOT inherit this. */
-	.text {
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-		padding: 7px var(--space-md);
-	}
-	.text[aria-invalid='true'] {
-		border-color: var(--warn);
-	}
-	/* Your own name is the one field worth typing comfortably, so it keeps the sheet's larger box. */
-	.name-input {
-		padding: var(--space-lg) var(--space-xl);
-		font-size: 1.05rem;
-		border-radius: 14px;
-	}
-	.hint {
-		margin: var(--space-xs) 0 0;
-		font-size: 0.76rem;
-		color: var(--ink-dim);
-	}
+	/*
+	 * #913 S2: `select`, `.text` and `.name-input` left this rule — their appearance moved INTO
+	 * ui/input and ui/native-select, because Svelte's scoped CSS cannot reach an element inside a child
+	 * component and a call-site utility is minted by nothing under `source(none)`. The range stays
+	 * native until its Slider rebuild, so it keeps the rule.
+	 */
+	/*
+	 * #913 S3: the range sliders are <Slider> now. Their geometry — a 28px thumb on a 6px --track-bg
+	 * rail at var(--tap) — moved into ui/slider, and with it the two parallel ::-webkit-slider-* and
+	 * ::-moz-range-* rule sets a native range needed. Bits UI builds the control from real elements, so
+	 * one set of rules replaces both. Width comes from the component too.
+	 */
 	/*
 	 * A live swatch beside the label, so the choice is visible without walking to the TV. It carries no
 	 * text, so it needs no contrast bar of its own — and since #425 there is no bar on the stage colour
@@ -1323,43 +1279,6 @@
 	 * gradient track. That slider is gone — the stage is a colour input now — so the exclusion went with
 	 * it rather than being left behind as a selector matching nothing.
 	 */
-	input[type='range'] {
-		-webkit-appearance: none;
-		appearance: none;
-		height: var(--tap);
-		background: transparent;
-		cursor: pointer;
-	}
-	input[type='range']::-webkit-slider-runnable-track {
-		height: 6px;
-		border-radius: var(--radius-pill);
-		background: var(--track-bg);
-	}
-	input[type='range']::-moz-range-track {
-		height: 6px;
-		border-radius: var(--radius-pill);
-		background: var(--track-bg);
-	}
-	input[type='range']::-webkit-slider-thumb {
-		-webkit-appearance: none;
-		appearance: none;
-		width: 28px;
-		height: 28px;
-		/* Centre the 28px thumb on the 6px track — WebKit anchors the thumb to the track top otherwise. */
-		margin-top: -11px;
-		border-radius: 50%;
-		background: var(--accent);
-		border: 3px solid var(--ink);
-		cursor: pointer;
-	}
-	input[type='range']::-moz-range-thumb {
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		background: var(--accent);
-		border: 3px solid var(--ink);
-		cursor: pointer;
-	}
 	.warn {
 		margin: var(--space-xs) 0 0;
 		font-size: 0.76rem;
@@ -1399,10 +1318,12 @@
 		min-height: var(--tap);
 		font-size: 0.86rem;
 	}
-	.check input {
-		width: 18px;
-		height: 18px;
-	}
+	/*
+	 * #913 S3: was `.check input { width: 18px; height: 18px }`. The glyph is now <Checkbox>, which
+	 * carries its own `size-[18px]` — scoped CSS cannot reach inside a child component, so the size had
+	 * to move with it. The TAP TARGET is unchanged and still this label's `min-height: var(--tap)`,
+	 * which is what #863 settled and what touch-targets.test.ts examines.
+	 */
 
 	/* ── the dashboard links ────────────────────────────────────────────── */
 	/*

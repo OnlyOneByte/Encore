@@ -115,7 +115,9 @@ test('#741 F2: ProcessingCard renders a distinct failed treatment', () => {
 	expect(m![1]).toMatch(/status\s*===\s*'failed'/);
 	expect(processingCard).toMatch(/class:failed=\{failed\}/);
 	// on the failed branch the progress bar is not rendered (a bar near 0 reads as a stalled cook).
-	expect(processingCard).toMatch(/\{#if\s+failed\}[\s\S]*?\{:else\}[\s\S]*?<div class="bar">/);
+	// #913 S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
+	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged.
+	expect(processingCard).toMatch(/\{#if\s+failed\}[\s\S]*?\{:else\}[\s\S]*?<Progress/);
 	// and it takes the shared danger family, not a fourth palette.
 	expect(processingCard).toMatch(/\.proc\.failed\s*\{[^}]*var\(--danger-line\)/);
 });

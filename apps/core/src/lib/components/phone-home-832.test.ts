@@ -104,25 +104,22 @@ test('the transport is disabled when there is nothing for it to act on', () => {
 	expect(btn(playing, 'skip').disabled).toBe(false);
 });
 
-test('the live controls render in the disclosure BODY, never in its summary (XR-PH-15)', () => {
-	const host = render(HeroWithControls, { controlsSummary: 'Guide vocals 20% · Key −2' });
-	const toggle = host.querySelector('.tools-toggle') as HTMLButtonElement;
-	expect(toggle).not.toBeNull();
-	expect(toggle.getAttribute('aria-expanded')).toBe('false');
-	// Collapsed: the summary states where the controls stand, and the control itself is NOT rendered.
-	expect(host.textContent).toContain('Guide vocals 20% · Key −2');
-	expect(host.querySelector('.tools-toggle input')).toBeNull();
-	expect(host.querySelector('.stub-controls')).toBeNull();
+/*
+ * MOVED TO THE LAYOUT RUNG BY #913 S5: 'the live controls render in the disclosure BODY, never in its
+ * summary (XR-PH-15)'.
+ *
+ * The hero's disclosure is a Bits UI Collapsible now, which reads `getBoundingClientRect()` to publish
+ * its content height. The mount rung replaces that accessor with a throw, because happy-dom fabricates
+ * a zero and a fabricated zero is worse than no answer (XR-VER-03) — so the hero can no longer be
+ * mounted here at all, and faking the geometry to keep this test would manufacture exactly the silent
+ * green that refusal exists to prevent.
+ *
+ * Both halves of the claim now live in `apps/core/e2e/probes/p16-hero-live-controls.mjs`, against a
+ * real render rather than a stub: that the disclosure starts closed with its summary standing in for
+ * the controls and the control not visible, and that once opened the control sits in the body and never
+ * inside the toggle. p16 is where the neighbouring XR-PH-15 and XR-PH-03 claims already live.
+ */
 
-	toggle.click();
-	flushSync();
-	expect(toggle.getAttribute('aria-expanded')).toBe('true');
-	const range = host.querySelector('input[type="range"]');
-	expect(range).not.toBeNull();
-	// The range lives inside the disclosure body — and the body is not a drag surface.
-	expect(host.querySelector('.tools-body .stub-controls')).not.toBeNull();
-	expect(range!.closest('.tools-toggle')).toBeNull();
-});
 
 test('no disclosure renders at all when there are no live controls to put in it', () => {
 	const host = render(NowPlayingHero, PLAYING);

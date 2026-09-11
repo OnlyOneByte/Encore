@@ -10,6 +10,7 @@
 	import Bars from '$lib/charts/Bars.svelte';
 	import Trend from '$lib/charts/Trend.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
+	import * as Card from '$lib/components/ui/card';
 
 	interface Stats {
 		library: { ready: number; catalog: number };
@@ -59,44 +60,76 @@
 		<p class="note" role="status">Loading…</p>
 	{:else}
 		<div class="tiles">
-			<div class="card tile primary">
+			<div class="tile-slot primary">
+				<Card.Root>
+					<Card.Content>
+						<div class="tile">
 				<span class="n">{stats.sings.total}</span>
 				<span class="k">songs sung</span>
 				<span class="sub">{stats.sings.window} in the last {stats.window.days} days</span>
-			</div>
-			<div class="card tile">
+		</div>
+	</Card.Content>
+</Card.Root>
+</div>
+			<div class="tile-slot">
+<Card.Root>
+	<Card.Content>
+		<div class="tile">
 				<span class="n">{stats.library.ready}</span>
 				<span class="k">ready to sing</span>
 				<!-- The catalog count is a footnote, never the headline: it counts every search result ever
 				     seen (271 behind 7 singable songs on the live box), so quoting it as "the library"
 				     overstates it by ~40x. -->
 				<span class="sub">of {stats.library.catalog} found</span>
-			</div>
-			<div class="card tile">
+		</div>
+	</Card.Content>
+</Card.Root>
+</div>
+			<div class="tile-slot">
+<Card.Root>
+	<Card.Content>
+		<div class="tile">
 				<span class="n">{stats.sings.distinctSongs}</span>
 				<span class="k">different songs</span>
-			</div>
+		</div>
+	</Card.Content>
+</Card.Root>
+</div>
 		</div>
 
-		<div class="card">
-			<h2>Most sung</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Most sung</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			<Bars
 				rows={stats.topSongs.map((s) => ({ label: s.title, value: s.plays }))}
 				unit="sings"
 				empty="Nobody has sung yet"
 			/>
-		</div>
+	</Card.Content>
+</Card.Root>
 
 		{#if recentDiffers}
-			<div class="card">
-				<h2>Hot lately</h2>
+			<Card.Root>
+	<Card.Header>
+		<Card.Title>Hot lately</Card.Title>
+	</Card.Header>
+	<Card.Content>
+				
 				<Bars rows={stats.topRecent.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" />
 				<p class="note">Last {stats.window.days} days.</p>
-			</div>
+	</Card.Content>
+</Card.Root>
 		{/if}
 
-		<div class="card">
-			<h2>Top artists</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Top artists</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			<Bars
 				rows={stats.topArtists.map((a) => ({ label: a.artist, value: a.plays }))}
 				unit="sings"
@@ -105,13 +138,19 @@
 			<!-- Honest about the gap rather than silently short: the normalizer stores null instead of
 			     guessing a low-confidence artist, so some sung songs cannot be attributed at all. -->
 			<p class="note">Songs we couldn't match to an artist aren't counted.</p>
-		</div>
+	</Card.Content>
+</Card.Root>
 
-		<div class="card">
-			<h2>Sings per day</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Sings per day</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			<Trend points={stats.perDay} since={stats.window.since} until={now} />
 			<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
-		</div>
+	</Card.Content>
+</Card.Root>
 	{/if}
 </section>
 
@@ -138,27 +177,15 @@
 	 * card rendered its content flush against its own border, which makes the border read as a line
 	 * drawn THROUGH the content rather than a frame around it.
 	 */
-	.card {
-		padding: 1rem 1.1rem;
-		/* A grid item defaults to min-width:auto = its min-content, so the Trend chart's row of
-		   44px-wide day buttons (#144) would otherwise size this card to its full scroll width and
-		   overflow the page. min-width:0 lets the card shrink to its track, which bounds the chart
-		   so its own overflow-x scrolls the days instead of stretching the layout. */
-		min-width: 0;
-	}
 	/*
 	 * Section headers are the wayfinding on a page that is one long scroll, so they take full-strength
 	 * ink. At --ink-dim they were the same grey as the footnotes they sit above, which put the
 	 * navigation and the fine print at the same visual level.
 	 */
-	h2 {
-		font-size: var(--ph-text-base);
-		margin: 0 0 0.9rem;
-		color: var(--ink);
-		font-weight: 600;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-	}
+	/*
+	 * #913 S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
+	 * title where this was hand-styled, which is part of the visual change accepted for S4.
+	 */
 	/*
 	 * 1fr is safe now that .stats itself is capped — the reason for a fixed max was an uncapped shell
 	 * stretching each tile to ~350px, and capping the container solved that at the root. A fixed 260px
@@ -172,6 +199,31 @@
 	 * `min(100%, …)` is what keeps the floor itself from becoming the overflow — a floor wider than the
 	 * row would push a single track past the viewport, which is the same defect one level up.
 	 */
+	/*
+	 * The wrapper that carries the tile into the grid.
+	 *
+	 * S8 replaced a single element that was grid item, surface and layout at once with a wrapper around
+	 * <Card.Root>. The wrapper became the grid item and stretches to the row's height, but `Card.Root` is
+	 * `flex flex-col` with no `h-full`, so it sized to its own CONTENT and the three cards' bottom edges
+	 * stair-stepped instead of lining up. `display: grid` makes the single child fill the slot, which is
+	 * what the shared surface used to do for free by BEING the grid item.
+	 *
+	 * The gap is content-dependent, so no single number describes it: tile 1 sets `.primary .n` to 2.6rem
+	 * against the others' 1.5rem, and only two of the three carry a `.sub` line, which itself wraps at
+	 * narrow columns. Measured examples ranged from ~27px to ~51px of bottom-edge spread at 1080px
+	 * depending on the strings, against 0.0px with this rule present. Deliberately NOT asserted as a
+	 * figure anywhere: rendered geometry cannot be measured on the mount rung, which breaks
+	 * `getBoundingClientRect` on purpose (XR-VER-03). What IS guarded is that the class resolves to a rule
+	 * at all — `app-class-resolution-913.test.ts` — because the defect was the missing rule, not the pixel
+	 * count.
+	 *
+	 * Phone width hid it entirely: `auto-fit` collapses to one column, so every tile is its own row and
+	 * there is no shared height to disagree with. That is why the eyes-on pass at 390px missed it.
+	 */
+	.tile-slot {
+		display: grid;
+	}
+
 	.tiles {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 9em), 1fr));
@@ -196,6 +248,12 @@
 			grid-column: 1 / -1;
 		}
 	}
+	/*
+	 * #913 S8 fix: the grid is on the element that CONTAINS the spans, INSIDE Card.Content. It was on the
+	 * outer wrapper for one build, where it did nothing — Card.Content sits between, so each tile's
+	 * number, label and footnote laid out inline and read as a single wrapping line. A screenshot caught
+	 * it; nothing else could, because both elements exist and both rules apply, just not to each other.
+	 */
 	.tile {
 		display: grid;
 		gap: 0.2rem;

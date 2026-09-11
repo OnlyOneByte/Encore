@@ -51,6 +51,12 @@
 	import { positionWords } from '$lib/position-sentence';
 	import type { MediaStatus } from '@encore/shared';
 	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '@encore/shared';
+	import { Toaster } from '$lib/components/ui/sonner';
+	import { toast } from 'svelte-sonner';
+	import * as Collapsible from '$lib/components/ui/collapsible';
+	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { Spinner } from '$lib/components/ui/spinner';
+	import * as Empty from '$lib/components/ui/empty';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
@@ -553,46 +559,38 @@
 		}
 	}
 
-	// transient error toast
-	let errorMsg = $state('');
-	let errorTimer: ReturnType<typeof setTimeout> | undefined;
+	/*
+	 * TOASTS ARE SONNER'S NOW (#913 S5).
+	 *
+	 * What this replaced: two hand-rolled fixed-position surfaces, two `setTimeout` timers, a
+	 * `bind:clientHeight` measurement of the undo toast, and an `$effect` publishing `--undo-h` to
+	 * `documentElement` with a teardown against the #598 §14 leak class. The error toast's offset had to
+	 * track that MEASURED height because a real “title — artist” wraps to an unpredictable number of
+	 * lines, and the two surfaces had already collided once — "both sat at the same bottom and z-index,
+	 * so one drew over the other and a guest saw only whichever rendered last".
+	 *
+	 * Sonner stacks its own toasts, so every part of that chain is deleted rather than ported: no
+	 * measurement, no published custom property, no leak to tear down, and the overlap it existed to fix
+	 * cannot recur. The 5s undo window and the 4s error window are `duration`, and Undo is a real toast
+	 * ACTION rather than a button this page positions and sizes itself.
+	 *
+	 * The Toaster docks above the measured band with `offset="var(--dock-h, 0px)"`, which works because
+	 * `--dock-h` is published on `documentElement` (see the note at its writer above) and so is readable
+	 * from sonner's portal.
+	 */
 	function showError(msg: string) {
-		errorMsg = msg;
-		clearTimeout(errorTimer);
-		errorTimer = setTimeout(() => (errorMsg = ''), 4000);
+		toast.error(msg, { duration: 4000 });
 	}
 
-	// remove + undo toast
-	let undo = $state<{ mediaId: string; title: string } | null>(null);
-	let undoTimer: ReturnType<typeof setTimeout> | undefined;
-	// The undo toast's real rendered height, bound to its clientHeight in the markup. The error toast
-	// docks ABOVE it, and the toast wraps to as many lines as a real “title — artist” needs, so the
-	// error toast's offset must track this MEASURED value, not a constant (the same reason --dock-h is
-	// measured). Published as 0 when no undo toast is up, so the error toast then docks above the band.
-	let undoH = $state(0);
-	$effect(() => {
-		document.documentElement.style.setProperty('--undo-h', `${undo ? undoH : 0}px`);
-		// Tear the inline property down on unmount. Without this it OUTLIVES the page on documentElement,
-		// so a stale --undo-h keeps skewing the --error-dock stack (calc(... + var(--undo-h) ...)) after
-		// this route is gone — the same leak class #598 §14, documented in full at --dock-h above. This
-		// effect always writes (0 when no toast), so it always owns the property and clears it
-		// unconditionally.
-		return () => {
-			document.documentElement.style.removeProperty('--undo-h');
-		};
-	});
 	function removeWithUndo(entry: QueueEntry) {
+		const mediaId = entry.mediaId;
+		const title = mediaTitle(mediaId);
 		store?.removeEntry(entry.id);
 		if (navigator.vibrate) navigator.vibrate(8);
-		undo = { mediaId: entry.mediaId, title: mediaTitle(entry.mediaId) };
-		clearTimeout(undoTimer);
-		undoTimer = setTimeout(() => (undo = null), 5000);
-	}
-	function doUndo() {
-		if (!undo) return;
-		store?.addSong(undo.mediaId);
-		undo = null;
-		clearTimeout(undoTimer);
+		toast(`Removed \u201c${title}\u201d`, {
+			duration: 5000,
+			action: { label: 'Undo', onClick: () => store?.addSong(mediaId) }
+		});
 	}
 
 	// zero-keystroke shortcuts (shown when the search box is empty)
@@ -1297,13 +1295,21 @@
 				-->
 				{#if hasRange}
 					<div class="range">
-						<button class="range-toggle" aria-expanded={rangeOpen} onclick={() => (rangeOpen = !rangeOpen)}>
+						<!-- #913 S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> stays
+							here via Bits UI's `child` snippet, so its scoped class in this file still applies. -->
+						<Collapsible.Root bind:open={rangeOpen}>
+							<Collapsible.Trigger>
+								{#snippet child({ props })}
+									<button class="range-toggle" {...props}>
 							<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
 							Vocal range
 							<span class="range-peek">{rangeText}</span>
 						</button>
-						{#if rangeOpen}
-							<div class="range-body">
+								{/snippet}
+							</Collapsible.Trigger>
+							<Collapsible.Content>
+								{#snippet child({ props })}
+									<div class="range-body" {...props}>
 								<div class="range-facts">
 									<span class="range-label">{rangeText}</span>
 									{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
@@ -1311,7 +1317,10 @@
 								{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
 								<RangeBar profile={profile} keyShift={playback.keyShift} />
 							</div>
-						{/if}
+								{/snippet}
+							</Collapsible.Content>
+						</Collapsible.Root>
+
 					</div>
 				{/if}
 
@@ -1368,7 +1377,11 @@
 			<p class="reorder-note">{reorderNote}</p>
 		{/if}
 		{#if queued.length === 0}
-			<p class="empty">Queue's empty — add a song to start the party.</p>
+			<Empty.Root>
+				<Empty.Header>
+					<Empty.Description>Queue's empty — add a song to start the party.</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
 		{:else}
 			{#each queued as e, i (e.id)}
 				{@const s = singerOf(e.singerId)}
@@ -1494,17 +1507,21 @@
 			<div aria-busy="true" aria-label="Searching…">
 				{#each [0, 1, 2] as i (i)}
 					<div class="skel-row">
-						<div class="skel-thumb"></div>
+						<Skeleton variant="thumb" />
 						<div class="skel-text">
-							<div class="skel-line"></div>
-							<div class="skel-line short"></div>
+							<Skeleton />
+							<Skeleton variant="line-short" />
 						</div>
 					</div>
 				{/each}
 			</div>
 		{/if}
 		{#if !searching && rawResults.length === 0 && readyResults.length === 0}
-			<p class="empty">No results. YouTube search needs yt-dlp installed on the server.</p>
+			<Empty.Root>
+				<Empty.Header>
+					<Empty.Description>No results. YouTube search needs yt-dlp installed on the server.</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
 		{/if}
 		{@const rawRows = unaccounted(rawResults).reverse()}
 		{#if rawRows.length}
@@ -1567,7 +1584,11 @@
 		-->
 		{#if searchActive && !readyStack.length && library.length}
 			{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
-			<p class="empty">{empty.message}</p>
+			<Empty.Root>
+				<Empty.Header>
+					<Empty.Description>{empty.message}</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
 			{#if empty.showAllCount !== null}
 				<div class="showall-row">
 					<button class="chip ok chip-icon" onclick={clearSearch}
@@ -1602,7 +1623,7 @@
 -->
 {#if me}
 	<div class="search-dock" bind:clientHeight={dockH}>
-		<div class="card searchbox">
+		<div class="searchbox">
 			<span class="search-mark"><Icon name="search" /></span>
 			<input
 				bind:value={query}
@@ -1610,21 +1631,20 @@
 				aria-label="Search a song or artist"
 				placeholder="Search a song or artist…"
 			/>
-			{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
+			{#if searching}<Spinner aria-label="Searching" />{/if}
 		</div>
 	</div>
 {/if}
 
-{#if undo}
-	<div class="undo-toast" role="status" bind:clientHeight={undoH}>
-		<span>Removed “{undo.title}”</span>
-		<button onclick={doUndo}>Undo</button>
-	</div>
-{/if}
-
-{#if errorMsg}
-	<div class="error-toast" role="alert">{errorMsg}</div>
-{/if}
+<!--
+	One toast surface for the whole page, docked above the measured band. `richColors` is off: the error
+	tone comes from Encore's own `--destructive`, which the vendored component points at.
+-->
+<Toaster
+	position="bottom-center"
+	offset="var(--dock-h, 0px)"
+	style="--width: min(92vw, 420px);"
+/>
 
 <!--
 	Polite live region for ambient queue activity a screen reader would otherwise miss (a guest's add,
@@ -1906,7 +1926,19 @@
 		background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 88%, transparent));
 		border-top: 1px solid var(--line);
 	}
+	/*
+	 * #913 S4: the dock carries the card SURFACE itself rather than the global `.card` class, and is
+	 * deliberately NOT a <Card.Root>. It is a composed control — mark, input, spinner in a row — and its
+	 * children are styled from this file by descendant selectors like `.searchbox input`. Moving the
+	 * container into a component would leave those selectors with no matching ancestor, because Svelte
+	 * scopes the page's `.searchbox` to this file and the component's element does not carry that scope.
+	 * shadcn's Card is also `flex flex-col` with its own padding, which is the opposite of what a
+	 * single-row search field needs.
+	 */
 	.searchbox {
+		background: var(--card);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
 		display: flex;
 		align-items: center;
 		gap: var(--space-md);
@@ -2153,20 +2185,6 @@
 		margin: var(--space-2xs) 0 0;
 	}
 
-	.search-spinner {
-		width: 15px;
-		height: 15px;
-		flex: none;
-		border-radius: 50%;
-		border: 2px solid var(--line);
-		border-top-color: var(--accent2);
-		animation: spin 0.7s linear infinite;
-	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
 	.skel-row {
 		display: flex;
 		align-items: center;
@@ -2177,39 +2195,13 @@
 		background: var(--card);
 		border: 1px solid var(--line);
 	}
-	.skel-thumb {
-		width: 44px;
-		height: 44px;
-		flex: none;
-		border-radius: var(--radius-btn);
-	}
 	.skel-text {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-sm);
 	}
-	.skel-line {
-		height: 12px;
-		border-radius: 6px;
-	}
-	.skel-line.short {
-		width: 55%;
-	}
 	.skel-thumb,
-	.skel-line {
-		background: linear-gradient(90deg, var(--card2) 25%, var(--line) 37%, var(--card2) 63%);
-		background-size: 400% 100%;
-		animation: shimmer 1.3s ease-in-out infinite;
-	}
-	@keyframes shimmer {
-		0% {
-			background-position: 100% 0;
-		}
-		100% {
-			background-position: -100% 0;
-		}
-	}
 	/*
 	 * Docked-toast stacking, measured UP from the docked primary button. --dock-h is bound to that band's
 	 * clientHeight, and the BAND's own padding already includes env(safe-area-inset-bottom), so the
@@ -2226,61 +2218,6 @@
 	:root {
 		--undo-dock: calc(var(--dock-h, 0px) + 14px);
 		--error-dock: calc(var(--undo-dock) + var(--undo-h, 0px) + 14px);
-	}
-	.undo-toast {
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: var(--undo-dock);
-		margin-inline: auto;
-		width: fit-content;
-		display: flex;
-		align-items: center;
-		gap: var(--space-xl);
-		z-index: var(--z-dock);
-		background: var(--card2);
-		border: 1px solid var(--line);
-		border-radius: 14px;
-		padding: var(--space-lg) var(--space-2xl);
-		box-shadow: var(--shadow);
-		font-size: var(--ph-text-md);
-		max-width: 90vw;
-	}
-	.undo-toast button {
-		/* The only interactive control on the phone that fell under the app's own tap floor — and the
-		   one on a 5-second timer, so the hardest to hit in time. Raised to var(--tap) via min-height (the
-		   row is align-items:center, so it grows to fit and nothing else shifts); the padding-only box
-		   it had (6px 12px) slipped past the generic touch-target guard, which only flags an explicit
-		   height. touch-targets.test.ts now covers padding-only controls too. */
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-height: var(--tap);
-		border: 0;
-		background: var(--accent);
-		color: var(--on-accent);
-		font-weight: 700;
-		border-radius: 8px;
-		padding: var(--space-xs) var(--space-xl);
-		cursor: pointer;
-	}
-	.error-toast {
-		/* Offset above the undo toast: both sat at the same bottom and z-index, so one drew over the
-		   other and a guest saw only whichever rendered last. */
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: var(--error-dock);
-		margin-inline: auto;
-		width: fit-content;
-		z-index: var(--z-dock);
-		background: var(--danger-bg);
-		color: var(--danger-ink);
-		border: 1px solid var(--danger-line);
-		padding: 11px var(--space-2xl);
-		border-radius: var(--radius-sm);
-		font-size: 0.88rem;
-		max-width: 90vw;
 	}
 
 	/* Matches the gear beside it: a real var(--tap) target, not text that happens to be tappable. An
@@ -2347,17 +2284,12 @@
 	}
 
 	/*
-	 * Respect a reduced-motion preference. Both remaining animations otherwise run unguarded and
-	 * indefinitely: the search spinner and the skeleton shimmer. Disable them; a static spinner is a
-	 * fine resting state. (The mic pulse this block also covered went away with live scoring.)
+	 * #913 S7: this file's reduce arm is GONE, because the two animations it covered left with their
+	 * elements — the search spinner to ui/spinner and the skeleton shimmer to ui/skeleton. Both are
+	 * now declared inside a `prefers-reduced-motion: no-preference` block in those components, which
+	 * makes motion OPT-IN rather than declared-then-reset: there is no reset left to lose the cascade
+	 * to a later rule (#337). Nothing in this file animates any more.
 	 */
-	@media (prefers-reduced-motion: reduce) {
-		.search-spinner,
-		.skel-thumb,
-		.skel-line {
-			animation: none;
-		}
-	}
 
 	/*
 	 * Landscape / short viewports (e.g. a phone held sideways at 844×390). The docked band plus header

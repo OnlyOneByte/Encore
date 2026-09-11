@@ -39,7 +39,7 @@ test('showTags is gated on a READY row AND a non-empty tag list (#689)', () => {
 test('the tag chips render, keyed, guarded by showTags, inside the .chips wrapper (#689)', () => {
 	// the {#each} over tags, each a chip, keyed so nodes are reused
 	expect(src).toMatch(
-		/\{#if\s+showTags\}\{#each\s+tags!?\s+as\s+tag\s*\(tag\)\}<span\s+class="chip tag">\{tag\}<\/span>\{\/each\}\{\/if\}/
+		/\{#if\s+showTags\}\{#each\s+tags!?\s+as\s+tag\s*\(tag\)\}<Badge variant="tag">\{tag\}<\/Badge>\{\/each\}\{\/if\}/
 	);
 	// the .chips wrapper condition must include showTags, or the whole block never renders when tags
 	// are the only thing to show (a ready row with tags but no key/views/kind).
@@ -47,10 +47,16 @@ test('the tag chips render, keyed, guarded by showTags, inside the .chips wrappe
 });
 
 test('the tag chip is a NEUTRAL family, not a status tint (#689)', () => {
-	// a .chip.tag rule must exist (a tag is a describing word, not a warning/ok/failed status).
-	expect(src).toMatch(/\.chip\.tag\s*\{/);
-	// and it must NOT borrow the semantic status backgrounds used by the state chip.
-	const m = src.match(/\.chip\.tag\s*\{([^}]*)\}/);
-	expect(m).not.toBeNull();
-	expect(m![1]).not.toMatch(/var\(--ok\b|var\(--warn\b|var\(--danger\b/);
+	/*
+	 * #913 S6: the tone lives in ui/badge now, as the `tag` variant's own rules. The claim is unchanged
+	 * and still the point — a tag is a describing word, not a warning — so it is asserted against the
+	 * rules that actually paint it rather than against a class SongRow no longer writes.
+	 */
+	const badge = readFileSync(join(import.meta.dir, 'ui', 'badge', 'badge.svelte'), 'utf8');
+	expect(badge, 'ui/badge must define a tag tone').toMatch(/\.encore-chip-tag\s*\{/);
+	const accent = badge.match(/\.encore-chip-accent\s*\{([^}]*)\}/);
+	expect(accent, 'the tag tone builds on the accent wash').not.toBeNull();
+	expect(accent![1], 'a tag must not borrow a status colour').not.toMatch(/var\(--ok\b|var\(--warn\b|var\(--danger\b/);
+	// and the row must ask for THAT tone, not a status one.
+	expect(src).toMatch(/<Badge variant="tag">/);
 });

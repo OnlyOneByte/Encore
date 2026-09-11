@@ -28,6 +28,7 @@
 	import { page } from '$app/state';
 	import { safeNextPath } from '$lib/next-path';
 	import { roomPresenceSentence, type RoomPreview } from '$lib/room-presence-sentence';
+	import { Input } from '$lib/components/ui/input';
 
 	let name = $state('');
 	let color = $state<string>(SINGER_COLORS[0]);
@@ -171,11 +172,16 @@
 
 	<label class="name-field">
 		<span class="name-label">Your name</span>
-		<input
-			class="card name-input"
+		<!--
+			#913: the `join` variant reproduces this field's box exactly — the sheet's largest comfortable
+			padding and type, on `--card`. `maxlength` is a NUMBER here: the DOM coerced the string, but a
+			component prop is typed and would not.
+		-->
+		<Input
+			variant="join"
 			bind:value={name}
 			placeholder="e.g. Maya"
-			maxlength="32"
+			maxlength={32}
 			autocomplete="nickname"
 			enterkeyhint="go"
 			onkeydown={(e) => e.key === 'Enter' && join()}
@@ -201,7 +207,7 @@
 				{/if}
 			</p>
 		{/if}
-		<Button size="blockLg" shape="lg" disabled={!canJoin} onclick={join}>
+		<Button size="blockLg" disabled={!canJoin} onclick={join}>
 			{#if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
 		</Button>
 	</div>
@@ -281,12 +287,10 @@
 		text-transform: uppercase;
 		color: var(--ink-dim);
 	}
-	.name-input {
-		padding: var(--space-xl);
-		font-size: var(--ph-text-lg);
-		color: var(--ink);
-		background: var(--card);
-	}
+	/*
+	 * #913: `.name-input` moved into ui/input as its `join` variant. The declarations are unchanged;
+	 * scoped CSS here cannot reach the element the component renders.
+	 */
 	.join-main {
 		flex: 1;
 		padding: var(--space-3xl) var(--space-4xl);

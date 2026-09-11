@@ -8,6 +8,8 @@
   and expands the calendar itself instead of just plotting the rows it was handed.
 -->
 <script lang="ts">
+	import * as Empty from '$lib/components/ui/empty';
+	import * as Chart from '$lib/components/ui/chart';
 	interface Point {
 		day: string;
 		plays: number;
@@ -43,11 +45,22 @@
 </script>
 
 {#if total === 0}
-	<p class="empty">{empty}</p>
+	<Empty.Root>
+		<Empty.Header>
+			<Empty.Description>{empty}</Empty.Description>
+		</Empty.Header>
+	</Empty.Root>
 {:else}
 	<!-- role=group (not img): img would make the per-day buttons presentational to AT, hiding the
 	     counts. The group carries the summary via aria-label; each column button exposes its own day. -->
-	<div class="chart" role="group" aria-label="{total} sings over {calendar.length} days">
+	<!--
+		#913 S8: <Chart.Container> supplies the series config, so the column colour comes from
+		`--color-sings` rather than a hardcoded token reference. The marks stay Encore's own BUTTONS —
+		layerchart's rects are neither focusable nor individually labelled, and the per-day counts are the
+		point of this chart (see the role note below).
+	-->
+	<Chart.Container config={{ sings: { label: 'Sings', color: 'var(--accent)' } }}>
+		<div class="chart" role="group" aria-label="{total} sings over {calendar.length} days">
 		{#each calendar as slot (slot.day)}
 			<button
 				type="button"
@@ -63,6 +76,7 @@
 			</button>
 		{/each}
 	</div>
+	</Chart.Container>
 	<p class="axis">
 		<span>{calendar[0]?.day}</span>
 		<span>{calendar[calendar.length - 1]?.day}</span>
@@ -137,7 +151,12 @@
 	.bar {
 		width: 100%;
 		border-radius: 3px 3px 0 0;
-		background: var(--accent);
+		/*
+		 * The fallback is deliberate, not defensive noise: `--color-<series>` is emitted at RUNTIME by
+		 * ChartStyle from the `config` above, so no static scan can see it — and if a series ever leaves
+		 * that config, the mark still paints its own token instead of nothing.
+		 */
+		background: var(--color-sings, var(--accent));
 	}
 	/*
 	 * A day with no plays is a faint 2px tick on the baseline, not a full-height ghost.
@@ -162,9 +181,5 @@
 		margin: 0.4rem 0 0;
 		font-variant-numeric: tabular-nums;
 	}
-	.empty {
-		color: var(--ink-dim);
-		font-size: var(--ph-text-md);
-		margin: 0;
-	}
+	/* #913 S7: `.empty` is ui/empty's now. */
 </style>

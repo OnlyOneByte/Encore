@@ -308,6 +308,23 @@ one of the four claims checkable. Rows below are written against the correct run
 
 # B. Anti-vacuity — every guard must be able to fail
 
+**A worked consequence (#913).** Bringing shadcn's `Slider` in showed what this invariant costs and why
+the cost is worth paying. Bits UI's slider needs a layout engine twice over: it reads `offsetWidth`,
+which this invariant replaces with a throw, and it observes its track with `ResizeObserver`, which the
+mount rung does not install and has its own arm asserting is absent. So four `hero-live-controls-835`
+arms — the two XR-PH-15 states, XR-PH-03's containment claim, and the summary-vs-body placement — could
+no longer be decided on the mount rung once GuidingTrack used that component.
+
+They moved to `e2e/probes/p16-hero-live-controls.mjs` rather than being kept alive with a faked width
+and a faked observer, which is the choice this invariant exists to force: two fictions stacked to keep a
+test mounted would have produced exactly the silent green it forbids. Reaching the degraded state on a
+real render needed a fixture capability that did not exist — `FAKE_NO_VOCALS=1` on the fake stems
+worker, because `hasGuidingTrack()` is `isPlayable(m) && !!m.vocalsRef` — and the probe bails rather
+than reports when either fixture is not in the state its arm needs.
+
+What was given up is stated on the record: those four assertions no longer run where there is no
+Chromium. That is the trade this invariant asks for, not a defect in it.
+
 ### XR-VER-04 — Every design guard has a recorded mutation that makes it fail
 
 | | |

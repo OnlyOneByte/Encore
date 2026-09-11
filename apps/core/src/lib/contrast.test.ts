@@ -237,8 +237,17 @@ test('--on-accent passes AA on --accent (the actionable pair)', () => {
 test('the accent fill is a background by design, and nothing draws text in it', () => {
 	const files = [join(SRC, 'app.css'), ...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 	const offenders: string[] = [];
+	/*
+	 * #913: scan CSS, not script text. This walked whole-file text, which was safe while every `.svelte`
+	 * file held CSS only inside `<style>`. A vendored shadcn component puts Tailwind CLASS NAMES in a
+	 * `<script>` string (`outline-none select-none …`), and the declaration regex below matched inside
+	 * it and reported the whole variant map as a bad outline colour. An `outline` token in a class list
+	 * is not a CSS declaration, so the fix is scope, not a weaker pattern.
+	 */
+	const cssOf = (src: string, file: string) =>
+		file.endsWith('.css') ? src : [...src.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]!).join('\n');
 	for (const f of files) {
-		for (const block of readFileSync(f, 'utf8').matchAll(/\{([^{}]*)\}/g)) {
+		for (const block of cssOf(readFileSync(f, 'utf8'), f).matchAll(/\{([^{}]*)\}/g)) {
 			const body = block[1]!;
 			// A `color:` set to the accent fill. A background, border or fill is the intended use.
 			if (/(^|[;\s])color:\s*var\(--accent\)/.test(body)) {
@@ -261,7 +270,7 @@ test('the focus ring is visible against every surface it can appear on', () => {
 /*
  * The test above proves --focus is SAFE on every surface a ring can land on, but it never looks at
  * what colour any rule actually draws a ring IN -- so a rule ringing in --accent (a darker
- * background token, 3.63:1 on --card2 vs --focus's 5.08:1) or, worse, in the surface colour itself
+ * background token, 3.10:1 on --card2 vs --focus's 5.08:1) or, worse, in the surface colour itself
  * (an invisible ring) sailed past it. #149: the queue peek and every Trend column rang in --accent.
  * This closes the class in the same belt-and-braces shape as the --grad and --accent scans: every
  * `outline`/`outline-color` that names a colour must name --focus. A bare reset (`outline: none`,
@@ -274,8 +283,17 @@ test('every focus outline is drawn in --focus, not --accent or the surface colou
 	// A shorthand `outline:` or a longhand `outline-color:` that carries a colour. Not matched:
 	// outline-offset / outline-width / outline-style (no colour), and a bare `outline: none|0` reset.
 	const outlineRule = /(?:^|[;\s])outline(?:-color)?:\s*([^;]+?)\s*(?:;|$)/g;
+	/*
+	 * #913: scan CSS, not script text. This walked whole-file text, which was safe while every `.svelte`
+	 * file held CSS only inside `<style>`. A vendored shadcn component puts Tailwind CLASS NAMES in a
+	 * `<script>` string (`outline-none select-none …`), and the declaration regex below matched inside
+	 * it and reported the whole variant map as a bad outline colour. An `outline` token in a class list
+	 * is not a CSS declaration, so the fix is scope, not a weaker pattern.
+	 */
+	const cssOf = (src: string, file: string) =>
+		file.endsWith('.css') ? src : [...src.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]!).join('\n');
 	for (const f of files) {
-		for (const block of readFileSync(f, 'utf8').matchAll(/\{([^{}]*)\}/g)) {
+		for (const block of cssOf(readFileSync(f, 'utf8'), f).matchAll(/\{([^{}]*)\}/g)) {
 			const body = block[1]!;
 			for (const m of body.matchAll(outlineRule)) {
 				const value = m[1]!.trim();
@@ -305,8 +323,17 @@ test('every focus outline is drawn in --focus, not --accent or the surface colou
 test('no rule puts a text color on var(--grad)', () => {
 	const files = [join(SRC, 'app.css'), ...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 	const offenders: string[] = [];
+	/*
+	 * #913: scan CSS, not script text. This walked whole-file text, which was safe while every `.svelte`
+	 * file held CSS only inside `<style>`. A vendored shadcn component puts Tailwind CLASS NAMES in a
+	 * `<script>` string (`outline-none select-none …`), and the declaration regex below matched inside
+	 * it and reported the whole variant map as a bad outline colour. An `outline` token in a class list
+	 * is not a CSS declaration, so the fix is scope, not a weaker pattern.
+	 */
+	const cssOf = (src: string, file: string) =>
+		file.endsWith('.css') ? src : [...src.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1]!).join('\n');
 	for (const f of files) {
-		for (const block of readFileSync(f, 'utf8').matchAll(/\{([^{}]*)\}/g)) {
+		for (const block of cssOf(readFileSync(f, 'utf8'), f).matchAll(/\{([^{}]*)\}/g)) {
 			const body = block[1]!;
 			if (!body.includes('var(--grad)')) continue;
 			// `-webkit-background-clip:text` with `color:transparent` is the wordmark: the gradient IS
@@ -359,7 +386,14 @@ test('no card root dims its own subtree with opacity', () => {
 		rootsScanned++;
 		const rs = rules(src);
 
-		// Surfaces this card root paints on ITSELF, plus the shared `.card` default from app.css.
+		/*
+		 * Surfaces this card root paints on ITSELF, seeded with `card`.
+		 *
+		 * #913 S4 note: that seed used to be justified as "the shared `.card` default from app.css", and
+		 * that rule is now deleted — every card is <Card.Root>. The seed is still correct, and for a
+		 * better reason: the component paints `bg-card`, which resolves through the semantic bridge to
+		 * the same `--card` token. So a card root still sits on `--card` whether or not it says so.
+		 */
 		const surfaces = new Set(['card']);
 		// Text tokens the subtree draws in, plus the body ink it inherits. Two exclusions: a rule that
 		// sets BOTH a colour and a background carries its own surface (the .seq bubble), and an
