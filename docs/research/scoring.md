@@ -32,7 +32,7 @@ on/off:
 
 Tier 1 is cheap, robust and defensible today. Tier 2 is only honest once capture is solved.
 
-**A hard constraint either way: scoring must never gate readiness.** The cook is
+**A hard constraint either way: scoring must never gate readiness.** The process is
 fetch → stems → align and it ends there. A song is singable without a score, and anything that makes
 readiness wait on analysis strands the library — this project has already been bitten by exactly that
 class of gate.
@@ -126,8 +126,8 @@ What already exists, and did not when the first attempt was built:
 - **Vocals stem, published and retained.** Both separator engines isolate, encode and publish it; the
   guiding-track feature persists `vocalsRef`, and retention preserves it. The reference audio is on
   disk.
-- **Word-level timings.** `align` is the last step of the cook and readiness waits for it, so a
-  cooked song has word boundaries — the exact input a note grid needs.
+- **Word-level timings.** `align` is the last step of the process and readiness waits for it, so a
+  processed song has word boundaries — the exact input a note grid needs.
 - **A working precedent for deriving analysis from stems.** `KeyAndRange` (`apps/worker/src/steps/analysis.py`)
   computes musical key from the instrumental and sung range from the vocals by reading the **raw
   separated WAVs still sitting in scratch** — no extra separation, no extra decode, no new job type.

@@ -22,8 +22,8 @@ describe('PlayTracker', () => {
 
 	it('does NOT double-count a re-emitted nowplaying', () => {
 		// This is the reason the tracker exists rather than counting at the call site: nowplaying is
-		// re-broadcast without a change whenever a cook finishes, so the TV preloads the ready song.
-		// Counting every emit would inflate the CURRENT song's plays each time an unrelated song cooked.
+		// re-broadcast without a change whenever a process finishes, so the TV preloads the ready song.
+		// Counting every emit would inflate the CURRENT song's plays each time an unrelated song processed.
 		const { plays, tracker } = harness();
 		tracker.onNowPlaying(entry('e1', 'm1'));
 		tracker.onNowPlaying(entry('e1', 'm1'));

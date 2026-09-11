@@ -47,7 +47,7 @@ def _seed_vocals_stem(tmp_path: Path, media_id: str = "m1") -> None:
     """Put a `<id>-vocals.<ext>` on disk so AcquireAudio sets ctx.audio.vocals_path and Diarize applies.
 
     `_existing_vocals` globs the canonical `derived/stems/<id>-vocals.*` path, so the byte content is
-    irrelevant — only presence there matters, exactly as a real stems cook would have left it."""
+    irrelevant — only presence there matters, exactly as a real stems process would have left it."""
     from src.processor import vocals_path
 
     stem = Path(vocals_path(str(tmp_path), media_id))

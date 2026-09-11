@@ -125,7 +125,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	});
 
 	/*
-	 * #251. A next-up cook reaching a stage rebroadcasts queue:sync; the TV rebuilds its catalog and the
+	 * #251. A next-up process reaching a stage rebroadcasts queue:sync; the TV rebuilds its catalog and the
 	 * PLAYING slot's media reads momentarily null / not-yet-isPlayable for a churn pass. On the old
 	 * contract the assign effect resolved that pass to '' and, since the element still held the real
 	 * src, CLEARED it (removeAttribute -> reassign -> reload at 0 — the currently-playing song jumped

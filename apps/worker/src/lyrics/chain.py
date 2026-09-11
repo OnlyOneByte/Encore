@@ -8,7 +8,7 @@ text first-class and pre-timed `.lrc` a bonus rather than a requirement.
 This module owns "where does text come from". A `LyricsSource` yields text plus its provenance; the
 timing layer in whisperx.py then force-aligns whatever arrived. Sources are collected into a list and
 run INDEPENDENTLY — not first-hit — because text quality and timing fidelity are independent axes and
-ASR runs on every cook regardless (it is also the only signal that catches a confidently WRONG
+ASR runs on every process regardless (it is also the only signal that catches a confidently WRONG
 LRCLIB match; see agreementScore in packages/shared/src/lyrics/lyrics.ts).
 
 New module rather than an addition to lyrics/source.py: the LRCLIB adapter needs
@@ -117,7 +117,7 @@ class LyricsRequest:
     #: The raw mixed audio (retained original). Fine for forced alignment.
     audio_path: str = ""
     #: The isolated vocals stem, when a stems job has already produced it. ASR wants THIS — a full mix
-    #: transcribes badly — so it may be absent for a song whose stems have not been cooked.
+    #: transcribes badly — so it may be absent for a song whose stems have not been processed.
     vocals_path: str | None = None
     #: Cues from the upload's own human-authored caption track, already fetched and parsed by the
     #: processor's async stage. None/[] means the upload has no manual track. Passed in rather than
@@ -246,7 +246,7 @@ def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]
 # core holds refs, and reading two artifacts back off disk inside the realtime hub to compare them would
 # be I/O on the wrong side of the seam.
 #
-# This is what makes "ASR on every cook" pay for itself beyond being a fallback: LRCLIB's dangerous
+# This is what makes "ASR on every process" pay for itself beyond being a fallback: LRCLIB's dangerous
 # failure is not a miss but a confident MISMATCH (fuzzy metadata returns another song's words), and
 # comparing the lookup against a transcript of what is actually being sung is the only signal we have.
 
@@ -582,7 +582,7 @@ class VariantChoice:
     def to_record(self) -> dict[str, object]:
         """The durable, wire-safe form of this pick — the same facts as `summary()`, as data.
 
-        `summary()` renders these for the cook log, which rotates and is per-container; this crosses
+        `summary()` renders these for the process log, which rotates and is per-container; this crosses
         the wire and lands in the job_attempts audit trail so a mis-pick is diagnosable from state
         weeks later (#669). Deliberately NOT the lyric bodies — label + composite score is enough to
         say which of #542's three arms fired (metadata fallback vs a real disagreement), and storing

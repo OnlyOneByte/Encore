@@ -1,6 +1,6 @@
-// Done-when: an explicit remove of a mid-processing song cancels its live cook — marking the job
+// Done-when: an explicit remove of a mid-processing song cancels its live process — marking the job
 // canceled (freeing the dedup slot so a re-add mints a NEW job), and telling the OWNING worker to
-// kill its subprocess. Plus the four correctness edges: a shared cook (another entry still needs the
+// kill its subprocess. Plus the four correctness edges: a shared process (another entry still needs the
 // media) is NOT cancelled; an already-terminal (ready) job is not touched; and the whole thing runs
 // through the real queue-command remove path (handleQueueCommand) exactly as server.ts composes it.
 import { test, expect } from 'bun:test';
@@ -21,7 +21,7 @@ function makeRepo() {
 	return new JobRepository(db);
 }
 
-const cookingMedia = (id: string): Media => ({
+const processingMedia = (id: string): Media => ({
 	id,
 	source: 'youtube',
 	sourceRef: 'vid-' + id,
@@ -32,11 +32,11 @@ const cookingMedia = (id: string): Media => ({
 
 /** A capturing toWorker sink + the deps the helper needs, with an empty post-remove queue by default.
  *  Also wires a media catalog + a broadcast sink so the settle-and-notify half of a cancel can be
- *  asserted; the mediaById defaults to one cooking entry for `m1`. */
+ *  asserted; the mediaById defaults to one processing entry for `m1`. */
 function cancelDeps(
 	jobs: JobRepository,
 	remainingEntries: QueueEntry[] = [],
-	mediaById: Map<string, Media> = new Map([['m1', cookingMedia('m1')]])
+	mediaById: Map<string, Media> = new Map([['m1', processingMedia('m1')]])
 ) {
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
 	const broadcasts: ServerEvent[] = [];
@@ -68,7 +68,7 @@ test('cancelling a sole QUEUED job marks it canceled and frees the dedup slot', 
 	expect(sent).toHaveLength(0); // no worker owned it — nothing to notify
 });
 
-test('a later re-add after a cancel creates a genuinely NEW job (song re-cookable)', () => {
+test('a later re-add after a cancel creates a genuinely NEW job (song re-processable)', () => {
 	const jobs = makeRepo();
 	const first = jobs.enqueue('m1', 'stems', 0, T0);
 	const { deps } = cancelDeps(jobs);
@@ -113,7 +113,7 @@ test('cancels across pipeline stages: fetch, stems, align, and a background upgr
 	}
 });
 
-test('EDGE (a) shared cook: does NOT cancel while another entry still references the media', () => {
+test('EDGE (a) shared process: does NOT cancel while another entry still references the media', () => {
 	const jobs = makeRepo();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'worker-A', T0 + 10_000, T0 + 1);
@@ -131,7 +131,7 @@ test('EDGE (a) shared cook: does NOT cancel while another entry still references
 
 	const res = cancelJobsForMedia('m1', deps);
 
-	expect(res.canceled).toEqual([]); // the shared cook lives on
+	expect(res.canceled).toEqual([]); // the shared process lives on
 	expect(res.notifiedWorkers).toEqual([]);
 	expect(sent).toHaveLength(0);
 	expect(jobs.byId(job.id)!.status).toBe('running'); // untouched — another singer is waiting on it
@@ -154,38 +154,38 @@ test('EDGE (b) already-terminal: a job that finished (ready) is not cancelled', 
 	expect(jobs.byId(job.id)!.status).toBe('ready'); // left ready
 });
 
-test('no live cook for the media: a plain (never-cooked) remove is a harmless no-op', () => {
+test('no live process for the media: a plain (never-processed) remove is a harmless no-op', () => {
 	const jobs = makeRepo();
 	const { deps } = cancelDeps(jobs);
-	const res = cancelJobsForMedia('m-never-cooked', deps);
+	const res = cancelJobsForMedia('m-never-processed', deps);
 	expect(res).toEqual({ canceled: [], notifiedWorkers: [] });
 });
 
 // ── FIX 1: a cancel must un-strand the MEDIA, not just clear the job ledger ───────────────────────
-// requestMakeKaraoke flips stemStatus to 'queued' BEFORE the cook. Cancelling the job left that flag
-// mid-flight, so the song read as cooking forever on every surface and cookState refused a re-cook —
+// requestProcess flips stemStatus to 'queued' BEFORE the process. Cancelling the job left that flag
+// mid-flight, so the song read as processing forever on every surface and processState refused a re-process —
 // the identical stranding settleStemsGate already fixes on the FAILURE path.
 
-test('cancelling a live cook settles the media back to un-cooked and broadcasts it', () => {
+test('cancelling a live process settles the media back to un-processed and broadcasts it', () => {
 	const jobs = makeRepo();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'worker-A', T0 + 10_000, T0 + 1);
-	jobs.accept(job.id, T0 + 30_000, T0 + 2); // running, cooking
+	jobs.accept(job.id, T0 + 30_000, T0 + 2); // running, processing
 	const { deps, mediaById, broadcasts } = cancelDeps(jobs);
 	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // in flight before
 
 	cancelJobsForMedia('m1', deps);
 
-	expect(mediaById.get('m1')!.stemStatus).toBe('none'); // settled → cookable + Sing button back
-	// The one signal the phone treats as "settle to un-cooked" is 'failed' (see cancel.ts) — every
+	expect(mediaById.get('m1')!.stemStatus).toBe('none'); // settled → processable + Sing button back
+	// The one signal the phone treats as "settle to un-processed" is 'failed' (see cancel.ts) — every
 	// other value would be written back as mid-flight 'queued' and re-strand the row.
 	const statuses = broadcasts.filter((e) => e.type === 'media:status');
 	// 'canceled', not 'failed': it settles the row the same way but never makes the phone tell the
-	// guest who removed the song that the cook broke.
+	// guest who removed the song that the process broke.
 	expect(statuses.at(-1)).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'canceled', pct: 0 });
 });
 
-test('a SHARED cook (edge a) neither settles the media nor broadcasts — another singer still wants it', () => {
+test('a SHARED process (edge a) neither settles the media nor broadcasts — another singer still wants it', () => {
 	const jobs = makeRepo();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'worker-A', T0 + 10_000, T0 + 1);
@@ -202,7 +202,7 @@ test('a SHARED cook (edge a) neither settles the media nor broadcasts — anothe
 
 	cancelJobsForMedia('m1', deps);
 
-	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // the shared cook lives on, so does the flag
+	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // the shared process lives on, so does the flag
 	expect(broadcasts).toHaveLength(0);
 });
 
@@ -256,7 +256,7 @@ function hubHarness(jobs: JobRepository, actorSingerId: string) {
 	return { state, deps, sent };
 }
 
-test('remove op through handleQueueCommand cancels the sole live cook', () => {
+test('remove op through handleQueueCommand cancels the sole live process', () => {
 	const jobs = makeRepo();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'worker-A', T0 + 10_000, T0 + 1);
@@ -271,7 +271,7 @@ test('remove op through handleQueueCommand cancels the sole live cook', () => {
 	expect(sent[0].cmd).toMatchObject({ type: 'job:cancel', jobId: job.id });
 });
 
-test('remove of ONE of two entries for the same song does NOT cancel the shared cook', () => {
+test('remove of ONE of two entries for the same song does NOT cancel the shared process', () => {
 	const jobs = makeRepo();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	const { deps, sent } = hubHarness(jobs, 's1');
@@ -282,7 +282,7 @@ test('remove of ONE of two entries for the same song does NOT cancel the shared 
 
 	handleQueueCommand(removeCmd('q1', 's1'), deps); // q2 still needs m1
 
-	expect(jobs.byId(job.id)!.status).toBe('queued'); // cook untouched
+	expect(jobs.byId(job.id)!.status).toBe('queued'); // process untouched
 	expect(sent).toHaveLength(0);
 });
 
@@ -318,9 +318,9 @@ test('EDGE (b) reverse: a job:complete landing AFTER a cancel is dropped as stal
 // ── FIX (#91): a cancel on the LYRICS step must settle THAT gate, not only stems ───────────────────
 // A song finishes separation (stemStatus 'ready', a real instrumentalRef), followUps enqueues `align`
 // and markLyricsQueued sets lyricsStatus 'queued' — the phone shows "Timing lyrics". A remove cancels
-// the align job. Before the fix, cancel.ts only called settleStemsGate, which refuses a finished cook
+// the align job. Before the fix, cancel.ts only called settleStemsGate, which refuses a finished process
 // (a no-op), so the lyrics gate stayed OPEN forever: readyToSing was false, every future queue entry
-// for the song was held and skipped, yet the live instrumental made cookState refuse a re-cook — and
+// for the song was held and skipped, yet the live instrumental made processState refuse a re-process — and
 // the broadcast, gated on that no-op settle, never fired. A song with no words is a finished song, so
 // cancelling align must settle the lyrics gate exactly as the terminal-failure path does.
 
@@ -351,7 +351,7 @@ test('cancelling an ALIGN job on a separated song settles the lyrics gate → re
 	// The whole point: the song is now a finished (word-less) song, playable rather than held forever.
 	expect(mediaById.get('m1')!.lyricsStatus).toBe('ready');
 	expect(readyToSing(mediaById.get('m1')!)).toBe(true);
-	// The separation is NOT walked back — cancelling align must not un-cook a finished separation.
+	// The separation is NOT walked back — cancelling align must not un-process a finished separation.
 	expect(mediaById.get('m1')!.stemStatus).toBe('ready');
 	expect(mediaById.get('m1')!.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
 	// And the room hears about it — before the fix the broadcast was gated on the stems no-op and never fired.

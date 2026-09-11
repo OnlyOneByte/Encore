@@ -6,7 +6,7 @@ words). Four things must hold, one arm each:
   1. pasted words are timed verbatim as a `manual` candidate and written under `pinnedRef`;
   2. `pinnedRef` alone re-times the text ALREADY on disk and preserves that candidate's own
      textSource, which by then survives only in its artifact KEY;
-  3. a ref that escapes the media directory is REFUSED, not silently downgraded to a normal cook;
+  3. a ref that escapes the media directory is REFUSED, not silently downgraded to a normal process;
   4. NEGATIVE CONTROL: with no pinned params the comparative selection path is untouched.
 
 MECHANISM. On base `pinnedRef`/`pinnedText` are params nothing reads, so arms 1-3 red: AcquireTexts
@@ -184,7 +184,7 @@ def test_pinned_ref_alone_retimes_the_stored_doc_and_preserves_its_text_source(t
 
 def test_a_pinned_ref_that_escapes_the_media_directory_is_refused(tmp_path):
     """Arm 3. A traversing key must STOP the job, never read or write outside the store, and never be
-    silently downgraded into an ordinary comparative cook."""
+    silently downgraded into an ordinary comparative process."""
     ctx = _ctx(tmp_path, {"language": "en", "pinnedRef": "../../etc/passwd.json", "pinnedText": PASTED})
     _drive(ctx, _Aligner())
 
@@ -209,7 +209,7 @@ def _timed(source: str, body: str, role: str) -> LyricsText:
 def test_with_no_pinned_params_the_comparative_path_is_unchanged(tmp_path):
     """Arm 4, the control. Grading still runs, the ref is still the DERIVED candidate_key, and the
     graded axes still ship. Passes on base and on head; it is what proves the guards are inert on an
-    ordinary cook and that the pinned ref override cannot leak onto a graded candidate.
+    ordinary process and that the pinned ref override cannot leak onto a graded candidate.
 
     Drives GradeAndSelect + TimeTexts over PRE-ACQUIRED texts (the neighbour overshoot test's idiom),
     not AcquireTexts: acquisition runs source objects, and seeding it with finished LyricsTexts is not

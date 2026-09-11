@@ -1,16 +1,16 @@
 // THE MONOTONICITY INVARIANT, and the unit behaviour under it.
 //
-// A cook is three jobs — fetch → stems → align — and the phone renders their combined progress as ONE
+// A process is three jobs — fetch → stems → align — and the phone renders their combined progress as ONE
 // five-stop line (ProcessingCard's chip strip). Each job reports its own private stages, so forwarding
 // them verbatim walked that line backwards: a song on "Making karaoke" jumped back to "Fetched" when
 // stems began decoding, and again when align pulled its captions. Measured on the real hub before the
-// fix, one cook broadcast six backward jumps:
+// fix, one process broadcast six backward jumps:
 //
 //   separating@0 → downloading@0 → downloading@100 → ready@100      (fetch)
 //   separating@0 → downloading@10 → separating@68 → ready@100       (stems)
 //   separating@0 → downloading@5 → aligning@50 → ready@100          (align)
 //
-// The first test here is the guard: it drives a REAL WorkerHub through a whole cook and asserts the
+// The first test here is the guard: it drives a REAL WorkerHub through a whole process and asserts the
 // broadcast sequence never decreases. That is deliberately an end-to-end assertion over the hub rather
 // than a unit test of the mapping, because every one of the three causes lived in a different place
 // (the status map, the stage passthrough, the completion handler) and a unit test of any one of them
@@ -20,7 +20,7 @@ import { migratedDb } from '../db/test-db';
 import { WorkerHub } from './worker-hub';
 import { WorkerRegistry } from './registry';
 import { JobRepository } from './repository';
-import { completedStatusFor, jobStageFloor, mediaStatusFor, shouldBroadcastCook } from './media-status';
+import { completedStatusFor, jobStageFloor, mediaStatusFor, shouldBroadcastProcess } from './media-status';
 import {
 	mediaStagePosition,
 	pendingGates,
@@ -92,7 +92,7 @@ function runStep(
 	h.hub.handle({ type: 'job:complete', workerId: 'w1', jobId: j.id, mediaUri: 'x', artifacts: artifacts as never });
 }
 
-test('THE INVARIANT: a cook never reports a stage it has already passed', () => {
+test('THE INVARIANT: a process never reports a stage it has already passed', () => {
 	const h = harness();
 	h.jobs.enqueue('m1', 'fetch', 0, T0);
 	h.hub.handle({
@@ -129,7 +129,7 @@ test('THE INVARIANT: a cook never reports a stage it has already passed', () => 
 	// Stated as the invariant too, so a future step added to the chain is checked by intent rather than
 	// by this one hardcoded list.
 	const positions = seq.map(mediaStagePosition);
-	expect(positions.every((p) => p >= 0)).toBe(true); // nothing off the line during a healthy cook
+	expect(positions.every((p) => p >= 0)).toBe(true); // nothing off the line during a healthy process
 	for (let i = 1; i < positions.length; i++) {
 		expect(positions[i]).toBeGreaterThanOrEqual(positions[i - 1]);
 	}
@@ -220,10 +220,10 @@ test('a background stems-upgrade stays silent on an already-singable song', () =
 	// The fourth door onto the same bug: an upgrade's accept would flip every ready row back to "Making
 	// karaoke" for the length of a re-separation, on a song that plays fine throughout.
 	const finished = media({ stemStatus: 'ready', instrumentalRef: 'x', lyricsStatus: 'ready' });
-	expect(shouldBroadcastCook(job({ jobType: 'stems-upgrade' }), finished)).toBe(false);
+	expect(shouldBroadcastProcess(job({ jobType: 'stems-upgrade' }), finished)).toBe(false);
 	// Every other job type reaches the room, and so does an upgrade on a song that is NOT yet singable.
-	expect(shouldBroadcastCook(job({ jobType: 'stems' }), finished)).toBe(true);
-	expect(shouldBroadcastCook(job({ jobType: 'stems-upgrade' }), media({ stemStatus: 'queued' }))).toBe(true);
+	expect(shouldBroadcastProcess(job({ jobType: 'stems' }), finished)).toBe(true);
+	expect(shouldBroadcastProcess(job({ jobType: 'stems-upgrade' }), media({ stemStatus: 'queued' }))).toBe(true);
 });
 
 test('the hub suppresses an upgrade broadcast end to end', () => {
@@ -243,7 +243,7 @@ test('the hub suppresses an upgrade broadcast end to end', () => {
 	});
 	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId: j.id });
 	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId: j.id, stage: 'separating', pct: 40 });
-	expect(h.statuses()).toEqual([]); // the ready row never flickers back to cooking
+	expect(h.statuses()).toEqual([]); // the ready row never flickers back to processing
 });
 
 test('a failure is a terminal exit from the line, not a stop on it', () => {
@@ -255,9 +255,9 @@ test('a failure is a terminal exit from the line, not a stop on it', () => {
 
 test('a second Sing tap on a song already separating does not snap the room back to "Queued"', () => {
 	// The FOURTH producer of a media:status, and the one the first pass left on a hardcoded literal.
-	// /api/make-karaoke published `job.status === 'ready' ? 'ready' : 'queued'`. That reads as safe only
+	// /api/process published `job.status === 'ready' ? 'ready' : 'queued'`. That reads as safe only
 	// if the job is always new — but `enqueue` is idempotent and hands back the EXISTING live job (§6
-	// dedup), and `cookState` answers 'cooking' for an in-flight song WITHOUT the route short-circuiting
+	// dedup), and `processState` answers 'processing' for an in-flight song WITHOUT the route short-circuiting
 	// on it. So a guest tapping Sing on a song someone else already started (a stale row, a late-joining
 	// phone) broadcast 'queued' to the WHOLE ROOM and reset every phone's strip to the first chip.
 	//
@@ -268,7 +268,7 @@ test('a second Sing tap on a song already separating does not snap the room back
 	expect(mediaStatusFor(running)).toBe('separating');
 	// And a re-tap on a song mid-DOWNLOAD stays where it is rather than jumping back a chip.
 	expect(mediaStatusFor(job({ jobType: 'fetch', status: 'running' }), 'downloading')).toBe('downloading');
-	// The one case that genuinely is 'queued': a brand-new cook nothing has picked up.
+	// The one case that genuinely is 'queued': a brand-new process nothing has picked up.
 	expect(mediaStatusFor(job({ jobType: 'fetch', status: 'queued' }))).toBe('queued');
 	// A handed-back COMPLETED job goes through the gates like any completion, so the route cannot
 	// announce a singable song its own gates disagree with.
@@ -278,13 +278,13 @@ test('a second Sing tap on a song already separating does not snap the room back
 
 test('every job type has a floor, and every floor is on the shared line', () => {
 	// A new job type must decide where it sits before it can broadcast anything — this is what stops the
-	// next step added to the cook from defaulting to a generic stage the way `running` used to.
+	// next step added to the process from defaulting to a generic stage the way `running` used to.
 	for (const jobType of ['fetch', 'stems', 'stems-upgrade', 'align'] as const) {
 		expect(MEDIA_STAGES).toContain(jobStageFloor(jobType));
 	}
 });
 
-test('every cook gate declares the stop a song waits at, and it is on the shared line', () => {
+test('every process gate declares the stop a song waits at, and it is on the shared line', () => {
 	// The gate table is the ONE place a pipeline step is registered (gates.ts says so in its opening
 	// comment). completedStatusFor reads `stage` straight off the gate for that reason — a lookup table
 	// keyed by gate id lived here first and quietly made "adding a step is one entry in GATES" false.

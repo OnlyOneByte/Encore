@@ -6,7 +6,7 @@
     than by nominal bitrate.
 
 WHY ACQUISITION IS ITS OWN ACTION, not a stage inside separation. A box that can download and a box that
-can separate need not be the same machine: a fetch routes on `fetch:<fetcher>` while a cook routes on
+can separate need not be the same machine: a fetch routes on `fetch:<fetcher>` while a process routes on
 `stems`, so neither capability implies the other. It is also why the retained original is a first-class
 artifact — it is the one storage class that cannot be regenerated, because re-acquiring it needs the
 network and the upload may be gone.

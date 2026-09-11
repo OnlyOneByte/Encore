@@ -63,7 +63,7 @@ async def drive(ctx: Ctx) -> None:
 
 async def test_a_silent_INSTRUMENTAL_fails_the_job_rather_than_publishing_silence():
     """The one that matters. The instrumental is the file that plays at volume, so there is no honest
-    way to serve it — failing puts the song in the operator's ledger and leaves it re-cookable."""
+    way to serve it — failing puts the song in the operator's ledger and leaves it re-processable."""
     ctx = ctx_with(
         {"instrumental": "/w/inst.wav", "vocals": "/w/vox.wav"},
         {"/w/inst.wav": SILENT, "/w/vox.wav": HEALTHY},
@@ -82,7 +82,7 @@ async def test_a_healthy_instrumental_passes_and_records_the_vocals_verdict():
     assert any("vocals stem is digital silence" in n for n in ctx.out.notes)
 
 
-async def test_both_healthy_is_a_clean_cook():
+async def test_both_healthy_is_a_clean_process():
     ctx = ctx_with(
         {"instrumental": "/w/inst.wav", "vocals": "/w/vox.wav"},
         {"/w/inst.wav": HEALTHY, "/w/vox.wav": HEALTHY},
@@ -92,7 +92,7 @@ async def test_both_healthy_is_a_clean_cook():
 
 
 async def test_the_step_applies_when_only_an_instrumental_was_produced():
-    """Gating `applies` on the vocals key skipped the whole step for a vocals-less cook — which meant
+    """Gating `applies` on the vocals key skipped the whole step for a vocals-less process — which meant
     skipping the only check whose failure is fatal."""
     inst_only = ctx_with({"instrumental": "/w/inst.wav"}, {"/w/inst.wav": SILENT})
     assert ProbeSilence().applies(inst_only) is True
@@ -100,7 +100,7 @@ async def test_the_step_applies_when_only_an_instrumental_was_produced():
         await drive(inst_only)
 
 
-async def test_a_vocals_less_cook_with_a_good_instrumental_still_succeeds():
+async def test_a_vocals_less_process_with_a_good_instrumental_still_succeeds():
     ctx = ctx_with({"instrumental": "/w/inst.wav"}, {"/w/inst.wav": HEALTHY})
     await drive(ctx)
     assert ctx.stems.vocals_silent is False
@@ -113,7 +113,7 @@ async def test_nothing_separated_means_nothing_to_probe():
 async def test_an_UNMEASURABLE_instrumental_is_not_treated_as_silent():
     """ffmpeg RAN but produced no `max_volume:` line (wrong filter, truncated output, an error
     printed on a successful exit). parse_max_volume_db returns None, is_silent(None) is False, so
-    this is unknown, not silent — failing every such cook would be worse than the bug it guards.
+    this is unknown, not silent — failing every such process would be worse than the bug it guards.
 
     This is the ONLY shape that reaches this branch without raising. ffmpeg *absent* is a different
     case: the real runner (subprocess_runner) raises FileNotFoundError before yielding any line, and
@@ -142,11 +142,11 @@ async def test_a_failed_vocals_probe_never_costs_the_room_a_working_guide():
 async def test_a_raising_instrumental_probe_fails_the_job():
     """The real ffmpeg-absent path. subprocess_runner raises FileNotFoundError before yielding any
     line when ffmpeg is not on PATH; the instrumental branch has NO try/except, so that raise must
-    propagate and fail the cook — a box without ffmpeg cannot silently publish unchecked stems.
+    propagate and fail the process — a box without ffmpeg cannot silently publish unchecked stems.
 
     This is the mutation guard for the "No try/except" property at separate.py: wrapping the
     instrumental probe the way the vocals probe is wrapped would swallow this raise and turn it back
-    into a green cook, re-shipping the silent-instrumental bug the step exists to catch. With this
+    into a green process, re-shipping the silent-instrumental bug the step exists to catch. With this
     test present, that wrapping goes RED.
     """
 

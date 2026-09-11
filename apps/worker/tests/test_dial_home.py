@@ -228,27 +228,27 @@ def test_build_processor_stub_override(monkeypatch):
 
 
 def test_build_processor_routes_by_capability(monkeypatch):
-    # The DEFAULT is now the whole cook (fetch:ytdlp,stems,align), so the default routing table carries
+    # The DEFAULT is now the whole process (fetch:ytdlp,stems,align), so the default routing table carries
     # all three.
     from src.processor import RoutingProcessor
     from src.runtime.runner import PlanRunner
 
     monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
     # There is no longer a DEFAULT capability string to lean on: from_env leaves the set unresolved and
-    # config.resolve() fills it from probes, so a test that wants the full cook states the full cook.
+    # config.resolve() fills it from probes, so a test that wants the full process states the full process.
     # (That is the point — the routing table is built from what the box can prove, and this box has
     # neither demucs nor whisperx installed.)
     from src.config import WorkerConfig as _WC
 
-    full_cook = _WC(capabilities=("fetch:ytdlp", "stems", "align"))
-    p = _build_processor(full_cook)
+    full_process = _WC(capabilities=("fetch:ytdlp", "stems", "align"))
+    p = _build_processor(full_process)
     assert isinstance(p, RoutingProcessor)
     by_type = p._by_type  # introspect the routing table
     # stems is a PlanRunner too: the engine is resolved per JOB into ctx.engines before the first step
     # runs, so EngineRouter's second dispatch layer is gone (see the spec §5.2c).
     assert isinstance(by_type["stems"], PlanRunner)
     assert by_type["stems"] is by_type["stems-upgrade"], "an upgrade is a separation job like any other"
-    assert isinstance(by_type["align"], PlanRunner)  # part of the full cook
+    assert isinstance(by_type["align"], PlanRunner)  # part of the full process
     assert "fetch" in by_type  # acquisition rides its own capability (fetch:ytdlp)
 
     # A stems-ONLY worker is still expressible — it just has to say so explicitly.
@@ -459,7 +459,7 @@ async def test_a_retried_job_REUSES_completed_step_artifacts_and_does_not_re_run
     step1 = MarkerStep("acquire")
     step2 = MarkerStep("separate")
     step3 = MarkerStep("align", fail_times=1)  # fails ONCE (attempt 1), succeeds on attempt 2
-    plan = LinearPlan("cook", [step1, step2, step3])
+    plan = LinearPlan("process", [step1, step2, step3])
 
     async def noop_runner(argv):
         if False:
@@ -693,7 +693,7 @@ def test_building_a_stems_runner_pulls_NO_ml_framework():
 @pytest.mark.asyncio
 async def test_drain_cancel_cancels_inflight_tasks(tmp_path):
     """drain(cancel=True) is what the reconnect path calls when the socket drops. The old client is
-    abandoned; without cancelling, its cook runs to completion against a dead socket, loses its
+    abandoned; without cancelling, its process runs to completion against a dead socket, loses its
     result, and races the core's reaper (which requeues the same job) -- duplicate GPU work. Proven
     non-vacuous: on the old drain() (await-only, no cancel arg) this raises TypeError, and even a
     no-cancel await would hang forever on the 300s sleep instead of returning."""
@@ -722,10 +722,10 @@ async def test_drain_cancel_cancels_inflight_tasks(tmp_path):
     # simulate the reconnect-loop finally block on a socket drop
     await asyncio.wait_for(client.drain(cancel=True), timeout=5)
 
-    assert cancelled.is_set(), "the abandoned cook was cancelled (GeneratorExit reaches the child)"
+    assert cancelled.is_set(), "the abandoned process was cancelled (GeneratorExit reaches the child)"
     assert old_task.cancelled() or old_task.done()
     assert "jDrop" not in client._tasks  # done-callback popped it
-    # a cancelled cook reports NO job:failed (CancelledError is not the broad except that sends failed)
+    # a cancelled process reports NO job:failed (CancelledError is not the broad except that sends failed)
     assert sock.of_type(protocol.FAILED) == []
 
 
@@ -1158,8 +1158,8 @@ def test_run_forever_starts_the_periodic_scratch_sweep():
 
 
 @pytest.mark.asyncio
-async def test_cook_id_from_assign_frame_reaches_the_job_spec(tmp_path):
-    """#472: the assign frame now carries cookId so the worker can tag its own logs/notes with the
+async def test_processing_id_from_assign_frame_reaches_the_job_spec(tmp_path):
+    """#472: the assign frame now carries processingId so the worker can tag its own logs/notes with the
     same trace id the operator sees on /metrics/<mediaId>. Capture the JobSpec the processor is
     handed and prove the id threaded through."""
     captured: list[JobSpec] = []
@@ -1180,18 +1180,18 @@ async def test_cook_id_from_assign_frame_reaches_the_job_spec(tmp_path):
         version="test",
     )
     frame = assign()
-    frame["cookId"] = "cook-xyz"
+    frame["processingId"] = "process-xyz"
     await client.handle(frame)
     await client.drain()
 
     assert len(captured) == 1
-    assert captured[0].cook_id == "cook-xyz"
+    assert captured[0].processing_id == "process-xyz"
 
 
 @pytest.mark.asyncio
-async def test_cook_id_defaults_empty_for_a_legacy_frame_without_it(tmp_path):
-    """A core that predates the field sends no cookId; the worker must not KeyError, it defaults to
-    the empty string (the ledger's own sentinel for a pre-cookId row)."""
+async def test_processing_id_defaults_empty_for_a_legacy_frame_without_it(tmp_path):
+    """A core that predates the field sends no processingId; the worker must not KeyError, it defaults to
+    the empty string (the ledger's own sentinel for a pre-processingId row)."""
     captured: list[JobSpec] = []
 
     class CapturingProcessor:
@@ -1209,11 +1209,11 @@ async def test_cook_id_defaults_empty_for_a_legacy_frame_without_it(tmp_path):
         media_dir=str(tmp_path),
         version="test",
     )
-    await client.handle(assign())  # no cookId key
+    await client.handle(assign())  # no processingId key
     await client.drain()
 
     assert len(captured) == 1
-    assert captured[0].cook_id == ""
+    assert captured[0].processing_id == ""
 
 
 def test_run_forever_reports_the_klp_line_bounder_state_at_startup():
@@ -1245,7 +1245,7 @@ def test_run_forever_reports_the_klp_line_bounder_state_at_startup():
 async def test_reject_when_params_is_not_an_object_issue_459(tmp_path):
     # `params` is the last required assign field with no parse layer at the boundary (jobId/jobType/
     # mediaId already reject). A non-dict reaches JobSpec.params: dict untyped and would raise deeper
-    # in the cook, escaping into the reconnect handler and tearing down the socket for one bad frame.
+    # in the process, escaping into the reconnect handler and tearing down the socket for one bad frame.
     # It must be rejected job-scoped here, the same shape as the checks above (#459).
     sock = FakeSocket()
     client = make_client(sock, tmp_path)

@@ -42,10 +42,10 @@
  * ── HOW THE DEGRADED STATE IS REACHED ──────────────────────────────────────────────────────────
  *
  * `hasGuidingTrack()` is `isPlayable(m) && !!m.vocalsRef`, so the degraded arm needs a song that
- * cooked successfully and reported no vocals ref. `FAKE_NO_VOCALS=1` on the fake stems worker does
+ * processed successfully and reported no vocals ref. `FAKE_NO_VOCALS=1` on the fake stems worker does
  * exactly that, and it is not a fault injection: `worker-hub.ts` optional-chains
  * `artifacts?.stems?.vocals` and its own comment says a worker that could not encode vocals "reports
- * none". So the probe cooks TWO songs against one server, restarting the worker between them.
+ * none". So the probe processes TWO songs against one server, restarting the worker between them.
  *
  * ── NON-VACUITY, MEASURED RATHER THAN ASSERTED ─────────────────────────────────────────────────
  *
@@ -145,8 +145,8 @@ async function bootServer() {
 }
 
 /**
- * Spawn a fake worker and resolve only once the server has WELCOMED it — otherwise make-karaoke can
- * enqueue a job before any worker is live and the cook sits in 'queued' forever.
+ * Spawn a fake worker and resolve only once the server has WELCOMED it — otherwise process can
+ * enqueue a job before any worker is live and the process sits in 'queued' forever.
  * @param {'withVocals' | 'noVocals'} kind
  */
 async function spawnWorker(kind) {
@@ -199,7 +199,7 @@ async function api(path, init = {}) {
 	return res;
 }
 
-/** The library is session-scoped, so the probe joins over HTTP before it cooks anything. */
+/** The library is session-scoped, so the probe joins over HTTP before it processes anything. */
 async function apiJoin(name) {
 	const r = await api('/api/join', { method: 'POST', body: JSON.stringify({ displayName: name, color: '#ff5cae' }) });
 	if (!r.ok) throw new Error(`join failed ${r.status} ${await r.text()}`);
@@ -213,20 +213,20 @@ async function library() {
 }
 
 /**
- * Cook one local song by title fragment and wait for it to be ready.
+ * Process one local song by title fragment and wait for it to be ready.
  *
  * Discovery goes through `/api/search`, not `/api/library`: the library lists media the room already
  * knows about, and a freshly seeded file is not that until something has looked at it. Searching is
  * what surfaces a local file, which is why p2 does the same.
  * @param {string} q
  */
-async function cookOne(q) {
+async function processOne(q) {
 	const d = await api(`/api/search?q=${encodeURIComponent(q)}`).then((r) => r.json());
-	const all = /** @type {Media[]} */ ([...(d.ready ?? []), ...(d.results ?? []), ...(d.cooking ?? [])]);
+	const all = /** @type {Media[]} */ ([...(d.ready ?? []), ...(d.results ?? []), ...(d.processing ?? [])]);
 	const m = all.find((x) => x.source === 'local') ?? all[0];
 	if (!m) throw new Error(`no song matching "${q}" from /api/search (got ${JSON.stringify(d).slice(0, 300)})`);
-	const r = await api('/api/make-karaoke', { method: 'POST', body: JSON.stringify({ mediaId: m.id }) });
-	if (!r.ok && r.status !== 409) throw new Error(`make-karaoke ${r.status} ${await r.text()}`);
+	const r = await api('/api/process', { method: 'POST', body: JSON.stringify({ mediaId: m.id }) });
+	if (!r.ok && r.status !== 409) throw new Error(`process ${r.status} ${await r.text()}`);
 	return /** @type {Media} */ (
 		await waitFor(
 			async () => (await library()).find((x) => x.id === m.id && x.stemStatus === 'ready' && x.instrumentalRef),
@@ -395,11 +395,11 @@ async function main() {
 
 	// ── two songs, two stem states, one library ──
 	worker = await spawnWorker('withVocals');
-	const withStem = await cookOne('caroline');
+	const withStem = await processOne('caroline');
 	await kill(worker);
 
 	worker = await spawnWorker('noVocals');
-	const noStem = await cookOne('bohemian');
+	const noStem = await processOne('bohemian');
 	await kill(worker);
 
 	const wv = (await library()).find((m) => m.id === withStem.id);
@@ -409,7 +409,7 @@ async function main() {
 
 	// The whole probe is meaningless if the two fixtures are not actually in different states, and a
 	// fixture that silently drifted into one state would otherwise read as a clean pass.
-	if (!wv?.vocalsRef) bail(`"${withStem.title}" cooked with NO vocals ref; the with-stem arm has no subject`);
+	if (!wv?.vocalsRef) bail(`"${withStem.title}" processed with NO vocals ref; the with-stem arm has no subject`);
 	if (nv?.vocalsRef) bail(`FAKE_NO_VOCALS did not withhold the vocals ref (got ${nv.vocalsRef}); the degraded arm has no subject`);
 
 	chrome = spawnChild(

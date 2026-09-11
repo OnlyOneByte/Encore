@@ -8,7 +8,7 @@ section and there was no conftest, so `STRICT_WRITES` was False for every defaul
 only in the two tests that monkeypatch it to True.
 
 Setting the env here — BEFORE any `src` import, which conftest.py collection guarantees — makes the module
-constant True for the real cook plans too, so a step that writes an undeclared `ctx` key fails the suite
+constant True for the real process plans too, so a step that writes an undeclared `ctx` key fails the suite
 instead of only the two hand-armed cases. Env, not `monkeypatch`, because the value is captured at import
 and a session-wide default cannot come from a per-test fixture.
 """

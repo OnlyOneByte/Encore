@@ -7,7 +7,7 @@
 //   (a) forge a second 'playing' entry that is never playable, never terminal, not removable on leave,
 //       and durable across restarts,
 //   (b) write an off-enum status string into the NOT NULL enum column, and
-//   (c) retire a song with a terminal status while its cook keeps running (only `remove` fires
+//   (c) retire a song with a terminal status while its process keeps running (only `remove` fires
 //       onEntryRemoved).
 // The load-bearing assertion is the seam property: the bad op is NOT applied, NOT broadcast, and yields
 // op:reject — so none of (a)/(b)/(c) is reachable from the wire.
@@ -117,7 +117,7 @@ test('(c) a terminal status op cannot retire a song from the wire — the queue 
 
 	expect(patch).toBeNull();
 	// q2 is still in the queue (a terminal status through applyAndReseq would have pruned it), and the
-	// cook-cancel hook did not fire — matching that only `remove` reaches cancelJobsForMedia.
+	// process-cancel hook did not fire — matching that only `remove` reaches cancelJobsForMedia.
 	expect(state.entries.map((e) => e.id).sort()).toEqual(['q1', 'q2']);
 	expect(removed).toEqual([]);
 	expect(published.some((e) => e.type === 'queue:patch')).toBe(false);

@@ -268,7 +268,7 @@ test('a line with no words (line-sync floor) is untouched', () => {
 	expect(resegmentLine(line)).toEqual([line]);
 });
 
-test('parseLyricsDoc applies resegmentation, so existing artifacts benefit with no re-cook', () => {
+test('parseLyricsDoc applies resegmentation, so existing artifacts benefit with no re-process', () => {
 	// Over-long ON PURPOSE (64 chars): production only resegments a line that exceeds a row, so a
 	// fixture short enough to fit would no longer exercise the wiring this test exists to check.
 	const words = wordsWithGaps([

@@ -64,5 +64,5 @@ def test_real_audio_is_never_flagged_however_quiet():
 
 
 def test_unmeasurable_is_treated_as_audible():
-    # a missing ffmpeg must not strip the guiding track off every song the worker cooks
+    # a missing ffmpeg must not strip the guiding track off every song the worker processes
     assert is_silent(None) is False

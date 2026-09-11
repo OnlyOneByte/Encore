@@ -38,7 +38,7 @@ export const JOB_TRANSITIONS: Record<JobStatus, Partial<Record<JobEvent, JobStat
 		LEASE_EXPIRED: 'queued', // ack-timeout
 		RECOVER: 'queued', // boot recovery of an assigned-but-not-yet-accepted attempt
 		CANCEL: 'canceled',
-		REPRIORITIZE: 'assigned' // scheduling-only self-loop — an assigned cook can still be pulled forward
+		REPRIORITIZE: 'assigned' // scheduling-only self-loop — an assigned process can still be pulled forward
 	},
 	running: {
 		PROGRESS: 'running', // heartbeat / stage update — the named self-loop

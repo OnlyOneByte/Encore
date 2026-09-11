@@ -8,7 +8,7 @@
 // rebuildable index over it (media/sidecar.ts, docs/ARCHITECTURE.md): a boot rescan restores any media
 // whose sidecar still exists. So the sidecar must go FIRST — delete the row first and a crash before the
 // sidecar is removed resurrects the whole song on the next boot. Sequence:
-//   1. cancel any in-flight cook (subprocess kill + slot free) — jobs/cancel.ts cancelJobsForMedia
+//   1. cancel any in-flight process (subprocess kill + slot free) — jobs/cancel.ts cancelJobsForMedia
 //   2. remove every queue entry that points at this media (there is NO FK cascade — schema.ts — so the
 //      rows must be deleted explicitly, and if the PLAYING entry is one of them the playback path skips
 //      to the next singer rather than leaving a dangling current)
@@ -84,7 +84,7 @@ function realDeleteFile(ref: string): void {
  * have closed today's symptom and left the next divergence free.
  *
  * What the delete adds on top is only what retention has no reason to name: the ID-DERIVED keys for a
- * cook that wrote under an older scheme and never stored a ref at all (retention walks live media and
+ * process that wrote under an older scheme and never stored a ref at all (retention walks live media and
  * reads their refs; the delete must name candidates for a row whose refs are missing or stale). Missing
  * files are a no-op for the unlink, so naming a superset is free.
  */
@@ -114,7 +114,7 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 		return { deleted: false, wasPlaying: false, removedEntries: 0, unlinked: [] };
 	}
 
-	// 1. cancel any in-flight cook. Empty remainingEntries → cancel unconditionally (we are about to
+	// 1. cancel any in-flight process. Empty remainingEntries → cancel unconditionally (we are about to
 	// remove every referencing entry). mediaById/broadcast omitted: settling a row about to be deleted
 	// and re-announced in step 6 is pointless. cancelJobsForMedia is a no-op when nothing is live.
 	const cancelDeps: CancelJobsDeps = { ...deps.cancel, remainingEntries: [] };
@@ -165,7 +165,7 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 	// 4a. the one unrecoverable class. EXT-BLIND (#762 F1): this was `unlink(audioKey(mediaId))`, and
 	// `audioKey`'s default ext is `wav` — the LEGACY mislabelled name. The worker downloads to
 	// `audio/<id>.%(ext)s` and discovers the real name with a `<id>.*` glob because the extension is
-	// whatever YouTube served, so for every song cooked since 2981662 the file is `audio/<id>.m4a` or
+	// whatever YouTube served, so for every song processed since 2981662 the file is `audio/<id>.m4a` or
 	// `.webm` and the single unlink named a path that does not exist. The bytes then survived
 	// PERMANENTLY, not until the next sweep: the sidecar and the row are gone by the time this returns,
 	// retention is barred from `audio/` by design, and there is no orphan-audio pass in the boot chain —
@@ -182,7 +182,7 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 
 	// 6. broadcast — every surface drops the song at once. media:status canceled (there is no 'deleted'
 	// member and packages/shared is untouched here) tells any surface still
-	// keyed on the live-status map (a search row, a stale cooking chip) that the song is gone.
+	// keyed on the live-status map (a search row, a stale processing chip) that the song is gone.
 	const event: ServerEvent = { type: 'media:status', mediaId, status: 'canceled', pct: 0 };
 	hub.publish(event);
 

@@ -22,7 +22,7 @@ import {
 	MIN_SONG_INTRO_MS,
 	MAX_SONG_INTRO_MS,
 	effectiveSongIntroMs,
-	resolveCookSeparator,
+	resolveProcessSeparator,
 	resolveLyricsPresentation,
 	normalizeJoinOrigin,
 	type RoomSettings
@@ -90,7 +90,7 @@ describe('separator registry', () => {
 		// mel-band instrumental_becruily checkpoint live-selectable (NOT upgrade-only like ensemble).
 		const audiosep = getEngine('audiosep');
 		expect(audiosep).toBeTruthy();
-		expect(audiosep!.capability).toBe('stems:audiosep'); // distinct capability routes the cook
+		expect(audiosep!.capability).toBe('stems:audiosep'); // distinct capability routes the process
 		expect(isValidSeparator('audiosep', 'instrumental_becruily')).toBe(true);
 		expect(isLiveSelectable('audiosep', 'instrumental_becruily')).toBe(true); // Option A, not upgrade-only
 		// its rank sits below the ear-approved bs-roformer-1297 (35): unheard/community, must not
@@ -147,7 +147,7 @@ describe('measured cost', () => {
 	});
 
 	it('the live default is genuinely faster than realtime', () => {
-		// A live cook has to finish while the singer waits, so the default must be sub-realtime.
+		// A live process has to finish while the singer waits, so the default must be sub-realtime.
 		expect(separatorCost(DEFAULT_ENGINE, DEFAULT_MODEL)!.rtFactor).toBeLessThan(1);
 	});
 });
@@ -158,7 +158,7 @@ describe('quality rank', () => {
 	// compile — but this pins the runtime invariant the type protects: no whitelisted pairing may
 	// resolve to the sentinel 0. Before rank moved onto the registry, `qualityRank` looked a pairing up
 	// in a hand-maintained parallel `QUALITY_RANK` table, so a whitelisted model absent from that table
-	// silently ranked 0 — invisible to `resolveCookSeparator`'s ladder (settings.ts skips `rank === 0`)
+	// silently ranked 0 — invisible to `resolveProcessSeparator`'s ladder (settings.ts skips `rank === 0`)
 	// and unable to publish over any instrumental (isQualityUpgrade returns false for a rank-0 candidate).
 	// This reds on the base where the table was hand-maintained and could not guarantee registry coverage.
 	it('every whitelisted model has a positive quality rank (never the silent-0 sentinel)', () => {
@@ -294,7 +294,7 @@ describe('room scope', () => {
 	});
 });
 
-describe('resolveCookSeparator', () => {
+describe('resolveProcessSeparator', () => {
 	const withCap = (cap: number | null, global = DEFAULT_GLOBAL_SETTINGS) => ({
 		global,
 		// Spread the defaults rather than listing fields: this helper cares about maxQualityRank only,
@@ -303,7 +303,7 @@ describe('resolveCookSeparator', () => {
 	});
 
 	it('uses the global default when the room sets no ceiling', () => {
-		expect(resolveCookSeparator(withCap(null))).toEqual({
+		expect(resolveProcessSeparator(withCap(null))).toEqual({
 			engine: DEFAULT_GLOBAL_SETTINGS.defaultEngine,
 			model: DEFAULT_GLOBAL_SETTINGS.defaultModel
 		});
@@ -311,23 +311,23 @@ describe('resolveCookSeparator', () => {
 
 	it('uses the global default when it already sits under the ceiling', () => {
 		// htdemucs ranks 10; a ceiling of 35 does not constrain it
-		expect(resolveCookSeparator(withCap(35))).toEqual({ engine: 'demucs', model: 'htdemucs' });
+		expect(resolveProcessSeparator(withCap(35))).toEqual({ engine: 'demucs', model: 'htdemucs' });
 	});
 
 	it('caps DOWNWARD to the best pairing under the ceiling', () => {
 		const global = { ...DEFAULT_GLOBAL_SETTINGS, defaultEngine: 'roformer' as const, defaultModel: 'bs-roformer-1297' };
 		// roformer ranks 35; a ceiling of 20 forces the best pairing at or under 20 → htdemucs_ft
-		expect(resolveCookSeparator(withCap(20, global))).toEqual({ engine: 'demucs', model: 'htdemucs_ft' });
+		expect(resolveProcessSeparator(withCap(20, global))).toEqual({ engine: 'demucs', model: 'htdemucs_ft' });
 	});
 
 	it('a room ceiling can never RAISE quality above the global choice', () => {
 		// global is the floor-setting authority because it is bounded by what the fleet can run
 		const global = { ...DEFAULT_GLOBAL_SETTINGS, defaultEngine: 'demucs' as const, defaultModel: 'htdemucs' };
-		const picked = resolveCookSeparator(withCap(999, global));
+		const picked = resolveProcessSeparator(withCap(999, global));
 		expect(picked).toEqual({ engine: 'demucs', model: 'htdemucs' }); // not upgraded to roformer
 	});
 
-	it('never resolves to an upgrade-only engine for a live cook', () => {
+	it('never resolves to an upgrade-only engine for a live process', () => {
 		// Drives the SEARCH loop, which only runs when the global default ranks ABOVE the cap. A
 		// live-selectable default can never reach it: the highest is roformer at 35 and every ensemble
 		// rung is 40+, so any cap that admits an ensemble pairing also admits the default and returns
@@ -341,7 +341,7 @@ describe('resolveCookSeparator', () => {
 		};
 		// cap 44 skips the early return (ensemble:instrumental_clean ranks 45 > 44) and admits
 		// ensemble:instrumental_full (40); the filter must reject it, leaving roformer (35) as best.
-		const picked = resolveCookSeparator(withCap(44, global));
+		const picked = resolveProcessSeparator(withCap(44, global));
 		expect(picked.engine).not.toBe('ensemble');
 		expect(isLiveSelectable(picked.engine, picked.model)).toBe(true);
 	});
@@ -591,7 +591,7 @@ describe('resolveLyricsPresentation — the per-song inner bound', () => {
 	});
 
 	it('the OUTER bound still dominates: a line-only fleet clamps whatever the song claims', () => {
-		// The sibling that must not regress. A song row can claim word timings that no cook in a
+		// The sibling that must not regress. A song row can claim word timings that no process in a
 		// `lines` deployment could have produced (a stale candidate from before the mode changed),
 		// and the fleet bound has to win — the two bounds are an AND, not a replacement.
 		for (const timing of ['word', 'line', 'none', null] as const) {

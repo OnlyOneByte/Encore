@@ -221,7 +221,7 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 // `!currentEntryId` auto-start gates but starts nothing: there is no boot resync and no boot
 // reconcile, so at hydrate time the room is left genuinely idle with a possibly-ready queue.
 // Recovery only happens later, on the next real event that runs reconcileOnReady (a queue:command,
-// a cook completing, or a manual play). The pre-#254 comment CLAIMED "the boot resync/reconcile then
+// a process completing, or a manual play). The pre-#254 comment CLAIMED "the boot resync/reconcile then
 // starts the next singer" — a boot reconcile that does not exist — which is exactly the false premise
 // that would stop the next developer from noticing the gap. A comment is not machine-checkable by
 // running it, so pin it here: the raw store.ts text must NOT re-assert a boot resync/reconcile that

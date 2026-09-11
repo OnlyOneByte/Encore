@@ -26,7 +26,7 @@ from ..lyrics.timing import ML_LOCK
 #: The pyannote pipeline id. Gated on Hugging Face, so it only loads on a box whose operator accepted
 #: the model terms and set a token — probed for below, and absent by default (this box has nowhere for
 #: a secret, per the #632 duet research), which is why `diarize` is an OPT-IN capability that narrows
-#: to unavailable rather than failing a cook.
+#: to unavailable rather than failing a process.
 DEFAULT_PIPELINE = "pyannote/speaker-diarization-3.1"
 
 #: The env var an operator sets to the HF access token the gated pipeline needs. Named alongside the

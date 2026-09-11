@@ -22,7 +22,7 @@
 	const valueLabel = $derived(!available || shown === 0 ? 'Off' : `${shown}%`);
 	// The hint narrates only what the control DOES. The out-of-place "No isolated vocals for this song
 	// yet" line (#253) was removed: when the control is disabled the greyed-out slider and "Off" readout
-	// already say it is dead, and telling a singer to re-cook a song from the performance surface was
+	// already say it is dead, and telling a singer to re-process a song from the performance surface was
 	// noise. So the hint is empty when unavailable and otherwise explains the effect.
 	const hint = $derived(
 		available ? "Fades the original singer back in, quietly, for a song you don't quite know." : ''

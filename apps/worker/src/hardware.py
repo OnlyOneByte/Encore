@@ -9,7 +9,7 @@ Two rules, both learned the hard way:
 
   * PRESENCE IS NOT SUFFICIENCY. A probe reports that a device exists, never that it is big enough
     or that every kernel a model needs is implemented. `cuda.is_available()` says a card is there,
-    not that the checkpoint fits. So nothing here promises a cook will succeed; the values are for
+    not that the checkpoint fits. So nothing here promises a process will succeed; the values are for
     SIZING and for REPORTING, and the honest failure mode is still an OOM at run time.
   * ASK THE CGROUP, NOT THE HOST. `os.cpu_count()` reports the machine's cores even when the
     container is throttled to two of them, so a container-blind auto-sizer cheerfully starts 4
@@ -166,7 +166,7 @@ def detect_accelerator() -> Accelerator:
     Deliberately tolerant: torch may be absent entirely (the stub processor needs no ML), the wheel
     may be built for a different backend than the box has, and a driver mismatch raises rather than
     returning False. Every one of those is a cpu answer, not a crash — the worker must still start
-    and still cook, just slower.
+    and still process, just slower.
 
     ROCm masquerades as `cuda` in torch's API (there is no `torch.rocm`), so `torch.version.hip` is
     the only way to tell the two apart, and it matters for the report: "cuda" on an AMD card would
@@ -235,7 +235,7 @@ class HardwareReport:
     """What this worker tells the core about itself on `worker:hello`.
 
     The core resolves the cost-bearing choices (which engine, which model) but has historically done
-    so blind — `estimateCookSeconds` takes a `hardwareFactor` that nothing ever supplied, so every
+    so blind — `estimateProcessSeconds` takes a `hardwareFactor` that nothing ever supplied, so every
     estimate assumed the reference box. This is the payload that makes that number real, and it is
     also what lets the core say "the connected worker will take eight minutes for this" instead of
     quoting a figure from different silicon.

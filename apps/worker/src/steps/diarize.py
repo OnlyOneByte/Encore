@@ -101,7 +101,7 @@ class Diarize(Step):
             attributed = attribute_parts(doc, segments)
             # attribute_parts returns the doc UNCHANGED (no `part` on any line) unless it judged a
             # confident duet, so a rewrite here only ever adds parts on a real duet. Only write back
-            # when something actually changed, to keep an undiarized cook byte-identical to today.
+            # when something actually changed, to keep an undiarized process byte-identical to today.
             if any(isinstance(ln, dict) and "part" in ln for ln in attributed.get("lines", [])):
                 with open(final, "w", encoding="utf-8") as f:
                     json.dump(attributed, f, ensure_ascii=False)

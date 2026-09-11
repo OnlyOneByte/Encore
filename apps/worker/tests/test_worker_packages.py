@@ -261,7 +261,7 @@ def test_the_separation_seam_note_points_at_the_real_current_sites():
     # The ffmpeg half is what remains, consumed engine-agnostically at the two real current sites.
     assert "steps/separate.py" in init_doc, (
         "separation/__init__.py must name steps/separate.py as a real consumer of the demucs.py ffmpeg "
-        "builders on a roformer cook (issue #237)"
+        "builders on a roformer process (issue #237)"
     )
     assert "dial_home.py" in init_doc, (
         "separation/__init__.py must name dial_home.py as a real consumer of demucs.py's subprocess_runner "

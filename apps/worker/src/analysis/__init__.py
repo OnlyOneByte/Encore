@@ -11,7 +11,7 @@ WHY ITS OWN DOMAIN. This ran as an unnamed third stage inside separation, invoke
 `demucs.py` and `roformer.py` through two separate injectable `profiler` parameters. That gave it no
 boundary and no visibility: its cost is invisible in `/metrics` because it is billed to SEPARATING, and
 two call sites hand-assembling the same artifact dict is what let `songProfile` ship as a sibling of
-`stems` where the core read it nested — a shape mismatch that would have stalled every cook at
+`stems` where the core read it nested — a shape mismatch that would have stalled every process at
 "Separating vocals" forever, caught only by a parity guard added afterwards.
 
 It is analysis of a recording, so it belongs beside neither the thing that produced the stems nor the

@@ -7,7 +7,7 @@ from here — while the function's behaviour is UNCHANGED (a straight move: same
 downmix, same supported widths, same raise on an unsupported one).
 
 numpy + stdlib only (`wave` is stdlib); no torch, no soundfile — the stems are plain PCM WAV in scratch at
-this point in the cook.
+this point in the process.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import numpy as np
 
 def read_wav_mono(path: str) -> tuple[np.ndarray, int]:
     """Read a PCM WAV to a mono float64 signal in [-1, 1] and its sample rate. Downmixes multi-channel
-    by averaging. stdlib `wave` only — the vocals stem at this cook stage is uncompressed PCM. Supports
+    by averaging. stdlib `wave` only — the vocals stem at this process stage is uncompressed PCM. Supports
     8/16/32-bit integer PCM (what ffmpeg's pcm_s16le decode produces); an unsupported width raises."""
     with wave.open(path, "rb") as wf:
         n_channels = wf.getnchannels()

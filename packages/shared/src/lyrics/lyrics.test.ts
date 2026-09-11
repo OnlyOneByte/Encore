@@ -96,7 +96,7 @@ test('#806 a LOW RANK SCORE with high coverage is NOT another song — it is a p
 	// (winner_suspect false, textConfidence still high) while lyricsRank convicted the same text.
 	//
 	// Consequence, measured: rank 1 instead of 5, so pickBestLyrics handed the room the ASR transcript
-	// over the correct words, and make-karaoke's candidate merge meant a later correct align could
+	// over the correct words, and process's candidate merge meant a later correct align could
 	// never displace it.
 	const correct = { ...cand('lrclib', 'word'), agreement: 0.1857, coverage: 0.697 };
 	const asrBaseline = { ...cand('asr', 'word'), textConfidence: 'low' as const };

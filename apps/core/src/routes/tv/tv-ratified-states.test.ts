@@ -113,7 +113,7 @@ test('XR-TV-13: the join block survives every takeover, dimmed to 72%, in the bo
 
 test('XR-TV-11: each takeover owns one colour family, drawn as a family-coloured left border', () => {
 	const clean = stripComments(ROUTE);
-	// One family each: accent (next), warn (cooking), danger (skip) — the border colour is the carrier,
+	// One family each: accent (next), warn (processing), danger (skip) — the border colour is the carrier,
 	// and it differs per state so the three cannot be confused.
 	const families = {
 		'.state-next.takeover': 'var(--accent)',

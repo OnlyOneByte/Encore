@@ -26,10 +26,10 @@ import { parseTrackTitle, type TrackParseRule } from './track-title';
 // schema-1 record still reads correctly — it just has no provenance, reported as unknown not invented.
 // 3: `artifacts.songProfile` added (key + vocal range). Purely additive: a schema-2 record simply has
 // no profile, which mediaFromSidecar restores as absent — the stems gate then reads that song as
-// still-cooking and the boot pipeline re-analyses it, exactly as an old song with no vocals ref did.
+// still-processing and the boot pipeline re-analyses it, exactly as an old song with no vocals ref did.
 // 4: `artifacts.guideOffsetMs` added (#766, the measured guide/instrumental offset). Purely additive: a
 // schema-3 record has no offset, restored as absent, which the client's guideOffsetSec maps to 0 — so an
-// un-upgraded song is held exactly as today until a re-cook measures one.
+// un-upgraded song is held exactly as today until a re-process measures one.
 // 5: `artifacts.lyricsOverrideRef` added (#640, a human's explicit lyrics pick). Purely additive: a
 // schema-4 record has no override, so chosenLyricsRef falls through to the ranking exactly as before.
 export const SIDECAR_SCHEMA = 5;
@@ -45,7 +45,7 @@ export interface MediaSidecar {
 	schema: number;
 	origin: {
 		source: Media['source'];
-		/** Immutable ORIGIN identity — never the cooked stem key. See Media.sourceRef. */
+		/** Immutable ORIGIN identity — never the processed stem key. See Media.sourceRef. */
 		sourceRef: string;
 		fetchedAt: number;
 	};
@@ -92,14 +92,14 @@ export interface MediaSidecar {
 		lyricsOverrideRef?: string;
 		/**
 		 * The key + vocal-range analysis (see SongProfile). Authoritative here so a DB wipe restores it
-		 * without re-cooking — the durability claim the media layer makes for every derived artifact.
+		 * without re-processing — the durability claim the media layer makes for every derived artifact.
 		 * Optional/absent on schema-2 records; an all-nulls profile is a real, gate-satisfying value and
 		 * is NOT the same as absent (which means the analysis never ran).
 		 */
 		songProfile?: SongProfile;
 		/**
 		 * The MEASURED guide/instrumental offset in signed ms (#766). Authoritative here so a DB wipe
-		 * restores it without re-cooking, like every derived artifact. Optional/absent on schema-3 and
+		 * restores it without re-processing, like every derived artifact. Optional/absent on schema-3 and
 		 * earlier; absent means "never measured" (the client holds the guide as today), which is distinct
 		 * from a stored 0 ("measured, aligned").
 		 */
@@ -229,7 +229,7 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
  * Canonical artist/title exist for BROWSE and for lyrics lookup, not to rewrite what the room sees.
  */
 export function mediaFromSidecar(s: MediaSidecar): Media {
-	const cooked = !!s.artifacts.instrumental;
+	const processed = !!s.artifacts.instrumental;
 	return {
 		id: s.id,
 		source: s.origin.source,
@@ -238,7 +238,7 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		artist: s.raw.uploader ?? undefined,
 		durationSec: s.canonical.durationSec,
 		thumbnail: s.raw.thumbnail ?? undefined,
-		stemStatus: cooked ? 'ready' : 'none',
+		stemStatus: processed ? 'ready' : 'none',
 		// The lyrics gate is DERIVED from the artifact rather than stored, so the sidecar keeps its
 		// meaning: artifacts are the truth and status is a projection of them.
 		//
@@ -265,17 +265,17 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 				: undefined,
 		instrumentalRef: s.artifacts.instrumental ?? undefined,
 		// The sidecar is authoritative, so a song whose vocals artifact was recorded before the DB was
-		// wiped gets its guiding track back here without a re-cook.
+		// wiped gets its guiding track back here without a re-process.
 		vocalsRef: s.artifacts.vocals ?? undefined,
 		lyricsRef: chosenLyricsRef(s),
 		lyricsCandidates: s.artifacts.lyricsCandidates,
 		// Carry the human override onto the runtime Media so the phone can show which pick is pinned and
 		// whether a newer candidate now out-ranks it (#640), and so a re-persist does not lose it.
 		lyricsOverrideRef: s.artifacts.lyricsOverrideRef,
-		// Restore the key/range so a wiped DB comes back with the analysis intact — no re-cook. The
+		// Restore the key/range so a wiped DB comes back with the analysis intact — no re-process. The
 		// stored value is authoritative but still untrusted (an older writer, a hand edit), so it is
 		// re-normalized on the way out; a schema-2 sidecar has none and this stays undefined, which the
-		// gate reads as still-cooking so the boot pipeline re-analyses it.
+		// gate reads as still-processing so the boot pipeline re-analyses it.
 		songProfile: s.artifacts.songProfile ? normalizeSongProfile(s.artifacts.songProfile) : undefined,
 		// A measured offset (including 0) round-trips; absent stays undefined → the client holds the guide
 		// as today. `typeof … number` rather than truthiness so a stored 0 is not read back as absent.
@@ -454,7 +454,7 @@ export async function writeSidecar(s: MediaSidecar): Promise<void> {
  * (load-bearing for an index-only hydrate that carries no refs on the Media). But that same ?? prev
  * means an eviction upsert, which passes instrumentalRef = undefined, has its just-deleted refs
  * RESTORED from the prior sidecar, and mediaFromSidecar then re-derives stemStatus: ready,
- * resurrecting an evicted song as cooked with refs to files no longer on disk (violates ARCHITECTURE
+ * resurrecting an evicted song as processed with refs to files no longer on disk (violates ARCHITECTURE
  * section 6: a browse row must never resolve to a file that is not on disk).
  *
  * Rather than weaken ?? prev, the eviction path calls this to null the fields directly on the
@@ -469,7 +469,7 @@ export async function clearArtifacts(mediaId: string): Promise<void> {
 		vocals: null,
 		lyrics: null,
 		lyricsCandidates: [],
-		// The offset was measured FROM the stems being evicted, so it goes with them — a re-cook measures a
+		// The offset was measured FROM the stems being evicted, so it goes with them — a re-process measures a
 		// fresh one. Set undefined (not 0), the honest "no longer measured".
 		guideOffsetMs: undefined
 	};
@@ -503,7 +503,7 @@ export async function readAllSidecars(): Promise<MediaSidecar[]> {
  * the volume portable. Sidecars are authoritative, so anything present in `meta/` but missing from the
  * index is restored. Rows the index already has are LEFT ALONE: a live runtime object may already be
  * referenced elsewhere, and re-projecting it could stomp state the DB knows and the sidecar does not
- * yet (e.g. a cook that finished microseconds ago).
+ * yet (e.g. a process that finished microseconds ago).
  *
  * @returns how many records were restored.
  */

@@ -529,7 +529,7 @@ def annotate(
 
     Declines when: the caller has no confident artist/title to search with, the service is unreachable,
     nothing agrees on the names, or the closest agreement is too far off in length. Every one of those
-    means "keep the normalizer's values", not "fail the job" -- annotation is an enrichment, and a cook
+    means "keep the normalizer's values", not "fail the job" -- annotation is an enrichment, and a process
     that failed because a metadata lookup was down would be absurd.
 
     Kept as the value-only shape for callers that do not need the reason; `annotate_or_reason` is the

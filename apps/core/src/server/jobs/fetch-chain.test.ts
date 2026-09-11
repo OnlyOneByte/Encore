@@ -1,4 +1,4 @@
-// The acquisition CHAIN: a cook starts by getting the bytes, then separates them.
+// The acquisition CHAIN: a process starts by getting the bytes, then separates them.
 //
 // Kept separate from the separator-routing tests because the failure it guards against is different:
 // enqueueing `stems` directly would dispatch a separation before its input existed, and a `fetch`

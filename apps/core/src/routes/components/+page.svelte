@@ -395,7 +395,7 @@
 		durationSec={225}
 		viewCount={1892000000}
 	/>
-	<!-- Ready row carrying a detected KEY chip (the chip is ready-only; a cooking/raw row never shows it). -->
+	<!-- Ready row carrying a detected KEY chip (the chip is ready-only; a processing/raw row never shows it). -->
 	<SongRow
 		title="Journey - Don't Stop Believin' (Official Video)"
 		artistCanonical="Journey"
@@ -410,26 +410,26 @@
 		title="Queen — Bohemian Rhapsody (Sub. Español / Lyrics)"
 		artistCanonical="Queen"
 		artist="Richie Lyrics"
-		readiness="cooking"
+		readiness="processing"
 		thumbnail="https://i.ytimg.com/vi/AlmHSUirAOs/mqdefault.jpg"
 		durationSec={358}
 		viewCount={265947}
 		pct={68}
 	/>
 	<!--
-		#334 SPARKLE-HUG, made visible. The three cooking rows above all carry a title long enough to
+		#334 SPARKLE-HUG, made visible. The three processing rows above all carry a title long enough to
 		wrap to two lines, so none of them shows the case #334 is about: a SHORT title where the clamp
-		box must SHRINK to hug its text (flex: 0 1 auto) so the cooking sparkle sits right beside the
+		box must SHRINK to hug its text (flex: 0 1 auto) so the processing sparkle sits right beside the
 		title instead of floating out at the metadata column’s right edge. Reopen #334 (.t { flex: 1 },
 		in the base rule OR the <=380px @media rule) and the sparkle jumps ~80px away on this row while
 		the wrapped rows above barely move — which is exactly why the eyes-on gallery could not see it
-		before. No status/etaSec: a short cooking title mid-fetch is a real, un-decorated state.
+		before. No status/etaSec: a short processing title mid-fetch is a real, un-decorated state.
 	-->
 	<SongRow
 		title="Africa"
 		artistCanonical="Toto"
 		artist="Toto"
-		readiness="cooking"
+		readiness="processing"
 		thumbnail="https://i.ytimg.com/vi/FTQbiNvZqaY/mqdefault.jpg"
 		durationSec={295}
 		viewCount={630000000}
@@ -438,15 +438,15 @@
 	<!--
 		THE #80 BUG STATE, made visible. `status="downloading" pct={100}` is the exact instant this
 		issue names: the FETCH step reports 100% while separating/aligning/ready are unstarted. With the
-		live status threaded in, the bar reads OVERALL cook completion (~20% — the top of the downloading
+		live status threaded in, the bar reads OVERALL process completion (~20% — the top of the downloading
 		band) and the readout says "20%", NOT the solid "100%" the raw per-step number produced before.
 		A row without a status (the fixture above) is unchanged — it still shows the raw pct.
 	-->
 	<SongRow
-		title="Sweet Caroline — Neil Diamond (first step at 100%, cook barely started)"
+		title="Sweet Caroline — Neil Diamond (first step at 100%, process barely started)"
 		artistCanonical="Neil Diamond"
 		artist="Neil Diamond"
-		readiness="cooking"
+		readiness="processing"
 		thumbnail="https://i.ytimg.com/vi/1vhFnTjia_I/mqdefault.jpg"
 		durationSec={201}
 		viewCount={12345678}
@@ -454,7 +454,7 @@
 		pct={100}
 	/>
 	<!--
-		#80 ROUNDING check, committed. `status="separating" pct={68}` gives overallCookPct ~67.6 (a
+		#80 ROUNDING check, committed. `status="separating" pct={68}` gives overallProcessPct ~67.6 (a
 		band-interpolated FLOAT), so the readout MUST print a rounded "68%", never "67.6%". The bar keeps
 		the unrounded fraction for a smooth transition. This is the fractional case the two band-edge
 		fixtures (downloading pct=100 -> exactly 20; statusless control -> raw 68) could not exercise.
@@ -463,7 +463,7 @@
 		title="Bohemian Rhapsody — Queen (mid-separation, fractional overall pct)"
 		artistCanonical="Queen"
 		artist="Queen"
-		readiness="cooking"
+		readiness="processing"
 		status="separating"
 		pct={68}
 	/>
@@ -596,7 +596,7 @@
 	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />
 
 	<!-- #735: the pending ProcessingCard, which had no fixture at all — the only `pending` surface in
-	     the gallery was the QueueRow above, so the cooking card's unconfirmed state (the one that
+	     the gallery was the QueueRow above, so the processing card's unconfirmed state (the one that
 	     actually renders during the primary ✨ Sing flow) had never been eyes-on anywhere. Paired
 	     immediately below its non-pending twin so the state signal is judged as a DIFFERENCE: the warn
 	     tint and border must be obvious, while `Making karaoke… / 68%`, the byline and the singer dot
@@ -613,7 +613,7 @@
 	/>
 
 	<!-- The bug this fixed: an early stage (downloading) at pct=100. Old code filled the bar solid and
-	     read 100%; overallCookPct maps it to the downloading band top (20%), so this card is the one that
+	     read 100%; overallProcessPct maps it to the downloading band top (20%), so this card is the one that
 	     makes the fix self-evident to a human eyes-on. -->
 	<ProcessingCard
 		seq={2}
@@ -624,9 +624,9 @@
 		pct={100}
 	/>
 
-	<!-- A cooking song is still a queue entry, so it carries the SAME controls as a ready row. Paired
+	<!-- A processing song is still a queue entry, so it carries the SAME controls as a ready row. Paired
 	     with the QueueRow below deliberately: the two reorder/remove button groups must line up, so a
-	     song finishing its cook doesn't visually reshuffle its own buttons. -->
+	     song finishing its process doesn't visually reshuffle its own buttons. -->
 	<ProcessingCard
 		seq={3}
 		title="Toto - Africa (Lyrics)"
@@ -642,7 +642,7 @@
 		ondown={() => {}}
 	/>
 	<!-- Coverage gap closed (issues #216, #335): the only long-name fixture used to be a QueueRow, so
-	     the narrower `.who` on a cooking card WITH its queue controls was never eyes-on. This is the
+	     the narrower `.who` on a processing card WITH its queue controls was never eyes-on. This is the
 	     reachable-collapse case — actions cluster present, name at the 32-char profile maxlength. The
 	     name is a single UNBROKEN token (no space, so it cannot wrap): dropping the `.who i { flex: 0 0
 	     auto }` rule the surface protects then collapses the dot to 0px, the unmissable failure #335

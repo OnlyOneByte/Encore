@@ -204,7 +204,7 @@ test('the controls that previously fell short declare the tap standard as the to
 	// like any other control, and a pin that duplicates the walk only hides whether the walk reaches it.
 	// the /metrics slowest-songs links and the audit-page back link were both 32px (issue #140), and
 	// neither page was in FILES, so the structural test above never saw them. Pinned by name here.
-	expect(declares(metrics, 'cooks a', 'min-height')).toBe(true);
+	expect(declares(metrics, 'processes a', 'min-height')).toBe(true);
 
 	// The stage-colour control was a 22px-tall hue slider with a 28px thumb — a 28px hit area (issue
 	// #133). #425 replaced it with a native colour input, so the pin moves to that control rather than

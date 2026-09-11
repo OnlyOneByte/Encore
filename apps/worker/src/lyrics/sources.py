@@ -211,7 +211,7 @@ class AsrSource:
 
     name = SOURCE_ASR
 
-    #: Which audio this instance transcribes. 'vocals' needs a cooked stems job; 'mix' never does.
+    #: Which audio this instance transcribes. 'vocals' needs a processed stems job; 'mix' never does.
     AUDIO_VOCALS = "vocals"
     AUDIO_MIX = "mix"
 

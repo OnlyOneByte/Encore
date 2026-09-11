@@ -283,7 +283,7 @@ def test_plans_py_is_the_ONLY_module_importing_both_sides():
 def test_only_ONE_step_writes_each_artifact_kind():
     """The case in §1.2 that already cost a bug. `demucs.py` and `roformer.py` each hand-assembled
     `artifacts={"stems": ..., "songProfile": ...}`, and one of them put songProfile in the wrong place —
-    a shape mismatch that would have stalled every cook at "Separating vocals" forever, caught only by a
+    a shape mismatch that would have stalled every process at "Separating vocals" forever, caught only by a
     parity guard added afterwards. One writer per kind means the two engines cannot disagree."""
     writers: dict[str, set[str]] = {}
 
@@ -460,7 +460,7 @@ def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
 #: The blocking primitives a Step must never touch directly. Reaching any of these on the event loop
 #: freezes it: the worker stops answering the websocket keepalive AND stops emitting job:progress, so
 #: the core's 30 s progressLease (apps/core/src/server/jobs/leases.ts) expires and the reaper requeues a
-#: HEALTHY cook — runner.py documents both failures as observed on a live cook. The ML stack names come
+#: HEALTHY process — runner.py documents both failures as observed on a live process. The ML stack names come
 #: from apps/worker/pyproject.toml's mypy `ignore_missing_imports` overrides (the untyped C-extension
 #: dependencies), plus the blocking HTTP/subprocess std-lib surfaces.
 _BLOCKING_IMPORT_ROOTS = frozenset(
@@ -538,7 +538,7 @@ def test_no_step_reaches_blocking_work_outside_run_blocking_or_run_stage():
     offenders = {str(p.relative_to(SRC)): bad for p in steps if (bad := _blocking_offenders_in(p))}
     assert not offenders, (
         "a step reaches blocking work directly instead of through run_blocking / run_stage, so its "
-        "keepalive never fires and a healthy cook is reaped at the 30 s progress lease "
+        "keepalive never fires and a healthy process is reaped at the 30 s progress lease "
         "(docs/ARCHITECTURE.md §7.1; issue #470): "
         + "; ".join(f"{rel} -> {found}" for rel, found in sorted(offenders.items()))
     )

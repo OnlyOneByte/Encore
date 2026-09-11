@@ -18,7 +18,7 @@ rt = (seconds per window / window seconds) x num_overlap
 ```
 
 Bands used in `packages/shared/src/lyrics/separators.ts`: `fast` < 1, `medium` < 4, `slow` beyond.
-**rt < 1 is a live cook** (finishes while the singer waits). **rt > ~2 is an upgrade tier** — cook it
+**rt < 1 is a live process** (finishes while the singer waits). **rt > ~2 is an upgrade tier** — process it
 in the background and swap the instrumental in later.
 
 ## Boxes
@@ -106,7 +106,7 @@ Direct single-window forward, min of 2 reps. Script: [`scripts/checkpoint_cost.p
 | mel ep_3005 (classic) | Vocals | 252M | 384/12 | 8.0s | 4 | 7.92 | 14.52 | 3.96 → 1.98 fp32 ov2 |
 | **bs_roformer 1297** (current roformer default) | Vocals | 160M | 512/12 | 8.0s | 4 | 26.59 | 16.55 | **13.29** |
 
-**A RoFormer-family instrumental cook goes 43.8 min → 3.7 min on existing hardware: 10.4x, no GPU.**
+**A RoFormer-family instrumental process goes 43.8 min → 3.7 min on existing hardware: 10.4x, no GPU.**
 This single lever beats every config knob and every hardware option combined.
 
 Three results that must survive into any implementation:
@@ -165,7 +165,7 @@ an upgrade-tier background job, and comes from two architecture families the whi
 ignores entirely. The RoFormer karaoke variant (7.58) exists as a later quality ceiling if the cheap
 models disappoint.
 
-⚠️ Quality unmeasured for all four. rt says only what a cook costs, not whether the lead is cleanly
+⚠️ Quality unmeasured for all four. rt says only what a process costs, not whether the lead is cleanly
 removed or the backing survives intact — that needs a listening test.
 
 ## 6. Weight provenance (checked 2026-09-03)
@@ -200,7 +200,7 @@ knowingly — the whitelist already has the shape for this.
 - **Always report rt**, and state the box and date. Raw wall-clock for one song is not portable.
 - **Minimum of N reps, not the mean.** We want the machine's capability; an outlier is contention.
 - **A single-window forward is a valid proxy** for per-window pipeline cost (verified to 0.3%) and is
-  far cheaper than a full cook. Use it for checkpoint comparisons; use the CLI when comparing across
+  far cheaper than a full process. Use it for checkpoint comparisons; use the CLI when comparing across
   architecture families or when overlap/IO behaviour is itself under test.
 - **Quiesce the box first.** One 30-loadavg stray process invalidates a whole sweep.
 - **Say what is unmeasured.** Every estimate in this file is labelled as one.

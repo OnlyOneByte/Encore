@@ -15,11 +15,11 @@ subprocess, no orchestration — `RoformerProcessor` was deleted in S3 and `step
 The two places this engine genuinely differs from demucs (its input must be ALONE in a directory, and its
 outputs must be DISCOVERED rather than derived from the model name) are stated in `engines.py`.
 
-⚠️ A REAL COOK IS UNVERIFIED IN THIS ENVIRONMENT. A ~45-minute CPU cook plus the ~700MB first-run
+⚠️ A REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT. A ~45-minute CPU process plus the ~700MB first-run
 checkpoint download are needed to confirm (a) the exact output-stem filenames bs-roformer-infer
 writes into --store_dir, and (b) that each whitelist token maps to a live registry slug. The package
-IMPORTS and pip-checks clean on the pinned torch 2.8 stack (verified); the end-to-end cook does not
-run here. Until a network-enabled worker confirms it, a roformer cook only runs where an operator has
+IMPORTS and pip-checks clean on the pinned torch 2.8 stack (verified); the end-to-end process does not
+run here. Until a network-enabled worker confirms it, a roformer process only runs where an operator has
 set the `stems:roformer` capability.
 """
 
@@ -41,7 +41,7 @@ from ..retry_policy import BoundaryError
 #: 2-stem checkpoint that was actually benchmarked and quality-approved. bs-roformer-infer 0.1.5's
 #: registry holds exactly ten models (see ROFORMER_REGISTRY_SLUGS) and the ep_317 checkpoint is not
 #: among them, so this token cannot currently be pointed at the approved model through this package.
-#: Deliberately NOT silently repointed to some other slug: swapping the cooked model without a
+#: Deliberately NOT silently repointed to some other slug: swapping the processed model without a
 #: listening test is the failure this comment exists to prevent. The engine-package decision
 #: (adopt python-audio-separator ALONGSIDE bs-roformer-infer — both engines, issue #483 owner ruling
 #: Q1(b)) is recorded in docs/DECISIONS.md, and the dependency pin carries the same reason in
@@ -117,7 +117,7 @@ def resolve_roformer_slug(params: dict, default: str = DEFAULT_ROFORMER_MODEL) -
     if slug is None:
         # BoundaryError subclasses ValueError (drop-in for the existing pytest.raises(ValueError))
         # but carries the shared structured retryable = False, so an unknown roformer
-        # model fails fast via retry_policy instead of burning three cook attempts on a
+        # model fails fast via retry_policy instead of burning three process attempts on a
         # token that can never resolve — the identical treatment demucs.resolve_demucs_model
         # got in #497, which the docstring above already claims (#651).
         raise BoundaryError(f"unknown roformer model {token!r}; expected one of {sorted(ROFORMER_MODELS)}")
@@ -133,7 +133,7 @@ def _find_roformer_stem(store_dir: str, marker: str) -> str | None:
     satisfy the vocals search and vice-versa (#445). The marker sits before the slug and is unaffected
     by it. Listing is sorted so the pick is deterministic — os.listdir order is unspecified, matching the
     deliberate sort in acquisition/fetch.py:find_downloaded. Matched case-insensitively so an upstream
-    output-naming tweak does not silently break the pickup (the exact template is confirmed by a cook)."""
+    output-naming tweak does not silently break the pickup (the exact template is confirmed by a process)."""
     if not os.path.isdir(store_dir):
         return None
     needle = marker.lower()

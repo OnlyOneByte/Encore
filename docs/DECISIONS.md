@@ -27,7 +27,7 @@ pinned in `apps/worker/requirements.txt` and the `audiosep` engine is wired in
 (`params.engine`) through `engine_for` — the seam both engines resolve behind. The two coexist behind
 one seam; when the mel-band engine is added, it does not replace the roformer one.
 `bs-roformer-infer` is retained for its load/infer/release session lifecycle (load the ~700 MB
-checkpoint ONCE per long-lived worker, not per cook) and its repointable sha256-verified checkpoint
+checkpoint ONCE per long-lived worker, not per process) and its repointable sha256-verified checkpoint
 registry. **This is ratified: a pass proposing to drop one of the two engines is re-opening a
 ratified decision.** Equally, a pass that finds only one separator engine on disk has found unlanded
 work, not a contradiction of this ruling. That includes the `#: KNOWN MISMATCH` note in
@@ -85,10 +85,10 @@ source only**: a Spotify resolver joins the `/api/search` fan-out and surfaces c
 artist/title/duration (where a YouTube upload title has to be reverse-engineered), but its bytes are
 never pulled from Spotify — the audio is still acquired from YouTube, consistent with the annotator
 rule below. There is deliberately no `fetch:spotify` worker capability and no `librespot`; a
-spotify-sourced media is not cookable — `isCookableSource` (`packages/shared/src/cook/fetchers.ts`) is the
-one authority that says so, and every layer that decides whether a cook is possible asks it:
-`cookState` answers `not-cookable`, the phone's `canCook` withholds the Sing and Add affordances, and
-`requestMakeKaraoke` declines. (`fetcherFor` does NOT refuse a spotify source — it returns the default
+spotify-sourced media is not processable — `isProcessableSource` (`packages/shared/src/process/fetchers.ts`) is the
+one authority that says so, and every layer that decides whether a process is possible asks it:
+`processState` answers `not-processable`, the phone's `canProcess` withholds the Sing and Add affordances, and
+`requestProcess` declines. (`fetcherFor` does NOT refuse a spotify source — it returns the default
 downloader as a floor. The DECISION here is unchanged; only this sentence describing how it is
 enforced was wrong, which is #742.)
 Credentials, if the Spotify search API needs them, live in worker/core **env vars**
@@ -116,7 +116,7 @@ The decisions, so they are not re-litigated:
 rendition, and lyrics text shared across renditions were all specced and then cut. The one that actually
 costs something: **source-fidelity upgrades are no longer expressible.** A better source is a different
 `sourceRef` and therefore a different row, with no link to the old one, so "re-acquire from a better
-source, then re-cook" cannot be modelled. `sourceFidelity` is still worth recording as provenance, but
+source, then re-process" cannot be modelled. `sourceFidelity` is still worth recording as provenance, but
 it is not a rung of the upgrade ladder.
 
 **Album and year are deliberately not taken from MusicBrainz.** Measured live they resolved "Take On Me"
@@ -210,7 +210,7 @@ nothing shifts when playback starts, and there is one thing to test rather than 
 - **Lobby** shows the **entire roster, no "+N more"**. Measured: 10 guests still fit two rows;
   headroom is ~12 before chip size must step down.
 - **Transient states are full-screen takeovers**, one colour family each so they cannot be
-  confused: **accent** for Next up (singer name the hero at 132 px), **warn** for Still cooking
+  confused: **accent** for Next up (singer name the hero at 132 px), **warn** for Still processing
   (bounded 3-step progress), **danger** for Skipping (names what is going *and* what replaces it).
   **The join block survives every takeover**, dimmed — a song change is exactly when a new guest
   looks up, so blanking the code then would lose the join path when it is most wanted.
@@ -411,7 +411,7 @@ ships:
   `queue:reorder-any` survives as the capability gating a `move` on an entry the actor does not own.
   What remains is wiring the phone arrows and drag to one "move to index" op that rewrites the stored
   list: that is **#856 step 4**, not yet shipped.
-- **A rate limit exists** — `MAX_CONCURRENT_COOKS_PER_SINGER = 3`, refused as `over-limit` and
+- **A rate limit exists** — `MAX_CONCURRENT_PROCESSES_PER_SINGER = 3`, refused as `over-limit` and
   answered HTTP 429 with a phone-showable reason. The uncapped axis is **queue depth per singer**.
 - **A lost optimistic race is already disclosed** — `hub.ts` emits `op:reject`, the queue store
   rolls back to the pre-op snapshot, and it surfaces as a `role="alert"` toast.

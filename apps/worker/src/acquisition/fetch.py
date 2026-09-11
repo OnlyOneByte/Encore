@@ -20,7 +20,7 @@ yt-dlp never wrote). The step `AcquireAudio` is now the only answer, for all fou
 the enforcement tests in `docs/ARCHITECTURE.md` §7.1.
 
 Acquisition is a JOB rather than a stage. That is what lets a box which can download and a box which can
-separate be different machines: a fetch routes on `fetch:<fetcher>` while a cook routes on `stems`, so
+separate be different machines: a fetch routes on `fetch:<fetcher>` while a process routes on `stems`, so
 neither capability implies the other.
 
 PURE/IO SPLIT as elsewhere in this worker: the argv builder and the fetcher parsing are pure and unit
@@ -155,7 +155,7 @@ def youtube_credit(info: dict) -> dict | None:
 def read_info_json(path: str) -> dict | None:
     """Parse a yt-dlp `.info.json`, or None if it is absent/unreadable. Never raises.
 
-    A missing or corrupt metadata sidecar must degrade to "no YouTube credit", never fail the cook —
+    A missing or corrupt metadata sidecar must degrade to "no YouTube credit", never fail the process —
     the bytes are what matter, the credit is enrichment.
     """
     import json

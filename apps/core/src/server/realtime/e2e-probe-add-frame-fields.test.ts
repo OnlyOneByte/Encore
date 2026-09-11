@@ -6,14 +6,14 @@
 // are live-server scripts run by hand. So when the add contract moved (addedAt made finite in #305,
 // status narrowed to 'queued' in #324), a probe whose add frame predated the move kept sending a
 // stale frame that validateCommand now REJECTS: queueViaWs threw at setup and EVERY scenario in the
-// probe died, loudly, to an audience of nobody. #394 fixed the one probe (p5-cook-lifecycle) that
+// probe died, loudly, to an audience of nobody. #394 fixed the one probe (p5-process-lifecycle) that
 // had rotted that far and guarded it by NAME. This guard is the systemic version: it does not name a
 // probe, so a probe added tomorrow, or a contract field added tomorrow, is covered without a human
 // remembering to widen a hand-maintained list.
 //
 // AUDIT AT AUTHORING (#452). Driving every current probe's add frame through the real validateCommand
 // (a throwaway harness, since deleted) returned null (ACCEPTED) for all three probes that mint one —
-// p2-guiding-track, p11-dashboards, and p5-cook-lifecycle (the #394 reference). fuzz.mjs drives the
+// p2-guiding-track, p11-dashboards, and p5-process-lifecycle (the #394 reference). fuzz.mjs drives the
 // real UI (page.click) so the client's own addSong builds the frame — no raw add literal. p8 and p9
 // construct no add op at all. So NO probe was rotted at authoring; the repair half of #452 was a
 // no-op and the lasting deliverable is this guard.

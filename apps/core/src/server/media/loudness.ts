@@ -2,7 +2,7 @@
 //
 // WHY THIS EXISTS: separation can succeed and still write digital silence. Two of the songs in the
 // live library are exactly that — instrumental AND vocals at the 16-bit floor, 44-124KB against
-// 14-28MB for a healthy cook. Every readiness check in the system verified that a ref EXISTED, never
+// 14-28MB for a healthy process. Every readiness check in the system verified that a ref EXISTED, never
 // that the file behind it carried sound, so those songs sat in the Ready list and would have played
 // four minutes of nothing.
 //

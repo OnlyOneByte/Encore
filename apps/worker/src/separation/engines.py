@@ -79,7 +79,7 @@ class DemucsEngine:
         self._overlap = overlap
         self._segment = segment
         self._shifts = shifts
-        # `backend` is the RESOLVED hardware backend this cook runs through (backends.resolve_backend),
+        # `backend` is the RESOLVED hardware backend this process runs through (backends.resolve_backend),
         # recorded into facts so the ledger matches the startup log — not a hardcoded class constant. The
         # torch CLI is the only demucs backend actually implemented here; MLX resolves to MlxDemucsEngine,
         # which refuses at construction rather than reaching this class under an "mlx" label (#119).
@@ -147,7 +147,7 @@ class MlxDemucsEngine:
     now True). A box without MLX either resolves to `torch` (never builds this) or, if `mlx` was
     explicitly configured on unsupported hardware, `resolve_backend` raises at worker startup before any
     engine is built. So the honest-degradation contract #119 established is preserved: an `mlx` label
-    never runs a torch cook, and unavailable MLX fails loud rather than downgrading silently.
+    never runs a torch process, and unavailable MLX fails loud rather than downgrading silently.
 
     `input_wav` is stashed on the instance at `separate_argv` time so `derive_argvs` and `find_outputs`
     can compute the per-track output directory demucs-mlx names from the INPUT filename. The seam calls
@@ -177,7 +177,7 @@ class MlxDemucsEngine:
         self._segment = segment
         self._shifts = shifts
         self._batch_size = batch_size
-        # The decoded input this cook separates, set by separate_argv. demucs-mlx names its per-track
+        # The decoded input this process separates, set by separate_argv. demucs-mlx names its per-track
         # output folder from this filename (see separation/mlx.py), so derive_argvs/find_outputs need it.
         self._input_wav = "input.wav"
 
@@ -273,7 +273,7 @@ class AudioSepEngine:
 
     The fast RoFormer path `bs-roformer-infer` cannot reach: audio-separator runs mel-band checkpoints
     as a first-class MDXC path, and `mel instrumental_becruily` measures rt 1.28 on the reference box
-    versus `bs_roformer-1297`'s rt 13.29 — a 10.4x RoFormer-family instrumental cook, no GPU
+    versus `bs_roformer-1297`'s rt 13.29 — a 10.4x RoFormer-family instrumental process, no GPU
     (docs/benchmarks/SUMMARY.md §4). Adopted ALONGSIDE roformer, not replacing it — both engines, issue
     #483 owner ruling Q1(b).
 
@@ -287,7 +287,7 @@ class AudioSepEngine:
     `parse_progress` returns None: audio-separator renders a tqdm bar, not a stable percentage source, so
     the step emits a coarse 0→100 exactly as roformer does.
 
-    THE REAL COOK IS UNVERIFIED IN THIS ENVIRONMENT — the same accepted caveat roformer carries (see
+    THE REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT — the same accepted caveat roformer carries (see
     audiosep.py's module warning). audio-separator is not installed on the aarch64 dev/CI box; only a
     worker an operator gave the `stems:audiosep` capability runs it.
     """
@@ -334,7 +334,7 @@ class AudioSepEngine:
 def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorEngine:
     """The engine this job resolved to, executed through the resolved `backend`.
 
-    Unknown names raise — the CORE only routes a roformer cook to a worker advertising `stems:roformer`, so
+    Unknown names raise — the CORE only routes a roformer process to a worker advertising `stems:roformer`, so
     an unknown name here is a routing bug rather than a user choice.
 
     `backend` is the hardware backend `backends.resolve_backend` picked for THIS worker (torch/mlx). It
@@ -353,7 +353,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
     and only the matching engine's value is mapped to its `default_model`. A single engine-agnostic
     `default_model` slot let a caller hand one engine the OTHER engine's checkpoint name (issue #84: the
     lone production caller supplied the demucs default, which reached `RoformerEngine` and made
-    `DEFAULT_ROFORMER_MODEL` unreachable — a roformer cook without a `model` then raised naming a demucs
+    `DEFAULT_ROFORMER_MODEL` unreachable — a roformer process without a `model` then raised naming a demucs
     checkpoint). Keeping the names engine-specific makes that cross-wiring inexpressible. `audiosep_model`
     follows the same rule: it maps only to `AudioSepEngine`.
 
@@ -381,7 +381,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
         return AudioSepEngine(**kw)
     if name == DemucsEngine.id:
         if backend == "mlx":
-            # Wired, not silent: an mlx-resolved cook builds the MLX engine, which runs demucs-mlx and
+            # Wired, not silent: an mlx-resolved process builds the MLX engine, which runs demucs-mlx and
             # derives the instrumental (#595). This is what makes facts.backend honest — a torch
             # DemucsEngine can never be built under an "mlx" label (#119).
             allowed = {"overlap", "segment", "shifts"}
@@ -393,7 +393,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
         kw = {k: v for k, v in given.items() if k in allowed}
         if "demucs_model" in given:
             kw["default_model"] = given["demucs_model"]
-        # `backend` reaches facts unchanged (defaults to "torch"); an mlx cook never gets here.
+        # `backend` reaches facts unchanged (defaults to "torch"); an mlx process never gets here.
         return DemucsEngine(backend=backend or "torch", **kw)
     # PermanentError (retryable=False): a name with no registered engine — "ensemble" on a box that
     # only has demucs, a typo — cannot be honoured by retrying. Subclasses RuntimeError so the

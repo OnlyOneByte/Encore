@@ -5,7 +5,7 @@
   The organising choice: every duration is reported as a RATE (seconds of compute per second of audio)
   wherever a rate is meaningful, because raw seconds cannot be compared across songs of different
   lengths. Sample sizes are printed next to every average and small ones are labelled, because on a box
-  with a handful of cooks a mean over two renders exactly like a mean over two hundred.
+  with a handful of processes a mean over two renders exactly like a mean over two hundred.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
@@ -45,14 +45,14 @@
 		provisional: boolean;
 	}
 	interface Metrics {
-		sample: { attempts: number; cooks: number; provisional: boolean };
+		sample: { attempts: number; processes: number; provisional: boolean };
 		steps: StepRow[];
 		e2e: { n: number; meanMs: number | null; p50Ms: number | null; p95Ms: number | null };
 		models: ModelRow[];
 		asr: AsrRow[];
 		stages: { stage: string; n: number; meanMs: number | null }[];
-		slowestCooks: {
-			cookId: string;
+		slowestProcesses: {
+			processingId: string;
 			mediaId: string;
 			title?: string | null;
 			totalMs: number;
@@ -66,7 +66,7 @@
 	let failed = $state(false);
 
 	/**
-	 * Which step dominates a cook. The page's whole reason for existing is "what is slow", and reading
+	 * Which step dominates a process. The page's whole reason for existing is "what is slow", and reading
 	 * that off three columns of mixed units (9.0s vs 2m 34s vs 43.6s) is arithmetic, not a glance — so
 	 * the winning row is marked instead.
 	 */
@@ -126,7 +126,7 @@
 		{/if}
 
 		<p class="note">
-			{m.sample.attempts} runs across {m.sample.cooks} songs.
+			{m.sample.attempts} runs across {m.sample.processes} songs.
 			{#if m.sample.provisional}<strong>Too few to trust the averages yet.</strong>{/if}
 			Songs processed before this page existed have no timings.
 		</p>
@@ -311,15 +311,15 @@
 </Card.Root>
 		{/if}
 
-		{#if m.slowestCooks.length}
+		{#if m.slowestProcesses.length}
 			<Card.Root>
 	<Card.Header>
 		<Card.Title>Slowest songs</Card.Title>
 	</Card.Header>
 	<Card.Content>
 				
-				<ol class="cooks">
-					{#each m.slowestCooks as c (c.cookId)}
+				<ol class="processes">
+					{#each m.slowestProcesses as c (c.processingId)}
 						<li>
 							<a href="/metrics/{c.mediaId}">{c.title ?? c.mediaId}</a>
 							<span class="v">{dur(c.totalMs)}</span>
@@ -494,14 +494,14 @@
 		margin: 0.8rem 0 0;
 		line-height: var(--lh-loose);
 	}
-	.cooks {
+	.processes {
 		list-style: none;
 		margin: 0;
 		padding: 0;
 		display: grid;
 		gap: 0.6rem;
 	}
-	.cooks li {
+	.processes li {
 		display: grid;
 		gap: 0.15rem;
 	}
@@ -511,7 +511,7 @@
 	 * --accent-strong was worse at 3.52:1 and is retired; #840, XR-COL-11.) The underline also stops
 	 * the link being signalled by colour alone. min-height gives the stacked links a real tap target.
 	 */
-	.cooks a {
+	.processes a {
 		color: var(--ink);
 		text-decoration: underline;
 		text-underline-offset: 0.2em;
@@ -523,7 +523,7 @@
 		/* A title-less song shows its raw media id; an unbroken id would push the 320px layout wide. */
 		overflow-wrap: anywhere;
 	}
-	.cooks .note {
+	.processes .note {
 		margin: 0;
 	}
 	/* Aligned key/value pairs for the worker's host — the same pattern the per-song audit uses for its

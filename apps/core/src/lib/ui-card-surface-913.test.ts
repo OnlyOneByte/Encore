@@ -46,7 +46,7 @@ const SRC = join(import.meta.dir, '..');
 const CALLERS: { file: string; why: string }[] = [
 	{ file: 'lib/components/SongRow.svelte', why: 'a library/search row — its structure is Item, not Card' },
 	{ file: 'lib/components/QueueRow.svelte', why: 'a queue row — Item, plus its own drag and state classes' },
-	{ file: 'lib/components/ProcessingCard.svelte', why: 'a cooking row — Item, plus a progress bar and stage line' },
+	{ file: 'lib/components/ProcessingCard.svelte', why: 'a processing row — Item, plus a progress bar and stage line' },
 	{ file: 'lib/components/NowPlayingHero.svelte', why: 'the hero: a transport and a disclosure, not a titled card' },
 	{ file: 'lib/components/MyPositionCard.svelte', why: 'a single line telling a singer where they are' },
 	{ file: 'lib/components/CodeEntry.svelte', why: 'one character box of a room-code entry' },

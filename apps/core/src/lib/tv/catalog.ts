@@ -1,22 +1,22 @@
-// The TV's media-catalog boundary — ONE writer for server truth, and a snapshot seam the cook
+// The TV's media-catalog boundary — ONE writer for server truth, and a snapshot seam the process
 // pipeline structurally cannot reach.
 //
 // WHY THIS MODULE EXISTS (#396). "The playing song jumped back to an earlier part when another song
 // finished processing" was fixed four times and returned four times, because every fix hardened one
 // CONSUMER against one churn PATH. The invariant was written down once, in prose, in the old
-// `mergeCatalog` docstring on the TV route — "an unrelated cook must not churn the object graph the
+// `mergeCatalog` docstring on the TV route — "an unrelated process must not churn the object graph the
 // whole render tree reads" — applied at one of the two catalog writers, and never made structural.
 //
 // This module makes it structural, in three parts that each hold on their own:
 //
 //   1. ONE WRITER. `mergeCatalog` is the only way a Media record enters the catalog, and the catalog
-//      carries SERVER TRUTH only (`queue:sync`). The cook lifecycle has no entry point here at all —
-//      see `cookIsTerminal` below, which is the whole of what a cook event is allowed to decide.
+//      carries SERVER TRUTH only (`queue:sync`). The process lifecycle has no entry point here at all —
+//      see `processIsTerminal` below, which is the whole of what a process event is allowed to decide.
 //   2. A SNAPSHOT SEAM. What the player is handed is a `PlaybackSnapshot`, not a `Media`. The brand
 //      makes that a COMPILER boundary: a live catalog record is not assignable to a snapshot, so a
 //      future writer cannot hand the playing slot something the catalog can still change under it.
 //   3. IDENTITY PRESERVATION. A structurally-unchanged record keeps its previous object identity, so
-//      even a consumer that (wrongly) tracks identity is not woken by an unrelated cook.
+//      even a consumer that (wrongly) tracks identity is not woken by an unrelated process.
 //
 // Parts 2 and 3 are deliberately redundant. That redundancy is the point: two independent reasons
 // the class stays closed, so the next consumer added to the render tree does not re-open it.
@@ -33,7 +33,7 @@ import type { ServerEvent } from '@encore/shared';
  * match keeps identity stable for every downstream consumer.
  *
  * This is the ONLY writer. It takes a full server list, so it cannot express a partial local edit —
- * which is exactly why the cook path can no longer make one.
+ * which is exactly why the process path can no longer make one.
  */
 export function mergeCatalog(prev: Map<string, Media>, incoming: Media[]): Map<string, Media> {
 	const next = new Map<string, Media>();
@@ -75,17 +75,17 @@ export function snapshot(m: Media | null | undefined): PlaybackSnapshot | null {
 }
 
 /**
- * Is this cook event a terminal failure — the one thing a cook event may still decide for the room?
+ * Is this process event a terminal failure — the one thing a process event may still decide for the room?
  *
- * A cook that FAILED, or a job no connected worker advertises the capability for (`unservable`), will
+ * A process that FAILED, or a job no connected worker advertises the capability for (`unservable`), will
  * never become playable, and `enterWaiting()` sets no timer — so without this the party stares at
  * "Making the karaoke" forever. That is a LIFECYCLE exit, not a catalog edit, which is why it is the
- * only thing left on the cook path and why it is a pure predicate rather than a store write.
+ * only thing left on the process path and why it is a pure predicate rather than a store write.
  *
  * The ready case is deliberately absent: `ready` is delivered by the server as `queue:sync` +
  * `nowplaying:changed` (`onMediaReady` publishes both), so the TV leaves `waiting` on an explicit
  * playback event and never by observing the catalog.
  */
-export function cookIsTerminal(e: Extract<ServerEvent, { type: 'media:status' }>): boolean {
+export function processIsTerminal(e: Extract<ServerEvent, { type: 'media:status' }>): boolean {
 	return e.status === 'failed' || e.unservable === true;
 }

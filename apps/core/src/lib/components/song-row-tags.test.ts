@@ -26,7 +26,7 @@ test('SongRow accepts a tags prop and destructures it (#689)', () => {
 });
 
 test('showTags is gated on a READY row AND a non-empty tag list (#689)', () => {
-	// Both halves are load-bearing: readiness==='ready' keeps tags off raw/cooking rows (a candidate
+	// Both halves are load-bearing: readiness==='ready' keeps tags off raw/processing rows (a candidate
 	// upload has no library tags worth showing), and the length check keeps an empty list from
 	// rendering an empty .chips row. Mutating either half reds this.
 	const m = src.match(/const\s+showTags\s*=\s*\$derived\(([^;]*)\);/);

@@ -40,7 +40,7 @@ if (!chrome) {
 	process.exit(2);
 }
 
-// Two singers, each with a cooked song, so rotation has a real handover to perform.
+// Two singers, each with a processed song, so rotation has a real handover to perform.
 /** @param {string} name @returns {Promise<{ name: string, cookie: string }>} */
 async function joinSinger(name) {
 	const r = await fetch(`${base}/api/join`, {
@@ -55,7 +55,7 @@ const ready = await fetch(`${base}/api/search?q=e`)
 	.then((r) => r.json())
 	.then((d) => d.ready ?? []);
 if (ready.length < 2) {
-	console.error(`need 2 cooked songs, have ${ready.length}`);
+	console.error(`need 2 processed songs, have ${ready.length}`);
 	process.exit(2);
 }
 

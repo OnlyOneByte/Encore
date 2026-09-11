@@ -57,7 +57,7 @@ that "today every joined singer is a host". A **cross-singer host reorder alread
 (a direct rewrite of the stored ordered list — no durable pin; pinning was deleted in #856 step 3
 — still gated on `queue:reorder-any`, with the arrow/drag "move to index" wiring landing in #856
 step 4) — so the within-singer rule holds for the `move` op but not for the product. **One rate limit exists**
-(`MAX_CONCURRENT_COOKS_PER_SINGER = 3`, answered HTTP 429); the uncapped axis is queue depth. And
+(`MAX_CONCURRENT_PROCESSES_PER_SINGER = 3`, answered HTTP 429); the uncapped axis is queue depth. And
 a **lost optimistic race is already disclosed** (`hub.ts` → `op:reject` → rollback → `role="alert"`
 toast). What is open in all four cases is **policy content, not mechanism** — which is much
 cheaper than the older documents assume.

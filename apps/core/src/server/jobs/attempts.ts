@@ -52,13 +52,13 @@ export class AttemptLedger {
 	 * deliberately NOT incremented for an ack-timeout (no work was performed), so it undercounts the
 	 * attempts that physically happened. The ledger records physical attempts.
 	 */
-	open(job: Pick<Job, 'id' | 'mediaId' | 'cookId' | 'jobType'>, now: number): JobAttempt {
+	open(job: Pick<Job, 'id' | 'mediaId' | 'processingId' | 'jobType'>, now: number): JobAttempt {
 		const attempt = this.#countFor(job.id) + 1;
 		const row: JobAttempt = {
 			id: ulid(now),
 			jobId: job.id,
 			mediaId: job.mediaId,
-			cookId: job.cookId,
+			processingId: job.processingId,
 			jobType: job.jobType,
 			attempt,
 			workerId: null,
@@ -126,12 +126,12 @@ export class AttemptLedger {
 			.all();
 	}
 
-	/** Every attempt of one cook, oldest first — end-to-end spans one of these. */
-	byCook(cookId: string): JobAttempt[] {
+	/** Every attempt of one process, oldest first — end-to-end spans one of these. */
+	byProcess(processingId: string): JobAttempt[] {
 		return this.#db
 			.select()
 			.from(jobAttempts)
-			.where(eq(jobAttempts.cookId, cookId))
+			.where(eq(jobAttempts.processingId, processingId))
 			.orderBy(asc(jobAttempts.enqueuedAt))
 			.all();
 	}
@@ -143,11 +143,11 @@ export class AttemptLedger {
 
 	/**
 	 * Sealed attempts finished at or after `sinceMs`, newest first, capped at `limit`. A TIME window
-	 * rather than a bare row count: the row-count window (`allFinished`) silently dropped a cook's
-	 * older steps at the cap, so the cook straddling the boundary reported `complete: true` and
-	 * measured its span from only the surviving rows — understating that cook's duration (#472). The
-	 * caller pairs the window edge (`sinceMs`) with `perCook(rows, sinceMs)` so a boundary-straddling
-	 * cook is flagged `clipped` and excluded rather than counted low.
+	 * rather than a bare row count: the row-count window (`allFinished`) silently dropped a process's
+	 * older steps at the cap, so the process straddling the boundary reported `complete: true` and
+	 * measured its span from only the surviving rows — understating that process's duration (#472). The
+	 * caller pairs the window edge (`sinceMs`) with `perProcess(rows, sinceMs)` so a boundary-straddling
+	 * process is flagged `clipped` and excluded rather than counted low.
 	 */
 	finishedSince(sinceMs: number, limit = 20_000): JobAttempt[] {
 		return this.#db
@@ -183,7 +183,7 @@ export class AttemptLedger {
 
 	/**
 	 * Patch the in-flight attempt. A no-op when there is none rather than a throw: the ledger is
-	 * OBSERVABILITY, and a missing record must never be able to break a cook. Jobs that predate this
+	 * OBSERVABILITY, and a missing record must never be able to break a process. Jobs that predate this
 	 * table have no open attempt, so a running deployment upgrading into this code would otherwise
 	 * throw on the first completion of an in-flight job.
 	 */

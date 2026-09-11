@@ -95,7 +95,7 @@ test('XR-PH-20 · the page keeps the buttons wired on the row being dragged', ()
 	expect(/function rowFrozen\([^)]*\)[^{]*\{\s*return reorderOpen && e\.singerId !== me\?\.id;/.test(src)).toBe(true);
 	expect(src).toContain('onup={()');
 	expect(src).toContain('ondown={()');
-	// Applied on BOTH row kinds — ProcessingCard (a cooking pick) and QueueRow (a ready pick). Counted
+	// Applied on BOTH row kinds — ProcessingCard (a processing pick) and QueueRow (a ready pick). Counted
 	// rather than matched once, for the same reason global-reorder-client-638.test.ts:32 counts: losing
 	// it on either row leaves the mode offering a cross-singer control on a row it has just dimmed.
 	expect((src.match(/reorderable=\{!rowFrozen\(e\) &&/g) ?? []).length).toBe(2);
@@ -246,8 +246,8 @@ test('#836 driven-find 5 · focus return is re-found by attribute, not by a held
 	expect(exit![0]).toContain('tick().then(');
 });
 
-test('#836 · the cooking row dims too, with a surface and not opacity', () => {
-	// Another guest's cooking song is one of the rows the mode has to de-emphasise — found by driving the
+test('#836 · the processing row dims too, with a surface and not opacity', () => {
+	// Another guest's processing song is one of the rows the mode has to de-emphasise — found by driving the
 	// mode, where the only non-mine row on screen was a ProcessingCard and stayed at full weight.
 	const src = stripComments(readFileSync(join(import.meta.dir, 'ProcessingCard.svelte'), 'utf8'));
 	const rule = /\.dimmed\s*\{([^}]*)\}/.exec(src);

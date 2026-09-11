@@ -37,7 +37,7 @@ def test_selector_prefers_opus_then_m4a_then_falls_back_to_bestaudio():
     assert any("m4a" in p or "aac" in p for p in parts[1:]), FORMAT_SELECTOR
     # A bare `bestaudio` is NOT sufficient as the last branch: it still requires an audio-only stream
     # to exist. Measured against a real video whose player API was refused, the only available format
-    # was the muxed `18` (360p mp4 / AAC 128k), every `bestaudio` branch missed, and the cook failed
+    # was the muxed `18` (360p mp4 / AAC 128k), every `bestaudio` branch missed, and the process failed
     # at download. `best` is the true last resort, and it restores the guarantee that this selector
     # can only reorder what yt-dlp would have taken -- never make a video undownloadable.
     assert parts[-1] == "best", FORMAT_SELECTOR

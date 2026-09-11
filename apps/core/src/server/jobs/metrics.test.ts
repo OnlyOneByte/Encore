@@ -8,7 +8,7 @@ import {
 	mean,
 	percentile,
 	perAsrModel,
-	perCook,
+	perProcess,
 	perModel,
 	perStage,
 	perStep,
@@ -23,7 +23,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		id: 'a' + Math.random(),
 		jobId: 'j1',
 		mediaId: 'm1',
-		cookId: 'c1',
+		processingId: 'c1',
 		jobType: 'stems' as JobType,
 		attempt: 1,
 		workerId: 'w1',
@@ -49,7 +49,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 describe('percentile — nearest rank, not interpolated', () => {
 	it('returns a value that was actually measured', () => {
 		// Interpolation over a tiny sample invents a number lying between two real measurements and
-		// equal to neither. On a box with eight cooks that is a fabricated data point.
+		// equal to neither. On a box with eight processes that is a fabricated data point.
 		const vals = [10, 20, 30, 40];
 		const p95 = percentile(vals, 95);
 		expect(p95).not.toBeNull();
@@ -110,43 +110,43 @@ describe('perStep', () => {
 	});
 });
 
-describe('perCook and e2e', () => {
+describe('perProcess and e2e', () => {
 	it('spans the whole run and separates waited-time from worked-time', () => {
-		const cook = [
-			attempt({ jobType: 'fetch', cookId: 'c1', enqueuedAt: T0, startedAt: T0, finishedAt: T0 + 10_000 }),
+		const process = [
+			attempt({ jobType: 'fetch', processingId: 'c1', enqueuedAt: T0, startedAt: T0, finishedAt: T0 + 10_000 }),
 			// 30s of idle queue between the two steps
 			attempt({
 				jobType: 'stems',
-				cookId: 'c1',
+				processingId: 'c1',
 				enqueuedAt: T0 + 10_000,
 				startedAt: T0 + 40_000,
 				finishedAt: T0 + 100_000
 			})
 		];
-		const [c] = perCook(cook);
+		const [c] = perProcess(process);
 		expect(c.totalMs).toBe(100_000); // what the singer waited
 		expect(c.workMs).toBe(70_000); // what the CPU did
 		expect(c.complete).toBe(true);
 	});
 
-	it('excludes a cook still in flight instead of reporting a shrinking duration', () => {
-		const rows = perCook([
-			attempt({ cookId: 'c1', finishedAt: T0 + 1_000 }),
-			attempt({ cookId: 'c2', outcome: null, finishedAt: null })
+	it('excludes a process still in flight instead of reporting a shrinking duration', () => {
+		const rows = perProcess([
+			attempt({ processingId: 'c1', finishedAt: T0 + 1_000 }),
+			attempt({ processingId: 'c2', outcome: null, finishedAt: null })
 		]);
-		expect(rows.map((r) => r.cookId)).toEqual(['c1']);
+		expect(rows.map((r) => r.processingId)).toEqual(['c1']);
 	});
 
-	it('counts only complete cooks in the aggregate', () => {
+	it('counts only complete processes in the aggregate', () => {
 		const stats = e2e([
-			attempt({ cookId: 'c1', finishedAt: T0 + 1_000 }),
-			attempt({ cookId: 'c2', outcome: 'failed', finishedAt: T0 + 9_000 })
+			attempt({ processingId: 'c1', finishedAt: T0 + 1_000 }),
+			attempt({ processingId: 'c2', outcome: 'failed', finishedAt: T0 + 9_000 })
 		]);
-		expect(stats.n).toBe(1); // a failed cook has no end-to-end delivery time
+		expect(stats.n).toBe(1); // a failed process has no end-to-end delivery time
 	});
 
-	it('ignores rows written before cook ids existed', () => {
-		expect(perCook([attempt({ cookId: '' })])).toEqual([]);
+	it('ignores rows written before process ids existed', () => {
+		expect(perProcess([attempt({ processingId: '' })])).toEqual([]);
 	});
 });
 
@@ -180,7 +180,7 @@ describe('perModel — measured against what the whitelist claims', () => {
 		expect(perModel([attempt({ jobType: 'fetch' })])).toEqual([]);
 	});
 
-	it('groups the same model across cooks and songs', () => {
+	it('groups the same model across processes and songs', () => {
 		const rows = perModel([
 			attempt({
 				mediaId: 'm1',
@@ -265,55 +265,55 @@ describe('perStage — the split the core cannot see on its own', () => {
 
 describe('sample-size honesty', () => {
 	it('flags a small sample as an anecdote', () => {
-		// On a box with 8 cooked songs a "mean" reads with the same authority as one over 200.
+		// On a box with 8 processed songs a "mean" reads with the same authority as one over 200.
 		expect(isAnecdote(2)).toBe(true);
 		expect(isAnecdote(CONFIDENT_SAMPLE)).toBe(false);
 	});
 });
 
-describe('#472 — the read window no longer understates the boundary cook', () => {
-	// A cook whose earlier steps finished before the window opened is handed to perCook missing those
+describe('#472 — the read window no longer understates the boundary process', () => {
+	// A process whose earlier steps finished before the window opened is handed to perProcess missing those
 	// rows. Its span would then be measured from the earliest SURVIVING step (too short) while still
 	// passing the sealed===list completeness test over the rows that happened to be fetched. That is
-	// the silent under-count. The window edge lets perCook detect and refuse it.
+	// the silent under-count. The window edge lets perProcess detect and refuse it.
 	const boundary = T0 + 100_000; // the older edge of the read window
 
-	function clippedCook(): JobAttempt[] {
-		// The real cook ran fetch (enqueued at T0) then stems; only the stems row survived the window.
-		return [attempt({ jobType: 'stems', cookId: 'boundary', enqueuedAt: T0, finishedAt: boundary + 60_000 })];
+	function clippedProcess(): JobAttempt[] {
+		// The real process ran fetch (enqueued at T0) then stems; only the stems row survived the window.
+		return [attempt({ jobType: 'stems', processingId: 'boundary', enqueuedAt: T0, finishedAt: boundary + 60_000 })];
 	}
 
-	it('flags a cook that began before the window as clipped, and never complete', () => {
-		const [c] = perCook(clippedCook(), boundary);
+	it('flags a process that began before the window as clipped, and never complete', () => {
+		const [c] = perProcess(clippedProcess(), boundary);
 		expect(c.clipped).toBe(true);
 		expect(c.complete).toBe(false);
 	});
 
-	it('keeps a clipped boundary cook out of the end-to-end aggregate', () => {
-		// Base behaviour (no window arg) counts the truncated cook and averages its understated span in.
+	it('keeps a clipped boundary process out of the end-to-end aggregate', () => {
+		// Base behaviour (no window arg) counts the truncated process and averages its understated span in.
 		// With the window edge, the aggregate refuses it rather than reporting a low number.
-		const stats = e2e(clippedCook(), boundary);
+		const stats = e2e(clippedProcess(), boundary);
 		expect(stats.n).toBe(0);
 	});
 
-	it('still reports a cook that lives entirely inside the window as complete', () => {
+	it('still reports a process that lives entirely inside the window as complete', () => {
 		const inside = [
 			attempt({
 				jobType: 'fetch',
-				cookId: 'inside',
+				processingId: 'inside',
 				enqueuedAt: boundary + 1_000,
 				startedAt: boundary + 1_000,
 				finishedAt: boundary + 5_000
 			}),
 			attempt({
 				jobType: 'stems',
-				cookId: 'inside',
+				processingId: 'inside',
 				enqueuedAt: boundary + 5_000,
 				startedAt: boundary + 5_000,
 				finishedAt: boundary + 65_000
 			})
 		];
-		const [c] = perCook(inside, boundary);
+		const [c] = perProcess(inside, boundary);
 		expect(c.clipped).toBe(false);
 		expect(c.complete).toBe(true);
 		expect(c.totalMs).toBe(64_000);
@@ -321,7 +321,7 @@ describe('#472 — the read window no longer understates the boundary cook', () 
 	});
 
 	it('with no window (whole ledger read) nothing is clipped', () => {
-		const [c] = perCook(clippedCook());
+		const [c] = perProcess(clippedProcess());
 		expect(c.clipped).toBe(false);
 	});
 });

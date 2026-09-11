@@ -1,6 +1,6 @@
-// guard: the reaper-killed-cook fix is only real once app.ts WIRES the reaper's onFailed seam.
+// guard: the reaper-killed-process fix is only real once app.ts WIRES the reaper's onFailed seam.
 // #90 settled the readiness gate; #303 makes the same hook also REPORT (broadcast media:status,
-// log one line, reclaim scratch) so a reaper-killed cook is not silent; #451 collapses that whole
+// log one line, reclaim scratch) so a reaper-killed process is not silent; #451 collapses that whole
 // four-step epilogue — which was open-coded at THREE sites plus a fourth copy in a test — into ONE
 // exported function, reportTerminalFailure, called from all three. This guard moved WITH the seam:
 // its original header ("Change the seam and this guard moves") anticipated exactly this.
@@ -12,7 +12,7 @@
 //      and reaper.test.ts supplies its OWN onFailed — so reverting app.ts's wiring leaves every reaper
 //      test green. Without this scan the fix could be silently unwired and ship green (the exact class
 //      of bug that let #303's reaper path ship silent).
-//   2. reportTerminalFailure itself (make-karaoke.ts) still performs all FOUR epilogue steps. The
+//   2. reportTerminalFailure itself (process.ts) still performs all FOUR epilogue steps. The
 //      behavioural test reaper-broadcast-on-failure.test.ts drives it end-to-end, but a step guarded
 //      behind a dead branch or reordered after an early return can still pass a broadcast-only
 //      assertion; pinning the function's text closes that.
@@ -27,16 +27,16 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// import.meta.dir === apps/core/src/server/jobs → one level up to app.ts, same dir for make-karaoke.
+// import.meta.dir === apps/core/src/server/jobs → one level up to app.ts, same dir for process.
 const APP = stripComments(readFileSync(join(import.meta.dir, '..', 'app.ts'), 'utf8'));
-const MK = stripComments(readFileSync(join(import.meta.dir, 'make-karaoke.ts'), 'utf8'));
+const MK = stripComments(readFileSync(join(import.meta.dir, 'process.ts'), 'utf8'));
 
 test('app.ts imports reportTerminalFailure — the one shared terminal-fail epilogue (#451)', () => {
-	expect(APP).toMatch(/import\s*\{[^}]*\breportTerminalFailure\b[^}]*\}\s*from\s*'\.\/jobs\/make-karaoke'/);
+	expect(APP).toMatch(/import\s*\{[^}]*\breportTerminalFailure\b[^}]*\}\s*from\s*'\.\/jobs\/process'/);
 });
 
 test('app.ts wires the JobReaper onFailed hook through reportTerminalFailure over mediaById + publish (#451)', () => {
-	// An unwired onFailed means a reaper-killed cook never settles its gate → readyToSing never flips
+	// An unwired onFailed means a reaper-killed process never settles its gate → readyToSing never flips
 	// → rotation holds the queue entry forever (#90), AND stays silent (#303). Isolate the onFailed
 	// hook and pin that it delegates to the shared epilogue with the reaper cause and both deps.
 	const start = APP.indexOf('onFailed:');
@@ -55,7 +55,7 @@ test('app.ts wires the JobReaper onFailed hook through reportTerminalFailure ove
 });
 
 test('reportTerminalFailure performs all four terminal-fail epilogue steps (#451)', () => {
-	// Isolate the function body so a match cannot be satisfied by unrelated make-karaoke.ts code.
+	// Isolate the function body so a match cannot be satisfied by unrelated process.ts code.
 	const sig = MK.indexOf('export function reportTerminalFailure');
 	expect(sig).toBeGreaterThanOrEqual(0);
 	const open = MK.indexOf('{', sig);
@@ -78,12 +78,12 @@ test('reportTerminalFailure performs all four terminal-fail epilogue steps (#451
 	//     dropped or dead-wrapped while the room-facing half still broadcasts.
 	const fnBody = fn.slice(fn.indexOf('{') + 1);
 	expect(fnBody).toMatch(/^\s*const\s+settled\s*=\s*settleGatesForFailedJob\(job,\s*deps\.mediaById\);/);
-	// (2) broadcast media:status via mediaStatusFor, gated on shouldBroadcastCook, ordered after settle.
-	expect(fn).toMatch(/shouldBroadcastCook\(job,\s*media\)/);
+	// (2) broadcast media:status via mediaStatusFor, gated on shouldBroadcastProcess, ordered after settle.
+	expect(fn).toMatch(/shouldBroadcastProcess\(job,\s*media\)/);
 	expect(fn).toMatch(/type:\s*'media:status'/);
 	expect(fn).toMatch(/status:\s*mediaStatusFor\(job\)/);
 	const settleIdx = fn.indexOf('settleGatesForFailedJob');
-	const branchIdx = fn.indexOf('shouldBroadcastCook');
+	const branchIdx = fn.indexOf('shouldBroadcastProcess');
 	expect(settleIdx).toBeGreaterThanOrEqual(0);
 	expect(branchIdx).toBeGreaterThan(settleIdx);
 	// (3) one operator log line, in the uniform key=value format so a single grep finds every path.

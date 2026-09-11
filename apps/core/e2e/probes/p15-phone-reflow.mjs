@@ -30,7 +30,7 @@
  * NOT the same as page zoom, which scales the viewport too and cannot expose this class at all.
  *
  * SELF-HOSTING: boots its own ephemeral server and its own Chromium on ports it owns, so there is no
- * fixture to prepare. It needs no cooked song and no worker — the tiles render at zero.
+ * fixture to prepare. It needs no processed song and no worker — the tiles render at zero.
  *
  *   bun apps/core/e2e/probes/p15-phone-reflow.mjs
  *

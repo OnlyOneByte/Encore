@@ -88,7 +88,7 @@ def test_injected_lead_has_the_opposite_sign(tmp_path):
 
 def test_aligned_stems_measure_zero_not_none(tmp_path):
     # Two copies of one signal — a measured, confident 0 (distinct from an unmeasurable None). This is
-    # the freshly-cooked common-FLAC case that must NOT shift the guide.
+    # the freshly-processed common-FLAC case that must NOT shift the guide.
     sig = _broadband(10.0, seed=3)
     _write_wav(tmp_path / "inst.wav", sig)
     _write_wav(tmp_path / "vox.wav", sig.copy())

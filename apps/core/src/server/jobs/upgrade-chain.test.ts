@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import { followUps, separatorFor } from './dispatch';
-import { markMediaReady } from './make-karaoke';
+import { markMediaReady } from './process';
 import {
 	isQualityUpgrade,
 	qualityRank,
@@ -46,10 +46,10 @@ test('isQualityUpgrade requires strictly better and treats missing current as up
 });
 
 // ── follow-ups ────────────────────────────────────────────────────────────────
-test('a cook chains align, and the upgrade only when it would improve quality', () => {
+test('a process chains align, and the upgrade only when it would improve quality', () => {
 	expect(followUps('stems', settings())).toEqual(['align']); // upgrade disabled
 	expect(followUps('stems', settings({ enqueueUpgrade: true }))).toEqual(['align', 'stems-upgrade']);
-	// enabled but the "upgrade" is not actually better → not enqueued, so no wasted 40-min cook
+	// enabled but the "upgrade" is not actually better → not enqueued, so no wasted 40-min process
 	expect(
 		followUps('stems', settings({ enqueueUpgrade: true, upgradeEngine: 'demucs', upgradeModel: 'htdemucs' }))
 	).toEqual(['align']);
@@ -70,7 +70,7 @@ test('separatorFor reports the pairing a separation job used, and nothing for ot
 	expect(separatorFor('align', settings())).toBeUndefined();
 });
 
-test('a first cook publishes and records its separator', () => {
+test('a first process publishes and records its separator', () => {
 	const byId = new Map([['m1', media()]]);
 	expect(
 		markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', { engine: 'demucs', model: 'htdemucs' })
@@ -114,16 +114,16 @@ test('THE INVARIANT: a worse or equal result never replaces a published instrume
 			})
 		]
 	]);
-	// a worse engine result arriving late (e.g. a re-queued plain cook) is refused
+	// a worse engine result arriving late (e.g. a re-queued plain process) is refused
 	expect(
 		markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', { engine: 'demucs', model: 'htdemucs' })
 	).toBe(false);
 	expect(byId.get('m1')!.separator).toEqual(published); // unchanged
-	// and an identical re-cook is a no-op rather than a churn
+	// and an identical re-process is a no-op rather than a churn
 	expect(markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', published)).toBe(false);
 });
 
-test('a plain cook with no separator reported still publishes (older worker path)', () => {
+test('a plain process with no separator reported still publishes (older worker path)', () => {
 	const byId = new Map([['m1', media()]]);
 	expect(markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac')).toBe(true);
 	expect(byId.get('m1')!.stemStatus).toBe('ready');

@@ -63,11 +63,11 @@ test('nextPlayable returns the soonest ready entry', () => {
 	expect(nextPlayable(entries, media).next?.id).toBe('a1');
 });
 
-test('HELD SLOT: a not-ready (cooking) entry is skipped but keeps its position', () => {
-	// a1 is a make-karaoke file still processing; b1 is a ready iframe.
+test('HELD SLOT: a not-ready (processing) entry is skipped but keeps its position', () => {
+	// a1 is a process file still processing; b1 is a ready iframe.
 	const entries = [e('a1', 'a', 1), e('b1', 'b', 2)];
 	const media = new Map([
-		['m-a1', m('m-a1', { stemStatus: 'queued' })], // cooking
+		['m-a1', m('m-a1', { stemStatus: 'queued' })], // processing
 		['m-b1', m('m-b1')] // ready
 	]);
 	const { next, held } = nextPlayable(entries, media);
@@ -90,17 +90,17 @@ test('isEntryReady: ready ONLY with an instrumental — nothing plays unprocesse
 		['queued', m('queued', { stemStatus: 'queued', instrumentalRef: undefined })],
 		['skewed', m('skewed', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: undefined })],
 		[
-			'cooked',
-			m('cooked', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })
+			'processed',
+			m('processed', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })
 		]
 	]);
-	// An unseparated song is a cook candidate, not something the room can sing — this is the change
+	// An unseparated song is a process candidate, not something the room can sing — this is the change
 	// from the embed era, where a YouTube entry was always immediately playable.
 	expect(isEntryReady(e('x', 'a', 1, 'none'), media)).toBe(false);
 	expect(isEntryReady(e('x', 'a', 1, 'queued'), media)).toBe(false);
 	// status ahead of artifact: rotation must not hand the TV a ref that is not on disk
 	expect(isEntryReady(e('x', 'a', 1, 'skewed'), media)).toBe(false);
-	expect(isEntryReady(e('x', 'a', 1, 'cooked'), media)).toBe(true);
+	expect(isEntryReady(e('x', 'a', 1, 'processed'), media)).toBe(true);
 });
 
 test('upNextAfter skips the current entry and returns the next ready one', () => {

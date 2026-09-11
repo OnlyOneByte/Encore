@@ -42,7 +42,7 @@ test('requiredCapability is engine-derived for stems, plain type otherwise', () 
 	expect(requiredCapability('stems')).toBe('stems');
 });
 
-test('a roformer cook is NOT dispatched to a demucs-only worker', () => {
+test('a roformer process is NOT dispatched to a demucs-only worker', () => {
 	const cap: CapabilityFor = (j) => requiredCapability(j.jobType, settings({ defaultEngine: 'roformer' }));
 	const demucsOnly = [worker('w1', ['stems'])];
 	const stems = [job('a', 'stems')];

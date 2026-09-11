@@ -70,7 +70,7 @@ describe('SettingsRepository', () => {
 		// Same trap as `defaultFetcher` above, and the reason that regression test exists: a field can be
 		// on GlobalSettings and in the normalizer while having no column and never being selected, so
 		// every read falls back to the default and the operator's choice silently vanishes. Here it would
-		// be worse than invisible — the settings page would show `medium` while every cook kept using
+		// be worse than invisible — the settings page would show `medium` while every process kept using
 		// `base`, so the one lever on wrong words would look like it did nothing.
 		const repo = freshRepo();
 		expect(repo.getGlobal().asrModel).toBe(DEFAULT_GLOBAL_SETTINGS.asrModel);
