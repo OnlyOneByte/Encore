@@ -36,7 +36,7 @@
 	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { processAndQueue } from '$lib/process-and-queue';
-	import { gripVisible, ownSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
+	import { gripVisible, queueSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
 	import {
 		displayReadiness,
 		canProcess,
@@ -646,7 +646,6 @@
 	}
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
-	const myPicks = $derived(queued.filter((e) => e.singerId === me?.id));
 
 	/*
 	 * DIRECTION B (docs/DECISIONS.md, issue #833): on the browse screen the search box is docked in the
@@ -720,9 +719,6 @@
 		lastQueueIds = ids;
 	});
 
-	function myIdx(id: string): number {
-		return myPicks.findIndex((e) => e.id === id);
-	}
 	/** The entry's index in the WHOLE queued list — the index space `move-to-index` uses. */
 	function queuedIdx(id: string): number {
 		return queued.findIndex((e) => e.id === id);
@@ -731,9 +727,8 @@
 	 * Cross-singer reorder (#856 step 4, #828 Q4-A): shift the entry one slot up/down across the WHOLE
 	 * queue, jumping other singers — which the own-picks `move` op cannot express. Emits `move-to-index`,
 	 * which rewrites the stored list, so the move sticks with no pin. Every joined singer may do it; the
-	 * server gates a NON-owner entry on `queue:reorder-any`. (The reorder-mode drag below still commits
-	 * an own-picks `move` via exitReorder — wiring the drag to `move-to-index` too is the tracked
-	 * follow-up, the drag half of Q4-A.)
+	 * server gates a NON-owner entry on `queue:reorder-any`. The reorder-mode drag now commits through
+	 * the same op (#912, via exitReorder → store.moveToIndex), so both affordances share one wire path.
 	 */
 	function moveGlobal(id: string, delta: number) {
 		const i = queuedIdx(id);
@@ -744,11 +739,11 @@
 
 	/* ── THE OWN-PICKS REORDER MODE (XR-PH-17 … XR-PH-20, issue #836) ──────────────────────────────
 	 *
-	 * A drag, not a list sort. `move`'s toSeq indexes the singer's OWN queued picks, so the op cannot
-	 * express "above someone else's song" — and the guest's picks are not adjacent in this flat list.
-	 * So the mode DRAWS its legal positions (one per own pick) instead of letting the list imply them,
-	 * dims the rows that cannot accept a drop, and declines a release anywhere else. Every predicate is
-	 * in $lib/reorder-mode so it is unit-testable without mounting this route (XR-PH-21).
+	 * A drag, not a list sort. Under `move-to-index` the drop commits a GLOBAL queued index (#912), so a
+	 * drag can place a song above ANY other — but the guest's picks are not adjacent in this flat list,
+	 * and neither is any target position implied by proximity. So the mode DRAWS its legal positions (one
+	 * per queued row) instead of letting the list imply them, and declines a release anywhere else. Every
+	 * predicate is in $lib/reorder-mode so it is unit-testable without mounting this route (XR-PH-21).
 	 */
 	/**
 	 * Travel below which a press-and-release is a TAP rather than a drop, in px. 6px is the reorder
@@ -760,7 +755,7 @@
 	 * name and the comparison, not this number.
 	 */
 	const TAP_SLOP_PX = 6;
-	const mySlots = $derived(ownSlots(myPicks.length));
+	const slots = $derived(queueSlots(queued.length));
 	// The row being dragged, the slot currently under the pointer, and the live pointer offset.
 	let movingId = $state<string | null>(null);
 	/**
@@ -786,38 +781,37 @@
 	let dragTeardown: (() => void) | null = null;
 
 	function gripFor(e: QueueEntry): boolean {
+		// Any queued row is draggable now (#912): `move-to-index` can place a song at any global slot, so
+		// the grip is legitimate on every row, not just the actor's own. `e` is kept in the signature so
+		// the template still asks the predicate per-row (a hard-coded literal on every row is the recorded
+		// regression) and so a later per-row rule has somewhere to read from.
+		void e;
 		return gripVisible({
-			mine: e.singerId === me?.id,
-			ownQueuedCount: myPicks.length,
+			queuedCount: queued.length,
 			reorderMeaningful: canReorder
 		});
 	}
 
 	/*
-	 * XR-PH-18's second half: while the mode is open, another guest's row must expose NO pointer or
-	 * keyboard interaction — it is not a legal drop target, so without this the mode could leave a
-	 * control live on exactly the rows it has just dimmed. The row's controls are dropped for the life
-	 * of the mode, rather than the row being marked `inert`: `inert` also takes the row out of the
-	 * accessibility tree, and XR-PH-03 turns on those rows staying INFORMATIONAL while dimmed — they
-	 * are who the guest is being ordered around.
+	 * #912 widened every queued row into a legal drop target, so there are no longer rows the mode must
+	 * de-emphasise or take controls from: the single-pointer alternative (up/down) stays live on EVERY
+	 * row, which is XR-PH-20 satisfied for the whole list rather than just the actor's own row. Under the
+	 * old own-picks `move`, another guest's row could not accept a drop, so the mode froze its controls
+	 * and dimmed it; that reasoning is gone now that any row is droppable.
 	 *
-	 * It never matches the guest's OWN rows, which is what keeps XR-PH-20 true: the single-pointer
-	 * alternative stays present and operable on the row being dragged, while the mode is open.
-	 *
-	 * Applied as an added clause on the EXISTING `reorderable` expression at both row call sites rather
-	 * than by extracting that expression into a helper. The extraction was written first and reverted:
-	 * `global-reorder-client-638.test.ts:32` counts the inline ternary twice on purpose, so that
-	 * reverting either row kind's wiring reds it, and collapsing the two into one helper silently
-	 * removed a guard belonging to another issue. A duplicated expression is the cheaper cost.
+	 * The helper is kept (returning a constant `false`) so the two call sites keep one named, greppable
+	 * suppression point — a later mode that DOES need to freeze a row (a host-only drag, say) has an
+	 * obvious place to express it, and the source guard has a stable symbol to scan.
 	 */
 	function rowFrozen(e: QueueEntry): boolean {
-		return reorderOpen && e.singerId !== me?.id;
+		void e;
+		return false;
 	}
 
 	function enterReorder(id: string, opener: HTMLElement | null) {
 		if (movingId === id) return;
 		movingId = id;
-		hoverSlot = myIdx(id) >= 0 ? myIdx(id) : null;
+		hoverSlot = queuedIdx(id) >= 0 ? queuedIdx(id) : null;
 		dragY = 0;
 		reorderNote = '';
 		openerEl = opener;
@@ -833,9 +827,9 @@
 		const id = movingId;
 		dragTeardown?.();
 		dragTeardown = null;
-		const target = dropTarget(commitSlot, myPicks.length);
-		if (id && target !== null && target !== myIdx(id)) {
-			store?.moveEntry(id, target);
+		const target = dropTarget(commitSlot, queued.length);
+		if (id && target !== null && target !== queuedIdx(id)) {
+			store?.moveToIndex(id, target);
 			if (navigator.vibrate) navigator.vibrate(8);
 		}
 		movingId = null;
@@ -936,7 +930,7 @@
 	 * lie. Then the mode closes itself, says why, and returns focus.
 	 */
 	$effect(() => {
-		const reason = modeInvalidation(myPicks, movingId, entries.find((e) => e.id === movingId)?.status);
+		const reason = modeInvalidation(queued, movingId, entries.find((e) => e.id === movingId)?.status);
 		if (reason) exitReorder(null, reason);
 	});
 	// The entry that will ACTUALLY play next (skipping any still processing), matching the server's
@@ -1364,7 +1358,7 @@
 		-->
 		{#if reorderOpen}
 			<div class="reorder-bar card" role="group" aria-label="Reordering your songs">
-				<p class="reorder-hint">Drag to one of your own positions. Other guests' songs stay put.</p>
+				<p class="reorder-hint">Drag to any position in the queue.</p>
 				<div class="reorder-acts">
 					<button class="chip" onclick={() => exitReorder(hoverSlot)}>Done</button>
 					<button class="chip" onclick={() => exitReorder(null)}>Cancel</button>
@@ -1386,21 +1380,18 @@
 			{#each queued as e, i (e.id)}
 				{@const s = singerOf(e.singerId)}
 				{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
-				{@const isMine = e.singerId === me?.id}
-				{@const ownIdx = myIdx(e.id)}
 				<!--
-					XR-PH-18 — ONE legal drop target per own queued pick, drawn immediately above the pick whose
-					position it represents, and rendered ONLY while the mode is open. The count therefore equals
-					`myPicks.length` by construction and can never equal the visible list length: `mySlots` is
-					derived from my own picks, so another guest queueing a song mid-drag changes the flat list
-					around these and changes neither their number nor what each one commits.
+					XR-PH-18 — ONE legal drop target per queued row, drawn immediately above the row whose
+					position it represents, and rendered ONLY while the mode is open (#912). The count equals
+					`queued.length` by construction — `slots` is derived from the queued list — so the slot at
+					index `i` commits the global queued index `i`, which is the `toIdx` `move-to-index` uses.
 
 					`data-slot` carries the index the release commits. The pointer path reads it by hit-testing
 					(see onGripPointerDown) instead of from a geometry table, and the same index is what the
 					button's own click commits — so the keyboard path and the pointer path cannot drift apart.
 				-->
-				{#if reorderOpen && isMine && ownIdx >= 0 && mySlots[ownIdx]}
-					{@const slot = mySlots[ownIdx]}
+				{#if reorderOpen && slots[i]}
+					{@const slot = slots[i]}
 					<button
 						class="dropslot"
 						class:hot={hoverSlot === slot.index}
@@ -1425,7 +1416,7 @@
 							(canReorder && !!me?.id && queued.length > 1)}
 						canUp={queuedIdx(e.id) > 0}
 						canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
-						dimmed={reorderOpen && !isMine}
+						dimmed={false}
 						onup={() => moveGlobal(e.id, -1)}
 						ondown={() => moveGlobal(e.id, 1)}
 					/>
@@ -1450,7 +1441,7 @@
 						canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
 						grip={gripFor(e)}
 						gripId={e.id}
-						dimmed={reorderOpen && !isMine}
+						dimmed={false}
 						moving={movingId === e.id && dragging}
 						dragY={movingId === e.id && dragging ? dragY : 0}
 						ongripdown={(ev) => onGripPointerDown(e, ev)}
