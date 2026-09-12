@@ -254,17 +254,24 @@ All of these were verified, and none was caused by the review. **Fixed:**
 
 **Still open, each needing a decision rather than a fix:**
 
-- A dev-only route has no dev gate. It says it is not a product surface, and it
-  builds and serves in production. It is also load-bearing fixture infrastructure
-  for five guards, so it cannot simply be removed or gated without deciding what
-  those guards read instead.
+- ~~A dev-only route has no dev gate.~~ **Fixed.** All five guards read it as
+  SOURCE rather than serving it, so the gate cost them nothing; it 404s in a
+  production build and a guard pins both the gate and the five fixture readers.
 - `GET` on the settings endpoint is ungated while `PUT` is capability-gated.
 - The worker WebSocket role accepts unauthenticated upgrades when no token is
   set. The app warns loudly at boot, which is the right behaviour for a
   self-hosted default, but it is worth an explicit decision rather than a warning.
-- 19 of 38 e2e drivers remain reachable from no command. That list is what let
-  every defect above sit unnoticed, and it is the largest remaining hole in the
-  verification surface.
+- ~~19 of 38 e2e drivers remain reachable from no command.~~ **Fixed.** All of
+  them are reachable via `bun run e2e:probes`, which boots and seeds the shared
+  environment they need. Running them for the first time is what surfaced the
+  remaining item below. Their individual state is recorded in
+  `tests/e2e/HARNESS.md`; several are stale in named, specific ways, and repairing
+  a probe by weakening its assertion would be worse than leaving it red.
+- **A floor-level silent instrumental is published as READY with no
+  defence-in-depth in the core** — reported at `[HIGH]` by
+  `p5-process-lifecycle`, which had never been executed. This is a product defect,
+  not a broken probe, and it is the most substantive thing this whole review
+  turned up.
 
 ---
 
