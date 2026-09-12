@@ -85,6 +85,13 @@
       "when": 1788945285186,
       "tag": "0011_add_lyrics_override_text",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1788945286186,
+      "tag": "0012_add_guide_mix_ref",
+      "breakpoints": true
     }
   ]
 }

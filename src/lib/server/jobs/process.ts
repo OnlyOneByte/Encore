@@ -642,7 +642,7 @@ export function setMediaLyrics(
 		for (const c of candidates) {
 			const ref = toRelativeKey(c.ref);
 			if (!ref) continue; // workers report absolute paths; safeMediaPath rejects those
-			merged = mergeLyricsCandidate(merged, {...c, ref });
+			merged = mergeLyricsCandidate(merged, { ...c, ref });
 		}
 		media.lyricsCandidates = merged;
 		// Resolve through the SHARED resolver so a human override wins over the ranking here just
@@ -680,6 +680,42 @@ export function setMediaVocals(mediaId: string, uri: string | undefined, mediaBy
 	const ref = toRelativeKey(uri);
 	if (!media || !ref) return false;
 	media.vocalsRef = ref;
+	return true;
+}
+
+/**
+ * Attach the GUIDE MIX — both stems in ONE 4-channel file, which is what lets the TV play the guiding
+ * track from a single playhead instead of holding two elements in time against each other.
+ *
+ * ALWAYS WRITES, unlike `setMediaVocals`, and the asymmetry is the whole point.
+ *
+ * The mix is not an independent artifact: it is a DERIVATIVE of the two stems, at a fixed id-derived path
+ * that every process overwrites in place. So its validity is tied to the stem generation that produced it.
+ * A `stems-upgrade` re-separates with a better model and replaces both stem files — if its mix encode then
+ * fails and we PRESERVED the old ref, the room would keep playing a mix built from the SUPERSEDED stems,
+ * while `instrumentalRef` and `Media.separator` both advertise the better ones. That is unrecoverable by
+ * design: the backfill classifies a song with a ref as `settled`, so nothing ever rebuilds it, and
+ * `markMediaReady`'s quality-rank refusal cannot see it because the mix is not what it ranks.
+ *
+ * So an absent key CLEARS the ref. Clearing is safe and self-healing in a way that preserving is not: with
+ * no ref the song falls back to the two-element guide path (today's behaviour, drift-governed but audible),
+ * `guideMixEligibility` reports it eligible again, and the next boot's backfill rebuilds the mix from the
+ * NEW stems. The cost of clearing is one party on the fallback path; the cost of preserving is a room
+ * permanently playing the worse separation with nothing to indicate why.
+ *
+ * The caller is responsible for deleting the stale FILE — see `worker-hub.ts`. This owns the ref only.
+ */
+export function setMediaGuideMix(mediaId: string, uri: string | undefined, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media) return false;
+	const ref = toRelativeKey(uri);
+	if (!ref) {
+		// No mix on this frame. Whatever ref we held describes stems that have just been replaced.
+		const had = media.guideMixRef !== undefined;
+		media.guideMixRef = undefined;
+		return had;
+	}
+	media.guideMixRef = ref;
 	return true;
 }
 

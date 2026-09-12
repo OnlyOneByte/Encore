@@ -11,16 +11,37 @@
 	// for <audio>. Playing an audio-only stream through the audio element removes a whole class of
 	// "decodes, advances, makes no sound" from the picture.
 	//
-	// THE GUIDING TRACK. A second, secondary <audio> carries the isolated vocals and FOLLOWS the
-	// instrumental, with its volume set to the guide level. The instrumental stays the master: it keeps
-	// owning play/pause, currentTime, `ended`, and every telemetry callback the gapless state machine
-	// and the lyrics overlay run on. Nothing about the existing playback path changes, which is the
-	// reason this is two media elements rather than a WebAudio graph — a graph buys sample-exact lock
-	// and effects at the cost of rebuilding the part that already works.
-	import { playbackRef, isPlayable, guideOffsetSec } from '$lib/contract';
+	// THE GUIDING TRACK, and the TWO paths it can take. `guidePath` (shared) decides which, per song.
+	//
+	//   • MIX — one 4-channel file through ONE media element, channels 0/1 the instrumental and 2/3 the
+	//     isolated vocals, pulled apart by a `PitchShiftGraph(el, { split: true })` that gives each pair
+	//     its own gain. One decoder means ONE playhead, so the guide cannot drift from the instrumental:
+	//     the problem stops being governed and becomes unrepresentable. This is the preferred path.
+	//   • ELEMENT — the legacy shape, kept for songs with no mix: a second, secondary <audio> carries the
+	//     isolated vocals and FOLLOWS the instrumental, held in time by `guide-sync.ts`'s drift governor.
+	//
+	// WHY THE MIX EXISTS, given the element path already worked. Two elements are two decoders and two
+	// clocks, and two clocks cannot be sample-locked from script: `guide-sync.ts` can only compare each
+	// element's reported `currentTime`, which is the spec's official playback position and excludes each
+	// element's output latency. So its governor converges to "aligned" on a signal that does not describe
+	// what the ear hears, and then correctly stops correcting. (An earlier version of this header argued
+	// the opposite — that two elements beat a WebAudio graph because "nothing about the existing playback
+	// path changes". That trade was real but the premise was wrong: the part that "already works" is the
+	// part that cannot be made exact.)
+	//
+	// On BOTH paths the instrumental stays the master: it keeps owning play/pause, currentTime, `ended`,
+	// and every telemetry callback the gapless state machine and the lyrics overlay run on. On the mix path
+	// the master simply happens to carry the guide inside it.
+	//
+	// THE ONE RULE THAT MUST NOT BE BROKEN: a 4-channel file must never reach an element that is not
+	// routed through a running split graph. Played natively the browser DOWNMIXES it, summing the isolated
+	// vocals into the instrumental at full volume — worse than any drift. `guide-mix-src.ts` owns that
+	// gate; read it before touching the src assignment.
+	import { playbackRef, isPlayable, guideOffsetSec, guidePath } from '$lib/contract';
 	import type { PlaybackSnapshot } from './catalog';
 	import { untrack } from 'svelte';
 	import { guideCorrection, prerollSeekTarget, resumeSeekTarget, seekPlan } from './guide-sync';
+	import { masterSrcPlan, wantsEagerGraph, mixGateFor } from './guide-mix-src';
 	import { nextVideoSrc } from './video-src';
 	import { transportFor, slotHoldsSong, songToken } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
@@ -121,6 +142,20 @@
 	// Declared here so both the volume effect and the shift-wiring effect below reference the same
 	// instances. Not $state — nothing renders off them; they are imperative WebAudio handles.
 	let masterGraph: PitchShiftGraph | undefined;
+	/**
+	 * Has this song's split-graph routing attempt SETTLED? Reactive, and the src effect depends on it.
+	 *
+	 * Two jobs in one flag. It is the reactive signal the src effect needs — `masterGraph.isRouted`/
+	 * `.isSplit` are plain getters and cannot wake an effect, so without this the mix would be built,
+	 * become safe to play, and never be played. And it is the `pending` half of `MixGate`: while false the
+	 * src effect commits NOTHING on a mix song, which is what stops the src being decided twice and
+	 * rewritten on a playing element (see `guide-mix-src.ts` — that rewrite silently parks the master at
+	 * 0 for the rest of the song).
+	 *
+	 * Reset to false per SONG, not per graph, in the reset effect below: a new song must re-take the
+	 * decision, and a slot whose graph already exists settles again immediately on the next flush.
+	 */
+	let mixSettled = $state(false);
 	let guideGraph: PitchShiftGraph | undefined;
 
 	/**
@@ -165,7 +200,24 @@
 	// for the whole existing library and rises no higher, so a song is only ever pulled DOWN.
 	const effectiveMasterLevel = $derived(Math.max(0, Math.min(1, masterLevel)));
 
-	const guideRef = $derived(media?.vocalsRef ?? null);
+	/**
+	 * WHICH guide this song offers — one 4-channel mix, two elements, or none (`guidePath` in shared).
+	 *
+	 * The discriminated union is what makes "both paths at once" unrepresentable. Playing the mix AND
+	 * mounting the vocals element would sound the vocals twice, once inside the mix at the room's level
+	 * and once on top at the element's — a doubled, flanged vocal, which is the exact defect class the
+	 * mix exists to remove.
+	 */
+	const guidePlan = $derived(media ? guidePath(media) : ({ kind: 'none' } as const));
+	/**
+	 * The vocals stem ref for the TWO-ELEMENT path, and `null` on every other path.
+	 *
+	 * This is the line that keeps the second element off a mix song: it reads `guidePlan.kind` rather
+	 * than `media.vocalsRef`, so a song WITH a mix — which still has a perfectly good vocals stem on
+	 * disk, because the mix does not replace it — resolves to null here and the `{#if}` below never
+	 * mounts. Reading `media.vocalsRef` directly would mount both.
+	 */
+	const guideRef = $derived(guidePlan.kind === 'element' ? guidePlan.ref : null);
 	/**
 	 * The measured guide/instrumental offset in SECONDS — the ZERO POINT the guide is aligned to.
 	 *
@@ -311,6 +363,11 @@
 		masterGraph?.setGain(effectiveMasterLevel);
 		masterReady = false;
 		guideSettled = false;
+		// A new song re-takes the mix decision from scratch. Cleared here rather than left latched because a
+		// non-mix song must not inherit the previous song's `routed`, and a mix song following a mix song
+		// still has to re-evaluate (the graph's mode is fixed, but `guidePath` may differ). A slot whose
+		// graph already exists re-settles on the very next flush, so the cost is one flush, not a stall.
+		mixSettled = false;
 		prewarmedFired = false;
 		visibleReadyFired = false;
 		// NOTE: `currentSrc` is NOT cleared on a song CHANGE here (this effect keys on the id value, and the
@@ -557,6 +614,21 @@
 		if (typeof window === 'undefined') return;
 		const onGesture = () => {
 			void tryPlayMaster();
+			// A gesture is also the ONLY thing that can make an AudioContext resumable, so it is the only
+			// chance a mix song has to get its split graph after a pre-gesture attempt was refused. Without
+			// this the first song of every TV session loses its guide permanently: the eager build runs at
+			// mount (context suspended → `denied`), and none of the pitch effect's tracked deps change when
+			// the wall is finally tapped, so nothing ever re-attempts. Re-open the gate first so the src
+			// effect re-takes its decision once the retry settles.
+			if (masterGraph && !masterGraph.isRouted && wantsEagerGraph(guidePlan)) {
+				mixSettled = false;
+				void masterGraph
+					.ensureRouted()
+					.catch(() => {})
+					.finally(() => {
+						mixSettled = true;
+					});
+			}
 			// Bring the guide along if it is mounted and wanted — it obeys the same transport, but its own
 			// play() was refused by the same policy, so it needs the same nudge.
 			if (vocals && transport === 'play') {
@@ -638,6 +710,11 @@
 	$effect(() => {
 		if (vocals) vocals.volume = effectiveGuide;
 		guideGraph?.setGain(effectiveGuide);
+		// SPLIT MODE: the guide is a channel pair inside the master, so its level is a gain on the master's
+		// graph rather than a second element's volume. Set unconditionally — `setGuideGain` remembers the
+		// value on a graph that is not split or not yet built, and the build applies whatever is remembered,
+		// which is what keeps the room's level from being lost in the window before the graph exists.
+		masterGraph?.setGuideGain(effectiveGuide);
 	});
 
 	// The MASTER instrumental's level — the loudness-normalization pulldown. Exactly the guide's
@@ -797,6 +874,14 @@
 	//     is a PERMANENT capture — so wrapping the hidden element early would commit it to WebAudio
 	//     before it is even playing, for no benefit. keyShift is a room-wide value; when this slot
 	//     becomes active the effect re-runs and applies it.
+	//
+	//     THE GUIDE MIX IS THE ONE EXCEPTION, deliberately. Its eager build ignores `active`, because a
+	//     mix song's guide does not exist until the splitter runs and the src is withheld until the graph
+	//     is confirmed — so waiting for the slot to become active would mean the gapless seam lands on a
+	//     song that then has to build a graph and re-decide its src, which is the mid-song src rewrite
+	//     `guide-mix-src.ts` exists to prevent. Building during pre-warm is what makes the seam free. The
+	//     cost is real and accepted: a second AudioContext + worklet per room, and a permanent capture of
+	//     an element that might never play.
 	//   • the graph resumes its own context; if it cannot (the wall was never clicked) it degrades to
 	//     audible-but-unshifted rather than to silence — handled inside PitchShiftGraph.
 	//
@@ -809,6 +894,35 @@
 		const v = master;
 		const g = vocals;
 		if (!v) return;
+		// GUIDE-MIX SONGS BUILD EAGERLY, and in SPLIT mode. Their guiding track does not exist until the
+		// splitter runs, so unlike a transpose there is nothing to wait for — `wantsEagerGraph` names that
+		// inversion. Everything else keeps the LAZY graph, which is load-bearing: at keyShift 0 a plain song
+		// touches no WebAudio at all, so a broken graph cannot cost the room its audio.
+		//
+		// `mixSettled` is flipped on EVERY outcome, success or not, because it gates the src: a mix song
+		// commits no src at all until the attempt has finished, so an attempt that never settles would leave
+		// the room silent. The three settling paths below are exhaustive — an existing graph (nothing to
+		// wait for), a resolved build, and a rejected build.
+		if (wantsEagerGraph(guidePlan)) {
+			if (!masterGraph) masterGraph = new PitchShiftGraph(v, { split: true });
+			masterGraph.setGuideGain(effectiveGuide);
+			if (masterGraph.isRouted) {
+				// Already routed — either this song's build finished, or a PRIOR song in this slot built a
+				// graph whose mode is now fixed. Settle immediately and let `mixGateFor` judge whether that
+				// graph is actually a split one; a leftover non-split graph resolves to `denied`, so the mix
+				// is withheld and the room gets the instrumental with no guide rather than a downmix.
+				if (!mixSettled) mixSettled = true;
+			} else {
+				void masterGraph
+					.ensureRouted()
+					.catch(() => {})
+					.finally(() => {
+						// Settle on success AND on failure. `mixGateFor` reads the graph's own state, so this
+						// only has to say "the attempt is over" — it must never itself decide the src.
+						mixSettled = true;
+					});
+			}
+		}
 		// Master. Only ever build the graph once there is a real shift to apply; setShift(0) on an
 		// un-built graph is a documented no-op.
 		if (needsShift(shift) && !masterGraph) masterGraph = new PitchShiftGraph(v);
@@ -841,7 +955,25 @@
 		// in the browser via the PitchShiftGraph below, so the src never depends on keyShift and can
 		// never 404 on a variant nothing rendered (the whole reason the TV used to ignore the shift).
 		// playbackRef is the separated instrumental; sourceRef is the ORIGIN and is never played.
-		return `/media/${playbackRef(m)}`;
+		//
+		// ON A GUIDE-MIX SONG this may instead be the 4-channel mix — but ONLY once the split graph has
+		// actually captured the element and confirmed a running context. `masterSrcPlan` owns that rule and
+		// `guide-mix-src.ts` documents why breaking it is the worst outcome in the feature: played natively,
+		// a 4-channel file is DOWNMIXED by the browser, which sums the isolated vocals into the
+		// instrumental at full volume. Until routed we hold the plain instrumental, so a room that cannot
+		// run WebAudio plays the song with no guiding track rather than with the vocals on top.
+		// `mixGateFor` folds in BOTH halves — routed AND split. Asking `isRouted` alone is what let a
+		// leftover non-split graph (built for a transpose on an earlier song in this slot, and permanent)
+		// take the 4-channel file and downmix it natively.
+		const plan = masterSrcPlan(guidePlan, playbackRef(m), mixGateFor(masterGraph, mixSettled));
+		// `plan.mixed` is the src's own claim about what it is. Asserting it against the graph turns a
+		// disagreement into a loud, findable failure instead of a room full of full-volume vocals: the two
+		// are derived from the same gate, so they can only diverge if someone edits one of them alone.
+		if (plan.mixed && !(masterGraph?.isSplit && masterGraph.isRouted)) {
+			console.error('[tv] refusing a 4-channel src with no split graph — this would downmix the vocals');
+			return `/media/${playbackRef(m)}`;
+		}
+		return plan.ref ? `/media/${plan.ref}` : '';
 	}
 
 	/**
@@ -867,6 +999,11 @@
 		// on `if (!master) return`. Reaching here with `master` still bound but `playable` false is
 		// therefore always that transient churn — one microtask ahead of Svelte tearing the element down.
 		const playable = !!media && isPlayable(media);
+		// Read the settled signal so this effect re-runs when the routing attempt finishes. See
+		// `mixSettled` — the graph's getters cannot wake an effect, and while this is false `masterSrcPlan`
+		// deliberately commits no src at all on a mix song rather than committing one it will have to
+		// rewrite.
+		void mixSettled;
 		const resolved = playable ? fileSrc(media) : '';
 		// Compare against what the ELEMENT ACTUALLY HOLDS, not a shadow copy of it. `nextVideoSrc` is
 		// documented in terms of "the string last assigned to the element", and the attribute IS that —

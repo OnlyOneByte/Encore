@@ -33,7 +33,9 @@ import { needsLyricsBackfill, BACKFILL_PRIORITY } from './jobs/backfill';
 import { backfillVocalsRefs } from './media/vocals-backfill';
 import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
-import { existsSync } from 'node:fs';
+import { guideMixKey } from './media/paths';
+import { existsSync, rmSync } from 'node:fs';
+
 import { markLyricsQueued, reportTerminalFailure } from './jobs/process';
 import { reconcileStrandedGates } from './jobs/gate-reconcile';
 import { cancelJobsForMedia } from './jobs/cancel';
@@ -475,6 +477,8 @@ export function getApp(): EncoreApp {
 					// back to un-processed: rotation stops treating it as playable, a re-request re-processes it
 					live.instrumentalRef = undefined;
 					live.vocalsRef = undefined;
+					// The mix IS those two stems in one file — evicting them evicts it.
+					live.guideMixRef = undefined;
 					live.guideOffsetMs = undefined;
 					live.lyricsRef = undefined;
 					live.lyricsCandidates = [];
@@ -525,7 +529,7 @@ export function getApp(): EncoreApp {
 			try {
 				const side = await readSidecar(mediaId);
 				if (!side) return; // not in the library (a plain search result) — nothing to record against
-				side.library = {...side.library,...bumpPlay(side.library, app.now()) };
+				side.library = { ...side.library, ...bumpPlay(side.library, app.now()) };
 				await writeSidecar(side);
 			} catch {
 				/* a lost play count is not worth a failed playback */
@@ -539,6 +543,21 @@ export function getApp(): EncoreApp {
 		registry: workers,
 		mediaById,
 		toWorker: (workerId, cmd) => app.toWorker(workerId, cmd),
+		// A completion frame with no guide mix means the mix on disk was built from stems this frame has
+		// just replaced (a stems-upgrade re-separates and overwrites both stem files in place). Delete it:
+		// a stale mix is structurally valid — four channels, right duration — so nothing downstream can
+		// tell it apart from a current one, and the next boot's backfill would ADOPT it and re-record a ref
+		// to the superseded separation. The room would then play the worse stems while `instrumentalRef`
+		// and `Media.separator` both advertise the better ones, with no way to notice.
+		discardGuideMix: (mediaId) => {
+			const abs = safeMediaPath(guideMixKey(mediaId));
+			if (!abs) return;
+			try {
+				rmSync(abs, { force: true });
+			} catch {
+				/* best effort — a file we cannot remove is re-probed by the next backfill */
+			}
+		},
 		broadcast: (e) => app.publish(e),
 		// remote workers pull source / push stems via this store config (local volume or S3/MinIO)
 		mediaStore: mediaStoreConfig,

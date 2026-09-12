@@ -12,14 +12,15 @@ import {
 	jobAttempts,
 	roomSettings
 } from '$lib/server/db/schema';
-import { mkdtempSync, mkdirSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, cpSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { at, read } from '@encore/test-support';
 import { sqlitePersistence } from '$lib/server/state/persistence';
 import { SingerRepository } from '$lib/server/singers/repository';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
-import { DEFAULT_STAGE_COLOR, STAGE_BG_C, STAGE_BG_L, hueToHex, stageHueToHex } from '$lib/contract';
+import { MediaRepository } from '$lib/server/media/repository';
+import { DEFAULT_STAGE_COLOR, STAGE_BG_C, STAGE_BG_L, hueToHex, stageHueToHex, guidePath } from '$lib/contract';
 import type { PlaybackState, QueueEntry } from '$lib/contract';
 
 /**
@@ -110,7 +111,13 @@ test('media.guide_offset_ms defaults null and round-trips a signed value (0 incl
 	db.insert(media)
 		.values({ id: 'g3', source: 'youtube', sourceRef: 'd', title: 'D', durationSec: 200, guideOffsetMs: 0 })
 		.run();
-	const byId = new Map(db.select().from(media).all().map((r) => [r.id, r.guideOffsetMs]));
+	const byId = new Map(
+		db
+			.select()
+			.from(media)
+			.all()
+			.map((r) => [r.id, r.guideOffsetMs])
+	);
 	expect(byId.get('g0')).toBeNull(); // never measured
 	expect(byId.get('g1')).toBe(30);
 	expect(byId.get('g2')).toBe(-25);
@@ -136,7 +143,13 @@ test('media.lyrics_override_ref defaults null and round-trips a stored ref', () 
 			lyricsOverrideRef: 'derived/lyrics/o1-manual-word.json'
 		})
 		.run();
-	const byId = new Map(db.select().from(media).all().map((r) => [r.id, r.lyricsOverrideRef]));
+	const byId = new Map(
+		db
+			.select()
+			.from(media)
+			.all()
+			.map((r) => [r.id, r.lyricsOverrideRef])
+	);
 	expect(byId.get('o0')).toBeNull(); // no override
 	expect(byId.get('o1')).toBe('derived/lyrics/o1-manual-word.json');
 });
@@ -818,4 +831,71 @@ test('an EXISTING database upgrades — 0007 adds tv_background_dim defaulting t
 	expect(repo.getRoom('roomA').tvBackgroundDim).toBe(0);
 	expect(repo.setRoom({ tvBackgroundDim: 0.5 }, 'roomA').tvBackgroundDim).toBe(0.5);
 	expect(repo.getRoom('roomA').tvBackgroundDim).toBe(0.5);
+});
+
+// upgrade: apply only 0000..0011 (a pre-guide-mix box), write rows with NO guide_mix_ref column, THEN run
+// the full set so 0012 actually runs. What it must prove: the column arrives, every existing row upgrades to
+// NULL (which guidePath reads as the two-element path — today's playback, byte-identical), and the running
+// code can read it back through the real repository. RED on base: no 0012, so guide_mix_ref is absent and
+// the SELECT below throws.
+//
+// This is the check every comparable migration has. It is what catches the trap the
+// 0004/0005/0006/0010/0011/0012 headers all record: drizzle keys replay on the journal `when`, so a migration
+// folded into a rewritten baseline never re-applies to a deployed box, and the column is missing at boot the
+// first time a reader selects it.
+test('an EXISTING database upgrades — 0012 adds guide_mix_ref defaulting to NULL (two-element guide)', () => {
+	const { db, sqlite } = openDb(':memory:');
+
+	const real = DRIZZLE;
+	const baseDir = mkdtempSync(join(tmpdir(), 'encore-mig-guidemix-'));
+	mkdirSync(join(baseDir, 'meta'), { recursive: true });
+	const fullJournal = JSON.parse(readFileSync(join(real, 'meta', '_journal.json'), 'utf8'));
+	// Everything BEFORE 0012 — derived from the journal rather than hand-listed, so a future migration
+	// inserted between does not silently drop out of the "prior" set.
+	const prior = (fullJournal.entries as { idx: number; tag: string }[]).filter((e) => e.idx < 12);
+	for (const e of prior) {
+		cpSync(join(real, e.tag + '.sql'), join(baseDir, e.tag + '.sql'));
+		const snap = join(real, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json');
+		if (existsSync(snap)) cpSync(snap, join(baseDir, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json'));
+	}
+	writeFileSync(join(baseDir, 'meta', '_journal.json'), JSON.stringify({ ...fullJournal, entries: prior }));
+	runMigrations(db, baseDir);
+
+	// Sanity: this really IS the pre-feature shape, so the test cannot pass by having skipped phase 1.
+	const before = sqlite.query('PRAGMA table_info(media)').all() as { name: string }[];
+	expect(before.some((c) => c.name === 'vocals_ref')).toBe(true);
+	expect(before.some((c) => c.name === 'guide_mix_ref')).toBe(false);
+
+	// Two processed songs a running library would already hold.
+	sqlite.run(
+		'INSERT INTO media (id, source, source_ref, title, duration_sec, stem_status, instrumental_ref, vocals_ref)' +
+			" VALUES ('old1','youtube','a','A',200,'ready','derived/stems/old1-instrumental.flac','derived/stems/old1-vocals.flac')"
+	);
+	sqlite.run(
+		"INSERT INTO media (id, source, source_ref, title, duration_sec, stem_status) VALUES ('old2','youtube','b','B',300,'none')"
+	);
+
+	// Deploy the feature: 0000..0011 are already recorded, so only 0012 runs.
+	runMigrations(db, real);
+
+	// The column arrived — proving 0012 was applied, not skipped the way an in-place baseline edit would be.
+	const after = sqlite.query('PRAGMA table_info(media)').all() as { name: string }[];
+	expect(after.some((c) => c.name === 'guide_mix_ref')).toBe(true);
+
+	// Every existing row upgraded to NULL, and the columns beside it are untouched by the add.
+	const rows = sqlite
+		.query('SELECT id, guide_mix_ref, vocals_ref, instrumental_ref, stem_status FROM media ORDER BY id')
+		.all() as { id: string; guide_mix_ref: string | null; vocals_ref: string | null; stem_status: string }[];
+	expect(rows.map((r) => [r.id, r.guide_mix_ref])).toEqual([
+		['old1', null],
+		['old2', null]
+	]);
+	expect(rows[0].vocals_ref).toBe('derived/stems/old1-vocals.flac');
+	expect(rows[0].stem_status).toBe('ready');
+
+	// And the running code reads that NULL back as ABSENT, which is what makes the upgraded song keep
+	// today's two-element guide rather than being handed a mix that does not exist.
+	const restored = new MediaRepository(db).all().find((m) => m.id === 'old1');
+	expect(restored?.guideMixRef).toBeUndefined();
+	expect(guidePath(restored!)).toEqual({ kind: 'element', ref: 'derived/stems/old1-vocals.flac' });
 });

@@ -40,3 +40,23 @@ def read_wav_mono(path: str) -> tuple[np.ndarray, int]:
     if n_channels > 1:
         data = data.reshape(-1, n_channels).mean(axis=1)
     return data, sample_rate
+
+
+def wav_frame_length(path: str) -> tuple[int, int] | None:
+    """`(frames, sample_rate)` for a WAV, or `None` when it cannot be read.
+
+    Exists for ONE caller: the guide mix has to know whether its two source stems are the same length
+    before it folds them together. `join` TRUNCATES to the shorter input and exits 0 — measured: a 3 s
+    instrumental against a 1 s vocals stem yields a 1 s output — and because the mix is what the TV plays
+    as MASTER it owns `duration`, so a short one cuts the song off with nothing in any log. It also
+    silently resamples a rate mismatch, so the rate is returned too.
+
+    Reads the header only (`wave` does not decode frames for `getnframes`), so this is cheap enough to run
+    unconditionally. `None` rather than a raise: an unreadable header is a reason to skip the mix, not a
+    reason to fail a job whose instrumental is fine.
+    """
+    try:
+        with wave.open(path, "rb") as w:
+            return w.getnframes(), w.getframerate()
+    except Exception:  # noqa: BLE001 — an unreadable header must not fail the load-bearing instrumental
+        return None
