@@ -167,7 +167,7 @@ Three findings that came out of reading the code and are load-bearing for the ro
 > justification to be *mountability*, because `NowPlayingHero.svelte:13–15` states exactly that: "it
 > owns no state, reads no store and imports no `$app` module, **so** it MOUNTS under the repo's
 > happy-dom harness". Its claim about itself is true and its causal claim is **stale**.
-> `test-setup/svelte-dom-preload.ts:125–128` aliases `$app/navigation`, `$app/state`,
+> `tests/setup/svelte-dom-preload.ts:125–128` aliases `$app/navigation`, `$app/state`,
 > `$app/environment` and `$env/dynamic/public` to real stubs, and `:117` records the old state in the
 > past tense — "which is why only leaf components with zero `$app` imports **could** mount".
 > `docs/ux/04-verification.md:256` confirms it: rung M *is* the preload **plus** aliased `$app`/`$env`.
@@ -318,7 +318,7 @@ week.
 **4. The obvious argument for "a component reads no global state" is stale, and I had to weaken the
 row.** `NowPlayingHero.svelte:13–15` says it imports no `$app` module **so that** it mounts, which
 reads as a standing prerequisite and is the argument I set out to use. It is no longer true:
-`test-setup/svelte-dom-preload.ts:125–128` aliases the four `$app`/`$env` modules the app uses, `:117`
+`tests/setup/svelte-dom-preload.ts:125–128` aliases the four `$app`/`$env` modules the app uses, `:117`
 records the old constraint in the past tense, and `docs/ux/04-verification.md:256` defines rung M as
 the preload *plus* that aliasing. A component that imports `$app` mounts fine today; what still blocks
 a route is a server-`load` `data` prop and `offsetHeight` throwing under `XR-VER-03`. So `XR-CMP-08`

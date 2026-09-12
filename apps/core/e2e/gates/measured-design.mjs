@@ -21,7 +21,7 @@
  * | 4 focus-ring form | XR-VER-12 | computed `outline-style/-width/-color` on a genuinely `:focus-visible` element |
  *
  * None of the four is decidable on the mount rung: happy-dom has no layout engine, and
- * `test-setup/svelte-dom-preload.ts:101` now replaces `getBoundingClientRect` with a throw naming
+ * `tests/setup/svelte-dom-preload.ts:101` now replaces `getBoundingClientRect` with a throw naming
  * the rung, so they cannot be parked there either. The source scans that used to stand in for them
  * read a DECLARATION; three of the four defects this gate found on its first run are invisible to a
  * declaration, because the control declares no height at all.

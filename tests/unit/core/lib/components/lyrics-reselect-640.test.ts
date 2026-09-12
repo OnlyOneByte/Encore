@@ -3,7 +3,7 @@
 // pick marked, the pick/paste callbacks firing with the right payload, and the "a better version
 // exists" peek. Each reds if the corresponding branch of the component is reverted.
 import { test, expect, afterEach } from 'bun:test';
-import { mount, unmount, flushSync } from '../../../../../test-setup/svelte-client';
+import { mount, unmount, flushSync } from '../../../../../tests/setup/svelte-client';
 import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 import type { LyricsCandidate } from '@encore/shared';
 

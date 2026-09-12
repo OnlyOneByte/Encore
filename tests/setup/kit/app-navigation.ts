@@ -2,11 +2,11 @@
 //
 // SvelteKit synthesises `$app/*` at build time, so under `bun test` the specifier resolves to
 // nothing and a component that imports it fails to load before any effect runs. The preload
-// (test-setup/svelte-dom-preload.ts) resolves `$app/navigation` to THIS file.
+// (tests/setup/svelte-dom-preload.ts) resolves `$app/navigation` to THIS file.
 //
 // It is a real on-disk module, not an inline remap, for the reason recorded in svelte-client.ts: a
 // preload plugin's `onResolve` does not intercept the test ENTRY file's own bare imports, so a test
-// that wants to assert on navigation imports `test-setup/kit/app-navigation` directly while the
+// that wants to assert on navigation imports `tests/setup/kit/app-navigation` directly while the
 // component's own `$app/navigation` import is rewritten to the same module. Both paths therefore see
 // one shared `calls` log.
 //

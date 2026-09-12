@@ -8,10 +8,10 @@
 // The join POST + safeNextPath navigation is covered by mount-rung.test.ts ("the landing join surface
 // mounts…"); this file owns the scanned/typed shape.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
-import { mount, unmount, flushSync } from '../../../../../test-setup/svelte-client';
+import { mount, unmount, flushSync } from '../../../../../tests/setup/svelte-client';
 import JoinLanding from '$lib/components/JoinLanding.svelte';
 
-type StateStub = typeof import('../../../../../test-setup/kit/app-state');
+type StateStub = typeof import('../../../../../tests/setup/kit/app-state');
 const stateStub = async (): Promise<StateStub> => (await import('$app/state')) as unknown as StateStub;
 
 let realFetch: typeof fetch;

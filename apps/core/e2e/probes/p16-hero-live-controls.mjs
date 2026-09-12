@@ -8,7 +8,7 @@
  * onto shadcn's <Slider>, which is built on Bits UI, and Bits UI's slider needs a LAYOUT
  * ENVIRONMENT to exist at all:
  *
- *   1. it reads `offsetWidth` to place its thumb, and `test-setup/svelte-dom-preload.ts` replaces
+ *   1. it reads `offsetWidth` to place its thumb, and `tests/setup/svelte-dom-preload.ts` replaces
  *      that accessor with a throw, because happy-dom fabricates a zero and "a zero a guard can
  *      mistake for a real measurement is worse than no API at all" (XR-VER-03);
  *   2. it observes its track with `ResizeObserver`, which the same preload deliberately does NOT

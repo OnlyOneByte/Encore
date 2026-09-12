@@ -17,7 +17,7 @@
 // door to song-change silence.
 //
 // This is the decision-B version (issue comment): it actually MOUNTS TvPlayer.svelte and RUNS its
-// $effects, under a compiled-Svelte + happy-dom harness (test-setup/, wired by the root bunfig.toml)
+// $effects, under a compiled-Svelte + happy-dom harness (tests/setup/, wired by the root bunfig.toml)
 // and the same stubbed WebAudio the two guards above already use — no audio hardware, no browser, one
 // `bun test` gate. It drives the action set the issue names and, after EVERY step, checks the two
 // invariants the whole class reduces to, for BOTH elements:
@@ -35,7 +35,7 @@
 // matrix) is in the PR body; the guards for "which source line" remain the two files above.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
 import type { ComponentProps } from 'svelte';
-import { mount, flushSync } from '../../../../../test-setup/svelte-client';
+import { mount, flushSync } from '../../../../../tests/setup/svelte-client';
 import TvPlayer from '$lib/tv/TvPlayer.svelte';
 import type { PlaybackSnapshot } from '$lib/tv/catalog';
 import { makeReactive } from './playback-common-actions.harness.svelte';

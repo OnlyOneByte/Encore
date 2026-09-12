@@ -1,7 +1,7 @@
 // Rendered-DOM guards for the phone home screen direction A builds.
 //
 // These MOUNT the two new components under the repo's happy-dom + compiled-Svelte harness
-// (test-setup/, wired by the root bunfig.toml) rather than scanning their source, because every claim
+// (tests/setup/, wired by the root bunfig.toml) rather than scanning their source, because every claim
 // below is about what RENDERS: whether the wait clause is on screen, whether the progress row exists,
 // whether a range input ended up in a disclosure summary. XR-PH-21 is explicit that a measurement
 // claim cannot be satisfied by a source scan, and this repo's own record is that the defects that
@@ -11,7 +11,7 @@
 // mountable at all — the harness aliases neither virtual module today.
 import { test, expect, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
-import { mount, unmount, flushSync } from '../../../test-setup/svelte-client';
+import { mount, unmount, flushSync } from '../../../tests/setup/svelte-client';
 import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
 import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 import QueueRow from '$lib/components/QueueRow.svelte';

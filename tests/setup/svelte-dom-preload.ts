@@ -12,7 +12,7 @@
 //      `svelte/compiler`. Rune modules are TypeScript here, so bun's transpiler strips the types
 //      before `compileModule` runs.
 //   3. Resolve SvelteKit's `$app/*` and `$env/*` virtual modules to real stub files under
-//      `test-setup/kit/`, so a ROUTE component — not just a leaf — can be imported.
+//      `tests/setup/kit/`, so a ROUTE component — not just a leaf — can be imported.
 //      SvelteKit synthesises those specifiers at build time and they resolve to nothing under
 //      `bun test`, which is what previously made every route component unmountable.
 //   4. Make the harness's unimplemented geometry APIs FAIL LOUDLY (XR-VER-03). happy-dom
@@ -26,7 +26,7 @@
 // decidable here and belong to the LAYOUT rung — a real headless Chromium driven through
 // `apps/core/e2e/cdp.mjs` (see `apps/core/e2e/HARNESS.md`).
 //
-// Tests get the CLIENT `mount`/`unmount`/`flushSync` from `test-setup/svelte-client.ts` (the bare
+// Tests get the CLIENT `mount`/`unmount`/`flushSync` from `tests/setup/svelte-client.ts` (the bare
 // `svelte` specifier resolves to the SERVER build under `bun test`, whose `mount()` throws). A
 // preload plugin's `onResolve` does NOT intercept the test entry file's own bare imports, so the
 // client entry is re-exported from a real on-disk module instead of remapped here.
@@ -39,6 +39,34 @@ import { dirname, join } from 'node:path';
 import { Window } from 'happy-dom';
 import { compile, compileModule } from 'svelte/compiler';
 import { existsSync, readFileSync } from 'node:fs';
+
+/**
+ * The repo root, found by walking up for `bunfig.toml`.
+ *
+ * WHY NOT `import.meta.dir`. This file used to reach `apps/core` as `join(import.meta.dir, '..', 'apps',
+ * 'core')`, which was correct only while it lived at the repo root in `test-setup/`. Moving it to
+ * `tests/setup/` made that expression resolve to `tests/apps/core`, and the whole suite went to
+ * 0 pass / 291 fail — the preload could no longer resolve `runed`, so no Bits UI component mounted.
+ *
+ * `bunfig.toml` is the marker because it is the SAME file bun uses to locate this preload, so the runner
+ * and this module agree on the root by construction. The walk is inlined rather than imported from
+ * `@encore/test-support` for an unavoidable reason: this file IS the preload, so it runs before any
+ * tsconfig path alias exists to import that helper through.
+ */
+const REPO_ROOT = (() => {
+	let dir = import.meta.dir;
+	for (let i = 0; i < 10; i += 1) {
+		if (existsSync(join(dir, 'bunfig.toml'))) return dir;
+		const parent = dirname(dir);
+		if (parent === dir) break;
+		dir = parent;
+	}
+	throw new Error(
+		`test-setup: no bunfig.toml above ${import.meta.dir}. The preload locates the repo root by that ` +
+			`marker, because it is the same file bun uses to find this preload. If the harness moved, it has to ` +
+			`stay somewhere under the root that holds bunfig.toml.`
+	);
+})();
 
 // ── 1. DOM globals ────────────────────────────────────────────────────────────────────────────
 const g = globalThis as unknown as Record<string, unknown>;
@@ -84,7 +112,7 @@ const rungPrototypes = domCtors
 	.map((ctor) => ctor.prototype);
 if (rungPrototypes.length === 0) {
 	throw new Error(
-		'test-setup/svelte-dom-preload.ts: no Element/HTMLElement global to harden, so the mount rung ' +
+		'tests/setup/svelte-dom-preload.ts: no Element/HTMLElement global to harden, so the mount rung ' +
 		'would report fabricated zero geometry. A DOM must be installed before this point.'
 	);
 }
@@ -119,7 +147,7 @@ for (const proto of rungPrototypes) {
 // `build.module()` is the mechanism, NOT `onResolve`: a preload plugin's `onResolve` is never
 // consulted for these specifiers (measured — the callback does not fire at all, for a component
 // import or a test-entry import), while `build.module()` intercepts both. Each stub is re-exported
-// from a real file under test-setup/kit/ rather than defined inline, so a test that imports the stub
+// from a real file under tests/setup/kit/ rather than defined inline, so a test that imports the stub
 // directly to drive or assert on it shares ONE module instance with the component under test.
 const KIT_STUBS: Record<string, string> = {
 	'$app/navigation': 'app-navigation.ts',
@@ -152,8 +180,8 @@ plugin({
 			build.module(specifier, () => ({
 				contents:
 					`throw new Error(${JSON.stringify(
-						`No test stub for SvelteKit virtual module '${specifier}'. Add one under test-setup/kit/ ` +
-						`and register it in KIT_STUBS in test-setup/svelte-dom-preload.ts. Stubbed today: ` +
+						`No test stub for SvelteKit virtual module '${specifier}'. Add one under tests/setup/kit/ ` +
+						`and register it in KIT_STUBS in tests/setup/svelte-dom-preload.ts. Stubbed today: ` +
 						`${Object.keys(KIT_STUBS).join(', ')}.`
 					)});`,
 				loader: 'ts'
@@ -236,9 +264,7 @@ plugin({
 const RUNED_ENTRY = (() => {
 	let ssPkg: string;
 	try {
-		ssPkg = createRequire(join(import.meta.dir, '..', 'apps', 'core') + '/').resolve(
-			'svelte-sonner/package.json'
-		);
+		ssPkg = createRequire(join(REPO_ROOT, 'apps', 'core') + '/').resolve('svelte-sonner/package.json');
 	} catch {
 		return null;
 	}

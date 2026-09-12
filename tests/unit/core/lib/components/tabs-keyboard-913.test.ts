@@ -19,7 +19,7 @@
  * recording, since it is the mutation a reader would reach for first.
  */
 import { test, expect } from 'bun:test';
-import { mount, flushSync } from '../../../../../test-setup/svelte-client';
+import { mount, flushSync } from '../../../../../tests/setup/svelte-client';
 import Probe from './tabs-keyboard-913.harness.svelte';
 
 /** The rendered tabs, in document order. */

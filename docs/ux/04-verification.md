@@ -253,7 +253,7 @@ declared values, and effect behaviour** — a real and necessary gain — but no
 
 So the prerequisite is **two rungs, not one**:
 
-- **Rung M (mount)** — `bunfig.toml` → `test-setup/svelte-dom-preload.ts` + aliased `$app`/`$env`.
+- **Rung M (mount)** — `bunfig.toml` → `tests/setup/svelte-dom-preload.ts` + aliased `$app`/`$env`.
   Cascade, computed declared values, effects, event handling. One consumer today
   (`playback-common-actions.test.ts`); blocker documented at `wake-lock.test.ts:18-27`.
 - **Rung L (layout)** — real headless Chromium, already in-repo and already used by the review
@@ -275,7 +275,7 @@ one of the four claims checkable. Rows below are written against the correct run
 | **Statement** | The product's test harness provides a mount rung and a layout rung, and a written record states which classes of claim each rung can decide. |
 | **Surfaces** | Phone remote, TV, operator dashboards (harness-level; surface-agnostic) |
 | **Rationale** | An honour-system invariant and a checked one are indistinguishable to a reviewer unless the harness's reach is stated. |
-| **Source** | `bunfig.toml`; `test-setup/svelte-dom-preload.ts`; `tests/guards/subsystem-tv/wake-lock.test.ts:18-27`; `apps/core/e2e/cdp.mjs`, `apps/core/e2e/HARNESS.md`; happy-dom limit at `node_modules/happy-dom/lib/nodes/element/Element.js:795-798`. **DERIVED** for the two-rung split — model: a claim is decidable on a rung iff the rung implements the API the claim reads; happy-dom returns a zero `DOMRect`, therefore geometry is not decidable on rung M. |
+| **Source** | `bunfig.toml`; `tests/setup/svelte-dom-preload.ts`; `tests/guards/subsystem-tv/wake-lock.test.ts:18-27`; `apps/core/e2e/cdp.mjs`, `apps/core/e2e/HARNESS.md`; happy-dom limit at `node_modules/happy-dom/lib/nodes/element/Element.js:795-798`. **DERIVED** for the two-rung split — model: a claim is decidable on a rung iff the rung implements the API the claim reads; happy-dom returns a zero `DOMRect`, therefore geometry is not decidable on rung M. |
 | **Acceptance** | **Given** the preload aliases `$app` and `$env`, **When** a test imports and mounts `apps/core/src/routes/tv/+page.svelte`, `SongRow.svelte`, `QueueRow.svelte` and `ColourPicker.svelte`, **Then** every mount returns without throwing and `flushSync()` runs their effects. **And** a checked-in document names, per rung, at least: box geometry, clipping/overflow, `env()`, `dvh`/`vh`, computed colour, computed `font-size`, and states which rung decides each. |
 | **Check** | The five mounts are themselves tests. The capability document is enforced by XR-VER-02, which cites it. |
 | **Priority** | **BLOCKER** — migration cannot begin without it; four at-risk concerns are undecidable until it lands. |

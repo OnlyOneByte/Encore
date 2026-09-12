@@ -5,7 +5,7 @@
 // 1. XR-VER-01 (rung M exists). SvelteKit synthesises `$app/*` and `$env/*` at build time, so under
 //    `bun test` those specifiers resolved to nothing and EVERY route component failed to load before
 //    a single effect ran — only leaves with zero `$app` imports (TvPlayer.svelte) could mount. The
-//    preload now maps them to real stub modules under `test-setup/kit/`, so a route component can be
+//    preload now maps them to real stub modules under `tests/setup/kit/`, so a route component can be
 //    imported, mounted, and driven. Test 1 covers every import site by SCANNING for them rather than
 //    hand-listing; tests 2a-2d pin each stub's own contract; test 3 drives the whole chain on the one
 //    route that imports both modules — a stubbed `page.url` reaches the component's `$derived`, and
@@ -32,7 +32,7 @@
 import { test, expect, beforeEach } from 'bun:test';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { mount, unmount, flushSync } from '../../../../test-setup/svelte-client';
+import { mount, unmount, flushSync } from '../../../../tests/setup/svelte-client';
 import { appSrc, repoRoot, at } from '@encore/test-support';
 
 // apps/core/src — where routes, lib and server live. Anchored from the repo root via
@@ -42,7 +42,7 @@ const SRC = appSrc;
 // The repo root, resolved once by @encore/test-support (walks up for bunfig.toml). The old inline
 // walker counted parents from the file location; the anchor now comes from the repo root instead.
 const REPO_ROOT = repoRoot;
-const PRELOAD = at('test-setup', 'svelte-dom-preload.ts');
+const PRELOAD = at('tests', 'setup', 'svelte-dom-preload.ts');
 
 /** Every `.ts`/`.svelte` file under apps/core/src, excluding SvelteKit's generated tree. */
 function sourceFiles(dir: string): string[] {
@@ -64,10 +64,10 @@ const KIT_IMPORT = /import\s[^;]*?from\s*['"](\$(?:app|env)\/[^'"]+)['"]/g;
 // and still be typechecked against what the stub actually exports. `typeof import(...)` is a type-only
 // reference — it adds no second runtime import, so there is still exactly one module instance shared
 // with the component under test.
-type NavStub = typeof import('../../../../test-setup/kit/app-navigation');
-type StateStub = typeof import('../../../../test-setup/kit/app-state');
-type EnvironmentStub = typeof import('../../../../test-setup/kit/app-environment');
-type PublicEnvStub = typeof import('../../../../test-setup/kit/env-dynamic-public');
+type NavStub = typeof import('../../../../tests/setup/kit/app-navigation');
+type StateStub = typeof import('../../../../tests/setup/kit/app-state');
+type EnvironmentStub = typeof import('../../../../tests/setup/kit/app-environment');
+type PublicEnvStub = typeof import('../../../../tests/setup/kit/env-dynamic-public');
 
 const navStub = async (): Promise<NavStub> => (await import('$app/navigation')) as unknown as NavStub;
 const stateStub = async (): Promise<StateStub> => (await import('$app/state')) as unknown as StateStub;
@@ -167,7 +167,7 @@ test('$env/dynamic/public is stubbed as a settable record', async () => {
 test('an unstubbed SvelteKit virtual module fails with a message naming the stub directory', async () => {
 	// `$app/forms` has no first-party importer, so this is the message the NEXT one gets — a missing
 	// stub, not a broken component.
-	await expect(import('$app/forms')).rejects.toThrow(/test-setup\/kit/);
+	await expect(import('$app/forms')).rejects.toThrow(/tests\/setup\/kit/);
 });
 
 // ── 3. A route component mounts, and both stubs are wired through it ──────────────────────────
