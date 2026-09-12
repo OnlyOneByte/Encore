@@ -36,7 +36,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, at } from '@encore/test-support';
+import { at, srcDir } from '@encore/test-support';
 
 // `at('src/lib/components/ui')`, replacing `at('src/lib/components/ui')`.
 const UI = at('src/lib/components/ui');
@@ -381,9 +381,9 @@ test('every data-slot styled via :global is emitted by markup in this tree', () 
 	// The emitter can be ANY component in the app, not only one in ui/: a compound component's parts
 	// style each other's slots, and a page may spell one itself.
 	const emitted = new Set<string>();
-	// `appSrc` (src), replacing `at('src')` — the whole app tree, because a
+	// `srcDir` (src), replacing `at('src')` — the whole app tree, because a
 	// styled slot's emitter can be any component or page, not only one under ui/.
-	for (const f of svelteFiles(appSrc)) {
+	for (const f of svelteFiles(srcDir)) {
 		const markup = markupOnly(readFileSync(f, 'utf8'));
 		for (const m of markup.matchAll(/data-slot=["']([^"']+)["']/g)) emitted.add(m[1]!);
 	}

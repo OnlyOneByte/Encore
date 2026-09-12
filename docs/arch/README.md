@@ -36,11 +36,14 @@ Two areas deliberately did **not** get a namespace here:
 Recorded here because each was verified against source and each is open. A reader who assumes this
 tree is descriptive will otherwise mistake these for settled behaviour.
 
-**1. A permanently failed process settles its readiness gate in memory only — NOW FIXED for new failures.** `stem_status` and
+**1. A permanently failed process settled its readiness gate in memory only — NOW FIXED, both halves.** `stem_status` and
 `lyrics_status` are stored columns and the *processing* flip is persisted, but the terminal-failure path
-carries no persistence sink and no boot pass reconciles the value against the job ledger. After a
-restart the song reads as still processing, with a terminal job row and no Sing button. `XR-JOB-04`. The epilogue now persists a settled gate at all three terminal paths; what remains open is
-reconciling rows written BEFORE the fix, which is a migration question rather than a code one.
+carried no persistence sink and no boot pass reconciled the value against the job ledger. After a
+restart the song read as still processing, with a terminal job row and no Sing button. `XR-JOB-04`. The
+epilogue now persists a settled gate at all three terminal paths, and a boot pass
+(`reconcileStrandedGates`) re-derives every gate the ledger says nothing alive can finish — which is
+what recovers rows stranded BEFORE the sink existed, plus a crash between the settle and the write and a
+job row deleted with its dedup slot. Both halves settle through one shared table, so neither can drift.
 
 **2. The unservable-job TTL was not a timer — NOW FIXED.** Both the stamp and the check live inside `dispatch()`,
 which is event-driven; with an empty fleet nothing is assigned or running, so the sweep produces no
@@ -61,7 +64,10 @@ is promised a job, and watches the wrong words scroll past. `XR-API-06`.
 `tests/guards/wiring/route-auth-posture.test.ts` now pins every route method's posture, per method,
 because one file gates its `PUT` and leaves its `GET` open. `XR-API-12`.
 
-**5. `MediaStore.url()` has no production caller.** It is documented as how the TV resolves a
-playable source and presigns with a one-hour TTL; the TV string-builds the path directly instead.
-Its test exercises it *from a test*, which is what keeps the production absence invisible to
-coverage. `XR-MED-10`.
+**5. `MediaStore.url()` had no production caller — RESOLVED by deletion.** It was documented as how
+the TV resolves a playable source and presigned with a one-hour TTL; the TV string-builds the path
+directly instead. Its test exercised it *from a test*, which is what kept the production absence
+invisible to coverage. The method, `mediaProxyUrl`, `S3Like.presign` and the
+`presignExpiresIn`/`proxyUrls` options are now deleted, with the reason on record at
+`src/routes/media/[...path]/+server.ts` and the rule pinned by
+`tests/guards/subsystem-media/store-members-have-production-callers.test.ts`. `XR-MED-10`.

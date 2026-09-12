@@ -12,10 +12,10 @@
 // assertion below reds when the deleted code is restored.
 import { expect, it } from 'bun:test';
 import { existsSync } from 'node:fs';
-import { appSrc, read as readRepoFile } from '@encore/test-support';
+import { read as readRepoFile, srcDir } from '@encore/test-support';
 import { join } from 'node:path';
 
-// Anchored on `appSrc` rather than on this file's own location. The previous form was
+// Anchored on `srcDir` rather than on this file's own location. The previous form was
 // `dirname(fileURLToPath(import.meta.url))` then `join(HERE, '..', '..')` to mean src — a
 // statement about where the TEST lived, embedded in a statement about where the SOURCE lived. Moving the
 // file broke it, and the four assertions that read a file broke LOUDLY while the one asserting a file is
@@ -24,10 +24,10 @@ import { join } from 'node:path';
 const read = (rel: string) => readRepoFile('src', rel);
 
 it('the unreachable browse-by-genre feature stays removed: the uncalled POST /api/tag route is gone', () => {
-	// Deliberately still an existsSync, but on an anchor that cannot silently be wrong: `appSrc` is
+	// Deliberately still an existsSync, but on an anchor that cannot silently be wrong: `srcDir` is
 	// derived from the repo root marker and self-checked on load, so a false here means the route is
 	// absent rather than that the path was.
-	expect(existsSync(join(appSrc, 'routes/api/tag/+server.ts'))).toBe(false);
+	expect(existsSync(join(srcDir, 'routes/api/tag/+server.ts'))).toBe(false);
 });
 
 it('the unreachable browse-by-genre feature stays removed: the dead genre read methods are gone from the media repository', () => {

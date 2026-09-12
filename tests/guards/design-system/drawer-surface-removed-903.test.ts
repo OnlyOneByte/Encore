@@ -21,13 +21,13 @@
 import { test, expect } from 'bun:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { appCore, appSrc } from '@encore/test-support';
+import { repoRoot, srcDir } from '@encore/test-support';
 
 // Repo-root anchors, replacing `at('src')` / `join(SRC, '..')`. They mean the same
 // two directories this guard has always walked and sliced against — src for the source scan,
 // . for the package.json read and the `rel` offender strings.
-const SRC = appSrc;
-const CORE = appCore;
+const SRC = srcDir;
+const CORE = repoRoot;
 
 /**
  * Blank comments so prose that NAMES the retired surface — this file's own header, the retirement

@@ -7,6 +7,15 @@
 // Bun 1.3 has native S3 (Bun.s3 / Bun.S3Client) — no aws-sdk/minio dep, and it speaks to MinIO via
 // a custom `endpoint`. Reads/writes are injectable (see ObjectMediaStore) so this unit-tests with
 // no network. The pure config resolver (resolveMediaStoreConfig) is the env→config seam.
+//
+// A STORE ANSWERS BYTES, NOT URLS — regardless of kind. EVERY ref reaches a client through the
+// same-origin `/media/<ref>` route, which drives `size`/`getRange` on whichever store is configured;
+// an object store therefore serves its own byte ranges through the core rather than handing out a
+// direct link. This interface used to also carry `url(ref)` (and a `mediaProxyUrl` helper) that
+// presigned a time-limited direct S3 URL; it had no production caller and was removed — see the
+// on-record note at src/routes/media/[...path]/+server.ts. Do not re-add a URL member here: the
+// same-origin guarantee is depended on elsewhere (docs/DECISIONS.md, deferred FFT work), so making a
+// media element cross-origin is a product decision, not a store detail.
 
 import type { MediaStoreConfig } from '$lib/contract';
 import { safeMediaPath } from './local-files';
@@ -46,7 +55,7 @@ export function objectKey(prefix: string | undefined, ref: string): string {
 	return `${prefix ?? ''}${ref}`;
 }
 
-/** What every store can do. `url(ref)` is how the TV resolves a playable source for a Media. */
+/** What every store can do. Bytes only — the same-origin `/media` route is the sole URL builder. */
 export interface MediaStore {
 	readonly kind: MediaStoreKind;
 	/** Does this ref exist in the store? */
@@ -73,17 +82,6 @@ export interface MediaStore {
 	getRange?(ref: string, start: number, end: number): Promise<ReadableStream | Blob | null>;
 	/** Write bytes (the worker pushes stems/lyrics). */
 	put(ref: string, data: Uint8Array | ReadableStream | Blob): Promise<void>;
-	/**
-	 * The URL the TV `<video>` should load for this ref. Local → always the same-origin `/media/`
-	 * route. Object → a (presigned, time-limited) direct URL when possible, else the `/media/`
-	 * proxy. Returns null if the ref is unsafe (traversal).
-	 */
-	url(ref: string): string | null;
-}
-
-/** A safe same-origin /media URL for a ref, or null if the ref escapes the media root (traversal). */
-export function mediaProxyUrl(ref: string): string | null {
-	return safeMediaPath(ref) ? `/media/${ref}` : null;
 }
 
 /** Local volume store — the MVP default. Wraps the existing safeMediaPath guard + Bun.file. */
@@ -131,10 +129,5 @@ export class LocalMediaStore implements MediaStore {
 		const abs = this.#abs(ref);
 		if (!abs) throw new Error(`unsafe media ref: ${ref}`);
 		await Bun.write(abs, data as Blob);
-	}
-
-	/** Local files are always served same-origin via the /media route. */
-	url(ref: string): string | null {
-		return mediaProxyUrl(ref);
 	}
 }

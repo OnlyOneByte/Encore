@@ -11,10 +11,10 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SINGER_COLORS } from '$lib/contract';
-import { appSrc, read } from '@encore/test-support';
+import { read, srcDir } from '@encore/test-support';
 import { svelteFiles } from '$lib/test-helpers';
 
-const SRC = appSrc;
+const SRC = srcDir;
 const css = read('src/app.css');
 
 /** Pull a `--name: #hex;` token out of app.css. Fails loudly rather than silently defaulting. */

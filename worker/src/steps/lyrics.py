@@ -618,7 +618,7 @@ class TimeTexts(Step):
                 # to lyrics/validate.lrc_fit_notes (an earlier change moved the ~45-line decision + its two pairing
                 # helpers into the domain package; this step now owns only the windows/opens the
                 # decision needs). `_opens_for` prefers presplit's EMITTED opens map over re-deriving by
-                # float-equality — that preference is pinned HERE, in the step layer, by an earlier change, which is
+                # float-equality — that preference is pinned HERE, in the step layer, which is
                 # why the call site stays in TimeTexts.run and is not folded into the domain function.
                 # When presplit set `align_windows`, only each line's OPENING window carries a real
                 # source start; when it did not, the segments ARE the windows and every index opens one.

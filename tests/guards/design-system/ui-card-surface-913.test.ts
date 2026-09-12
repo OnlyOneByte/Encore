@@ -36,9 +36,9 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc } from '@encore/test-support';
+import { srcDir } from '@encore/test-support';
 
-const SRC = appSrc;
+const SRC = srcDir;
 
 /**
  * The elements that take the shared surface rather than a <Card.Root>, each with why it is not one.

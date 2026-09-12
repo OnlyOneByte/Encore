@@ -105,7 +105,17 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 		// exact candidate rather than run its own comparative selection — otherwise the re-time would
 		// re-pick and could discard the very candidate the user chose. Absent on every normal process, where
 		// no override is set and the worker selects comparatively as before.
-		...(media?.lyricsOverrideRef ? { pinnedRef: media.lyricsOverrideRef } : {})
+		//
+		// `pinnedText` rides INSIDE the override block, never on its own: it is the text stored under
+		// `pinnedRef`, the worker only reads it on the pinned path, and a text with no ref would name no key
+		// to write. Present only for a PASTED pick — a pick of a stored candidate carries the ref alone, and
+		// the worker re-times the doc already on disk under it.
+		...(media?.lyricsOverrideRef
+			? {
+					pinnedRef: media.lyricsOverrideRef,
+					...(media.lyricsOverrideText ? { pinnedText: media.lyricsOverrideText } : {})
+				}
+			: {})
 	};
 }
 

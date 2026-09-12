@@ -9,13 +9,13 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { appE2e } from '@encore/test-support';
+import { e2eDir } from '@encore/test-support';
 
 // Anchored on the repo root via `@encore/test-support`, not on this file's own location: the
 // walk below is a statement about where `tests/e2e` is, and it used to be written as
 // `at('tests/e2e')` — a statement about where the TEST was. A wrong root here is silent
 // (two of the four consumers assert an EMPTY offenders array), which is what the floor below exists for.
-const E2E = appE2e;
+const E2E = e2eDir;
 const CANON = 'lib/chromium.mjs';
 
 /**

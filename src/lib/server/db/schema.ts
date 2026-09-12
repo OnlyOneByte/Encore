@@ -110,6 +110,13 @@ export const media = sqliteTable('media', {
 	// index copy so a hydrate that has not read meta/ yet still honours the override. Nullable: NULL means
 	// no override and the ranking decides, exactly as before this feature.
 	lyricsOverrideRef: text('lyrics_override_ref'),
+	// The WORDS behind a pasted (`manual`) override — the one pin whose text no file on disk holds yet,
+	// because the worker has not written it. The index copy exists for the same reason the ref's does: a
+	// restart between enqueue and dispatch re-derives the align job's params from this row, so a paste that
+	// lived only in memory was silently dropped and the worker received a ref with no content. Nullable:
+	// NULL means the pin names a candidate already stored (or there is no pin), which is what every row
+	// predating this column is.
+	lyricsOverrideText: text('lyrics_override_text'),
 	// Canonical metadata for BROWSE. Derived by the track-title normalizer and mirrored here
 	// from the authoritative sidecar, because grouping the library by `artist` is useless — that column
 	// holds the YouTube uploader ("7clouds"), not the artist. Nullable: a low-confidence parse stores

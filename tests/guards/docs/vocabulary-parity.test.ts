@@ -29,6 +29,7 @@ import type { JobType } from '$lib/contract';
 import { requiredCapability } from '$lib/server/jobs/dispatch';
 import { DEFAULT_LEASE_CONFIG } from '$lib/server/jobs/leases';
 import { INSTRUMENTAL_EXT, VOCALS_EXT, audioKey, instrumentalKey, vocalsKey, rawCaptionKey } from '$lib/server/media/paths';
+import { SILENCE_FLOOR_DB } from '$lib/server/media/loudness';
 import { at } from '@encore/test-support';
 
 const WORKER_SRC = at('worker/src');
@@ -614,6 +615,92 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
  // vacuously; pin the concrete shape.
 		const rawCap = pyPathRef('raw_caption_path', { media_id: ID, kind: 'captions', ext: 'vtt' });
 		expect(rawCap).toMatch(/^derived\/captions\/captions\/.+\.captions\..+$/);
+	});
+});
+
+/**
+ * The SILENCE FLOOR is the same physical constant declared TWICE, on opposite sides of a process
+ * boundary, with nothing checking that the two numbers agree.
+ *
+ *  - core `src/lib/server/media/loudness.ts` — `SILENCE_FLOOR_DB = -90`, compared against a
+ *    measured `maxDb` in `isDigitalSilence`.
+ *  - worker `worker/src/processor.py` — `SILENCE_FLOOR_DB = -90.0`, compared against a measured
+ *    `max_volume_db` in `is_silent`.
+ *
+ * Both answer ONE question: does this separated vocals stem count as digital silence? So a drift is a
+ * DISAGREEMENT ABOUT REALITY, not a cosmetic mismatch, and it is silent in both directions. Raise the
+ * worker's floor alone and the worker withholds a stem the core would happily link — the guiding track
+ * is simply never reported and the singer's control does nothing, which is indistinguishable from a
+ * working guide until they turn it up. Raise the CORE's floor alone and the core refuses a stem the
+ * worker measured as fine, so a healthy vocals file sits on disk unreferenced and `vocals-backfill.ts`
+ * cannot rescue it because the core is the thing rejecting it.
+ *
+ * Neither suite can see the other: the worker's pytest asserts against its own constant and the core's
+ * bun test asserts against its own, so both stay green on any drift — the identical blind spot that let
+ * `songProfile` ship at the wrong envelope level and `VOCALS_EXT` sit unguarded above.
+ *
+ * Guard it the way every check in this file does: read the Python as TEXT (no interpreter, runs in the
+ * ordinary `bun test` gate) and compare it against the IMPORTED core constant. Comparing the imported
+ * value rather than a second scrape is deliberate and is the pattern the keepalive and stem-extension
+ * blocks already use — a scrape of the TS side would still pass if the literal stayed put while the
+ * exported value stopped being it.
+ *
+ * The two literals are written differently on purpose (`-90` reads as an int in TS, `-90.0` keeps the
+ * Python constant a float so `max_volume_db <= SILENCE_FLOOR_DB` never mixes types), so the comparison
+ * is NUMERIC. A string compare would red on a correct tree, which is the fastest way to get a guard
+ * deleted.
+ */
+describe('silence floor parity (worker processor.py vs core loudness.ts)', () => {
+	const SILENCE_REL = 'processor.py';
+	const silencePath = join(WORKER_SRC, SILENCE_REL);
+	const silencePy = readFileSync(silencePath, 'utf8');
+
+	/**
+	 * The worker's effective `SILENCE_FLOOR_DB`, read as text.
+	 *
+	 * Anchored at column 0 (`^` under `m`) so a `#:`-commented line — and this constant HAS two doc
+	 * comment lines directly above it that name it — cannot be the match. Takes the LAST such
+	 * assignment, not the first, because Python's effective value is the last one executed: a
+	 * triple-quoted string or a dead earlier assignment carrying a different number above the real one
+	 * would otherwise shadow it and hide exactly the drift this guard exists to catch.
+	 */
+	function pyFloorDb(): number | null {
+		const ms = [...silencePy.matchAll(/^SILENCE_FLOOR_DB\s*=\s*(-?\d+(?:\.\d+)?)/gm)];
+		const last = ms[ms.length - 1];
+		return last ? Number(last[1]) : null;
+	}
+
+	test('processor.py is where the silence-floor read expects it', () => {
+		expect(existsSync(silencePath), `${SILENCE_REL} not found under ${WORKER_SRC} — did the module move?`).toBe(true);
+	});
+
+	test('the worker floor is present and parses as a finite number', () => {
+		// NON-VACUITY. This is the arm that makes the parity assertion below load-bearing: an extraction
+		// that silently found nothing would compare `null` against the core value, and while THAT
+		// particular shape reds, a future regex slip returning `0` or `NaN` would not necessarily. Pin
+		// that a real number was read, so the guard cannot degrade into comparing a parse failure.
+		const py = pyFloorDb();
+		expect(py, `SILENCE_FLOOR_DB not found at module level in ${SILENCE_REL} — did the constant move or get commented out?`).not.toBeNull();
+		expect(Number.isFinite(py!)).toBe(true);
+		// It is a dBFS floor: negative, and in the neighbourhood a 16-bit silence measurement lives in.
+		// A regex that started matching some unrelated number would clear the finite check but not this.
+		expect(py!).toBeLessThan(0);
+		expect(py!).toBeGreaterThan(-200);
+	});
+
+	test('the silence floor agrees across the seam', () => {
+		// NUMERIC comparison: the core writes -90 and the worker -90.0, which are the same floor. The
+		// only thing that may differ between the two sides is how the literal is spelled.
+		expect(pyFloorDb()).toBe(SILENCE_FLOOR_DB);
+	});
+
+	test('both sides still COMPARE against the floor, so the constant is not merely declared', () => {
+		// A parity check on a constant nothing reads is bookkeeping. Pin that each side's silence verdict
+		// is still derived from its own floor — if a comparison is inlined to a bare literal, the two
+		// numbers can stay in agreement while the code stops using them.
+		expect(silencePy).toMatch(/max_volume_db\s*<=\s*SILENCE_FLOOR_DB/);
+		const loudnessTs = readFileSync(at('src/lib/server/media/loudness.ts'), 'utf8');
+		expect(loudnessTs).toMatch(/maxDb\s*<=\s*SILENCE_FLOOR_DB/);
 	});
 });
 

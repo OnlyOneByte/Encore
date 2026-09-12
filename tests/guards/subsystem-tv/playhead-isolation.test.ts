@@ -44,6 +44,43 @@ function stripComments(src: string): string {
 		.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
+/**
+ * Every way the live catalog record type `Media` could get a binding inside a component that is only
+ * allowed the `PlaybackSnapshot` seam.
+ *
+ * This replaces `expect(code).not.toContain('type Media')`, which had a PROVEN hole: the braces in
+ * `import type { Media } from '$lib/contract';` sit between the two words, so the substring never
+ * matches and the most likely reopening of the boundary walked straight through the guard. Each
+ * alternative below is a spelling the substring could not see:
+ *
+ *  1. `import … { … Media … } from` — the BRACE-LIST form, and the reason this regex exists. The
+ *     optional `type` covers both `import type { Media }` and `import { type Media }` (the modifier may
+ *     sit on the statement or on the specifier), and it also catches an ALIAS (`Media as CatalogRecord`)
+ *     and any POSITION in the list, because it looks for `Media` anywhere inside the braces rather than
+ *     adjacent to a keyword. The body is `[^{}]*` rather than `[\s\S]*?` for two reasons: it still spans
+ *     NEWLINES, so a multi-line specifier list is covered, but it cannot cross a `}` — so the match is
+ *     confined to one import statement instead of stitching an innocent `import {` to a `Media` further
+ *     down the file.
+ *  2. `import Media` / `import type Media` — a DEFAULT import needs no braces at all, so alternative 1
+ *     cannot see it.
+ *  3. `import * as Media` — the NAMESPACE form, which neither of the above matches.
+ *  4. `type Media` / `interface Media` — a LOCAL re-declaration. There is no import to catch here, and
+ *     the effect is identical: a name meaning "live catalog record" back inside this component.
+ *  5. `import('…').Media` — the INLINE import type, which needs no import statement anywhere.
+ *
+ * Deliberately no `g` flag: a global regex carries `lastIndex` across `.test()` calls, which would make
+ * the mutation arm below pass or fail depending on the order its cases run in.
+ */
+const MEDIA_LEAKS = new RegExp(
+	[
+		String.raw`import\s+(?:type\s+)?\{[^{}]*\bMedia\b[^{}]*\}\s*from`,
+		String.raw`import\s+(?:type\s+)?Media\b`,
+		String.raw`import\s+\*\s+as\s+Media\b`,
+		String.raw`\b(?:type|interface)\s+Media\b`,
+		String.raw`import\([^()]*\)\s*\.\s*Media\b`
+	].join('|')
+);
+
 function media(over: Partial<Media> = {}): Media {
 	return {
 		id: 'm1',
@@ -167,9 +204,58 @@ describe('the seek effect depends on playback intent, never on the catalog', () 
 		// `routes/tv/+page.svelte`. Asserting the alias here measured a spelling this component has never
 		// used, so it failed on the import path rather than on the boundary it exists to defend.
 		expect(code).toContain("import type { PlaybackSnapshot } from './catalog';");
-		expect(code).not.toContain('type Media');
+		// The negative half. `not.toContain('type Media')` used to stand here and could not see
+		// `import type { Media } from '$lib/contract';` — the braces break the substring. Matching on the
+		// whole import shape closes that and every sibling spelling; see MEDIA_LEAKS above for why each
+		// alternative is there, and the load-bearing arm below for the proof that it can still fail.
+		// Reported as the matched text rather than a bare boolean, so a future failure names the leak.
+		expect(code.match(MEDIA_LEAKS)?.[0] ?? null).toBe(null);
 		// The src resolver takes the snapshot too, so no path through this component re-widens to Media.
 		expect(code).toContain('function fileSrc(m: PlaybackSnapshot): string {');
+	});
+
+	/*
+	 * THE MUTATION ARM. A negative assertion that cannot fail is worse than no assertion, because it
+	 * reports green while defending nothing — which is exactly the state the substring was in for every
+	 * braced import. So the ban is exercised HERE against planted sources, in both directions: it must
+	 * REJECT each spelling of the leak, and it must ACCEPT the imports this component legitimately makes.
+	 *
+	 * The `not.toContain('type Media')` this replaces passes the first two planted cases below, which is
+	 * the hole, measured rather than assumed.
+	 */
+	it('the Media ban is load-bearing — it rejects every import spelling and accepts the seam', () => {
+		const leaks: Array<[string, string]> = [
+			['the proven hole: braces between the two words', "import type { Media } from '$lib/contract';"],
+			['the modifier on the specifier instead', "import { type Media } from '$lib/contract';"],
+			['a multi-line specifier list', "import type {\n\tPlaybackSnapshot,\n\tMedia\n} from '$lib/contract';"],
+			['aliased, so the local name is not even Media', "import type { Media as CatalogRecord } from '$lib/contract';"],
+			['last in a list, with no keyword adjacent', "import type { PlaybackSnapshot, Media } from '$lib/contract';"],
+			['a default import, which needs no braces', "import type Media from '$lib/contract';"],
+			['the namespace form', "import * as Media from '$lib/contract';"],
+			['a local type re-declaration, with no import at all', 'type Media = { id: string };'],
+			['a local interface re-declaration', 'interface Media {\n\tid: string;\n}'],
+			['the inline import type', "let m: import('$lib/contract').Media | null = null;"]
+		];
+		for (const [why, planted] of leaks) {
+			// The label is in the assertion so a failure says WHICH spelling slipped through.
+			expect([why, MEDIA_LEAKS.test(planted)]).toEqual([why, true]);
+		}
+
+		const allowed: Array<[string, string]> = [
+			['the seam itself — the whole point of the boundary', "import type { PlaybackSnapshot } from './catalog';"],
+			['the contract helpers this component does take', "import { playbackRef, isPlayable, guideOffsetSec } from '$lib/contract';"],
+			['a sibling seam whose list is multi-line', "import type {\n\tPlaybackSnapshot,\n\tSongToken\n} from './transport';"],
+			['a DOM type that merely starts with the same six letters', 'const el = master as HTMLMediaElement;'],
+			['a WebAudio name that contains it', 'const node = ctx.createMediaElementSource(master);'],
+			['prose-free code that names the field, not the type', 'const snap: PlaybackSnapshot | null = media;']
+		];
+		for (const [why, legitimate] of allowed) {
+			expect([why, MEDIA_LEAKS.test(legitimate)]).toEqual([why, false]);
+		}
+
+		// And the direction that matters most: the ban is quiet on the real component as it stands today,
+		// so the assertion above is passing because the boundary HOLDS, not because the regex never fires.
+		expect(MEDIA_LEAKS.test(stripComments(player))).toBe(false);
 	});
 
 	/*

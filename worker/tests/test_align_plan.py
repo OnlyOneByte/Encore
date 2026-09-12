@@ -2048,7 +2048,7 @@ async def test_410_one_dropped_aligned_line_does_NOT_make_a_correct_song_read_as
 
 @pytest.mark.asyncio
 async def test_410_wrong_master_is_still_detected_when_two_lines_drop(tmp_path):
-    """The an earlier change half: with TWO opening lines dropped, base goes count-unequal → `inconclusive` → the
+    """The two-line-drop half: with TWO opening lines dropped, base goes count-unequal → `inconclusive` → the
     wrong-version note never fires on a genuinely different master (silently inert). Text-keyed pairing
     keeps the surviving openings paired correctly, so the +15s back-half master is still reported."""
     text = _instrumental_break_text_336()
