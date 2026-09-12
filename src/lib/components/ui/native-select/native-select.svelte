@@ -1,4 +1,3 @@
-
 <!--
   ── ENCORE DEVIATIONS ─────────────────────────────────────────────────────────────────────────────
   The registry's appearance is REPLACED by Encore's field look, not layered over it. Every reason is a
@@ -20,33 +19,30 @@
 -->
 <script lang="ts">
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
-	import { cn, type WithElementRef } from "$lib/utils.js";
-	import type { HTMLSelectAttributes } from "svelte/elements";
+	import { cn, type WithElementRef } from '$lib/utils.js';
+	import type { HTMLSelectAttributes } from 'svelte/elements';
 
-	type NativeSelectProps = Omit<WithElementRef<HTMLSelectAttributes>, "size"> & {
-		size?: "sm" | "default";
+	type NativeSelectProps = Omit<WithElementRef<HTMLSelectAttributes>, 'size'> & {
+		size?: 'sm' | 'default';
 	};
 
 	let {
 		ref = $bindable(null),
 		value = $bindable(),
 		class: className,
-		size = "default",
+		size = 'default',
 		children,
 		...restProps
 	}: NativeSelectProps = $props();
 </script>
 
 <div
-	class={cn(
-		"cn-native-select-wrapper group/native-select relative w-full has-[select:disabled]:opacity-50",
-		className
-	)}
+	class={cn('group/native-select relative w-full has-[select:disabled]:opacity-50', className)}
 	data-slot="native-select-wrapper"
 	data-size={size}
 >
 	<select
-		bind:value
+		bind:value={value}
 		bind:this={ref}
 		data-slot="native-select"
 		data-size={size}
@@ -55,7 +51,11 @@
 	>
 		{@render children?.()}
 	</select>
-	<ChevronDownIcon class="top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none absolute select-none" aria-hidden data-slot="native-select-icon" />
+	<ChevronDownIcon
+		class="top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none absolute select-none"
+		aria-hidden
+		data-slot="native-select-icon"
+	/>
 </div>
 
 <style>

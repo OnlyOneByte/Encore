@@ -122,41 +122,70 @@
 			{...props}
 			class="qrow card list-row pop-in"
 			class:mine={mine}
-	class:up={up}
-	class:pending={pending}
-	class:dimmed={dimmed}
-	class:moving={moving}
-	style="--drag-y:{dragY}px"
->
+			class:up={up}
+			class:pending={pending}
+			class:dimmed={dimmed}
+			class:moving={moving}
+			style="--drag-y:{dragY}px"
+		>
 			<Item.Media><div class="seq">{seq}</div></Item.Media>
 			<Item.Content>
 				<div class="t">{title}</div>
-		<div class="who">
-			<!-- The separators are {' · '} expressions, not literal " · " text: Svelte trims the leading
-			     whitespace of a text node that opens a block, so the plain form rendered "Sam· now
-			     playing" with the dot welded to the name. The `away` span stays literal on purpose -- it
-			     carries a margin-left of its own, so adding a space there would double the gap. -->
-			<i class:dim={singerAway} style="--singer:{singerColor}"></i>
-			{singerName}{#if singerAway}<span class="away">· away</span
-				>{/if}{#if subtitle}{' · '}{subtitle}{/if}{#if pending}{' · '}<span class="adding">{pendingLabel}</span>{/if}
+				<!--
+					prettier-ignore -- the singer line below is BOTH whitespace-load-bearing and pinned by a
+					guard, so it is fenced from the formatter as a whole element.
+
+					Whitespace: the separators are {' · '} EXPRESSIONS, not literal " · " text, because Svelte
+					trims the leading whitespace of a text node that opens a block -- the plain form rendered
+					"Sam· now playing" with the dot welded to the name. The `away` span stays literal on
+					purpose: it carries a margin-left of its own, so a space there would double the gap.
+
+					The guard: prettier's line-break idiom for inline elements is `</span\n>`, which is
+					whitespace-SAFE but changes the SOURCE TEXT, and
+					`lib/stores/queue-pending-add.test.ts` scans this file for the literal
+					`<span class="adding">{pendingLabel}</span>` to prove the marker renders the derived
+					expression rather than a hardcoded word. Letting prettier break that line reds the guard.
+
+					The fence sits on `.who` rather than on the mustache sequence because prettier-ignore
+					fences the next ELEMENT; it does not apply to a bare text/mustache run.
+				-->
+				<!-- prettier-ignore -->
+				<div class="who">
+					<i class="singer-dot" class:dim={singerAway} style="--singer:{singerColor}"></i>
+					{singerName}{#if singerAway}<span class="away">· away</span
+						>{/if}{#if subtitle}{' · '}{subtitle}{/if}{#if pending}{' · '}<span class="adding">{pendingLabel}</span>{/if}
 				</div>
 			</Item.Content>
 			{#if !pending}
 				<Item.Actions>
-			{#if reorderable}
-				<Button variant="outline" size="icon" press="ink" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
-					><Icon name="arrow-up" /></Button
-				>
-				<Button variant="outline" size="icon" press="ink" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
-					><Icon name="arrow-down" /></Button
-				>
-			{/if}
-			{#if removable}
-				<Button variant="outline" size="icon" press="accent2" aria-label="remove from queue" onclick={() => onremove?.()}
-					><Icon name="close" /></Button
-				>
-			{/if}
-			<!--
+					{#if reorderable}
+						<Button
+							variant="outline"
+							size="icon"
+							press="ink"
+							aria-label="move up"
+							disabled={!canUp}
+							onclick={() => onup?.()}><Icon name="arrow-up" /></Button
+						>
+						<Button
+							variant="outline"
+							size="icon"
+							press="ink"
+							aria-label="move down"
+							disabled={!canDown}
+							onclick={() => ondown?.()}><Icon name="arrow-down" /></Button
+						>
+					{/if}
+					{#if removable}
+						<Button
+							variant="outline"
+							size="icon"
+							press="accent2"
+							aria-label="remove from queue"
+							onclick={() => onremove?.()}><Icon name="close" /></Button
+						>
+					{/if}
+					<!--
 				THE GRIP (XR-PH-17). It renders under `grip` ALONE, as a SIBLING of the button
 				pair above — never as a wrapper around it and never in an `{:else}` against it. That shape
 				is the requirement, not a style choice: XR-PH-20 is a WCAG 2.5.7 conformance row, so the
@@ -170,28 +199,31 @@
 				another guest's row by its first condition; and `cursor: grab` lives on THIS button only,
 				never on a row (XR-PH-17's last clause).
 			-->
-			{#if grip}
-				<Button
-					variant="outline" size="icon"
-					press="grab"
-					aria-label="Reorder your songs"
-					data-grip={gripId}
-					onpointerdown={(e) => ongripdown?.(e)}
-					onclick={(e) => ongrip?.(e.currentTarget as HTMLElement)}><Icon name="grip" /></Button
-				>
-			{/if}
+					{#if grip}
+						<Button
+							variant="outline"
+							size="icon"
+							press="grab"
+							aria-label="Reorder your songs"
+							data-grip={gripId}
+							onpointerdown={(e) => ongripdown?.(e)}
+							onclick={(e) => ongrip?.(e.currentTarget as HTMLElement)}><Icon name="grip" /></Button
+						>
+					{/if}
 				</Item.Actions>
-	{/if}
-</div>
+			{/if}
+		</div>
 	{/snippet}
 </Item.Root>
 
 <style>
 	/*
-	 * S8: `.seq`, `.meta` and `.actions` moved to ui/item as Encore's shared ROW GRAMMAR — `.seq`
-	 * and `.actions` were verbatim duplicates of ProcessingCard's. `.t` and `.who` STAY, because their
-	 * descendants do: the subtitle line holds a singer identity dot whose rule two contrast guards read
-	 * directly, and a descendant rule cannot follow its ancestor into a component with no `child` snippet.
+	 * S8: `.meta` and `.actions` moved to ui/item as Encore's shared ROW GRAMMAR — `.actions` was
+	 * a verbatim duplicate of ProcessingCard's. `.seq`, `.t` and `.who` STAY here, because their
+	 * surfaces or descendants do: `.seq` paints its own colour+background (see its own note below —
+	 * moving it fired contrast.test.ts), and the subtitle line holds a singer identity dot whose rule
+	 * two contrast guards read directly, and a descendant rule cannot follow its ancestor into a
+	 * component with no `child` snippet.
 	 */
 	/* Geometry comes from .list-row in app.css, shared with the search row and the processing card.
 	   The entry animation is app.css's .pop-in helper (added to the root class list above), which
@@ -259,17 +291,11 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	/* flex: 0 0 auto so the identity dot never shrinks: .who is a nowrap/overflow flex container,
-	   and an empty element's automatic minimum size is 0, so under a long name the dot collapsed to 0px
-	   and the singer's colour vanished from their own row. Same protection .seq/.actions carry. */
-	.who i {
-		flex: 0 0 auto;
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		display: inline-block;
-		background: var(--singer);
-	}
+	/* The dot is app.css's shared `.singer-dot` since the primitive-adoption pass (it was four byte-identical copies).
+	   Its `flex: 0 0 auto` is what stops it shrinking: .who is a nowrap/overflow flex container, and an
+	   empty element's automatic minimum size is 0, so under a long name the dot collapsed to 0px and the
+	   singer's colour vanished from their own row (an earlier fix). Same protection .seq/.actions carry.
+	   design-system.test.ts's identity-dot guard pins the basis on the shared rule. */
 	/* Hue kept (it is the singer's identity), presence dimmed. */
 	.who i.dim {
 		opacity: 0.5;

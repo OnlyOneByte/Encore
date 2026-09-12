@@ -1,63 +1,40 @@
-import { getContext, setContext, type Component, type Snippet } from "svelte";
-import type { Tooltip } from "layerchart";
+/*
+ * ── ENCORE DEVIATIONS (S8, trimmed in Phase 2) ───────────────────────────────────────────────
+ * What Encore uses `ui/chart` for is the CONFIG CONTRACT — `config` → one `--color-<series>` custom
+ * property per series, emitted by ChartStyle onto `[data-chart=<id>]`. It does NOT use layerchart's
+ * marks: /stats' Trend is 31 real <button> columns with per-day aria-labels and Bars is a labelled
+ * proportional list, both deliberately accessible in a way plotted <rect>/<path> marks are not (see
+ * chart-container.svelte's header for the full argument).
+ *
+ * PHASE 2 REMOVED THE TOOLTIP CHAIN AND THE layerchart DEPENDENCY WITH IT.
+ * `chart-tooltip.svelte` had ZERO call sites — nothing in the app rendered Chart.Tooltip — and it was
+ * the only consumer of `getPayloadConfigFromPayload` and `TooltipPayload`, which in turn were the only
+ * reason this file imported `type { Tooltip } from 'layerchart'`. So the whole chain was carrying a
+ * multi-megabyte dependency (layerchart plus its d3 tree) for code no surface reached. Both are gone;
+ * what remains is the context plumbing and the ChartConfig type that the two real charts use.
+ *
+ * If a tooltip is ever wanted, it belongs on Encore's own accessible marks rather than on layerchart's
+ * — re-adding the registry's tooltip would reintroduce the dependency for a rendering path this app
+ * does not take.
+ */
+import { getContext, setContext, type Component, type Snippet } from 'svelte';
 
-export const THEMES = { light: "", dark: ".dark" } as const;
+export const THEMES = { light: '', dark: '.dark' } as const;
 
 export type ChartConfig = {
 	[k in string]: {
 		label?: string;
 		icon?: Component;
-	} & (
-		| { color?: string; theme?: never }
-		| { color?: never; theme: Record<keyof typeof THEMES, string> }
-	);
+	} & ({ color?: string; theme?: never } | { color?: never; theme: Record<keyof typeof THEMES, string> });
 };
 
 export type ExtractSnippetParams<T> = T extends Snippet<[infer P]> ? P : never;
-
-export type TooltipPayload = Tooltip.TooltipSeries;
-
-// Helper to extract item config from a payload.
-export function getPayloadConfigFromPayload(
-	config: ChartConfig,
-	payload: TooltipPayload,
-	key: string,
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	data?: Record<string, any> | null
-) {
-	if (typeof payload !== "object" || payload === null) return undefined;
-
-	const payloadConfig =
-		"config" in payload && typeof payload.config === "object" && payload.config !== null
-			? payload.config
-			: undefined;
-
-	let configLabelKey: string = key;
-
-	if (payload.key === key) {
-		configLabelKey = payload.key;
-	} else if (payload.label === key) {
-		configLabelKey = payload.label;
-	} else if (key in payload && typeof payload[key as keyof typeof payload] === "string") {
-		configLabelKey = payload[key as keyof typeof payload] as string;
-	} else if (
-		payloadConfig !== undefined &&
-		key in payloadConfig &&
-		typeof payloadConfig[key as keyof typeof payloadConfig] === "string"
-	) {
-		configLabelKey = payloadConfig[key as keyof typeof payloadConfig] as string;
-	} else if (data != null && key in data && typeof data[key] === "string") {
-		configLabelKey = data[key] as string;
-	}
-
-	return configLabelKey in config ? config[configLabelKey] : config[key as keyof typeof config];
-}
 
 type ChartContextValue = {
 	config: ChartConfig;
 };
 
-const chartContextKey = Symbol("chart-context");
+const chartContextKey = Symbol('chart-context');
 
 export function setChartContext(value: ChartContextValue) {
 	return setContext(chartContextKey, value);

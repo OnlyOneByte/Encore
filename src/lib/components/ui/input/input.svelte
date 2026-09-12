@@ -1,4 +1,3 @@
-
 <!--
   ── ENCORE DEVIATIONS (S2) ───────────────────────────────────────────────────────────────────
   The registry's appearance is REPLACED by Encore's field look, not layered over it. Every reason is a
@@ -19,40 +18,36 @@
      minting at all. Same mechanism as the Button's press states.
 -->
 <script lang="ts">
-	import { cn, type WithElementRef } from "$lib/utils.js";
-	import type { HTMLInputAttributes, HTMLInputTypeAttribute } from "svelte/elements";
+	import { cn, type WithElementRef } from '$lib/utils.js';
+	import type { HTMLInputAttributes, HTMLInputTypeAttribute } from 'svelte/elements';
 
-	type InputType = Exclude<HTMLInputTypeAttribute, "file">;
+	type InputType = Exclude<HTMLInputTypeAttribute, 'file'>;
 
 	type Props = WithElementRef<
-		Omit<HTMLInputAttributes, "type"> &
-			({ type: "file"; files?: FileList } | { type?: InputType; files?: undefined })
+		Omit<HTMLInputAttributes, 'type'> & ({ type: 'file'; files?: FileList } | { type?: InputType; files?: undefined })
 	>;
 
 	let {
 		ref = $bindable(null),
 		value = $bindable(),
 		type,
-		variant = "field",
+		variant = 'field',
 		files = $bindable(),
 		class: className,
-		"data-slot": dataSlot = "input",
+		'data-slot': dataSlot = 'input',
 		...restProps
-	}: Props & { variant?: "field" | "comfortable" | "mono" | "join" } = $props();
+	}: Props & { variant?: 'field' | 'comfortable' | 'mono' | 'join' } = $props();
 </script>
 
-{#if type === "file"}
+{#if type === 'file'}
 	<input
 		bind:this={ref}
 		data-slot={dataSlot}
 		data-variant={variant}
-		class={cn(
-			"encore-field",
-			className
-		)}
+		class={cn('encore-field', className)}
 		type="file"
-		bind:files
-		bind:value
+		bind:files={files}
+		bind:value={value}
 		{...restProps}
 	/>
 {:else}
@@ -60,12 +55,9 @@
 		bind:this={ref}
 		data-slot={dataSlot}
 		data-variant={variant}
-		class={cn(
-			"encore-field",
-			className
-		)}
-		{type}
-		bind:value
+		class={cn('encore-field', className)}
+		type={type}
+		bind:value={value}
 		{...restProps}
 	/>
 {/if}

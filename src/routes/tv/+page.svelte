@@ -145,7 +145,9 @@
 	// the count is the population the floor (>=8) is checked against. Re-derives whenever the catalog
 	// changes (a new process lands a new level), so the median tracks the library rather than a stale seed.
 	const libraryLoudnessLevels = $derived(
-		[...mediaCatalog.values()].map((m) => m.songProfile?.loudnessLufs ?? null).filter((v): v is number => typeof v === 'number')
+		[...mediaCatalog.values()]
+			.map((m) => m.songProfile?.loudnessLufs ?? null)
+			.filter((v): v is number => typeof v === 'number')
 	);
 	// Resolve one slot's master level from its own song's measured loudness, the library levels, and the
 	// room toggle. 1 (unity) for the whole existing library and every song when the feature is off,
@@ -492,7 +494,9 @@
 	// Combined style written onto `.tv`: the chrome band AND the up-next height, each falling back to
 	// its app.css default before the first measurement / when its element is absent.
 	const tvStyle = $derived(
-		[chromeBandStyle, measuredUpnextPx === null ? undefined: `--tv-upnext-h: ${Math.ceil(measuredUpnextPx)}px`].filter(Boolean).join('; ') || undefined
+		[chromeBandStyle, measuredUpnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(measuredUpnextPx)}px`]
+			.filter(Boolean)
+			.join('; ') || undefined
 	);
 
 	// Which surface the TV shows. Replaces the old `isAttract` (which collapsed "nobody here"
@@ -565,7 +569,9 @@
 			// re-request.
 			if (acquiring || (sentinel && !sentinel.released)) return;
 			acquiring = true;
-			navigator.wakeLock!.request('screen').then((s) => {
+			navigator
+				.wakeLock!.request('screen')
+				.then((s) => {
 					if (released) {
 						// The effect tore down while the request was in flight — do not leak it.
 						s.release().catch(() => {});
@@ -1483,7 +1489,8 @@
 	 * never consults the media query. Under `reduce` this @media block does not apply AND the JS clock is
 	 * never started, so the phrase is simply held with no animation.
 	 */
-	@media (prefers-reduced-motion: no-preference) {.phrase-box.phrase-line {
+	@media (prefers-reduced-motion: no-preference) {
+		.phrase-box .phrase-line {
 			animation: phrase-fade 0.6s ease-out;
 		}
 	}
@@ -1513,7 +1520,14 @@
 		align-items: center;
 		justify-content: center;
 		gap: 3.2vh;
-		padding: 0 var(--tv-safe-x);
+		/* right/top/bottom are real screen edges, so content is inset from them with the overscan token
+		   (stage-scale.test.ts requires a full-bleed painted container to pad with --tv-safe-*). The
+		   left edge is the INTERIOR 2px border, not a screen edge, so it takes a plain gutter rather
+		   than a second full overscan inset — charging --tv-safe-x on both sides stole ~192px of a
+		   600px panel and was half of why the join address clipped (XR-TV-19). The other half was the
+		   panel being too narrow; --tv-attract-right is now sized so a 23-char address fits at
+		   --tv-name (see the token comment in app.css). */
+		padding: var(--tv-safe-y) var(--tv-safe-x) var(--tv-safe-y) var(--space-4xl);
 		text-align: center;
 		overflow: hidden;
 	}
@@ -1521,6 +1535,8 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+		width: 100%;
+		min-width: 0;
 	}
 	.jt-step {
 		font-size: var(--tv-body);
@@ -1532,11 +1548,13 @@
 	}
 	.jt-url {
 		/*
-		 * The mockup's `.url` budget is 44px (--tv-name); at --tv-joinurl (88px) a real LAN address split
-		 * mid-octet in the 600px panel ("10.69.1.1 / 69:3721/j / oin"), so a guest transcribed the wrong
-		 * host (XR-TV-19 blocker). An address is ONE unbreakable token: shrinking beats breaking, so this
-		 * carries NO overflow-wrap — the room code (the largest element) is the thing being transcribed,
-		 * and it renders unbroken; the URL is the secondary route and fits one line at this budget.
+		 * An address is ONE unbreakable token, so shrinking beats breaking — it renders at the --tv-name
+		 * (44px) budget and never wraps (NO overflow-wrap; the ratified-states guard pins both the size
+		 * and the absence of an escape hatch). What makes 44px actually FIT — the real XR-TV-19 fix — is
+		 * the panel width: --tv-attract-right is sized from the measured width of a 23-char address at
+		 * this size plus the overscan padding, so the token fits one line at 720p/1080p/4K. The previous
+		 * regression left this at --tv-joinurl (88px) in a 600px panel, where a LAN address split
+		 * mid-octet and a guest transcribed the wrong host.
 		 */
 		font-size: var(--tv-name);
 		font-weight: 800;
@@ -1763,7 +1781,8 @@
 	.up-song {
 		font-size: var(--tv-name);
 	}
-	/* Inline artist suffix on a takeover song line — same role as the old.up-artist but riding the title. */.up-artist-inline {
+	/* Inline artist suffix on a takeover song line — same role as the old.up-artist but riding the title. */
+	.up-artist-inline {
 		color: var(--ink-dim);
 	}
 	/* A mark large enough to be the first thing read, since it is what distinguishes these states. */
@@ -1799,7 +1818,8 @@
 		font-size: var(--tv-takeover-name);
 		font-weight: 900;
 		line-height: 1.02;
-	}.state-next.up-song {
+	}
+	.state-next .up-song {
 		color: var(--accent2);
 		margin-top: 1.4vh;
 	}
@@ -1813,11 +1833,14 @@
 	.state-error.takeover {
 		border-left-color: var(--danger);
 		background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 14%, transparent), transparent 55%);
-	}.state-error.state-mark {
+	}
+	.state-error .state-mark {
 		color: var(--danger);
-	}.state-error.up-label {
+	}
+	.state-error .up-label {
 		color: var(--danger-ink);
-	}.state-error.up-song {
+	}
+	.state-error .up-song {
 		color: var(--danger-ink);
 	}
 	/* What replaces the skipped song — so the room never wonders whose turn it now is. */
@@ -1827,14 +1850,18 @@
 		margin-top: 1.4vh;
 	}
 
-	/* Still processing — warn family. Song title is the hero; a bounded 3-step bar says the wait is finite. */.state-waiting.takeover {
+	/* Still processing — warn family. Song title is the hero; a bounded 3-step bar says the wait is finite. */
+	.state-waiting.takeover {
 		border-left-color: var(--warn);
 		background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 10%, transparent), transparent 55%);
-	}.state-waiting.state-mark {
+	}
+	.state-waiting .state-mark {
 		color: var(--warn);
-	}.state-waiting.up-label {
+	}
+	.state-waiting .up-label {
 		color: var(--warn);
-	}.state-waiting.up-song {
+	}
+	.state-waiting .up-song {
 		color: var(--ink);
 	}
 	.hero-song {
@@ -1842,27 +1869,32 @@
 		font-weight: 900;
 		line-height: 1.04;
 		margin-top: 1vh;
-	}.process-bar {
+	}
+	.process-bar {
 		width: var(--tv-process-bar-w);
 		height: var(--tv-process-bar-h);
 		border-radius: var(--radius-pill);
 		background: var(--track-bg);
 		margin-top: 3vh;
 		overflow: hidden;
-	}.process-bar i {
+	}
+	.process-bar i {
 		display: block;
 		height: 100%;
 		background: var(--warn);
-	}.process-steps {
+	}
+	.process-steps {
 		display: flex;
 		gap: var(--space-4xl);
 		margin-top: 2vh;
 		font-size: var(--tv-small);
 		color: var(--ink-dim);
-	}.process-steps.step-current {
+	}
+	.process-steps .step-current {
 		color: var(--warn);
 		font-weight: 700;
-	}.process-steps.step-done {
+	}
+	.process-steps .step-done {
 		color: var(--ink);
 	}
 	/*
