@@ -18,7 +18,7 @@
 // the prose, anchored on the mechanism it names.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { fetcherFor, needsFetch, sourceUriFor, DEFAULT_FETCHER } from '$shared';
+import { fetcherFor, needsFetch, sourceUriFor, DEFAULT_FETCHER } from '$lib/contract';
 
 // The old `const REPO = at('.')` is gone: SITES below are already
 // repo-relative, so `read` takes them directly off the repo-root anchor. It also THROWS on a missing
@@ -27,8 +27,8 @@ import { fetcherFor, needsFetch, sourceUriFor, DEFAULT_FETCHER } from '$shared';
 
 /** The five sites the finding names, each read from the real tree. */
 const SITES = [
-	'apps/core/src/shared/cook/fetchers.ts',
-	'apps/core/src/shared/core/types.ts',
+	'apps/core/src/lib/contract/cook/fetchers.ts',
+	'apps/core/src/lib/contract/core/types.ts',
 	'apps/core/src/lib/server/media/spotify.ts',
 	'apps/core/src/routes/api/search/+server.ts',
 	'docs/DECISIONS.md'
@@ -123,7 +123,7 @@ test('F2 the denial is PRESENT where the false claim did the most damage', () =>
 	// free to re-derive the same wrong conclusion from the `if (source === 'spotify') return
 	// DEFAULT_FETCHER` line, which reads as a refusal until something says otherwise. fetchers.ts owns
 	// that line, so fetchers.ts has to carry the denial — and in the explicit form, not by attribution.
-	const fetchers = sources.get('apps/core/src/shared/cook/fetchers.ts')!;
+	const fetchers = sources.get('apps/core/src/lib/contract/cook/fetchers.ts')!;
 	expect(refusalWindows(fetchers).filter(isDenial).length).toBeGreaterThan(0);
 	// and it must say what the floor IS, not merely what it is not
 	expect(fetchers).toMatch(/floor/i);

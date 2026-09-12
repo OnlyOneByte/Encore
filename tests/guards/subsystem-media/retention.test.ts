@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it } from 'bun:test';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Media } from '$shared';
+import type { Media } from '$lib/contract';
 import { at } from '@encore/test-support';
 import {
 	retentionCapBytes,

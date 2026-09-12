@@ -8,7 +8,7 @@ import {
 	DEFAULT_LEASE_CONFIG,
 	type ReapAction
 } from '$lib/server/jobs/leases';
-import type { Job } from '$shared';
+import type { Job } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
 

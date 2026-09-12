@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import { overallCookPct, SINGER_COLORS } from '$shared';
+	import { SINGER_COLORS } from '$lib/contract';
+	import { overallCookPct } from '$lib/cook-progress';
 	import Icon from '$lib/ui/Icon.svelte';
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
-	import type { MediaStatus } from '$shared';
+	import type { MediaStatus } from '$lib/contract';
 	import { cookStageLabel } from '$lib/cook-phrasing';
 	import { Progress } from '$lib/components/ui/progress';
 	import * as Item from '$lib/components/ui/item';

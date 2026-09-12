@@ -7,7 +7,7 @@ import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { completedStatusFor, mediaStatusFor } from '$lib/server/jobs/media-status';
 import { cookState, requestMakeKaraoke, MAX_CONCURRENT_COOKS_PER_SINGER } from '$lib/server/jobs/make-karaoke';
-import type { MediaStatus } from '$shared';
+import type { MediaStatus } from '$lib/contract';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();

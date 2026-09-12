@@ -4,7 +4,7 @@ import { migratedDb } from '$lib/server/db/test-db';
 import { doJoin, NameTakenError, RoomNotFoundError } from '$lib/server/singers/join';
 import { SingerRepository } from '$lib/server/singers/repository';
 import { RoomRepository } from '$lib/server/rooms/repository';
-import { SINGER_COLORS, SINGER_HUES, hueToHex, type ServerEvent } from '$shared';
+import { SINGER_COLORS, SINGER_HUES, hueToHex, type ServerEvent } from '$lib/contract';
 import { LocalLibrary } from '$lib/server/media/local';
 import { YouTubeResolver } from '$lib/server/media/youtube';
 import { SpotifyResolver } from '$lib/server/media/spotify-resolver';

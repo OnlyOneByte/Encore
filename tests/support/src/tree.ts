@@ -59,7 +59,7 @@ export const repoRoot: string = findRepoRoot();
  * below names a landmark that cannot plausibly be absent from a correct root, so this fires on a
  * misresolution rather than on an ordinary refactor.
  */
-for (const landmark of ['bunfig.toml', 'package.json', 'apps/core', 'apps/core/src/shared']) {
+for (const landmark of ['bunfig.toml', 'package.json', 'apps/core', 'apps/core/src/lib/contract']) {
 	if (!existsSync(join(repoRoot, landmark))) {
 		throw new Error(
 			`@encore/test-support: resolved repoRoot to ${repoRoot}, but it has no ${landmark}.\n` +
@@ -84,15 +84,15 @@ export const appSrc: string = join(appCore, 'src');
  * anchor over 13 copies of a path.
  */
 export const appE2e: string = join(repoRoot, 'tests', 'e2e');
-/** `apps/core/src/shared/src` — the domain code both the app and (by hand-mirroring) the worker use. */
+/** `apps/core/src/lib/contract/src` — the domain code both the app and (by hand-mirroring) the worker use. */
 /**
  * The ISOMORPHIC contract — code imported by both `src/lib` (client) and `src/lib/server` (authoritative).
  *
- * Was `packages/shared/src` as its own workspace package; folded into the app as `apps/core/src/shared`.
+ * Was `packages/shared/src` as its own workspace package; folded into the app as `apps/core/src/lib/contract`.
  * The export keeps its name because the thing it names has not changed, only its address — and because a
  * named anchor is why this move needed ONE edit here instead of one per consumer.
  */
-export const sharedSrc: string = join(appSrc, 'shared');
+export const sharedSrc: string = join(appSrc, 'lib', 'contract');
 /** `apps/worker` — the Python side. Layer 1B. */
 export const worker: string = join(repoRoot, 'apps', 'worker');
 

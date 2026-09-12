@@ -31,7 +31,7 @@
 // process, `servedRoomId` becomes a per-request value rather than a constant and every decision here
 // still holds unchanged.
 
-import { roomTopic } from '$shared';
+import { roomTopic } from '$lib/contract';
 
 /**
  * The room a socket is scoped to, resolved from its session token at the WS upgrade. `undefined`

@@ -6,7 +6,7 @@
 //   4. one cook's steps grouped without blending in a re-cook or an upgrade
 
 import { expect, it } from 'bun:test';
-import { realtimeFactor, attemptSelection } from '$shared';
+import { realtimeFactor, attemptSelection } from '$lib/contract';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { inheritsCook } from '$lib/server/jobs/dispatch';

@@ -8,9 +8,9 @@ import {
 	queueOrderLabel,
 	singHistoryFrom,
 	type QueueOrderId
-} from '$shared';
-import { applyAndReseq, storedOrder } from '$shared';
-import type { QueueEntry } from '$shared';
+} from '$lib/contract';
+import { applyAndReseq, storedOrder } from '$lib/contract';
+import type { QueueEntry } from '$lib/contract';
 
 /** A queued entry at a known STORED position — position is what the model reads now. */
 const e = (id: string, singerId: string, addedAt: number, rotationSeq = addedAt): QueueEntry => ({

@@ -7,7 +7,7 @@ import { migratedDb } from '$lib/server/db/test-db';
 import { WorkerHub } from '$lib/server/jobs/worker-hub';
 import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
-import type { WorkerCommand, ServerEvent, Media, WorkerHost } from '$shared';
+import type { WorkerCommand, ServerEvent, Media, WorkerHost } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
 

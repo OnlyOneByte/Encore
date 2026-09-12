@@ -1,5 +1,5 @@
 import { expect, it } from 'bun:test';
-import type { Media } from '$shared';
+import type { Media } from '$lib/contract';
 import { read } from '@encore/test-support';
 import { cookIsTerminal, mergeCatalog, snapshot } from '$lib/tv/catalog';
 

@@ -2,7 +2,7 @@
 	// The VOCAL RANGE bar — a C2..C6 axis with the song's sung range drawn on it.
 	//
 	// Presentational, and INTENTIONALLY dumb about music: every judgement (which notes, which band,
-	// how far the shift moves things) lives in $shared's pure helpers, computed by the caller
+	// how far the shift moves things) lives in $lib/contract's pure helpers, computed by the caller
 	// and handed down as fractions. This component only paints. That split is why the same helpers can
 	// feed the TV without a second copy of the geometry, and why the whole thing is unit-testable
 	// without a DOM.
@@ -11,7 +11,7 @@
 	// per-semitone histogram weight, the lives-here block, the whisker extremes) and the phone renders
 	// it inside a disclosure while the /components gallery renders it in six states. One component is
 	// the only way those two callers cannot drift.
-	import { voiceBandZones, rangeBarFractions, AXIS_LOW_MIDI, AXIS_HIGH_MIDI, type SongProfile } from '$shared';
+	import { voiceBandZones, rangeBarFractions, AXIS_LOW_MIDI, AXIS_HIGH_MIDI, type SongProfile } from '$lib/contract';
 
 	interface Props {
 		/** The song's analysis. `null`/absent, or a profile with no range, renders NOTHING (see below). */

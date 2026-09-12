@@ -7,7 +7,7 @@ import {
 	DEFAULT_GLOBAL_SETTINGS,
 	type Media,
 	type GlobalSettings
-} from '$shared';
+} from '$lib/contract';
 
 const settings = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({
 	...DEFAULT_GLOBAL_SETTINGS,

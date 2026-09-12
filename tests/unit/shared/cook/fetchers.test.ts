@@ -13,8 +13,8 @@ import {
 	fetcherFor,
 	needsFetch,
 	sourceUriFor
-} from '$shared';
-import { normalizeGlobalSettings, DEFAULT_GLOBAL_SETTINGS } from '$shared';
+} from '$lib/contract';
+import { normalizeGlobalSettings, DEFAULT_GLOBAL_SETTINGS } from '$lib/contract';
 
 test('every fetcher carries a label, and only real downloaders carry a capability', () => {
 	for (const f of FETCHERS) {

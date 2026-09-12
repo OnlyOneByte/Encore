@@ -18,7 +18,7 @@
 // http, because that is what this socket actually is.
 
 import { getApp } from './app';
-import { normalizeJoinOrigin } from '$shared';
+import { normalizeJoinOrigin } from '$lib/contract';
 
 /** Header a proxy uses to report the original scheme. Comma-separated when proxies chain. */
 const PROTO_HEADERS = ['x-forwarded-proto', 'x-forwarded-protocol'] as const;

@@ -6,8 +6,8 @@
 import { eq, and, desc, isNotNull, inArray, type SQL } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { media, mediaTags } from '../db/schema';
-import type { Media, LyricsCandidate } from '$shared';
-import { readyToSing, normalizeSongProfile } from '$shared';
+import type { Media, LyricsCandidate } from '$lib/contract';
+import { readyToSing, normalizeSongProfile } from '$lib/contract';
 
 type MediaRow = typeof media.$inferInsert;
 
@@ -136,7 +136,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
  *
  * - The SQL is a NARROWING, not the predicate. `stemStatus = 'ready' AND instrumentalRef NOT NULL` is
  *   the cheap prefix an index can serve.
- * - `readyToSing` — the gate table in `$shared` — makes the final call, because it also knows
+ * - `readyToSing` — the gate table in `$lib/contract` — makes the final call, because it also knows
  *   about the LYRICS gate. A song mid-align is `stemStatus: 'ready'` with its instrumental on disk and
  *   is still not finished; `gates.ts` names that window in as many words.
  *

@@ -5,7 +5,7 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
-	import type { SongProfile } from '$shared';
+	import type { SongProfile } from '$lib/contract';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
 	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
@@ -20,8 +20,8 @@
 		DEFAULT_GLOBAL_SETTINGS,
 		DEFAULT_ROOM_SETTINGS,
 		resolveLyricsPresentation
-	} from '$shared';
-	import type { LyricsCandidate } from '$shared';
+	} from '$lib/contract';
+	import type { LyricsCandidate } from '$lib/contract';
 
 	/*
 	 * Fixture singer colours, taken from the shared palette by INDEX rather than retyped as hexes.

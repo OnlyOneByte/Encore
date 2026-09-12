@@ -7,7 +7,7 @@
 //
 // Two layers, split by WHO A SETTING BELONGS TO — see the `settings scopes` comment below.
 //
-// The public API is unchanged: index.ts re-exports this module, so `$shared` consumers import
+// The public API is unchanged: index.ts re-exports this module, so `$lib/contract` consumers import
 // exactly the same names they always did.
 
 import {

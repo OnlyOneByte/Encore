@@ -6,7 +6,7 @@
 // is no embed path and no raw-source path, so "what to play" and "is there anything to play" are the
 // same question — which is why isPlayable is defined in terms of playbackRef rather than beside it.
 import { test, expect } from 'bun:test';
-import { playbackRef, isPlayable, type Media } from '$shared';
+import { playbackRef, isPlayable, type Media } from '$lib/contract';
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',

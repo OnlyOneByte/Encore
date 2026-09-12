@@ -6,7 +6,7 @@
 	// The `card` variant renders inline and is placed INSIDE the now-singing card by the caller; the
 	// other two position themselves against the stage.
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
-	import type { TvProgressStyle } from '$shared';
+	import type { TvProgressStyle } from '$lib/contract';
 
 	interface Props {
 		style: TvProgressStyle;

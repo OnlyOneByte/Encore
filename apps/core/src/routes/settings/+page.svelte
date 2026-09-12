@@ -85,7 +85,7 @@
 		type TvProgressStyle,
 		type TvBackgroundStyle,
 		type TvVisualizerId
-	} from '$shared';
+	} from '$lib/contract';
 
 	interface Props {
 		data: {

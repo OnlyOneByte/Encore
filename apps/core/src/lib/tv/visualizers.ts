@@ -23,7 +23,7 @@
 // No spectrum bars and no oscilloscope. Both assert they are drawing the audio signal, and nothing
 // here reads it — these are functions of `t`. Faking them is the defect the lyrics overlay refuses by
 // name ("a lie dressed as precision"). They arrive with real analysis or not at all.
-import { stageHueToHex, type TvVisualizerId } from '$shared';
+import { stageHueToHex, type TvVisualizerId } from '$lib/contract';
 
 /**
  * The subset of CanvasRenderingContext2D these renderers use.

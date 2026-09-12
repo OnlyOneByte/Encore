@@ -5,7 +5,7 @@
 // those files, so honouring the shift 404'd mid-song and the TV was forced to ignore it. Rendering
 // per-key variants server-side was rejected (N files per song, a worker stage nobody built); shifting
 // in the browser needs zero files and works on every already-cooked song. `keyedMediaRef` is gone
-// from $shared; this module is its replacement.
+// from $lib/contract; this module is its replacement.
 //
 // WHY A HAND-WRITTEN SHIFTER. soundtouchjs is LGPL and rubberband is GPL/commercial — both are
 // unacceptable dependencies here — so the algorithm is written out below: a time-domain

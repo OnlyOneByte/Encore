@@ -9,7 +9,7 @@ import { doJoin, assertNameFree, NameTakenError } from '$lib/server/singers/join
 import { doLeave, removableOnLeave } from '$lib/server/singers/leave';
 import { SingerRepository } from '$lib/server/singers/repository';
 import { RoomRepository } from '$lib/server/rooms/repository';
-import { SINGER_COLORS, type ServerEvent, type Media, type QueueEntry } from '$shared';
+import { SINGER_COLORS, type ServerEvent, type Media, type QueueEntry } from '$lib/contract';
 import { LocalLibrary } from '$lib/server/media/local';
 import { YouTubeResolver } from '$lib/server/media/youtube';
 import { SpotifyResolver } from '$lib/server/media/spotify-resolver';

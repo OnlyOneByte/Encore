@@ -7,7 +7,7 @@
 //
 // Pure (no Svelte, no DOM) so the precedence rules are unit-testable; `+page.svelte` renders it.
 
-import type { QueueEntry } from '$shared';
+import type { QueueEntry } from '$lib/contract';
 import type { TvState } from './gapless';
 
 /**
@@ -181,7 +181,7 @@ export const COOK_STEPS = ['Downloaded', 'Removing vocals', 'Timing the lyrics']
  *   failed / canceled    → step 0 (off the happy line; the takeover shows only while cooking, so this
  *                          is a defensive floor rather than a state the guest sees)
  */
-export function cookStep(status: import('$shared').MediaStatus | undefined): {
+export function cookStep(status: import('$lib/contract').MediaStatus | undefined): {
 	index: number;
 	fraction: string;
 } {

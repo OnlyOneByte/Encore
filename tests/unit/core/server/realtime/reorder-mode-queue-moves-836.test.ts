@@ -10,8 +10,8 @@ import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { reconcileOnReady } from '$lib/server/realtime/player';
 import { AuthoritativeState } from '$lib/server/state/store';
-import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$shared';
-import { EMPTY_SONG_PROFILE } from '$shared';
+import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$lib/contract';
+import { EMPTY_SONG_PROFILE } from '$lib/contract';
 import { modeInvalidation, ownSlots, gripVisible } from '$lib/reorder-mode';
 
 const media = (id: string): Media => ({

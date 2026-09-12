@@ -1,7 +1,7 @@
 <!--
 	CodeEntry — the typed join path (XR-PH-14). Six single-character boxes, not a free text field: the
 	segment count teaches the format without an instruction line, and the boxes reflect the SERVER's
-	restricted alphabet (`$shared/room-code`, the one copy) so a character the server would reject
+	restricted alphabet (`$lib/contract/room-code`, the one copy) so a character the server would reject
 	is refused at the keystroke rather than accepted and failed at the join.
 
 	ACCESSIBILITY IS THE POINT, not a nicety. A typed code alone is a cognitive-function test under WCAG
@@ -17,7 +17,7 @@
 	future probe author does not chase a phantom.
 -->
 <script lang="ts">
-	import { CODE_LENGTH, isRoomCodeChar, normalizeRoomCodeInput, CODE_EXCLUDED_NOTE } from '$shared';
+	import { CODE_LENGTH, isRoomCodeChar, normalizeRoomCodeInput, CODE_EXCLUDED_NOTE } from '$lib/contract';
 
 	interface Props {
 		/** The assembled code so far, upper-cased, 0..CODE_LENGTH characters. Bindable. */

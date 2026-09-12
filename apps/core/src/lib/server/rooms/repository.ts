@@ -6,19 +6,19 @@
 // one up by its code. It decides NOTHING about how a phone joins one, nor about
 // per-room playback/queue/singer scoping: those build ON this table being real.
 //
-// Kept in apps/core (not $shared) on purpose: the wire contract carries no Room today, and
+// Kept in apps/core (not $lib/contract) on purpose: the wire contract carries no Room today, and
 // The room work is explicitly scoped not to cross the shared package.
 
 import { randomBytes } from 'node:crypto';
 import { asc, eq } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { rooms } from '../db/schema';
-import { ulid, CODE_ALPHABET, CODE_LENGTH } from '$shared';
+import { ulid, CODE_ALPHABET, CODE_LENGTH } from '$lib/contract';
 
-// The join-code vocabulary now lives in $shared/room-code so the phone's six-segment entry
+// The join-code vocabulary now lives in $lib/contract/room-code so the phone's six-segment entry
 // (XR-PH-14) rejects exactly the characters this server rejects, with no second copy to drift.
 // Re-exported here so this module's existing importers keep their import site.
-export { CODE_ALPHABET, CODE_LENGTH } from '$shared';
+export { CODE_ALPHABET, CODE_LENGTH } from '$lib/contract';
 
 /** A persisted room. Shape mirrors the `rooms` table row. */
 export interface Room {

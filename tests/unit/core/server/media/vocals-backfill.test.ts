@@ -2,7 +2,7 @@
 // scan that links them. Fully injected IO — no disk, no ffmpeg.
 import { it, expect } from 'bun:test';
 import { needsVocalsBackfill, candidateVocalsRefs, backfillVocalsRefs, type VocalsBackfillIO } from '$lib/server/media/vocals-backfill';
-import type { Media } from '$shared';
+import type { Media } from '$lib/contract';
 
 const m = (id: string, over: Partial<Media> = {}): Media => ({
 	id,

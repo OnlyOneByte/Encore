@@ -4,7 +4,7 @@
 // is shared between the phone and the server to prevent.
 import { test, expect } from 'bun:test';
 import { QueueStore } from '$lib/stores/queue';
-import type { ClientCommand, Ordering, QueueEntry } from '$shared';
+import type { ClientCommand, Ordering, QueueEntry } from '$lib/contract';
 
 function makeStore(ordering?: () => Ordering) {
 	const sent: ClientCommand[] = [];

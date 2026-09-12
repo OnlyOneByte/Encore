@@ -30,7 +30,7 @@ import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { reportTerminalFailure, settleStemsGate } from '$lib/server/jobs/make-karaoke';
-import type { Media, ServerEvent } from '$shared';
+import type { Media, ServerEvent } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
 

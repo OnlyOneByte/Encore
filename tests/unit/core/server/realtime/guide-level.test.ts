@@ -9,8 +9,8 @@ import { test, expect } from 'bun:test';
 import { handlePlayerCommand, reconcileOnReady } from '$lib/server/realtime/player';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { type HubDeps } from '$lib/server/realtime/hub';
-import { type Media, type QueueEntry, type ServerEvent } from '$shared';
-import { EMPTY_SONG_PROFILE } from '$shared';
+import { type Media, type QueueEntry, type ServerEvent } from '$lib/contract';
+import { EMPTY_SONG_PROFILE } from '$lib/contract';
 
 let _s = 0;
 const entry = (id: string, mediaId: string): QueueEntry => ({

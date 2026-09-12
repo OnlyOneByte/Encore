@@ -19,14 +19,14 @@ import {
 	type WorkerCommand,
 	type ServerEvent,
 	type Media
-} from '$shared';
+} from '$lib/contract';
 import type { JobRepository } from './repository';
 import { settleLyricsGate, settleStemsGate } from './make-karaoke';
 
 // The full pipeline. A cook can be live at ANY of these stages — `fetch` (downloading), `stems`
 // (separating), `align` (timing lyrics), or a background `stems-upgrade` — and a remove should stop
 // whichever is running. Enumerated (not inferred) so a new job type is a compile error here rather
-// than a silently un-cancellable cook. Mirrors apps/core/src/shared JobType exactly.
+// than a silently un-cancellable cook. Mirrors apps/core/src/lib/contract JobType exactly.
 //
 // The promise is delivered by `CANCELLABLE_JOB_TYPES`, an exhaustive `Record<JobType, true>`:
 // TypeScript requires EVERY `JobType` member as a key, so adding a fifth job type without listing

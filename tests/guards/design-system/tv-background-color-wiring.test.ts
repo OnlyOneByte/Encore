@@ -40,7 +40,7 @@ const tvSrc = () => stripComments(read('apps/core/src/routes/tv/+page.svelte'));
 test('the TV route derives the visualizer angle from the stored colour via hueOfColor', () => {
 	const src = tvSrc();
 	// hueOfColor is imported from the shared package…
-	expect(src).toMatch(/import\s*\{[^}]*\bhueOfColor\b[^}]*\}\s*from\s*['"]\$shared['"]/);
+	expect(src).toMatch(/import\s*\{[^}]*\bhueOfColor\b[^}]*\}\s*from\s*['"]\$lib\/contract['"]/);
 	// …and the visualizer angle is derived from the stored colour through it. This is the line whose
 	// revert this guard exists to catch: `$derived(hueOfColor(tvBackgroundColor))`.
 	expect(src).toMatch(/\$derived\s*\(\s*hueOfColor\s*\(\s*tvBackgroundColor\s*\)\s*\)/);

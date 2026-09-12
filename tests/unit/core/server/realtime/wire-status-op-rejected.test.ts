@@ -16,8 +16,8 @@ import { validateCommand, handleQueueCommand, type HubDeps } from '$lib/server/r
 import { AuthoritativeState } from '$lib/server/state/store';
 import { removableOnLeave } from '$lib/server/singers/leave';
 import type { EncoreApp } from '$lib/server/app';
-import { ulid, type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$shared';
-import { EMPTY_SONG_PROFILE } from '$shared';
+import { ulid, type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$lib/contract';
+import { EMPTY_SONG_PROFILE } from '$lib/contract';
 
 const media = (id: string): Media => ({
 	id,

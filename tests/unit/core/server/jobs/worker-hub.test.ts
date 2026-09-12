@@ -7,7 +7,7 @@ import { WorkerHub } from '$lib/server/jobs/worker-hub';
 import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
-import { attemptSelection } from '$shared';
+import { attemptSelection } from '$lib/contract';
 import {
 	attemptStages,
 	realtimeFactor,
@@ -16,7 +16,7 @@ import {
 	type WorkerCommand,
 	type ServerEvent,
 	type Media
-} from '$shared';
+} from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
 

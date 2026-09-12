@@ -26,9 +26,9 @@ import { SEL } from '../contract.ts';
 /**
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO' | 'PASS'} Severity
  * @typedef {{ sev: Severity, area: string, msg: string, evidence: string }} Finding
- * @typedef {import('$shared').GlobalSettings} GlobalSettings
- * @typedef {import('$shared').RoomSettings} RoomSettings
- * @typedef {import('$shared').EffectiveSettings} EffectiveSettings
+ * @typedef {import('$lib/contract').GlobalSettings} GlobalSettings
+ * @typedef {import('$lib/contract').RoomSettings} RoomSettings
+ * @typedef {import('$lib/contract').EffectiveSettings} EffectiveSettings
  *
  * Options accepted by {@link api}. Kept structural (not the full RequestInit) because these are the
  * only knobs the probe drives; body is any JSON-serialisable value the endpoint accepts.
@@ -210,7 +210,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		gotJoin === 'http://phones.example:8080' ? 'PASS' : 'HIGH',
 		'persistence',
 		'#join-origin persists via PUT /api/settings',
-		`stored=${JSON.stringify(gotJoin)}  — apps/core/src/shared/core/settings.ts:normalizeJoinOrigin`
+		`stored=${JSON.stringify(gotJoin)}  — apps/core/src/lib/contract/core/settings.ts:normalizeJoinOrigin`
 	);
 
 	// sync-mode (global) — a real GlobalSettings field with two live modes.
@@ -219,7 +219,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		patch2.body?.global?.syncMode === 'lines' ? 'PASS' : 'HIGH',
 		'persistence',
 		'#sync-mode persists via PUT /api/settings',
-		`stored=${JSON.stringify(patch2.body?.global?.syncMode)}  — apps/core/src/shared/lyrics/lyrics-engines.ts:118`
+		`stored=${JSON.stringify(patch2.body?.global?.syncMode)}  — apps/core/src/lib/contract/lyrics/lyrics-engines.ts:118`
 	);
 
 	// All room-scope SEL.SETTING_IDS in one write to prove the persistence contract; per-field errors
@@ -295,7 +295,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 // ═══ 3. Validation — garbage must not persist. ═══════════════════════════════
 {
 	// Each garbage payload targets one field. Normalizer contract is "reject-to-current per-field",
-	// asserted in apps/core/src/shared/core/settings.ts (normalizeGlobalSettings/normalizeRoomSettings).
+	// asserted in apps/core/src/lib/contract/core/settings.ts (normalizeGlobalSettings/normalizeRoomSettings).
 	const baseline = await getSettings();
 	/** @type {{ scope: 'global' | 'room', body: Record<string, unknown>, field: string, expect: unknown }[]} */
 	const garbage = [

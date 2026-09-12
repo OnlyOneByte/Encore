@@ -10,7 +10,7 @@ import type { PageServerLoad } from './$types';
 import QRCode from 'qrcode';
 import { getApp } from '$lib/server/app';
 import { joinOrigin, fallbackJoinOrigin } from '$lib/server/public-origin';
-import { DEFAULT_EFFECTIVE_SETTINGS, type EffectiveSettings } from '$shared';
+import { DEFAULT_EFFECTIVE_SETTINGS, type EffectiveSettings } from '$lib/contract';
 
 export const load: PageServerLoad = async ({ url, request }) => {
 	const origin = joinOrigin(request, url);

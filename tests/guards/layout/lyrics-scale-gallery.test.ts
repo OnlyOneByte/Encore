@@ -8,11 +8,11 @@
 // A SOURCE SCAN because bun test has no Svelte compiler here: it reads the gallery source directly
 // and pins the two scalePct demo frames to MIN_/MAX_LYRICS_SCALE_PCT from $shared. It is not
 // mutation-blind — reverting the gallery frames back to the old 80/160 reds this against the current
-// constants. The band's own values are pinned in $shared (separators.test.ts); this only ties
+// constants. The band's own values are pinned in $lib/contract (separators.test.ts); this only ties
 // the demo to them.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { MIN_LYRICS_SCALE_PCT, MAX_LYRICS_SCALE_PCT } from '$shared';
+import { MIN_LYRICS_SCALE_PCT, MAX_LYRICS_SCALE_PCT } from '$lib/contract';
 
 const src = read('apps/core/src/routes/components/+page.svelte');
 

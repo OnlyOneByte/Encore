@@ -2,7 +2,7 @@
 // songs, 3 with lyrics — 10 that could never get them, because only a stems COMPLETION enqueues align
 // and nobody re-cooks a working song.
 import { test, expect } from 'bun:test';
-import type { LyricsCandidate, Media } from '$shared';
+import type { LyricsCandidate, Media } from '$lib/contract';
 import { needsLyricsBackfill, BACKFILL_PRIORITY } from '$lib/server/jobs/backfill';
 
 let n = 0;

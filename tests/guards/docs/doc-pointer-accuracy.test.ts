@@ -21,8 +21,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { repoRoot, sharedSrc } from '@encore/test-support';
 
-// apps/core/src/shared/src — the tree this guard scans. The old form was a bare `at('apps/core/src/shared/src')`, i.e. "the
-// directory I am in", which was only apps/core/src/shared/src while this file sat at that package's root.
+// apps/core/src/lib/contract/src — the tree this guard scans. The old form was a bare `at('apps/core/src/lib/contract/src')`, i.e. "the
+// directory I am in", which was only apps/core/src/lib/contract/src while this file sat at that package's root.
 // A wrong root here is the silent failure this tree exists to close: `walk()` over a missing directory
 // would throw, but a root pointing at some OTHER real directory would scan the wrong tree and the
 // SCANNED / pointer-count sentinels below are what catch that.

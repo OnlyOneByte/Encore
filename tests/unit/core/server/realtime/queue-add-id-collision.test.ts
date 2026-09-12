@@ -19,8 +19,8 @@
 import { test, expect } from 'bun:test';
 import { validateCommand, handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { AuthoritativeState } from '$lib/server/state/store';
-import type { Media, QueueEntry, ClientCommand, ServerEvent } from '$shared';
-import { EMPTY_SONG_PROFILE } from '$shared';
+import type { Media, QueueEntry, ClientCommand, ServerEvent } from '$lib/contract';
+import { EMPTY_SONG_PROFILE } from '$lib/contract';
 
 const media = (id: string): Media => ({
 	id,

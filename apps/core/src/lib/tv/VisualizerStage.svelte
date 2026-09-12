@@ -23,7 +23,7 @@
 	 */
 	import { VISUALIZER_RENDERERS, type VizContext } from './visualizers';
 	import { frameClock, frameDue, shouldAnimate } from './visualizer-loop';
-	import type { TvVisualizerId } from '$shared';
+	import type { TvVisualizerId } from '$lib/contract';
 
 	interface Props {
 		/** Which renderer to run. */

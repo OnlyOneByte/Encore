@@ -21,8 +21,8 @@
 // Parts 2 and 3 are deliberately redundant. That redundancy is the point: two independent reasons
 // the class stays closed, so the next consumer added to the render tree does not re-open it.
 
-import type { Media } from '$shared';
-import type { ServerEvent } from '$shared';
+import type { Media } from '$lib/contract';
+import type { ServerEvent } from '$lib/contract';
 
 /**
  * Fold a fresh `queue:sync` media list into the existing catalog, PRESERVING the existing object

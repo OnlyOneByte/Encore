@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { singers } from '../db/schema';
-import { ulid, type Singer } from '$shared';
+import { ulid, type Singer } from '$lib/contract';
 
 /**
  * A singer AS STORED: the wire {@link Singer} plus the `room_id` scoping key. The server reads

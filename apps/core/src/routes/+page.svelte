@@ -6,13 +6,13 @@
 		singHistoryFrom,
 		originalKeyLabel,
 		soundingKeyLabel,
+		songDisplay,
 		rangeLabel,
 		rangeOctaves,
 		voiceBandSentence,
-		songDisplay,
 		chosenCandidate,
 		hasNewerCandidateThanOverride
-	} from '$shared';
+	} from '$lib/contract';
 	import { onMount, tick } from 'svelte';
 	import type {
 		ServerEvent,
@@ -22,7 +22,7 @@
 		PlaybackState,
 		PlayerCommand,
 		EffectiveSettings
-	} from '$shared';
+	} from '$lib/contract';
 	import { QueueStore } from '$lib/stores/queue';
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
@@ -49,8 +49,8 @@
 	} from '$lib/readiness';
 	import { activeScars, recordScar, clearScar } from '$lib/stores/cook-scars';
 	import { positionWords } from '$lib/position-sentence';
-	import type { MediaStatus } from '$shared';
-	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '$shared';
+	import type { MediaStatus } from '$lib/contract';
+	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '$lib/contract';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import * as Collapsible from '$lib/components/ui/collapsible';

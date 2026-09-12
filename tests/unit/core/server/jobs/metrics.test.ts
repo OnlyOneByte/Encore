@@ -1,6 +1,6 @@
 // Every number the internal dashboard shows is computed here, so it is pinned here.
 import { expect, it } from 'bun:test';
-import type { JobAttempt, JobType } from '$shared';
+import type { JobAttempt, JobType } from '$lib/contract';
 import {
 	CONFIDENT_SAMPLE,
 	e2e,

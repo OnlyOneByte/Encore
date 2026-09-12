@@ -20,8 +20,8 @@ import { handlePlayerCommand } from '$lib/server/realtime/player';
 import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { PlayTracker } from '$lib/server/media/plays';
 import { createPopularityTracker } from '$lib/server/media/popularity';
-import type { Media, QueueEntry, ServerEvent, ClientCommand } from '$shared';
-import { EMPTY_SONG_PROFILE } from '$shared';
+import type { Media, QueueEntry, ServerEvent, ClientCommand } from '$lib/contract';
+import { EMPTY_SONG_PROFILE } from '$lib/contract';
 
 const media = (id: string): Media => ({
 	id,

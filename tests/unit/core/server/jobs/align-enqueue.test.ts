@@ -3,7 +3,7 @@
 // decides whether a lyrics lookup is even attempted.
 import { test, expect } from 'bun:test';
 import { assignParams, followUps } from '$lib/server/jobs/dispatch';
-import { DEFAULT_GLOBAL_SETTINGS, type Media } from '$shared';
+import { DEFAULT_GLOBAL_SETTINGS, type Media } from '$lib/contract';
 
 const media = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',

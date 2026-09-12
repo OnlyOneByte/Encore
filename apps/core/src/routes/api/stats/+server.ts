@@ -9,7 +9,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
-import { clampDays, songDisplay } from '$shared';
+import { clampDays } from '$lib/contract';
+import { songDisplay } from '$lib/contract';
 
 const DAY_MS = 86_400_000;
 const DEFAULT_DAYS = 30;

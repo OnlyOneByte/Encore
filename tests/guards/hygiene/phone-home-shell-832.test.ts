@@ -218,7 +218,7 @@ test('the shell imports what it is built from — a missing one is a build break
 	// and the cards' own history is that the uploader ended up rendered as the artist. Asserted against
 	// the IMPORT LIST, not the file: the call site mentions the name too, so a file-wide scan would stay
 	// green with the import removed and prove nothing about the hunk that adds it.
-	const shared = PAGE.slice(PAGE.indexOf('import {'), PAGE.indexOf("} from '$shared';"));
+	const shared = PAGE.slice(PAGE.indexOf('import {'), PAGE.indexOf("} from '$lib/contract';"));
 	expect(shared).toMatch(/(^|[\s,])songDisplay\s*(,|$)/m);
 	// …and the byline keeps the uploader fallback the browse row uses for a READY song, or the hero
 	// silently shows no artist for every song whose parse was not confident — which is most local files.

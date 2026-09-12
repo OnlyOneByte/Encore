@@ -5,7 +5,7 @@
 // and names its subject by repo-relative path instead of by adjacency.
 //
 // WHY A SOURCE SCAN AND NOT A UNIT TEST. `resolveLyricsPresentation`'s per-song bound is a pure
-// function with full branch coverage in apps/core/src/shared/lyrics/separators.test.ts. That coverage says
+// function with full branch coverage in apps/core/src/lib/contract/lyrics/separators.test.ts. That coverage says
 // nothing about whether anything CALLS it with a song — and a bound nobody passes an argument to is
 // this repo's single most repeated defect: a mechanism built, unit-tested in isolation, and never
 // wired to the path that needs it, with the passing test standing in for the wiring. The clamp is

@@ -15,7 +15,7 @@ import {
 	type QueueOrderId,
 	type ServerEvent,
 	EMPTY_SONG_PROFILE
-} from '$shared';
+} from '$lib/contract';
 
 const media = (id: string): Media => ({
 	id,

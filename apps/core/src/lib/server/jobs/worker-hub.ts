@@ -17,8 +17,8 @@ import type {
 	MediaStoreConfig,
 	GlobalSettings,
 	EffectiveSettings
-} from '$shared';
-import { sourceUriFor, resolveCookSeparator } from '$shared';
+} from '$lib/contract';
+import { sourceUriFor, resolveCookSeparator } from '$lib/contract';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';

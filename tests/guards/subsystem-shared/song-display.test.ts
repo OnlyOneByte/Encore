@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test';
-import { songDisplay, type Media } from '$shared';
+import { type Media } from '$lib/contract';
+import { songDisplay } from '$lib/contract';
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -55,7 +56,7 @@ test('null / undefined media degrade to an empty title and no artist, never thro
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
-const SELF = at('apps/core/src/shared/presentation/song-display.ts');
+const SELF = at('apps/core/src/lib/contract/presentation/song-display.ts');
 const STATS = at('apps/core/src/routes/api/stats/+server.ts');
 const METRICS = at('apps/core/src/routes/api/metrics/+server.ts');
 

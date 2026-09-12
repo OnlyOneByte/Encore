@@ -280,7 +280,7 @@ export function activeWordIndex(line: LyricLine, pos: number): number {
 }
 
 // ── honesty about where the words came from ──────────────────────────
-import { isAuthoritativeText, type LyricsCandidate } from '$shared';
+import { isAuthoritativeText, type LyricsCandidate } from '$lib/contract';
 
 /** The provenance slice the overlay needs — a Pick of the stored candidate. */
 export type LyricsProvenance = Pick<LyricsCandidate, 'textSource' | 'textConfidence' | 'timing'>;

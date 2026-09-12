@@ -592,7 +592,7 @@ async function scenario4_noProfile() {
 				[
 					`observed: terminal status=${last.status}, catalog.songProfile=${JSON.stringify(cat.songProfile ?? null)}`,
 					'apps/core/src/lib/server/jobs/make-karaoke.ts:437-476 — setMediaSongProfile ALWAYS writes; presence, not content, satisfies the gate',
-					'apps/core/src/shared/queue/gates.ts:52-76 — stems gate checks stemStatus + instrumentalRef only, not the profile'
+					'apps/core/src/lib/contract/queue/gates.ts:52-76 — stems gate checks stemStatus + instrumentalRef only, not the profile'
 				]
 			);
 		} else {

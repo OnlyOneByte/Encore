@@ -25,7 +25,7 @@ parts of the generic `pipeline-conductor` skill are WRONG for this repo and the 
    "babysit the PR to green" has nothing to read. The review lane is the **review-orchestrator**
    (`encore-pr-bot`), which posts a verdict and sets `review:approved` or `review:blocked`.
 3. Dispatch needs a **FILE**-overlap check, not just an item-overlap check. Several open issues land in
-   the same files (`TvPlayer.svelte`, `settings.ts`, `apps/core/src/shared`), and whoever merges first makes
+   the same files (`TvPlayer.svelte`, `settings.ts`, `apps/core/src/lib/contract`), and whoever merges first makes
    the other stale.
 
 Worker brief: `docs/loop/CODING-BOT.md` — seed each worker with it verbatim, plus its one issue number.
@@ -330,7 +330,7 @@ One wave per wake:
    unmerged branch (this cost real turns in wave 1). Then pick up to 3 whose footprints do not
    intersect. Defer any candidate that shares a file with another in the wave, touches a Drizzle
    migration (this repo has renumbered collisions repeatedly), or changes a wire shape or enum in
-   `apps/core/src/shared` that the Python worker also carries — those three are exactly where parallel PRs
+   `apps/core/src/lib/contract` that the Python worker also carries — those three are exactly where parallel PRs
    stop being independent.
 3. **Fan out the fixes** in one `spawn_run` batch, `include_memory=false`, `include_lessons=true`, capped
    at 3 fix agents (each spawns 3 reviewers → 12 subagents, under the 16 cap). Raise `max_turns` to ~250:

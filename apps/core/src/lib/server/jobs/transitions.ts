@@ -17,7 +17,7 @@
 // `REPRIORITIZE` into a legal internal edge instead of a raw write that had to escape the machine
 // (repository.ts).
 
-import { isTerminalJob, type JobStatus, type JobEvent } from '$shared';
+import { isTerminalJob, type JobStatus, type JobEvent } from '$lib/contract';
 
 /**
  * Legal edges keyed by (from-status, event) → to-status. Terminal states (`ready`/`failed`/

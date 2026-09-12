@@ -10,7 +10,7 @@ import {
 	isValidSyncMode,
 	DEFAULT_GLOBAL_SETTINGS,
 	normalizeGlobalSettings
-} from '$shared';
+} from '$lib/contract';
 
 it('ASR model registry defaults to the value the worker hardcoded, so exposing the setting changes no behaviour', () => {
 	// If this ever needs changing, it is a deliberate behaviour change to every existing deployment

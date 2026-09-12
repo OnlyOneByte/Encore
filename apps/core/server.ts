@@ -10,7 +10,7 @@ import {
 	type Media,
 	type WorkerMessage,
 	type WorkerCommand
-} from '$shared';
+} from '$lib/contract';
 import { handleQueueCommand, syncEvent, type HubDeps } from './src/lib/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady, nowPlayingEvent } from './src/lib/server/realtime/player';
 import { validateWorkerMessage } from './src/lib/server/jobs/worker-hub';

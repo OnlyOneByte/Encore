@@ -7,7 +7,7 @@
 import { test, expect } from 'bun:test';
 import { resultToMedia, type SearchResult } from '$lib/server/media/resolver';
 import { partitionSearch } from '$lib/server/media/readiness';
-import type { Media } from '$shared';
+import type { Media } from '$lib/contract';
 
 test('a spotify result materializes and appears in the merged, deduped search output', () => {
 	const q = 'never gonna give you up';

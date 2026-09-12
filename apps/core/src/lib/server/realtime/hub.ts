@@ -13,8 +13,8 @@ import type {
 	EffectiveSettings,
 	Ordering,
 	QueueOp
-} from '$shared';
-import { singHistoryFrom } from '$shared';
+} from '$lib/contract';
+import { singHistoryFrom } from '$lib/contract';
 import type { AuthoritativeState } from '../state/store';
 import { can } from '../auth/capabilities';
 import { queueEntries } from '../db/schema';

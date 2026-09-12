@@ -21,7 +21,7 @@ import {
 	voiceBandSentence,
 	voiceBandZones,
 	type SongProfile
-} from '../../../../apps/core/src/shared/cook/song-profile';
+} from '../../../../apps/core/src/lib/contract/cook/song-profile';
 
 /** A fully-populated profile: G major, living D3-A4, extremes C3-C5, mastered at -12 LUFS. */
 function profile(over: Partial<SongProfile> = {}): SongProfile {

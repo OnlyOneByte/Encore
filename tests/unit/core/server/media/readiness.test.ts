@@ -3,8 +3,8 @@
 // library" and "raw on YouTube", which is the confusion this partition exists to prevent.
 import { test, expect } from 'bun:test';
 import { readinessOf, matchesQuery, partitionSearch } from '$lib/server/media/readiness';
-import type { Media } from '$shared';
-import { EMPTY_SONG_PROFILE } from '$shared';
+import type { Media } from '$lib/contract';
+import { EMPTY_SONG_PROFILE } from '$lib/contract';
 
 const m = (id: string, over: Partial<Media> = {}): Media => ({
 	id,

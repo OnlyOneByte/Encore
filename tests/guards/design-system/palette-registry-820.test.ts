@@ -4,12 +4,12 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { repoRoot, at } from '@encore/test-support';
-import { contrastRatio } from '$shared';
+import { contrastRatio } from '$lib/contract';
 // The registry itself stays a TYPED default import, and it is the one path here that cannot go
-// through an alias: `$shared`'s exports map carries only `"."`, so a subpath import of this
+// through an alias: `$lib/contract`'s exports map carries only `"."`, so a subpath import of this
 // JSON does not resolve — the same reason `colour-tokens.test.ts` reaches it relatively. A wrong
 // depth here fails loudly with `Cannot find module`, never silently.
-import registry from '../../../apps/core/src/shared/presentation/player-palette-48.json';
+import registry from '../../../apps/core/src/lib/contract/presentation/player-palette-48.json';
 
 /**
  * The 48-stop player palette registry (`XR-COL-01`), and the guards that keep its published figures
@@ -131,7 +131,7 @@ test('the registry regenerates byte-identically from its committed inputs (XR-CO
 	// "Generated, never hand-edited" is only true if a hand edit is detectable. This is the only
 	// assertion that detects one, so it pays ~10s of interpreter time to run the real generator.
 	const out = join(mkdtempSync(join(tmpdir(), 'palette-')), 'regenerated.json');
-	const run = spawnSync('python3', [join(REPO, 'apps/core/src/shared/scripts/_player_palette.py')], {
+	const run = spawnSync('python3', [join(REPO, 'apps/core/src/lib/contract/scripts/_player_palette.py')], {
 		env: { ...process.env, PLAYER_PALETTE_OUT: out },
 		encoding: 'utf8'
 	});
@@ -141,7 +141,7 @@ test('the registry regenerates byte-identically from its committed inputs (XR-CO
 	expect(run.error ?? null).toBeNull();
 	expect(run.status).toBe(0);
 
-	const committed = readFileSync(join(REPO, 'apps/core/src/shared/presentation/player-palette-48.json'), 'utf8');
+	const committed = readFileSync(join(REPO, 'apps/core/src/lib/contract/presentation/player-palette-48.json'), 'utf8');
 	const regenerated = readFileSync(out, 'utf8');
 	if (regenerated !== committed) {
 		// Name the stop that differs, per XR-COL-02's acceptance, instead of dumping 42 KB of JSON.
@@ -154,7 +154,7 @@ test('the registry regenerates byte-identically from its committed inputs (XR-CO
 		throw new Error(
 			`committed registry is not what the generator produces. Differing chromatic stops: ` +
 				`${differing.length ? differing.join(', ') : '(none — surfaces or stats block)'}. ` +
-				`Run: python3 apps/core/src/shared/scripts/_player_palette.py`
+				`Run: python3 apps/core/src/lib/contract/scripts/_player_palette.py`
 		);
 	}
 	expect(regenerated).toBe(committed);

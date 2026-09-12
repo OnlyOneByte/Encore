@@ -13,7 +13,7 @@
  * mutation in the PR body). A type-level check cannot be asserted from inside `bun test`, so this
  * test guards the same invariant two ways that DO run in the suite, and reds if the fix is reverted:
  *
- *  1. It parses the `JobType` union straight out of apps/core/src/shared as TEXT — an INDEPENDENT source,
+ *  1. It parses the `JobType` union straight out of apps/core/src/lib/contract as TEXT — an INDEPENDENT source,
  *     not the runtime array the code builds — and asserts every member is a key of the Record in
  *     cancel.ts. Drop a member from the Record (or add a JobType without listing it) and this reds.
  *  2. It asserts cancel.ts still uses the exhaustive `Record<JobType, true>` witness and derives the
@@ -26,18 +26,18 @@ import { expect, test } from 'bun:test';
 import { read } from '@encore/test-support';
 
 const cancelSrc = read('apps/core/src/lib/server/jobs/cancel.ts');
-const typesSrc = read('apps/core/src/shared/core/types.ts');
+const typesSrc = read('apps/core/src/lib/contract/core/types.ts');
 
 /** Strip line and block comments so prose describing the old layout cannot satisfy or trip a scan. */
 function stripComments(s: string): string {
 	return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 }
 
-/** The canonical JobType members, parsed from the union declaration in apps/core/src/shared as text. */
+/** The canonical JobType members, parsed from the union declaration in apps/core/src/lib/contract as text. */
 function jobTypeMembers(): string[] {
 	const src = stripComments(typesSrc);
 	const m = src.match(/export type JobType\s*=\s*([^;]+);/);
-	expect(m, 'JobType union declaration must exist in apps/core/src/shared/core/types.ts').not.toBeNull();
+	expect(m, 'JobType union declaration must exist in apps/core/src/lib/contract/core/types.ts').not.toBeNull();
 	const members = m![1]
 		.split('|')
 		.map((part) => part.trim().replace(/^['"]|['"]$/g, ''))

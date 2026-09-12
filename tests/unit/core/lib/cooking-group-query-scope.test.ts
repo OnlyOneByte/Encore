@@ -5,7 +5,7 @@
 // id-selection now lives in the pure `cookingGroupIds` helper, scoped to the query when searching.
 import { test, expect } from 'bun:test';
 import { cookingGroupIds, displayReadiness } from '$lib/readiness';
-import type { Media, MediaStatus } from '$shared';
+import type { Media, MediaStatus } from '$lib/contract';
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
 	id,

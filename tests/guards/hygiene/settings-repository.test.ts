@@ -7,7 +7,7 @@ import {
 	QUEUE_ORDERS,
 	type GlobalSettings,
 	type RoomSettings
-} from '$shared';
+} from '$lib/contract';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { at } from '@encore/test-support';
@@ -371,7 +371,7 @@ it('SettingsRepository room scope: tv progress style — every persisted room fi
 // are valid live-selectable / valid-separator pairs rather than independently flipped values.
 //
 // defaultFetcher is deliberately NOT round-trip-checked here, and NOT because a dedicated test
-// covers it — it does not. normalizeGlobalSettings (apps/core/src/shared/core/settings.ts) refuses the
+// covers it — it does not. normalizeGlobalSettings (apps/core/src/lib/contract/core/settings.ts) refuses the
 // only other FETCHERS member ('local', which degrades to the default), and setGlobal is the sole
 // writer to global_settings, so no value distinct from the default can ever reach the column
 // through the public API. Its SELECT line is therefore UNOBSERVABLE today: deleting it changes no

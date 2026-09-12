@@ -12,7 +12,7 @@ import {
 	assertEvent,
 	JOB_TRANSITIONS
 } from '$lib/server/jobs/transitions';
-import { TERMINAL_JOB_STATUSES, JOB_EVENTS, type JobStatus, type JobEvent } from '$shared';
+import { TERMINAL_JOB_STATUSES, JOB_EVENTS, type JobStatus, type JobEvent } from '$lib/contract';
 
 // — status-pair view (the lossy projection kept for callers that only ask "is A→B legal?") —
 

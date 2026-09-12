@@ -12,7 +12,7 @@
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import { dur, stepLabel, stageLabel, localStamp, rate } from '$lib/metrics-format';
 	import { formatClock } from '$lib/clock';
-	import type { SelectionRecord } from '$shared';
+	import type { SelectionRecord } from '$lib/contract';
 	import * as Card from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
 

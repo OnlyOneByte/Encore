@@ -17,7 +17,7 @@
 // `singerColor` from that card's overlay, reds a named test here.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { SINGER_COLORS, lyricHighlightColor } from '$shared';
+import { SINGER_COLORS, lyricHighlightColor } from '$lib/contract';
 
 // A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/routes/components/+page.svelte')` — and
 // `+page.svelte` is the most ambiguous sibling read in the repo, since every route directory has one.

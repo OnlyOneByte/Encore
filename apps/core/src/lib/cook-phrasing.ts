@@ -8,7 +8,7 @@
 //
 // So both surfaces call THIS, and there is no third vocabulary to drift into. The percentage and ETA
 // (the honest part of the old copy, per the same review) stay with the caller; this owns only the words.
-import type { MediaStatus } from '$shared';
+import type { MediaStatus } from '$lib/contract';
 
 /**
  * The guest-facing stage line — the sentence under the title while a song cooks. `pct` is

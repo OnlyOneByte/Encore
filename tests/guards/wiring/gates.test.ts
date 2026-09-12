@@ -9,7 +9,7 @@ import {
 	isPlayable,
 	EMPTY_SONG_PROFILE,
 	type Media
-} from '$shared';
+} from '$lib/contract';
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -164,11 +164,11 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/shared/queue/, so
-// `at('apps/core/src/shared/queue/gates.ts')` meant "the gate table next to me" — note the comment that used to
-// sit here claimed `at('apps/core/src/shared/queue') === apps/core/src/shared/src`, which was already stale by one level.
+// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/lib/contract/queue/, so
+// `at('apps/core/src/lib/contract/queue/gates.ts')` meant "the gate table next to me" — note the comment that used to
+// sit here claimed `at('apps/core/src/lib/contract/queue') === apps/core/src/lib/contract/src`, which was already stale by one level.
 // Confirmed present at this path before re-anchoring.
-const GATES_SRC = stripComments(read('apps/core/src/shared/queue/gates.ts'));
+const GATES_SRC = stripComments(read('apps/core/src/lib/contract/queue/gates.ts'));
 
 test('gates.ts source was read (guard is not vacuous)', () => {
 	// A sentinel that must be present regardless of this fix, so an empty/misread file cannot make the

@@ -2,10 +2,10 @@
 //
 // WHAT THIS STILL GUARDS, AND WHAT THE FRAMEWORK TOOK BACK.
 //
-// `src/shared` was `packages/shared`, its own workspace package, and two facts made the rule unbreakable
+// `src/lib/contract` was `packages/shared`, its own workspace package, and two facts made the rule unbreakable
 // rather than merely unbroken: its `tsconfig.json` carried `paths: []`, and its `package.json` declared no
 // dependency on `apps/core`. A shared module could not import server code because the import was
-// UNRESOLVABLE. Folding it into `apps/core/src/shared` destroyed that, and this guard replaced it.
+// UNRESOLVABLE. Folding it into `apps/core/src/lib/contract` destroyed that, and this guard replaced it.
 //
 // THE SERVER HALF IS NOW A BUILD-TIME GUARANTEE AGAIN, and a better one than the original. Server-only
 // code moved from `src/server` to `src/lib/server`, a path SvelteKit gives meaning to: importing anything
@@ -39,7 +39,7 @@ import { sharedSrc, filesUnder, relative } from '@encore/test-support';
  * load-bearing part.)
  */
 const FORBIDDEN_ALIAS = /(?:from|import)\s*\(?\s*['"](\$lib|\$app|\$env)(?:\/[^'"]*)?['"]/;
-/** A relative path that climbs out of `src/shared` — the way round an alias ban. */
+/** A relative path that climbs out of `src/lib/contract` — the way round an alias ban. */
 const ESCAPING_RELATIVE = /(?:from|import)\s*\(?\s*['"](\.\.\/(?:\.\.\/)*)(lib|routes)\//;
 
 function code(abs: string): string {
@@ -97,7 +97,10 @@ test('the ban catches both spellings, and does not catch a legitimate import', (
 	// …and the things this tree legitimately does.
 	expect(FORBIDDEN_ALIAS.test("import { rotation } from './queue/rotation';")).toBe(false);
 	expect(FORBIDDEN_ALIAS.test("import { test } from 'bun:test';")).toBe(false);
-	expect(FORBIDDEN_ALIAS.test("import type { Media } from '$shared';")).toBe(false);
+	// A contract module importing its OWN barrel is forbidden too, and that is not an accident of banning
+	// `$lib` wholesale — it is a circular import. Sibling modules here reach each other relatively.
+	expect(FORBIDDEN_ALIAS.test("import type { Media } from '$lib/contract';")).toBe(true);
+	expect(FORBIDDEN_ALIAS.test("import type { Media } from './core/types';")).toBe(false);
 	expect(ESCAPING_RELATIVE.test("import { x } from './presentation/colors';")).toBe(false);
 	expect(ESCAPING_RELATIVE.test("import { y } from '../core/types';")).toBe(false);
 	// …and `$lib/server` is NOT this guard's business any more: the build refuses it. Pinned as a

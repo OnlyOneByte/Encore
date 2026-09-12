@@ -14,9 +14,9 @@
 // (`TV_PROGRESS_STYLES`, `TV_VISUALIZERS`) stay in settings.ts on purpose: nothing in the base layer
 // references them, so only the one type that actually crosses the boundary is moved.
 //
-// The public surface of $shared is unchanged: index.ts re-exports this module, and settings.ts
+// The public surface of $lib/contract is unchanged: index.ts re-exports this module, and settings.ts
 // re-exports these same names, so a consumer importing `TvBackgroundStyle` / `TV_BACKGROUND_STYLES`
-// from either `$shared` or `./settings` sees exactly what it always did.
+// from either `$lib/contract` or `./settings` sees exactly what it always did.
 
 import { makeRegistry } from '../core/registry';
 

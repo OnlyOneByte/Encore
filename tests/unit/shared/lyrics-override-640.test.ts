@@ -13,7 +13,7 @@ import {
 	resolveLyricsRef,
 	hasNewerCandidateThanOverride,
 	pickBestLyrics
-} from '$shared';
+} from '$lib/contract';
 
 let _t = 0;
 const cand = (

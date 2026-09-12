@@ -17,7 +17,7 @@
 // on the server) and wrapped so a quota failure
 // (private-mode Safari) or a malformed value degrades to "no scar" rather than throwing. The pure
 // helpers take a plain record + an explicit `now`, so the TTL logic is unit-testable with no DOM.
-import type { Media } from '$shared';
+import type { Media } from '$lib/contract';
 
 /** localStorage key. One key holds the whole `{ mediaId: Scar }` map. */
 export const COOK_SCARS_KEY = 'encore:cook-scars';

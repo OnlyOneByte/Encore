@@ -21,12 +21,12 @@ import {
 	isLikelyWrongSong,
 	SUSPECT_COVERAGE,
 	SEQUENCE_WEIGHT
-} from '$shared';
-// Was `'./lyrics-agreement-corpus'`, a sibling of this test in apps/core/src/shared/lyrics. Unlike the
-// symbols above it is NOT re-exported from `apps/core/src/shared/index.ts`, so `$shared` cannot
+} from '$lib/contract';
+// Was `'./lyrics-agreement-corpus'`, a sibling of this test in apps/core/src/lib/contract/lyrics. Unlike the
+// symbols above it is NOT re-exported from `apps/core/src/lib/contract/index.ts`, so `$lib/contract` cannot
 // reach it and a repo-relative import is the only route — same shape as
 // tests/guards/design-system/colour-tokens.test.ts reaching its own registry JSON.
-import { AGREEMENT_PARITY_CORPUS } from '../../../apps/core/src/shared/lyrics/lyrics-agreement-corpus';
+import { AGREEMENT_PARITY_CORPUS } from '../../../apps/core/src/lib/contract/lyrics/lyrics-agreement-corpus';
 
 let _t = 0;
 const cand = (
@@ -319,9 +319,9 @@ test('hasUsableTiming is true for word/line, false for none', () => {
 // SUSPECT_AGREEMENT on purpose, to tell a reader still carrying 0.25 in their head that the axis moved.
 // A bare substring scan would fire on that prose and make the guard unfalsifiable.
 test('lyrics.ts no longer declares the retired SUSPECT_AGREEMENT', () => {
-	// Was `at('apps/core/src/shared/lyrics/lyrics.ts')` — the module under test was this guard's own SIBLING in
-	// apps/core/src/shared/lyrics, so it is now named from the repo root.
-	const source = read('apps/core/src/shared/lyrics/lyrics.ts');
+	// Was `at('apps/core/src/lib/contract/lyrics/lyrics.ts')` — the module under test was this guard's own SIBLING in
+	// apps/core/src/lib/contract/lyrics, so it is now named from the repo root.
+	const source = read('apps/core/src/lib/contract/lyrics/lyrics.ts');
 	expect(source).toMatch(/export const SUSPECT_COVERAGE\s*=/);
 	expect(source).not.toMatch(/export const SUSPECT_AGREEMENT\s*=/);
 });

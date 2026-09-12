@@ -62,7 +62,7 @@ import { reconcileOnReady } from './realtime/player';
 import { orderingOf, syncEvent, type HubDeps, type Publish } from './realtime/hub';
 import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
 import { ObjectMediaStore, bunS3Client } from './media/object-store';
-import type { ServerEvent, Media, WorkerCommand, QueueEntry } from '$shared';
+import type { ServerEvent, Media, WorkerCommand, QueueEntry } from '$lib/contract';
 
 export interface EncoreApp {
 	db: DB;

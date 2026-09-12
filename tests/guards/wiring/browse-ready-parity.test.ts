@@ -31,8 +31,8 @@ import { at } from '@encore/test-support';
 import { MediaRepository } from '$lib/server/media/repository';
 import { migratedDb } from '$lib/server/db/test-db';
 import { instrumentalKey, lyricsKey } from '$lib/server/media/paths';
-import type { Media } from '$shared';
-import { EMPTY_SONG_PROFILE } from '$shared';
+import type { Media } from '$lib/contract';
+import { EMPTY_SONG_PROFILE } from '$lib/contract';
 
 /** A finished song: both gates satisfied. */
 const finished = (id: string): Media => ({

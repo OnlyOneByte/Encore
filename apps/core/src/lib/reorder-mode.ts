@@ -1,7 +1,7 @@
 // The own-picks reorder MODE, as pure functions (XR-PH-17 … XR-PH-20).
 //
 // WHY A MODE AT ALL. `move`'s `toSeq` is an index into the singer's own QUEUED picks, not a
-// `rotationSeq` (apps/core/src/shared/core/ops.ts:12, `reorderWithinSinger` at rotation.ts:127). The op
+// `rotationSeq` (apps/core/src/lib/contract/core/ops.ts:12, `reorderWithinSinger` at rotation.ts:127). The op
 // therefore CANNOT express "put my song above someone else's" — round-robin owns cross-singer order,
 // and a drop that appeared to cross singers would be clamped back, which reads as a bug rather than
 // as a rule. A guest's picks are also NOT adjacent in the flat list, so the list cannot imply the
@@ -13,7 +13,7 @@
 // module is testable against the code the page actually calls; a predicate inlined in the template
 // can only be tested by reconstructing it in the test, which pins nothing.
 
-import type { EntryStatus } from '$shared';
+import type { EntryStatus } from '$lib/contract';
 
 /**
  * XR-PH-17 — the grip renders ONLY where a reorder is real.

@@ -18,7 +18,7 @@ import { AuthoritativeState } from '$lib/server/state/store';
 import { PlayTracker } from '$lib/server/media/plays';
 import { migratedDb } from '$lib/server/db/test-db';
 import { orderingOf } from '$lib/server/realtime/hub';
-import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ServerEvent } from '$shared';
+import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ServerEvent } from '$lib/contract';
 
 const APP_KEY = Symbol.for('encore.app');
 const ROOM = 'active-room';

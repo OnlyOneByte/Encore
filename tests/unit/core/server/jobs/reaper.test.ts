@@ -132,7 +132,7 @@ test('onReaped fires once per tick that changed ≥1 job, and not on a no-op', (
 // instrumental on disk. The reaper has no catalog, so app.ts wires its onFailed hook to
 // settleGatesForFailedJob(job, mediaById) — this test drives that live wiring, not a reimplementation.
 import { settleGatesForFailedJob } from '$lib/server/jobs/make-karaoke';
-import type { Media } from '$shared';
+import type { Media } from '$lib/contract';
 
 const mkMedia = (id: string, over: Partial<Media> = {}): Media => ({
 	id,

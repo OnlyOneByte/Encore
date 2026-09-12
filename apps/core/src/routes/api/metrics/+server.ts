@@ -11,7 +11,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
-import { clampDays, songDisplay } from '$shared';
+import { clampDays } from '$lib/contract';
+import { songDisplay } from '$lib/contract';
 import { e2e, isAnecdote, perAsrModel, perCook, perModel, perStage, perStep } from '$lib/server/jobs/metrics';
 
 const DEFAULT_LIMIT = 2000;

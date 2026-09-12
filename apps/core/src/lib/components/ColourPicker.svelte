@@ -5,7 +5,7 @@
 	implementation: two pickers would be two places for the preset-vs-slider agreement to drift, and that
 	agreement is the whole reason `pickPreset` also moves the hue.
 
-	HUE IS THE ONLY AXIS a guest controls. Lightness and chroma are pinned in $shared, which is
+	HUE IS THE ONLY AXIS a guest controls. Lightness and chroma are pinned in $lib/contract, which is
 	what guarantees every reachable colour is a dot that stays visible on the dark surfaces and stays
 	distinguishable from the next guest's. A free picker would allow near-black (the identity dot
 	disappears) or a hue one degree from someone else's (indistinguishable on the TV roster, where the dot
@@ -19,7 +19,7 @@
 		nearestSingerHue,
 		nextSwatchIndex,
 		presetTabStopIndex
-	} from '$shared';
+	} from '$lib/contract';
 	import Icon from '$lib/ui/Icon.svelte';
 
 	interface Props {
@@ -39,7 +39,7 @@
 	 *
 	 * COUPLING (load-bearing): PRESET_NAMES is mapped to the shared SINGER_COLORS BY POSITION —
 	 * PRESET_NAMES[i] is the name of SINGER_COLORS[i]. This array cannot be reordered without also
-	 * reordering SINGER_COLORS in apps/core/src/shared/presentation/colors.ts, and vice versa. The single named
+	 * reordering SINGER_COLORS in apps/core/src/lib/contract/presentation/colors.ts, and vice versa. The single named
 	 * chokepoint for this mapping is presetIndex() below — every read of PRESET_NAMES goes through it.
 	 * Guarded on two sides: contract.test.ts pins this list against the names the e2e flow queries by, and
 	 * design-system.test.ts ('the colour picker has exactly one name per shared preset colour') asserts

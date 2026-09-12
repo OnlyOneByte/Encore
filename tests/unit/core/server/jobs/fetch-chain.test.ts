@@ -5,7 +5,7 @@
 // that chained to nothing would leave every song stuck with audio on disk and no instrumental.
 import { test, expect } from 'bun:test';
 import { followUps, requiredCapability, assignParams } from '$lib/server/jobs/dispatch';
-import { DEFAULT_GLOBAL_SETTINGS, type GlobalSettings, type Media } from '$shared';
+import { DEFAULT_GLOBAL_SETTINGS, type GlobalSettings, type Media } from '$lib/contract';
 
 const settings = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({ ...DEFAULT_GLOBAL_SETTINGS, ...o });
 const media = (over: Partial<Media> = {}): Media => ({

@@ -3,7 +3,7 @@ import { test, expect } from 'bun:test';
 import { WsClient, type MinimalSocket } from '$lib/ws/client';
 import { WS_OPEN } from '$lib/ws/send';
 import { QueueStore } from '$lib/stores/queue';
-import type { ServerEvent, ClientEvent } from '$shared';
+import type { ServerEvent, ClientEvent } from '$lib/contract';
 
 // A controllable fake socket: capture sends, drive open/message/close from the test.
 class FakeSocket implements MinimalSocket {

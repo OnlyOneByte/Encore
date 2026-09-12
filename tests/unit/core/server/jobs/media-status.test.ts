@@ -29,7 +29,7 @@ import {
 	type Job,
 	type Media,
 	type ServerEvent
-} from '$shared';
+} from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
 

@@ -12,7 +12,7 @@
 // On BASE (before the session token became the room identity) this module does not exist and there is
 // check, so none of this is expressible — the isolation it asserts is exactly what the PR adds.
 import { test, expect } from 'bun:test';
-import { roomTopic } from '$shared';
+import { roomTopic } from '$lib/contract';
 import { isForeignRoom, subscribeTopicFor, broadcastTopicFor } from '$lib/server/realtime/room-scope';
 
 const A = 'room-A';

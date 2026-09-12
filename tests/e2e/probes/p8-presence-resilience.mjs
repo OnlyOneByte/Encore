@@ -1119,7 +1119,7 @@ async function main() {
 				'PASS',
 				'concurrency reduces to clientOpId dedupe — no revision context in the envelope',
 				'apps/core/src/lib/server/realtime/hub.ts validateCommand has no revision check; the envelope carries clientOpId + op only, so duplicate-op replays are the only conflict shape and they dedupe idempotently.',
-				`apps/core/src/shared/core/ops.ts ClientCommand (clientOpId + op; the dead baseRev field was removed)`
+				`apps/core/src/lib/contract/core/ops.ts ClientCommand (clientOpId + op; the dead baseRev field was removed)`
 			);
 		}
 	} catch (err) {

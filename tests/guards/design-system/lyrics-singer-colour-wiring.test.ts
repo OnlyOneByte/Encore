@@ -10,7 +10,7 @@
 // deriving a per-frame brightness variant or clamping illegible colours to the accent. So there is no
 // new contrast rule to test here; the rule that does apply is the identity floor
 // (`lyricHighlightColor` -> `isLegibleSingerColor`), and that is exercised behaviourally on the pure
-// function in `apps/core/src/shared/presentation/colors.test.ts`.
+// function in `apps/core/src/lib/contract/presentation/colors.test.ts`.
 //
 // WHY A SOURCE SCAN, and why it is not mutation-blind. There is no Svelte compiler and no DOM under
 // `bun test`, so a `$props()` declaration, a custom property appended to an inline `style` string, and
@@ -76,7 +76,7 @@ test('the overlay takes a singerColor prop and defaults it to no singer', () => 
 test('the overlay resolves the highlight colour through the shared helper, not the raw prop', () => {
 	const src = overlaySrc();
 	// The helper is imported from the shared package…
-	expect(src).toMatch(/import\s*\{[^}]*\blyricHighlightColor\b[^}]*\}\s*from\s*['"]\$shared['"]/);
+	expect(src).toMatch(/import\s*\{[^}]*\blyricHighlightColor\b[^}]*\}\s*from\s*['"]\$lib\/contract['"]/);
 	// …and the prop goes THROUGH it. This is the line whose revert this assertion exists to catch:
 	// interpolating `singerColor` straight into the style attribute would put an unvalidated wire value
 	// into CSS, which is the whole reason the helper is a boundary and not a convenience.

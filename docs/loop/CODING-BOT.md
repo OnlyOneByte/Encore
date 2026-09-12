@@ -155,7 +155,7 @@ decide. Two things to know before you meet it red:
   reproduces is a finding to re-decide on the record, never a number to adjust (XR-VER-06/07).
 
 `bun run typecheck` **exits 0 with 0 errors and 0 warnings on a clean tree.** Issue #56 was closed
-by PR #73, so the old "exits 2 with 9 known `$shared` `song-profile` errors = green" rule is
+by PR #73, so the old "exits 2 with 9 known `$lib/contract` `song-profile` errors = green" rule is
 **DEAD** — treat **any** error as a regression you caused, and that outranks your assignment. Read
 the `found N errors` line, not `grep -c error`, which counts the literal string inside "found 0
 errors".

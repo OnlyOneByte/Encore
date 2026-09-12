@@ -11,7 +11,7 @@ import {
 	normalizeRoomSettings,
 	DEFAULT_ROOM_SETTINGS,
 	type Media
-} from '$shared';
+} from '$lib/contract';
 
 const cooked = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',

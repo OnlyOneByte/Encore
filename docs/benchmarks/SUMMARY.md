@@ -17,7 +17,7 @@ seconds-per-window is not comparable across checkpoints — they disagree on win
 rt = (seconds per window / window seconds) x num_overlap
 ```
 
-Bands used in `apps/core/src/shared/lyrics/separators.ts`: `fast` < 1, `medium` < 4, `slow` beyond.
+Bands used in `apps/core/src/lib/contract/lyrics/separators.ts`: `fast` < 1, `medium` < 4, `slow` beyond.
 **rt < 1 is a live cook** (finishes while the singer waits). **rt > ~2 is an upgrade tier** — cook it
 in the background and swap the instrumental in later.
 

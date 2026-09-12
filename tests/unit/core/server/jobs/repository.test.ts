@@ -3,7 +3,7 @@
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
 import { JobRepository } from '$lib/server/jobs/repository';
-import type { JobType } from '$shared';
+import type { JobType } from '$lib/contract';
 import { jobs } from '$lib/server/db/schema';
 
 function makeRepo() {

@@ -11,7 +11,7 @@ import { requestLyricsReselect, manualLyricsRef, type MakeKaraokeDeps } from '$l
 import { assignParams } from '$lib/server/jobs/dispatch';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AuthoritativeState } from '$lib/server/state/store';
-import type { LyricsCandidate, Media } from '$shared';
+import type { LyricsCandidate, Media } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
 const media = (over: Partial<Media> = {}): Media => ({

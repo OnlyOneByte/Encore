@@ -9,7 +9,7 @@ import {
 	graceMsOf,
 	DEFAULT_PRESENCE_GRACE_MINUTES,
 	type MemberFacts
-} from '../../../../apps/core/src/shared/queue/membership';
+} from '../../../../apps/core/src/lib/contract/queue/membership';
 
 const NOW = 1_000_000;
 const GRACE = graceMsOf(90);

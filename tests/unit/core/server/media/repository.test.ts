@@ -5,8 +5,8 @@ import { migratedDb } from '$lib/server/db/test-db';
 // requestMakeKaraoke from re-cooking an instrumental that's already on disk.
 import { test, expect } from 'bun:test';
 import { MediaRepository, hydrateMediaCatalog } from '$lib/server/media/repository';
-import type { Media } from '$shared';
-import { EMPTY_SONG_PROFILE } from '$shared';
+import type { Media } from '$lib/contract';
+import { EMPTY_SONG_PROFILE } from '$lib/contract';
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
 	id,

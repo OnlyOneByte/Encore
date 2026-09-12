@@ -13,7 +13,7 @@ import {
 	type VizContext,
 	type VizFrame
 } from '$lib/tv/visualizers';
-import { TV_VISUALIZERS, stageHueToHex, SINGER_HUES, contrastRatio, parseHex } from '$shared';
+import { TV_VISUALIZERS, stageHueToHex, SINGER_HUES, contrastRatio, parseHex } from '$lib/contract';
 
 /**
  * Records every colour, draw call, alpha AND coordinate, so a pure renderer can be asserted on.

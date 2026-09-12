@@ -4,7 +4,7 @@ import { migratedDb } from '$lib/server/db/test-db';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { sqlitePersistence } from '$lib/server/state/persistence';
 import { hydrate } from '$lib/server/db/migrate';
-import { ulid, type QueueEntry, type PlaybackState } from '$shared';
+import { ulid, type QueueEntry, type PlaybackState } from '$lib/contract';
 
 const entry = (singerId: string, addedAt: number): QueueEntry => ({
 	id: ulid(addedAt),

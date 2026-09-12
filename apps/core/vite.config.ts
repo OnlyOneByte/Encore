@@ -28,27 +28,20 @@ export default defineConfig({
 				runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 			},
 			adapter: adapter(),
-			alias: {
-				// The isomorphic contract — imported by BOTH `src/lib` (client) and `src/lib/server`
-				// (authoritative). That is what "shared" means here: client↔server within one app, never
-				// app↔worker, since the worker is Python and cannot import TypeScript at all.
-				//
-				// Pointing at the DIRECTORY, not at `index.ts`. The old workspace package's `exports` map
-				// carried only `"."`, so a subpath import did not resolve and tests reached the palette
-				// registry through `'../../../../packages/shared/…json'`. A directory alias gives SvelteKit
-				// both `$shared` and `$shared/*`, so those relative reaches can go.
-				$shared: 'src/shared'
-				//
-				// THERE IS NO `$server` ALIAS, and its absence is the point.
-				//
-				// Server-only code lives at `src/lib/server`, reached as `$lib/server` — a path SvelteKit
-				// gives MEANING to: it refuses to bundle anything under it into client code, and fails the
-				// build saying so. The previous `$server: 'src/lib/server'` was only a name; nothing stopped a
-				// Svelte component importing the database through it, and that was held by a test instead.
-				//
-				// Re-adding an alias here would create a second route to the same modules that the framework
-				// does not police, which is exactly the hole the move closed. It stays gone.
-			}
+			// NO CUSTOM ALIASES. Both of this app's internal trees are now reached through `$lib`, which
+			// SvelteKit provides:
+			//
+			//   $lib/server    server-only. SvelteKit REFUSES to bundle it into client code and fails the
+			//                  build saying so — a guarantee, not a convention.
+			//   $lib/contract  the isomorphic contract, imported by both `lib` (client) and `lib/server`.
+			//                  "Contract", not "shared": the name `shared` was read as app↔worker three
+			//                  separate times, and the Python worker cannot import TypeScript at all.
+			//
+			// The previous `$server` and `$shared` aliases were only names. Nothing stopped a component
+			// importing the database through `$server`, and that was held by a test instead. Re-adding
+			// either would create a second route to the same modules that the framework does not police,
+			// which is precisely the hole this restructure closed.
+			alias: {}
 		})
 	]
 });

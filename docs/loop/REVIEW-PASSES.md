@@ -254,7 +254,7 @@ shipped a real bug). It is the highest-value finding class this repo has produce
 
 Rotation: `src/lib/server/state` + `src/lib/server/realtime` · `src/lib/server/jobs` · `src/lib/server/media` +
 `src/lib/server/db` · `src/lib/server/rotation` + `src/lib/server/singers` + `src/lib/server/auth` ·
-`apps/core/src/shared/src` · `src/lib/stores` + `src/lib/ws` · `src/routes/api`
+`apps/core/src/lib/contract/src` · `src/lib/stores` + `src/lib/ws` · `src/routes/api`
 
 ### `rev:worker-arch` — Encore Worker, architecture and code quality
 
@@ -337,7 +337,7 @@ this reviewer or re-files the same finding 6 times a day. Replacement, both halv
 
 1. **Coarse union sha**, logged in the `slice-sha` column like any other charter:
    ```bash
-   git log -1 --format=%h -- apps/core/src apps/core/src/shared
+   git log -1 --format=%h -- apps/core/src apps/core/src/lib/contract
    ```
 2. **Rotate one flow per pass, unconditionally.** An unchanged tree advances the rotation rather than
    stopping the pass. **Stop silently** only when the union sha is unchanged **and** every flow has
@@ -418,7 +418,7 @@ and belongs to the charter that owns that surface.
 
 Rotation: `src/lib/server/state` + `src/lib/server/realtime` · `src/lib/server/jobs` + `src/lib/server/media` ·
 `src/routes/api` + `src/lib/server/db` · `src/lib/stores` + `src/lib/ws` + `src/lib/tv` ·
-`src/routes` components · `apps/core/src/shared/src` · `apps/worker/src` domains ·
+`src/routes` components · `apps/core/src/lib/contract/src` · `apps/worker/src` domains ·
 `tests/e2e` + harness
 
 ---

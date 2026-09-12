@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import { nextVideoSrc } from '$lib/tv/video-src';
-import { playbackRef, type Media } from '$shared';
+import { playbackRef, type Media } from '$lib/contract';
 
 // The exact resolution TvPlayer's fileSrc does: `/media/${playbackRef(m)}`.
 // Kept here so the test proves the property that matters — that two DISTINCT Media objects with equal

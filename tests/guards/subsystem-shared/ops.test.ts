@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { applyOp, applyAndReseq, type QueueEntry } from '$shared';
+import { applyOp, applyAndReseq, type QueueEntry } from '$lib/contract';
 
 const e = (id: string, seq: number, singerId = 's1'): QueueEntry => ({
 	id,
@@ -88,10 +88,10 @@ test('applyAndReseq(add) and (remove) also leave the input untouched', () => {
 // The behavioural reducer path is pinned by rotation.test.ts + the applyOp fallback above; this is the
 // source-scan guard for the vocabulary itself, so the op cannot silently vanish from the wire contract.
 import { read } from '@encore/test-support';
-// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/shared/core/, so
-// `at('apps/core/src/shared/core/ops.ts')` meant "the ops module next to me". Confirmed present at this
+// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/lib/contract/core/, so
+// `at('apps/core/src/lib/contract/core/ops.ts')` meant "the ops module next to me". Confirmed present at this
 // path before re-anchoring.
-const opsSrc = read('apps/core/src/shared/core/ops.ts')
+const opsSrc = read('apps/core/src/lib/contract/core/ops.ts')
 	.replace(/\/\*[\s\S]*?\*\//g, '')
 	.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 test('step 4: the QueueOp union carries move-to-index (id + numeric toIdx)', () => {

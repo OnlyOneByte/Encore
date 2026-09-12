@@ -15,7 +15,7 @@
 // `isLegibleSingerColor` and feeding the result back in, which is the failure mode that would let
 // these pass against an implementation that returned its input unchanged.
 import { test, expect } from 'bun:test';
-import * as colors from '$shared';
+import * as colors from '$lib/contract';
 
 // `--card`, the binding surface the dot rule tests here — read FROM `colors.SURFACES` rather than
 // restated, so it cannot drift from the token `app.css` declares (the same fix made in

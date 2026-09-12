@@ -20,7 +20,7 @@ export interface StampableEntry {
 	id: string;
 }
 
-/** The `tv:telemetry` wire frame (apps/core/src/shared events.ts). Kept in sync with that ClientEvent variant. */
+/** The `tv:telemetry` wire frame (apps/core/src/lib/contract events.ts). Kept in sync with that ClientEvent variant. */
 export interface TelemetryFrame {
 	type: 'tv:telemetry';
 	positionSec: number;

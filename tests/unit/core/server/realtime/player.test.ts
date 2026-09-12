@@ -3,7 +3,7 @@ import { test, expect } from 'bun:test';
 import { handlePlayerCommand } from '$lib/server/realtime/player';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { type HubDeps } from '$lib/server/realtime/hub';
-import { type ServerEvent, type Media, type QueueEntry, EMPTY_SONG_PROFILE } from '$shared';
+import { type ServerEvent, type Media, type QueueEntry, EMPTY_SONG_PROFILE } from '$lib/contract';
 
 const media = (id: string): Media => ({
 	id,

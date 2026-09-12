@@ -56,7 +56,7 @@ export const stepLabel = (jobType: string): string => STEP_LABELS[jobType] ?? jo
 
 /**
  * The worker's own sub-step names. `separating`/`aligning` describe the code, not the work. Operator
- * wording ("removing vocals"); the guest-facing equivalent lives in $shared and reads
+ * wording ("removing vocals"); the guest-facing equivalent lives in $lib/contract and reads
  * differently on purpose (see the module note above).
  */
 export const STAGE_LABELS: Record<string, string> = {

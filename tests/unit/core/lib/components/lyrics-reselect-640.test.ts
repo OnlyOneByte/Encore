@@ -5,7 +5,7 @@
 import { test, expect, afterEach } from 'bun:test';
 import { mount, unmount, flushSync } from '../../../../../tests/setup/svelte-client';
 import LyricsReselect from '$lib/components/LyricsReselect.svelte';
-import type { LyricsCandidate } from '$shared';
+import type { LyricsCandidate } from '$lib/contract';
 
 let live: Array<{ comp: unknown; host: HTMLElement }> = [];
 afterEach(() => {

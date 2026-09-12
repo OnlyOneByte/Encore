@@ -20,7 +20,8 @@
 	//   4. THE VIEW COUNT. The tiebreaker between two lyric uploads of one song (2.1B vs 266K).
 	import type { Readiness } from '$lib/readiness';
 	import { cookStageLabel } from '$lib/cook-phrasing';
-	import { overallCookPct, type MediaStatus } from '$shared';
+	import { type MediaStatus } from '$lib/contract';
+	import { overallCookPct } from '$lib/cook-progress';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Progress } from '$lib/components/ui/progress';

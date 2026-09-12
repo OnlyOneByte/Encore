@@ -15,7 +15,7 @@
 import { and, asc, desc, eq, gte, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { jobAttempts } from '../db/schema';
-import { ulid, type AttemptOutcome, type Job, type JobAttempt } from '$shared';
+import { ulid, type AttemptOutcome, type Job, type JobAttempt } from '$lib/contract';
 
 /**
  * What a dispatch resolved for this attempt. Every field optional: a `fetch` carries no separator and

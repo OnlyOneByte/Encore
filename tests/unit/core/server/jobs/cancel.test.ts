@@ -11,8 +11,8 @@ import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { WorkerHub } from '$lib/server/jobs/worker-hub';
 import { WorkerRegistry } from '$lib/server/jobs/registry';
-import type { WorkerCommand, QueueEntry, Media, ClientCommand, ServerEvent } from '$shared';
-import { readyToSing } from '$shared';
+import type { WorkerCommand, QueueEntry, Media, ClientCommand, ServerEvent } from '$lib/contract';
+import { readyToSing } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
 

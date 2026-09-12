@@ -1,7 +1,7 @@
 import { expect, it } from 'bun:test';
 import { read } from '@encore/test-support';
 import { tvScreen, lobbyRoster, lyricsAdvancing, cookStep, COOK_STEPS } from '$lib/tv/screen';
-import type { QueueEntry } from '$shared';
+import type { QueueEntry } from '$lib/contract';
 
 const entry = (id: string, singerId = 's1'): QueueEntry =>
 	({ id, mediaId: 'm-' + id, singerId, status: 'queued', rotationSeq: 1, addedAt: 1 }) as QueueEntry;

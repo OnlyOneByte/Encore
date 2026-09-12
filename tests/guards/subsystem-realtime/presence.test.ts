@@ -3,7 +3,7 @@ import { read } from '@encore/test-support';
 import { PresenceTracker } from '$lib/server/realtime/presence';
 import { syncEvent } from '$lib/server/realtime/hub';
 import { AuthoritativeState } from '$lib/server/state/store';
-import { graceMsOf } from '$shared';
+import { graceMsOf } from '$lib/contract';
 
 const NOW = 1_000_000;
 const GRACE = graceMsOf(90);

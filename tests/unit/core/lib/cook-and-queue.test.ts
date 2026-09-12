@@ -3,7 +3,7 @@
 import { test, expect } from 'bun:test';
 import { cookAndQueue } from '$lib/cook-and-queue';
 import { soonestSeqFor, NO_QUEUE_PRIORITY } from '$lib/server/jobs/make-karaoke';
-import type { QueueEntry } from '$shared';
+import type { QueueEntry } from '$lib/contract';
 
 test('queue happens BEFORE cook, so the cook inherits the singer position', () => {
 	const calls: string[] = [];

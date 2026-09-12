@@ -9,7 +9,7 @@ import {
 	SINGER_HUES,
 	DEFAULT_STAGE_COLOR,
 	dimTowardBlack
-} from '$shared';
+} from '$lib/contract';
 
 test('every registered style resolves to a non-empty CSS value', () => {
 	// The registry and this resolver must not drift: a style with no branch would return undefined and

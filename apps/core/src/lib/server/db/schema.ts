@@ -68,7 +68,7 @@ export const media = sqliteTable('media', {
 	// rather than left on the search response so a song already in the library carries it too; NULL
 	// means "never learned one", which the row renders as no chip rather than as "0 views".
 	viewCount: integer('view_count'),
-	// The lyrics half of the cook gate (see apps/core/src/shared/queue/gates.ts). NULL on rows written before
+	// The lyrics half of the cook gate (see apps/core/src/lib/contract/queue/gates.ts). NULL on rows written before
 	// the gate existed, which the gate reads as "done if a lyrics artifact is already present" so an
 	// existing library does not become unsingable on upgrade.
 	lyricsStatus: text('lyrics_status', { enum: ['none', 'queued', 'ready'] }),
@@ -91,7 +91,7 @@ export const media = sqliteTable('media', {
 	// "measured, and it was 0" apart from "we never measured this one".
 	guideOffsetMs: integer('guide_offset_ms'),
 	// The stems job's THIRD artifact: what the cook learned about the song's music — its key and the
-	// sung range — as one JSON blob (see apps/core/src/shared/cook/song-profile.ts, SongProfile). Stored the
+	// sung range — as one JSON blob (see apps/core/src/lib/contract/cook/song-profile.ts, SongProfile). Stored the
 	// same way as lyrics_candidates: nothing queries INSIDE it (transposition and range math all happen
 	// in the client from the whole record), so one JSON column beats a key_range table with no query to
 	// justify it. NULLABLE, and the null carries meaning: null ⇔ "the stems job has not run / this row
@@ -218,7 +218,7 @@ export const playbackState = sqliteTable('playback_state', {
 
 // Room-level separator settings. A single-row ('singleton') table: these govern
 // cooks EVERYONE shares, so they are authoritative room state, not a per-phone preference. Read
-// whole / written whole; the shared $shared RoomSettings type is the source of truth for the
+// whole / written whole; the shared $lib/contract RoomSettings type is the source of truth for the
 // field set, and normalizeRoomSettings() gates writes so a bad payload can never persist.
 export const globalSettings = sqliteTable('global_settings', {
 	id: text('id').primaryKey().default('singleton'),
@@ -328,7 +328,7 @@ export const jobs = sqliteTable(
 	{
 		id: text('id').primaryKey(),
 		mediaId: text('media_id').notNull(),
-		// The cook this job belongs to — see Job.cookId in $shared for why media_id cannot serve
+		// The cook this job belongs to — see Job.cookId in $lib/contract for why media_id cannot serve
 		// as the grouping key. Defaulted to '' rather than left nullable so rows written before the
 		// column existed read as "no cook recorded" instead of null-checking at every call site; those
 		// rows predate the attempt ledger and have no timings to group anyway.

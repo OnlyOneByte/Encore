@@ -740,7 +740,7 @@ async function main() {
 		// same code the phone uses to decide whether to render the GuidingTrack control at all.
 		const guideAvailable = await phone.evaluate(`
 			(async () => {
-				const mod = await import('/node_modules/$shared/dist/guide-level.js').catch(() => null);
+				const mod = await import('/node_modules/$lib/contract/dist/guide-level.js').catch(() => null);
 				// Not importable from the bundled build; fall back to reading the DOM's disabled state.
 				const range = document.querySelector('input[aria-label="Guiding track — original vocal level"]');
 				return { rangeExists: !!range, rangeDisabled: range?.disabled ?? null };
@@ -780,8 +780,8 @@ async function main() {
 		'LOW',
 		'vocalsRef absent: unmeasured (environment limit; fake worker always publishes vocals artifact)',
 		true,
-		`apps/core/src/shared/lyrics/guide-level.ts:hasGuidingTrack requires !!m.vocalsRef`,
-		`covered by unit tests apps/core/src/shared/lyrics/guide-level.test.ts:hasGuidingTrack; not reproducible via the fake worker without editing it`
+		`apps/core/src/lib/contract/lyrics/guide-level.ts:hasGuidingTrack requires !!m.vocalsRef`,
+		`covered by unit tests apps/core/src/lib/contract/lyrics/guide-level.test.ts:hasGuidingTrack; not reproducible via the fake worker without editing it`
 	);
 
 	// ── screenshot for the record ─────────────────────────────────────────

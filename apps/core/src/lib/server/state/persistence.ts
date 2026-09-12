@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { queueEntries, playbackState } from '../db/schema';
 import type { StatePersistence } from './store';
-import type { QueueEntry, PlaybackState } from '$shared';
+import type { QueueEntry, PlaybackState } from '$lib/contract';
 
 // `roomId` binds this sink to ONE room (playback and queue alike). Playback state and the queue
 // used to be deployment-wide — a single 'singleton' playback row and a queue table with no room —

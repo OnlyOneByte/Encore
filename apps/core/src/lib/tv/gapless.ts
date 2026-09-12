@@ -6,7 +6,7 @@
 // we swap roles if the hidden slot is warmed for the right entry — a single composited frame,
 // no network fetch at transition time. That's what kills dead air.
 
-import type { QueueEntry } from '$shared';
+import type { QueueEntry } from '$lib/contract';
 
 export type Slot = 'A' | 'B';
 export type TvState = 'attract' | 'loading' | 'playing' | 'interstitial' | 'waiting';

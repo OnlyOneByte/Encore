@@ -6,7 +6,7 @@
 // Two mechanisms cover it: wake() (bound to those events) and a liveness watchdog on the heartbeat.
 import { test, expect } from 'bun:test';
 import { WsClient, type MinimalSocket } from '$lib/ws/client';
-import type { ServerEvent, ClientEvent } from '$shared';
+import type { ServerEvent, ClientEvent } from '$lib/contract';
 
 class FakeSocket implements MinimalSocket {
 	onopen: (() => void) | null = null;

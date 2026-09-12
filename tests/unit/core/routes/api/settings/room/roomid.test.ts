@@ -13,7 +13,7 @@ import { test, expect, afterEach } from 'bun:test';
 import { PUT } from '../../../../../../../apps/core/src/routes/api/settings/room/+server';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
 import { migratedDb } from '$lib/server/db/test-db';
-import { DEFAULT_ROOM_SETTINGS } from '$shared';
+import { DEFAULT_ROOM_SETTINGS } from '$lib/contract';
 
 const APP_KEY = Symbol.for('encore.app');
 

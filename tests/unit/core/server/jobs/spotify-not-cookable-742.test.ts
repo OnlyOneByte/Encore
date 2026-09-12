@@ -24,8 +24,8 @@ import { AuthoritativeState } from '$lib/server/state/store';
 import { nextPlayable } from '$lib/server/rotation/index';
 import { cookAndQueue } from '$lib/cook-and-queue';
 import { canCook, readinessOf } from '$lib/readiness';
-import { isCookableSource, fetcherFor, DEFAULT_FETCHER, METADATA_ONLY_SOURCES } from '$shared';
-import type { Media, QueueEntry } from '$shared';
+import { isCookableSource, fetcherFor, DEFAULT_FETCHER, METADATA_ONLY_SOURCES } from '$lib/contract';
+import type { Media, QueueEntry } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
 /** A real Spotify track id, as the resolver materializes it (parseSpotifySearchJson → resultToMedia). */

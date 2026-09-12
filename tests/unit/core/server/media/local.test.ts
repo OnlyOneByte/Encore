@@ -2,7 +2,7 @@
 import { test, expect } from 'bun:test';
 import { LocalLibrary } from '$lib/server/media/local';
 import { resultToMedia } from '$lib/server/media/resolver';
-import { isPlayable } from '$shared';
+import { isPlayable } from '$lib/contract';
 
 function lib() {
 	const l = new LocalLibrary();

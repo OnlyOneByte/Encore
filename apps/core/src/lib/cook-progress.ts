@@ -1,4 +1,4 @@
-import { MEDIA_STAGES, mediaStagePosition, type MediaStatus } from '../core/events';
+import { MEDIA_STAGES, mediaStagePosition, type MediaStatus } from '$lib/contract';
 
 /**
  * Overall cook completion 0–100 for the processing bar — NOT the current step's own progress.

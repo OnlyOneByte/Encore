@@ -1,7 +1,7 @@
 /**
  * The TS↔Python vocabulary is enforced HERE, not by comment discipline.
  *
- * The worker is Python and cannot import $shared, so every shared enum is hand-mirrored in
+ * The worker is Python and cannot import $lib/contract, so every shared enum is hand-mirrored in
  * apps/worker/src/vocabulary.py and the capability strings are hand-typed in capabilities.py. Core
  * then matches those capability strings by RAW STRING EQUALITY in dispatch.ts. Nothing checked that
  * the two sides agreed — the claim lived only in prose, in both files' doc comments.
@@ -25,8 +25,8 @@ import {
 	FETCHERS,
 	EMPTY_SONG_PROFILE,
 	normalizeSongProfile
-} from '$shared';
-import type { JobType } from '$shared';
+} from '$lib/contract';
+import type { JobType } from '$lib/contract';
 import { requiredCapability } from '$lib/server/jobs/dispatch';
 import { DEFAULT_LEASE_CONFIG } from '$lib/server/jobs/leases';
 import {
@@ -120,14 +120,14 @@ test('artifact envelope parity (worker yield vs core read): core reads it from t
  * job's retained-original key) rode this frame written, undeclared and unread. This scan is
  * broader than the `songProfile`-placement guard above: it covers ALL `steps/*.py`, not just
  * `separate.py`, and asserts subset-of-`JobArtifacts` rather than one hard-coded key. Reads both sides
- * as TEXT so it runs in the ordinary `bun test` gate with no Python interpreter and no `$shared`
+ * as TEXT so it runs in the ordinary `bun test` gate with no Python interpreter and no `$lib/contract`
  * import on the worker side.
  */
 // Top-level field names of `interface JobArtifacts { ... }`, read from the source as text. Matches
 // `name?:` / `name:` at the start of an indented line inside the interface body — the same
 // read-source-as-text idiom used above, so no build step is needed to know the declared set.
 function declaredArtifactKeys(): Set<string> {
-	const events = read('apps/core/src/shared/core/events.ts');
+	const events = read('apps/core/src/lib/contract/core/events.ts');
 	const m = events.match(/export interface JobArtifacts \{([\s\S]*?)\n\}/);
 	expect(m, 'JobArtifacts interface not found in events.ts').toBeTruthy();
 	const body = m![1]!;
@@ -192,7 +192,7 @@ test('TS↔Python vocabulary parity: JobType matches the worker Action enum', ()
 	const tsJobTypes = ['fetch', 'stems', 'stems-upgrade', 'align'] as const;
 	// If JobType ever gains or loses a member, this assignment stops compiling, so the list above
 	// cannot silently fall behind the type it mirrors.
-	const _exhaustive: readonly import('$shared').JobType[] = tsJobTypes;
+	const _exhaustive: readonly import('$lib/contract').JobType[] = tsJobTypes;
 	void _exhaustive;
 	expect([...pyEnumValues(vocabulary, 'Action')].sort()).toEqual([...tsJobTypes].sort());
 });
@@ -227,14 +227,14 @@ test('TS↔Python vocabulary parity: lyrics text sources match the worker TextSo
 	// cannot silently fall behind. The Python side is TextSource, promoted from chain.py's SOURCE_*
 	// string constants precisely so this guard can cover it.
 	const tsTextSources = ['lrclib', 'captions', 'asr', 'manual'] as const;
-	const _exhaustive: readonly import('$shared').LyricsTextSource[] = tsTextSources;
+	const _exhaustive: readonly import('$lib/contract').LyricsTextSource[] = tsTextSources;
 	void _exhaustive;
 	expect(pyEnumValues(vocabulary, 'TextSource').sort()).toEqual([...tsTextSources].sort());
 });
 
 test('TS↔Python vocabulary parity: lyrics timing tiers match the worker Timing enum', () => {
 	const tsTimings = ['word', 'line', 'none'] as const;
-	const _exhaustive: readonly import('$shared').LyricsTiming[] = tsTimings;
+	const _exhaustive: readonly import('$lib/contract').LyricsTiming[] = tsTimings;
 	void _exhaustive;
 	expect(pyEnumValues(vocabulary, 'Timing').sort()).toEqual([...tsTimings].sort());
 });
@@ -283,7 +283,7 @@ test('TS↔Python vocabulary parity: every JobType routes to a capability the wo
 /**
  * The WIRE VERBS were the last contract in this file guarded only by a comment.
  *
- * `protocol.py` carries `# message type strings (must match apps/core/src/shared/core/events.ts)` above
+ * `protocol.py` carries `# message type strings (must match apps/core/src/lib/contract/core/events.ts)` above
  * eleven frame names, and nothing checked it. Rename a frame on either side and every test here
  * stayed green while the worker silently ignored an unrecognised `type` (or the core dropped the
  * worker's) — a worker that connects, handshakes, and then never accepts a job. That is the same
@@ -300,14 +300,14 @@ test('TS↔Python vocabulary parity: worker→core frame names match the WorkerM
 		'job:failed'
 	] as const;
 	// Same trick as JobType above: TypeScript checks the list IS the union, so it cannot fall behind.
-	const _exhaustive: readonly import('$shared').WorkerMessage['type'][] = tsWorkerMessages;
+	const _exhaustive: readonly import('$lib/contract').WorkerMessage['type'][] = tsWorkerMessages;
 	void _exhaustive;
 	expect(pyWireVerbs('worker -> core').sort()).toEqual([...tsWorkerMessages].sort());
 });
 
 test('TS↔Python vocabulary parity: core→worker frame names match the WorkerCommand union', () => {
 	const tsWorkerCommands = ['worker:welcome', 'job:assign', 'job:cancel', 'ping'] as const;
-	const _exhaustive: readonly import('$shared').WorkerCommand['type'][] = tsWorkerCommands;
+	const _exhaustive: readonly import('$lib/contract').WorkerCommand['type'][] = tsWorkerCommands;
 	void _exhaustive;
 	expect(pyWireVerbs('core -> worker').sort()).toEqual([...tsWorkerCommands].sort());
 });
@@ -320,7 +320,7 @@ test('TS↔Python vocabulary parity: core→worker frame names match the WorkerC
  */
 test('TS↔Python vocabulary parity: worker stages are all valid MediaStatus values', () => {
 	const tsMediaStatuses = ['queued', 'downloading', 'separating', 'aligning', 'ready', 'failed', 'canceled'] as const;
-	const _exhaustive: readonly import('$shared').MediaStatus[] = tsMediaStatuses;
+	const _exhaustive: readonly import('$lib/contract').MediaStatus[] = tsMediaStatuses;
 	void _exhaustive;
 	const stages = pyEnumValues(vocabulary, 'Stage');
 	expect(stages.length).toBeGreaterThan(0); // a silent empty parse would pass vacuously
@@ -620,7 +620,7 @@ test('stem path/extension parity (worker processor.py vs core paths.ts): non-vac
  * separator contract with no guard.
  *
  * `demucs.py` carries `DEMUCS_MODELS = ("htdemucs", ...)` under a comment that says it "Mirrors the
- * `demucs` engine's model whitelist in apps/core/src/shared/lyrics/separators.ts" — but nothing enforced the
+ * `demucs` engine's model whitelist in apps/core/src/lib/contract/lyrics/separators.ts" — but nothing enforced the
  * mirror. Its roformer twin IS guarded (the token↔checkpoint block above reads ROFORMER_MODELS as
  * text and pins it against the offered set); the demucs side lived only in that prose comment.
  *
@@ -679,7 +679,7 @@ test('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts): de
  * nothing about what is inside it — and the inside is written in Python (`_NULL_PROFILE` in
  * `analysis/song_profile.py`, the one place the always-publish null shape is built) and read in
  * TypeScript (`SongProfile` + `EMPTY_SONG_PROFILE` + `normalizeSongProfile` in
- * `apps/core/src/shared/cook/song-profile.ts`). There is no generator between them. The worker's pytest
+ * `apps/core/src/lib/contract/cook/song-profile.ts`). There is no generator between them. The worker's pytest
  * asserts its own dict, the shared package's bun test asserts its own literal, and neither has ever
  * seen the other's shape — the identical blind spot that let `songProfile` itself ship at the wrong
  * envelope level.
@@ -694,7 +694,7 @@ test('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts): de
  * the TS interface DECLARATION (read as text, since a type is erased at runtime), and the runtime keys
  * of `EMPTY_SONG_PROFILE`.
  */
-const SHARED_SONG_PROFILE = at('apps/core/src/shared/cook/song-profile.ts');
+const SHARED_SONG_PROFILE = at('apps/core/src/lib/contract/cook/song-profile.ts');
 const WORKER_SONG_PROFILE = join(WORKER_SRC, 'analysis/song_profile.py');
 
 /** Keys of `_NULL_PROFILE = { "name": None, ... }`, read from the Python as text. */

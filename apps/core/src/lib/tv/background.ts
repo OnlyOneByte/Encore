@@ -19,7 +19,7 @@
 // hand keep the tier: `singer` derives its glow from somebody's identity dot, and `visualizer` builds
 // a palette by hue arithmetic — nobody chose those colours, so nobody could see why one came out
 // bright.
-import { stageHueToHex, nearestSingerHue, dimTowardBlack, type TvBackgroundStyle } from '$shared';
+import { stageHueToHex, nearestSingerHue, dimTowardBlack, type TvBackgroundStyle } from '$lib/contract';
 
 /**
  * The room glow — byte-identical to the radial the attract and lobby screens already paint

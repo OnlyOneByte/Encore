@@ -31,7 +31,7 @@
 		type LyricsCaseId,
 		type LyricsFontId,
 		type LyricsHighlightId
-	} from '$shared';
+	} from '$lib/contract';
 
 	interface Props {
 		lyricsRef?: string; // MediaStore key of the lyrics JSON on the current media
@@ -73,7 +73,7 @@
 		 * or null — nobody is up, the roster has not arrived, the gallery — keeps the accent.
 		 *
 		 * Passed as the stored value, NOT pre-validated by the caller: `lyricHighlightColor` is the
-		 * sanitising boundary and it lives in $shared, so every consumer of this component gets
+		 * sanitising boundary and it lives in $lib/contract, so every consumer of this component gets
 		 * the same rule instead of each call site deciding what an illegible colour means.
 		 */
 		singerColor?: string | null;
@@ -503,7 +503,7 @@
 		 *
 		 * A MULTIPLIER, not a replacement: the token is what makes the reel adapt to the screen, so a
 		 * stored pixel size would render wrong the moment the TV's resolution changed. `--lyrics-scale`
-		 * is bounded well away from 0 in $shared for the same reason.
+		 * is bounded well away from 0 in $lib/contract for the same reason.
 		 *
 		 * --tv-lyric replaced an inline clamp(3.1rem, 6.4vh, 6rem) here. The reel and the corner chrome
 		 * now sit on separate ladders (see app.css): at 6.4vh the sung line wrapped to three rows on a

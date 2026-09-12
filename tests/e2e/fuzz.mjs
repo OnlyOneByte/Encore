@@ -55,7 +55,7 @@
  * same server path (p4-transport does this for seek, which has no UI control at all). See GAPS below.
  *
  * GAPS FOUND WHILE BUILDING THIS — reported, not papered over:
- *   • `back` does not exist. There is no `back` PlayerCommand in apps/core/src/shared/core/events.ts, no
+ *   • `back` does not exist. There is no `back` PlayerCommand in apps/core/src/lib/contract/core/events.ts, no
  *     control anywhere in the app, and no previous-entry concept in the server. The spec's alphabet and
  *     its "back-then-pause" seam therefore cannot be driven as written. The nearest reachable analogue
  *     is `restart` (the room's only backwards transport — it even renders the `prev` icon), so

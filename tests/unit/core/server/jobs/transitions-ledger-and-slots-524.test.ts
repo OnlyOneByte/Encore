@@ -21,7 +21,7 @@ import { JobRepository } from '$lib/server/jobs/repository';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { attemptsExhausted, sweep } from '$lib/server/jobs/leases';
 import { migratedDb } from '$lib/server/db/test-db';
-import type { Job } from '$shared';
+import type { Job } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
 

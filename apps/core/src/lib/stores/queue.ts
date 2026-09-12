@@ -15,7 +15,7 @@ import {
 	type QueueEntry,
 	type ServerEvent,
 	type ClientCommand
-} from '$shared';
+} from '$lib/contract';
 
 interface PendingOp {
 	op: QueueOp;
