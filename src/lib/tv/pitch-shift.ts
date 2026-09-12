@@ -149,7 +149,22 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 	constructor() {
 		super();
 		this.ratio = 1;
-		// Per-channel state, grown lazily to the channel count we actually see.
+		// THE TIMELINE IS SHARED ACROSS CHANNELS, and that is the whole point of this node for the guide
+		// mix. The four channels of a mix (0/1 instrumental, 2/3 vocals) come from ONE file and must stay
+		// sample-locked, so there is exactly ONE read pointer, ONE write head, ONE grain schedule. When
+		// each channel kept its own \`readPos\` and ran its own SOLA search, the search picked a DIFFERENT
+		// offset per channel (up to +/-SEARCH = 256 samples ~= 5 ms at 48 kHz apart, wandering as the song
+		// played), so the guiding vocals drifted from the instrumental at every non-zero shift and nothing
+		// downstream could see it — the single-playhead guarantee the mix is built on was reintroduced as
+		// drift right here. One timeline makes that drift inexpressible.
+		this.readPos = 0;      // fractional read pointer on the continuous input timeline (all channels)
+		this.writePos = 0;     // absolute input samples written so far (all channels advance 1:1)
+		this.anchored = false; // has readPos been tied to writePos yet?
+		this.outHead = 0;      // how many finished output samples are queued in each channel's outAcc
+		this.sinceGrain = 0;   // output samples emitted since the last grain was laid down
+		// Per-channel state holds only CONTENT — the input history ring and the output accumulator. These
+		// are what must NOT be shared: sharing them is the cross-talk failure (the guide pair carrying the
+		// instrumental's audio). Grown lazily to the channel count we actually see.
 		this.chan = [];
 		this.port.onmessage = (e) => {
 			if (e.data && typeof e.data.ratio === 'number' && isFinite(e.data.ratio)) {
@@ -158,7 +173,7 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 					this.ratio = r;
 					// The required lag depends on the ratio, so a change invalidates the current anchor.
 					// Re-anchor on the next grain rather than reading past the write head for one grain.
-					for (let i = 0; i < this.chan.length; i++) this.chan[i].anchored = false;
+					this.anchored = false;
 				}
 			}
 		};
@@ -168,16 +183,11 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 		while (this.chan.length < ch) {
 			this.chan.push({
 				hist: new Float32Array(HIST),
-				readPos: 0,      // fractional read pointer on the continuous input timeline
-				writePos: 0,     // absolute input samples written so far
-				anchored: false, // has readPos been tied to writePos yet?
 				// output accumulator + its normalisation (sum of WINDOW, not WINDOW^2: with SOLA the grains
 				// reinforce, so dividing by sum(w) is unity gain. sum(w^2) is the incoherent-overlap form and
 				// over-shot by sum(w)/sum(w^2) = 2.0/1.5 = 1.33x, which would clip loud material.
 				outAcc: new Float32Array(GRAIN * 2),
-				outNorm: new Float32Array(GRAIN * 2),
-				outHead: 0,      // how many finished output samples are queued in outAcc
-				sinceGrain: 0    // output samples emitted since the last grain was laid down
+				outNorm: new Float32Array(GRAIN * 2)
 			});
 		}
 	}
@@ -187,126 +197,176 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 		const output = outputs[0];
 		if (!output || output.length === 0) return true;
 		const frames = output[0].length;
-		this.ensure(output.length);
+		const channels = output.length;
+		this.ensure(channels);
 
-		// ratio 1 with no input still must emit silence-free output; a missing input channel is treated
-		// as silence rather than dropping the block (which would click).
-		for (let c = 0; c < output.length; c++) {
-			const s = this.chan[c];
-			const inCh = input && input[c] ? input[c] : null;
-			const out = output[c];
-
-			// Push this block's input into the history ring.
-			for (let i = 0; i < frames; i++) {
-				s.hist[s.writePos % HIST] = inCh ? inCh[i] : 0;
-				s.writePos++;
+		// Push this block's input into every channel's history ring, advancing the ONE shared write
+		// head. A missing input channel is treated as silence rather than dropping the block (which
+		// would click) — this is what lets a stereo file up-mixed to quad render [L, R, 0, 0].
+		for (let i = 0; i < frames; i++) {
+			const abs = this.writePos % HIST;
+			for (let c = 0; c < channels; c++) {
+				const inCh = input && input[c] ? input[c] : null;
+				this.chan[c].hist[abs] = inCh ? inCh[i] : 0;
 			}
+			this.writePos++;
+		}
 
-			// Fast path: at ratio 1 copy straight through. Bit-exact bypass, so "return to key 0" is
-			// audibly identical to the pre-WebAudio path even though the element stays sourced.
-			if (this.ratio === 1) {
-				if (inCh) out.set(inCh);
-				else out.fill(0);
-				s.anchored = false; // a later shift must re-anchor rather than resume a stale pointer
-				continue;
+		// Fast path: at ratio 1 copy straight through, per channel. Bit-exact bypass, so "return to
+		// key 0" is audibly identical to the pre-WebAudio path even though the element stays sourced.
+		if (this.ratio === 1) {
+			for (let c = 0; c < channels; c++) {
+				const inCh = input && input[c] ? input[c] : null;
+				if (inCh) output[c].set(inCh);
+				else output[c].fill(0);
 			}
+			this.anchored = false; // a later shift must re-anchor rather than resume a stale pointer
+			return true;
+		}
 
-			// The lag the read pointer must keep behind the write head: the grain's whole resampled
-			// span, the alignment search range, plus one hop of slack.
-			const lookahead = Math.ceil(GRAIN * this.ratio);
-			const need = lookahead + SEARCH + SYNTH_HOP;
+		// The lag the read pointer must keep behind the write head: the grain's whole resampled
+		// span, the alignment search range, plus one hop of slack.
+		const lookahead = Math.ceil(GRAIN * this.ratio);
+		const need = lookahead + SEARCH + SYNTH_HOP;
 
-			for (let i = 0; i < frames; i++) {
-				// Lay down a new grain every SYNTH_HOP output samples.
-				if (s.sinceGrain <= 0) {
-					// ANCHOR THE READ POINTER TO THE WRITE HEAD. readPos used to free-run at
-					// SYNTH_HOP * ratio per grain while writePos advanced SYNTH_HOP (output and input run
-					// 1:1 through this node), so the two diverged by |1 - ratio| * frameRate every second,
-					// without bound: reading up, every index landed past writePos and histSample returned
-					// 0 -> SILENCE; reading down, indices fell so far behind that absIdx % HIST wrapped
-					// onto unrelated recent audio -> ALIASED NOISE. Both got worse the longer a song ran.
-					//
-					// The pitch shift does NOT come from the hop: it comes from the intra-grain stride
-					// (k * ratio below). So the analysis hop equals the synthesis hop, and the pointer
-					// stays a fixed distance behind the newest input. The band keeps a normal block
-					// boundary from re-anchoring (which would break grain-to-grain continuity and click);
-					// it only snaps on startup, a ratio change, or after a dropped block.
-					const lag = s.writePos - s.readPos;
-					if (!s.anchored || lag < need || lag > need + GRAIN) {
-						s.readPos = s.writePos - need;
-						s.anchored = true;
-					}
-
-					// SOLA: pick the read offset whose content best CONTINUES what is already in the
-					// output accumulator. Fixing the pointer drift alone still left tonal material
-					// comb-filtering itself: at the same output instant, grain g and grain g+1 come from
-					// input positions SYNTH_HOP * (1 - ratio) apart, so for a steady tone they can arrive
-					// in antiphase and cancel. Measured on a 1-unit sine, output RMS swung between 0.055
-					// and 0.695 purely on frequency and ratio — some notes of a song would have nearly
-					// vanished while others played at full level, and which ones would change with the
-					// key. Correlating against the existing overlap and shifting the read by up to
-					// +/-SEARCH removes that: the grain is placed where it reinforces instead of cancels.
-					// Coarse-then-fine so the search costs ~80 offsets rather than 2*SEARCH+1.
-					let best = 0;
-					if (s.outHead > GRAIN) {
-						best = this.align(s, CORR_STEP);
-						best = this.align(s, 1, best);
-					}
-					const base = s.readPos + best;
-
-					for (let k = 0; k < GRAIN; k++) {
-						const rp = base + k * this.ratio;      // resample: this is where the pitch changes
-						const idx = Math.floor(rp);
-						const frac = rp - idx;
-						const a = this.histSample(s, idx);
-						const b = this.histSample(s, idx + 1);
-						const v = (a * (1 - frac) + b * frac) * WINDOW[k];
-						const oi = (s.outHead + k) % s.outAcc.length;
-						s.outAcc[oi] += v;
-						s.outNorm[oi] += WINDOW[k];
-					}
-					// Advance from the CHOSEN base, so the alignment offset is absorbed rather than
-					// re-applied every grain; the anchor band above bounds the resulting drift.
-					s.readPos = base + SYNTH_HOP;              // analysis hop == synthesis hop
-					s.sinceGrain += SYNTH_HOP;
+		for (let i = 0; i < frames; i++) {
+			// Lay down a new grain every SYNTH_HOP output samples — ON EVERY CHANNEL AT ONCE, from the
+			// SAME read position, so the four channels of a mix cannot pick different offsets and drift.
+			if (this.sinceGrain <= 0) {
+				// ANCHOR THE READ POINTER TO THE WRITE HEAD. readPos used to free-run at
+				// SYNTH_HOP * ratio per grain while writePos advanced SYNTH_HOP (output and input run
+				// 1:1 through this node), so the two diverged by |1 - ratio| * frameRate every second,
+				// without bound: reading up, every index landed past writePos and histSample returned
+				// 0 -> SILENCE; reading down, indices fell so far behind that absIdx % HIST wrapped
+				// onto unrelated recent audio -> ALIASED NOISE. Both got worse the longer a song ran.
+				//
+				// The pitch shift does NOT come from the hop: it comes from the intra-grain stride
+				// (k * ratio below). So the analysis hop equals the synthesis hop, and the pointer
+				// stays a fixed distance behind the newest input. The band keeps a normal block
+				// boundary from re-anchoring (which would break grain-to-grain continuity and click);
+				// it only snaps on startup, a ratio change, or after a dropped block.
+				const lag = this.writePos - this.readPos;
+				if (!this.anchored || lag < need || lag > need + GRAIN) {
+					this.readPos = this.writePos - need;
+					this.anchored = true;
 				}
-				// Emit one normalised output sample.
-				const oi = s.outHead % s.outAcc.length;
+
+				// SOLA: pick the read offset whose content best CONTINUES what is already in the
+				// output accumulator. Fixing the pointer drift alone still left tonal material
+				// comb-filtering itself: at the same output instant, grain g and grain g+1 come from
+				// input positions SYNTH_HOP * (1 - ratio) apart, so for a steady tone they can arrive
+				// in antiphase and cancel. Measured on a 1-unit sine, output RMS swung between 0.055
+				// and 0.695 purely on frequency and ratio — some notes of a song would have nearly
+				// vanished while others played at full level, and which ones would change with the
+				// key. Correlating against the existing overlap and shifting the read by up to
+				// +/-SEARCH removes that: the grain is placed where it reinforces instead of cancels.
+				// Coarse-then-fine so the search costs ~80 offsets rather than 2*SEARCH+1.
+				//
+				// ONE OFFSET FOR ALL CHANNELS. The correlation is SUMMED across every channel (see
+				// \`align\`), so the chosen offset is the one that best reinforces the mix as a whole and
+				// is then applied identically to each channel's grain. A per-channel search would let
+				// the guide pair and the instrumental pair land on different read points — the exact
+				// inter-channel drift this node exists to prevent. Aligning on the aggregate keeps them
+				// sample-locked at the cost of not phase-optimising each pair independently, which is the
+				// right trade: a mix's four channels ARE one performance and must move together.
+				let best = 0;
+				if (this.outHead > GRAIN) {
+					best = this.align(channels, CORR_STEP);
+					best = this.align(channels, 1, best);
+				}
+				const base = this.readPos + best;
+
+				// Lay the grain on every channel from the SAME base. Resample geometry (idx, frac, window)
+				// is channel-independent, so compute it once per k and reuse it across channels — that is
+				// what keeps the four channels reading identical input positions, i.e. sample-locked.
+				const accLen = this.chan[0].outAcc.length;
+				const writePos = this.writePos;
+				for (let k = 0; k < GRAIN; k++) {
+					const rp = base + k * this.ratio;      // resample: this is where the pitch changes
+					const idx = Math.floor(rp);
+					const frac = rp - idx;
+					const w = WINDOW[k];
+					const oi = (this.outHead + k) % accLen;
+					const inRange = idx >= 0 && idx + 1 < writePos && idx >= writePos - HIST;
+					for (let c = 0; c < channels; c++) {
+						const s = this.chan[c];
+						const h = s.hist;
+						const a = inRange ? h[idx % HIST] : this.histSample(s, idx);
+						const b = inRange ? h[(idx + 1) % HIST] : this.histSample(s, idx + 1);
+						s.outAcc[oi] += (a * (1 - frac) + b * frac) * w;
+						s.outNorm[oi] += w;
+					}
+				}
+				// Advance from the CHOSEN base, so the alignment offset is absorbed rather than
+				// re-applied every grain; the anchor band above bounds the resulting drift.
+				this.readPos = base + SYNTH_HOP;              // analysis hop == synthesis hop
+				this.sinceGrain += SYNTH_HOP;
+			}
+			// Emit one normalised output sample per channel from the shared output head.
+			const oi = this.outHead % this.chan[0].outAcc.length;
+			for (let c = 0; c < channels; c++) {
+				const s = this.chan[c];
 				const norm = s.outNorm[oi];
-				out[i] = norm > 1e-6 ? s.outAcc[oi] / norm : 0;
+				output[c][i] = norm > 1e-6 ? s.outAcc[oi] / norm : 0;
 				s.outAcc[oi] = 0;
 				s.outNorm[oi] = 0;
-				s.outHead++;
-				s.sinceGrain--;
 			}
+			this.outHead++;
+			this.sinceGrain--;
 		}
 		return true;
 	}
 
 	// Best read offset in [-SEARCH, +SEARCH] by normalised cross-correlation between what the candidate
 	// grain would contribute and what the output accumulator already holds over the overlap region.
-	// \`stride\` walks the candidates; \`around\` narrows a second pass to +/-stride*? of a coarse winner.
+	// \`stride\` walks the candidates; \`around\` narrows a second pass to +/-CORR_STEP of a coarse winner.
 	// Normalised (divided by the candidate's energy) so a loud candidate cannot win on level alone.
-	align(s, stride, around) {
+	//
+	// SUMMED ACROSS ALL CHANNELS against the SHARED read pointer, so the winner is one offset that
+	// reinforces the whole mix and is applied to every channel identically. A per-channel search is what
+	// let the guide vocals drift from the instrumental; correlating the aggregate keeps them locked.
+	align(channels, stride, around) {
 		const lo = around === undefined ? -SEARCH : Math.max(-SEARCH, around - CORR_STEP);
 		const hi = around === undefined ? SEARCH : Math.min(SEARCH, around + CORR_STEP);
 		let bestOff = around === undefined ? 0 : around;
 		let bestScore = -Infinity;
+		// Hoist the per-channel typed arrays into locals ONCE. Indexing \`this.chan[c].outAcc\` inside the
+		// innermost correlation loop is a property chain the JIT cannot keep monomorphic, and it made the
+		// summed search ~10x slower than the per-channel one it replaced — enough to matter in a worklet
+		// that must finish inside one render quantum. With the refs local the summed search costs the same
+		// per candidate as the old single-channel one did.
+		const hist = [];
+		const outAcc = [];
+		const outNorm = [];
+		for (let c = 0; c < channels; c++) {
+			hist.push(this.chan[c].hist);
+			outAcc.push(this.chan[c].outAcc);
+			outNorm.push(this.chan[c].outNorm);
+		}
+		const accLen = outAcc[0].length;
+		const writePos = this.writePos;
 		for (let off = lo; off <= hi; off += stride) {
 			let dot = 0;
 			let energy = 0;
 			for (let k = 0; k < CORR_LEN; k += 2) {   // every other sample: same winner, half the work
-				const oi = (s.outHead + k) % s.outAcc.length;
-				const n = s.outNorm[oi];
-				if (n <= 1e-6) continue;
-				const have = s.outAcc[oi] / n;
-				const rp = s.readPos + off + k * this.ratio;
+				const oi = (this.outHead + k) % accLen;
+				const rp = this.readPos + off + k * this.ratio;
 				const idx = Math.floor(rp);
 				const frac = rp - idx;
-				const cand =
-					this.histSample(s, idx) * (1 - frac) + this.histSample(s, idx + 1) * frac;
-				dot += have * cand;
-				energy += cand * cand;
+				// Inline the two ring reads once — they are shared across channels only in index math, but
+				// the sample fetch is per channel. Out-of-range reads return 0 (see histSample).
+				const inRange = idx >= 0 && idx + 1 < writePos && idx >= writePos - HIST;
+				for (let c = 0; c < channels; c++) {
+					const n = outNorm[c][oi];
+					if (n <= 1e-6) continue;
+					const have = outAcc[c][oi] / n;
+					const h = hist[c];
+					const a = inRange ? h[idx % HIST] : this.histSample(this.chan[c], idx);
+					const b = inRange ? h[(idx + 1) % HIST] : this.histSample(this.chan[c], idx + 1);
+					const cand = a * (1 - frac) + b * frac;
+					dot += have * cand;
+					energy += cand * cand;
+				}
 			}
 			const score = energy > 1e-9 ? dot / Math.sqrt(energy) : 0;
 			if (score > bestScore) {
