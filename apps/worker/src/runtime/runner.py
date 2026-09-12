@@ -285,7 +285,7 @@ def _snapshot(ctx: Ctx, step: Any) -> dict[str, Any]:
     CompleteResult — so the guard has to cover it, and a step that writes one without declaring `out`
     is caught the same way an undeclared `ctx.audio` write is. The set is derived from the dataclass
     fields minus the exempt pair rather than hardcoded, so a wire-shaped field added later (as
-    `media_uri`, then `selection`, each were — #75, #197, #708 are the same defect landing three times
+    `media_uri`, then `selection`, each were — the same defect landed three times
     on a hardcoded list) is watched automatically instead of silently slipping through.
     """
     watched = {"audio", "lyrics", "stems", "engines"}

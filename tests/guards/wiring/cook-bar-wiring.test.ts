@@ -80,6 +80,6 @@ test('every +page.svelte SongRow that passes pct also passes status', () => {
 	expect(
 		offenders,
 		`these +page.svelte <SongRow> call sites pass pct= but not status=, so barPct falls back to the ` +
-			`raw per-step pct and re-opens #80. Add status={…} beside pct=:\n${offenders.join('\n---\n')}`
+			`raw per-step pct and re-opens the cook-bar defect. Add status={…} beside pct=:\n${offenders.join('\n---\n')}`
 	).toEqual([]);
 });

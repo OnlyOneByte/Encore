@@ -7,7 +7,7 @@
 // readiness.test.ts; these guards pin that the source WIRES those decisions into the markup, which a
 // unit test on a pure helper cannot see.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	return src

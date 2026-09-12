@@ -19,7 +19,7 @@
 // the value is correct at runtime — the resolver's own tests do that half, and the rendered result
 // was verified eyes-on in a browser.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Was `at('apps/core/src/routes/tv/+page.svelte')` — the scanned page was this guard's own SIBLING in
 // apps/core/src/routes/tv, i.e. the /tv route page whose clamp call site every assertion below is

@@ -20,7 +20,7 @@
 //      is reset via setShift(0) and is NOT detached. Mutation trap: reintroducing masterGraph.detach()
 //      in that block reds it.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';
 
 // -- A. Behavioural: routing lifetime under stubbed WebAudio --------------------------------------

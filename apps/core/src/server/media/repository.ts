@@ -140,7 +140,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
  *   about the LYRICS gate. A song mid-align is `stemStatus: 'ready'` with its instrumental on disk and
  *   is still not finished; `gates.ts` names that window in as many words.
  *
- * Mistaking the narrowing for the whole predicate is #763: `byArtist` and both facet counts asked only
+ * Mistaking the narrowing for the whole predicate is the push-down defect: `byArtist` and both facet counts asked only
  * the narrowing, so the artist filter listed a song the unfiltered library correctly hid, and a tag
  * chip reading `ballad 1` opened a measured EMPTY list. Keeping the whole predicate in SQL instead had
  * already split the server's library from the phone's own rules once before that — a song rendered in
@@ -175,7 +175,7 @@ function readySongs(db: DB, extra?: SQL): Media[] {
  *
  * BOTH sides narrow in SQL. The tag rows name the only media ids that can produce a pair, so they are
  * passed straight back down as `readySongs`'s `extra` and the media read is `WHERE id IN (…)` instead
- * of the whole ready library plus a full gate pass thrown away by the join (#798: 900 rows read at
+ * of the whole ready library plus a full gate pass thrown away by the join (900 rows read at
  * 4.42 ms/call to return 1, versus 1 row at 0.39 ms). That is a push-down, not a second definition:
  * `extra` narrows and cannot relax the gate, which still runs after it inside `readySongs`.
  *
@@ -224,7 +224,7 @@ export class MediaRepository {
 	}
 
 	/**
-	 * Hard-delete one media from the index — the row AND its tags — for the entry-delete of #639.
+	 * Hard-delete one media from the index — the row AND its tags — for the entry-delete action.
 	 * Row and tags go in ONE transaction: a crash between them would strand orphan tag rows pointing at
 	 * a media that no longer exists (bun:sqlite makes the transaction synchronous, so either both land
 	 * or neither). The AUTHORITATIVE sidecar is unlinked by the caller BEFORE this (deleteMediaEntirely),
@@ -341,7 +341,7 @@ export class MediaRepository {
 	 *  already trimmed + lower-cased at the write boundary, so the distinct values need no further
 	 *  normalisation. Only READY songs are counted — a tag on a song you cannot sing yet would offer a
 	 *  browse heading that lands on an empty list, which is precisely what a `count(*)` over the SQL
-	 *  narrowing used to do (#763: a chip reading `ballad 1` opened nothing). */
+	 *  narrowing used to do (a chip reading `ballad 1` opened nothing). */
 	tagFacets(): Array<{ tag: string; count: number }> {
 		return facetCounts(readyTagged(this.#db).map((p) => p.tag)).map(({ value, count }) => ({ tag: value, count }));
 	}

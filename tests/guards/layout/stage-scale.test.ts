@@ -11,7 +11,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, at } from '@encore/test-support';
+import { appSrc } from '@encore/test-support';
 import { svelteFiles, TAP, TAP_FLOOR } from '$lib/test-helpers';
 
 // `appSrc` (apps/core/src), replacing `at('apps/core/src')`. Every `join(SRC, …)` below

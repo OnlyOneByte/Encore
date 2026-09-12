@@ -1,4 +1,4 @@
-// Delete a song from the library ENTIRELY — the destructive admin action of issue #639. The owner's
+// Delete a song from the library ENTIRELY — the destructive admin action. The owner's
 // ruling (recorded on the issue, 2026-09-07): a hard delete that reclaims the bytes; a song queued by
 // someone else is deleted along with their turn; a song playing right now is SKIPPED to the next entry
 // rather than refused; gated to admin/host, which is every guest today. This is the first irreversible

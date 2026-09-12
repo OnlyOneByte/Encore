@@ -9,7 +9,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { appE2e, at } from '@encore/test-support';
+import { appE2e } from '@encore/test-support';
 
 // Anchored on the repo root via `@encore/test-support`, not on this file's own location: the
 // walk below is a statement about where `apps/core/e2e` is, and it used to be written as

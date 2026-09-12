@@ -61,7 +61,7 @@
  * count, so a sibling PR adding a new floor to a listed file is fine; removing one is not.
  */
 import { test, expect } from 'bun:test';
-import { repoRoot, at, filesUnder, relative } from '@encore/test-support';
+import { repoRoot, filesUnder, relative } from '@encore/test-support';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

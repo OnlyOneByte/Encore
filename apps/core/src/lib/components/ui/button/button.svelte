@@ -50,7 +50,7 @@
 				 * Fills its column — a form's one commit control. This is a VARIANT rather than a
 				 * `class="w-full"` at the call site, and that is not style preference: app.css sets
 				 * `source(none)` with a single `@source` over this directory, so a utility written in a
-				 * page is scanned by nothing and emitted nowhere. #913 S1 briefly shipped that bug — the
+				 * page is scanned by nothing and emitted nowhere. S1 of the shadcn migration briefly shipped that bug — the
 				 * settings Save and join Start-singing buttons kept their width only by accident,
 				 * because a vendored component elsewhere happened to use the same class.
 				 */

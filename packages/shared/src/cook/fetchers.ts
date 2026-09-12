@@ -82,7 +82,7 @@ export function fetcherFor(source: MediaSource, defaultFetcher: string = DEFAULT
 	// asks. Do NOT read this fallback as proof the branch is unreachable: `/api/search` DOES
 	// materialize a spotify hit into a durable, queueable `Media`, so a caller that skips
 	// `isCookableSource` reaches here and forms `youtube.com/watch?v=<spotify-track-id>` — the exact
-	// shape-inference bug this whole registry exists to kill (see the header comment). That is #742.
+	// shape-inference bug this whole registry exists to kill (see the header comment). That is the shape-inference defect.
 	if (source === 'spotify') return DEFAULT_FETCHER;
 	return isValidFetcher(defaultFetcher) && defaultFetcher !== 'local' ? defaultFetcher : DEFAULT_FETCHER;
 }

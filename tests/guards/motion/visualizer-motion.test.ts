@@ -11,7 +11,7 @@
 // that the loop consults the preference at all, and that it draws a frame instead of nothing when the
 // preference says reduce. A grep pins that cheaply and fails loudly if someone deletes the branch.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Was `at('apps/core/src/lib/tv/VisualizerStage.svelte')` — the scanned component was this guard's own
 // SIBLING in apps/core/src/lib/tv (it is the canvas rAF loop every assertion below is about), so it is

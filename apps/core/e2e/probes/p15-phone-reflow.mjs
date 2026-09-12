@@ -264,7 +264,7 @@ if (!joined) bail('could not join the ephemeral room, so the browse screen could
  * than a song") that `.chip`'s blanket `white-space: nowrap` turned into an unshrinkable ~230px box,
  * pushing the row — and the browse page — past a 320px viewport. An EMPTY joined room renders no rows
  * at all, so measuring it would be a clean 320 over a surface that never grew the label the criterion
- * is about — the XR-VER-05 vacuity #850 exists to forbid, and the reason this arm was rejected once.
+ * is about — the XR-VER-05 vacuity the register exists to forbid, and the reason this arm was rejected once.
  *
  * So the arm SEARCHES first. `openBrowseFromHome` is the shared post-join step — it reaches the
  * browse screen and its search box the one sanctioned way — and typing into `SEL.search` surfaces the

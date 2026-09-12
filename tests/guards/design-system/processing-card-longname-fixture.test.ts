@@ -21,7 +21,7 @@
 // The name-length threshold is read from repository.ts (the code's own single source of truth for the
 // maxlength) rather than hard-coded, so the test cannot pass by coincidence if the maxlength moves.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // SIBLING READ, now named explicitly. This guard used to live in apps/core/src/routes/components/, so
 // `at('apps/core/src/routes/components/+page.svelte')` meant "the gallery route next to me" — a subject nothing can

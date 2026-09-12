@@ -128,7 +128,7 @@ def test_every_advertised_stems_capability_resolves_to_a_real_engine(monkeypatch
     assert stems_caps, "the fully-equipped box must advertise at least the bare `stems` token"
     for token in stems_caps:
         engine_name = "demucs" if token == "stems" else token.split(":", 1)[1]
-        # Must not raise: an advertised stems* token that engine_for cannot honour is issue #118.
+        # Must not raise: an advertised stems* token that engine_for cannot honour is the parity defect.
         eng = engine_for(engine_name)
         assert eng is not None
 
@@ -221,7 +221,7 @@ def test_advertised_order_is_stable_across_restarts(monkeypatch, tmp_path):
 # ── advertise `stems` only when the RESOLVED backend has a demucs engine ──────
 def test_stems_survives_on_an_mlx_box(monkeypatch):
     """Issue an earlier change established that `stems` is dropped when the resolved backend has no demucs engine.
-    #595 IMPLEMENTED the MLX engine, so an Apple-Silicon box that auto-resolves its backend to `mlx`
+    The MLX engine was implemented, so an Apple-Silicon box that auto-resolves its backend to `mlx`
     now HAS a demucs engine and must KEEP advertising `stems` — the box can genuinely run the cook
     (demucs-mlx CLI + mix-minus derivation), so dropping it would refuse work it can do.
 

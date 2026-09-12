@@ -6,7 +6,7 @@
   That is deliberate, and the reason is accessibility. /stats' Trend is not an SVG chart: every column
   is a real <button> with its own `aria-label` naming that day and its count, and the group carries
   `role="group"` rather than `role="img"` precisely so those per-day counts are NOT presentational.
-  #144 additionally sizes each column to a 44px tap target, pinned by trend-tap-target.test.ts.
+  Encore additionally sizes each column to a 44px tap target, pinned by trend-tap-target.test.ts.
   layerchart draws `<rect>`/`<path>` marks, which are neither focusable nor individually labelled, so
   adopting them would delete the chart's entire keyboard and screen-reader surface. Bars is likewise a
   labelled proportional list rather than a plotted series.

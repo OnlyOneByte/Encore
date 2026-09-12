@@ -126,7 +126,7 @@
 	 * --dock-h — so nothing above may add a second env() term or the gap doubles. One env(), on the one
 	 * element that actually sits at the bottom edge of the screen.
 	 *
-	 * THE TEARDOWN IS PART OF THE CONTRACT, not tidiness — leak class #598 §14. A custom property
+	 * THE TEARDOWN IS PART OF THE CONTRACT, not tidiness — leak class §14. A custom property
 	 * written to documentElement OUTLIVES the component that wrote it, so a stale --dock-h keeps
 	 * padding every later page the app navigates to, and (because an inline property on :root outranks
 	 * a stylesheet rule) it silently defeats any media query that tries to set the same token. Hence
@@ -137,7 +137,7 @@
 	$effect(() => {
 		document.documentElement.style.setProperty('--dock-h', `${dockH}px`);
 		// Tear the inline property down on unmount, or it OUTLIVES the route on documentElement and a
-		// stale --dock-h keeps padding every later page — the leak class #598 §14.
+		// stale --dock-h keeps padding every later page — the leak class §14.
 		return () => {
 			document.documentElement.style.removeProperty('--dock-h');
 		};
@@ -564,7 +564,7 @@
 	 *
 	 * What this replaced: two hand-rolled fixed-position surfaces, two `setTimeout` timers, a
 	 * `bind:clientHeight` measurement of the undo toast, and an `$effect` publishing `--undo-h` to
-	 * `documentElement` with a teardown against the #598 §14 leak class. The error toast's offset had to
+	 * `documentElement` with a teardown against the §14 leak class. The error toast's offset had to
 	 * track that MEASURED height because a real “title — artist” wraps to an unpredictable number of
 	 * lines, and the two surfaces had already collided once — "both sat at the same bottom and z-index,
 	 * so one drew over the other and a guest saw only whichever rendered last".
@@ -728,7 +728,7 @@
 		return queued.findIndex((e) => e.id === id);
 	}
 	/**
-	 * Cross-singer reorder (step 4, #828 Q4-A): shift the entry one slot up/down across the WHOLE
+	 * Cross-singer reorder (step 4, ruling Q4-A): shift the entry one slot up/down across the WHOLE
 	 * queue, jumping other singers — which the own-picks `move` op cannot express. Emits `move-to-index`,
 	 * which rewrites the stored list, so the move sticks with no pin. Every joined singer may do it; the
 	 * server gates a NON-owner entry on `queue:reorder-any`. (The reorder-mode drag below still commits
@@ -1606,7 +1606,7 @@
 </main>
 
 <!--
-	THE SEARCH DOCK (direction B #833, made the sole home dock by the owner correction #902). ONE box
+	THE SEARCH DOCK (direction B, made the sole home dock by the owner correction). ONE box
 	across every source: a singer picks by readiness ("can I sing this now?"), never by which index the
 	song came from — so there is no source switch, no readiness chips, no artist rail and no genre rail.
 	Typing is the only filter.
@@ -1908,7 +1908,7 @@
 		}
 	}
 	/*
-	 * THE SEARCH DOCK (direction B #833; the SOLE home dock). `position: fixed` is what keeps
+	 * THE SEARCH DOCK (direction B; the SOLE home dock). `position: fixed` is what keeps
 	 * the box reachable with one thumb wherever the stack is scrolled to, and it does not overlap content
 	 * because `main` pads by this element's own measured height (--dock-h) rather than by a guess. The
 	 * safe-area inset lives HERE, on the band that actually sits at the bottom of the screen, and reaches

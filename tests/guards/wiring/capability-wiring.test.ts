@@ -26,7 +26,7 @@
 // assert THAT slice carries the `if (!can(...)) return` gate for the capability it is named for. Each
 // of M1/M2/M3 then reds the matching arm assertion, because the gate is no longer in the arm's slice.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // hub.ts named explicitly. The old form was `at('apps/core/src/server/realtime/hub.ts')`
 // — the same own-location arithmetic as `at('apps/core/src/server/auth')` in a different spelling, and it only

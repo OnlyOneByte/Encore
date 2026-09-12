@@ -6,7 +6,7 @@ CSS somewhere the source-scanning design guards can still read and edit it. A he
 that CSS into `node_modules`, where a 38 px button, a 14 px input, a `vh` sheet cap and a
 `content: '✕'` all become **invisible rather than illegal**.
 
-**#913 filled this directory.** It holds 19 components, every one wired to a real call site: Button,
+**The shadcn migration filled this directory.** It holds 19 components, every one wired to a real call site: Button,
 Input, NativeSelect, Label, Field, Checkbox, Slider, Tabs, Collapsible, Card, Badge, Progress, Table,
 Item, Empty, Skeleton, Spinner, Sonner and Chart. `Label` is reached through `Field.Label` rather than
 directly; it is the only indirect one.
@@ -19,7 +19,7 @@ one makes the next `--overwrite` look like a regression. `Card.Action`, `Table.C
 about twenty others are unrendered and staying. **The one exception is a part whose own dependency goes**:
 `Field.Separator` and `Item.Separator` were deleted with `Separator` itself, because a part that imports a
 component we no longer vendor cannot compile. If you re-add `Separator`, re-add them with it. If you are adding number 20, the five sections below
-are the constraints that will bite you, in the order they bit #913.
+are the constraints that will bite you, in the order they bit that migration.
 
 ---
 
@@ -78,7 +78,7 @@ minted 50 utilities out of string literals in tests and markdown — two of whic
 `.block`) collided with `ball` marker class names the app really applies, and the first painted a real
 underline on the lyrics ball.
 
-Two consequences, and #913 hit both:
+Two consequences, and the migration hit both:
 
 - A utility written in a **page** is emitted nowhere. `class="w-full"` on a call site does nothing, so
   every call-site difference has to be a **variant** on the component.
@@ -100,7 +100,7 @@ lose the cascade.
 
 ## 5. Preflight is OFF, so a component cannot assume the reset ran
 
-#853 measured the cost of enabling it at **2,696 moved boxes** across 8 surfaces and left it out. A
+An earlier measurement put the cost of enabling it at **2,696 moved boxes** across 8 surfaces and left it out. A
 shadcn component is written expecting `box-sizing: border-box`, zeroed margins and `list-style: none`.
 `app.css` sets `box-sizing: border-box` on `*` itself, which is the largest single piece, but
 **margins and list styles are not zeroed** — supply what the component needs in its own classes, and

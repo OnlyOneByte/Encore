@@ -7,7 +7,7 @@
 // per-room playback/queue/singer scoping: those build ON this table being real.
 //
 // Kept in apps/core (not @encore/shared) on purpose: the wire contract carries no Room today, and
-// #652 is explicitly scoped not to cross the shared package.
+// The room work is explicitly scoped not to cross the shared package.
 
 import { randomBytes } from 'node:crypto';
 import { asc, eq } from 'drizzle-orm';
@@ -72,9 +72,9 @@ export class RoomRepository {
 	}
 
 	/**
-	 * The single active party for this core. #654 mints exactly one room — the identity the phones
+	 * The single active party for this core. Boot mints exactly one room — the identity the phones
 	 * join and the QR advertises — so this returns the sole existing room, minting one on first boot.
-	 * When the chain reaches concurrent parties (#655+), a caller that wants a SPECIFIC room resolves
+	 * When the chain reaches concurrent parties, a caller that wants a SPECIFIC room resolves
 	 * it by code instead; this stays the "which room does an unqualified join land in" answer.
 	 *
 	 * Oldest-first so a box that somehow accumulated rows still resolves deterministically to the room

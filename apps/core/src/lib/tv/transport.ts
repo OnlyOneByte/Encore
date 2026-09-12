@@ -77,7 +77,7 @@ export function transportFor({ hasSrc, playable, active, visible, playing }: Tra
  * holds the PREVIOUS song's URL (`TvPlayer.svelte` deliberately never clears it, and only rewrites it
  * on a playable pass), so `!!currentSrc` stayed true across the change and the transport stayed `'play'`
  * with an unchanged VALUE — a memoized `$derived` does not re-run its effect on an unchanged value, so
- * nothing re-called `play()` after the new src landed and the master sat paused at 0. That is #374.
+ * nothing re-called `play()` after the new src landed and the master sat paused at 0. That is the paused-at-zero defect.
  *
  * `held` is the src the element currently holds (TvPlayer's `currentSrc` bookkeeping); `wanted` is what
  * the current media resolves to now (`fileSrc(media)`), or `null`/`''` when there is no media. They
@@ -86,7 +86,7 @@ export function transportFor({ hasSrc, playable, active, visible, playing }: Tra
  * transport effect after the src has landed rather than racing it, BUT ONLY WHEN THE RESOLVED SRC
  * DIFFERS. Two turns of the SAME song resolve to the byte-identical src, so `held === wanted` stays
  * `true` continuously and there is NO `false -> true` edge across a same-song advance — the element is
- * paused by `ended` and never re-armed. That same-song hole is #701, and it is why the transport reader
+ * paused by `ended` and never re-armed. That same-song hole is the re-arm defect, and it is why the transport reader
  * scopes its input to the ENTRY, not the src, via `slotHoldsSong` below.
  *
  * Pure and string-based (no DOM, no `Media` coupling) so it is unit-testable without a real element,
@@ -99,7 +99,7 @@ export function slotHoldsSrc(held: string | null | undefined, wanted: string | n
 /**
  * Is the element holding the src for THIS QUEUE ENTRY — not merely for a song with this src?
  *
- * `slotHoldsSrc` compares src strings, which is blind to the one distinction #701 turns on: two turns
+ * `slotHoldsSrc` compares src strings, which is blind to the one distinction that defect turns on: two turns
  * of the SAME song in the queue are two separate `QueueEntry`s with distinct client-minted ids, but
  * their `fileSrc(media)` resolves to the byte-identical string. So across a same-song advance
  * `slotHoldsSrc(currentSrc, fileSrc(media))` stays `true` on both sides, the transport `$derived` keeps

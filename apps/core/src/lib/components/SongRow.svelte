@@ -200,7 +200,7 @@
 	// The percentage the bar and its readout show. When the live `status` is known, this is how far
 	// through the WHOLE cook the song is (`overallCookPct` maps the worker's per-step pct into weighted
 	// per-stage bands over the shared MEDIA_STAGES vocabulary), so it reaches 100% only at `ready` and
-	// never jumps backward when a step resets its own pct — the two defects #80 names. Without a status
+	// never jumps backward when a step resets its own pct — the two defects the cook-bar rule names. Without a status
 	// (a non-cooking raw row) it falls back to the raw pct so nothing changes for those rows.
 	const barPct = $derived(status ? overallCookPct(status, pct) : pct);
 

@@ -1,5 +1,5 @@
 /*
- * SHOOT THE SURFACES #913 CHANGES, on a real render.
+ * SHOOT THE SURFACES THE SHADCN MIGRATION CHANGES, on a real render.
  *
  * Not a probe and not a gate: this exists to produce the before/after evidence a reviewer needs for a
  * visual change that was accepted deliberately. It boots the BUILT app with a cooked song, joins in a

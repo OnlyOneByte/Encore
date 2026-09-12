@@ -20,7 +20,7 @@
 
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { at, filesUnder, relative } from '@encore/test-support';
+import { filesUnder, relative } from '@encore/test-support';
 
 type Posture = 'session' | 'capability' | 'none';
 

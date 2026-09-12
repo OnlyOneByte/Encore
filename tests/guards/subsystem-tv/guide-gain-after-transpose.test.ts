@@ -20,7 +20,7 @@
 //      graph, the effect re-applies the room level with setGain(effectiveGuide). Mutation trap:
 //      deleting that call reds it.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';
 
 // -- A. Behavioural: a pre-set level lands in the GainNode the moment the graph is built ----------

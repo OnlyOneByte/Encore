@@ -1,4 +1,4 @@
-"""#640 pin: an operator RE-PICK re-times exactly the pinned candidate, and nothing else.
+"""Pin: an operator RE-PICK re-times exactly the pinned candidate, and nothing else.
 
 The core sends `pinnedRef` (the MediaStore key to write under) and optionally `pinnedText` (pasted
 words). Four things must hold, one arm each:

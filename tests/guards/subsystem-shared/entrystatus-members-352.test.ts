@@ -8,7 +8,7 @@
 // members survive. It also pins the two isTerminal readers so a future edit cannot re-introduce a
 // 'skipped' arm that reads a value nothing writes.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 const stripComments = (s: string): string =>
 	s

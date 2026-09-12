@@ -1,4 +1,4 @@
-"""#542 — the lyrics agreement metric: counts, position, and the recalibrated judgement axis.
+"""The lyrics agreement metric: counts, position, and the recalibrated judgement axis.
 
 Three things are guarded here.
 
@@ -10,13 +10,13 @@ Three things are guarded here.
 
 2. **The metric counts and positions.** The two pairs symmetric set Jaccard scored a perfect 1.0 — a
    chorus said twice against audio that has it once, and identical words in reversed order — now score
-   below 0.5. Those are the two blind spots #542 was filed for.
+   below 0.5. Those are the two blind spots this metric was filed for.
 
 3. **The recalibration is measured, not asserted.** `SUSPECT_COVERAGE` replaced `SUSPECT_AGREEMENT` on a
    different AXIS, so the band it sits in is re-derived here from a synthetic corpus with an explicit
    ASR-degradation model, and the tests assert the SEPARATION (different-song ceiling vs correct-candidate
    floor) rather than restating the constant. The corpus is synthetic — original text, no real lyrics —
-   because #668, the real corpus from the prod snapshot, is still open; what it measures is the metric's
+   because the real corpus from the prod snapshot is still open; what it measures is the metric's
    own systematic behaviour, which is what choosing between two axes needs.
 """
 
@@ -116,7 +116,7 @@ def _ts_corpus() -> list[dict[str, object]]:
 
 
 def _old_set_jaccard(a: str, b: str) -> float:
-    """The metric #542 REPLACED, kept here as the contrast the corpus records.
+    """The metric this one REPLACED, kept here as the contrast the corpus records.
 
     Reimplemented in the test rather than imported, because production no longer has it. This is what
     makes the corpus's `oldSetJaccard` column checkable instead of decorative.
@@ -222,7 +222,7 @@ def test_argument_order_is_load_bearing():
 
 # ── 3. the measured band SUSPECT_COVERAGE sits in ────────────────────────────────────
 #
-# A synthetic corpus with an explicit degradation model, all original text. Not a calibration set (#668
+# A synthetic corpus with an explicit degradation model, all original text. Not a calibration set (the real corpus
 # is still open); it measures how the METRIC behaves on the three pair shapes that matter, which is what
 # choosing the judgement axis and its threshold needs.
 
@@ -341,7 +341,7 @@ def test_the_wrong_longer_version_shows_the_directional_fingerprint():
 
     And the reason the judgement must not be asked to catch it: coverage is HIGH, exactly as it should be
     (it IS the song's words), so this case belongs to the comparison and to #667's overshoot demotion, not
-    to a threshold. What #542 buys is that the comparison can now see it at all.
+    to a threshold. What this metric buys is that the comparison can now see it at all.
     """
     baseline = asr_baseline(SONG, 0.20)
     wrong_version = agreement(SONG_LONG, baseline)

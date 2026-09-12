@@ -23,7 +23,7 @@
 import { test, expect } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoRoot, at } from '@encore/test-support';
+import { repoRoot } from '@encore/test-support';
 // A relative IMPORT specifier, because `at()` yields a runtime string and cannot appear in an import.
 // It fails loudly (`Cannot find module`) if the depth is wrong, unlike a scan root.
 import {

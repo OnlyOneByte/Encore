@@ -204,7 +204,7 @@ any more.
 was `max-height: 82dvh`; `.peek` and `.body` both carried
 `calc(… + env(safe-area-inset-bottom, 0px))`; `--peek-h: 132px` in `app.css` with a
 `@media (max-height: 480px)` override to `84px` on `:root` in `routes/+page.svelte` that
-the sheet's inline write on `documentElement` **outranked**. AT RISK #5 was therefore a
+the sheet's inline write on `documentElement` **outranked**. AT RISK 5 was therefore a
 *do-not-regress*, with a number.
 
 **⚠ Two of those numbers do not reach the render, measured.** Corrected against
@@ -500,7 +500,7 @@ what is measured.
 | **Statement** | The prohibition on non-composited and framework-driven animation is enforced over utility class names in markup as well as over CSS declarations and Svelte directives. |
 | **Surfaces** | Phone remote, TV, operator dashboards |
 | **Rationale** | `class="transition-all"` expresses the banned rule with no CSS declaration anywhere in source, so the existing guard's regex cannot see it and the ban stops being enforced without failing. |
-| **Source** | `encore-design-handoff.md` §1 and `encore-redesign-decision.md` §2 AT RISK #2. WCAG 2.2 SC 2.3.3 Animation from Interactions — https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html. Verified: `transition-all` occurs **zero** times in the tree today, so this is prospective. |
+| **Source** | `encore-design-handoff.md` §1 and `encore-redesign-decision.md` §2 AT RISK 2. WCAG 2.2 SC 2.3.3 Animation from Interactions — https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html. Verified: `transition-all` occurs **zero** times in the tree today, so this is prospective. |
 | **Acceptance** | **Given** the source tree, **When** markup is scanned for class names, **Then** none matches `transition-all`, `transition-{width,height,spacing,inset,margin,padding,gap,flex}`, `animate-*` for a keyframe touching a layout property, or a duration/easing utility applied to one; **and Then** the scan reads `class:` directives, `class={…}` expressions and composed strings, and fails on a class expression it cannot resolve rather than skipping it. **And** the guard reds when `class="transition-all"` is injected into any component. |
 | **Check** | Extend the register's motion entry to a class-name arm with its own mutation record. The unresolvable-expression clause matters: a blocklist that silently skips what it cannot parse is vacuous exactly where Tailwind is most idiomatic. **Implemented** as two arms at the foot of `tests/guards/motion/motion.test.ts`: an extractor that reads all four class spellings (quoted attribute, `class={…}` expression, `class:` directive, interpolation) and resolves each `transition-*` utility through the file's own `COMPOSITED_PROPS` allowlist — an unknown utility key and an unresolvable `class={…}` are OFFENDERS, not skips — plus a whole-source name net over `.svelte` **and** `.ts` that catches a utility composed anywhere the extractor cannot see. |
 | **Priority** | **MUST**, and **before** utilities enter the tree — after they enter, the guard's first run has violations to triage and the temptation is to weaken it. |
@@ -518,7 +518,7 @@ an open action. `src/lib/components/ui/` remains deliberately empty.
 | **Statement** | Before the drawer is adopted, a written finding records — from the copied source — whether it animates via CSS on data attributes or via Svelte's transition directives, and names the file and line the finding rests on. |
 | **Surfaces** | Phone remote |
 | **Rationale** | `data-vaul-drawer-direction` *suggests* CSS-driven animation and therefore compliance; a suggestion is not a finding, and this is the one collision copy-in does not fix. |
-| **Source** | `encore-design-handoff.md` §1 ("grep the copied source to confirm"); `encore-redesign-decision.md` §2 AT RISK #1, which also names `el.style.animation =` and `setProperty('transition', …)` as forms a directive grep misses. |
+| **Source** | `encore-design-handoff.md` §1 ("grep the copied source to confirm"); `encore-redesign-decision.md` §2 AT RISK 1, which also names `el.style.animation =` and `setProperty('transition', …)` as forms a directive grep misses. |
 | **Acceptance** | **Given** the drawer's files copied into `src/lib/components/ui/`, **When** they are grepped for `transition:`, `in:`, `out:`, `animate:`, `style.animation`, `style.transition` and `setProperty('transition'` / `setProperty('animation'`, **Then** a finding records every hit with file and line, or records zero hits over a named file list. **And Then** every animation the drawer performs is reachable from a `@media (prefers-reduced-motion: reduce)` rule in a stylesheet inside `src/`. |
 | **Check** | The grep is a register entry once the files exist. Until then this is a **gate on adoption**, not a test. |
 | **Priority** | **MUST** before adoption |
@@ -636,7 +636,7 @@ an open action. `src/lib/components/ui/` remains deliberately empty.
 - **Anything about the 3 open concurrency policies, host-gating of `PUT /api/settings`, or the
   missing aesthetic brief.** Genuinely undecided per §4; a verification requirement over an
   undecided policy would check conformance to nothing. The one adjacent thing worth flagging:
-  `settings-slider-live-readout.test.ts` exists, and AT RISK #9 asks whether a library slider
+  `settings-slider-live-readout.test.ts` exists, and AT RISK 9 asks whether a library slider
   emits during drag — that is XR-VER-13's register job to carry, not a new row.
 - **A number for how many at-risk entries must pass before adoption.** The handoff's own
   answer is the spike (§7 step 6), and a percentage gate would be invented. (The "19 at risk" is a

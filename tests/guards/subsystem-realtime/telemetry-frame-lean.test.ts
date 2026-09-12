@@ -29,7 +29,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { read, repoRoot, at } from '@encore/test-support';
+import { read, repoRoot } from '@encore/test-support';
 
 // Blank out comments before scanning so a mention living in a comment cannot make a "must be gone"
 // check pass while production still carries the field (or vice-versa). Blanks rather than deletes so

@@ -16,7 +16,7 @@
 // consistent with:
 //   - player:control       — skip (Q1) and the live guide/pitch/range controls (Q2) stay open to anyone.
 //   - queue:reorder-any     — cross-singer reorder (Q4) stays open to everyone; pinning is being removed
-//                             entirely by #856, so this capability effectively resolves to "anyone".
+//                             entirely by the authority ruling, so this capability effectively resolves to "anyone".
 //   - settings:write-global — deployment-scoped settings (Q3) stay open to any joined singer, accepted.
 //   - settings:write-room   — room-scoped settings stay open (safe for anyone by construction).
 //   - queue:remove-any      — removing someone else's entry stays open.

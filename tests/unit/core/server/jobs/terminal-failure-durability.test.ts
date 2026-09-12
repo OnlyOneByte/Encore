@@ -215,7 +215,7 @@ test('a job that finds a worker before the TTL is not failed by the periodic pas
 	hub.handle({ type: 'worker:hello', workerId: 'w-align', capabilities: ['align'], concurrency: 1, version: '1' });
 	expect(jobs.byId(job.id)!.status).toBe('assigned');
 
-	let clock = T0 + 500_000; // far past the TTL
+	const clock = T0 + 500_000; // far past the TTL
 	setClock(clock);
 	const reaper = new JobReaper(jobs, { now: () => clock, tickMs: 1_000_000, onTick: () => hub.dispatch() });
 	reaper.tick();

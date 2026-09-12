@@ -24,7 +24,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { appSrc, at } from '@encore/test-support';
+import { appSrc } from '@encore/test-support';
 
 // Was `at('apps/core/src')`, which resolved to apps/core/src from this guard's old home in
 // apps/core/src/lib. Every walk below (routes/, app.css, lib/components, lib/ui) is rooted here, so the

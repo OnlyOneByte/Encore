@@ -279,9 +279,9 @@ MIN_TOKENS_TO_COMPARE = 12
 #: lyrics is the failure this whole tier exists to avoid.
 #:
 #: NOT A CORPUS CALIBRATION. The corpus is synthetic (original text, an explicit ASR-degradation model)
-#: because #668 — commit a real lyrics corpus from the prod snapshot — is still open. What it measures
+#: because committing a real lyrics corpus from the prod snapshot is still open. What it measures
 #: is the metric's own systematic behaviour, which is what choosing between two axes needs; it is not
-#: evidence about the real distribution of songs. Re-derive this number once #668 lands.
+#: evidence about the real distribution of songs. Re-derive this number once that corpus lands.
 SUSPECT_COVERAGE = 0.40
 
 #: How much of the ranking score is the POSITION-aware term. Equal weight with the count-aware
@@ -712,7 +712,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
         # The choice is made; the winner should no longer carry the losers. Rebind via replace rather
         # than assigning `winner.alternates = []`: `winner` is a caller-owned object (an element of the
         # candidate list passed in, or one of its `alternates`), and mutating it in place reaches across
-        # the module boundary into the step layer's data — the same class of cross-object write #605 fixes
+        # the module boundary into the step layer's data — the same class of cross-object write the role stamp fixes
         # at steps/lyrics.py. See presplit.py's replace() note on why copy-with-replacement is the rule here.
         winner = replace(winner, alternates=[])
         if len(pool) > 1:

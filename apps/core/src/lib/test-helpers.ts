@@ -138,7 +138,7 @@ const BARE_CONTROL_TAGS = ['button', 'a', 'select', 'textarea'];
  * Derive the interactive-control selector set from the MARKUP of each component, not from a
  * hand-maintained literal list. The old `CONTROL` allowlist decided what counted as a control by a
  * regex someone had to remember to extend; a control introduced under any selector nobody added was
- * silently skipped and shipped undersized green (issue #400 — a renamed strip's `.pills`/`.pill`
+ * silently skipped and shipped undersized green (a renamed strip's `.pills`/`.pill`
  * escaped 44px scrutiny entirely). The FILES tree-walk already closed the file dimension; this closes
  * the selector dimension by the same principle: read what the markup says is interactive.
  *

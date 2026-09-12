@@ -4,7 +4,7 @@
 // and the app.ts wiring that this runner is what the boot chain uses (source scan — getApp() has no
 // unit harness).
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { runBootMaintenance, type BootTask } from '$server/boot-maintenance';
 
 test('a pass that throws does NOT skip the passes after it (the whole point of the isolated boot runner)', async () => {

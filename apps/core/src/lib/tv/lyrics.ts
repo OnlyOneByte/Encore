@@ -24,7 +24,7 @@ export interface LyricLine {
 	 * Which abstract duet PART sings this line — `"A"`, `"B"`, …. The worker's diarization
 	 * pass writes it, and only when it is CONFIDENT the song is a duet; an undiarized song, a solo, or a
 	 * low-confidence result leaves it undefined, which reads as a single colour for the whole song (the
-	 * owner's fallback ruling). Abstract on purpose — never a singer identity — so #692 can map
+	 * owner's fallback ruling). Abstract on purpose — never a singer identity — so diarization can map
 	 * "same part → same colour" without naming anyone. Display-only: it carries no timings and drives no
 	 * ball, exactly like `romanization`.
 	 */

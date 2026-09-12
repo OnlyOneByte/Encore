@@ -154,7 +154,7 @@ test('isCooking is gate-driven — it catches a song sitting between two gates',
 // pin it. The absence of the second vocabulary is a decidable property of the source, so this guard
 // encodes it. Matches the repo's source-scan-guard precedent (session-cookie-attributes.test.ts /
 // telemetry-frame-lean.test.ts, both + stripComments).
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Blank comments before scanning so a mention in a comment (this file explains the removed symbols)
 // cannot make a "must be gone" check pass or fail spuriously. Blank rather than delete so offsets line

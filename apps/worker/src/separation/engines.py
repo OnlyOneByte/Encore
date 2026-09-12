@@ -125,7 +125,7 @@ class DemucsEngine:
 class MlxDemucsEngine:
     """The demucs family through `demucs-mlx` — Apple-Silicon Metal execution of the SAME htdemucs
     checkpoints, selected by `backends.resolve_backend` when MLX is available (Apple Silicon + the
-    `demucs_mlx` package importable). #595.
+    `demucs_mlx` package importable).
 
     The backend selection is genuinely wired: a Mac that resolves `mlx` builds THIS engine
     rather than silently building `DemucsEngine` under an "mlx" label, so `facts.backend` matches the
@@ -275,7 +275,7 @@ class AudioSepEngine:
     as a first-class MDXC path, and `mel instrumental_becruily` measures rt 1.28 on the reference box
     versus `bs_roformer-1297`'s rt 13.29 — a 10.4x RoFormer-family instrumental cook, no GPU
     (docs/benchmarks/SUMMARY.md §4). Adopted ALONGSIDE roformer, not replacing it — both engines, issue
-    #483 owner ruling Q1(b).
+    Owner ruling Q1(b).
 
     Shape-wise it sits between demucs and roformer. Like demucs, its input is a single named WAV (not a
     dedicated input directory — audio-separator takes the input FILE as a positional argument, so it
@@ -351,7 +351,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
 
     The model default is per ENGINE, not shared: a caller passes `demucs_model` and/or `roformer_model`,
     and only the matching engine's value is mapped to its `default_model`. A single engine-agnostic
-    `default_model` slot let a caller hand one engine the OTHER engine's checkpoint name (issue #84: the
+    `default_model` slot let a caller hand one engine the OTHER engine's checkpoint name (the
     lone production caller supplied the demucs default, which reached `RoformerEngine` and made
     `DEFAULT_ROFORMER_MODEL` unreachable — a roformer cook without a `model` then raised naming a demucs
     checkpoint). Keeping the names engine-specific makes that cross-wiring inexpressible. `audiosep_model`
@@ -397,7 +397,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
         return DemucsEngine(backend=backend or "torch", **kw)
     # PermanentError (retryable=False): a name with no registered engine — "ensemble" on a box that
     # only has demucs, a typo — cannot be honoured by retrying. Subclasses RuntimeError so the
-    # message and the exception type callers/tests match on are unchanged; #443.
+    # message and the exception type callers/tests match on are unchanged.
     raise PermanentError(f"no separator engine: {name}")
 
 

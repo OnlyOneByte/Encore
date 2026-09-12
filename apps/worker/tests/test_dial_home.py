@@ -365,7 +365,7 @@ async def test_scratch_is_cleaned_on_a_PERMANENT_failure(tmp_path):
 
 @pytest.mark.asyncio
 async def test_scratch_is_PRESERVED_across_a_RETRYABLE_failure_issue_469(tmp_path):
-    """#469: a RETRYABLE failure must NOT destroy scratch — the core requeues the SAME jobId
+    """a RETRYABLE failure must NOT destroy scratch — the core requeues the SAME jobId
     (JobRepository.requeue transitions the row in place), so scratch_for resolves to the same
     work/<jobId> dir on attempt 2, and the completed-step work living there is what the retry reuses
     instead of re-downloading / re-separating from step 1.
@@ -410,7 +410,7 @@ async def test_scratch_is_PRESERVED_across_a_RETRYABLE_failure_issue_469(tmp_pat
 
 @pytest.mark.asyncio
 async def test_a_retried_job_REUSES_completed_step_artifacts_and_does_not_re_run_them_issue_469(tmp_path):
-    """#469 end-to-end, asserted via the runner's call log (the issue's prescribed test).
+    """Scratch retention end-to-end, asserted via the runner's call log (the issue's prescribed test).
 
     A job whose step N fails on attempt 1 and succeeds on attempt 2 must NOT re-execute steps 1..N-1.
     Build a real PlanRunner over three toy steps whose `applies()` returns False once their on-disk
@@ -881,7 +881,7 @@ async def test_welcome_ignores_a_missing_or_bad_interval(tmp_path):
 #    asyncio.create_task(client.heartbeat_loop()) — and the behavioural tests above prove the loop
 #    BEHAVES, never that it RUNS. This repo's most-repeated defect is a mechanism built, unit-tested,
 #    and never wired to the path that needs it; deleting that one line leaves the whole suite green
-#    with #132 fully reintroduced. Pin the wiring at the source level (ast, no async harness needed):
+#    with the heartbeat wiring fully reintroduced. Pin the wiring at the source level (ast, no async harness needed):
 #    _run_forever must START heartbeat_loop AND cancel that task in a finally so it dies with its socket.
 import ast as _ast  # noqa: E402
 from pathlib import Path as _Path  # noqa: E402
@@ -933,7 +933,7 @@ def test_run_forever_finally_cancels_in_flight_synchronously_and_does_NOT_await_
     # already requeued the job). cancel_now() has a unit test, but nothing pinned that the finally USES
     # it — reverting the finally to the base inline `await client.drain(cancel=True)` left the whole
     # suite green (the repo's most-repeated defect: mechanism built + tested + never wired). This is the
-    # source-level wiring guard, in the _run_forever_ast idiom already used for #132/#469/#475 above.
+    # source-level wiring guard, in the _run_forever_ast idiom already used above.
     fn = _run_forever_ast()
     finalies = [n for n in _ast.walk(fn) if isinstance(n, _ast.Try) and n.finalbody]
     assert finalies, "_run_forever has no try/finally"
@@ -989,7 +989,7 @@ def test_run_forever_detaches_the_drain_rather_than_awaiting_it_459():
 
 @pytest.mark.asyncio
 async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_align_plan(tmp_path):
-    """Issue #192 — the wiring seam. `_build_processor` builds the align runner from a WorkerConfig; the
+    """the wiring seam. `_build_processor` builds the align runner from a WorkerConfig; the
     configured `cfg.ytdlp_bin` (ENCORE_YTDLP_BIN) must reach the FetchCaptions steps that plan actually
     runs, not stop at the capability probe. Before the fix `_build_processor` passed no yt-dlp argument
     to `align_runner` at all, so the align caption fetches ran a bare "yt-dlp" from PATH regardless of
@@ -1159,7 +1159,7 @@ def test_run_forever_starts_the_periodic_scratch_sweep():
 
 @pytest.mark.asyncio
 async def test_cook_id_from_assign_frame_reaches_the_job_spec(tmp_path):
-    """#472: the assign frame now carries cookId so the worker can tag its own logs/notes with the
+    """the assign frame now carries cookId so the worker can tag its own logs/notes with the
     same trace id the operator sees on /metrics/<mediaId>. Capture the JobSpec the processor is
     handed and prove the id threaded through."""
     captured: list[JobSpec] = []
@@ -1288,7 +1288,7 @@ async def test_cancel_now_cancels_in_flight_without_awaiting_issue_459(tmp_path)
 
 
 def test_protocol_complete_emits_selection_only_when_present_669():
-    """#669 — the complete message carries the variant-pick provenance so the core can persist it. Pins
+    """the complete message carries the variant-pick provenance so the core can persist it. Pins
     protocol.complete: selection is emitted when given and omitted when None (mirrors stages). RED on
     base: the function has no selection parameter, so the key never appears."""
     rec = {"choices": [{"textSource": "lrclib", "chosen": "v1", "decidedBy": "agreement", "votes": 2}]}
@@ -1299,7 +1299,7 @@ def test_protocol_complete_emits_selection_only_when_present_669():
 
 @pytest.mark.asyncio
 async def test_worker_forwards_the_processor_selection_onto_the_complete_message_669(tmp_path):
-    """#669 — dial_home must forward the CompleteResult.selection the processor produced onto the wire.
+    """dial_home must forward the CompleteResult.selection the processor produced onto the wire.
     Pins the last link of the worker emit chain (dial_home: selection=result.selection). RED on base:
     CompleteResult has no selection field and complete() takes no selection, so nothing crosses."""
     rec = {

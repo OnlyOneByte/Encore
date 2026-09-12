@@ -21,7 +21,7 @@
 import { test, expect } from 'bun:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { appCore, appSrc, at } from '@encore/test-support';
+import { appCore, appSrc } from '@encore/test-support';
 
 // Repo-root anchors, replacing `at('apps/core/src')` / `join(SRC, '..')`. They mean the same
 // two directories this guard has always walked and sliced against — apps/core/src for the source scan,

@@ -1,13 +1,13 @@
 """Regression pins for the worker-cleanup tail (the lower-consequence behavior fixes deferred
-from #459). Each test fails when its production hunk is reverted to the pre-change form, so the fix is
+from the worker-cleanup change). Each test fails when its production hunk is reverted to the pre-change form, so the fix is
 mutation-provable rather than asserted.
 
-  #1  resolve_engines parses `engine` at the boundary (unknown -> BoundaryError), like asrModel/syncMode
-  #4  heartbeat_loop wraps its body so a send on a half-closed socket does not end as an unretrieved exc
-  #5  no module-level CONFIG snapshots; WorkerClient resolves worker_id/concurrency/media_dir/version/caps
+  item 1  resolve_engines parses `engine` at the boundary (unknown -> BoundaryError), like asrModel/syncMode
+  item 4  heartbeat_loop wraps its body so a send on a half-closed socket does not end as an unretrieved exc
+  item 5  no module-level CONFIG snapshots; WorkerClient resolves worker_id/concurrency/media_dir/version/caps
       from CONFIG on __init__ (config read ON CALL, not captured at import)
-  #9  DecodeToWav / PublishStems raise a NAMED error on a missing key instead of `or ""` -> opaque ffmpeg
-  #3  the worker service carries `init: true` (PID-1 zombie reaping) in all three compose files
+  item 9  DecodeToWav / PublishStems raise a NAMED error on a missing key instead of `or ""` -> opaque ffmpeg
+  item 3  the worker service carries `init: true` (PID-1 zombie reaping) in all three compose files
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from src.steps.separate import DecodeToWav, PublishStems  # noqa: E402
 
 # ── engine parsed at the boundary ────────────────────────────────────────────────
 def test_resolve_engines_raises_on_an_unknown_engine_at_the_boundary():
-    """MUTATION PIN for #1. The pre-change `separator=str(params.get("engine") or base.separator)`
+    """MUTATION PIN for item 1. The pre-change `separator=str(params.get("engine") or base.separator)`
     silently carried an unknown token through resolve_engines; the value only failed LATER at
     engine_for with a different exception type. Now `engine` is parsed at the same boundary as
     asrModel/syncMode, so a de-whitelisted value RAISES a BoundaryError here. Reverting the parse_engine
@@ -72,7 +72,7 @@ def _func_ast(module_path: Path, func_name: str) -> ast.AST:
 
 
 def test_heartbeat_loop_wraps_its_body_in_a_try_that_contains_a_send_failure():
-    """MUTATION PIN for #4. Source-level guard: heartbeat_loop's `while` body must contain a Try that
+    """MUTATION PIN for item 4. Source-level guard: heartbeat_loop's `while` body must contain a Try that
     (a) calls self.send_heartbeat() inside its `try`, and (b) has an except handler catching Exception.
     Deleting the try/except (the pre-change bare `await self.send_heartbeat()`) makes this RED. A
     behavioural test cannot see the difference — the unretrieved-exception warning only surfaces at GC."""
@@ -105,7 +105,7 @@ def test_heartbeat_loop_wraps_its_body_in_a_try_that_contains_a_send_failure():
 
 # ── no import-time CONFIG snapshots; resolved on __init__ ──────────────────────────
 def test_dial_home_has_no_dead_config_snapshot_globals():
-    """MUTATION PIN for #5. The five module globals (WORKER_ID/CONCURRENCY/CAPABILITIES/MEDIA_DIR/
+    """MUTATION PIN for item 5. The five module globals (WORKER_ID/CONCURRENCY/CAPABILITIES/MEDIA_DIR/
     VERSION) captured CONFIG at import — contradicting the "config read ON CALL" rule, and CAPABILITIES
     was frozen to [] because default caps are () until config.resolve() fills a NEW object. Assert they
     are gone as module-level assignments. Restoring any of them makes this RED."""
@@ -123,8 +123,8 @@ def test_dial_home_has_no_dead_config_snapshot_globals():
 
 
 def test_worker_client_resolves_config_on_call_when_kwargs_omitted():
-    """Behavioural half of #5: a client built with no id/concurrency/media_dir/version/caps kwargs must
-    pick up CONFIG's live values, not a stale import snapshot. Pre-#538 this worked via the globals; the
+    """Behavioural half of item 5: a client built with no id/concurrency/media_dir/version/caps kwargs must
+    pick up CONFIG's live values, not a stale import snapshot. Before the cleanup this worked via the globals; the
     point of the pin above is that it now works WITHOUT them, reading CONFIG in __init__."""
     from src import dial_home
     from src.dial_home import WorkerClient
@@ -164,7 +164,7 @@ def _ctx(job_params=None, audio_path=None):
 
 
 async def test_decode_to_wav_raises_named_error_when_audio_path_is_empty():
-    """MUTATION PIN for #9a. Pre-#538 `decode_argv(ctx.audio.path or "", ...)` handed ffmpeg an empty
+    """MUTATION PIN for item 9a. Before the cleanup `decode_argv(ctx.audio.path or "", ...)` handed ffmpeg an empty
     input and died as 'ffmpeg: : No such file or directory'. Now it raises a named error first.
     Restoring `or ""` makes the raise disappear (ffmpeg would be invoked) -> RED."""
     ctx = _ctx(audio_path="")  # empty, as if AcquireAudio never ran
@@ -179,7 +179,7 @@ async def test_decode_to_wav_raises_named_error_when_audio_path_is_empty():
 
 
 async def test_publish_stems_raises_named_error_when_instrumental_is_missing():
-    """MUTATION PIN for #9b. Pre-#538 `encode_flac_argv(raw_inst or "", ...)` encoded an empty path.
+    """MUTATION PIN for item 9b. Before the cleanup `encode_flac_argv(raw_inst or "", ...)` encoded an empty path.
     Now a missing instrumental raises a named error before any ffmpeg call."""
     ctx = _ctx()
     ctx.stems.raw = {}  # no instrumental — Separate would have raised, but pin the guard anyway
@@ -198,7 +198,7 @@ async def test_publish_stems_raises_named_error_when_instrumental_is_missing():
     ],
 )
 def test_worker_service_has_init_true_for_pid1_reaping(rel):
-    """CONFIG GUARD for #3. The worker runs python as PID 1 with no reaper; `init: true` interposes
+    """CONFIG GUARD for item 3. The worker runs python as PID 1 with no reaper; `init: true` interposes
     tini so demucs/ffmpeg grandchildren are reaped. Assert the token is present under the worker
     service in each compose file. No Python behaviour to mutation-test — this file IS the guard."""
     import re

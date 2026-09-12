@@ -139,7 +139,7 @@ def test_a_None_config_value_does_not_override_an_engine_default():
 
 
 def test_the_demucs_default_cannot_reach_the_roformer_engine():
-    """Issue #84 regression. `plans.stems_runner` forwards this worker's `demucs_model` (default
+    """Regression pin. `plans.stems_runner` forwards this worker's `demucs_model` (default
     "htdemucs") into `engine_for` on EVERY cook, roformer included (plans.py: the lone production caller).
     While the model slot was ONE engine-agnostic `default_model`, that demucs checkpoint reached
     `RoformerEngine` and replaced `DEFAULT_ROFORMER_MODEL` — a roformer cook carrying no `model` then
@@ -245,7 +245,7 @@ def _rspec(tmp_path, **params):
 @pytest.mark.asyncio
 async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path):
     """Drives a stems job with engine=roformer through plans.stems_runner and asserts the four
-    documented demucs/roformer differences plus the resolved-slug fact — the coverage #86 is about.
+    documented demucs/roformer differences plus the resolved-slug fact — the coverage this pin is about.
 
     No `engine=` override, so stems_runner resolves the REAL RoformerEngine from params.engine; the
     fake runner only stands in for the bs-roformer-infer SUBPROCESS, not the engine."""
@@ -298,7 +298,7 @@ async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path
     # published (mirrors the demucs cook test); without this the engine can map find_roformer_vocals
     # onto None and every roformer cook silently drops its guiding track with the suite still green.
     vox = completes[0].artifacts["stems"]["vocals"]
-    assert vox.endswith("mr-vocals.flac")  # #480: vocals stem is lossless FLAC
+    assert vox.endswith("mr-vocals.flac")  # vocals stem is lossless FLAC
     assert Path(vox).exists()
 
     # (difference 3) roformer's parse_progress returns None, so the child's tqdm percentages must NEVER
@@ -325,7 +325,7 @@ async def test_a_roformer_cook_that_produces_no_instrumental_fails_loudly(tmp_pa
 
 @pytest.mark.asyncio
 async def test_a_roformer_no_instrumental_failure_is_classified_non_retryable(tmp_path):
-    """#571: reaching Separate's "produced no instrumental" raise means the CLI exited 0 and its
+    """Reaching Separate's "produced no instrumental" raise means the CLI exited 0 and its
     output-filename contract is wrong — deterministic for that engine build, so every retry re-runs the
     same 2h11m pass and fails identically. The raise must be non-retryable so the core stops after one
     pass. Asserts the classification (PermanentError IS-A RuntimeError); reds on base where the bare

@@ -50,7 +50,7 @@
 		font-weight: 800;
 		/* --accent2, NOT --accent. The mockup draws this numeral in the violet accent, but --accent
 		   exists to be a BACKGROUND carrying --on-accent: as text it measures 3.38:1 on --card, under
-		   AA. (The old --accent-strong was worse still at 3.52:1 and is now retired — #840, XR-COL-11 —
+		   AA. (The old --accent-strong was worse still at 3.52:1 and is now retired — XR-COL-11 —
 		   so there is no darkened sibling to reach for either.) --accent2 is the family's text-safe
 		   member and already this route's text accent (.range-peek, .browse-active): MEASURED 6.05:1 on
 		   --card and 5.92:1 on the --card-tint this gradient ends at. */

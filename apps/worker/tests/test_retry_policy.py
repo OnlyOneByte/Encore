@@ -1,4 +1,4 @@
-"""#443: the retry decision is ONE table, and permanent boundary failures fail fast.
+"""The retry decision is ONE table, and permanent boundary failures fail fast.
 
 Two guarantees, both red on base (`origin/main`) before the fix:
 
@@ -111,7 +111,7 @@ def test_boundary_errors_stay_backward_compatible_exception_types():
 
 
 def test_transient_and_structured_classification_is_preserved():
-    """The #443 fix must not change the two behaviours the old table got right."""
+    """The one-table fix must not change the two behaviours the old table got right."""
     # unstructured transient → retryable (default preserved)
     assert _is_retryable(RuntimeError("temporary network blip")) is True
     # unstructured permanent marker → non-retryable
@@ -192,7 +192,7 @@ def test_every_separation_raise_carries_a_structured_retryable():
     RuntimeError whose retryability falls to the message heuristic. On base this AST census finds
     exactly one offender, roformer.py's bare `ValueError`, so it REDS on base; after the fix it finds
     none. Using ast.parse means comments and docstrings are dropped by construction, so the prose in
-    these files can neither satisfy nor trip the scan (same reasoning #650 recorded).
+    these files can neither satisfy nor trip the scan (the same reasoning the layer scan records).
     """
     sep_dir = Path(retry_policy.__file__).resolve().parent / "separation"
 

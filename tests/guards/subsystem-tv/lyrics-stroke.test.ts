@@ -16,7 +16,7 @@
 // production declaration IS what it asserts — reverting either line reds this directly. Verified both
 // ways: with the fix it passes; with the two declarations removed it reds on the first/second assert.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/lib/tv/LyricsOverlay.svelte')` —
 // "the component next to me" — and the component is the TV lyric reel whose `.lyrics` rule carries the

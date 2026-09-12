@@ -26,7 +26,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { appE2e, at } from '@encore/test-support';
+import { appE2e } from '@encore/test-support';
 import { queueEntries } from '$server/db/schema';
 
 function stripComments(src: string): string {

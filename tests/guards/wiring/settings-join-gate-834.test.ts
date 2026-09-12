@@ -14,7 +14,7 @@ import { RoomRepository } from '$server/rooms/repository';
 import { SingerRepository } from '$server/singers/repository';
 import { SettingsRepository } from '$server/state/settings-repository';
 import { migratedDb } from '$server/db/test-db';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 const APP_KEY = Symbol.for('encore.app');
 

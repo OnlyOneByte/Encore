@@ -10,7 +10,7 @@
 // Every test asserts a SENTINEL first (that it is reading the file and the thing it judges is present),
 // so a rename or a moved block reds the guard instead of silently passing over an empty scan.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // SIBLING READS, now named explicitly. This guard used to sit in apps/core/src/lib/components/, so
 // `at('apps/core/src/lib/components/QueueRow.svelte')` meant "the row component next to me" and

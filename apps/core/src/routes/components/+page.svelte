@@ -417,10 +417,10 @@
 		pct={68}
 	/>
 	<!--
-		#334 SPARKLE-HUG, made visible. The three cooking rows above all carry a title long enough to
-		wrap to two lines, so none of them shows the case #334 is about: a SHORT title where the clamp
+		SPARKLE-HUG, made visible. The three cooking rows above all carry a title long enough to
+		wrap to two lines, so none of them shows the case the hug is about: a SHORT title where the clamp
 		box must SHRINK to hug its text (flex: 0 1 auto) so the cooking sparkle sits right beside the
-		title instead of floating out at the metadata column’s right edge. Reopen #334 (.t { flex: 1 },
+		title instead of floating out at the metadata column’s right edge. Reopen the hug case (.t { flex: 1 },
 		in the base rule OR the <=380px @media rule) and the sparkle jumps ~80px away on this row while
 		the wrapped rows above barely move — which is exactly why the eyes-on gallery could not see it
 		before. No status/etaSec: a short cooking title mid-fetch is a real, un-decorated state.
@@ -436,7 +436,7 @@
 		pct={42}
 	/>
 	<!--
-		THE #80 BUG STATE, made visible. `status="downloading" pct={100}` is the exact instant this
+		THE COOK-BAR BUG STATE, made visible. `status="downloading" pct={100}` is the exact instant this
 		issue names: the FETCH step reports 100% while separating/aligning/ready are unstarted. With the
 		live status threaded in, the bar reads OVERALL cook completion (~20% — the top of the downloading
 		band) and the readout says "20%", NOT the solid "100%" the raw per-step number produced before.
@@ -454,7 +454,7 @@
 		pct={100}
 	/>
 	<!--
-		#80 ROUNDING check, committed. `status="separating" pct={68}` gives overallCookPct ~67.6 (a
+		COOK-BAR ROUNDING check, committed. `status="separating" pct={68}` gives overallCookPct ~67.6 (a
 		band-interpolated FLOAT), so the readout MUST print a rounded "68%", never "67.6%". The bar keeps
 		the unrounded fraction for a smooth transition. This is the fractional case the two band-edge
 		fixtures (downloading pct=100 -> exactly 20; statusless control -> raw 68) could not exercise.
@@ -536,7 +536,7 @@
 	<SongRow title="A local file with no metadata at all" readiness="unacquired" onmake={() => {}} />
 
 	<!--
-		#832, direction A. The hero and the position card, which are the two things home is now made of.
+		Direction A. The hero and the position card, which are the two things home is now made of.
 		The position card is shown in BOTH branches, adjacent: XR-PH-09's second arm is that an unknown
 		wait renders NO minutes clause, and "no clause" is only judgeable against the clause it replaces.
 		The wait is `null` here because one entry ahead has no resolvable length — the reachable unknown,
@@ -580,7 +580,7 @@
 	     "moving…", never "adding…". Both share the warn surface, which is the state signal (never
 	     opacity, per XR-PH-03). -->
 	<QueueRow seq={6} title="Wonderwall" singerName="You" singerColor={PINK} mine pending="move" />
-	<!-- issue #89: a 32-char name (the profile-name maxlength) overflows the byline. The identity dot
+	<!-- a 32-char name (the profile-name maxlength) overflows the byline. The identity dot
 	     (.who i) must keep its 10px width — it is flex:0 0 auto, not a shrinkable flex item — so the
 	     singer's colour survives on the very row where the truncated name least disambiguates them. -->
 	<QueueRow
@@ -645,7 +645,7 @@
 	     the narrower `.who` on a cooking card WITH its queue controls was never eyes-on. This is the
 	     reachable-collapse case — actions cluster present, name at the 32-char profile maxlength. The
 	     name is a single UNBROKEN token (no space, so it cannot wrap): dropping the `.who i { flex: 0 0
-	     auto }` rule the surface protects then collapses the dot to 0px, the unmissable failure #335
+	     auto }` rule the surface protects then collapses the dot to 0px, the unmissable failure the dot rule
 	     was filed to keep on demo (a spaced name would only shrink it to ~5.45px, an easy-to-miss
 	     witness). ChristopherAlexanderMontgomeryJr is 32 chars, exactly the profile-name maxlength. -->
 	<ProcessingCard
@@ -741,7 +741,7 @@
 
 	<!--
 		QueueSheet's and QueueSheetDrawer's demos lived here. Both were retired with the drawer surface
-		itself: the ratified phone design has no drawer, #832 built the inline-rows/hero/docked-band
+		itself: the ratified phone design has no drawer; direction A built the inline-rows/hero/docked-band
 		home instead, and the gallery was the only place either component still rendered — so a fix landed
 		here reached no guest. The band contract they carried now lives on .cta-dock / .search-dock in
 		routes/+page.svelte, which publish --dock-h; see docs/research/827-queuesheet-drawer-spike.md for
@@ -910,7 +910,7 @@
 	{/each}
 
 	<!--
-		#634 — WHOSE COLOUR THE HIGHLIGHT IS.
+		WHOSE COLOUR THE HIGHLIGHT IS.
 
 		Four cards, and the pairing is the whole point: the first is the room accent (what every song
 		painted before this feature), the second is a singer's own colour on the same doc at the same

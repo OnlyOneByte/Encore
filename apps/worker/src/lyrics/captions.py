@@ -115,7 +115,7 @@ def _collapse_scroll_overlap(segs: list[dict[str, Any]]) -> list[dict[str, Any]]
     """Trim the repeated head off each SCROLL line, leaving one window per real line.
 
     Runs AFTER `parse_vtt`'s held/prefix-extend fold (which this deliberately leaves untouched, so the
-    #539/#686 collapse is unchanged). For each time-adjacent pair whose incoming head repeats the
+    the rolling collapse is unchanged). For each time-adjacent pair whose incoming head repeats the
     running line's tail by at least `_SCROLL_MIN_OVERLAP_WORDS`, drop the overlapping head words and keep
     only the non-overlapping remainder as its own line. TRIMMING rather than merging preserves per-line
     windows, which the forced aligner and word-level highlighting both consume; merging the run into one

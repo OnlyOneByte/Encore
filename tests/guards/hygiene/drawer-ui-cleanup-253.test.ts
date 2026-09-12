@@ -21,7 +21,7 @@
 // removal now ALSO carries a STRUCTURAL, name-independent assertion; the literal matchers are kept.
 
 import { test, expect } from 'bun:test';
-import { read as readRepoFile, at } from '@encore/test-support';
+import { read as readRepoFile } from '@encore/test-support';
 
 function strip(s: string): string {
 	return s

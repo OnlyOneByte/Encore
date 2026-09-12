@@ -1,4 +1,4 @@
-"""#668 — the real lyrics corpus: what real song structure pins that an inline string cannot.
+"""The real lyrics corpus: what real song structure pins that an inline string cannot.
 
 `apps/worker/tests/` had no lyrics fixtures at all; every input across the six lyrics test files was an
 inline Python string. That is enough to pin an invariant and not enough to calibrate a threshold,
@@ -24,7 +24,7 @@ Four things are guarded.
    constant's comment never had.
 
 3. **The overshoot demotion flips a real pair.** A wrong-version pick scoring higher than a clean rival
-   is the outcome #667 exists to prevent, and the two real specimens make that argmax measurable.
+   is the outcome the overshoot penalty exists to prevent, and the two real specimens make that argmax measurable.
 
 4. **The coverage threshold is honestly NOT calibrated here.** `chain.py` says to re-derive
    `SUSPECT_COVERAGE` once this corpus lands. It cannot be: the archive holds exactly one same-audio
@@ -239,7 +239,7 @@ def test_the_real_overshoot_band_separates_wrong_version_from_same_recording() -
 
 
 def test_the_overshoot_demotion_flips_a_real_wrong_version_pick_against_a_real_clean_rival() -> None:
-    """A wrong-version pick that RANKS HIGHER still loses, which is the outcome #667 is for.
+    """A wrong-version pick that RANKS HIGHER still loses, which is the outcome the overshoot penalty is for.
 
     Detection without re-selection made things worse (`chain.py`'s own selection note), so the guarded
     behaviour is the argmax, not the flag. Real specimens on both sides: Total Eclipse timed to a 374s

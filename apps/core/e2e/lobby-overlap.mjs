@@ -6,7 +6,7 @@
  * WHY THIS IS A SCRIPT, NOT A `bun test`. Same reason party.mjs is: it needs a live server and a
  * Chromium, so as a unit test it would SKIP wherever either is missing, and a permanently-skipped
  * test is the silent rot the contract guard exists to prevent (see contract.test.ts). The always-on
- * reversion guard for #98 lives in src/lib/tv/stage-scale.test.ts as a source scan; THIS is the
+ * reversion guard lives in src/lib/tv/stage-scale.test.ts as a source scan; THIS is the
  * measured property behind it — run it on demand (`bun run e2e/lobby-overlap.mjs`) or against an
  * already-running server (`EPORT=xxxx bun run e2e/lobby-overlap.mjs`).
  *

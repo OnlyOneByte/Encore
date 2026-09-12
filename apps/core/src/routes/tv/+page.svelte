@@ -173,7 +173,7 @@
 
 	/*
 	 * The catalog writer and the snapshot seam both live in `$lib/tv/catalog.ts` — see that module for
-	 * why #396 needed a boundary rather than a fifth consumer-side guard. Two rules hold here:
+	 * why this needed a boundary rather than a fifth consumer-side guard. Two rules hold here:
 	 *
 	 *   • `mergeCatalog` is the ONLY thing that writes `mediaCatalog`, and it takes a full server list,
 	 *     so this route cannot express a partial local edit to a media record. The cook path used to
@@ -221,8 +221,8 @@
 		// Chromium). Until then `drawPosition` extrapolates FORWARD from the previous song's anchor,
 		// so the reel opens the turn parked on (and sweeping past) the old song's last lines and the
 		// progress bar opens two-thirds full. `nowplaying:changed` is the exact event that marks the
-		// new song's zero, so re-anchor here rather than relaxing `drawPosition`'s floor (#54 — that
-		// purity is load-bearing) or guarding inside `LyricsOverlay`. See issue #868.
+		// new song's zero, so re-anchor here rather than relaxing `drawPosition`'s floor (that
+		// purity is load-bearing) or guarding inside `LyricsOverlay`.
 		positionSec = 0;
 		durationSec = 0;
 		// held-slot: if the server handed us a current whose media has no instrumental yet (a cooking
@@ -415,7 +415,7 @@
 			// passing it on the WS URL. The server's tvRoomId turns the code into the room id the socket is
 			// scoped to, so the TV is IN-ROOM for that party (subscribeTopicFor) rather than an
 			// unscoped spectator of the served room. A code-less loader (prerender/unavailable app) omits
-			// the param and the server falls back to the served room — unchanged from before #658.
+			// the param and the server falls back to the served room — unchanged from before rooms were introduced.
 			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=tv${data.roomCode ? `&room=${encodeURIComponent(data.roomCode)}` : ''}`,
 			// The TV holds no queue rev of its own — it never handles queue:patch and adopts server
 			// truth wholesale from each queue:sync — so the hello handshake always sends lastRev 0,
@@ -709,7 +709,7 @@
 	);
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
-	// Bug B + #393: the reel and ball ADVANCE only while the song is genuinely playing on BOTH
+	// Bug B, and the element-truth rule: the reel and ball ADVANCE only while the song is genuinely playing on BOTH
 	// dimensions — the room INTENDS to play (`isPlaying`, from the server) AND the master element is
 	// actually running (`masterAdvancing`, reported up from the <audio>'s own play/pause). `isPlaying`
 	// alone stayed true through a phone pause (Bug B) and ALSO through an autoplay refusal or an
@@ -1163,7 +1163,7 @@
 		<!-- Still cooking (T1b) — warn family. A wait, not a failure: the song title is the
 		     hero and a bounded 3-step progress names the current step, so the wait reads as finite. The
 		     words come from cook-phrasing (the ONE guest-facing cook vocabulary, shared with the phone).
-		     THE TV KNOWS ONLY A COARSE "cooking" STATE: #396 deliberately stripped per-media cook tracking
+		     THE TV KNOWS ONLY A COARSE "cooking" STATE: per-media cook tracking was deliberately stripped
 		     from the TV (a cook for one song was reaching another's playhead), so there is no per-media
 		     MediaStatus to read here. cookStep() is a pure, total MediaStatus->step mapping (guarded in
 		     screen.test.ts and shared in shape with the phone, XR-TV-15); the TV feeds it the representative
@@ -1372,7 +1372,7 @@
 	 *   6  lyrics reel (LyricsOverlay .lyrics — SIBLING-owned, not editable here)
 	 *   7  persistent chrome that must sit ABOVE the reel and the video: lower-third (bottom-left),
 	 *      brand-float, progress bar (TvProgress), join corner/badqr (JoinBadge, bottom-right),
-	 *      fullscreen button (.fs-btn, #424 — shares this tier but pinned TOP-right BELOW the whole
+	 *      fullscreen button (.fs-btn — shares this tier but pinned TOP-right BELOW the whole
 	 *      "Up next" block, so it overlaps none of them; a transient overlay at 8 and the
 	 *      autoplay hint at 10 correctly cover it)
 	 *   8  transient full-screen overlays: interstitial / error / waiting / loading (.interstitial) —
@@ -1581,12 +1581,12 @@
 		 * comment for why. Legibility comes from BOTH a blurred text-shadow AND a text-stroke, the same
 		 * pair the lyrics reel uses (LyricsOverlay.svelte:346), and both work on every TV browser.
 		 *
-		 * the stroke is load-bearing, not decoration. Before #425 the stage was pinned dark, so a
-		 * shadow tuned against black was enough. #425 lets a room pick ANY stage colour — including
+		 * the stroke is load-bearing, not decoration. Before the stage-colour change the stage was pinned dark, so a
+		 * shadow tuned against black was enough. That change lets a room pick ANY stage colour — including
 		 * white — and a blurred dark shadow disappears against a bright field of similar luminance, so
 		 * the singer name measured 1.10:1 on white (the retired stage pin used to prevent exactly this).
 		 * `-webkit-text-stroke` with `paint-order: stroke fill` draws a hard dark outline BEHIND the
-		 * glyph, so the text stays readable on any background — the owner's ratified #425 condition,
+		 * glyph, so the text stays readable on any background — the owner's ratified condition,
 		 * "always visible regardless of the background". Width in `em` (not px) so it reads the same at
 		 * 720p and 4K, and --scrim-strong reuses the reel's one dark-outline source of truth.
 		 *
@@ -1797,7 +1797,7 @@
 		border-left: var(--tv-takeover-border) solid transparent;
 	}
 	/* Next up — accent family. Singer name is the hero at --tv-takeover-name (132px). --accent (not the
-	   retired --accent-strong, #840/XR-COL-11) as a NON-TEXT border/fill, which is exactly what --accent
+	   retired --accent-strong, XR-COL-11) as a NON-TEXT border/fill, which is exactly what --accent
 	   is certified for; the text on this takeover is --ink / --accent2, never --accent as ink. */
 	.state-next.takeover {
 		border-left-color: var(--accent);
@@ -1926,7 +1926,7 @@
 	 * reel (6) and the player slots (1/2) so it stays tappable during a song, and BELOW the transient
 	 * full-screen overlays (8) and the autoplay hint (10) so those always cover it. It shares the tier
 	 * with the lower-third (bottom-LEFT) and the join QR (bottom-RIGHT); it is pinned TOP-right below
-	 * the status dot so it overlaps NEITHER — before #889 it sat bottom-right too, sharing the join
+	 * the status dot so it overlaps NEITHER — before the overlap fix it sat bottom-right too, sharing the join
 	 * QR's exact anchor, and at equal z-index the later-in-DOM button painted over the QR's text.
 	 * Safe-area-inset on both axes so overscan cannot clip it, and `pointer-events`
 	 * drops with the fade so a hidden button can never eat a tap meant for the stage.
@@ -1944,7 +1944,7 @@
 		   top-right holds the status dot (16px, tier 9) AND `.upnext` (tier 7, right:var(--tv-safe-x),
 		   top:calc(var(--tv-safe-y) + 2.6vh)). `.upnext` is the same right edge and same z-tier, and
 		   `.fs-btn` is later in the DOM, so anchoring level with it would paint over the Up-next readout
-		   just as the first #889 attempt (safe-y + 28px) did. So the button sits below `.upnext`'s own
+		   just as the first attempt (safe-y + 28px) did. So the button sits below `.upnext`'s own
 		   top PLUS its MEASURED height (`--tv-upnext-h`, a ResizeObserver on the block — its title
 		   wraps, so a fixed offset would fail when it grows) PLUS a gap. `--tv-upnext-h` is 0px when no
 		   next song is queued, so the button just sits at the top-right inset with nothing to clear.

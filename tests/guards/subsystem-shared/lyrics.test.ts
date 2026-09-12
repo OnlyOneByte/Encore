@@ -4,7 +4,7 @@
 //   • authoritative+line OUTRANKS asr+word (correct words beat a bouncing ball over invented ones)
 //   • a low-confidence CAPTION is demoted to ASR standing despite arriving as "captions"
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import {
 	type LyricsCandidate,
 	type LyricsTextSource,

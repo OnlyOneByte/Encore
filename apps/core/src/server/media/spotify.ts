@@ -12,7 +12,7 @@
 // GRACEFUL DEGRADATION mirrors ytDlpSearch: with the env vars unset (the default deployment), this
 // returns [] rather than throwing, so the search fan-out simply has one fewer source — safeSearch in
 // the route already tolerates a dead source by design. Each FAILURE exit also names its reason (
-// mirroring ytDlpSearch after #767), so a token refusal, throttle, or timeout is distinguishable from
+// mirroring ytDlpSearch), so a token refusal, throttle, or timeout is distinguishable from
 // a healthy account with no match; only the creds-unset default (spotifyEnv → null) stays silent.
 //
 // The pure parser (parseSpotifySearchJson) is separated so it unit-tests without the network or a

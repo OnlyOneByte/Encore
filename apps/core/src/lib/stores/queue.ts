@@ -23,8 +23,8 @@ interface PendingOp {
 	 * The FULL entries array as it stands immediately BEFORE this op is applied — with every EARLIER
 	 * still-pending op baked in, ON THE CURRENT SERVER TRUTH. Kept in sync by ONE writer,
 	 * #rebasePending, which every truth-moving path (#onPatch/#onSync/#onReject) rebases through, so
-	 * it is never stale (issue #101 regression — a snapshot frozen at op-issue time drops any server
-	 * patch that lands before the reject; issue #869 — the invariant used to be copied into three
+	 * it is never stale (a stale-snapshot regression — a snapshot frozen at op-issue time drops any server
+	 * patch that lands before the reject; the invariant used to be copied into three
 	 * loops that could drift). Rollback restores this snapshot
 	 * rather than deriving an undo from the op: a per-op inverse must agree with the
 	 * forward reducer, and for `move` it did not — the forward step routes through
@@ -237,7 +237,7 @@ export class QueueStore {
 	}
 
 	/**
-	 * THE one place that maintains the pending-snapshot invariant (/ PR #168).
+	 * THE one place that maintains the pending-snapshot invariant.
 	 *
 	 * Starting from `base` (the new authoritative truth), walk the given pending ops in issue order
 	 * and, for each, (1) refresh its `snapshot` rollback target to the current rebased pre-op state,
@@ -248,7 +248,7 @@ export class QueueStore {
 	 *
 	 * All three writers that move truth — `#onPatch`, `#onSync`, `#onReject` — rebase through here so
 	 * the invariant is stated ONCE rather than copied into three loops that can drift (the two hotter
-	 * reconnect-path copies were unpinned; issue #869). `#onReject` passes only the ops issued AFTER
+	 * reconnect-path copies were unpinned). `#onReject` passes only the ops issued AFTER
 	 * the rejected one, because the earlier ops are already baked into the rejected op's snapshot;
 	 * the loop body is otherwise identical, which is exactly why it is shared.
 	 *
@@ -291,7 +291,7 @@ export class QueueStore {
 		this.#rev = e.rev;
 		// REBASE: authoritative truth, then re-apply still-pending local ops on top (via the shared
 		// reducer so seqs match the server) so the user's in-flight changes don't vanish on resync.
-		// #rebasePending refreshes each op's rollback target to the rebased pre-op state — same #101
+		// #rebasePending refreshes each op's rollback target to the rebased pre-op state — the same stale-snapshot
 		// invariant as #onPatch: a resync replaces truth, and a stale snapshot would lose it on a
 		// later reject.
 		const base = e.entries.map((x) => ({ ...x }));

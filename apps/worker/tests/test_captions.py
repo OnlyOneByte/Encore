@@ -272,7 +272,7 @@ def test_the_original_language_track_wins_over_a_translation(tmp_path):
 # ── THE separate-directory guarantee, driven through the real steps ──────────────────────
 #
 # The tests above pin `caption_argv` (one kind per call) and the parser. What none of them touched —
-# and what issue #96 flagged as unguarded across the whole 546-test suite — is the step-level guarantee
+# and what was flagged as unguarded across the whole 546-test suite — is the step-level guarantee
 # that the two kinds land in SEPARATE directories. `caption_argv` asking for one kind is not enough:
 # yt-dlp names both kinds' files identically (`captions.en.vtt`), so if `FetchCaptions` derived both
 # output directories from one expression the machine fetch would target the same directory the authored
@@ -352,7 +352,7 @@ async def _drain(step, ctx):
 
 
 async def test_FetchCaptions_writes_the_two_kinds_into_separate_directories(tmp_path):
-    """THE GUARANTEE, at the step level — issue #96.
+    """THE GUARANTEE, at the step level .
 
     `plans.py` runs `FetchCaptions(AUTHORED)` then `FetchCaptions(MACHINE)` for every align job. yt-dlp
     names both kinds' files identically, so the ONLY thing that keeps the machine BASELINE from being
@@ -397,7 +397,7 @@ from src import plans  # noqa: E402
 
 
 async def test_configured_ytdlp_binary_reaches_the_caption_argv(tmp_path):
-    """Issue #192 — the align (caption) path. ENCORE_YTDLP_BIN was probed and logged but never reached
+    """the align (caption) path. ENCORE_YTDLP_BIN was probed and logged but never reached
     the caption subprocess: `align_runner` accepted no yt-dlp argument and `align_plan` built
     `FetchCaptions(AUTHORED)` / `FetchCaptions(MACHINE)` with the hardcoded default, so the only reader
     left was a `ytdlpBin` job param the core never sends. Both YouTube caption tiers therefore shelled
@@ -443,7 +443,7 @@ async def test_configured_ytdlp_binary_reaches_the_caption_argv(tmp_path):
 # ── the raw caption track survives job-scratch teardown when opted in ─────────────────────
 # The caption fetch writes the raw `.vtt` into per-job scratch (`ctx.work/<kind>/`), which
 # `dial_home._run_job` rmtrees when the job ends — so only the PARSED cues survive, and a
-# caption-parsing defect (#539/#542-class) can never be re-examined from the source bytes after a cook.
+# caption-parsing defect of that class can never be re-examined from the source bytes after a cook.
 # `ENCORE_KEEP_RAW_CAPTIONS=1` copies the raw track out to the durable `derived/` store BEFORE teardown,
 # keeping the authored/machine distinction structural (a directory), off by default so the footprint of
 # an ordinary cook does not change. The flag is resolved at the config boundary: the step takes a
@@ -457,7 +457,7 @@ async def test_the_raw_caption_track_is_NOT_retained_by_default(tmp_path):
     """DEFAULT footprint is unchanged — the durable path stays empty unless opted in.
 
     The step now takes a RESOLVED `keep_raw` bool (default False); it no longer reads the environment
-    (#709), so the default is exercised by simply not passing keep_raw=True.
+    so the default is exercised by simply not passing keep_raw=True.
     """
     ctx = _ctx_for_captions(tmp_path)
 
@@ -471,7 +471,7 @@ async def test_the_raw_caption_track_is_NOT_retained_by_default(tmp_path):
 
 
 async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted_in(tmp_path):
-    """THE PIN — issue #670.
+    """THE PIN .
 
     With `ENCORE_KEEP_RAW_CAPTIONS=1`, after the fetch step runs the RAW caption track is retrievable
     from a durable `derived/` path — not only from the scratch directory that is torn down with the
@@ -516,7 +516,7 @@ async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted
 
 @pytest.mark.parametrize("value", ["0", "false", "False", "no", "off", "OFF", "", "   "])
 async def test_keep_raw_captions_env_false_spellings_leave_retention_OFF(tmp_path, value):
-    """THE F2 PIN — issue #709.
+    """THE F2 PIN .
 
     `ENCORE_KEEP_RAW_CAPTIONS` is an operator boolean, and every spelling of false must turn retention
     OFF. Its original form read the raw env string with bare `os.environ.get(...)` truthiness inside the
@@ -526,7 +526,7 @@ async def test_keep_raw_captions_env_false_spellings_leave_retention_OFF(tmp_pat
     An empty or whitespace-only value counts as false too (A1): `ENCORE_KEEP_RAW_CAPTIONS=` is the
     .env/compose idiom for "neutralise this", and a default-OFF flag must honour it as OFF.
 
-    Exercised through the REAL boundary, `WorkerConfig.from_env`, which is where #709 moves the parse, then
+    Exercised through the REAL boundary, `WorkerConfig.from_env`, which is where the parse now lives, then
     the resolved bool is threaded into the step exactly as the align plan threads it. With any false
     spelling the durable path must stay empty.
 
@@ -596,7 +596,7 @@ def test_the_rolling_fixture_is_the_untouched_captured_track():
 
 
 def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
-    """THE #539 PROOF. A real rolling auto-caption track must not survive as ~2× duplicated lines.
+    """THE PROOF. A real rolling auto-caption track must not survive as ~2× duplicated lines.
 
     Base `parse_vtt` collapses only EXACT consecutive duplicates (`out[-1]["text"] == body`), but the
     rolling repeat is a strict PREFIX, never an equality, so the guard never fires: base returns 236
@@ -612,7 +612,7 @@ def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
 
     # INVARIANT, PRESERVED. The prefix-extend collapse still fires: no adjacent pair where the
     # earlier line is a strict prefix of the later one AND that later line is long enough to be a real
-    # rolling extend. Base leaves 115 such pairs here; #686 drives them to 0. (Sub-threshold short
+    # rolling extend. Base leaves 115 such pairs here; the trim drives them to 0. (Sub-threshold short
     # leftovers created by the scroll trim below — a 1–2 word line quoted at the head of the next — are
     # deliberately spared, so this counts only extends of >= _SCROLL_MIN_OVERLAP_WORDS words.)
     prefix_extends = sum(
@@ -650,7 +650,7 @@ def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
     )
 
     # The trim keeps ONE window per real line rather than merging the run: the line count stays in the
-    # same band #686 produced (122 pre-trim), NOT collapsed toward ~28 as a merge would. This is the
+    # same band the trim produced (122 pre-trim), NOT collapsed toward ~28 as a merge would. This is the
     # guard that fails for a merge-shaped fix and passes for a trim-shaped one.
     assert 100 <= len(segs) <= 150, f"expected the rolling track to collapse to ~half; got {len(segs)}"
 

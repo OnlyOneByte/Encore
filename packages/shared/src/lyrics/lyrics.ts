@@ -203,7 +203,7 @@ export const MIN_TOKENS_TO_COMPARE = 12;
  * band (synthetic corpus, reproducible from `apps/worker/tests/test_lyrics_agreement_542.py`):
  * different song tops out at 0.300, a correct candidate bottoms out at 0.468 against an already-unusable
  * 50%-word-error baseline, and 0.485 against a baseline that heard only a third of the song. 0.40 sits
- * in that gap. Not a corpus calibration — #668 (a real corpus from the prod snapshot) is still open.
+ * in that gap. Not a corpus calibration — a real corpus from the prod snapshot is still open.
  */
 export const SUSPECT_COVERAGE = 0.4;
 

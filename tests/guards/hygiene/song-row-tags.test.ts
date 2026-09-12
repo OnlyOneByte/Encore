@@ -8,7 +8,7 @@
 // Deleting any of these ships a row that never shows tags (or shows them on a raw search result,
 // where a tag is noise) with the suite otherwise green.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	return src

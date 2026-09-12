@@ -14,7 +14,7 @@
 import { test, expect } from 'bun:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { appCore, appE2e, at } from '@encore/test-support';
+import { appCore, appE2e } from '@encore/test-support';
 import { HOOKS, PRESET_COLOUR_NAMES, SEL } from '../../../apps/core/e2e/contract';
 import { classPresent, svelteFiles } from '$lib/test-helpers';
 

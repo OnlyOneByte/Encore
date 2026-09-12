@@ -15,7 +15,7 @@
 // expiry and boot RECOVER. Keying on the event (the §5 wire vocabulary) makes those distinguishable,
 // lets the ledger hook the machine itself rather than seven hand-written wrappers, and turns
 // `REPRIORITIZE` into a legal internal edge instead of a raw write that had to escape the machine
-// (repository.ts). See issue #471.
+// (repository.ts).
 
 import { isTerminalJob, type JobStatus, type JobEvent } from '@encore/shared';
 

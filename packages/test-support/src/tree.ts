@@ -10,11 +10,11 @@
 // `existsSync` it reads nothing, finds no violations, and PASSES. This repo has no CI, so a local run is
 // the only gate, and a vacuously passing guard is indistinguishable from a healthy one. That failure has
 // already happened here: `non-vacuity-floors.test.ts`'s RETIRED arm skipped silently on a missing file
-// until #775 phase 0 closed it.
+// until phase 0 of the test reorganisation closed it.
 //
 // THE CONTRACT. Anchors are discovered by walking UP to the repo root marker, never by counting down from
 // a caller. So a test importing this resolves the same paths from `apps/core/src/lib/`, from `tests/unit/`,
-// or from anywhere else — which is what makes the #775 move mechanical instead of 207 individual
+// or from anywhere else — which is what makes the move mechanical instead of 207 individual
 // recalculations, and what stops the NEXT move from being a project.
 //
 // WHY THERE IS NO `readIfExists`. A missing path is always an error here, never a skip. A permissive

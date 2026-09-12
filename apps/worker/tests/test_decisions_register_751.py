@@ -1,8 +1,8 @@
-"""#751 — a comment asserted the ruling was recorded in the ratified-decisions register, and it
+"""A comment asserted the ruling was recorded in the ratified-decisions register, and it
 was not.
 
 THE DEFECT. `roformer.py`'s `ROFORMER_MODELS` block told the reader that the engine-package ruling
-from #483 — adopt `python-audio-separator` ALONGSIDE `bs-roformer-infer`, both engines, owner ruling
+from the engine ruling — adopt `python-audio-separator` ALONGSIDE `bs-roformer-infer`, both engines, owner ruling
 Q1(b) — "is recorded in docs/DECISIONS.md". Measured on `c23ba69`, that register held ZERO matches for
 `bs-roformer-infer`, `both engines`, `alongside`, `483`, `Q1` or `owner ruling`; the ruling existed only
 as a comment in `requirements.txt`. Worse, the register read the other way: `python-audio-separator`
@@ -52,7 +52,7 @@ REPO = WORKER.parents[1]  # apps/worker -> apps -> repo root
 DECISIONS = REPO / "docs" / "DECISIONS.md"
 ROFORMER = WORKER / "src" / "separation" / "roformer.py"
 
-#: The #483 ruling's identifying terms. ALL must be present for a file to count as recording it —
+#: The engine ruling's identifying terms. ALL must be present for a file to count as recording it —
 #: any single one alone is ambient (docs/ARCHITECTURE.md contains "alongside" and nothing else of
 #: this ruling, which is what the discrimination sentinel in arm 3 exploits).
 RULING_MARKERS = (
@@ -60,7 +60,7 @@ RULING_MARKERS = (
     "bs-roformer-infer",
     "alongside",
     "both engines",
-    # `#483` was a sixth marker here. It went when issue references were cleared from source and
+    # The issue number was a sixth marker here. It went when issue references were cleared from source and
     # docs: the five remaining markers name the ruling by its CONTENT — both engine names, the
     # word "alongside", the phrase "both engines" and the question id — which is a stronger
     # identification than the number ever was.
@@ -76,7 +76,7 @@ REGISTER_ANCHORS = (
 )
 
 #: The two files the ruling comment is required to name. One pointer orphans the claim as soon as
-#: either file is reorganised — which is exactly how #751 happened.
+#: either file is reorganised — which is exactly how the drift this file pins happened.
 REQUIRED_CITATIONS = ("docs/DECISIONS.md", "apps/worker/requirements.txt")
 
 #: The two discredited framings, banned as WHOLE phrases rather than as the bare substring
@@ -175,7 +175,7 @@ def test_the_register_does_not_frame_the_adoption_as_a_replacement():
     for banned in BANNED_FRAMINGS:
         assert banned.lower() not in text.lower(), (
             f"docs/DECISIONS.md describes the adoption as {banned!r}, which reads as replacing "
-            "bs-roformer-infer — #483 ruling Q1(b) is both engines"
+            "bs-roformer-infer — ruling Q1(b) is both engines"
         )
 
 
@@ -219,7 +219,7 @@ def test_the_register_does_not_claim_an_engine_the_code_does_not_have():
             assert claim.lower() not in text.lower(), (
                 f"docs/DECISIONS.md asserts {claim!r} while python-audio-separator is absent from "
                 "requirements.txt and engines.py — a register claiming a state the code does not hold "
-                "is the defect #751 was filed about"
+                "is the defect this file was filed about"
             )
 
 

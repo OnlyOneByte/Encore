@@ -162,7 +162,7 @@ async def test_a_raising_instrumental_probe_fails_the_job():
 
 
 async def test_a_silent_INSTRUMENTAL_failure_is_classified_non_retryable():
-    """#571: a silent instrumental is DETERMINISTIC — the same decoded WAV re-measures the same silence
+    """A silent instrumental is DETERMINISTIC — the same decoded WAV re-measures the same silence
     every attempt, so retrying burns two more full separator passes (up to 2h11m each on roformer) to
     rediscover a source that can never succeed. The raise must therefore carry a non-retryable
     classification so the core fails it after one pass instead of three. Asserts the CLASSIFICATION,

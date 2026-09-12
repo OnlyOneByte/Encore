@@ -29,7 +29,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, read, at } from '@encore/test-support';
+import { appSrc, read } from '@encore/test-support';
 // The registry is reached by RELATIVE path, not as `@encore/shared/...`: that package's `exports` map
 // carries only `"."`, so a subpath import does not resolve. An import specifier cannot be routed
 // through `at()` (that returns a runtime string, not a module), so this stays relative — but it is a

@@ -8,7 +8,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, at } from '@encore/test-support';
+import { appSrc } from '@encore/test-support';
 
 // `apps/core/src`, named rather than counted: this was `at('apps/core/src')`,
 // which is only that directory from inside routes/tv/. Both reads below hang off it.

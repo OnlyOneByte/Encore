@@ -26,7 +26,7 @@
  * what the current media resolves to now (`''` when the slot has nothing playable). `playable` is
  * `media && isPlayable(media)`: when false the slot has nothing to play THIS pass, which — because the
  * element only exists while playable — is a transient churn pass and must never clear a src the element
- * still holds (see #251, and the `!playable` branch below). `changed` is true only when the element must actually be
+ * still holds (see the `!playable` branch below). `changed` is true only when the element must actually be
  * written, so an unchanged song is a no-op and never reloads, and a not-playable pass is never a clear.
  */
 export function nextVideoSrc(prev: string | null, next: string, playable: boolean): { src: string; changed: boolean } {

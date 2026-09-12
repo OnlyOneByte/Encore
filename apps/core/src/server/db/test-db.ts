@@ -5,7 +5,7 @@
 // override, and skipping openDb()'s pragmas (WAL, foreign_keys=ON, busy_timeout). A migration or
 // pragma added on one path silently skipped the others. This is the single source: it opens the
 // same way production does and runs the same migration entry point, so there is one path to keep
-// correct. See issue #618 / #455.
+// correct.
 import { openDb } from './index';
 import { runMigrations } from './migrate';
 import type { DB } from './index';

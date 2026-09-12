@@ -176,7 +176,7 @@ def test_a_wrong_song_by_the_right_artist_is_REFUSED_not_written():
     # then title, then confidence_for(duration) in that order, so on the old 300s fixture the title
     # gate refused first -- but duration was a SECOND, INDEPENDENT gate that would still refuse the
     # candidate once the title gate was removed, so deleting the title gate left this test green
-    # (vacuous; issue #104). Holding the length in agreement opens the duration gate for this
+    # (vacuous). Holding the length in agreement opens the duration gate for this
     # candidate, leaving the title gate the only refusal, so deleting it now reds this test. Duration
     # refusal is covered separately by test_every_candidate_too_far_off_in_length_is_refused.
     body = {

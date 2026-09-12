@@ -168,7 +168,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 		id: 'audiosep',
 		label: 'Mel-Band RoFormer',
 		capability: 'stems:audiosep', // a distinct capability — only an audio-separator-equipped worker takes it
-		liveSelectable: true, // owner ruling #483 Option A: live-selectable, medium speed on CPU
+		liveSelectable: true, // owner ruling Option A: live-selectable, medium speed on CPU
 		speed: 'medium',
 		models: [
 			{

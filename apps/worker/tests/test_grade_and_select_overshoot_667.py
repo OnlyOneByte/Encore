@@ -1,4 +1,4 @@
-"""#667 pin (c): GradeAndSelect threads `audio.duration_sec` into selection.
+"""Pin (c): GradeAndSelect threads `audio.duration_sec` into selection.
 
 `select_by_baselines` cannot see the song length on its own — its only caller is this step, which used
 to declare `reads = {"lyrics.texts"}`. Overshoot needs the duration, so the step must (1) DECLARE the
@@ -86,10 +86,10 @@ def _run_step(texts, duration_sec, tmp_path):
 
 
 def test_step_passes_duration_through_so_overcovered_candidate_is_demoted(tmp_path):
-    """#851 F1: the pin must BITE. A rival exists whose RAW agreement is LOWER than the over-covered
+    """F1: the pin must BITE. A rival exists whose RAW agreement is LOWER than the over-covered
     candidate's, so ONLY the overshoot penalty can flip the pick to it. On base the step never
     passes a duration, so the penalty never fires and the higher-raw over-covered candidate wins — this
-    reds on the variant assertion. The fixture is the discriminating one #816 committed; the overshooter
+    reds on the variant assertion. The fixture is the discriminating one committed at the time; the overshooter
     is timed to 330s (+23% of 268s) so it clears OVERSHOOT_FRACTION_MAX and its raw lead (0.646 vs 0.506)
     is what the penalty has to overturn."""
     over = _timed(SOURCE_LRCLIB, LONGER_MASTER_300, "longer-master", per_word_end=330.0)
@@ -129,7 +129,7 @@ def test_step_reports_overshoot_in_the_cook_log_when_the_published_pick_overshoo
 
 
 def test_a_demoted_overshooting_candidate_still_gets_an_overshoot_note_naming_the_demotion(tmp_path):
-    """#851 F1 + F2: across-source, `longer-master` out-scores the fitting rival on RAW agreement, so
+    """F1 + F2: across-source, `longer-master` out-scores the fitting rival on RAW agreement, so
     ONLY the penalty demotes it below `fits-the-audio` — the pick genuinely turns on the demotion.
     On base the note loop only visited sel.publish, so the demoted loser produced ZERO overshoot notes,
     and once the loop was fixed the verdict hardcoded a false causal "DEMOTED, published X". Head
@@ -172,7 +172,7 @@ def test_an_overshooting_published_pick_is_not_reported_as_demoted(tmp_path):
 # --- F2: the DEMOTED arm claimed the overshoot penalty CAUSED the pick, from `is_published`, which
 # cannot say so. A wrong-song candidate loses on AGREEMENT by a margin the comparative penalty never
 # comes near — switch the penalty off and the SAME winner publishes — yet the base note printed the
-# causal "DEMOTED, published X instead". This is the third arm of the ladder #739 corrected the other
+# causal "DEMOTED, published X instead". This is the third arm of the ladder an earlier change corrected the other
 # two of.
 
 #: A genuinely DIFFERENT song, and a LONGER one (its own timings run to 180s against 100s of audio).
@@ -184,7 +184,7 @@ WRONG_SONG_LONGER = (
 
 
 def test_a_demoted_wrong_song_pick_is_not_reported_as_caused_by_the_overshoot_penalty(tmp_path):
-    """#851 F2: a wrong-song candidate overshoots AND scores near-zero agreement, so it loses on the
+    """F2: a wrong-song candidate overshoots AND scores near-zero agreement, so it loses on the
     metric, not on the penalty. The CONTROL — `select_by_baselines(texts, None)`, the penalty switched
     off entirely — publishes the SAME winner, proving the demotion decided nothing. Base still worded
     the note "DEMOTED, published fits-the-audio instead", asserting a causation it never checked and
@@ -216,7 +216,7 @@ def test_a_demoted_wrong_song_pick_is_not_reported_as_caused_by_the_overshoot_pe
 # `is_published`, does not carry. F1 asserted "no candidate that fits the audio" from it, which is
 # false whenever the COMPARATIVE overshoot penalty is smaller than the overshooter's score lead. F2
 # dropped `is_published` entirely, so a tolerated overshoot on a REJECTED rival read as one on the
-# lyrics that shipped. Neither #731 test above can see either arm: `:116` drives a FLIPPING (+80%)
+# lyrics that shipped. Neither test above can see either arm: `:116` drives a FLIPPING (+80%)
 # overshoot, and `:137` drives a lone overshooter with no rival in the pool at all.
 
 #: The audible words — what the ASR baseline heard off this recording.
@@ -239,7 +239,7 @@ FITS_THIS_RECORDING_265 = (
 def test_a_published_overshoot_does_not_claim_nothing_fit_when_a_fitting_rival_was_in_the_pool(
     tmp_path,
 ):
-    """#739 F1: a NON-FLIPPING overshoot. `overshoot_penalized` subtracts the overshoot fraction, so
+    """F1: a NON-FLIPPING overshoot. `overshoot_penalized` subtracts the overshoot fraction, so
     at +12% it takes 0.646 to 0.526 and the overshooter still beats the 0.506 rival whose timings fit
     the audio. Base words this from `is_published` alone and emits "no candidate that fits the audio"
     verbatim — false, since `fits-this-recording` was fetched, graded, and never published. Head must
@@ -263,7 +263,7 @@ def test_a_published_overshoot_does_not_claim_nothing_fit_when_a_fitting_rival_w
 
 
 def test_a_tolerated_overshoot_on_a_rejected_candidate_says_it_was_not_published(tmp_path):
-    """#739 F2: the published pick does not overshoot at all (last_end 90s of 100s), and the only
+    """F2: the published pick does not overshoot at all (last_end 90s of 100s), and the only
     overshoot line in the log is about a REJECTED rival 5s long — inside the tolerance band, so no
     demotion fires. Base emits a bare "within tolerance", which reads as the shipped lyrics
     overrunning by 5s. Head must say it was not published, and which variant was."""

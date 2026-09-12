@@ -16,7 +16,7 @@
 // fails it. This is what pins those four comment-only hunks, which by construction cannot red a
 // behavioural test.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { isLikelyWrongSong, lyricsRank, SUSPECT_COVERAGE } from '@encore/shared';
 
 // The two documented files were already named repo-relative here; what was derived from this test's own

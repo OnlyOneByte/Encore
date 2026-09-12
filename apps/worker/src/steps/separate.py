@@ -61,7 +61,7 @@ class DecodeToWav(Step):
             # "ffmpeg: : No such file or directory"; name the missing key instead.
             # PermanentError (retryable=False): a step running out of order with no audio.path is a
             # deterministic plan error — every retry re-runs the same passes and fails identically, so
-            # it must fail fast rather than burn three attempts (same class as #571).
+            # it must fail fast rather than burn three attempts (the same class as a CLI that exits 0 with no output).
             raise PermanentError("decode-to-wav: audio.path is empty (AcquireAudio did not run or failed)")
         await run_quiet(ctx.runner, decode_argv(ctx.audio.path, out, self._ffmpeg))
         ctx.audio.decoded_wav = out
@@ -213,7 +213,7 @@ class PublishStems(Step):
             # empty path into "ffmpeg: : No such file or directory"; name the missing key instead.
             # PermanentError (retryable=False): a missing instrumental key is a deterministic plan
             # error — every retry re-runs the same passes and fails identically, so it must fail fast
-            # rather than burn three attempts (same class as #571).
+            # rather than burn three attempts (the same class as a CLI that exits 0 with no output).
             raise PermanentError("publish-stems: stems.raw['instrumental'] is missing (Separate did not run)")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)

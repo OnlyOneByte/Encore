@@ -1,6 +1,6 @@
 // Ended telemetry advances rotation, picks next by seq; nowplaying carries upNext.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from '$server/realtime/player';
 import { AuthoritativeState } from '$server/state/store';
 import { type HubDeps } from '$server/realtime/hub';

@@ -67,11 +67,11 @@ test('TvPlayer arms a document-wide gesture listener that re-attempts playback',
 	expect(src).toMatch(/autoplayBlocked\s*=\s*false/);
 	expect(src).toContain('onautoplayrecovered');
 	// The latch is a real $state, not a plain let — the hint's {#if} and the gesture effect both track
-	// it, so reactivity is load-bearing. Pins hunk #3 (the state declaration); a plain `let` would leave
+	// it, so reactivity is load-bearing. Pins hunk 3 (the state declaration); a plain `let` would leave
 	// the effect and the callbacks reading a non-reactive value.
 	expect(src).toMatch(/let\s+autoplayBlocked\s*=\s*\$state\(false\)/);
 	// The two callbacks are actually DESTRUCTURED from props (not merely declared in the interface), so
-	// the parent's handlers are the ones invoked. Pins hunk #2. Each must appear in the destructure list
+	// the parent's handlers are the ones invoked. Pins hunk 2. Each must appear in the destructure list
 	// as its own entry — trailing comma OR end-of-list — so a later prop (onplayingchange now sits
 	// after onautoplayrecovered) does not falsify the guard while the destructuring it checks still holds.
 	expect(src).toMatch(/onautoplayblocked\s*,/);
@@ -115,7 +115,7 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots',
 	// gestures — can reach it, and it is dismissable.
 	expect(src).toMatch(/class="autoplay-hint"/);
 	// The affordance must actually be STYLED as a full-screen top-of-stack overlay, not an unstyled
-	// button that a viewer cannot see or tap. Pins hunk #11 (the .autoplay-hint CSS): the rule must exist,
+	// button that a viewer cannot see or tap. Pins hunk 11 (the .autoplay-hint CSS): the rule must exist,
 	// cover the viewport (inset: 0), and sit above every other layer (z-index: 10) so a tap anywhere lands.
 	// Match against the comment-stripped `src` computed above: a live CSS rule is neither a /* */ nor an
 	// <!-- --> comment, so stripComments leaves it intact, while a commented-out copy of the selector is

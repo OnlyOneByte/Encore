@@ -1,4 +1,4 @@
-// Loudness normalization — the PLAYBACK-side decision for #462 (PR3, "apply the gain").
+// Loudness normalization — the PLAYBACK-side decision (PR3, "apply the gain").
 //
 // PR1 measures each instrumental's integrated loudness on the worker (BS.1770-4 via pyloudnorm) and
 // PR2 persists it as `songProfile.loudnessLufs` (tri-state: a number in a measurable window, or

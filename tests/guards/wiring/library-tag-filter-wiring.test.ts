@@ -11,7 +11,7 @@
 // The repository RUNTIME test (media/library-tag-filter.test.ts) proves byTag/tagFacets actually read
 // the tag-kind index, so this scan is not the only thing standing between the fix and green.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Blank comments (not delete — keep offsets) so a seam cannot be satisfied by prose describing it.
 function stripComments(src: string): string {

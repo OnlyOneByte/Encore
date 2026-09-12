@@ -681,7 +681,7 @@
 								<span class="swatch" style="background: {tvBackgroundPreview}" aria-hidden="true"></span>
 							</Field.Label>
 							<!--
-							A real colour input, not the hue slider this was until #425: the room names a colour
+							A real colour input, not the hue slider this was until the stage-colour change: the room names a colour
 							outright now rather than an angle rendered at a pinned lightness. oninput/onchange are
 							split for the same reason every slider here splits them — the native picker fires
 							`input` continuously while you drag inside it, so the swatch has to track live, while only
@@ -1275,7 +1275,7 @@
 	 * in one engine drops the whole selector in that engine. A painted track is required once appearance
 	 * is none, or WebKit would leave the track invisible.
 	 *
-	 * These were scoped `:not(.hue)` until #425, to spare the stage's hue slider its own full-height
+	 * These were scoped `:not(.hue)` until that change, to spare the stage's hue slider its own full-height
 	 * gradient track. That slider is gone — the stage is a colour input now — so the exclusion went with
 	 * it rather than being left behind as a selector matching nothing.
 	 */
@@ -1322,7 +1322,7 @@
 	 * S3: was `.check input { width: 18px; height: 18px }`. The glyph is now <Checkbox>, which
 	 * carries its own `size-[18px]` — scoped CSS cannot reach inside a child component, so the size had
 	 * to move with it. The TAP TARGET is unchanged and still this label's `min-height: var(--tap)`,
-	 * which is what #863 settled and what touch-targets.test.ts examines.
+	 * which is what the tap-floor ruling settled and what touch-targets.test.ts examines.
 	 */
 
 	/* ── the dashboard links ────────────────────────────────────────────── */

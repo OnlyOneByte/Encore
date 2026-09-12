@@ -12,7 +12,7 @@
 // one-primary-action design exists to remove. The `{:else}` branch also fires `onadd?.()`, so a row
 // passed neither callback would render an enabled control that silently does nothing.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	return src

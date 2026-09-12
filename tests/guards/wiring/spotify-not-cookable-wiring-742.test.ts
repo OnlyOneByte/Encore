@@ -12,7 +12,7 @@
 // union member type-checks clean while every consumer keeps falling through its `if (state === …)`
 // chain. Without the scan below, deleting that member is invisible to `bun test`.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');

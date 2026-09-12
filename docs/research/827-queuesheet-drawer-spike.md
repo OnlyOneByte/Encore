@@ -1,8 +1,8 @@
 # Spike · QueueSheet on the shadcn/vaul drawer
 
-> **⚠ SUPERSEDED BY #903 — this document is history, not a plan.** Its verdict ("GO on the drawer") was
+> **⚠ SUPERSEDED — this document is history, not a plan.** Its verdict ("GO on the drawer") was
 > never acted on, and the question it answered is closed the other way: the ratified phone design has no
-> drawer, #832 built the inline-rows/hero/docked-band home instead, and neither `QueueSheet.svelte` nor
+> drawer; direction A built the inline-rows/hero/docked-band home instead, and neither `QueueSheet.svelte` nor
 > the `QueueSheetDrawer.svelte` port ever rendered anywhere a guest could reach — both existed only in
 > the `/components` gallery. An earlier change deleted the whole drawer surface along with `vaul-svelte`, `bits-ui`
 > and `@internationalized/date`. The file:line citations below are left UNREPAIRED on purpose: the files
@@ -12,7 +12,7 @@
 
 **Verdict: GO on the drawer, with two costs to accept and one number that will change.** All four
 do-not-regress values hold exactly on the port, snap points work under a real pointer drag, and the
-motion is CSS. What the port costs is guard coverage (already ruled on: #827 Q1 · C) and a sheet that
+motion is CSS. What the port costs is guard coverage (already ruled on: Q1 · C) and a sheet that
 is always 82dvh tall instead of shrink-wrapping its content.
 
 Measured on `d325c64`, branch `spike/queuesheet-shadcn-827`, `vaul-svelte@1.0.0-next.7` +
@@ -93,7 +93,7 @@ asserted-in-prose, in `apps/core/src/lib/components/drawer-spike-827.test.ts`.
 
 **Risk 4 · drag reorder — OUT OF SCOPE.** The drawer is the *sheet pull*, which the incumbent already
 implements with pointer handlers. Row reorder is `svelte-dnd-action` (`docs/ux/02-phone.md` XR-PH-06)
-and #836 owns it. Its "blocked" premise does not hold — different library, different gesture.
+and the reorder-mode work owns it. Its "blocked" premise does not hold — different library, different gesture.
 
 **Risk 5 · do the guards keep working — NO, as already ruled (Q1 · C).** Confirmed, and narrowed.
 The port takes exactly two named assertions out of scope, and **both fail loudly**, which is the good
@@ -182,5 +182,5 @@ the assistive-technology consequences of a dialog that is never closed.
   deliberately, so risk 5 could be tested at its most favourable; a real shadcn drawer would replace
   those rules with utilities, which is strictly worse for every class-name-resolving guard.
 - The a11y consequences of the never-closed dialog (see above).
-- `#791` and `#835` are both still open and both rewrite `.body`, the surface N3 measures. These
+- Two follow-ups are both still open and both rewrite `.body`, the surface N3 measures. These
   numbers are true of `d325c64` and will need re-measuring after either lands.

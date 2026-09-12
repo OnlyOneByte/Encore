@@ -13,7 +13,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, at } from '@encore/test-support';
+import { appSrc } from '@encore/test-support';
 
 // Was `at('apps/core/src')` from apps/core/src/lib, which meant apps/core/src. `appSrc` is that
 // same directory named directly, and it is derived from the repo-root marker rather than from wherever

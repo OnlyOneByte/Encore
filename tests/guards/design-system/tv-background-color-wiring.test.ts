@@ -21,7 +21,7 @@
 // no reference to the retired hue field or to nearestSingerHue on this path. It reds on base, where the
 // route read `settings.room.tvBackgroundHue` directly.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Blank out block, line, and HTML comments, PRESERVING newlines, so a commented-out wiring line can
 // never satisfy a positive guard and a commented-out retired reference can never fail a negative one.

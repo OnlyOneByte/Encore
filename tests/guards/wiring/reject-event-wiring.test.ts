@@ -7,7 +7,7 @@
 // this decidable property is pinned by source scan, the same way reaper-onfailed-wiring.test.ts
 // pins app.ts's reaper seam. Comments are blanked so a commented-out call cannot satisfy the match.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

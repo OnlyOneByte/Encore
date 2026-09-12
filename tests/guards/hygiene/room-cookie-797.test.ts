@@ -31,7 +31,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, at } from '@encore/test-support';
+import { appSrc } from '@encore/test-support';
 
 /**
  * apps/core/src — the production tree this guard walks. Was `at('apps/core/src')`, counted

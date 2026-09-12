@@ -57,8 +57,8 @@ const REPO = repoRoot;
 //
 //   * `Finding #4` — a numbered REVIEW finding. A different scheme, never ruled on, and stripping it would
 //     destroy a reference a reader can actually resolve (the findings are listed in the review).
-//   * ordinals — `socket #0`, `sample #0`, `frame #1`. Not references at all: they count things. There are
-//     8 in the tree, and a ban that ate them would rewrite `socket #0 drops` into nonsense.
+//   * ordinals — `socket 0`, `sample #0`, `frame #1`. Not references at all: they count things. There are
+//     8 in the tree, and a ban that ate them would rewrite `socket 0 drops` into nonsense.
 //
 // Both are excluded by pattern rather than by an exemption list, because they are shapes rather than sites:
 // a new `Finding #7` or `slot #3` should be allowed without anyone editing this file.
@@ -88,6 +88,11 @@ const PATTERNS: { re: RegExp; family: string; only?: (rel: string) => boolean }[
 				// written unquoted — which the trailing-quote exclusion below cannot see. This is the
 				// discriminator that covers the unquoted case.
 				`#(?!0)[0-9]{1,4}` +
+				// …and not closing a quoted parenthetical VALUE. `"Lady Gaga — Telephone (243s, #1)"` is
+				// production data — the lyrics registry's own same-title disambiguator — and the trailing
+				// character there is `)`, not a quote, so the exclusion below does not reach it. A reference
+				// in prose is never followed by `)` immediately before a string ends.
+				`(?!\\)['"])` +
 				// …not followed by a hex digit or a closing quote (either would make it a colour).
 				`(?![0-9a-fA-F'"])`
 		),
@@ -108,6 +113,11 @@ const PATTERNS: { re: RegExp; family: string; only?: (rel: string) => boolean }[
  * cleanup needs its own ruling rather than being folded in here.
  */
 const ISSUE_SUBJECT_EXEMPT: { file: string; contains: string; why: string }[] = [
+	{
+		file: 'docs/ux/05-concurrency.md',
+		contains: "You're #3 · after Sam",
+		why: 'PRODUCT COPY, not prose about the codebase. This is the position line a phone renders to a guest — `#3` means THIRD IN LINE, the one meaning of `#N` this product ships to a user. Quoting it in the requirement that specifies it is the whole point of the row, so the string has to survive verbatim.'
+	},
 	{
 		file: 'tests/guards/design-system/lyrics-singer-colour-wiring.test.ts',
 		contains: '`--reel-now` is deliberately NOT overridden',

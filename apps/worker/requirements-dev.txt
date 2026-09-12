@@ -1,13 +1,13 @@
 # Dev/CI-only tooling for the Encore worker — the reproducible form of the by-hand
 # `pip install pytest pytest-asyncio` that README.md documented. Pinned like requirements.txt
-# (no bare latest) so the gate is byte-reproducible from the repo alone. Issue #437.
+# (no bare latest) so the gate is byte-reproducible from the repo alone.
 #
 # Install:  pip install -r requirements.txt -r requirements-dev.txt
 # Gates:    pytest -q  ·  ruff check  ·  ruff format --check  ·  mypy
 pytest==8.4.2
 pytest-asyncio==1.2.0
 # per-test wall-clock backstop for the worker suite so a wedged/hung test fails with a
-# signal (names file:line, fails only that test) instead of hanging the whole run. Issue #291.
+# signal (names file:line, fails only that test) instead of hanging the whole run.
 pytest-timeout==2.4.0
 ruff==0.14.4
 mypy==1.19.0

@@ -51,7 +51,7 @@
 		 * One sentence at the head of the control group when a control cannot act on this song — the
 		 * reason, plus what still works (XR-PH-15). It lives HERE, beside the group, rather than inside
 		 * the control it explains: an earlier change deleted that line from `GuidingTrack.svelte` and a guard pins its
-		 * absence, and #835 Q1-D is the owner's ruling that the reason belongs on the hero instead.
+		 * absence, and ruling Q1-D is the owner's ruling that the reason belongs on the hero instead.
 		 *
 		 * It is deliberately a sibling of the snippet's own markup, not a child of it, because the
 		 * disabled controls dim their subtree with `opacity` (`.gt.disabled`, `.key.disabled`) — a

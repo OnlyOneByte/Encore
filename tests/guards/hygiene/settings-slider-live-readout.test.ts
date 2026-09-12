@@ -13,7 +13,7 @@
 // +page.svelte, strips comments so a commented-out handler cannot satisfy it, and pins each slider's
 // live handler individually so a single reverted oninput reds exactly one named test.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // SIBLING READ, now named explicitly. This guard used to live in apps/core/src/routes/settings/, so
 // `at('apps/core/src/routes/settings/+page.svelte')` meant "the settings route next to me" — a subject nothing can

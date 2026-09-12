@@ -6,7 +6,7 @@
 // autoplay and the master sits paused at currentTime=0 with only its preload burst decoded, while the
 // server says isPlaying and the reel advances off the server intent. checkI4 had no skip for that
 // state, so it computed `cue = master.currentTime + LEAD_SEC` against a frozen playhead and reported
-// the reel's legitimate position as a violation at input #4 of every gestureless run — a PHANTOM the
+// the reel's legitimate position as a violation at input 4 of every gestureless run — a PHANTOM the
 // full-screen tap-to-start affordance keeps off screen for any real viewer. The adjacency seams
 // the file exists to reach were never reached. Its sibling checkI6 already had this skip; the file
 // header (fuzz.mjs:46-48) claims I1/I4/I6 all skip under this policy — I1 and I6 did, I4 did not.

@@ -12,7 +12,7 @@ through that package (see roformer.py's `#: KNOWN MISMATCH` note). audio-separat
 first-class MDXC path. The measured win is large: `mel instrumental_becruily` benchmarks at rt 1.28 on
 the reference box (32-core Graviton 3, CPU) versus `bs_roformer-1297` at rt 13.29 — a 10.4x
 RoFormer-family instrumental cook, no GPU (docs/benchmarks/SUMMARY.md §4). Adopted ALONGSIDE
-`bs-roformer-infer`, not replacing it — both engines, issue #483 owner ruling Q1(b) (docs/DECISIONS.md).
+`bs-roformer-infer`, not replacing it — both engines, owner ruling Q1(b) (docs/DECISIONS.md).
 
 INTEGRATION: audio-separator exposes a CLI (`audio-separator <input> --model_filename <ckpt>
 --model_file_dir <dir> --output_dir <dir> --output_format FLAC`), confirmed against the repo's own
@@ -72,7 +72,7 @@ def resolve_audiosep_checkpoint(params: dict, default: str = DEFAULT_AUDIOSEP_MO
     if checkpoint is None:
         # BoundaryError subclasses ValueError (drop-in for pytest.raises(ValueError)) but carries the
         # shared structured retryable = False, so an unknown token fails fast via retry_policy instead of
-        # burning three cook attempts on a token that can never resolve — same as #497 gave demucs.
+        # burning three cook attempts on a token that can never resolve — the same fast failure demucs already gives.
         raise BoundaryError(
             f"unknown audiosep model {token!r}; expected one of {sorted(AUDIOSEP_MODELS)}"
         )

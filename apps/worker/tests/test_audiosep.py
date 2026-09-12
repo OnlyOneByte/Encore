@@ -96,7 +96,7 @@ def test_audiosep_argv_includes_model_file_dir_when_set():
 
 # ── engine routing ─────────────────────────────────────────────────────────────────
 def test_engine_for_builds_a_real_audiosep_engine():
-    """The #118 parity contract for the new token: `engine_for("audiosep")` must build a real engine
+    """The parity contract for the new token: `engine_for("audiosep")` must build a real engine
     (capabilities.py advertises `stems:audiosep` only when the dep is present, and the core routes a
     stems:audiosep cook here — an unbuildable engine would dispatch and die at plan selection)."""
     from src.separation.engines import AudioSepEngine, engine_for
@@ -116,7 +116,7 @@ def test_engine_selection_reads_audiosep_from_the_job_param():
 
 
 def test_a_demucs_default_cannot_reach_the_audiosep_engine():
-    """Issue #84 class, applied to the new engine. `plans.stems_runner` forwards this worker's
+    """The checkpoint-crossing class, applied to the new engine. `plans.stems_runner` forwards this worker's
     `demucs_model` into `engine_for` on every cook. The audiosep branch must ignore it and keep its OWN
     default (`instrumental_becruily`), never resolve to a demucs checkpoint."""
     from src.separation.audiosep import DEFAULT_AUDIOSEP_MODEL, resolve_audiosep_checkpoint

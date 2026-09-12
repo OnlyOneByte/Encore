@@ -12,7 +12,7 @@
 //
 // Comments are blanked so a commented-out wiring cannot satisfy any match.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

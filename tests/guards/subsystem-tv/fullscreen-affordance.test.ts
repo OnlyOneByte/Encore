@@ -21,7 +21,7 @@
 // Each test below pins a DISTINCT production hunk, so reverting any one hunk individually reds a
 // NAMED test rather than relying on a union revert, the shape that hides a mutation-blind hunk.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 /**
  * Blank out block, line and markup comments, PRESERVING newlines so reported line numbers stay true.

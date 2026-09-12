@@ -1,6 +1,6 @@
 // The TV's telemetry FRAME, as a pure function — the half that lives on the client.
 //
-// WHY THIS EXISTS. #70 and #125 are one fix split across the wire: the server (player.ts) drops a
+// WHY THIS EXISTS. The stale-ended and stale-playhead defects are one fix split across the wire: the server (player.ts) drops a
 // telemetry frame whose `entryId` is no longer the current entry, so a stale/duplicate `ended` can no
 // longer double-advance and an outgoing song's late position frame can no longer overwrite the
 // incoming singer's playhead. That guard is written `t.entryId !== undefined && …`, so it does

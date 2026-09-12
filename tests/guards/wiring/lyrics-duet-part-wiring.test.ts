@@ -24,7 +24,7 @@
 // pure `duetPartColors` in `packages/shared/src/presentation/colors.test.ts`; the RENDERED pixels are the CDP
 // frames in the PR body.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 /** Blank out block, line and HTML comments, PRESERVING newlines so a commented-out wiring line can
  *  never satisfy a positive assertion nor a commented-out retired reference fail a negative one. */

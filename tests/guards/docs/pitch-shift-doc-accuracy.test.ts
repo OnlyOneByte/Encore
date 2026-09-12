@@ -8,7 +8,7 @@
 // would blind the guard to its whole subject — same reasoning doc-accuracy.test.ts states in its header.
 // The guard scans comment text only, and asserts it against the CODE surface it is checked against.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Was `const TV = at('apps/core/src/lib/tv')` — this guard used to LIVE in apps/core/src/lib/tv, so its three
 // subjects were siblings. Named from the repo root now: the two production files are stable, and the

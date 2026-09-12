@@ -18,7 +18,7 @@
 //      effect's master branch (re-apply after build), and the per-song reset. Mutation traps: deleting
 //      any setGain(effectiveMasterLevel) call reds the matching test.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { PitchShiftGraph } from '$lib/tv/pitch-shift';
 
 // -- A. Behavioural: a pre-set master level lands in the GainNode the moment the graph is built ----

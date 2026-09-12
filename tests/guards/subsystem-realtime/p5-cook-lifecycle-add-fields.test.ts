@@ -19,7 +19,7 @@
 // docstring above the function (which now NAMES the six fields in prose) can neither satisfy nor
 // trip the check. Dropping any required key from the literal reds this guard.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { queueEntries } from '$server/db/schema';
 
 function stripComments(src: string): string {

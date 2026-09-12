@@ -161,7 +161,7 @@ test('hydrate() leaves a currentEntryId that DOES resolve untouched', () => {
 // commented-out call cannot satisfy it.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { appCore, appSrc, read, at } from '@encore/test-support';
+import { appCore, appSrc, read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

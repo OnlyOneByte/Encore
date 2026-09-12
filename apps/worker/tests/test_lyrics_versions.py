@@ -104,7 +104,7 @@ def test_the_wrong_version_scores_ABOVE_the_wrong_song_threshold_so_a_threshold_
     If the losing version's baseline COVERAGE were below SUSPECT_COVERAGE, the absolute wrong-song check
     would already have handled this case and none of this code would be needed. It does not: two versions
     of one song share most of their words, so the shorter one still covers what is audible. This test
-    fails the moment someone 'simplifies' selection into a threshold. (#542: the judgement axis is
+    fails the moment someone 'simplifies' selection into a threshold. (the judgement axis is
     coverage now, not the ranking score — but the point stands on either, and coverage is the honest one
     to make it on, because coverage is what the threshold actually reads.)
     """

@@ -1,7 +1,7 @@
 // The capability gate. Its value today is not that it refuses much — every joined singer is a host —
 // but that the decision lives in ONE function, so narrowing it later is an edit there and nowhere else.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { can, type Capability } from '$server/auth/capabilities';
 
 const ALL: Capability[] = [

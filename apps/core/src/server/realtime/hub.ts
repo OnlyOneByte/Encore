@@ -153,7 +153,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 					existing.status !== 'queued')
 			)
 				return `entry id already taken: ${op.entry.id}`;
-			// Shape of the CLIENT-MINTED add entry as it reaches this guard. Since #345 (5acf86d) the server
+			// Shape of the CLIENT-MINTED add entry as it reaches this guard. Since the server-stamped addedAt change (5acf86d) the server
 			// owns addedAt — it is re-stamped from the room's monotonic nextAddedAt() at the applyQueueOp seam
 			// ~168 lines below (see hub.ts:handleQueueCommand). rotationSeq is ALSO server-owned, but not by
 			// applyOp: applyOp inserts op.entry verbatim and sorts by the existing value (ops.ts) — assignSeqs
@@ -287,7 +287,7 @@ export function handleQueueCommand(
 		// This MUST use the NON-RECORDING `hasOp`, never the record-on-check `seenOp`. `seenOp` inserts
 		// the id as a side effect of checking, so consulting it here would write a genuinely-INVALID,
 		// never-applied op's id into the ledger the moment it is rejected — and its resend (the same
-		// lost-message path #490 is about) would then be answered with a false re-ack instead of the
+		// lost-message path the re-ack rule is about) would then be answered with a false re-ack instead of the
 		// reject it deserves, silently vanishing an op that never applied. Only an op that ACTUALLY
 		// applies is recorded, and that happens on the already-applied branch below. This stays BEHIND
 		// the envelope guards — `validateCommand`'s first checks — so `cmd.clientOpId` is only read when

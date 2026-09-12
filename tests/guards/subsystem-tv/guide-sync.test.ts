@@ -1,5 +1,5 @@
 import { expect, it } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import {
 	GUIDE_DEADBAND_SEC,
 	GUIDE_MAX_RATE_TRIM,
@@ -174,7 +174,7 @@ it('seekPlan restarts a song playing under the jump threshold — the target-0 r
 		GUIDE_PREROLL_ALIGN_SEC + 0.01, // just past the pre-roll tolerance, the smallest real rewind
 		SEEK_JUMP_SEC / 3,
 		SEEK_JUMP_SEC / 2,
-		SEEK_JUMP_SEC - 0.01 // the top of the window #95 names
+		SEEK_JUMP_SEC - 0.01 // the top of the window the restart rule names
 	]) {
 		expect(seekPlan(masterSec, masterSec, 0)).toEqual({ master: true, guide: true });
 	}
@@ -303,7 +303,7 @@ it('TvPlayer applies the seek plan to BOTH elements: aligns the guide to the fix
 });
 
 /*
- * THE #95 COMPLETION. `seekPlan` admitting a restart-to-0 as a jump is necessary but not enough: on
+ * THE COMPLETION. `seekPlan` admitting a restart-to-0 as a jump is necessary but not enough: on
  * #95's own repro the song starts at position 0, so `seekSec` is already 0, and a restart under the
  * jump threshold publishes positionSec 0 AGAIN. Writing 0 over 0 into a `$state` (strict `===`)
  * notifies nothing, so an effect whose only dep is `seekSec` never re-runs and the master never
@@ -447,7 +447,7 @@ it('TvPlayer takes the pre-roll lock-on when the guide can play, not at effect t
  * driving BOTH the {#if} mount AND the ready-report, so a guide-level slider drag through 0 (step="1"
  * from min="0") flipped the mount false-then-true and UNMOUNTED/REMOUNTED the guide <audio> mid-song,
  * re-paying the canplay pre-roll lock-on. The fix splits mount-worthiness (level-independent) from the
- * level gate, and — trap #1 of the late-guide report — keeps the ready-report on the level-gated condition so a level-0
+ * level gate, and — trap 1 of the late-guide report — keeps the ready-report on the level-gated condition so a level-0
  * room never waits on the guide buffer. These assertions red on base (single level-gated wantsGuide
  * driving the mount) and pin the split.
  */
@@ -481,7 +481,7 @@ it('TvPlayer mounts the guide on mount-worthiness, gates readiness on the level:
 	expect(wg).toContain('effectiveGuide > 0');
 	// ...and the two ready-report effects + the guide-settle timeout still gate on the LEVEL
 	// (wantsGuide), never on the relaxed mount condition — a level-0 room must not wait on the
-	// guide buffer to announce ready. Guarding these on guideMountable is exactly trap #1.
+	// guide buffer to announce ready. Guarding these on guideMountable is exactly trap 1.
 	expect(tvForMountGate).toContain('(guideSettled || !wantsGuide) && !prewarmedFired');
 	expect(tvForMountGate).toContain('(guideSettled || !wantsGuide) && !visibleReadyFired');
 	expect(tvForMountGate).toContain('if (!wantsGuide || guideSettled) return;');

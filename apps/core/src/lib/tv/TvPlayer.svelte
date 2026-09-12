@@ -189,7 +189,7 @@
 	 */
 	const guideMountable = $derived(!!guideRef && !!media && isPlayable(media));
 	/**
-	 * Level-gating for READINESS, kept on the ORIGINAL condition (`effectiveGuide > 0`) — trap #1 of
+	 * Level-gating for READINESS, kept on the ORIGINAL condition (`effectiveGuide > 0`) — trap 1 of
 	 * that split. This is what keeps the default free: the feature ships at 0, and a room that never turns it
 	 * on must NOT wait on `guideSettled` before announcing ready, i.e. must not pay to decode a second
 	 * stream in silence just to leave `loading`. So the ready-report effects below gate on `wantsGuide`

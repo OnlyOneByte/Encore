@@ -111,7 +111,7 @@ function beginSinging(deps: HubDeps, entry: QueueEntry): void {
  * retired out from under playback. Three cases, all keyed on "currentEntryId does not resolve to a
  * live entry" — the room is effectively idle whether the id is null (never started, or advanced to
  * null) or DANGLING (a client `remove`/`status` pruned the playing entry without touching playback,
- * issue #128):
+ * the dangling-entry self-heal):
  *  • Idle and a freshly-ready/queued entry is now the soonest playable → start it (it slots back at
  *    its preserved fair position). A dangling id is overwritten by the new current here.
  *  • Idle with a dangling id and nothing playable left → clear the dangling id so the room reads as
@@ -132,7 +132,7 @@ export function reconcileOnReady(deps: HubDeps): void {
 	// production statement of "does currentEntryId name a live entry?". An earlier change removed server.ts's
 	// copy that decided whether to CALL this function, but left two copies of the predicate itself —
 	// this runtime recovery and store.ts's boot self-heal — byte-identical modulo the receiver, which
-	// is the drift #848 closed by extracting the shared helper both askers call. Callers now call
+	// is the drift closed by extracting the shared helper both askers call. Callers now call
 	// this function unconditionally and it decides — every branch below falls through to the
 	// emitNowPlaying at the tail, which is exactly what a "current resolves, nothing to recover"
 	// caller needs.

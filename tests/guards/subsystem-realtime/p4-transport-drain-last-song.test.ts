@@ -22,7 +22,7 @@
 // explanatory prose above the arm (which describes both the OLD single-skip mistake and the NEW
 // drain) can neither satisfy nor trip the check. Reverting the arm to a single skip reds this guard.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

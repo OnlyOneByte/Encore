@@ -3,7 +3,7 @@
 -- A real numbered migration (0004, after #656's 0003_room_keyed_queue), NOT an in-place baseline
 -- edit: a rewritten 0000 is never re-applied to an existing DB (drizzle keys on the journal `when`,
 -- not the file hash), so an existing party's configured settings would silently revert to default on
--- upgrade -- the exact availability trap #655/#669 hit. This migration replays only on DBs that have
+-- upgrade -- the exact availability trap 655/#669 hit. This migration replays only on DBs that have
 -- not recorded idx:4.
 --
 -- WHY: before #728 SettingsRepository defaulted every reader AND the writer route to DEFAULT_ROOM_ID

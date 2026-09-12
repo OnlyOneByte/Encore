@@ -101,7 +101,7 @@
 	 * is the entire point, so how many fit at once IS the feature. Smaller chips buy roughly a fifth of
 	 * a row back without shrinking the title or the 44px target.
 	 *
-	 * This lived in SongRow until #913 S6. It is the CHIP's own metrics at a viewport, so it moved with
+	 * This lived in SongRow until S6 of the shadcn migration. It is the CHIP's own metrics at a viewport, so it moved with
 	 * the chip; a scoped rule in that row can no longer reach the element this component renders.
 	 */
 	@media (max-width: 380px) {

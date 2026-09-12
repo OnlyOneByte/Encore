@@ -289,7 +289,7 @@ export const MAX_LYRICS_LEAD_MS = 1500;
 // the highlight are, and gathered here beside them so one file answers "what can a room change about
 // the lyrics".
 //
-// PR #8 gave the reel a distance-based scale (`clamp(3.1rem, 6.4vh, 6rem)`) and the PR that added the
+// An early change gave the reel a distance-based scale (`clamp(3.1rem, 6.4vh, 6rem)`) and the PR that added the
 // ball/highlight settings deliberately kept size and row count OUT, on the grounds that re-exposing
 // them would let a party undo that legibility work. That reasoning holds for RAW values, so what is
 // exposed here is a BOUNDED ADJUSTMENT on top of the computed scale rather than a replacement for it.

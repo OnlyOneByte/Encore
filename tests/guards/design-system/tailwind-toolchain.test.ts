@@ -29,7 +29,7 @@
 import { expect, it } from 'bun:test';
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, repoRoot, at } from '@encore/test-support';
+import { appSrc, repoRoot } from '@encore/test-support';
 import { svelteFiles, styleFiles, SKIP_DIRS } from '$lib/test-helpers';
 
 // Was `at('apps/core/src')` (apps/core/src, from this guard's old home in apps/core/src/lib)

@@ -87,7 +87,7 @@ test('applyAndReseq(add) and (remove) also leave the input untouched', () => {
 // the suite green (nothing runtime-observable), which is the R2 pure-addition exception, not a defect.
 // The behavioural reducer path is pinned by rotation.test.ts + the applyOp fallback above; this is the
 // source-scan guard for the vocabulary itself, so the op cannot silently vanish from the wire contract.
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 // SIBLING READ, now named explicitly. This guard used to live in packages/shared/src/core/, so
 // `at('packages/shared/src/core/ops.ts')` meant "the ops module next to me". Confirmed present at this
 // path before re-anchoring.

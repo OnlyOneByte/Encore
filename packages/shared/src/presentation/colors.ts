@@ -266,7 +266,7 @@ export function stageHueToHex(hueDeg: number): string {
 }
 
 /**
- * The stage colour a room starts with — what the old `tvBackgroundHue: 240` default became when #425
+ * The stage colour a room starts with — what the old `tvBackgroundHue: 240` default became when a room could pick any stage colour
  * replaced the hue angle with a real colour, so an existing box renders byte-identically.
  *
  * A LITERAL rather than a `stageHueToHex(240)` call, because the SQLite column default and the 0005
@@ -369,7 +369,7 @@ export function normalizeSingerColor(input: string): string {
 /**
  * Coerce arbitrary input into a STAGE background colour that is safe to store and render.
  *
- * The interesting part is what this does NOT do, and it is the whole of #425: there is deliberately
+ * The interesting part is what this does NOT do, and it is the whole of that change: there is deliberately
  * no legibility gate. The sibling `normalizeSingerColor` above rejects an illegible dot because a
  * vanished identity marker is unrecoverable — a guest cannot see that their dot is invisible on
  * someone else's TV. A stage colour is the opposite: the room picked it, the room is looking at it,

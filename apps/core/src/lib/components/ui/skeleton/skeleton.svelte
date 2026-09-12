@@ -41,7 +41,7 @@
 	}
 	/*
 	 * Motion is OPT-IN, declared inside a no-preference block rather than declared-then-reset. Both
-	 * forms satisfy #148, and this one cannot drift: there is no reset to lose the cascade to a later
+	 * forms satisfy the reduced-motion rule, and this one cannot drift: there is no reset to lose the cascade to a later
 	 * rule, and a static block is a fine resting state for a placeholder.
 	 */
 	@media (prefers-reduced-motion: no-preference) {

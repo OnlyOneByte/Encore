@@ -284,7 +284,7 @@
 	       besides the name", so the real worst case is total loss, not a cosmetic shrink.
 	   The mechanism is the same as QueueRow's 0px collapse; the only difference is that
 	   QueueRow.svelte's .who adds `min-width:0; white-space:nowrap; overflow:hidden`, which makes EVERY
-	   name unbreakable (that is why #89 hit 0px even with a spaced name), whereas here only an unbroken
+	   name unbreakable (that is why the collapse hit 0px even with a spaced name), whereas here only an unbroken
 	   token is unbreakable. design-system.test.ts's identity-dot guard reds if this rule is dropped;
 	   the long-name fixture below carries an unbroken maxlength name so the 0px case is eyes-on. */
 	.who i {

@@ -14,7 +14,7 @@
 // satisfy an arm, and comments are blanked (each block/line comment replaced by spaces, line count
 // preserved) so a commented-out `catch {` or `!res.ok return` neither satisfies nor violates an arm.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	return src
@@ -144,7 +144,7 @@ test('ARM 3: distinct Spotify token failures (401, 200-no-token) are observable,
 		// Cause B — a 200 token response with NO access_token field: a malformed/unexpected token
 		// response, not a credential refusal and not a miss. This exit (the report named it: "give :98 its
 		// warn too") falls between all three arms on a source scan — it is not a bare `catch {` (ARM 1)
-		// and not a `!res.ok` (ARM 2) — so this drive is the one thing that keeps hunk #2's warn from
+		// and not a `!res.ok` (ARM 2) — so this drive is the one thing that keeps hunk 2's warn from
 		// being reverted invisibly. Degrade value is still [].
 		_resetSpotifyToken();
 		const noToken = (async () => new Response(JSON.stringify({}), { status: 200 })) as unknown as typeof fetch;

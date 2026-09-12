@@ -15,7 +15,7 @@
 // prose describing the old synthetic-click behaviour can neither satisfy nor trip these matches.
 // Precedent: reaper-onfailed-wiring.test.ts, fuzz-i4-autoplay-refusal-skip.test.ts.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -54,7 +54,7 @@ test('cdp.mjs exposes a realClick verb that delivers a TRUSTED gesture via CDP I
 
 test('a probe actually EXERCISES the tap-to-start affordance with realClick', () => {
 	// The verb existing is not coverage; a probe must call it against the /tv stage. Without this a
-	// dead verb ships green and #64 keeps its zero coverage.
+	// dead verb ships green and the autoplay recovery keeps its zero coverage.
 	expect(PROBE).toMatch(/\.realClick\s*\(/);
 	// The tap must be preceded by the blocked-state oracle: the .autoplay-hint card is read, so the
 	// probe proves the room was genuinely stalled BEFORE the gesture (not asserting a room that was

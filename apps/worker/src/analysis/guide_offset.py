@@ -3,7 +3,7 @@ feature, made OBSERVABLE at cook time instead of assumed in the room.
 
 WHY THIS EXISTS. `guide-sync.ts` on the TV is blind by construction to any offset baked into the DECODED
 audio: it only ever compares the two media elements' reported `currentTime`, so a vocals stem that is
-time-shifted in its SAMPLES — container priming (the ~1024-sample / ~21 ms AAC-in-m4a asymmetry #480
+time-shifted in its SAMPLES — container priming (the ~1024-sample / ~21 ms AAC-in-m4a asymmetry
 moved both stems to FLAC to kill), an mp4 edit list, a genuinely misaligned separation — leaves both
 playheads reading the same number while the ears hear the guide early or late. Nothing in the product can
 see that today; it is diagnosed by ear on the party box, one report at a time. This measures it once, from

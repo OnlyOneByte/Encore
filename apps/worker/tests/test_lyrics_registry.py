@@ -129,7 +129,7 @@ def test_the_registry_still_holds_two_candidates_and_three_baselines():
 
 
 def test_a_hand_built_text_with_no_role_is_NON_publishable_fail_closed():
-    """#605: the LyricsText.role default is fail-CLOSED. A text built without an explicit role (a test,
+    """The LyricsText.role default is fail-CLOSED. A text built without an explicit role (a test,
     or one rehydrated from disk) must NOT be treated as publishable — it belongs to neither the candidate
     tier (whose winner is published as the song's words) nor the baseline tier (grading evidence). It
     simply does not participate until a role is stamped.
@@ -154,13 +154,13 @@ def test_a_lone_unspecified_top_level_text_is_never_published_by_select_by_basel
     unspecified ALTERNATE of a candidate wins and publishes — is a different reachable path, guarded by
     `test_a_winning_alternate_carries_the_role_the_registry_stamped` below. The old name
     (`..._an_unspecified_text_is_never_published...`) claimed the universal property this test does not
-    drive, which is exactly the hole #873 closes."""
+    drive, which is exactly the hole the alternates stamp closes."""
     sel = select_by_baselines([LyricsText(text_source="lrclib", segments=[{"text": "some words here"}])])
     assert sel.publish == [], "an unspecified-role top-level text must not be selected for publication"
 
 
 def test_select_by_baselines_does_not_mutate_a_caller_held_candidate_alternates():
-    """#605: `select_by_baselines` used to do `winner.alternates = []` on a caller-owned object, reaching
+    """`select_by_baselines` used to do `winner.alternates = []` on a caller-owned object, reaching
     across a module boundary to clear a field on the very list the caller passed in. It now copies via
     dataclasses.replace, so the caller's objects are untouched.
 
@@ -179,7 +179,7 @@ def test_select_by_baselines_does_not_mutate_a_caller_held_candidate_alternates(
 
 
 def test_a_winning_alternate_carries_the_role_the_registry_stamped():
-    """#873: the role stamp must reach a candidate's ALTERNATES, not just the parent it is attached to.
+    """The role stamp must reach a candidate's ALTERNATES, not just the parent it is attached to.
 
     Driven end to end through the REAL path — `build_sources` builds the `_Classified`-wrapped
     `LrclibSource`, the source fetches two records for one track (metadata-best is the WRONG version,

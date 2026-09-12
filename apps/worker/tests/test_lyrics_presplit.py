@@ -137,8 +137,8 @@ LONG_AUTHORITATIVE = "and I will wait right here for you until the very last lig
 
 
 def test_presplit_length_bounds_authoritative_text_INTO_ALIGNER_WINDOWS_not_segments():
-    # THE #59 fix started length-bounding LRCLIB synced/plain text (before it, only the display-time
-    # LINE_MAX_CHARS fallback caught an over-long human line). #92: that bounding must NOT rewrite the
+    # THE fix started length-bounding LRCLIB synced/plain text (before it, only the display-time
+    # LINE_MAX_CHARS fallback caught an over-long human line). that bounding must NOT rewrite the
     # source's own line timings. An over-long authoritative line yields tight per-row ALIGNER WINDOWS
     # (`align_windows`) while `segments` stay the human lines verbatim — because the line-sync fallback
     # publishes `segments` as `high`, and a character-count-derived boundary shipped there is a
@@ -157,7 +157,7 @@ def test_presplit_length_bounds_authoritative_text_INTO_ALIGNER_WINDOWS_not_segm
 
 
 def test_line_sync_publishes_the_authoritative_source_OWN_timings_not_a_char_count_guess():
-    # THE #92 regression. The line-sync fallback publishes `line_synced_lyrics(text.segments)` as
+    # THE regression. The line-sync fallback publishes `line_synced_lyrics(text.segments)` as
     # timingConfidence "high" ("the source's own timings, unmodified"). If presplit subdivides an
     # over-long authoritative line, the interior boundary it invents is `start + (chars/total)*span`
     # — a character count, not a timestamp — and it ships as the human source's own. This pins that
@@ -501,11 +501,11 @@ LONG_ALTERNATE = "so hold my hand and don't you ever let it go no matter what th
 
 
 def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
-    # THE #246 fix. presplit runs BEFORE select_by_baselines, which grades `[cand, *cand.alternates]`
+    # THE fix. presplit runs BEFORE select_by_baselines, which grades `[cand, *cand.alternates]`
     # and may publish an alternate (a normal two-tier outcome — the version that best matches what was
     # heard wins). presplit_texts used to map over the top-level list only, so an alternate winner
     # reached the aligner with align_windows=None — the whole song then re-split by display-time
-    # char count, the exact fallback #59/#81 exist to avoid. The fence must run on alternates too.
+    # char count, the exact fallback the length bounds exist to avoid. The fence must run on alternates too.
     assert len(LONG_ALTERNATE) > lp.MAX_LINE_CHARS  # the fixture actually overflows a row
     cand = LyricsText(
         text_source=SOURCE_LRCLIB,
@@ -533,7 +533,7 @@ def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
     assert len(alt_out.align_windows) > 1
     assert all(len(w["text"]) <= lp.MAX_LINE_CHARS for w in alt_out.align_windows)
     # The alternate's own segments stay the source's verbatim line (bounding produces windows, not a
-    # segment rewrite — same #92 invariant as the top-level).
+    # segment rewrite — same invariant as the top-level).
     assert len(alt_out.segments) == 1
     assert alt_out.segments[0]["text"] == LONG_ALTERNATE
     # And the fence is a fresh object, not the untouched input alternate.
@@ -571,7 +571,7 @@ def test_presplit_leaves_a_SHORT_alternate_unwindowed_246():
 # The defect: `_load_klp` cached `_KLP = None` on ANY failure with no report, so "package absent",
 # "stub broke on import" and "no line was over-long" (a legitimate no-op of a WORKING package) all
 # looked identical to an operator — the same "a dead provider looks like a song with no lyrics"
-# conflation #444 killed for LRCLIB. klp is installed --no-deps on the deploy box and absent on the
+# conflation an earlier change killed for LRCLIB. klp is installed --no-deps on the deploy box and absent on the
 # dev box, so a regression on deploy would look exactly like the always-absent dev box. The fix keeps
 # the three facts distinct in `klp_status()` and reports one at startup via `klp_probe_line()`.
 
@@ -636,7 +636,7 @@ def test_klp_status_AVAILABLE_when_it_imports(monkeypatch):
 
 
 def test_the_three_klp_outcomes_are_ALL_DISTINGUISHABLE(monkeypatch):
-    # THE #475 BITE in one place: absent, broken and available must yield three DIFFERENT status
+    # THE BITE in one place: absent, broken and available must yield three DIFFERENT status
     # strings. On base there is no klp_status at all (the three collapse to one silent `None`), so
     # this fails at import; with the fix the set has exactly three members.
     def _status_for(*, spec, module):

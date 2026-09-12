@@ -135,7 +135,7 @@
 		// this the derived `doc` keeps the old artifact until the async fetch resolves, so for one
 		// frame after an entry change the reel renders the PREVIOUS song's lyrics under the NEW song's
 		// title. `show` (below) already no-ops on a null doc, so rendering nothing for that frame is
-		// correct. See issue #868 (F3).
+		// correct. See the reel-anchor note (F3).
 		fetched = null;
 		let cancelled = false;
 		fetch(`/media/${ref}`)
@@ -200,10 +200,10 @@
 		// The reel is clipped to a max-height cap (see the stylesheet), so the height the current row is
 		// actually seen through is `viewportEl.clientHeight`, not the derived row-count height the bias was
 		// sized against. `reelOffset()` applies the asymmetric bias AND clamps the result to keep the sung
-		// row inside that visible band — the whole of issue #270 lives in that clamp, so it is a pure,
+		// row inside that visible band — the whole of the visible-band rule lives in that clamp, so it is a pure,
 		// unit-tested function rather than inline maths here.
 		// The reel FADES one row (--lyrics-row-h, 1.9em) to transparent at each edge that has context
-		// rows, so the region a singer can actually read is the band minus those two ramps. #671: pass the
+		// rows, so the region a singer can actually read is the band minus those two ramps. Pass the
 		// rendered ramp depths in px so the clamp targets that unmasked window, not the raw band — else the
 		// sung row parks congruent with a ramp and renders fainter than the line after it.
 		//
@@ -286,7 +286,7 @@
 	 *
 	 * Part colour LAYERS OVER singer colour: on a duet the line's part is the honest cue (whose line
 	 * it is), so `--reel-part` overrides `--reel-singer`; off a duet it is absent and `--reel-singer`
-	 * (else `--accent2`) shows through. One property, appended conditionally, same discipline as #634.
+	 * (else `--accent2`) shows through. One property, appended conditionally, same discipline as the part-colour layering.
 	 */
 	const partColors = $derived(duetPartColors(doc?.lines));
 	const partColor = $derived(
@@ -471,7 +471,7 @@
 	 * mirrors the white ladder's own 0.66 alpha, which lands ~7:1 on the stage, so "not yet" is still
 	 * comfortably readable rather than merely sensed.
 	 *
-	 * `--reel-now` is deliberately NOT overridden, and #634 did not change that. The active word answers
+	 * `--reel-now` is deliberately NOT overridden, and the part-colour layering did not change that. The active word answers
 	 * WHERE the singer is (and,, WHO is singing), which is a different question from whether
 	 * the text is trustworthy — and the marker sitting directly above the word is `--accent2` regardless
 	 * of provenance, so recolouring the word white here left a pink dot over a white word and made the
@@ -646,7 +646,7 @@
 	 * broken where a stale line does not).
 	 *
 	 * `off` deliberately gets NO accent: the reel's own contrast ladder — 0.62 upcoming, current at
-	 * full strength, 0.2 past — is what shows position, and PR #8 raised those dim states specifically
+	 * full strength, 0.2 past — is what shows position, and an early change raised those dim states specifically
 	 * so they can be read rather than merely sensed. That is what makes a no-highlight read-along
 	 * viable at all, and it is why `off` needs no rule of its own now that `.row.current` carries the
 	 * current line's colour.

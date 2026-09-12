@@ -54,7 +54,7 @@ function gate(raw: string, hub: WorkerHub): 'dropped' | 'handled' {
 	return 'handled';
 }
 
-// ── Unguarded read #1: a null body ────────────────────────────────────────────────────────────
+// ── Unguarded read 1: a null body ────────────────────────────────────────────────────────────
 test('read 1: JSON.parse(null) body is rejected, never reaches the workerId read', () => {
 	const { hub } = harness();
 	expect(validateWorkerMessage(null)).not.toBeNull();
@@ -64,7 +64,7 @@ test('read 1: JSON.parse(null) body is rejected, never reaches the workerId read
 	expect(gate('null', hub)).toBe('dropped');
 });
 
-// ── Unguarded read #2: capabilities as a number ───────────────────────────────────────────────
+// ── Unguarded read 2: capabilities as a number ───────────────────────────────────────────────
 test('read 2: worker:hello with capabilities:1 is rejected before [...capabilities]', () => {
 	const { hub, sent } = harness();
 	const frame = { type: 'worker:hello', workerId: 'w', capabilities: 1, concurrency: 1, version: '1' };
@@ -75,7 +75,7 @@ test('read 2: worker:hello with capabilities:1 is rejected before [...capabiliti
 	expect(sent.length).toBe(0); // nothing dispatched, no welcome sent
 });
 
-// ── Unguarded read #3: capabilities as a string ───────────────────────────────────────────────
+// ── Unguarded read 3: capabilities as a string ───────────────────────────────────────────────
 test('read 3: worker:hello with capabilities:"stems" (string) is rejected before .join', () => {
 	const { hub, sent } = harness();
 	const frame = { type: 'worker:hello', workerId: 'w', capabilities: 'stems', concurrency: 1, version: '1' };

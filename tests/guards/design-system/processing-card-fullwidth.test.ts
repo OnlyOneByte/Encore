@@ -12,7 +12,7 @@
 //   1. the .bar / .stage markup is NOT nested inside .meta (the row that carries .actions);
 //   2. the card is a grid and the .progress block spans every column (grid-column: 1 / -1).
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/lib/components/ProcessingCard.svelte')` —
 // "the component next to me" — which no longer names anything once the test leaves lib/components/.

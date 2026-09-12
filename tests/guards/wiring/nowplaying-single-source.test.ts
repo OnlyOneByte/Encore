@@ -27,7 +27,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { appCore, appSrc, read, at } from '@encore/test-support';
+import { appCore, appSrc, read } from '@encore/test-support';
 
 // Anchored on the repo-root markers, not on this file's own location: the old forms were
 // `at('apps/core')` and `at('apps/core/src')`. Every arm below is a

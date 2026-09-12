@@ -635,7 +635,7 @@ it('lyrics text registries: the default case leaves the source text alone', () =
 });
 
 it('lyrics text registries: the defaults reproduce the reel that shipped before these settings existed', () => {
-	// 100% of the PR #8 scale, the app's own font, unmodified case, and the 2 + current + 2 rows the
+	// 100% of the distance-based scale, the app's own font, unmodified case, and the 2 + current + 2 rows the
 	// viewport's 9.5em was built for. Regressing any of these silently changes every existing room.
 	expect(DEFAULT_LYRICS_SCALE_PCT).toBe(100);
 	expect(DEFAULT_LYRICS_FONT).toBe('system');

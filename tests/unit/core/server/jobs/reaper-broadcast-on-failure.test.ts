@@ -1,5 +1,5 @@
 // Done-when: a reaper-killed cook is REPORTED, not silent, and every terminal-fail path
-// runs the SAME four-step epilogue. #90 wired the reaper's onFailed hook to settle the
+// runs the SAME four-step epilogue. An earlier change wired the reaper's onFailed hook to settle the
 // readiness gate, but the hook did nothing else — no media:status broadcast, no operator log, no
 // scratch reclaim — so the phone that watched the cook stayed pinned on "Making karaoke… N%" with no
 // Sing button forever.

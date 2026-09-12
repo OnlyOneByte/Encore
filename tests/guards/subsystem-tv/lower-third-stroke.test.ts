@@ -22,7 +22,7 @@
 //       the eye reads at the glyph edge, so its contrast against the background is the readable
 //       contrast, independent of the white/amber fill underneath.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Was `at('apps/core/src/routes/tv/+page.svelte')` counted from
 // apps/core/src/lib/tv. Named from the repo root instead, so it does not depend on where this test sits.

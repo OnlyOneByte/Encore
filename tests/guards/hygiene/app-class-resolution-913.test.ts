@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, at } from '@encore/test-support';
+import { appSrc } from '@encore/test-support';
 
 /*
  * ─────────────────────────────────────────────────────────────────────────────────────────────────────

@@ -17,7 +17,7 @@
 // A comment-STRIPPED scan is the wrong shape here, because the subject IS the comments. So this asserts
 // the prose, anchored on the mechanism it names.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { fetcherFor, needsFetch, sourceUriFor, DEFAULT_FETCHER } from '@encore/shared';
 
 // The old `const REPO = at('.')` is gone: SITES below are already

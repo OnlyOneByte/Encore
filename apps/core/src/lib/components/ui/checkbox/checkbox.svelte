@@ -1,6 +1,6 @@
 <!--
   ── ENCORE DEVIATIONS (S3) ───────────────────────────────────────────────────────────────────
-  1. `size-4` (16px) → `size-[18px]`. Encore's checkbox glyph is 18px and #863 settled that the glyph
+  1. `size-4` (16px) → `size-[18px]`. Encore's checkbox glyph is 18px and the tap-floor ruling settled that the glyph
      is NOT the tap target — the wrapping <label class="check"> carries `min-height: var(--tap)` and is
      examined as its own control by touch-targets.test.ts, which explicitly exempts the glyph. So this
      is a cosmetic match to the incumbent, not a target-size change.

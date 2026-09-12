@@ -12,7 +12,7 @@
 // pending between addSong() and the server ack, and not after), NOT an assertion of the literal
 // MAX_SAFE_INTEGER comparison -- that comparison is the thing that is wrong.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { QueueStore } from '$lib/stores/queue';
 import type { ClientCommand } from '@encore/shared';
 

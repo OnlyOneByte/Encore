@@ -75,7 +75,7 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
 # lossless FLAC for both stems (see encode_flac_argv below and PublishStems in steps/separate.py): the
 # offset argument won -- an AAC-in-m4a encoder adds priming samples (~21 ms) that shift the vocals start
 # relative to the FLAC instrumental, so sharing one codec removes the need for a startup rate-trim. The
-# AAC encoder and its bitrate knob are gone with #502.
+# AAC encoder and its bitrate knob are gone.
 
 
 def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", level: int = 8) -> list[str]:

@@ -19,7 +19,7 @@
 // run in a live browser page. The presence of each seam is a decidable property of the component
 // source, so this reads +page.svelte and requires each one.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Blank comments before scanning so a seam cannot be satisfied by text in a comment (or an old
 // query-blind snippet quoted in prose) while the live code has lost it. Blanks not deletes so offsets

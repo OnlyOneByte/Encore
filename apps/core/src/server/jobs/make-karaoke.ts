@@ -157,7 +157,7 @@ export function cookState(
  * metadata-only source that can never be cooked, the currently-playing song, already cooked, OR the
  * requesting singer is already at their in-flight cook cap. Callers that need to tell those apart ask
  * `cookState` (pass the same `singerId`) — and that promise is now true of EVERY refusal here, which
- * is the fix for #742: the metadata-only case used to be refused by a standalone check inside this
+ * is the fix for the metadata-only case, which used to be refused by a standalone check inside this
  * function, so `cookState` answered `'cookable'` for a song this function would always reject and the
  * phone booked the singer a turn that could never play.
  */
@@ -425,7 +425,7 @@ export interface TerminalFailureDeps {
  * (settleGatesForFailedJob) had been extracted, so the epilogue AROUND it kept drifting: the TTL
  * branch omitted cleanJobWork, app.ts hand-reimplemented the private #emitStatus, and all three log
  * lines diverged (different tag, some missing media/attempts) so no single grep found every terminal
- * failure — the shape that let the reaper path ship silent until #303.
+ * failure — the shape that let the reaper path ship silent.
  *
  * The four steps, in order:
  *   1. Settle the readiness gate for this job type so `readyToSing` can flip and rotation stops

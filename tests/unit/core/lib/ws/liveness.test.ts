@@ -195,7 +195,7 @@ test('a wake during a reconnect does not leave a second live socket', () => {
 	h.sockets[0]!.fireOpen();
 	h.sockets[0]!.deliver({ type: 'queue:sync', rev: 4, entries: [] });
 
-	// socket #0 drops; backoff fires and #dial() runs -> socket #1 is CONNECTING, connected === false
+	// socket 0 drops; backoff fires and #dial() runs -> socket 1 is CONNECTING, connected === false
 	h.sockets[0]!.close();
 	h.fire(10);
 	expect(h.sockets).toHaveLength(2);
@@ -204,7 +204,7 @@ test('a wake during a reconnect does not leave a second live socket', () => {
 	// phone unlocks mid-connect: ONE visibilitychange -> wake() -> !connected -> #dial() again
 	h.client.wake();
 
-	// socket #1 (the one we just replaced) must have been discarded before #2 was opened, so when the
+	// socket 1 (the one we just replaced) must have been discarded before socket 2 was opened, so when the
 	// server accepts it, it is NOT a second live subscriber.
 	h.sockets[1]!.fireOpen();
 	h.sockets[2]!.fireOpen();
@@ -223,12 +223,12 @@ test('the surviving socket keeps its heartbeat after a wake-orphaned socket clos
 	h.sockets[0]!.deliver({ type: 'queue:sync', rev: 4, entries: [] });
 
 	h.sockets[0]!.close();
-	h.fire(10); // backoff -> socket #1 CONNECTING
-	h.client.wake(); // one lifecycle event mid-connect -> socket #2
+	h.fire(10); // backoff -> socket 1 CONNECTING
+	h.client.wake(); // one lifecycle event mid-connect -> socket 2
 	h.sockets[2]!.fireOpen(); // the live socket opens and beats
 	if (h.client.connected) expect(h.client.connected).toBe(true);
 
-	// The discarded socket #1 has its handlers detached, so even if the real server later closes it,
+	// The discarded socket 1 has its handlers detached, so even if the real server later closes it,
 	// that close must NOT tear down the live socket's timers or flip us offline.
 	const beatsBefore = h.sockets[2]!.sent.filter((m) => m.type === 'hello').length;
 	h.sockets[1]!.onclose?.(); // simulate the orphan's late close arriving (no-op if detached)

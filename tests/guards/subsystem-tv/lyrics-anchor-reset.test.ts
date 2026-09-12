@@ -13,7 +13,7 @@
 // stage-scale.test.ts: a green unit suite cannot see a client-only timing window a CDP round trip is
 // too slow to resolve, so these pin the structural preconditions and mutation-red on each hunk.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Both were counted off `at('apps/core/src')` from apps/core/src/routes/tv, which meant
 // apps/core/src. Named from the repo root now; `read` throws on a missing subject so neither can scan

@@ -19,7 +19,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { repoRoot, sharedSrc, at } from '@encore/test-support';
+import { repoRoot, sharedSrc } from '@encore/test-support';
 
 // packages/shared/src — the tree this guard scans. The old form was a bare `at('packages/shared/src')`, i.e. "the
 // directory I am in", which was only packages/shared/src while this file sat at that package's root.

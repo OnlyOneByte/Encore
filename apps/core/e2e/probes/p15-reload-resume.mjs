@@ -296,7 +296,7 @@ console.log(
 const RESUME_TOL = 2.5;
 const gap = Math.abs(after.t - roomAfter);
 // (2) The server position must not have been dragged BACKWARDS by the reloaded TV's telemetry. It only
-// ever advances; a fall below where it was before the reload is the backwards-drag half of #795.
+// ever advances; a fall below where it was before the reload is the backwards-drag half of the cold-mount defect.
 const SERVER_DRAG_TOL = 0.5;
 const serverDrop = roomBefore - roomAfter;
 

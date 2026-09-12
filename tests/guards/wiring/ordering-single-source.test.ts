@@ -19,7 +19,7 @@
 // the guard reads app.ts. Re-introduce a hand copy and this is the assertion that reds. Do NOT relax
 // this into "the two literals produce equal values" — that would pin the duplication the fix removed.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Blank out comments before scanning so a mention in a comment cannot satisfy (or trip) the check
 // while the live code has diverged. Blanks rather than deletes so offsets still line up. Matches the

@@ -11,7 +11,7 @@
 // it. Reverting the §4 fix (re-introducing `null as never` for any of the three, or reassigning them
 // after the literal via `app.plays =` / `app.reaper =` / `app.workerHub =`) reds this.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/server/app.ts')` — "the app.ts next
 // to me" — and the file it meant is the server composition root that declares getApp(), the function

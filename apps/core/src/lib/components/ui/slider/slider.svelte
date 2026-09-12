@@ -19,7 +19,7 @@
      `offsetWidth` to THROW (XR-VER-03), because happy-dom fabricates a zero and a fabricated zero is
      worse than no answer. So a Bits UI Slider cannot be MOUNTED in this harness at all — and
      `hero-live-controls-835.test.ts` mounts GuidingTrack seven times to hold XR-PH-15, XR-PH-03 and
-     #253. The settings sliders are unaffected because every settings test is a source scan; nothing
+     The settings sliders are unaffected because every settings test is a source scan; nothing
      mounts that page. Migrating GuidingTrack means moving those seven renders to the LAYOUT rung, which
      skips wherever Chromium is absent — a coverage trade that is the owner's call, not this commit's.
   5. Three different mechanisms, and each one is forced rather than chosen:

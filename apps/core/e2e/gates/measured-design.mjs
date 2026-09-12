@@ -436,7 +436,7 @@ try {
 	/*
 	 * ── CLAIM 3 (XR-VER-11): the docked band's published height and its safe-area term ──────────
 	 *
-	 * WHERE THIS IS MEASURED CHANGED WITH #832, and the claim did not. Direction A
+	 * WHERE THIS IS MEASURED CHANGED, and the claim did not. Direction A
 	 * made the queue the home screen, so `/` no longer mounts QueueSheet; the 2026-09-09 owner correction
 	 * then made the docked band at the bottom of the phone the SEARCH DOCK (the `+ Add a turn`
 	 * button is gone), present on home for a joined singer. The "published height equals the real
@@ -505,7 +505,7 @@ try {
 	}
 
 	/*
-	 * ── CLAIM 3, THE SEARCH DOCK measured with results showing (#833; sole band) ──────
+	 * ── CLAIM 3, THE SEARCH DOCK measured with results showing (sole band) ──────
 	 *
 	 * Direction B docks search in the thumb zone and stacks the results UPWARD from it. Since the owner
 	 * correction it is the SOLE docked band on this route — the `+ Add a turn` button that used to
@@ -855,7 +855,7 @@ try {
 	 *
 	 * the fullscreen button and the corner chrome (join QR, lower-third, Up-next) all sit at
 	 * z-tier 7. Whichever is later in the DOM paints on top at equal z, so a shared anchor is a silent
-	 * occlusion a source scan cannot see. The first #889 fix moved the button off the join QR and onto
+	 * occlusion a source scan cannot see. The first fix moved the button off the join QR and onto
 	 * `.upnext` — a string-inequality guard on ONE anchor pair stayed green while the button still
 	 * overlapped ~3000px². This measures the invariant the fix actually claims: `.fs-btn` intersects
 	 * NO other z-tier-7 box, at 1080p AND 4K.
@@ -1020,7 +1020,7 @@ try {
 
 		// The lobby is where the two measured invariants are both reachable in this drive: the phone-flow
 		// claims above already joined a singer, so the TV is in the LOBBY (not attract). The lobby carries
-		// the same #826 join panel (.url) and the roster, so the URL-no-break (XR-TV-19) and the
+		// the same join panel (.url) and the roster, so the URL-no-break (XR-TV-19) and the
 		// roster-not-occluded (XR-TV-14) invariants are measured here. The attract `.jt-url` and the three
 		// takeover frames stay on the source-scan guard (the takeovers need live WS playback the
 		// self-hosting drive has no cooked media for).

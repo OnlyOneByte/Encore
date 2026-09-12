@@ -194,7 +194,7 @@ test('a rehydrated singer that never reconnected does not block a join', () => {
 	expect(() => doJoin(app, { displayName: 'Ghost', color: SINGER_COLORS[1] })).not.toThrow();
 });
 
-// ── the /api/join → WebSocket-open gap (PR #19 regression) ─────────────────────
+// ── the /api/join → WebSocket-open gap (an early regression) ─────────────────────
 // doJoin writes the singer row, but only the WS `open` handler used to register them with presence. In
 // the window before that socket lands, presence.stateOf returned `gone` — so a second phone could claim
 // the identical name. doJoin now seeds the singer into presence as away at join time to close that gap.

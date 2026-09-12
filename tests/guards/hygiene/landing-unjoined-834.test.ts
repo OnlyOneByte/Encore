@@ -4,7 +4,7 @@
 // JoinLanding — because mounting the full home route needs its whole WS/store machinery, which is a
 // rung-L concern; the branch wiring itself is decidable from the source. A revert of either hunk reds.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Was `at('apps/core/src/routes/+page.svelte')` — from this guard's old home in
 // apps/core/src/routes that resolved back into the same directory, i.e. the home route itself. Now

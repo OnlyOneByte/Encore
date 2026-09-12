@@ -144,7 +144,11 @@ test('the provenance comment no longer claims the highlight is pink (comment/cod
 	expect(raw).not.toMatch(/Pink means "sing this word now" on every song/);
 	// …and the paragraph that replaced it says why `--reel-now` is still left alone here, so this
 	// bites on the prose being deleted as well as on it being restored.
-	expect(raw).toMatch(/`--reel-now` is deliberately NOT overridden, and #634 did not change that/);
+	// Anchored on the CLAIM, not on the issue number that used to close the sentence. The number went with
+	// every other issue reference in production source; what the guard is actually for is that the source
+	// still states `--reel-now` is deliberately left alone, which is the fact a future editor would
+	// otherwise "fix" by overriding it.
+	expect(raw).toMatch(/`--reel-now` is deliberately NOT overridden/);
 	// Retired with hunk 8: the `line` treatment's override is against `--reel-singer` now, not pink.
 	expect(raw).not.toMatch(/leaving it pink would mean the `line` treatment/);
 	expect(raw).toMatch(/leaving it on `--reel-singer` would mean the `line` treatment/);

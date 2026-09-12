@@ -223,7 +223,7 @@ test('without the else, a mid-song queue mutation leaves the advertised next nam
 // `if (!currentResolves)` block) runs on all three paths. That is why the unconditional call is not
 // the double-emit bug the fix rejected: the rejected shape was an unconditional `emitNowPlaying`, which
 // would emit a SECOND time on the recovery path.
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

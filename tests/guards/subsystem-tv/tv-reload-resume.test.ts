@@ -1,5 +1,5 @@
 import { expect, it } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { GUIDE_PREROLL_ALIGN_SEC, SEEK_JUMP_SEC, resumeSeekTarget } from '$lib/tv/guide-sync';
 
 /*

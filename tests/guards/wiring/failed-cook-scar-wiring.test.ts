@@ -15,7 +15,7 @@
 // each seam is a decidable property of the component source, so this reads +page.svelte and requires
 // each one. Move or delete a seam and this guard moves with it.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // Blank comments before scanning so a seam cannot be satisfied by text in a comment while the live
 // code has lost it. Blanks rather than deletes so offsets still line up. Matches the repo convention

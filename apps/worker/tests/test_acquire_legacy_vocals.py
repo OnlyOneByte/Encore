@@ -1,6 +1,6 @@
 """AcquireAudio must find a pre-change legacy vocals stem.
 
-#480 switched VOCALS_EXT from `m4a` to `flac` for NEW cooks, but the worker never receives the stored
+The lossless change switched VOCALS_EXT from `m4a` to `flac` for NEW cooks, but the worker never receives the stored
 vocals ref — it re-derives the path from the CURRENT VOCALS_EXT on every align job. Every song cooked in
 the interim era has its vocals stem on disk as `<id>-vocals.m4a`, so a lookup that only tries the current
 extension loses it and align silently degrades to aligning against the mix.

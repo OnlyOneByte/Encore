@@ -185,7 +185,7 @@
 
 	/* The lives-here block: the solid, confident middle. Sits on top of the histogram shading. */
 	/*
-	 * Renamed from `.block` by #913 S2/S3. `block` is one of Tailwind's own utility names, and shadcn's
+	 * Renamed from `.block` in S2/S3 of the shadcn migration. `block` is one of Tailwind's own utility names, and shadcn's
 	 * Switch and Slider both use it — so the same token meant "display:block" inside a vendored
 	 * component and "the singer's comfortable range" on this element. app.css records that `.underline`
 	 * and `.block` collided with these markers once already, which is why the `source(none)` fence

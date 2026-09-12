@@ -14,7 +14,7 @@
 // a commented-out wiring cannot satisfy it. Change the seam and this guard moves with it — which is
 // exactly what happened here when the seam moved from server.ts into the factory.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

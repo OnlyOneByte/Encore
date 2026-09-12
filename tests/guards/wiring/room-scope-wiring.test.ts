@@ -11,7 +11,7 @@
 //   3. the broadcast sink PUBLISHES via broadcastTopicFor(activeRoomId), not a single ROOM_TOPIC;
 //   4. the client message switch REFUSES a foreign-room socket via isForeignRoom before hello/mutate.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 
 // The prod entrypoint, named from the repo root rather than counted from this file's old location
 // (`at('apps/core/server.ts')`). Read ONCE, since `read` throws when the

@@ -92,6 +92,46 @@ export default tseslint.config(
 		}
 	},
 
+	// The TEST TREE. It has its own tsconfig (tests/tsconfig.json), so the type service resolves here and
+	// type-aware rules apply exactly as they do to source — an unawaited promise in a test is as real a
+	// defect as one in production.
+	//
+	// This block exists because the reorganisation moved the tests OUT of `apps/core/src/**`, and every
+	// rule customisation was scoped to that path. The tests silently fell back to the recommended
+	// defaults, which do not carry this repo's `^_` convention for a deliberately-unused binding — so 24
+	// `_m` / `_url` / `_id` parameters read as errors while being exactly what the convention prescribes.
+	// The lint script did not glob `tests/` either, so none of it was visible.
+	{
+		files: ['tests/**/*.ts'],
+		languageOptions: {
+			parser: tseslint.parser,
+			parserOptions: { projectService: true },
+			globals: { ...globals.node, ...globals.browser, Bun: 'readonly' }
+		},
+		rules: {
+			'@typescript-eslint/no-floating-promises': 'error',
+			'@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }]
+		}
+	},
+
+	// Test HARNESS components. These are Svelte fixtures a mount test imports; they are not in any
+	// tsconfig's program, so the project service cannot resolve them and the type-aware Svelte block
+	// above fails to parse them outright. Same treatment as e2e/** and scripts/**: syntactic and
+	// unused-variable rules only, no type-aware rules, and no program to build — which is also why this
+	// block is cheap.
+	{
+		files: ['tests/**/*.harness.svelte'],
+		languageOptions: {
+			parser: svelteParser,
+			parserOptions: {
+				parser: tseslint.parser,
+				projectService: false,
+				extraFileExtensions: ['.svelte']
+			},
+			globals: { ...globals.browser, ...globals.node }
+		}
+	},
+
 	// Repo-wide severity calibration (see header). These are pre-existing, pervasive, and not
 	// structural defects; kept visible as warnings rather than swept in a config change.
 	{

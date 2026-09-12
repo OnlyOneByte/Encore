@@ -16,7 +16,7 @@
 // wiring and the values, not the pixels. It is not mutation-blind — reverting the cards, or unwiring
 // `singerColor` from that card's overlay, reds a named test here.
 import { test, expect } from 'bun:test';
-import { read, at } from '@encore/test-support';
+import { read } from '@encore/test-support';
 import { SINGER_COLORS, lyricHighlightColor } from '@encore/shared';
 
 // A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/routes/components/+page.svelte')` — and

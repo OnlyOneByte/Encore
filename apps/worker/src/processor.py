@@ -141,7 +141,7 @@ def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt")
     file is only bounded by the `ENCORE_MEDIA_MAX_GB` cap once its key is enumerated in the core's
     `derivedRefsOf`; an earlier change added that enumeration (this path is keyed per media id, so `derivedRefsOf`
     reconstructs it from CAPTION_KINDS x KNOWN_CAPTION_EXTS via `rawCaptionKey` in paths.ts). Before
-    #709 it inherited none of that and was orphaned on eviction. It is NOT a lyrics candidate and is
+    Before the durable-caption change it inherited none of that and was orphaned on eviction. It is NOT a lyrics candidate and is
     never recorded in the sidecar; it is debugging evidence of what the parser was handed, which is
     otherwise destroyed with the job scratch and cannot be re-fetched reliably (the upload may be gone
     or the box rate-limited).

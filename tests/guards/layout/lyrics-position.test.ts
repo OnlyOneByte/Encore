@@ -1,5 +1,5 @@
 // guard: the lyrics reel draws from a PURE function of the playback position, so a backgrounded tab
-// (throttled/stopped rAF) has no loop-carried state to lose. See lyrics-position.ts for issue #54.
+// (throttled/stopped rAF) has no loop-carried state to lose. See lyrics-position.ts for the purity rule.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { drawPosition } from '$lib/tv/lyrics-position';
