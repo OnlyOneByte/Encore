@@ -11,16 +11,14 @@
 // NOTHING. There is no `Record<ProcessState, …>` and no exhaustive `switch` anywhere in the repo, so the
 // union member type-checks clean while every consumer keeps falling through its `if (state === …)`
 // chain. Without the scan below, deleting that member is invisible to `bun test`.
-import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { test, expect } from 'bun:test';
-import { at, read, repoRoot } from '@encore/test-support';
+import { at, read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
-const CORE = repoRoot;
 const processRaw = readFileSync(at('src/lib/server/jobs/process.ts'), 'utf8');
 const processCode = stripComments(processRaw);
 const readinessRaw = read('src/lib/readiness.ts');
