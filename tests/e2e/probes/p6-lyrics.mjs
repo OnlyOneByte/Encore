@@ -157,7 +157,7 @@ const parserCheck = await (async () => {
 	const bad = {
 		lines: [{ startSec: 0, endSec: 1, text: 'x', words: [{ text: 'x', startSec: 0, endSec: 1 }] }]
 	};
-	const mod = await import(new URL('../../src/lib/tv/lyrics.ts', import.meta.url).href);
+	const mod = await import(new URL('../../../src/lib/tv/lyrics.ts', import.meta.url).href);
 	const parseLyricsDoc = mod.parseLyricsDoc;
 	const good = parseLyricsDoc(raw);
 	const badParsed = parseLyricsDoc(bad);

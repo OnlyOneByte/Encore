@@ -42,7 +42,7 @@ export interface ReaperOptions {
 	 *
 	 * The bug survived because the coverage asserting the TTL calls `dispatch()` ITSELF, supplying the
 	 * second pass production may never make. A test can be green about a path the running system cannot
-	 * reach; `tests/unit/core/server/jobs/terminal-failure-durability.test.ts` drives the TTL through this
+	 * reach; `tests/unit/server/jobs/terminal-failure-durability.test.ts` drives the TTL through this
 	 * hook instead, so removing it reds.
 	 */
 	onTick?: () => void;

@@ -67,7 +67,7 @@ function canStillSettle(job: Job | null): boolean {
  * persist each song it changed. Returns the media ids settled, in catalog order.
  *
  * SAFE TO RUN ON EVERY BOOT, and both halves of that are asserted in
- * `tests/unit/core/server/jobs/gate-reconcile-boot.test.ts`:
+ * `tests/unit/server/jobs/gate-reconcile-boot.test.ts`:
  *   • It never touches a song whose gate is legitimately in flight — a `queued`, `assigned` or
  *     `running` job of ANY type that could settle that gate protects it. (Both `fetch` and `stems`
  *     protect the stems gate, so a song mid-download is not clobbered for having no stems job yet.)
