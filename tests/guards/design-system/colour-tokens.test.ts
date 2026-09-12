@@ -29,7 +29,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, read } from '@encore/test-support';
+import { read, srcDir } from '@encore/test-support';
 // The registry is reached by RELATIVE path, not as `$lib/contract/...`: that package's `exports` map
 // carries only `"."`, so a subpath import does not resolve. An import specifier cannot be routed
 // through `at()` (that returns a runtime string, not a module), so this stays relative — but it is a
@@ -37,9 +37,9 @@ import { appSrc, read } from '@encore/test-support';
 import registry from '../../../src/lib/contract/presentation/player-palette-48.json';
 import { svelteFiles } from '$lib/test-helpers';
 
-// Anchored on `appSrc` (src) instead of `at('src')`, which meant the same
+// Anchored on `srcDir` (src) instead of `at('src')`, which meant the same
 // directory only while this file sat in src/lib.
-const SRC = appSrc;
+const SRC = srcDir;
 const APP_CSS = read('src/app.css');
 
 /** Every `.svelte` file that can carry a rule block or a style binding. */

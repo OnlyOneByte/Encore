@@ -29,7 +29,7 @@
 import { test, expect } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, at } from '@encore/test-support';
+import { at, srcDir } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -46,7 +46,7 @@ const REPO = stripComments(REPO_RAW);
 
 // Every NON-TEST source file the app ships from .: the whole of src, plus server.ts (the
 // Bun.serve entry, which sits OUTSIDE src and is exactly the file a src-scoped grep misses).
-const SRC_DIR = appSrc;
+const SRC_DIR = srcDir;
 const PROD_FILES = [
 	at('server.ts'),
 	...readdirSync(SRC_DIR, { recursive: true, encoding: 'utf8' })

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { repoRoot, at } from '@encore/test-support';
+import { at, repoRoot } from '@encore/test-support';
 import { contrastRatio } from '$lib/contract';
 // The registry itself stays a TYPED default import, and it is the one path here that cannot go
 // through an alias: `$lib/contract`'s exports map carries only `"."`, so a subpath import of this

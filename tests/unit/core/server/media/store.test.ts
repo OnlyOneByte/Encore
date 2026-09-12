@@ -8,7 +8,6 @@ import {
 	resolveMediaStoreConfig,
 	normalizePrefix,
 	objectKey,
-	mediaProxyUrl,
 	LocalMediaStore
 } from '$lib/server/media/store';
 import { ObjectMediaStore, type S3Like } from '$lib/server/media/object-store';
@@ -54,10 +53,13 @@ test('objectKey joins prefix + ref', () => {
 	expect(objectKey(undefined, 'stems/m1.wav')).toBe('stems/m1.wav');
 });
 
-test('mediaProxyUrl returns a same-origin /media url for a safe ref, null for traversal', () => {
-	process.env.MEDIA_DIR = '/srv/encore/media';
-	expect(mediaProxyUrl('stems/m1-instrumental.wav')).toBe('/media/stems/m1-instrumental.wav');
-	expect(mediaProxyUrl('../../etc/passwd')).toBeNull();
+test('mediaProxyUrl and MediaStore.url are GONE — the route is the only URL builder', () => {
+	// Deleted for having no production caller (docs/arch/01-media.md XR-MED-10). Asserted here as
+	// well as in the source-scan guard because this file is where the deleted behaviour was pinned,
+	// and an import of a removed export must fail as a missing member rather than as `undefined`.
+	const store: Record<string, unknown> = new LocalMediaStore() as unknown as Record<string, unknown>;
+	expect(store.url).toBeUndefined();
+	expect('url' in store).toBe(false);
 });
 
 // ── LocalMediaStore (real disk round-trip in a temp dir) ───────────────────────────
@@ -83,8 +85,6 @@ test('LocalMediaStore refuses an unsafe ref on put and returns null on get/exist
 	await expect(store.put('../escape.wav', new Uint8Array([1]))).rejects.toThrow('unsafe media ref');
 	expect(await store.get('../escape.wav')).toBeNull();
 	expect(await store.exists('../escape.wav')).toBe(false);
-	expect(store.url('../escape.wav')).toBeNull();
-	expect(store.url('stems/ok.wav')).toBe('/media/stems/ok.wav'); // local always proxies same-origin
 });
 
 // ── the range capability the /media route serves byte ranges from ──────────────────
@@ -140,12 +140,10 @@ test('LocalMediaStore.getRange hands back a Blob of exactly the range length', a
 });
 
 // ── ObjectMediaStore with an in-memory fake S3 ─────────────────────────────────────
-function fakeS3(): S3Like & { store: Map<string, Blob>; presigned: string[] } {
+function fakeS3(): S3Like & { store: Map<string, Blob> } {
 	const store = new Map<string, Blob>();
-	const presigned: string[] = [];
 	return {
 		store,
-		presigned,
 		file(key: string) {
 			return {
 				async exists() {
@@ -163,11 +161,6 @@ function fakeS3(): S3Like & { store: Map<string, Blob>; presigned: string[] } {
 				slice(start: number, end: number) {
 					// mirrors Bun.S3File.slice: EXCLUSIVE end, like Blob.slice
 					return (store.get(key) ?? new Blob()).slice(start, end);
-				},
-				presign(opts?: { expiresIn?: number }) {
-					const u = `https://s3.fake/${key}?X-Expires=${opts?.expiresIn ?? 0}`;
-					presigned.push(u);
-					return u;
 				}
 			};
 		}
@@ -184,24 +177,15 @@ test('ObjectMediaStore put/exists/get round-trips through the (prefixed) S3 key'
 	expect(await new Response(await store.get('stems/m1.wav')).text()).toBe('STEM');
 });
 
-test('ObjectMediaStore.url presigns a direct URL by default', () => {
-	const s3 = fakeS3();
-	const store = new ObjectMediaStore(s3, { prefix: 'encore/' }, { presignExpiresIn: 1800 });
-	const url = store.url('stems/m1.wav');
-	expect(url).toBe('https://s3.fake/encore/stems/m1.wav?X-Expires=1800');
-	expect(s3.presigned).toHaveLength(1);
-});
-
-test('ObjectMediaStore.url proxies same-origin when proxyUrls is set (private bucket)', () => {
+test('ObjectMediaStore exposes NO url() — bytes reach a client only through the /media route', () => {
 	process.env.MEDIA_DIR = '/srv/encore/media';
-	const store = new ObjectMediaStore(fakeS3(), { prefix: 'encore/' }, { proxyUrls: true });
-	expect(store.url('stems/m1.wav')).toBe('/media/stems/m1.wav');
-});
-
-test('ObjectMediaStore.url rejects a traversal ref (never becomes a key)', () => {
-	process.env.MEDIA_DIR = '/srv/encore/media';
-	const store = new ObjectMediaStore(fakeS3(), {});
-	expect(store.url('../../etc/passwd')).toBeNull();
+	const store: Record<string, unknown> = new ObjectMediaStore(fakeS3(), {
+		prefix: 'encore/'
+	}) as unknown as Record<string, unknown>;
+	// The presign path (url + presignExpiresIn + proxyUrls + S3Like.presign) was deleted for having
+	// no production caller. Its absence is the behaviour now: a store answers bytes, not URLs.
+	expect(store.url).toBeUndefined();
+	expect('url' in store).toBe(false);
 });
 
 // ── ObjectMediaStore range capability (the fix for the WebKit-silent-TV bug) ───────
@@ -289,6 +273,9 @@ test('INTEGRATION: a remote worker publishes stems to the bucket; the core reads
 	// CORE reads the worker's output back (this is what the /media proxy / readiness check does)
 	expect(await coreStore.exists(ref)).toBe(true);
 	expect(await new Response(await coreStore.get(ref)).text()).toBe('REMOTE-INSTRUMENTAL');
-	// and the TV gets a presigned direct URL to it (bytes never transit the core)
-	expect(coreStore.url(ref)).toBe('https://s3.fake/encore/stems/m1-instrumental.wav?X-Expires=3600');
+	// and the TV reaches it through the SAME-ORIGIN /media route, not a presigned direct URL: the core
+	// serves the bytes by range off this store. Bytes DO transit the core, deliberately — see the
+	// on-record note in src/routes/media/[...path]/+server.ts for why the presign path was removed.
+	expect(await coreStore.size(ref)).toBe('REMOTE-INSTRUMENTAL'.length);
+	expect(await new Response(await coreStore.getRange(ref, 0, 5)).text()).toBe('REMOTE');
 });

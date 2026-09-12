@@ -23,7 +23,7 @@
 
 import { test, expect } from 'bun:test';
 import { existsSync } from 'node:fs';
-import { at, read, filesUnder, relative } from '@encore/test-support';
+import { at, filesUnder, read, relative } from '@encore/test-support';
 
 /*
  * Comments are stripped for the ABSENCE arms and kept for the presence arms. A deletion guard that

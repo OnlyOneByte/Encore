@@ -29,7 +29,7 @@
 
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { sharedSrc, filesUnder, relative } from '@encore/test-support';
+import { filesUnder, relative, sharedSrc } from '@encore/test-support';
 
 /**
  * Aliases reaching code this tree must not depend on.

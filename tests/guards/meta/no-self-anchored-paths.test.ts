@@ -22,7 +22,7 @@
 
 
 import { test, expect } from 'bun:test';
-import { filesUnder, read, relative, at } from '@encore/test-support';
+import { at, filesUnder, read, relative } from '@encore/test-support';
 import { existsSync } from 'node:fs';
 
 /**
@@ -87,7 +87,7 @@ test('the scan reads code and not the comments that describe the defect', () => 
 	 * from their own location; those must not red. Real code must still be caught, including on a line that
 	 * also carries a comment.
 	 */
-	const prose = "// was `join(import.meta.dir, '..')` before the move\nconst SRC = appSrc;";
+	const prose = "// was `join(import.meta.dir, '..')` before the move\nconst SRC = srcDir;";
 	expect(SELF_ANCHOR.test(codeOnly(prose))).toBe(false);
 
 	const block = '/*\n * `dirname(fileURLToPath(import.meta.url))` meant the routes dir it sat in.\n */\nconst X = at("apps");';

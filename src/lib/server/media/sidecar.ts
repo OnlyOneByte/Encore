@@ -32,7 +32,10 @@ import { parseTrackTitle, type TrackParseRule } from './track-title';
 // un-upgraded song is held exactly as today until a re-process measures one.
 // 5: `artifacts.lyricsOverrideRef` added (a human's explicit lyrics pick). Purely additive: a
 // schema-4 record has no override, so chosenLyricsRef falls through to the ranking exactly as before.
-export const SIDECAR_SCHEMA = 5;
+// 6: `artifacts.lyricsOverrideText` added (the WORDS behind a pasted override). Purely additive: a
+// schema-5 record has no pasted text, which means "the pin names a candidate already on disk" — the
+// worker then re-times that stored doc, exactly as it did before.
+export const SIDECAR_SCHEMA = 6;
 
 /** How a derived field was obtained. Mirrors the lyrics chain's provenance idea on purpose. */
 export interface FieldProvenance {
@@ -90,6 +93,13 @@ export interface MediaSidecar {
 		 * no longer names a candidate is ignored on read, not honoured blindly.
 		 */
 		lyricsOverrideRef?: string;
+		/**
+		 * The WORDS a human pasted, for an override whose ref names a candidate NOTHING has written yet.
+		 * Authoritative here so a DB wipe between the paste and the re-time does not leave the pin pointing
+		 * at an empty key. Optional/absent on schema-5 and earlier, and absent on every ref pick — which
+		 * means "re-time the doc already stored under the pinned ref".
+		 */
+		lyricsOverrideText?: string;
 		/**
 		 * The key + vocal-range analysis (see SongProfile). Authoritative here so a DB wipe restores it
 		 * without re-processing — the durability claim the media layer makes for every derived artifact.
@@ -192,6 +202,14 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			// Same runtime-first / preserve-prior rule as lyricsCandidates: a human's pick must not be
 			// erased by an index-only hydrate that carries no override on the Media.
 			lyricsOverrideRef: m.lyricsOverrideRef ?? prev?.artifacts.lyricsOverrideRef,
+			// The pasted words move WITH the ref they belong to, so this cannot use the plain
+			// runtime-first/preserve-prior rule above. When the runtime media carries a pin, its text is
+			// authoritative INCLUDING its absence — a ref pick clears the paste, and falling back to the prior
+			// write would restore a record whose ref names the picked candidate and whose text is the paste the
+			// guest abandoned, which the worker would then re-time over it. Only a media with NO pin at all (an
+			// index-only hydrate that has not read this record) falls back, which is the case the ref's own
+			// preserve-prior rule exists for.
+			lyricsOverrideText: m.lyricsOverrideRef ? m.lyricsOverrideText : prev?.artifacts.lyricsOverrideText,
 			// Same runtime-first / preserve-prior rule as lyricsCandidates: an index-only hydrate that has
 			// not read the sidecar yet carries no profile on the Media, so falling back to the prior
 			// write is what stops a sidecar rewrite from erasing an already-recorded key/range.
@@ -267,6 +285,9 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		// Carry the human override onto the runtime Media so the phone can show which pick is pinned and
 		// whether a newer candidate now out-ranks it, and so a re-persist does not lose it.
 		lyricsOverrideRef: s.artifacts.lyricsOverrideRef,
+		// And the words behind a pasted pin, so a re-time dispatched after a DB wipe still has the text the
+		// ref names. Absent = the pin names a stored candidate, which the worker re-times from disk.
+		lyricsOverrideText: s.artifacts.lyricsOverrideText,
 		// Restore the key/range so a wiped DB comes back with the analysis intact — no re-process. The
 		// stored value is authoritative but still untrusted (an older writer, a hand edit), so it is
 		// re-normalized on the way out; a schema-2 sidecar has none and this stays undefined, which the

@@ -30,7 +30,7 @@ from typing import Any, NamedTuple
 
 from ..vocabulary import ROLE_BASELINE, ROLE_CANDIDATE, ROLE_UNSPECIFIED, TextSource, Timing
 from .artifact import (
-    candidate_key as candidate_key,  # noqa: F401 — re-export: moved to artifact.py in an earlier change, kept importable from chain
+    candidate_key as candidate_key,  # noqa: F401 — re-export: moved to artifact.py, kept importable from chain
 )
 from .source import LyricsFetchError
 

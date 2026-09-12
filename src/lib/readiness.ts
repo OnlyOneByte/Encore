@@ -81,7 +81,7 @@ export function queueCardKind(media: Media | undefined, live?: { status: MediaSt
  * un-processed server-side, so a retry is a real action rather than a button that answers "already
  * processed".
  *
- * IT TAKES THE MEDIA, not just its readiness, and that is the fix for an earlier change. Readiness alone cannot
+ * IT TAKES THE MEDIA, not just its readiness, and that is the fix. Readiness alone cannot
  * answer this: it is derived from the process gates, so a metadata-only Spotify hit — which can never be
  * processed by anyone — reads as `'unacquired'` exactly like a fresh YouTube upload, and the row offered
  * Sing. Tapping it took the singer's turn (`processAndQueue` queues first, by design) and only then did

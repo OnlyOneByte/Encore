@@ -24,7 +24,6 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { at } from '@encore/test-support';
 
 /**
  * The repo root, found by walking up for `bunfig.toml`.
@@ -71,17 +70,8 @@ for (const landmark of ['bunfig.toml', 'package.json', '.', 'src/lib/contract'])
 }
 
 /** `.` — the SvelteKit app package. */
-/**
- * The app root. Now the REPO root, because the `apps/` layer is gone — one TypeScript app does not need a
- * directory to hold it, and `apps/core` was that directory holding exactly one thing.
- *
- * Kept as a named export rather than deleted: 40-odd guards import it, the concept ("where the app is")
- * still exists, and a named anchor is the whole reason this flattening needed one edit here instead of one
- * per consumer. When it was wrong, 25 guards failed pointing at `apps/core/src` — from this line.
- */
-export const appCore: string = repoRoot;
 /** `src` — where routes, lib and server live. */
-export const appSrc: string = join(appCore, 'src');
+export const srcDir: string = join(repoRoot, 'src');
 /** `tests/e2e` — drivers, probes, gates and the selector contract. */
 /**
  * `tests/e2e` — the browser-driving drivers, probes and gates.
@@ -92,7 +82,7 @@ export const appSrc: string = join(appCore, 'src');
  * `ENOENT: scandir e2e` — loudly, and from one place, which is the whole argument for a named
  * anchor over 13 copies of a path.
  */
-export const appE2e: string = join(repoRoot, 'tests', 'e2e');
+export const e2eDir: string = join(repoRoot, 'tests', 'e2e');
 /** `src/lib/contract/src` — the domain code both the app and (by hand-mirroring) the worker use. */
 /**
  * The ISOMORPHIC contract — code imported by both `src/lib` (client) and `src/lib/server` (authoritative).
@@ -101,7 +91,7 @@ export const appE2e: string = join(repoRoot, 'tests', 'e2e');
  * The export keeps its name because the thing it names has not changed, only its address — and because a
  * named anchor is why this move needed ONE edit here instead of one per consumer.
  */
-export const sharedSrc: string = join(appSrc, 'lib', 'contract');
+export const sharedSrc: string = join(srcDir, 'lib', 'contract');
 /** `worker` — the Python side. Layer 1B. */
 /** `worker` — the Python side. Layer 1B. Was `apps/worker` until the apps/ layer was flattened away. */
 export const worker: string = join(repoRoot, 'worker');

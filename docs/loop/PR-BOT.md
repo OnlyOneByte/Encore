@@ -163,8 +163,15 @@ worktree** (`../encore-rev-<n>`, checked out at this PR's head, `bun install` al
 the main checkout and never in another reviewer's tree:
 
 ```bash
-bun test · cd worker && python3 -m pytest -q · bun run build · bun run typecheck · bun run gate:measured
+bun test · cd worker && python3 -m pytest -q · bun run typecheck · bun run lint · bun run build
 ```
+
+That list is not prose any more: `bun run gates` runs exactly these legs in exactly this order,
+stopping at the first failure and naming it. `tests/guards/docs/gates-prose-matches-script.test.ts`
+parses the legs out of `package.json` and out of the line above and reds if they differ, so the two
+cannot drift the way this list already did once. `bun run gate:measured` (the layout rung) is run
+SEPARATELY, after `bun run build`, because it needs a built bundle and a real headless Chromium —
+see its own bullet below.
 
 **Gate expectations on a clean tree, as of 2026-09-06** — anything else is a regression this PR caused:
 

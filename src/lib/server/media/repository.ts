@@ -42,6 +42,11 @@ const toRow = (m: Media): MediaRow => ({
 	// JSON blob, not a table: nothing queries inside the set.
 	lyricsCandidates: m.lyricsCandidates?.length ? JSON.stringify(m.lyricsCandidates) : null,
 	lyricsOverrideRef: m.lyricsOverrideRef ?? null,
+	// The pasted words behind a `manual` override, or NULL for a ref pick / no pin. Written from the
+	// runtime value unconditionally (never `||`, never preserved) so CLEARING the paste on a ref pick
+	// actually writes NULL — a stale paste left in this column would be re-sent as `pinnedText` after a
+	// restart and re-timed over the candidate the human then chose.
+	lyricsOverrideText: m.lyricsOverrideText ?? null,
 	artistCanonical: m.artistCanonical ?? null,
 	artistCredit: m.artistCredit ?? null,
 	titleCanonical: m.titleCanonical ?? null
@@ -122,6 +127,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	lyricsRef: r.lyricsRef ?? undefined,
 	lyricsCandidates: parseCandidates(r.lyricsCandidates),
 	lyricsOverrideRef: r.lyricsOverrideRef ?? undefined,
+	lyricsOverrideText: r.lyricsOverrideText ?? undefined,
 	artistCanonical: r.artistCanonical ?? undefined,
 	artistCredit: r.artistCredit ?? undefined,
 	titleCanonical: r.titleCanonical ?? undefined

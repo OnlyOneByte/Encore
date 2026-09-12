@@ -24,13 +24,13 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { appSrc } from '@encore/test-support';
+import { srcDir } from '@encore/test-support';
 
 // Was `at('src')`, which resolved to src from this guard's old home in
 // src/lib. Every walk below (routes/, app.css, lib/components, lib/ui) is rooted here, so the
 // anchor is now stated once and derived from the repo root. `relative` here is node:path's two-argument
 // form, used to name a route and to shorten a failure message — not the test-support helper.
-const SRC = appSrc; // src
+const SRC = srcDir; // src
 const ROUTES = join(SRC, 'routes');
 
 function stripComments(src: string): string {

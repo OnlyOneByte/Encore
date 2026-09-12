@@ -56,7 +56,7 @@ function harness() {
 // UNCONDITIONALLY and does not re-derive the recovery predicate — reconcileOnReady owns that decision
 // (player.ts), and its tail emitNowPlaying sits outside the recovery block so the "current resolves"
 // case is a re-emit with no double broadcast. The predicate itself is exercised through
-// reconcileOnReady rather than copied here, which is the point of.
+// reconcileOnReady rather than copied here, which is the point.
 function queueThenReconcile(cmd: ClientCommand, deps: HubDeps) {
 	handleQueueCommand(cmd, deps);
 	reconcileOnReady(deps);

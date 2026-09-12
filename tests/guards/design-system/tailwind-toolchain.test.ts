@@ -29,13 +29,13 @@
 import { expect, it } from 'bun:test';
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, repoRoot } from '@encore/test-support';
+import { repoRoot, srcDir } from '@encore/test-support';
 import { svelteFiles, styleFiles, SKIP_DIRS } from '$lib/test-helpers';
 
 // Was `at('src')` (src, from this guard's old home in src/lib)
 // and `join(SRC, '..', '..', '..')` for the repo root that the tailwind.config.* walk starts from. Both
 // are now the shared anchors, so neither depends on where this file sits.
-const SRC = appSrc;
+const SRC = srcDir;
 // repo root — used to walk for any tailwind.config.*.
 const REPO = repoRoot;
 const APP_CSS_PATH = join(SRC, 'app.css');

@@ -79,7 +79,7 @@ function realDeleteFile(ref: string): void {
  * everything a media STORED (instrumental, vocals at any historical ext, the chosen lyrics JSON, every
  * other lyrics candidate's JSON, the retained raw caption matrix) — this used to re-implement that list
  * and drifted immediately: it named `lyricsKey` + `m.lyricsRef` and stopped, so every non-chosen lyrics
- * candidate was orphaned on disk forever (F2, the same undercount an earlier change/an earlier change closed for retention).
+ * candidate was orphaned on disk forever (F2, the same undercount two earlier changes closed for retention).
  * Delegating removes the possibility of drifting again; a one-line `lyricsCandidates` patch here would
  * have closed today's symptom and left the next divergence free.
  *

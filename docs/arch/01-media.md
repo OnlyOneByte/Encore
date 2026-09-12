@@ -39,13 +39,13 @@ that the sidecar is authoritative for every derived fact. Yet `artifacts.audio` 
 — so both the hard delete and any future orphan sweep must **guess** from a six-entry extension list.
 See `XR-MED-06`.
 
-**3. `MediaStore.url()` has no production caller at all.** The interface's own docstring calls it "how
-the TV resolves a playable source for a Media", and `ObjectMediaStore.url()` carries a presigning path
-with a 1-hour TTL. A search of `src` and `packages/*/src` finds **no call site**: the only
-mention outside tests is a comment in the route saying the TV hardcodes `/media/${ref}` and never calls
-it (`src/routes/media/[...path]/+server.ts:45`), which the player confirms
-(`TvPlayer.svelte:843`, `:952`, `LyricsOverlay.svelte:141`). The whole presign/proxy-URL branch — and
-`mediaProxyUrl`, reachable only through it — is unexercised. See `XR-MED-10`.
+**3. `MediaStore.url()` had no production caller at all — now RESOLVED by deletion.** The interface's
+own docstring called it "how the TV resolves a playable source for a Media", and `ObjectMediaStore.url()`
+carried a presigning path with a 1-hour TTL. A search of `src` and `packages/*/src` found **no call site**:
+the only mention outside tests was a comment in the route saying the TV hardcodes `/media/${ref}` and never
+calls it, which the player confirmed (`TvPlayer.svelte:843`, `:952`, `LyricsOverlay.svelte:141`). The whole
+presign/proxy-URL branch — and `mediaProxyUrl`, reachable only through it — is now **deleted**; a store
+answers bytes and the same-origin `/media` route is the only URL builder. See `XR-MED-10`.
 
 ---
 
@@ -228,15 +228,21 @@ it (`src/routes/media/[...path]/+server.ts:45`), which the player confirms
 | **Rationale** | An unexercised branch on the interface the player depends on reads as a working scale-out path, so the next person to move workers onto a second box will configure a bucket, set `MEDIA_STORE=object`, and find that every byte still routes through the core — with nothing failing to tell them. |
 | **Source** | Cited, and verified by absence. `store.ts:81` declares `url(ref)` as *"The URL the TV `<video>` should load for this ref"*; `object-store.ts:92-97` implements it with a presign whose TTL defaults to `3600` (`:44`, commented *"longer than any song"*); `store.ts:85-87` (`mediaProxyUrl`) is reachable only from that method and `ObjectMediaStore.url`'s guard. A search of `src` and `packages/*/src` for a `MediaStore` `.url(` call finds **none** outside tests — the only occurrence is the comment at `src/routes/media/[...path]/+server.ts:45`, which states the reason: the TV hardcodes the same-origin route. `TvPlayer.svelte:843`, `TvPlayer.svelte:952` and `LyricsOverlay.svelte:141` confirm it (`/media/${…}` string-built). `size()` and `getRange()`, by contrast, are optional-by-design and **are** called (`+server.ts:47-88`). |
 | **Acceptance** | **Given** the `MediaStore` interface, **when** each member is searched across production source, **then** each has a call site outside `*.test.ts`. Falsifier: **a member whose only non-comment occurrences are its declaration, its implementations, and a test.** |
-| **Check** | **Does not exist yet.** `tests/unit/core/server/media/store.test.ts` exercises `url()` *from a test*, which is exactly what makes the production absence invisible — a coverage number cannot distinguish the two. The guard is a source scan enumerating the interface's members and asserting a production caller for each, driven off the declaration so a member added later is covered automatically. |
-| **Priority** | **Should ship.** Nothing is broken today; what is at stake is whether the object-store path is a shipped capability or an unfinished one, and the code currently claims the first. |
+| **Check** | **`tests/guards/subsystem-media/store-members-have-production-callers.test.ts`.** Nine arms. It brace-slices the `MediaStore` declaration and derives the member list from it, so a member added later is covered without editing the guard; a call only counts when its receiver is a resolved media-store binding (a bare `.get(` scan would match every `Map.get` in the tree). Members with no consumer must be EXACTLY a ledger (`exists`, `put`, each with its reason) — checked both directions, so a stale entry reds as loudly as an unreachable new member. `url` and four URL-shaped siblings are refused unconditionally, ledger or not. Non-vacuity: the scanner must find the route's real `get`/`size`/`getRange` sites, must report absence for a fabricated member, and the walked tree must exceed 100 files. Mutation-proven: re-declaring `url()` reds 2 arms; resurrecting `mediaProxyUrl` alone reds 1; re-declaring `url()` **and** exempting it in the ledger still reds the forbidden-member arm (the ledger is not a loophole); deleting the route's on-record note reds 1. Previously this requirement had no check, and `tests/unit/core/server/media/store.test.ts` exercised `url()` *from a test* — which is what made the production absence invisible. |
+| **Priority** | **Shipped.** Nothing was broken; what was at stake is whether the object-store path is a shipped capability or an unfinished one, and the code claimed the first. |
 
-> **Recommendation (not decided).** Delete `url()`, `mediaProxyUrl`, `proxyUrls` and
-> `presignExpiresIn`, and state in `store.ts` that **every** ref is served through the same-origin
-> route regardless of store kind — which is what the route already asserts and what the object store's
-> `size`/`getRange` implementations are built for. Keeping a presign path alive costs a reader the
-> assumption that direct-to-S3 playback works; if it is wanted later, the 1-hour TTL is also a
-> requirement nobody has written (a song plus its queue wait can exceed it).
+> **DECIDED — deleted, not wired.** `url()`, `mediaProxyUrl`, `S3Like.presign`, `proxyUrls` and
+> `presignExpiresIn` are removed, and `store.ts` now states that **every** ref is served through the
+> same-origin route regardless of store kind — which is what the route already asserted and what the
+> object store's `size`/`getRange` implementations are built for. The deciding evidence is that a remote
+> store **already proxies today**: the route is store-agnostic, so with `MEDIA_STORE=object` the bytes flow
+> S3 → core → client by range over the same `/media/<ref>` URL. Nothing was broken, so the presign path was
+> genuinely unused rather than intended-but-unreached. Wiring it would have regressed three things at once:
+> a cross-origin media element taints `MediaElementAudioSourceNode`, so the deferred FFT work goes flat with
+> no error (`docs/DECISIONS.md`, *Audio-REACTIVE visualizers*); `LyricsOverlay` `fetch`es its artifacts
+> same-origin and would need bucket CORS; and a presigned URL is a bearer credential whose 1-hour TTL nobody
+> specified, which a song plus its queue wait can outlive. Bytes transiting the core is now a stated
+> property, not an accident.
 
 ---
 
@@ -305,11 +311,12 @@ it (`src/routes/media/[...path]/+server.ts:45`), which the player confirms
 
 ## (b) Open questions this section does not settle
 
-1. **Is the object-store path a shipped capability?** `XR-MED-10` requires the interface to stop
-   claiming what it does not do; it does not decide whether the answer is "delete the presign path" or
-   "wire the TV to `MediaStore.url()`". The second choice reopens a question this document cannot
-   answer — a presigned URL is a bearer credential for a media file, and the same-origin route currently
-   has no auth at all, so switching would change the exposure in both directions at once.
+1. ~~**Is the object-store path a shipped capability?**~~ **SETTLED — see `XR-MED-10`.** The answer was
+   "delete the presign path", not "wire the TV to `MediaStore.url()`". The object-store path *is* shipped,
+   as a proxy: the route serves its ranges. The question the second choice would have reopened — a presigned
+   URL is a bearer credential for a media file, and the same-origin route has no auth at all, so switching
+   would change the exposure in both directions at once — is now moot, and the interface no longer offers
+   the member that would raise it.
 2. **Should `derivedRefsOf` grow an orphan sweep?** Three separate omissions from it have been fixed by
    adding a class (vocals at historical extensions, non-chosen lyrics candidates, the raw-caption
    matrix), and `XR-MED-03` adds a fourth. Each fix names refs a **live** media owns. Nothing enumerates

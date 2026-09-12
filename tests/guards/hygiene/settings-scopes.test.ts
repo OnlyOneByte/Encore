@@ -14,10 +14,10 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc } from '@encore/test-support';
+import { srcDir } from '@encore/test-support';
 import { svelteFiles } from '$lib/test-helpers';
 
-const SRC = appSrc;
+const SRC = srcDir;
 const SETTINGS = join(SRC, 'routes/settings/+page.svelte');
 
 /** Comments naming the retired sheet are documentation, not a second editor. */

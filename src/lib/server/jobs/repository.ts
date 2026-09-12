@@ -340,7 +340,7 @@ export class JobRepository {
 	}
 
 	/**
-	 * Return a non-terminal job to the queue. `cause` names WHY — the whole point of an earlier change: a worker
+	 * Return a non-terminal job to the queue. `cause` names WHY — the whole point: a worker
 	 * REJECT, an ack-timeout or progress-lease `LEASE_EXPIRED`, and a boot `RECOVER` are three
 	 * distinct events that a status-pair machine could not tell apart because all three land on
 	 * `queued`. It is validated against the machine (a REJECT is only legal from `assigned`; RECOVER
