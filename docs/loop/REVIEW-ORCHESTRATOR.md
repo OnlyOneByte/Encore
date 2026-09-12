@@ -37,7 +37,7 @@ a first review and a re-review alike.
   the PR re-enters this queue with no label change required.
 - **A re-review is not a second mechanism.** A worker that pushes a fix moves the head, and an unjudged
   head is what re-selects the PR — the `review:blocked` → `review:pending` flip does not summon anyone.
-  Settled on #783 by PR #201: verdict 3 posted at `04:31:41Z` against head `b48581f` while the PR carried
+  Settled by PR #201: verdict 3 posted at `04:31:41Z` against head `b48581f` while the PR carried
   `review:blocked` and no `review:pending`, and the flip did not arrive until `04:35:32Z`, 3m51s later;
   the head had been force-pushed at `04:14:38Z`, before the block was even applied. **Keep requiring the
   flip of workers anyway** — it is the board state that says a fixed PR is waiting again, and this lane
@@ -53,7 +53,7 @@ gh api repos/OnlyOneByte/Encore/issues/<n>/comments --jq '.[].body' | grep -c "p
 ```
 
 `grep` over **all** comment bodies, and match on the full SHA. Do not filter with
-`select(.body | startswith("<!-- pr-bot"))`: measured on #76, that filter returned empty across four
+`select(.body | startswith("<!-- pr-bot"))`: measured, that filter returned empty across four
 cycles while a real verdict comment existed, because the body's first line can carry a character before
 the marker. A false "no verdict yet" costs a duplicate dispatch; a false "already judged" leaves a PR
 permanently unreviewed, which is worse.

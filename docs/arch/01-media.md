@@ -1,0 +1,322 @@
+# 01 — Media subsystem requirements
+
+IDs `XR-MED-nn`. Subsystem under specification: `src/lib/server/media` — 25 modules, ~3,950
+lines, that own **where a song's bytes live, which of them may be destroyed, and what the product is
+allowed to claim about a file it has not measured**. Nothing here specifies a rendered surface; where a
+requirement's consequence reaches the TV or the phone, that is stated in **Surfaces**.
+
+**Repo root for every path below:** `/local/home/angryang/.kiro/crew/workspace/Encore-ux` (branch
+`refactor/test-architecture-775`, HEAD `366c60b3`). Paths are repo-relative.
+
+**Provenance notes that apply to every row.**
+
+- **No external standard governs any of this.** There is no published guidance on retention policy for
+  a self-hosted party appliance, on how long a presigned media URL should live, or on what a media
+  catalog owes a file it cannot regenerate. The one exception is HTTP byte-range semantics (RFC 9110),
+  which `http-range.ts` already implements and which no row below re-specifies. Every other row is
+  therefore either a **repo-internal citation** or `DERIVED` with its model stated.
+- **`DERIVED` rows state their model.** The recurring model is *the subsystem's own stated invariant,
+  applied to a site the invariant does not currently reach* — which is the shape of most of the real
+  defects in this directory's history.
+- **Line-numbered citations were read, not inferred.** Each was opened at HEAD `366c60b3` and says what
+  the row claims it says.
+
+## What reading the code changed about the brief
+
+Recorded here because three of these contradict what a reader would reasonably assume.
+
+**1. This subsystem is not untested — it is unspecified.** The brief's framing is that `media/` has
+zero coverage. That is true of *this register* and false of the test suite: every one of the 25 modules
+has at least one test file, across `tests/guards/subsystem-media/` (6 files, ~2,000 lines) and
+`tests/unit/core/server/media/` (21 files). So the rows below are not filling a test gap; they are
+naming the **rules those tests are already defending, plus the sites the same rules do not reach.**
+Several `Check` fields therefore point at an existing file to extend rather than a file to write.
+
+**2. The one class the subsystem calls unrecoverable is the one whose name it never records.**
+`paths.ts` is emphatic that raw audio is "the ONE unrecoverable asset", and `sidecar.ts` is emphatic
+that the sidecar is authoritative for every derived fact. Yet `artifacts.audio` is only ever written as
+`prev?.artifacts.audio ?? null` (`sidecar.ts:190`) — nothing in the core ever records the real filename
+— so both the hard delete and any future orphan sweep must **guess** from a six-entry extension list.
+See `XR-MED-06`.
+
+**3. `MediaStore.url()` has no production caller at all.** The interface's own docstring calls it "how
+the TV resolves a playable source for a Media", and `ObjectMediaStore.url()` carries a presigning path
+with a 1-hour TTL. A search of `src` and `packages/*/src` finds **no call site**: the only
+mention outside tests is a comment in the route saying the TV hardcodes `/media/${ref}` and never calls
+it (`src/routes/media/[...path]/+server.ts:45`), which the player confirms
+(`TvPlayer.svelte:843`, `:952`, `LyricsOverlay.svelte:141`). The whole presign/proxy-URL branch — and
+`mediaProxyUrl`, reachable only through it — is unexercised. See `XR-MED-10`.
+
+---
+
+## Group A — Destruction: what may be deleted, by whom, and on whose authority
+
+### XR-MED-01 — No automatic pass may delete a byte outside `derived/`
+
+| Field | Content |
+|---|---|
+| **Statement** | Every deletion the product performs **without an operator naming one song** is confined to `derived/`. `audio/` and `meta/` are removable only by an explicit, per-media act. Named exemptions: `work/` (job scratch, deleted on job completion) and the legacy-layout prune, which moves bytes before removing a directory. |
+| **Surfaces** | None directly (server subsystem). The TV and phone render the consequence — a song that stops being singable, or one that vanishes from the library. |
+| **Rationale** | Losing derived data costs a re-process; losing raw audio costs the song forever once the upload disappears, and losing `meta/` costs the whole catalog. A boundary that only holds because each caller remembered it is not a boundary. |
+| **Source** | Cited. `retention.ts:1-12` states the rule (*"`audio/` and `meta/` are NEVER touched: audio cannot be re-acquired once an upload disappears, and meta IS the library"*); `evictDerived` (`retention.ts:265-291`) enforces it structurally by iterating only `derivedRefsOf`; the one path that *does* unlink `meta/` and `audio/` is the explicit per-media `deleteMediaEntirely` (`delete.ts:164`, `:175`). No external source; this is the subsystem's own invariant, promoted to a requirement. |
+| **Acceptance** | **Given** a volume over its cap containing raw audio and sidecars, **when** the retention pass runs to completion, **then** no file under `audio/` or `meta/` is missing and the pass may legitimately report the cap as unreachable. The single falsifying observation: **one absent file under `audio/` or `meta/` after a pass no operator initiated.** |
+| **Check** | Half exists: `tests/guards/subsystem-media/retention.test.ts` asserts *"evictDerived NEVER touches audio/ or meta/ — those are the unrecoverable classes"*. The **generalisation does not exist yet** — a source scan enumerating every `rmSync`/`unlinkSync` call site under `src/lib/server` and asserting that each one either resolves a `derivedRefsOf` ref, sits in `delete.ts`, or is a named exemption. That is what makes the rule hold for a *future* pass rather than for `evictDerived` alone. |
+| **Priority** | **Ship-blocking.** It is the only irreversible class of loss in the product that no human authorised. |
+
+> **Recommendation (not decided).** Do **not** add an "evict audio when desperate" escape hatch, even
+> behind an env var. The cap already defaults to unset (`retention.ts:29-35`) precisely so a party box
+> never silently deletes, and a pass that can conclude "the cap is unreachable" and stop is the correct
+> failure. An operator who genuinely needs the space has `deleteMediaEntirely`, which is attributable.
+
+---
+
+### XR-MED-02 — Exactly one function answers "what does this media own on disk"
+
+| Field | Content |
+|---|---|
+| **Statement** | One exported function enumerates the stored refs a media owns, and every consumer — byte counting, eviction, hard delete — reads it. A consumer **may** add id-derived candidates on top (refs a media never stored); it **may not** restate a class the authority already covers. |
+| **Surfaces** | None (server subsystem). |
+| **Rationale** | Two hand-maintained answers to one question drift silently and asymmetrically: the counting side under-reports so the cap concludes there is nothing to reclaim, while the deleting side orphans files nothing can ever enumerate again — because the row and the sidecar are gone by then. |
+| **Source** | Cited, and this is a **repaired** defect rather than a hypothetical: `retention.ts:231` (`derivedRefsOf`) is the authority, and its docstring records that `delete.ts` had grown a rival enumeration omitting `lyricsCandidates`. `delete.ts:141-152` now delegates (`new Set<string>(m ? derivedRefsOf(m) : [])`) and adds only id-derived keys. The same docstring records two earlier instances of the identical drift — an omitted `vocalsKey`, and an ext-blind sibling swap that could not name an interim-extension process. |
+| **Acceptance** | **Given** a media with a stored vocals ref at a non-current extension and several lyrics candidates, **when** `derivedBytesOf` and the hard delete are both taken over it, **then** they name the same set of files. Falsifier: **a file the delete removes that the byte count never counted**, or the reverse. |
+| **Check** | Exists on both sides: `tests/guards/subsystem-media/delete.test.ts` (*"derivedRefsFor delegates the stored-ref enumeration instead of keeping a rival copy"*) and `retention.test.ts` §2 (*"the vocals ref is derived in exactly one place"*, including an arm proving the comment-stripping in that scan is load-bearing). What is **not** pinned is the general rule — a *third* consumer could still hand-roll a list; that needs an enumeration of `derivedRefsOf`'s importers. |
+| **Priority** | **Ship-blocking**, and it is the cheapest row here: the mechanism already exists and only the guard generalises. |
+
+---
+
+### XR-MED-03 — The cap counts every derived byte it claims to bound
+
+| Field | Content |
+|---|---|
+| **Statement** | Every byte under `derived/` is either counted by the retention plan and reclaimable by it, or is a **named exemption with its reason stated**. The thumbnail cache is currently neither: it is written without bound, excluded from the byte count, and left behind by the hard delete. |
+| **Surfaces** | None directly. A phone search row renders the cached image; the consequence of the gap is invisible until the volume is full. |
+| **Rationale** | A cap that counts a subset of what it governs will report a volume as fitting while it does not, and the operator has no way to see which bytes were omitted — the failure looks like the cap not working rather than the cap not looking. |
+| **Source** | Cited, and the contradiction is internal. `thumbs.ts:10-11` states the cache's own retention class — *"The thumb cache is DERIVED — regenerable, and therefore the first thing safe to evict"* — while `derivedRefsOf` (`retention.ts:231-263`) names instrumental, vocals at every historical extension, every lyrics candidate and the raw-caption matrix, and **no thumbnail**; `delete.ts:141-152` adds no thumbnail either. Nothing else prunes the directory: `derivedDir()/thumbs` appears only at `thumbs.ts:10`, `local-files.ts:40` (refused from the public route), and `migrate-layout.ts:152`/`:251`. The ref **is** derivable — `thumbKey` is a SHA-256 of the remote URL (`thumbs.ts:38-42`) and `Media.thumbnail` holds that URL — so this is an omission, not an impossibility. |
+| **Acceptance** | **Given** a media whose thumbnail has been proxied at least once, **when** `derivedBytesOf` is taken, **then** the cached file's bytes are included; **and when** that media is hard-deleted, **then** the cached file is gone. Falsifier: **a `derived/thumbs/<hash>.<ext>` file still on disk after `deleteMediaEntirely` returned for the only media that referenced it.** |
+| **Check** | **Does not exist yet.** The nearest file, `tests/unit/core/server/media/thumbs.test.ts`, tests the proxy in isolation and never meets retention; `retention.test.ts` enumerates the classes it knows about and so cannot notice a class it was never told about. The new arm belongs in `retention.test.ts` beside the caption-matrix arm it mirrors (*"evictDerived counts AND evicts the retained raw caption track the cap claims to bound"*), which is the same defect already fixed once for a different class. |
+| **Priority** | **Should ship.** Not blocking: the cap is unset by default (`retention.ts:29-35`), so today the omission costs disk rather than correctness. It becomes blocking the moment an operator sets `ENCORE_MEDIA_MAX_GB`. |
+
+> **Recommendation (not decided).** Enumerate from `m.thumbnail` through `thumbKey`, not by globbing the
+> directory. A glob would also sweep a cache entry whose media row is gone — which is arguably desirable
+> and is definitely a *second* requirement (an orphan sweep), and folding the two together is how the
+> vocals and caption omissions each got missed the first time.
+
+---
+
+### XR-MED-04 — The public media route serves only the storage classes meant to be public
+
+| Field | Content |
+|---|---|
+| **Statement** | `GET /media/<ref>` serves the `audio`, `derived` and `root` classes and refuses every other member of `StorageClass`. The refusal list is **derived from the class enumeration**, not hand-written, so a class added later is refused until someone decides otherwise. |
+| **Surfaces** | TV and phone (both load every playable ref through this route). No operator surface. |
+| **Rationale** | The route has **no authentication of any kind** — no session, no room check, no `hooks.server.ts` exists — so which storage class a ref belongs to is the entire access-control story for the media volume. A hand-written denylist in that position is a decision made once and then never revisited per class. |
+| **Source** | Cited. `local-files.ts:37-42` refuses `meta/` and both thumb-cache locations by explicit prefix comparison and nothing else; `paths.ts:50-56` (`classOf`) enumerates five classes, `work` among them; `resolveBase` (`paths.ts:82-87`) resolves a `work/` ref like any other. So `safeMediaPath('work/<jobId>/x.wav')` returns a path and the route serves it (`src/routes/media/[...path]/+server.ts:34`, the only gate on the handler). `DERIVED` for the enumeration requirement itself. **Model:** the same "drive the answer off the union rather than a hand list" rule the register already applies to capability wiring — here the union is `StorageClass`, and `work/` is the member the hand list forgot. |
+| **Acceptance** | **Given** a file at `work/<jobId>/scratch.wav`, **when** an unauthenticated `GET /media/work/<jobId>/scratch.wav` is made, **then** the response is `404`. **Given** a new member added to `StorageClass`, **then** a test fails until that member is explicitly allowed or refused. Falsifier: **a `200` or `206` for any ref whose class is not on the allow list.** |
+| **Check** | Extend the existing arm. `tests/guards/subsystem-media/layout.test.ts` already holds *"safeMediaPath is class-aware and still traversal-proof: never serves the sidecar records or the thumb cache"* — the `work/` case and the union-driven enumeration go there, beside it. `tests/unit/core/server/media/local-files.test.ts` is the second site. Neither covers `work/` today. |
+| **Priority** | **Ship-blocking.** The exposure is small in practice (a scratch path needs a job id) and structural in kind: the guard is the only thing standing between the public route and a class nobody classified. |
+
+> **Recommendation (not decided).** Invert the guard: allow `audio`, `derived` and `root`, refuse
+> everything else, and keep the two thumb-cache prefixes as the one carve-out *inside* `derived`. That is
+> a smaller edit than it looks and it makes the next class safe by default, where today it is public by
+> default.
+
+---
+
+## Group B — The authoritative record: what may be claimed about a file
+
+### XR-MED-05 — A write to the authoritative record is atomic, and a partial record is corruption
+
+| Field | Content |
+|---|---|
+| **Statement** | No reader can ever observe a partially-written sidecar, and a file that exists but fails its shape check is treated as **corruption of the record** — reported distinctly from an absent one — rather than projected into the catalog. Durability against machine power loss is a **named exemption**: the rename is not followed by a directory `fsync`. |
+| **Surfaces** | None (server subsystem). Consequence reaches every surface: the sidecar is what a rescan rebuilds the library from. |
+| **Rationale** | The design deliberately makes these files hand-editable, so a partial or half-edited record is the *expected* input, not an exotic one — and a partial record dereferenced deep inside a boot maintenance pass throws where nothing is watching. |
+| **Source** | Cited. `sidecar.ts:429-441` writes to a per-write-unique sibling temp and `renameSync`s it over the target, with best-effort temp cleanup on failure; `isWellFormedSidecar` (`sidecar.ts:364-380`) requires all six sections a consumer dereferences to be present objects; `readSidecar` logs a **distinct** warning for exists-but-unreadable (`:404`, `:412`) and stays silent for absent. The fsync exemption is `DERIVED` by reading the same function: **model** — `renameSync` is atomic within a filesystem for a *reader*, which is what the code claims and achieves, but POSIX does not guarantee the directory entry is durable until the parent directory is synced, so the claim is "no torn read", not "no lost write". |
+| **Acceptance** | **Given** a sidecar being overwritten, **when** a reader reads at any instant during the write, **then** it observes either the complete old record or the complete new one. **Given** a file containing valid JSON with only an `id`, **when** it is read, **then** `readSidecar` returns null and logs, and no boot pass throws. Falsifier: **a read that returns a record with a missing section**, or a `.tmp` file left behind by a successful write. |
+| **Check** | Exists. `tests/guards/subsystem-media/sidecar.test.ts` carries *"writeSidecar is atomic: it leaves no temp file behind and readback is complete"*, *"overwriting an existing sidecar never exposes a partial file"*, the partial-shape rejection, the distinct-warning arm, and — unusually well done — *"mediaFromSidecar throws on the partial shape readSidecar now rejects"*, which proves the shape check is load-bearing rather than decorative. The fsync half is **`EXEMPT`**: a power-loss test needs a crash harness this repo does not have and should not grow for a living-room appliance. |
+| **Priority** | **Ship-blocking** for the atomicity and shape halves — both already hold. The fsync exemption is deliberate and should stay stated rather than closed. |
+
+---
+
+### XR-MED-06 — The unrecoverable class has its real name recorded
+
+| Field | Content |
+|---|---|
+| **Statement** | The ref of a media's raw original is **recorded on the authoritative record**. No consumer is required to guess it from a candidate list. |
+| **Surfaces** | None (server subsystem). |
+| **Rationale** | Raw audio is the one class that cannot be regenerated, and it is the only artifact class whose real filename the product does not know — so the single operation that must name it exactly (the hard delete, after which nothing can ever enumerate that media again) is the operation forced to guess. |
+| **Source** | Cited, and internally contradictory. `paths.ts:100-124` states the problem in its own words — *"nothing in the core ever records its real name: `Media` has no audio field and `sidecar.ts` only ever writes `artifacts.audio = prev?.artifacts.audio ?? null`"* — which `sidecar.ts:190` confirms verbatim. `KNOWN_AUDIO_EXTS` (`paths.ts:124`) is the six-entry superset that exists because of this, and `delete.ts:167-175` records what it cost: a single `audioKey(mediaId)` unlink named `.wav` (the legacy mislabelled default) while the real file was `.m4a` or `.webm`, so the bytes survived **permanently** — retention is barred from `audio/` and there is no orphan-audio pass. The `MediaSidecar.artifacts.audio` field is declared (`sidecar.ts:76`) and never populated. |
+| **Acceptance** | **Given** a song processed after this ships, **when** its sidecar is read, **then** `artifacts.audio` names the file that is actually on disk. Falsifier: **a processed song whose `artifacts.audio` is `null` while `audio/<id>.<ext>` exists.** |
+| **Check** | Split, honestly. The **read** side is checkable now, in `tests/guards/subsystem-media/sidecar.test.ts` beside the existing artifact round-trip arms. The **write** side is **`EXEMPT` pending a worker-protocol change**: the extension is whatever YouTube served and the worker discovers it with a `<id>.*` glob (`paths.ts:104-110`), so the name has to travel back on `job:complete` before the core can record it. Naming that as the blocker is the deliverable; inventing a core-side glob instead would add a *fourth* place that guesses. |
+| **Priority** | **Should ship.** The superset is genuinely safe today (a ref whose file is absent is a no-op for every consumer), so this buys correctness of *knowledge*, not of behaviour — until the first consumer needs to answer "which file, exactly?" for a reason other than deleting it. |
+
+> **Recommendation (not decided).** Have the fetch job report the discovered filename in its
+> `job:complete` artifacts and write it to `artifacts.audio` on the next sidecar write. Then **keep**
+> `candidateAudioRefs` for the pre-existing cohort rather than migrating it — the candidates cost
+> nothing, and a migration that has to guess is the thing being fixed.
+
+---
+
+### XR-MED-07 — A heuristic-derived field carries its confidence, and no low-confidence value reaches a lookup or a heading
+
+| Field | Content |
+|---|---|
+| **Statement** | Every canonical artist/title/credit is accompanied by the rule that produced it and a confidence, and **no value the parser rated `low` is offered to a browse heading, a metadata citation or a lyrics lookup** — in either direction across the sidecar seam. |
+| **Surfaces** | Phone (browse headings, search rows). TV (the lower third renders the raw title, not the canonical one, and that is deliberate). |
+| **Rationale** | The uploader of a lyric video is usually not the artist, so a guess is not merely imprecise — sent to a lyrics provider it returns **another song's words**, which is the one outcome worse than no words at all. |
+| **Source** | Cited. `track-title.ts:287-315` defines five rules with fixed confidences (`uploader-confirmed` high, `collab-marker-flip` and `title-split` medium, `uploader-fallback` low, `unparsed` low with a `null` artist). The gate is applied at four boundaries: `resolver.ts:40` (`parsed.confidence === 'low' ? undefined`, narrowing the **value** so a future caller cannot re-read a guess as provenance), and `sidecar.ts:311`, `:323`, `:343` (`browseArtist` / `lookupTitle` / `credit`, each returning `null` on `low`). `credit`'s docstring records why the fourth exists: `artistCredit` is stored ungated, and the LRCLIB ranking prefers the credit over the artist, so the one ungated read was the one that could poison selection. |
+| **Acceptance** | **Given** a title with no separator and an aggregator uploader, **when** the media is materialised and round-tripped through a sidecar, **then** no canonical artist, credit or title is present on the resulting `Media` and no browse facet lists it. Falsifier: **a browse heading reading a channel name**, or a lyrics request carrying an artist key the parser rated `low`. |
+| **Check** | Exists on both halves. `tests/unit/core/server/media/track-title.test.ts` pins the rules; `tests/guards/subsystem-media/sidecar.test.ts` pins the projection, including *"a LOW-confidence credit is not projected into the Media (LRCLIB tiebreak poison)"* and *"browseArtist returns null for a low-confidence guess"*. What is **not** pinned is the enumeration — that *every* reader of a canonical field consults a gate. A new reader could bypass all four. |
+| **Priority** | **Ship-blocking**, and this is the row most likely to be disputed: `title-split` — the dominant `"Artist - Title"` convention — is rated **medium** and is therefore browse-eligible without any corroboration. That is a judgment about how often the two sides are reversed, and `collab-marker-flip` exists because sometimes they are. |
+
+> **Recommendation (not decided).** Leave `title-split` at medium. Demoting it to low would empty the
+> browse-by-artist rail for most of the library, which is the feature the parser was written for; the
+> cheaper protection is to keep the **raw** title on screen (already the rule — `mediaFromSidecar`
+> projects `s.raw.rawTitle`) so a wrong parse never becomes what the room reads.
+
+---
+
+## Group C — Claims about files nobody measured
+
+### XR-MED-08 — The digital-silence floor is one number across the core/worker seam
+
+| Field | Content |
+|---|---|
+| **Statement** | The threshold at which audio is declared digital silence is defined once, and any second definition is **pinned to the first by a parity guard** — the same treatment the stem extensions and artifact keys already get across this seam. |
+| **Surfaces** | None (server subsystem, spanning two languages). |
+| **Rationale** | The two definitions gate the same decision from opposite ends — the worker refuses to publish a silent stem, the core refuses to link one — so a drift makes the product accept a file at one boundary and reject it at the other, with no observation that distinguishes the drift from the file. |
+| **Source** | Cited. Two definitions exist: `src/lib/server/media/loudness.ts:29` (`SILENCE_FLOOR_DB = -90`) and `worker/src/processor.py:171` (`SILENCE_FLOOR_DB = -90.0`), each with the same reasoning in its own comment (16-bit silence measures ≈ −91 dBFS; −90 leaves dither headroom). They agree today and **nothing holds them there**: `tests/guards/docs/vocabulary-parity.test.ts:560-611` pins `INSTRUMENTAL_EXT`, `VOCALS_EXT`, `audioKey` and the caption key matrix across exactly this core↔`processor.py` seam, and does not read this constant. |
+| **Acceptance** | **Given** both files, **when** the two constants are read, **then** they are numerically equal. **Given** either is changed alone, **then** a test fails naming the constant. Falsifier: **set `processor.py`'s floor to `-80.0` and the suite stays green.** |
+| **Check** | Extend `tests/guards/docs/vocabulary-parity.test.ts`. It already resolves `processor.py`, already has a `pyStrConst` reader and a "did the module move?" sentinel, and already carries the prose about why this seam needs pinning; the arm is a numeric sibling of `pyStrConst` plus one `expect(...).toBe(SILENCE_FLOOR_DB)`. |
+| **Priority** | **Should ship.** The values agree, so this buys protection against a future edit rather than fixing a live defect — which is precisely what the extension guards on this seam already exist for. |
+
+> **Recommendation (not decided).** Pin, do not deduplicate. The constant cannot be imported across a
+> TypeScript/Python boundary, and the alternative — deleting the core's copy on the grounds that the
+> worker refuses a silent instrumental at source (`worker/src/steps/separate.py:162-166`) — would
+> also delete the core's guide-linking gate, which acts on files the worker never re-examines.
+
+---
+
+### XR-MED-09 — The core's silence gate covers the stem that plays at volume
+
+| Field | Content |
+|---|---|
+| **Statement** | The loudness gate the core applies to **already-processed** songs covers the **instrumental** — the stem that plays out of the speakers — and not only the guide vocal. A song whose instrumental measures as digital silence is not left advertised as ready. |
+| **Surfaces** | TV (four minutes of nothing), phone (the song sits in the Ready list and offers a Sing button). |
+| **Rationale** | Every readiness gate in the system verifies that a ref **exists**, never that the file behind it carries sound — so the failure this module was written to catch is, for the instrumental, still only caught for songs processed after the worker's own probe landed. |
+| **Source** | Cited, and the residual gap is narrower than the module's header implies. `loudness.ts:3-9` names the defect as affecting **both** stems (*"instrumental AND vocals at the 16-bit floor, 44-124KB against 14-28MB"*, two songs in the live library). The core's probe is wired at exactly one site — `src/lib/server/app.ts:324-331`, into `backfillVocalsRefs` — and `vocals-backfill.ts:89-121` probes only the vocals candidate. **But** `worker/src/steps/separate.py:158-166` raises `PermanentError` on a silent instrumental *before publishing*, so no **new** process can add to the cohort. The exposure is therefore the pre-existing cohort only: songs whose instrumental was published before that gate existed, which the boot pass walks past without measuring. |
+| **Acceptance** | **Given** a catalog song that is `stemStatus: 'ready'` with an instrumental whose peak is at or below the floor, **when** the boot maintenance chain completes, **then** the song does not appear in `listReady()` and its state names why. **Given** the probe cannot run (no ffmpeg), **then** nothing is demoted — an unmeasurable file is not a silent one. Falsifier: **a song with a measurably silent instrumental still returned by `listReady()` after a boot pass.** |
+| **Check** | **Does not exist yet.** `tests/unit/core/server/media/vocals-backfill.test.ts` covers the guide half (existence → probe → link, with the `silent`/`unknown`/`missing` outcomes distinguished), and `tests/unit/core/server/media/loudness.test.ts` covers the parser and the verdict; no test drives a core-side *instrumental* probe, because no such code path exists. The new pass would reuse the same injected-IO shape `backfillVocalsRefs` already establishes. |
+| **Priority** | **Should ship**, and this is the row most open to a "don't build it" answer: the population is bounded, known, two songs large, and cannot grow. Deleting the two files by hand is a legitimate competing answer to writing a pass. |
+
+> **Recommendation (not decided).** If a pass is written, make it demote rather than delete — clear the
+> refs through `clearArtifacts` (`sidecar.ts:463-476`, which exists precisely so an eviction sticks
+> against `sidecarFromMedia`'s `?? prev` preservation) and let the normal process path re-derive. Deleting
+> the stems by hand leaves the sidecar asserting artifacts that are gone, which is the state
+> `clearArtifacts` was written to prevent.
+
+---
+
+## Group D — Unexercised capability
+
+### XR-MED-10 — A `MediaStore` member with no production caller is not a capability
+
+| Field | Content |
+|---|---|
+| **Statement** | Every member of the `MediaStore` interface has at least one **production** call site, or it is removed. A member reachable only from tests and comments is deleted rather than documented. |
+| **Surfaces** | None (server subsystem). The TV is the surface that would consume `url()` if anything did. |
+| **Rationale** | An unexercised branch on the interface the player depends on reads as a working scale-out path, so the next person to move workers onto a second box will configure a bucket, set `MEDIA_STORE=object`, and find that every byte still routes through the core — with nothing failing to tell them. |
+| **Source** | Cited, and verified by absence. `store.ts:81` declares `url(ref)` as *"The URL the TV `<video>` should load for this ref"*; `object-store.ts:92-97` implements it with a presign whose TTL defaults to `3600` (`:44`, commented *"longer than any song"*); `store.ts:85-87` (`mediaProxyUrl`) is reachable only from that method and `ObjectMediaStore.url`'s guard. A search of `src` and `packages/*/src` for a `MediaStore` `.url(` call finds **none** outside tests — the only occurrence is the comment at `src/routes/media/[...path]/+server.ts:45`, which states the reason: the TV hardcodes the same-origin route. `TvPlayer.svelte:843`, `TvPlayer.svelte:952` and `LyricsOverlay.svelte:141` confirm it (`/media/${…}` string-built). `size()` and `getRange()`, by contrast, are optional-by-design and **are** called (`+server.ts:47-88`). |
+| **Acceptance** | **Given** the `MediaStore` interface, **when** each member is searched across production source, **then** each has a call site outside `*.test.ts`. Falsifier: **a member whose only non-comment occurrences are its declaration, its implementations, and a test.** |
+| **Check** | **Does not exist yet.** `tests/unit/core/server/media/store.test.ts` exercises `url()` *from a test*, which is exactly what makes the production absence invisible — a coverage number cannot distinguish the two. The guard is a source scan enumerating the interface's members and asserting a production caller for each, driven off the declaration so a member added later is covered automatically. |
+| **Priority** | **Should ship.** Nothing is broken today; what is at stake is whether the object-store path is a shipped capability or an unfinished one, and the code currently claims the first. |
+
+> **Recommendation (not decided).** Delete `url()`, `mediaProxyUrl`, `proxyUrls` and
+> `presignExpiresIn`, and state in `store.ts` that **every** ref is served through the same-origin
+> route regardless of store kind — which is what the route already asserts and what the object store's
+> `size`/`getRange` implementations are built for. Keeping a presign path alive costs a reader the
+> assumption that direct-to-S3 playback works; if it is wanted later, the 1-hour TTL is also a
+> requirement nobody has written (a song plus its queue wait can exceed it).
+
+---
+
+### XR-MED-11 — A module header that names an artifact class it does not handle is a defect
+
+| Field | Content |
+|---|---|
+| **Statement** | The storage-layout migration's header describes exactly the moves `planMigration` makes, and every directory `ensureLayout` creates on every boot has a writer somewhere in the product. |
+| **Surfaces** | None (server subsystem). |
+| **Rationale** | The migration is the one module a reader consults *instead of* running it — it moves bytes on a live volume — so its header is load-bearing documentation, and a class named there but absent from the table is a migration someone will believe already happened. |
+| **Source** | Cited. `migrate-layout.ts:10` claims *"`stems/*`, `pitch/*`, `lyrics/*`, `.thumbs/*` → under `derived/`"*; the loop at `:128-131` iterates exactly `['stems', 'stems', null]` and `['lyrics', 'lyrics', 'lyricsRef']`, and the thumb cache is handled separately at `:150-153`. **`pitch/*` is claimed and never migrated.** Separately, `:249` adds `join(derivedDir(), 'pitch')` to the world-writable set created on every boot; a search of `src`, `worker/src` and `packages/*/src` finds **no other reference to `derived/pitch`** — no writer, no reader, no ref builder in `paths.ts`. |
+| **Acceptance** | **Given** the header's list of migrated classes, **when** each is compared against `planMigration`'s table, **then** every claimed class has an arm. **Given** each entry in `ensureLayout`'s `shared` array, **when** the tree is searched for a writer, **then** one exists. Falsifier: **a class named in the header with no arm**, or a directory created every boot that nothing ever writes. |
+| **Check** | Extend `tests/guards/subsystem-media/layout.test.ts`. It already reads this module, already asserts the migration's behaviour arm by arm, and already carries *"worker-written dirs are SHARED-WRITE, meta is not"* — which reads `ensureLayout`'s output and is the natural place to also assert the set has no dead member. The doc-accuracy half follows the shape of `tests/guards/docs/doc-accuracy.test.ts`. No arm covers either claim today. |
+| **Priority** | **Should ship.** Both halves are cheap and neither is urgent — an empty directory costs an inode, and a stale header costs one reader's afternoon. |
+
+> **Recommendation (not decided).** Fix the header (drop `pitch/*`) rather than adding a `pitch/*` arm:
+> there is nothing on a real volume to migrate, since nothing in the product has ever written a pitch
+> track under this layout. Then either delete `derived/pitch` from `ensureLayout` or leave it with a
+> one-line note saying it is reserved and unwritten — but not silently, which is the current state.
+
+---
+
+## (a) Requirements deliberately NOT written, and why
+
+1. **HTTP byte-range semantics.** `http-range.ts` implements RFC 9110 correctly and unusually
+   carefully — suffix and open-ended forms, `416` with a real `bytes */N`, past-EOF clamping, the
+   zero-byte case — with `tests/unit/core/server/media/http-range.test.ts` behind it and a file header
+   that explains why WebKit made it necessary. Restating it would add a row that was never at risk.
+2. **Path-traversal defence.** `safeMediaPath` (`local-files.ts:19-43`) is the single guard, imported by
+   both the route and its test, and defeats `../`, absolute paths, percent-encoded traversal, NUL and
+   sibling-prefix escapes with per-root containment. `XR-MED-04` constrains **which classes** it serves
+   and deliberately does not re-specify the containment.
+3. **The thumbnail proxy's SSRF allowlist.** `thumbs.ts:15-32` is https-only against a five-host set,
+   with a SHA-256 cache key chosen over a seeded hash for collision resistance and a 5 s fetch timeout.
+   Stated, enforced, and tested. A row would only restate it.
+4. **The graceful-degrade-with-attribution rule.** Already a requirement in all but name:
+   `tests/guards/subsystem-media/media-degrade-attribution.test.ts` pins it for `spotify.ts` and
+   `thumbs.ts` with brace-sliced regions, comment blanking, and five non-vacuity sentinels — including
+   the deliberate silence of the creds-unset exit. It is the best-guarded property in the directory.
+5. **The kill-timer boundary.** `spawn-capture.ts` is one timed implementation shared by all four spawn
+   sites, with the budgets stated per caller (`ytdlp.ts:69` 5 s, `ytdlp.ts:92` / `spotify.ts:26` 10 s,
+   `loudness.ts:63` 60 s, `retention.ts:308` 120 s). The **values** are unsourced choices, but they are
+   stated choices with their reasoning attached, which is what a row would have asked for.
+6. **A specific retention cap, a specific presign TTL, a specific search-cache TTL.** No source supports
+   any of them and inventing one would present a choice as a finding. The cap is unset by default
+   (`retention.ts:29-35`) and both resolvers cache for 5 minutes (`youtube.ts:26`,
+   `spotify-resolver.ts:30`); all three are the operator's to set.
+7. **The world-writable shared directories.** `migrate-layout.ts:245-268` chmods six directories to
+   `0o777` because core and worker run as different uids on one mounted volume, keeps `meta/`
+   restrictive, records how the layout migration first broke every process, and names the rejected
+   alternative (shared group + setgid) with the condition under which it becomes right. Stated,
+   enforced, tested, and the judgment is already made — `XR-MED-11` touches only the *membership* of
+   that set.
+8. **Readiness as a single definition.** `readySongs` (`repository.ts:154-163`) narrows in SQL and
+   decides in the shared gate table, with the whole history of the alternative written into its
+   docstring; `readinessOf` (`readiness.ts:15-27`) is gate-driven and parity-tested against the client's
+   copy. Two of the best-defended invariants in the subsystem.
+9. **Play-count deduplication.** `PlayTracker` dedupes on **entry** id, not media id (`plays.ts:32-42`),
+   and `PlayLog.record` is idempotent on `entryId` through a unique index because the in-memory tracker's
+   state resets on restart and the DB's does not (`play-log.ts:40-46`). The reasoning for both is already
+   written where it belongs.
+10. **A source-of-origin requirement for Spotify.** That a Spotify hit is an **annotator** whose bytes
+    are never fetched is a ratified decision with its own enforcement authority (`isProcessableSource`) and
+    its own prose guard (`tests/guards/docs/spotify-enforcement-prose-742.test.ts`). It belongs to the
+    decisions record, not here.
+
+## (b) Open questions this section does not settle
+
+1. **Is the object-store path a shipped capability?** `XR-MED-10` requires the interface to stop
+   claiming what it does not do; it does not decide whether the answer is "delete the presign path" or
+   "wire the TV to `MediaStore.url()`". The second choice reopens a question this document cannot
+   answer — a presigned URL is a bearer credential for a media file, and the same-origin route currently
+   has no auth at all, so switching would change the exposure in both directions at once.
+2. **Should `derivedRefsOf` grow an orphan sweep?** Three separate omissions from it have been fixed by
+   adding a class (vocals at historical extensions, non-chosen lyrics candidates, the raw-caption
+   matrix), and `XR-MED-03` adds a fourth. Each fix names refs a **live** media owns. Nothing enumerates
+   files whose media row is gone, and after a hard delete nothing can — which is a different mechanism
+   (walk the volume, subtract the catalog) with a different failure mode (deleting a file a future
+   feature owns).
+3. **What does "ready" owe a file it has not measured?** `XR-MED-09` closes the instrumental case for
+   the known cohort. The general question — whether a readiness gate may ever be satisfied by a ref's
+   existence alone — is a policy nobody has ruled, and ruling it strictly would put a decode on the path
+   of every boot.

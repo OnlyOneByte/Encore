@@ -4,26 +4,7 @@
   "workspaces": {
     "": {
       "name": "encore",
-      "devDependencies": {
-        "@eslint/js": "^10.0.1",
-        "bun-types": "1.3.14",
-        "eslint": "^10.10.0",
-        "eslint-plugin-svelte": "^3.23.0",
-        "globals": "^17.12.0",
-        "happy-dom": "^20.14.0",
-        "prettier": "^3.9.6",
-        "prettier-plugin-svelte": "^4.1.1",
-        "svelte": "5.56.4",
-        "svelte-eslint-parser": "^1.8.1",
-        "typescript": "5.9.3",
-        "typescript-eslint": "^8.69.0",
-      },
-    },
-    "apps/core": {
-      "name": "@encore/core",
-      "version": "0.0.0",
       "dependencies": {
-        "@encore/shared": "workspace:*",
         "@lucide/svelte": "^1.43.0",
         "bits-ui": "^2.16.3",
         "clsx": "2.1.1",
@@ -35,27 +16,28 @@
         "tailwind-variants": "^3.3.0",
       },
       "devDependencies": {
+        "@eslint/js": "^10.0.1",
         "@sveltejs/kit": "^2.63.0",
         "@sveltejs/vite-plugin-svelte": "^7.1.2",
         "@tailwindcss/vite": "4.3.3",
         "@types/qrcode": "^1.5.6",
         "bun-types": "^1.3.14",
         "drizzle-kit": "^0.31.10",
+        "eslint": "^10.10.0",
+        "eslint-plugin-svelte": "^3.23.0",
+        "globals": "^17.12.0",
+        "happy-dom": "^20.14.0",
+        "prettier": "^3.9.6",
+        "prettier-plugin-svelte": "^4.1.1",
         "shadcn-svelte": "1.6.1",
         "svelte": "^5.56.1",
         "svelte-adapter-bun": "^1.0.1",
         "svelte-check": "^4.6.0",
+        "svelte-eslint-parser": "^1.8.1",
         "tailwindcss": "4.3.3",
         "typescript": "^5.6.0",
+        "typescript-eslint": "^8.69.0",
         "vite": "^8.0.16",
-      },
-    },
-    "packages/shared": {
-      "name": "@encore/shared",
-      "version": "0.0.0",
-      "devDependencies": {
-        "bun-types": "^1.3.14",
-        "typescript": "^5.6.0",
       },
     },
   },
@@ -75,10 +57,6 @@
     "@emnapi/runtime": ["@emnapi/runtime@1.11.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-vgj7R3y3Wgx24IQaGPA/R6YFXLHVMOZ0uVEyIQPaWs+rd1AzfEMXlAC22FYwO1XkKR6NPsq7mUandH8oIRdZFw=="],
 
     "@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
-
-    "@encore/core": ["@encore/core@workspace:apps/core"],
-
-    "@encore/shared": ["@encore/shared@workspace:packages/shared"],
 
     "@esbuild-kit/core-utils": ["@esbuild-kit/core-utils@3.3.2", "", { "dependencies": { "esbuild": "~0.18.20", "source-map-support": "^0.5.21" } }, "sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ=="],
 

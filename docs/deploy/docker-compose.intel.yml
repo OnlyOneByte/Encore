@@ -4,7 +4,7 @@
 #     --profile stems up -d
 #
 # PARKED. The deploy target moved to NVIDIA (see docker-compose.cuda.yml). Kept because the Arc box
-# may come back, and because the selection logic in apps/worker/src/backends.py already models `xpu`
+# may come back, and because the selection logic in worker/src/backends.py already models `xpu`
 # as a torch DEVICE rather than a separate backend — so this path needs no separator code, only wheels
 # and device passthrough.
 #
@@ -21,7 +21,7 @@
 
 services:
   worker:
-    # PID-1 zombie reaping (#538/#459) — see the note in the base docker-compose.yml. Restated
+    # PID-1 zombie reaping — see the note in the base docker-compose.yml. Restated
     # here because a reader of this override should not have to know Compose merge rules to see it.
     init: true
     build:

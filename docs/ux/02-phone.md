@@ -8,13 +8,13 @@ Direction is **A + B**, and drag reorder, landing/join, and live singing control
 
 Two repo facts these rows lean on, verified in this pass and worth stating once:
 
-- **`move` is not the only way an entry crosses singers.** `packages/shared/src/core/ops.ts:12` scopes
+- **`move` is not the only way an entry crosses singers.** `src/lib/contract/core/ops.ts:12` scopes
   `move`'s `toSeq` to the singer's own QUEUED picks. Crossing singers is now a **direct rewrite of the
   stored ordered list** — the list is the source of truth, so a placement is durable by construction and
   there is no pin: pinning (`move-global`/`unpin`, `pinnedSeq`, `placePins`, and the client's
-  `pinEntry`/`unpinEntry`/`moveGlobal`/`canHostReorder`) was DELETED in #856 step 3. `queue:reorder-any`
+  `pinEntry`/`unpinEntry`/`moveGlobal`/`canHostReorder`) was DELETED in the stored-list migration's step 3. `queue:reorder-any`
   survives and gates `move` on an entry the actor does not own. Wiring the arrows and the drag to a
-  single "move to index" op is #856 **step 4** and is not yet shipped, so "the operation cannot express
+  single "move to index" op is that migration's **step 4** and is not yet shipped, so "the operation cannot express
   crossing singers" still describes today's **guest** path. Every drag row below is written for the
   guest path and says so.
 - **`move` is a legal no-op under one ordering.** `queue-order.ts` marks `shuffle` as
@@ -34,8 +34,8 @@ Two repo facts these rows lean on, verified in this pass and worth stating once:
 | **Surfaces** | Phone |
 | **Rationale** | The *number* is already unbreakable (`charts/trend-tap-target.test.ts:32` bridges `--tap` into the guard); what is unenforced is the expression, so a future change to the standard would apply to 5 files and silently skip 11 literals. |
 | **Source** | [SC 2.5.8 Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) (AA, 24px) and [SC 2.5.5 Target Size (Enhanced)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html) (AAA, 44px). Both are pointing-precision criteria stated in CSS px — they do **not** scale with viewing distance, so arm's length changes nothing here. |
-| **Acceptance** | Given the phone source tree, When it is scanned for `44px` outside `:root`, Then zero occurrences remain under `apps/core/src/routes/**` and `apps/core/src/lib/**`, and the 11 known literals (`lib/ui/PageHeader.svelte` ×2, `routes/+page.svelte` ×9) are gone. |
-| **Check** | Extend `src/lib/touch-targets.test.ts` (already a full `svelteFiles(SRC)` tree-walk, so there is no file list to maintain) with a literal-expression assertion. A source scan suffices — this is a syntax claim, not a measurement. |
+| **Acceptance** | Given the phone source tree, When it is scanned for `44px` outside `:root`, Then zero occurrences remain under `src/routes/**` and `src/lib/**`, and the 11 known literals (`lib/ui/PageHeader.svelte` ×2, `routes/+page.svelte` ×9) are gone. |
+| **Check** | Extend `tests/guards/a11y/touch-targets.test.ts` (already a full `svelteFiles(SRC)` tree-walk, so there is no file list to maintain) with a literal-expression assertion. A source scan suffices — this is a syntax claim, not a measurement. |
 | **Priority** | Should — behaviour is correct today; this protects the next change to the standard. |
 
 ### XR-PH-02 — Text and controls survive 200% text scaling and a 320px viewport
@@ -71,7 +71,7 @@ When these rows were written, six dimensions had **zero** tokens and ~391 litera
 guard cannot compare against a token that does not exist. The four rows below cover all six dimensions
 and close the hole each one leaves.
 
-**Status:** five of the six shipped (#829/#875, plus breakpoints via #852) — `--space-*` ×10, `--lh-*`
+**Status:** five of the six shipped (breakpoints arriving separately) — `--space-*` ×10, `--lh-*`
 ×5, `--z-*` ×14, `--duration-*` ×4, `--bp-*` ×5. Still open: **`font-family`** (never tokenised; raw
 literal at `app.css:782`) and **easing** (motion shipped duration only). The literal counts below are
 the pre-migration figures and are kept as the rationale that justified the work, not as current state.
@@ -116,7 +116,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 
 | | |
 |---|---|
-| **Statement** | The product declares one canonical breakpoint set, and every `@media` width literal in source is a **member** of it. The reviewer checklist's widths (390 / 820 / 1440 px) are a separate, eyeballing list and are deliberately not required to match — the two are different things (owner #831 Q1-C). |
+| **Statement** | The product declares one canonical breakpoint set, and every `@media` width literal in source is a **member** of it. The reviewer checklist's widths (390 / 820 / 1440 px) are a separate, eyeballing list and are deliberately not required to match — the two are different things (owner ruling Q1-C). |
 | **Surfaces** | Phone, Ops, TV |
 | **Rationale** | `REVIEW.md` tells reviewers to check 390 / 820 / 1440px; the only widths in source are 380 / 520 / 768 / 1200px. The two lists mean different things — widths eyeballed vs widths switched at — but until a declaration existed, **nothing** pinned the switch widths, so a new `@media` could branch at a width no token and no reviewer knew about. |
 | **Source** | `DERIVED` — model: membership of every source `@media` width literal in the declared `--bp-*` set, read from `app.css`. The reviewer list is left as-is and not compared for equality. |
@@ -185,7 +185,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Rationale** | The mockup's own home frame demonstrates the failure — the docked CTA occludes queue row 5 because a disclosure grew inside a fixed shell — and an absolutely-positioned CTA that visually sits last while appearing first in the DOM also breaks the tab sequence. |
 | **Source** | [SC 2.4.3 Focus Order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html) (A) for the sequence. The reserve-in-flow half is `DERIVED` — model: content occluded by a fixed band cannot be reached by scrolling, so it is content loss under [SC 1.4.10 Reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html) regardless of the focus question. |
 | **Acceptance** | Given home with enough rows to scroll, When the list is scrolled to its end, Then the last row's rect does not intersect the docked band's rect; and When Tab is pressed from the header, Then focus visits controls in top-to-bottom visual order. |
-| **Check** | Driven browser: `getBoundingClientRect` intersection plus real `Tab` key events reading `document.activeElement`. The `--dock-h` custom-property idiom is the working precedent for reserving a docked band's height (it succeeded `--peek-h`, retired with the drawer surface in #903). |
+| **Check** | Driven browser: `getBoundingClientRect` intersection plus real `Tab` key events reading `document.activeElement`. The `--dock-h` custom-property idiom is the working precedent for reserving a docked band's height (it succeeded `--peek-h`, retired with the drawer surface). |
 | **Priority** | Must. |
 
 ### XR-PH-13 — Announcement inventory: what is announced, and when
@@ -204,10 +204,10 @@ the pre-migration figures and are kept as the rationale that justified the work,
 
 | | |
 |---|---|
-| **Statement** | The unjoined landing state offers both a scan path and a typed path to the same room. The typed path is six segmented single-character inputs; input is normalised to upper case; characters outside `ABCDEFGHJKMNPQRSTUVWXYZ23456789` are rejected at the keystroke with a stated reason; a 6-character paste fills all six; and Continue stays disabled until six are present, with the reason stated in text rather than by disabled state alone. A guest arriving with the code already resolved is shown the room **confirmed in words** — how many people are present, and a couple of their names — and never the code as an input they cannot act on. (Rooms carry no name in the data model, so #834 Q1-B confirms by presence, not a room name; there is no expiry column either, so a code either resolves or does not.) |
+| **Statement** | The unjoined landing state offers both a scan path and a typed path to the same room. The typed path is six segmented single-character inputs; input is normalised to upper case; characters outside `ABCDEFGHJKMNPQRSTUVWXYZ23456789` are rejected at the keystroke with a stated reason; a 6-character paste fills all six; and Continue stays disabled until six are present, with the reason stated in text rather than by disabled state alone. A guest arriving with the code already resolved is shown the room **confirmed in words** — how many people are present, and a couple of their names — and never the code as an input they cannot act on. (Rooms carry no name in the data model, so the owner's Q1-B ruling confirms by presence, not a room name; there is no expiry column either, so a code either resolves or does not.) |
 | **Surfaces** | Phone |
 | **Rationale** | A typed code alone is a cognitive-function test, so the scan route is what makes the screen conformant; the segment count teaches the format without an instruction; the alphabet already excludes O/I/L/0/1 server-side, so accepting an `O` and failing later discards the whole point of the restriction; and once transcription has happened the code has no remaining function, so what remains is confirmation. |
-| **Source** | [SC 3.3.8 Accessible Authentication (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/accessible-authentication-minimum.html) (AA) for scan-alongside-type; [SC 3.3.2 Labels or Instructions](https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html) (A) and [SC 3.3.1 Error Identification](https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html) (A) for the disabled-Continue reason. Alphabet from `mintRoomCode()` in `apps/core/src/server/rooms/repository.ts`, whose comment frames the code as what a phone enters **or a QR encodes**; the resolved-code path already exists at `routes/join/+page.svelte:11` (`/join?room=CODE`). |
+| **Source** | [SC 3.3.8 Accessible Authentication (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/accessible-authentication-minimum.html) (AA) for scan-alongside-type; [SC 3.3.2 Labels or Instructions](https://www.w3.org/WAI/WCAG22/Understanding/labels-or-instructions.html) (A) and [SC 3.3.1 Error Identification](https://www.w3.org/WAI/WCAG22/Understanding/error-identification.html) (A) for the disabled-Continue reason. Alphabet from `mintRoomCode()` in `src/lib/server/rooms/repository.ts`, whose comment frames the code as what a phone enters **or a QR encodes**; the resolved-code path already exists at `routes/join/+page.svelte:11` (`/join?room=CODE`). |
 | **Acceptance** | Given the unjoined state, When it renders, Then both a scan affordance and six inputs are present, the group has one accessible name, and the six are one tab stop with arrow/backspace movement between them. When `o1l` is typed, Then nothing is entered and a message names the excluded characters. When a 6-char code is pasted into the first box, Then all six fill and Continue enables. Given `/?room=<valid code>`, Then the six inputs are absent and a sentence names how many people are present (and a couple by name); given an invalid code, Then the typed path renders **with** a stated reason rather than a blank form. |
 | **Check** | Driven browser with real key and paste events. Encode the known hazard: Svelte 5 `bind:value` on a rune does **not** pick up synthetic CDP input, so a probe must dispatch real key events or the field reads as empty and Continue as correctly-disabled. |
 | **Priority** | Must. |
@@ -247,7 +247,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Statement** | A drag grip renders only on a row that is the guest's own, when the guest has more than one queued pick, **and** the room's ordering honours a per-singer reorder. It never renders on another guest's row, and no row without a reorder path carries `cursor: grab`. |
 | **Surfaces** | Phone |
 | **Rationale** | `QueueRow.svelte`'s comment records that a grip previously rendered *only* on rows that were neither removable nor reorderable — another guest's song — where it was the sole affordance, promising a drag that does not exist; and under `shuffle` (`respectsAddedAt: false`) a `move` is a legal no-op, so a grip there promises a reorder the reducer discards. |
-| **Source** | Repo: `apps/core/src/lib/components/QueueRow.svelte` (the removed-grip comment and the `reorderable` prop), `packages/shared/src/queue/queue-order.ts` (`respectsAddedAt`, `reorderIsMeaningful`), already consumed at `routes/+page.svelte:97`. |
+| **Source** | Repo: `src/lib/components/QueueRow.svelte` (the removed-grip comment and the `reorderable` prop), `src/lib/contract/queue/queue-order.ts` (`respectsAddedAt`, `reorderIsMeaningful`), already consumed at `routes/+page.svelte:97`. |
 | **Acceptance** | Given a room ordered by `shuffle` and a guest with three of their own picks, When home renders, Then no grip renders on any row. Given `fair` ordering with exactly one of the guest's picks queued, Then no grip renders. Given `fair` with two, Then a grip renders on both of the guest's rows and on no other row. |
 | **Check** | Unit test over the grip-visibility predicate (pure), plus captured frames for the three arms. |
 | **Priority** | Must. |
@@ -259,9 +259,9 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Statement** | In the reorder mode, the number of drop targets equals the guest's own queued pick count, each target is labelled with the ordinal it represents among the guest's picks, other guests' rows are non-interactive and de-emphasised, and a release outside a legal target commits nothing. |
 | **Surfaces** | Phone |
 | **Rationale** | `move`'s `toSeq` is an index into the singer's own queued picks, so a drop that appears to cross singers cannot be expressed and would snap back — which reads as a bug rather than as a rule. The guest's picks are **not adjacent** in a flat list, which is why the mode must draw the slots rather than let the list imply them. |
-| **Source** | Repo: `packages/shared/src/core/ops.ts:12`; `reorderWithinSinger` at `packages/shared/src/queue/rotation.ts:127`, which indexes queued picks only and clamps an out-of-range target. |
+| **Source** | Repo: `src/lib/contract/core/ops.ts:12`; `reorderWithinSinger` at `src/lib/contract/queue/rotation.ts:127`, which indexes queued picks only and clamps an out-of-range target. |
 | **Acceptance** | Given 6 queued entries of which 2 are the guest's, When the mode is entered, Then exactly 2 drop targets render and the other 4 rows expose no pointer or keyboard interaction; When a row is released over a non-target, Then no `move` op is emitted. |
-| **Check** | Driven browser for the target count and release behaviour; a unit test asserts the count derives from the guest's queued picks, not from the visible list length. Cross-singer placement is now a **direct rewrite of the stored ordered list** (no pin — pinning was deleted in #856 step 3), wired to the arrows and the drag in #856 step 4, and is out of scope for this within-singer row. |
+| **Check** | Driven browser for the target count and release behaviour; a unit test asserts the count derives from the guest's queued picks, not from the visible list length. Cross-singer placement is now a **direct rewrite of the stored ordered list** (no pin — pinning was deleted in the stored-list migration's step 3), wired to the arrows and the drag in its step 4, and is out of scope for this within-singer row. |
 | **Priority** | Must. |
 
 ### XR-PH-19 — Exiting the mode, and what happens when the queue moves underneath it
@@ -271,7 +271,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Statement** | The mode is exited by an explicit Done, by Cancel, and by `Escape`; Cancel and `Escape` commit nothing. If a concurrent change invalidates the mode — the guest's queued picks fall below two, or their pick begins playing — the mode closes itself, states why, and returns focus to the row the guest was moving. |
 | **Surfaces** | Phone |
 | **Rationale** | `assignSeqs` re-derives `rotationSeq` on **every** mutation, so any other guest's add re-orders the list under an open drag; a mode whose slots silently stop matching the list is how a drop lands somewhere the guest did not choose. |
-| **Source** | Repo: `packages/shared/src/queue/rotation.ts` — `assignSeqs` re-derivation, and `reorderWithinSinger` returning a no-op for a playing entry. |
+| **Source** | Repo: `src/lib/contract/queue/rotation.ts` — `assignSeqs` re-derivation, and `reorderWithinSinger` returning a no-op for a playing entry. |
 | **Acceptance** | Given the mode is open, When `Escape` is pressed, Then no op is emitted and focus returns to the grip that opened it. Given the mode is open and the guest's second pick is removed elsewhere, Then the mode closes with a stated reason within one render and no op is emitted. |
 | **Check** | Driven browser for `Escape` and focus return; a harness test drives real ops through `handleQueueCommand` to produce the invalidating states (the `AuthoritativeState` + `HubDeps` idiom used by `autostart.test.ts` is the working template). |
 | **Priority** | Must. |
@@ -299,7 +299,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Statement** | Every requirement in this section whose acceptance is a computed value — geometry, contrast, paint order, focus location — names a rendered-DOM or driven-browser check, or is marked `EXEMPT`. None is satisfied by a source scan. |
 | **Surfaces** | Phone |
 | **Rationale** | No source scan can make a measurement claim, and the repo's own record is that every real defect found lately was invisible to a passing suite and surfaced only by driving the app; 4 of the 19 at-risk guards are measurement claims for this reason. |
-| **Source** | Repo: `apps/core/src/lib/tv/wake-lock.test.ts:18-27` states the blocker — `bunfig.toml` preloads the happy-dom + Svelte harness but does not alias the `$app` / `$env` virtual modules, so only components with zero `$app` imports can mount. |
+| **Source** | Repo: `tests/guards/subsystem-tv/wake-lock.test.ts:18-27` states the blocker — `bunfig.toml` preloads the happy-dom + Svelte harness but does not alias the `$app` / `$env` virtual modules, so only components with zero `$app` imports can mount. |
 | **Acceptance** | Given this section, When each row's Check field is read, Then every measurement row names a rendered/driven mechanism or `EXEMPT`. Falsified by one measurement row whose only check is a scan. |
 | **Check** | Review of this document. Mechanically the prerequisite is aliasing those two modules, which converts XR-PH-02, -03, -04, -12 and -18 from honour-system to checkable. |
 | **Priority** | Must — it is the gate on five other rows here. |
@@ -333,7 +333,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
   drag library's JS-driven motion and Tailwind's `transition-*` utilities, both outside that matcher —
   which is XR-PH-06.
 - **A cross-singer drag requirement.** `move` expresses a within-singer reorder only; a cross-singer drag
-  rewrites the stored ordered list through the "move to index" op that #856 step 4 introduces, so
+  rewrites the stored ordered list through the "move to index" op that the migration's step 4 introduces, so
   specifying a guest-facing version here would front-run that step.
 - **Search and filter behaviour on the browse screen beyond the deletion.** The direction deletes the four
   filter mechanisms and leaves typing as the only filter; ranking, debounce and result-set semantics are a

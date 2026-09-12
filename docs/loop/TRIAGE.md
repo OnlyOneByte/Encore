@@ -53,7 +53,7 @@ cannot tell your comment from a human's by author — every lane on this repo po
 user. The marker is the *only* thing that stops your own comment from waking a triage turn about
 itself. It renders as nothing, so it costs the reader nothing.
 
-Measured on 2026-09-08: a triage comment posted **without** the marker (on #759) was picked up as if
+Measured on 2026-09-08: a triage comment posted **without** the marker was picked up as if
 it were a human reply and spent a whole follow-up turn before that lane worked out it was reading its
 own words. Nothing worse happened only because the follow-up lane re-checks authoritatively — do not
 rely on that safety net.
@@ -429,7 +429,7 @@ sweep is cheap precisely because it is bounded, and this pass already does a lot
 **A closed issue in a pair is a decision, not a duplicate.** If the pair says `#N is CLOSED`, read
 why it closed: something closed as not planned is a ruling, and an open issue that re-opens it needs
 `needs-decision`, not a `duplicate` label. **A closed issue that shipped a fix is not a blanket ruling
-either** — #82 closed as fixed by a merged PR whose landed guard does not cover #131 at all, and #59's
+either** — an earlier change closed as fixed by a merged PR whose landed guard does not cover #131 at all, and #59's
 own fix is what *introduced* #92. Check what the fix actually asserts before treating it as covering
 anything.
 
@@ -443,11 +443,11 @@ anything.
    line before ever starting a server.
 2. Try to trigger it for real. The tools:
    - Build and start a throwaway server on loopback:
-     `cd apps/core && bun run build`, then
+     `cd . && bun run build`, then
      `PATH="/home/angryang/ffmpeg:$PATH" ENCORE_EPHEMERAL=1 HOST=127.0.0.1 PORT=51xx MEDIA_DIR=<seeded> bun run server.ts`.
      Kill it by port→PID (`ss -lptn 'sport = :PORT'`), never `pkill -f`.
    - Seed a library with `bun run e2e/seed-media.mjs` and drive the UI with the repo's **own**
-     zero-dep CDP driver in `apps/core/e2e/` (`cdp.mjs`, `party.mjs`). A Chromium is already cached at
+     zero-dep CDP driver in `tests/e2e/` (`cdp.mjs`, `party.mjs`). A Chromium is already cached at
      `~/.cache/ms-playwright/chromium-1232/chrome-linux/chrome`.
    - **`playwright-cli`: the old reason to rule it out no longer holds** — it needed Node 20 when this
      box had 18.20.2, and node 20.20.2 and 22.22.3 are both installed now. Whether `playwright-cli`
@@ -488,7 +488,7 @@ record that is authoritative for it, a parallel table deleted in favour of the r
 a whole module reshaped. Two obligations come with that licence:
 
 - **State the blast radius as a fact**, not an adjective: the files the fix must touch, whether it
-  crosses `packages/shared` (the wire contract), whether it needs a migration or a backfill, and which
+  crosses `src/lib/contract` (the wire contract), whether it needs a migration or a backfill, and which
   existing tests will have to change. That list is what the conductor's file-overlap gate reads, and a
   wide fix dispatched blind loses every rebase race against the nine other workers in flight.
 - **Name the cheap fix you rejected and why.** One sentence. It is the reviewer's only way to tell a
@@ -530,7 +530,7 @@ Write a proposal **as a comment**, and nothing else. No branch, no code, no PR.
 Cover, briefly:
 
 - **What it changes for a singer in the room** — the user-visible behaviour, not the implementation.
-- **Where it lands** — the actual files and the seam. Say if it crosses `packages/shared` (the wire
+- **Where it lands** — the actual files and the seam. Say if it crosses `src/lib/contract` (the wire
   contract), needs a **migration**, or touches the worker, because each of those changes who can do it.
 - **What it collides with.** Check `docs/ROADMAP.md` and the ratified decisions before proposing:
   several things were *deliberately* cut (the Song/Version split, real-FFT visualizers, scoring,

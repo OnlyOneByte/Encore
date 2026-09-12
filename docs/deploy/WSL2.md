@@ -21,8 +21,8 @@ Encore's whole join flow is *phones on the LAN scan a QR shown on the TV*. Two f
 - **Default WSL2 networking is NAT.** Windows can reach a WSL service on `localhost`, but **other
   devices on your LAN cannot reach it at all.** Phones will simply fail to connect.
 - **The QR follows the `Host` header of the request that loaded the TV.**
-  `apps/core/src/routes/tv/+page.server.ts` builds `joinUrl` via `publicOrigin(request, url)`
-  (`apps/core/src/server/public-origin.ts`), which takes the authority from `X-Forwarded-Host` or
+  `src/routes/tv/+page.server.ts` builds `joinUrl` via `publicOrigin(request, url)`
+  (`src/lib/server/public-origin.ts`), which takes the authority from `X-Forwarded-Host` or
   `Host`, and the scheme from `X-Forwarded-Proto` defaulting to `http`. So the QR contains whatever
   address the *TV browser* used to load `/tv`. Open the TV at `http://localhost:3000/tv` and the QR
   says `localhost` — useless to a phone, even if the network were otherwise fine.

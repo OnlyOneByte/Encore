@@ -25,7 +25,7 @@ parts of the generic `pipeline-conductor` skill are WRONG for this repo and the 
    "babysit the PR to green" has nothing to read. The review lane is the **review-orchestrator**
    (`encore-pr-bot`), which posts a verdict and sets `review:approved` or `review:blocked`.
 3. Dispatch needs a **FILE**-overlap check, not just an item-overlap check. Several open issues land in
-   the same files (`TvPlayer.svelte`, `settings.ts`, `packages/shared`), and whoever merges first makes
+   the same files (`TvPlayer.svelte`, `settings.ts`, `src/lib/contract`), and whoever merges first makes
    the other stale.
 
 Worker brief: `docs/loop/CODING-BOT.md` — seed each worker with it verbatim, plus its one issue number.
@@ -100,8 +100,7 @@ labels cleared it described nothing.
   floor of roughly six minutes, not seconds. Do not
   assume a just-created issue is already `triaged`; re-read the labels rather than the clock.
 
-Retired rule: the old "owner owns `TvPlayer.svelte` → STANDDOWN" rule is GONE (#396 merged as PR #428,
-`4bc2e00`). `TvPlayer.svelte` and `routes/tv` are normal code, subject to normal file-overlap only.
+Retired rule: the old "owner owns `TvPlayer.svelte` → STANDDOWN" rule is GONE (merged as `4bc2e00`). `TvPlayer.svelte` and `routes/tv` are normal code, subject to normal file-overlap only.
 
 ## Standing up a worker
 
@@ -172,11 +171,11 @@ Everything below was learned from a real failure. Each item is load-bearing; do 
 These four caused every real BLOCK/rework in the checkpoint they were written from.
 
 1. **READ GATE EXIT CODES, not summary lines** — especially `bun run typecheck` (it chains
-   `typecheck:e2e` = `tsc` on e2e; `svelte-check` can print "0 errors" while the chained leg FAILS, e.g.
-   **#616**). Run the FULL chain and confirm each EXITS 0: `bun test`; `bun run build`;
-   `bun run typecheck`; `(cd apps/worker && python3 -m pytest -q)`; `bun run gate:measured` (the
-   layout rung — after `bun run build`, since it drives the real bundle); `ruff`/`mypy` (**#484**) +
-   `eslint`/`prettier` (**#554**) on touched files. Check `echo EXIT=$?` per gate; do not trust printed
+   `typecheck:e2e` = `tsc` on e2e; `svelte-check` can print "0 errors" while the chained leg
+   FAILS). Run the FULL chain and confirm each EXITS 0: `bun test`; `bun run build`;
+   `bun run typecheck`; `(cd worker && python3 -m pytest -q)`; `bun run gate:measured` (the
+   layout rung — after `bun run build`, since it drives the real bundle); `ruff`/`mypy` +
+   `eslint`/`prettier` on touched files. Check `echo EXIT=$?` per gate; do not trust printed
    summaries.
 2. **When STRENGTHENING/NARROWING a guard or scanner, PROVE IT IS ADDITIVE** — no old catch lost. The
    dominant blocker: a regex/strip that catches a NEW form silently drops an OLD one (a tag-strip that
@@ -194,7 +193,7 @@ These four caused every real BLOCK/rework in the checkpoint they were written fr
 
 **BREADTH IS ALLOWED**: over-classify / sweep adjacent siblings when it yields cleaner code or closes
 adjacent issues. ONE carve-out: never reclassify a TRANSIENT/RETRYABLE failure as TERMINAL (it silently
-stops retrying something that would have succeeded). [Note **#651** went the safe direction:
+stops retrying something that would have succeeded). [Note the unknown-model case went the safe direction:
 unknown-model is genuinely permanent, so terminal is correct there.]
 
 ## Commit format (global — seed into EVERY worker)
@@ -204,10 +203,10 @@ ALL squash-merge commit messages AND PR titles use **CONVENTIONAL COMMITS**: `ty
 `docs` / `chore` / `perf` / `build` / `ci`. Scope = the touched area (`worker`, `core`, `tv`, `shared`,
 `lyrics`, `e2e`, `rooms`, `separation`, `db`, …). Examples:
 
-- `fix(tv): route the TV socket through WsClient (#449)`
-- `refactor(worker): single-source run_stage in runner.py (#650)`
-- `test(core): make the motion guards catch Svelte in:/out:/animate: directives (#648)`
-- `feat(rooms): mint and join a room by code (#654)`
+- `fix(tv): route the TV socket through WsClient`
+- `refactor(worker): single-source run_stage in runner.py`
+- `test(core): make the motion guards catch Svelte in:/out:/animate: directives`
+- `feat(rooms): mint and join a room by code`
 
 Keep `Closes #N` as a body line (or the `(#PR)` suffix GitHub squash adds). When self-merging,
 `gh pr merge N --squash` uses the **PR TITLE** as the commit subject, so the PR title MUST already be
@@ -223,21 +222,21 @@ conventional-format — set it that way at `gh pr create`.
   row, then runs the full set so the new migration actually runs (not a fresh `:memory:` DB).
 - SQLite cannot ALTER a PK: recreate the table + carry existing rows onto their correct new key; guard
   orphan rows.
-- Two workers (**#655**, **#669**) independently hit the in-place-`0000` boot-failure trap — do not
+- Two workers independently hit the in-place-`0000` boot-failure trap — do not
   repeat it.
 
-## Review re-trigger mechanism (#681 — head-based, settled on #783)
+## Review re-trigger mechanism (head-based)
 
 - The review-orchestrator (pr-bot) is NOT CI: no GitHub Actions, no push-trigger, no comment command. For
   ENTRY its probe is **label-blind** — it reads every open PR and buckets on "no verdict at the current
-  head" (measured on #781).
+  head" (measured, not assumed).
 - **RE-review works the same way, and the label flip is not what causes it.** A pushed fix moves the
-  head, which invalidates the prior verdict and re-selects the PR on its own. Measured on **#201**:
+  head, which invalidates the prior verdict and re-selects the PR on its own. Measured on the PR whose
   verdict 3 posted at `04:31:41Z` against head `b48581f` while the PR carried `review:blocked` and no
   `review:pending`; the flip to `review:pending` came at `04:35:32Z`, 3m51s *later*; and that head had
   been force-pushed at `04:14:38Z`, before the block was applied. Still have the worker flip the label —
   it is the board state that says a fixed PR is waiting again — but do not treat it as the trigger.
-- A worker CAN flip its own PR label (chat-409 did on **#681**), so this is not a permission gap.
+- A worker CAN flip its own PR label (chat-409 did it), so this is not a permission gap.
 - When a worker reports it addressed a block + pushed + is awaiting re-review but the label is still
   `review:blocked`: have it flip the label to `review:pending` so the board reads correctly, and do not
   assume the missing flip is why no verdict has arrived — check the patrol interval first.
@@ -247,36 +246,36 @@ conventional-format — set it that way at `gh pr create`.
 ## Coding-bot seed rule — re-review after a block (bake into EVERY worker seed §6/§7)
 
 - Treat the `review:blocked` → `review:pending` flip as **required board state**, not as the trigger:
-  the lane re-reviews because your push moved the head, which is measured on **#201** and settled on
-  **#783**. A prose comment ALONE is inert either way, and so is the flip alone without a new head.
+  the lane re-reviews because your push moved the head, which is the measured behaviour (see the review
+  re-trigger section above). A prose comment ALONE is inert either way, and so is the flip alone without a new head.
 - So: after you push a fix that addresses a `review:blocked` finding, YOU flip your PR label
   `review:blocked` → `review:pending`
   (`gh pr edit <N> --remove-label review:blocked --add-label review:pending`), then post a one-line
   "addressed X in `<head>`, re-review" comment.
-- Confirmed a worker can flip its OWN PR label (chat-409 did on **#681**). Do NOT rely on the conductor
+- Confirmed a worker can flip its OWN PR label (chat-409 did it). Do NOT rely on the conductor
   or owner to flip it.
 - If the branch is DIRTY, rebase + re-verify + force-push BEFORE flipping the label, so the orchestrator
   reviews a mergeable head.
 - Seed this verbatim into the review/babysit section of every dispatched worker going forward.
 
-## PR entry rule — RETIRED (premise disproven, #781)
+## PR entry rule — RETIRED (premise disproven)
 
 - There used to be a rule here asserting the orchestrator queues a PR only when it carries
-  `review:pending`, and that an unlabelled PR is INVISIBLE to it (attributed to **#707**). **That is
-  false.** The review probe is label-blind; on #772 the first verdict posted while the PR carried no
-  review label at all, and #707's own verdict came *after* its label, by about one patrol interval. What
-  #707 recorded as invisibility was a patrol-interval wait.
+  `review:pending`, and that an unlabelled PR is INVISIBLE to it. **That is
+  false.** The review probe is label-blind; one PR's first verdict posted while it carried no
+  review label at all, and the PR the claim came from had its own verdict arrive *after* its label, by
+  about one patrol interval. What that PR recorded as invisibility was a patrol-interval wait.
 - Workers still add `review:pending` right after `gh pr create` — as board state, not as an entry
   trigger. See [`CODING-BOT.md`](CODING-BOT.md) §5 and
   [`LABELS.md`](LABELS.md#labels-still-doing-trigger-duty).
 
-## Worker write mechanism (seed into EVERY worker SAFETY line — learned #424 + #517)
+## Worker write mechanism (seed into EVERY worker SAFETY line)
 
 - Workers WRITE FILES WITH THE EDITING TOOL (`fs_write`), NOT shell heredocs. The credential-path
   scanner rejects COMPOUND/HEREDOC shell writes (`cat > file <<EOF`, `python3 - <<PY`) because its
   traversal checker explores the multi-part command into the fenced `.kiro/crew-auth-staging` sibling —
   so a worktree write under `.kiro/crew/workspace/` trips it.
-- Two workers (**#424**, **#517**) hit this and MISDIAGNOSED it as "I am the conductor / no file-write
+- Two workers hit this and MISDIAGNOSED it as "I am the conductor / no file-write
   capability / misrouted dispatch" and stopped. That is WRONG: the worker HAS write capability (the
   editing tool), and the block is a pure tooling false-positive on the shell path.
 - Seed verbatim: "Write files with the editing tool (`fs_write`), never shell heredocs. If you must use
@@ -290,7 +289,7 @@ These claims appear in the older sources and are now **DEAD**:
 
 - `max_in_flight: 3`, `max_per_cycle: 1`, and the patrol instruction to "TOP UP toward 10". The ratified
   numbers are `max_in_flight: 5`, `max_per_cycle: 3`, `max_reviewers: 5`.
-- Any claim that `bun run typecheck` exiting 2 with 9 known errors is green (issue **#56**, PR **#73**).
+- Any claim that `bun run typecheck` exiting 2 with 9 known errors is green.
   It expects exit 0 / 0 errors / 0 warnings.
 - Any older sidebar folder id. Coding workers → `Encore/dev` (`663b5cc68150`); orchestrators →
   `Encore/orchestrator` (`317ceda16a74`); reviewers → `Encore/review` (`40f9d6902cc4`).
@@ -309,7 +308,7 @@ fleet model only changes how many run at once and who reviews them. Where the tw
 governance numbers above are for the running conductor.
 
 **Why it cannot be a cron.** A cron-hosted agent on this box **cannot spawn subagents** — `spawn refused
-by governance: profile denies: capability disabled`, confirmed on retry by cycle 2 (PR #63). The §3.7
+by governance: profile denies: capability disabled`, confirmed on retry by cycle 2. The §3.7
 adversarial review *is* three subagents, so a cron cycle can fix and open a PR but can **never** satisfy
 merge criterion 8. It parks every time. Throughput was never the first problem: the merge path was
 closed. So the fleet must run in a dashboard session, which has spawn authority, and it uses that
@@ -328,14 +327,14 @@ One wave per wake:
    `loop` + `triaged`, excluding `needs-decision` and anything with an open PR. Read each candidate's
    triage comment for its file footprint, then **verify every named path exists on `origin/main`** with
    `git cat-file -e origin/main:<path>` — a triage comment can name a file that lives only on an
-   unmerged branch (this cost real turns in wave 1 on #53). Then pick up to 3 whose footprints do not
+   unmerged branch (this cost real turns in wave 1). Then pick up to 3 whose footprints do not
    intersect. Defer any candidate that shares a file with another in the wave, touches a Drizzle
    migration (this repo has renumbered collisions repeatedly), or changes a wire shape or enum in
-   `packages/shared` that the Python worker also carries — those three are exactly where parallel PRs
+   `src/lib/contract` that the Python worker also carries — those three are exactly where parallel PRs
    stop being independent.
 3. **Fan out the fixes** in one `spawn_run` batch, `include_memory=false`, `include_lessons=true`, capped
    at 3 fix agents (each spawns 3 reviewers → 12 subagents, under the 16 cap). Raise `max_turns` to ~250:
-   the default 100 is not enough, and in wave 1 the #53 agent died on `turn_limit:100` after opening a
+   the default 100 is not enough, and in wave 1 an agent died on `turn_limit:100` after opening a
    complete PR but before its review landed. Each agent OWNS ITS PR TO THE MERGE: claim the issue,
    `git worktree add ../encore-loop-<slug>` + `bun install`, prove the defect first, smallest fix, climb
    the verification ladder with a mandatory mutation proof, five gates green, open a PR carrying

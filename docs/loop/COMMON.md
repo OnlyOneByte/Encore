@@ -63,18 +63,18 @@ the only safety net the repo has.
 
 ```bash
 bun test                                # expect 0 fail
-cd apps/worker && python3 -m pytest -q  # expect 0 fail
+cd worker && python3 -m pytest -q  # expect 0 fail
 bun run build                           # expect exit 0
 bun run typecheck                       # expect exit 0, 0 errors, 0 warnings
 bun run gate:measured                   # expect exit 0 — the layout rung, AFTER build
 ```
 
-`gate:measured` is the fifth gate (issue #823, owner ruling Q1 = A). It boots its own ephemeral
+`gate:measured` is the fifth gate (owner ruling Q1 = A). It boots its own ephemeral
 server and its own headless Chromium and MEASURES the four claims a source scan cannot decide —
 rendered control heights, computed field font size, the drawer's viewport cap and safe-area term, and
 the focus ring's painted form. **It has no skip path**: a missing Chromium, an unbuilt app or a
 server that will not boot are FAILURES, because option B — skip when the environment is missing — is
-the shape `apps/core/e2e/contract.test.ts:23` already ruled is indistinguishable from silent rot. Run
+the shape `tests/guards/hygiene/contract.test.ts:23` already ruled is indistinguishable from silent rot. Run
 it after `bun run build`; it drives the real bundle.
 
 ### Measurement discipline — three rules, each from a real false pass
@@ -86,7 +86,7 @@ it after `bun run build`; it drives the real bundle.
 - **A firing NON-VACUITY FLOOR is the exception, and it is a FINDING, never a number to adjust.** The
   rule directly above is about *suite pass counts*, which drift innocently. It does **not** extend to a
   floor assertion inside a guard — `expect(files.length).toBeGreaterThan(50)` and its ~21 siblings,
-  inventoried in `apps/core/src/lib/non-vacuity-floors.test.ts`. Those guards derive their own scope by
+  inventoried in `tests/guards/meta/non-vacuity-floors.test.ts`. Those guards derive their own scope by
   walking a tree, then assert an `offenders` array is empty; an empty array is what a working guard
   produces *and* what a guard examining nothing produces, so the floor on the size of what was examined
   is the only thing separating the two. A firing floor therefore does not mean the guard broke. It means
@@ -101,13 +101,13 @@ it after `bun run build`; it drives the real bundle.
   can print "0 errors" while the chained leg fails — confirm the whole chain exits 0.
 
 **The old baseline is dead.** Any brief claiming `bun run typecheck` exits 2 with exactly 9 known
-`@encore/shared` `song-profile` errors and that this counts as green is stale — that was issue #56,
+`$lib/contract` `song-profile` errors and that this counts as green is stale — that was issue #56,
 closed by PR #73. Any error is now a regression, and fixing it outranks the assignment.
 
 ## Proof — a fix is not done until the test bites
 
 A regression test must be **red on base** and **per-hunk mutation-proven**. Union-reverting all hunks
-proves nothing about any individual hunk: measured on #224, a union revert reddened 3 tests while
+proves nothing about any individual hunk: measured, a union revert reddened 3 tests while
 reverting `server.ts` alone left 1398 pass / 0 fail.
 
 The harness is `.kiro/autoloop/scripts/prove_per_hunk.py` *(the one remaining uncommitted dependency —
@@ -119,8 +119,8 @@ that reads the real production file.
 
 Three things the harness cannot check, all of which have shipped bugs:
 
-- Never derive an expected value with the same operation the code performs (#165).
-- Trace that the fixed code is actually **reached** on the issue's path (#190).
+- Never derive an expected value with the same operation the code performs.
+- Trace that the fixed code is actually **reached** on the issue's path.
 - Name the failing assertion per hunk.
 
 ## Merge safety
