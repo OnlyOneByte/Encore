@@ -41,7 +41,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 import { findChromium } from '../lib/chromium.mjs';
@@ -286,23 +286,11 @@ if (!healthy) {
 	);
 }
 
-const browserProc = spawn(
-	chromium,
-	[
-		`--remote-debugging-port=${await freePort()}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		`--user-data-dir=${join(SCRATCH, 'chrome')}`,
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
-// The port the child was told is the one we must connect to; re-read it from the flag we passed.
-const cdpPort = Number(
-	(browserProc.spawnargs.find((a) => a.startsWith('--remote-debugging-port=')) ?? '=0').split('=')[1]
-);
+
+// No CDP port to re-read any more. This used to spawn its own Chromium and recover the port from the
+// child's own argv, because the port was chosen with `await freePort()` and only the child knew it. The
+// driver launches its own browser and takes no port, so `connect()` needs no argument and there is nothing
+// to derive.
 
 let controlsMeasured = 0;
 let fieldsMeasured = 0;
@@ -324,7 +312,7 @@ const occludedControls = [];
 /** @type {Browser | undefined} */
 let browser;
 try {
-	browser = await connect(cdpPort);
+	browser = await connect();
 	const page = await browser.newPage();
 	await page.viewport(VIEWPORTS[0].w, VIEWPORTS[0].h);
 
@@ -406,7 +394,7 @@ try {
 		 */
 		await surface('/', async () => {
 			await page.goto(base + '/');
-			await page.waitFor(`document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`, { timeout: 15000 });
+			await page.waitForSelector(SEL.homeReady , { timeout: 15000 });
 		});
 		await surface('/ (searched)', async () => {
 			await openBrowseFromHome(page, { timeout: 15000 });
@@ -466,7 +454,7 @@ try {
 	 */
 	await page.viewport(390, 844);
 	await page.goto(base + '/');
-	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`, { timeout: 15000 });
+	await page.waitForSelector(SEL.homeReady , { timeout: 15000 });
 	await sleep(600); // let the measured --dock-h write land
 
 	const dockProbe = `(() => {
@@ -636,7 +624,7 @@ try {
 	 */
 	await page.fill(SEL.search, 'zzzzznotasongzzzzz');
 	await page
-		.waitFor(`document.querySelector(${JSON.stringify(SEL.empty)}) !== null`, { timeout: 15000 })
+		.waitForSelector(SEL.empty , { timeout: 15000 })
 		.catch(() => {});
 	await sleep(900);
 	const shortProbe = `(() => {
@@ -758,7 +746,7 @@ try {
 	 */
 	await page.viewport(1920, 1080);
 	await page.goto(base + '/tv');
-	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.tvRoot)}) !== null`, { timeout: 15000 });
+	await page.waitForSelector(SEL.tvRoot , { timeout: 15000 });
 	await sleep(500);
 
 	// The eight TV type tiers, read as the ENGINE resolves them off the root (a rem tier * the root px).
@@ -886,7 +874,7 @@ try {
 	 */
 	await page.viewport(1920, 1080);
 	await page.goto(base + '/tv');
-	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.tvRoot)}) !== null`, { timeout: 15000 });
+	await page.waitForSelector(SEL.tvRoot , { timeout: 15000 });
 	await sleep(300);
 
 	const overlapProbe = `(() => {
@@ -1075,7 +1063,7 @@ try {
 			}
 			await sleep(700);
 			await page.goto(base + '/tv');
-			await page.waitFor(`document.querySelector(${JSON.stringify(SEL.lobbyStripPerson)}) !== null`, {
+			await page.waitForSelector(SEL.lobbyStripPerson , {
 				timeout: 15000
 			});
 			await sleep(900);
@@ -1130,7 +1118,6 @@ try {
 	check('the measured-design drive ran to completion', false, String(err instanceof Error ? err.stack : err));
 } finally {
 	browser?.close();
-	browserProc.kill();
 	server.kill();
 	rmSync(SCRATCH, { recursive: true, force: true });
 }

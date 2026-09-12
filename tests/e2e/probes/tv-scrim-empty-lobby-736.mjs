@@ -22,10 +22,9 @@
  *
  * Exit 0 all passed / 1 a real failure / 2 the environment could not host the test.
  */
-import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
@@ -100,20 +99,7 @@ console.log('fixture: "' + ready[0].title + '" -> ' + ready[0].instrumentalRef +
 
 mkdirSync(SHOTS, { recursive: true });
 
-const proc = spawn(
-	chromium,
-	[
-		'--remote-debugging-port=' + CDP_PORT,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		'--user-data-dir=' + join(SCRATCH, 'encore-scrim736-' + process.pid),
-		// DELIBERATELY NO --autoplay-policy: this is a real TV, and the block is the premise.
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /*
  * ONE in-page reading, taken identically at every step so the before/after comparison is
@@ -151,7 +137,7 @@ const probe = `(() => {
 /** @type {Browser | undefined} */
 let browser;
 try {
-	browser = await connect(CDP_PORT);
+	browser = await connect();
 
 	// ── a singer joins and queues the processed song, through the real UI ──────────────────────────
 	const phone = await browser.newPage();
@@ -263,7 +249,6 @@ try {
 	check('the flow ran to completion', false, String(err instanceof Error ? err.stack : err));
 } finally {
 	browser?.close();
-	proc.kill();
 }
 
 const failed = checks.filter((c) => !c.ok);

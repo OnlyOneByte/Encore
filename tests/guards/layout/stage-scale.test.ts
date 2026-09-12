@@ -587,7 +587,18 @@ test('the lobby shows the whole roster with a chip step-down rule, never a "+N m
 	const lobby = stripComments(src);
 	// The step-down is a RULE with a named threshold, applied by a `dense` class the script derives.
 	expect(/const\s+CHIP_STEPDOWN\s*=\s*\d+/.test(lobby)).toBe(true);
-	expect(/const\s+dense\s*=\s*\$derived\(roster\.length\s*>\s*CHIP_STEPDOWN\)/.test(lobby)).toBe(true);
+	// It keys on COUNT **and** on TOTAL WIDTH. A count alone clipped the roster: `displayName` is
+	// user-typed and admits 32 characters, so nine long names already overflow the two rows
+	// `max-height: 26vh` allows while a count rule sits quiet until 13, and `overflow: hidden` cut the
+	// tail off in silence. Both halves are pinned because dropping either one restores the bug — the
+	// count half for an ordinary party, the character half for a party of long names.
+	expect(/const\s+CHAR_BUDGET\s*=\s*\d+/.test(lobby)).toBe(true);
+	expect(/roster\.reduce\(\s*\(\s*n\s*,\s*m\s*\)\s*=>\s*n\s*\+\s*m\.displayName\.length/.test(lobby)).toBe(true);
+	expect(/const\s+dense\s*=\s*\$derived\(\s*roster\.length\s*>\s*CHIP_STEPDOWN\s*\|\|\s*rosterChars\s*>\s*CHAR_BUDGET\s*\)/.test(lobby)).toBe(true);
+	// …and it stays a RULE derived from the DATA. A geometry read here would be the "discovery at a
+	// party" the design rejects, and would not work under the mount rung at all (XR-VER-03).
+	const denseDecl = lobby.slice(lobby.indexOf('const dense'), lobby.indexOf('const dense') + 200);
+	expect(/getBoundingClientRect|offsetHeight|clientHeight|scrollHeight/.test(denseDecl)).toBe(false);
 	// The each-loop iterates the WHOLE roster, not a capped slice — every guest is shown.
 	expect(/\{#each\s+roster\s+as/.test(src)).toBe(true);
 	// The retired fold must be gone: no MAX_CHIPS cap, no "+N more" chip.

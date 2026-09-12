@@ -463,7 +463,7 @@ test('the scope-tab selector matches the id the settings page actually interpola
  * spelled selectors out for themselves, unwatched — exactly the rot this file exists to stop, filed
  * from a read-only audit that counted 110+ such literals.
  *
- * `cdp.mjs` is excluded because it is the driver LIBRARY, not a driver: it DEFINES the selector-taking
+ * `driver.mjs` is excluded because it is the driver LIBRARY, not a driver: it DEFINES the selector-taking
  * methods and only ever forwards `JSON.stringify(selector)` — a variable, never a literal — so it has
  * no hand-written selector of its own to guard.
  */
@@ -472,7 +472,7 @@ function allDrivers(): string[] {
 	const walk = (dir: string, prefix: string) => {
 		for (const ent of readdirSync(dir, { withFileTypes: true })) {
 			if (ent.isDirectory()) walk(join(dir, ent.name), `${prefix}${ent.name}/`);
-			else if (ent.name.endsWith('.mjs') && ent.name !== 'cdp.mjs') out.push(`${prefix}${ent.name}`);
+			else if (ent.name.endsWith('.mjs') && ent.name !== 'driver.mjs') out.push(`${prefix}${ent.name}`);
 		}
 	};
 	walk(E2E, '');
@@ -636,7 +636,7 @@ const NOT_A_SELECTOR: Record<string, string> = {
 
 /**
  * Functions whose first argument IS a selector, by definition — the DOM's own query methods plus the
- * driver methods in cdp.mjs that forward to them.
+ * driver methods in driver.mjs that forward to them.
  *
  * This is the rule that carries the invariant, and it is deliberately a CALL-SITE rule rather than a
  * syntax rule. A shape rule has to guess what a selector looks like, and every guess is a hole: the

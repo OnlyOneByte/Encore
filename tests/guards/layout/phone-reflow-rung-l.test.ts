@@ -49,7 +49,7 @@ const PROBE = stripComments(readFileSync(PROBE_PATH, 'utf8'));
 test('the reflow probe measures on the LAYOUT rung, not the mount rung', () => {
 	// XR-VER-02's Check: a measurement-classified entry must import the layout-rung driver. happy-dom
 	// returns an all-zero DOMRect, so the same assertions on rung M are a permanent silent green.
-	expect(PROBE).toMatch(/from\s*'\.\.\/cdp\.mjs'/);
+	expect(PROBE).toMatch(/from\s*'\.\.\/driver\.mjs'/);
 	expect(PROBE).toMatch(/\bconnect\b/);
 	// And it must drive its own browser rather than assume one is listening.
 	expect(PROBE).toMatch(/from\s*'\.\.\/lib\/chromium\.mjs'/);

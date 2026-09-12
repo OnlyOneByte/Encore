@@ -11,11 +11,10 @@
  * Deliberately NOT added to any gate list. A screenshot cannot fail a build, and a capture script that
  * pretends to be a check is how a suite grows something nobody reads.
  */
-import { spawn as spawnChild } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, readdirSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { connect, sleep } from './cdp.mjs';
+import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 // The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
@@ -134,7 +133,6 @@ async function processMedia(q) {
 
 /** @type {import('node:child_process').ChildProcess|undefined} */ let server;
 /** @type {import('node:child_process').ChildProcess|undefined} */ let wk;
-/** @type {import('node:child_process').ChildProcess|undefined} */ let chrome;
 /** @type {any} */ let browser;
 
 /** @param {import('node:child_process').ChildProcess|undefined} p */
@@ -159,22 +157,8 @@ async function main() {
 	await processMedia('bohemian');
 	console.log(`fixture: "${song.title}" ready`);
 
-	chrome = spawnChild(
-		chromium,
-		[
-			`--remote-debugging-port=${CDP_PORT}`,
-			'--headless=new',
-			'--no-sandbox',
-			'--disable-gpu',
-			'--no-first-run',
-			`--user-data-dir=${join(RUN, 'chrome')}`,
-			
-			'--autoplay-policy=no-user-gesture-required',
-			'about:blank'
-		],
-		{ stdio: 'ignore' }
-	);
-	browser = await waitFor(() => connect(CDP_PORT).catch(() => null), { timeout: 20_000, name: 'CDP' });
+
+	browser = await waitFor(() => connect().catch(() => null), { timeout: 20_000, name: 'CDP' });
 	const page = await browser.newPage();
 	await page.setViewport?.({ width: 390, height: 1500 });
 
@@ -273,7 +257,6 @@ try {
 	} catch {
 		// A browser that already died closes with a throw; the children below are killed either way.
 	}
-	await kill(chrome);
 	await kill(wk);
 	await kill(server);
 }

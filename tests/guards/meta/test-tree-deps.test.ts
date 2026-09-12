@@ -2,7 +2,7 @@
 //
 // WHY THIS EXISTS. Moving the tests into `tests/` moved them out of the reach of `node_modules`.
 // Node resolves a bare specifier by walking UP from the importing file, so a test at
-// `src/lib/server/media/` found `drizzle-orm` and the same test at `tests/unit/core/server/media/`
+// `src/lib/server/media/` found `drizzle-orm` and the same test at `tests/unit/server/media/`
 // did not. Two tests failed with `Cannot find package 'drizzle-orm'`, which was the loud, honest version
 // of the problem.
 //

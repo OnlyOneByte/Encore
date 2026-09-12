@@ -4,7 +4,7 @@
 //
 // WHY NOT PLAYWRIGHT. This file used to `import { chromium } from 'playwright-core'`, which was
 // never a declared dependency of this package — it worked on whichever machine happened to have one
-// lying around and failed everywhere else. e2e/cdp.mjs replaced that exact import across the e2e
+// lying around and failed everywhere else. e2e/driver.mjs replaced that exact import across the e2e
 // path with a CDP driver over the cached Chromium; this helper was the survivor the sweep missed.
 // It now adds no install step, no lockfile entry, and no version to drift.
 //
@@ -13,7 +13,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join as pathJoin } from 'node:path';
-import { connect, sleep } from '../e2e/cdp.mjs';
+import { connect, sleep } from '../e2e/driver.mjs';
 
 const [, , url, out, size = '390x844'] = process.argv;
 if (!url || !out) {

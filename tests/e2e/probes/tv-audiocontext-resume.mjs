@@ -19,11 +19,10 @@
  *
  *   EPORT=<port> bun e2e/probes/tv-audiocontext-resume.mjs
  */
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join as pathJoin } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 import { SEL } from '../contract.ts';
 
@@ -77,25 +76,16 @@ const READ = `(() => {
 
 /** @param {string} label @param {string[]} extraFlags @param {number} cdpPort */
 async function runUnder(label, extraFlags, cdpPort) {
-	const proc = spawn(
-		chromeBin,
-		[
-			`--remote-debugging-port=${cdpPort}`,
-			'--headless=new',
-			'--no-sandbox',
-			'--disable-gpu',
-			'--no-first-run',
-			`--user-data-dir=${process.env.KIROCREW_SCRATCH ?? '/tmp'}/tv-actx-${cdpPort}`,
-			...extraFlags,
-			'about:blank'
-		],
-		{ stdio: 'ignore' }
-	);
+
 
 	/** @type {Awaited<ReturnType<typeof connect>> | undefined} */
 	let browser;
 	try {
-		browser = await connect(cdpPort);
+		// `extraFlags` MUST reach the browser: this probe's whole design is an A/B between a gestureless
+		// launch (`[]`) and one granted `--autoplay-policy=no-user-gesture-required`. The driver launches
+		// the browser now, so the flags go to it — passed through here rather than dropped, or both arms
+		// would run identically and the probe would report a difference it never created.
+		browser = await connect(cdpPort, { args: extraFlags });
 
 		// Queue a song through the REAL phone UI first. A hand-rolled WS frame with an invented
 		// singerId is rejected, which leaves the TV on the lobby with no media element — and then the
@@ -149,7 +139,6 @@ async function runUnder(label, extraFlags, cdpPort) {
 		return after;
 	} finally {
 		browser?.close();
-		proc.kill();
 	}
 }
 

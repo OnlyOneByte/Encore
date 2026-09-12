@@ -28,18 +28,17 @@
  * Exit codes:  0 = all findings collected AND no CRITICAL/HIGH  ·  1 = at least one HIGH+ defect  ·
  *              2 = the environment could not host the test (no server, no library, no Chromium)
  */
-import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json, following the same
- * pattern as the sibling probes. Browser/Page are derived from cdp.mjs's own return types so they
- * cannot drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped
+ * pattern as the sibling probes. Browser/Page are derived from driver.mjs's own return types so they
+ * cannot drift from the driver. page.evaluate() is typed Promise<any> by driver.mjs, so DOM/API-shaped
  * results are cast at the call site.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -213,22 +212,7 @@ console.log(`processed: ${readied1.title} → ${readied1.instrumentalRef}`);
 console.log(`processed: ${readied2.title} → ${readied2.instrumentalRef}`);
 
 // ── launch Chromium; open TV so we can observe from t=0 of the first song ──────────────────────
-const proc = spawn(
-	chromium,
-	[
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		'--user-data-dir=' + join(SCRATCH, `p1-gapless-cdp-${process.pid}`),
-		// The real TV has nobody to tap it. The app must still not DEPEND on a gesture; this only
-		// removes the browser's gating so autoplay policy stops masquerading as a defect.
-		'--autoplay-policy=no-user-gesture-required',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @type {Browser | undefined} */
 let browser;
@@ -242,7 +226,7 @@ let tv;
 const timeline = []; // per-sample rows: {t, elems:[{tag,src,decoded,currentTime,paused,muted,volume,readyState,ended,error}], lowerThird, upName, upSong, transientKind, tvClass, screenClass}
 
 try {
-	browser = await connect(CDP_PORT);
+	browser = await connect();
 
 	// TV first. That way our observation starts BEFORE any queue mutation, so we can see the
 	// attract → loading → playing entry too.
@@ -250,7 +234,7 @@ try {
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
 	// Guard: the TV route must render its own DOM.
-	await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.tvRoot)}) !== null`);
+	await tv.waitForSelector(SEL.tvRoot);
 
 	// Now the two singers on their own contexts — a fresh browser context is fresh cookies, which is
 	// the whole reason they land as distinct sessions. We ALREADY joined them via /api/join above
@@ -397,7 +381,6 @@ try {
 	);
 } finally {
 	browser?.close();
-	proc.kill();
 }
 
 // ── analysis helpers ───────────────────────────────────────────────────────────────────────────

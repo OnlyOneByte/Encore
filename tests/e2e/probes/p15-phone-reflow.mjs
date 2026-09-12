@@ -39,7 +39,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { findChromium } from '../lib/chromium.mjs';
 import { SEL } from '../contract.ts';
 import { openBrowseFromHome } from '../lib/phone.mjs';
@@ -127,24 +127,8 @@ for (let i = 0; i < 60 && !up; i++) {
 }
 if (!up) bail(`the ephemeral server never became healthy on ${BASE}`);
 
-spawned.push(
-	spawn(
-		chromium,
-		[
-			`--remote-debugging-port=${CDP_PORT}`,
-			'--headless=new',
-			'--no-sandbox',
-			'--disable-gpu',
-			// Scrollbar chrome is not content: a visible one would eat viewport width and shift every
-			// measurement, and the criterion is about whether a scrollbar is NEEDED, not drawn.
-			'--hide-scrollbars',
-			'--no-first-run',
-			`--user-data-dir=${join(SCRATCH, `prof-${process.pid}`)}`,
-			'about:blank'
-		],
-		{ stdio: 'ignore' }
-	)
-);
+// No browser spawn here any more: the driver launches its own, so a second Chromium on a debug port would
+// be a process nothing drives. `spawned` still tracks the server and worker children.
 
 // ── the measurement ────────────────────────────────────────────────────────
 /*
