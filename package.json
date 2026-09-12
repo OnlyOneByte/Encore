@@ -22,6 +22,7 @@
 		"e2e:seed": "bun run tests/e2e/seed-media.mjs",
 		"e2e:fuzz": "bun run tests/e2e/fuzz.mjs",
 		"e2e:lobby": "bun run tests/e2e/lobby-overlap.mjs",
+		"e2e:probes": "bun run tests/e2e/run-probes.mjs",
 		"typecheck:app": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json"
 	},
 	"dependencies": {

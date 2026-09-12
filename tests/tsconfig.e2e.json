@@ -19,6 +19,7 @@
 		"e2e/fuzz.mjs",
 		"e2e/contract.ts",
 		"e2e/shot.mjs",
+		"e2e/run-probes.mjs",
 		"e2e/probes/p11-dashboards.mjs",
 		"e2e/probes/p10-scaling.mjs",
 		"e2e/probes/p5-process-lifecycle.mjs",

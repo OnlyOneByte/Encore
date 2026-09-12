@@ -164,3 +164,48 @@ because `contract.test.ts` guards those against the source and a hand-written on
 
 Exit codes: `0` all passed, `1` a real failure, `2` the environment could not host the test. Never
 conflate 2 with 0 — a skipped audio test reporting green is how this hole stayed open.
+
+## Running the probes: `bun run e2e:probes`
+
+Every driver in this tree is reachable from one command. `bun run e2e:probes` with no argument lists
+them with their mode and subject; pass a name to run one, or `all` / `boots` / `serves` for a group.
+
+Three modes, because the drivers genuinely differ:
+
+- **boots** — the probe spawns its own server and worker and cleans up after itself.
+- **serves** — the probe expects `EPORT` to name a running server. The runner boots one shared,
+  seeded, ephemeral server for the group, spawns a fake stems worker, and drives one library song to
+  READY, because that is the fixture several of them ask for and `seed-media.mjs` alone cannot supply
+  (it writes placeholder files — enough to index and queue, not to process).
+- **tool** — takes arguments and answers a question. Listed so it is discoverable, excluded from
+  `all` because no default argument would mean anything.
+
+**It is not part of `bun run gates`, deliberately.** These drive a real browser and take minutes.
+Reachability and gate membership are different things.
+
+`ran` in the summary is not `passed`. Three drivers gather EVIDENCE rather than assert an invariant —
+they write screenshots or a `findings.json` and exit 0 whatever they saw. Read their output.
+
+### State as of the first full run
+
+These sat unexecuted long enough to go stale, which is exactly what an unrun list buys you. Recorded
+so the next person starts from data rather than from scratch.
+
+| Driver | State |
+|---|---|
+| `p14-playhead-vs-process` | **passes** — playhead never stepped back, worst delta 0.000s |
+| `p15-phone-reflow` | **passes** 4/4 — needs a built UI, the runner checks for one |
+| `p16-hero-live-controls` | **passes** 11/11 |
+| `p5-process-lifecycle` | **runs, and reports a real `[HIGH]` finding**: a floor-level silent instrumental is published as READY with no defence-in-depth in the core. This is the probe doing its job — treat it as a product defect, not a broken probe. |
+| `p15-reload-resume` | environment bail: server position never passes 3s, so there is no resume to test |
+| `p10-scaling`, `admin-delete-639`, `shoot-913` | capture only; `p10` recorded 12 phases of which 7 were `remote-*` timeouts |
+| `p2-guiding-track`, `tv-audiocontext-resume` | boot and process fine, then time out filling the join name input. The selector and its placeholder both still exist, so this is page state, not a stale selector |
+| `tv-scrim-empty-lobby-736` | opens `/` in a fresh browser and expects home; a browser with no session gets the join landing, so `.search-dock` never appears. The probe never joins |
+| `p8-presence-resilience` | carries its OWN hand-rolled CDP client, which the Playwright port left behind — it dials a debug port that no longer exists |
+| `p1-gapless`, `p3-key-shift`, `p6-lyrics`, `p9-settings` | fail on queue/UI preconditions; each needs its own read |
+
+Two things worth knowing before touching any of them. The probes do not agree on which variable names
+the port: most read `EPORT`, two read `EPORT ?? PORT`, and `p10-scaling` reads `PORT` alone — the
+runner passes both, and passing only `EPORT` is what left `p10` dialling its own hardcoded 5230, where
+it got `ERR_CONNECTION_REFUSED` and still exited 0. And a probe that cannot reach the app must fail;
+if you find one reporting success from an unreachable server, that is the bug, not the symptom.
