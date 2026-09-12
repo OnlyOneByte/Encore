@@ -144,6 +144,15 @@ const FLOORS: Record<string, Floor[]> = {
 				'the citation scan across docs and tests. If it collected nothing, no citation could be dangling and the arm would pass while every Check field in the register pointed at a retired row.'
 		}
 	],
+	'tests/guards/wiring/dev-only-routes.test.ts': [
+		{
+			subject: 'FIXTURE_CONSUMERS.length',
+			min: 5,
+			count: 1,
+			guards:
+				'the list of guards that read the /components gallery as a fixture surface. The list IS the check, so a shrunken list asserts nothing: it would report that every remaining consumer still reads the gallery while saying nothing about the ones that had quietly stopped. A floor rather than an equality: a sixth guard adopting the gallery is welcome, the list quietly losing entries is not.'
+		}
+	],
 	'tests/guards/wiring/route-auth-posture.test.ts': [
 		{
 			subject: 'routes.length',
@@ -753,11 +762,11 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
 	// surfaced it. Both literals were re-measured, not incremented.
 	//
-	// Re-measured to 71 when no-self-anchored-paths gained an `mjs.length` floor. The previous value
+	// Re-measured to 72: 71 when no-self-anchored-paths gained an `mjs.length` floor, then 72 when dev-only-routes registered its fixture-consumer floor. The previous value
 	// of 66 was not wrong so much as SLACK: these are `>=` floors, so 66 kept passing while the real
 	// count drifted up to 70 without anything saying so. Measured by raising both to 99999 and reading
 	// `Received: N`, which is the only way to learn the actual number.
-	expect(located).toBeGreaterThanOrEqual(71);
+	expect(located).toBeGreaterThanOrEqual(72);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -848,7 +857,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(71);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(72);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

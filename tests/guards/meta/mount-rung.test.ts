@@ -103,10 +103,28 @@ test('every component importing a $app/$env virtual module loads under the mount
 	expect(sites).toBeGreaterThanOrEqual(5);
 
 	for (const { file } of importers) {
-		// A bare `import()` of the component is the whole assertion: before the preload aliased these
+		// A bare `import()` of the module is the whole assertion: before the preload aliased these
 		// specifiers this threw `Cannot find module '$app/navigation'` for every one of them.
-		const mod = (await import(file)) as { default: unknown };
-		expect(typeof mod.default, `${file} did not load a component`).toBe('function');
+		const mod = (await import(file)) as Record<string, unknown>;
+
+		if (file.endsWith('.svelte')) {
+			// A component's default export IS the component, so this is the strongest available check that
+			// the module not only resolved but produced something mountable.
+			expect(typeof mod.default, `${file} did not load a component`).toBe('function');
+			continue;
+		}
+
+		/*
+		 * A NON-COMPONENT importer, which this tree now has: `routes/components/+page.server.ts` reads
+		 * `dev` from `$app/environment` to 404 the dev-only gallery in production. It has no default
+		 * export and must not be asked for one — what is under test here is that the virtual module
+		 * RESOLVES under the preload, and a load module proves that by importing at all. Asserting it
+		 * exports something keeps this branch from degrading into `expect(true)`.
+		 */
+		expect(
+			Object.keys(mod).length,
+			`${file} imports a $app/$env module but exports nothing — it cannot be what resolved the alias`
+		).toBeGreaterThan(0);
 	}
 	/*
 	 * S3: 20s, up from bun's 5s default. This test imports EVERY component that touches a
