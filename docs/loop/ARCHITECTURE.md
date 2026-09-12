@@ -76,21 +76,21 @@ That marker is therefore load-bearing twice: it prevents the lane waking itself 
 it is how "answered" is distinguished from "awaiting an answer".
 
 No label edge is a review trigger, in either direction. `review:blocked` → `review:pending` was the
-last one *described* as one, meaning "I pushed a fix, re-review me" (#681 — a worker that pushed without
+last one *described* as one, meaning "I pushed a fix, re-review me" (a worker that pushed without
 flipping it waited, and its comment asking for re-review was inert). That description was carried as
-unverified, because the flip and a new head had always arrived together. **PR #201 separates them:**
+unverified, because the flip and a new head had always arrived together. **One PR separates them:**
 verdict 3 posted at `04:31:41Z` against head `b48581f` while the PR carried `review:blocked` and no
 `review:pending`, and the flip did not arrive until `04:35:32Z` — 3m51s later. The head had been
 force-pushed at `04:14:38Z`, before the block was applied. So the re-review is the head-based probe in
 the table above doing its ordinary job on an unjudged head; the flip is board state the reviewer clears.
-Keep flipping it — the instruction is unchanged, only its stated reason is. Settled on #783.
+Keep flipping it — the instruction is unchanged, only its stated reason is. The reason is settled.
 
 `review:pending` added is **not** in that category, despite this file previously saying it was. The
 review probe is label-blind, so the label is board state the reviewer clears, not an entry trigger.
-#707 was cited here as a PR left unreviewed for want of the label; its timeline does not support that —
+One PR was cited here as left unreviewed for want of the label; its timeline does not support that —
 opened `02:16:00Z`, labelled `02:28:31Z`, verdict `02:39:56Z`, so the verdict came *after* the label, by
-about one patrol interval. On #772 a verdict landed while the PR carried no review label at all. See
-[`LABELS.md`](LABELS.md#labels-still-doing-trigger-duty); measured on #781.
+about one patrol interval. On another PR a verdict landed while it carried no review label at all. See
+[`LABELS.md`](LABELS.md#labels-still-doing-trigger-duty); measured, not assumed.
 
 ## What polling does not change
 

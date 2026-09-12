@@ -1,0 +1,50 @@
+{
+	// Type gate for the out-of-program e2e + scripts .mjs drivers (deferred).
+	// Extends the server config for the same strictness. PR-1 covers only the shared spine
+	// (cdp.mjs driver, contract.ts selector registry, scripts/shot.mjs); the ~760 per-probe
+	// implicit-any errors are brought in by the per-driver follow-up issues, one batch at a time,
+	// each adding its files to `include` below. As the whole out-of-program e2e set is in the
+	// gate: this final batch brought in the transport + capture + remaining probes/drivers, and the two
+	// already-clean helpers (seed-media.mjs, wav.mjs) so nothing e2e is left untypechecked.
+	// The strictness base still lives with the app it type-checks against; only this config moved.
+	"extends": "../tsconfig.server.json",
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"allowImportingTsExtensions": true
+	},
+	"include": [
+		"e2e/cdp.mjs",
+		"e2e/lib/chromium.mjs",
+		"e2e/fuzz.mjs",
+		"e2e/contract.ts",
+		"scripts/shot.mjs",
+		"scripts/playwright-core.d.ts",
+		"e2e/probes/p11-dashboards.mjs",
+		"e2e/probes/p10-scaling.mjs",
+		"e2e/probes/p5-process-lifecycle.mjs",
+		"e2e/probes/p14-playhead-vs-process.mjs",
+		"e2e/probes/p9-settings.mjs",
+		"e2e/probes/p1-gapless.mjs",
+		"e2e/probes/p2-guiding-track.mjs",
+		"e2e/probes/p3-key-shift.mjs",
+		"e2e/probes/p12-search.mjs",
+		"e2e/probes/p6-lyrics.mjs",
+		"e2e/probes/p8-presence-resilience.mjs",
+		"e2e/probes/p4-transport.mjs",
+		"e2e/capture.mjs",
+		"e2e/playback.mjs",
+		"e2e/fake-stems-worker.mjs",
+		"e2e/lobby-overlap.mjs",
+		"e2e/party.mjs",
+		"e2e/probes/p13-tap-to-start.mjs",
+		"e2e/probes/tv-audiocontext-resume.mjs",
+		"e2e/probes/lower-third.mjs",
+		"e2e/gates/measured-design.mjs",
+		"e2e/gates/measured-design-register.mjs",
+		"e2e/fake-align-worker.mjs",
+		"e2e/seed-media.mjs",
+		"e2e/wav.mjs"
+	],
+	"exclude": ["build", "node_modules"]
+}

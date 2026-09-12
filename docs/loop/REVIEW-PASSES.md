@@ -227,7 +227,7 @@ TV/4K sizes (this project's TV scales down well and has historically failed scal
 here (needs Node 20, box has 18.20.2) **no longer holds** — node 20.20.2 and 22.22.3 are both
 installed; whether `playwright-cli` itself works is **unverified**, so check `node --version` in your
 own worktree before accepting either premise. The preferred path is unchanged: the repo's own zero-dep
-CDP driver in `apps/core/e2e/` with a throwaway loopback server, plus the committed frames in
+CDP driver in `tests/e2e/` with a throwaway loopback server, plus the committed frames in
 `docs/mocks/`. Read the frames you capture; a screenshot you did not open is not evidence.
 
 Rotation: `src/lib/components` · `src/lib/tv` · `src/routes/+page.svelte` + `src/routes/join` ·
@@ -252,9 +252,9 @@ suite pass vacuously here), or an assertion checking a **shape** where it should
 top-level key-set check is satisfied by a field re-nested under a preserved key — that exact hole
 shipped a real bug). It is the highest-value finding class this repo has produced.
 
-Rotation: `src/server/state` + `src/server/realtime` · `src/server/jobs` · `src/server/media` +
-`src/server/db` · `src/server/rotation` + `src/server/singers` + `src/server/auth` ·
-`packages/shared/src` · `src/lib/stores` + `src/lib/ws` · `src/routes/api`
+Rotation: `src/lib/server/state` + `src/lib/server/realtime` · `src/lib/server/jobs` · `src/lib/server/media` +
+`src/lib/server/db` · `src/lib/server/rotation` + `src/lib/server/singers` + `src/lib/server/auth` ·
+`src/lib/contract/src` · `src/lib/stores` + `src/lib/ws` · `src/routes/api`
 
 ### `rev:worker-arch` — Encore Worker, architecture and code quality
 
@@ -337,7 +337,7 @@ this reviewer or re-files the same finding 6 times a day. Replacement, both halv
 
 1. **Coarse union sha**, logged in the `slice-sha` column like any other charter:
    ```bash
-   git log -1 --format=%h -- apps/core/src packages/shared
+   git log -1 --format=%h -- src src/lib/contract
    ```
 2. **Rotate one flow per pass, unconditionally.** An unchanged tree advances the rotation rather than
    stopping the pass. **Stop silently** only when the union sha is unchanged **and** every flow has
@@ -416,10 +416,10 @@ per §3 a settled design is not reopenable as a bug.
 produce a wrong result on a reachable path. Never `user-facing`: if a singer can see it, it is a defect
 and belongs to the charter that owns that surface.
 
-Rotation: `src/server/state` + `src/server/realtime` · `src/server/jobs` + `src/server/media` ·
-`src/routes/api` + `src/server/db` · `src/lib/stores` + `src/lib/ws` + `src/lib/tv` ·
-`src/routes` components · `packages/shared/src` · `apps/worker/src` domains ·
-`apps/core/e2e` + harness
+Rotation: `src/lib/server/state` + `src/lib/server/realtime` · `src/lib/server/jobs` + `src/lib/server/media` ·
+`src/routes/api` + `src/lib/server/db` · `src/lib/stores` + `src/lib/ws` + `src/lib/tv` ·
+`src/routes` components · `src/lib/contract/src` · `worker/src` domains ·
+`tests/e2e` + harness
 
 ---
 

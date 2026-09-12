@@ -35,8 +35,8 @@ the stems. Pillars: **UI-first, wicked-fast/optimistic, as close to one containe
 | Runtime | **Bun 1.3.14** | native WS pub/sub, `bun:sqlite`, `Bun.spawn` |
 | Web | **SvelteKit + Svelte 5 runes** + PWA | `svelte-adapter-bun` → `getHandler()` |
 | Bundler | **Vite 8** | `bun --bun` is **required** |
-| DB | **Drizzle + `bun:sqlite`** (WAL) | migrations in `apps/core/drizzle/`, applied at boot |
-| Monorepo | **Bun workspaces** | `packages/shared` = the contract; `apps/core`; `apps/worker` |
+| DB | **Drizzle + `bun:sqlite`** (WAL) | migrations in `drizzle/`, applied at boot |
+| Monorepo | **Bun workspaces** | `src/lib/contract` = the contract; `.`; `worker` |
 | Worker | **Python + Demucs + WhisperX** | container 2, dial-home WS client |
 
 The case for Bun was made and accepted. Do not propose Node/Deno swaps.
@@ -45,7 +45,7 @@ The case for Bun was made and accepted. Do not propose Node/Deno swaps.
 Encore/
 ├─ docker-compose.yml     # core (always) + worker (profile: stems)
 ├─ docs/                  # ARCHITECTURE, HANDOFF, DECISIONS; deploy/, benchmarks/, mocks/, research/
-├─ packages/shared/       # @encore/shared — types, ops, rotation reducer, events, ulid, colors
+├─ src/lib/contract/       # $lib/contract — types, ops, rotation reducer, events, ulid, colors
 └─ apps/
     ├─ core/              # @encore/core — SvelteKit app + server
     │   ├─ server.ts        Bun.serve entry: HTTP + WS hub + presence + worker transport
@@ -61,7 +61,7 @@ Encore/
 
 **Run it.**
 ```bash
-cd apps/core && bun run build
+cd . && bun run build
 PATH="/home/angryang/.local/share/mise/installs/python/3.12.13/bin:/home/angryang/ffmpeg:$PATH" \
   HOST=127.0.0.1 PORT=5180 bun run server.ts
 ```
@@ -80,11 +80,11 @@ docker compose --profile stems up   # + the Python worker
 **Verification gates — run all five on every change.**
 ```bash
 bun test                              # core + shared — runs from the REPO ROOT
-cd apps/worker && python3 -m pytest   # worker suite
+cd worker && python3 -m pytest   # worker suite
 bun run typecheck && bun run build    # both workspaces; typecheck must be 0 errors / 0 warnings
 bun run gate:measured                 # the layout rung — AFTER build; boots its own server + Chromium
 ```
-`runMigrations()` locates `apps/core/drizzle` by walking up from `import.meta.dir`, so `bun test`
+`runMigrations()` locates `drizzle` by walking up from `import.meta.dir`, so `bun test`
 works from anywhere. Re-measure the counts every time — they drift as tests land.
 
 **A green suite is the floor, not the bar.** Every real defect in this project so far was invisible to
@@ -107,7 +107,7 @@ swaps in an in-memory DB.
 
 **The worker without Docker:**
 ```bash
-cd apps/worker && python3 -m venv .venv
+cd worker && python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 PATH="$PWD/.venv/bin:$PATH" ENCORE_CORE_WS='ws://localhost:3000/ws?role=worker' \
   MEDIA_DIR=../core/media \
@@ -138,20 +138,20 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
    and `/api/audit/*` are **ungated** by decision (there is no operator identity in Encore; any LAN
    phone can self-join), so treat them as LAN-visible. See ARCHITECTURE §10 (gating this is open work).
    Also: a fresh git worktree has no `node_modules`, so `bun test` reports ~39 phantom failures on
-   `@encore/shared` until you run `bun install`.
+   `$lib/contract` until you run `bun install`.
 1. **`.npmrc` is repo-local and pins PUBLIC npm on purpose.** The *global* npmrc points at
    CodeArtifact and 401s for public packages. Don't delete it; don't `npm config set` globally.
 2. **`bun --bun` is mandatory** for SvelteKit/Vite. Use `bun run <script>`; never call `vite` raw.
-3. **`globalThis`-backed singleton.** `getApp()`/`setPublish()` in `src/server/app.ts` behind a
-   `globalThis` symbol, via the `$server` alias. **Deliberate** — the SvelteKit handler is a *separate
+3. **`globalThis`-backed singleton.** `getApp()`/`setPublish()` in `src/lib/server/app.ts` behind a
+   `globalThis` symbol, via the `$lib/server` alias. **Deliberate** — the SvelteKit handler is a *separate
    bundle* from `server.ts`, so a module-level singleton split-brains (two queues, two DBs). Route
    every new server singleton through `app.ts`.
 4. **`.gitignore` runtime dirs are ANCHORED (`/data/`, `/media/`).** An un-anchored `media/` once
-   matched `src/server/media/` and silently excluded the whole search subsystem from git.
+   matched `src/lib/server/media/` and silently excluded the whole search subsystem from git.
 5. **Don't kill processes by broad pattern.** `pkill -f 'bun ...'` can self-match the harness. Use
    `lsof -ti tcp:5180 | xargs -r kill`.
 6. **Stage files explicitly; never `git add .`** — `.kiro/` is local tooling and stays untracked. And
-   **check `git status` after committing**: a commit once shipped without its `packages/shared`
+   **check `git status` after committing**: a commit once shipped without its `src/lib/contract`
    contract change and was not buildable in isolation, because local verification ran on a working
    tree the commit didn't describe.
 7. **Pushing works — with a bare `git push origin HEAD:refs/heads/<branch>` from the repo root, no
@@ -259,7 +259,7 @@ three paths have to hold or a restart quietly turns a cited artist back into a g
 Client-minted ULID per op; server holds a monotonic `rev`; client keeps a pending-op Map and applies
 the inverse on reject; server broadcasts `queue:patch{rev, ops, causedBy, entries, media}` with the
 authoritative snapshot **inline**; rev-gap detection triggers resync. The shared reducer
-`packages/shared/src/queue/rotation.ts` (`applyAndReseq`) runs on **both** sides — keep them on the same
+`src/lib/contract/queue/rotation.ts` (`applyAndReseq`) runs on **both** sides — keep them on the same
 function or the invariant breaks.
 
 **Validate every field a client sends.** An `add` with a missing `singerId` once reached the

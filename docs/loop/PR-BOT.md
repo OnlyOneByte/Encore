@@ -70,7 +70,7 @@ mid-write.
 branch** and check whether the fix narrows one and leaves the rest wrong. A fix that handles one
 branch of a chain is the single most common incomplete fix in this codebase.
 
-**If the diff touches the schema**, `apps/core/drizzle/` is a single folded `0000_baseline.sql` with a
+**If the diff touches the schema**, `drizzle/` is a single folded `0000_baseline.sql` with a
 journal guard asserting the journal is exactly `['0000_baseline']`. So ask the question the gates
 cannot: is the change **additive against a database built at the previous schema**, or does it only
 work on a fresh one? A new column must be nullable or defaulted, the fold must not have rewritten an
@@ -127,7 +127,7 @@ Then, the traps a green table still cannot see:
 - **A test that derives its expected value using the same operation the code performs.** #165's test
   rounded its own expected value, so it never pinned whether the component rounded, and guests kept
   seeing `31.200000000000003%`. Rounding, formatting and numeric transforms are where this hides.
-- **A fix on a branch that is dead on the path the issue describes** (#190). The clause can be
+- **A fix on a branch that is dead on the path the issue describes**. The clause can be
   correct and pin a test while fixing nothing the reporter saw. Trace the call chain.
 - Does a fake or double swallow the very signal being asserted? (The shipped precedent: a fake
   `ffmpeg` runner that threw on unexpected argv inside a blanket `except`, making a whole silence
@@ -138,7 +138,7 @@ Then, the traps a green table still cannot see:
 - **Does the diff lower, delete, or bypass a NON-VACUITY FLOOR?** That is a blocker on its own unless the
   same diff records why. A floor is the `expect(files.length).toBeGreaterThan(50)`-shaped assertion a
   scope-deriving guard carries so that an emptied walk reds instead of passing with nothing examined;
-  `apps/core/src/lib/non-vacuity-floors.test.ts` inventories every one of them and reds on a decrease.
+  `tests/guards/meta/non-vacuity-floors.test.ts` inventories every one of them and reds on a decrease.
   **A firing floor is a FINDING, never a number to adjust** — it says the guard can no longer see the
   surface it enforces on, so a diff that "fixes" it by editing the literal downward has converted a
   detected loss of enforcement into a silent one. Accept only: the scope restored, the scan re-anchored
@@ -163,7 +163,7 @@ worktree** (`../encore-rev-<n>`, checked out at this PR's head, `bun install` al
 the main checkout and never in another reviewer's tree:
 
 ```bash
-bun test · cd apps/worker && python3 -m pytest -q · bun run build · bun run typecheck · bun run gate:measured
+bun test · cd worker && python3 -m pytest -q · bun run build · bun run typecheck · bun run gate:measured
 ```
 
 **Gate expectations on a clean tree, as of 2026-09-06** — anything else is a regression this PR caused:
@@ -177,10 +177,10 @@ bun test · cd apps/worker && python3 -m pytest -q · bun run build · bun run t
   "exits 2 with 9 known `song-profile` errors = green" rule is DEAD — treat any error as this PR's
   regression. Read the `found N errors` line, not `grep -c error` (which counts the literal string in
   "found 0 errors").
-- `bun run gate:measured` → **exit 0** (issue #823). The layout rung; run it AFTER `bun run build`,
+- `bun run gate:measured` → **exit 0**. The layout rung; run it AFTER `bun run build`,
   because it drives the real bundle. It boots its own ephemeral server and its own headless Chromium
   and has **no skip path** — a missing browser or an unbuilt app is a red gate, by design. Its
-  quarantine (`apps/core/e2e/gates/measured-design-register.mjs`) records the controls already under
+  quarantine (`tests/e2e/gates/measured-design-register.mjs`) records the controls already under
   the 44px floor; it reds on a new one, on one getting worse, **and** on one that starts passing,
   since a quarantine whose defect no longer reproduces is a finding to re-decide rather than a number
   to adjust.
@@ -223,7 +223,7 @@ For a rendered surface: is there a screenshot, and does it show what the body cl
 `playwright-cli` was ruled out here (needs Node 20, box has 18.20.2) **no longer holds** — node
 20.20.2 and 22.22.3 are both installed; whether `playwright-cli` itself works is **unverified**, so
 check `node --version` in your own worktree before accepting either premise. Either way
-`apps/core/e2e/`'s CDP driver remains the preferred path if you need your own frame. A UI PR with no
+`tests/e2e/`'s CDP driver remains the preferred path if you need your own frame. A UI PR with no
 visual evidence is a blocker, because a green suite has never once caught a UI defect in this project.
 
 ---

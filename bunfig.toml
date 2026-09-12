@@ -1,5 +1,5 @@
-# Test harness wiring (issue #698, decision B). Runs the DOM + Svelte loader preload once before
-# `bun test`, so component tests under apps/core/src/lib/tv/ can mount the real player component and
-# run its effects. `bun test` stays the single gate — no second runner. See test-setup/svelte-dom-preload.ts.
+# Test harness wiring (decision B). Runs the DOM + Svelte loader preload once before
+# `bun test`, so component tests under src/lib/tv/ can mount the real player component and
+# run its effects. `bun test` stays the single gate — no second runner. See tests/setup/svelte-dom-preload.ts.
 [test]
-preload = ["./test-setup/svelte-dom-preload.ts"]
+preload = ["./tests/setup/svelte-dom-preload.ts"]

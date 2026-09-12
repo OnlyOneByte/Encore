@@ -1,0 +1,32 @@
+{
+	// The tests tree's own resolution context.
+	//
+	// WHY THIS FILE EXISTS. bun resolves path aliases from the NEAREST tsconfig walking up from the
+	// importing file. Tests currently living under `src` inherit
+	// `.svelte-kit/tsconfig.json`, which SvelteKit generates with `$lib`, `$lib/server` and
+	// `$lib/contract` in it. A test moved to `tests/` leaves that context entirely, and a probe confirmed
+	// the failure is immediate and loud: `Cannot find module '$lib/position-sentence'`. So the aliases have
+	// to be re-declared here, once, rather than rewritten into hundreds of relative paths.
+	//
+	// WHY NOT ADD THESE TO THE ROOT tsconfig INSTEAD. The root config `include`s `src`, so a
+	// `$lib` entry there would collide with the one SvelteKit generates for the same files. Scoping them to
+	// this tree keeps the two contexts independent.
+	//
+	// WHY `@encore/test-support` IS DECLARED HERE AND NOWHERE ELSE. It is test-only. Declaring it in the
+	// app's vite config would make it resolvable from production source and therefore bundleable, which is
+	// exactly the coupling this package exists to avoid. A test gains access to it by MOVING here, which is
+	// also what makes "adopt the helper" and "leave the source tree" the same commit.
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"baseUrl": ".",
+		"paths": {
+			"@encore/test-support": ["./support/src/index.ts"],
+			"@encore/test-support/*": ["./support/src/*.ts"],
+			"$lib": ["../src/lib"],
+			"$lib/*": ["../src/lib/*"],
+			"$lib/server": ["../src/lib/server"],
+			"$lib/server/*": ["../src/lib/server/*"]
+		}
+	},
+	"include": ["**/*.ts", "./support/src/**/*.ts"]
+}

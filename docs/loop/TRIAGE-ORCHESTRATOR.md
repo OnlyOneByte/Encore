@@ -53,7 +53,7 @@ lane waking itself on its own words.
 
 **Verify authorship by the marker, never by the GitHub author.** Every lane on this repo posts as the
 same user, so the author field cannot tell a lane comment from a human one. Measured 2026-09-08: an
-unmarked triage comment on #759 was read as a human reply and spent a whole follow-up turn before that
+unmarked triage comment was read as a human reply and spent a whole follow-up turn before that
 lane worked out it was reading itself. A comment whose first line lacks the marker also makes its issue
 look permanently unanswered, so query 3 re-dispatches it every cycle, forever.
 
