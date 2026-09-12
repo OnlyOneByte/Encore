@@ -204,3 +204,110 @@ test('the ratio is clamped, so a spoofed message cannot read past the ring', () 
 	expect(p.ratio).toBeLessThanOrEqual(1.5);
 	expect(grainLookahead(1024, p.ratio)).toBeLessThanOrEqual(4096 - 2 * 256);
 });
+
+// ── four channels: the guide mix's whole dependency, previously never executed ────────────────────
+//
+// Every test above drives ONE channel (`[[inCh]]`). The guide mix routes FOUR through this same
+// processor — channels 0/1 the instrumental, 2/3 the isolated vocals — and the feature is built on the
+// claim that `process()` is channel-generic: it loops `output.length`, keeps per-channel state via
+// `ensure(output.length)`, and is a bit-exact passthrough at ratio 1. None of that was ever run at 4.
+//
+// What makes this worth its own tests rather than a comment: the per-channel state array is what keeps the
+// pairs independent, and a bug there does not fail loudly — it CROSS-TALKS. The instrumental would leak
+// into the guide pair (which carries the room's guide level) or vice versa, and the audible result is
+// exactly the vocals-in-the-wrong-gain outcome the rest of this feature is built to prevent.
+
+/** Drive four channels of distinct content through one processor. */
+function run4(semitones: number, hzPerChannel: [number, number, number, number], blocks = 200) {
+	const Proc = loadProcessor();
+	const p = new Proc();
+	p.port.onmessage?.({ data: { ratio: semitonesToRatio(semitones) } });
+	const out: Float32Array[] = [0, 1, 2, 3].map(() => new Float32Array(blocks * BLOCK));
+	let n = 0;
+	for (let b = 0; b < blocks; b++) {
+		const ins = hzPerChannel.map((hz) => {
+			const ch = new Float32Array(BLOCK);
+			for (let i = 0; i < BLOCK; i++) ch[i] = Math.sin((2 * Math.PI * hz * (b * BLOCK + i)) / RATE);
+			return ch;
+		});
+		const outs = [0, 1, 2, 3].map(() => new Float32Array(BLOCK));
+		p.process([ins], [outs]);
+		for (let c = 0; c < 4; c++) out[c].set(outs[c], n);
+		n += BLOCK;
+	}
+	return { out, proc: p };
+}
+
+/** Dominant frequency of a signal, by naive DFT peak over a plausible band. */
+function peakHz(sig: Float32Array, from = 100, to = 4000): number {
+	let bestHz = 0;
+	let bestMag = -1;
+	for (let hz = from; hz <= to; hz += 5) {
+		let re = 0;
+		let im = 0;
+		for (let i = 0; i < sig.length; i++) {
+			const th = (2 * Math.PI * hz * i) / RATE;
+			re += sig[i] * Math.cos(th);
+			im += sig[i] * Math.sin(th);
+		}
+		const mag = re * re + im * im;
+		if (mag > bestMag) {
+			bestMag = mag;
+			bestHz = hz;
+		}
+	}
+	return bestHz;
+}
+
+test('4 channels: per-channel state exists for every channel, so the pairs cannot share a pointer', () => {
+	const { proc } = run4(0, [200, 200, 900, 900]);
+	// `ensure(output.length)` must have grown the state array to 4. Sharing one channel's read/write
+	// pointers across the pairs is the cross-talk failure.
+	expect(proc.chan.length).toBeGreaterThanOrEqual(4);
+});
+
+test('4 channels at ratio 1: every channel is a bit-exact passthrough of ITS OWN input', () => {
+	// The documented fast path, and the case that matters most: at keyShift 0 — the default — a mix song's
+	// audio must be byte-identical to the file, per channel, with no pair leaking into the other.
+	const Proc = loadProcessor();
+	const p = new Proc();
+	const ins = [0, 1, 2, 3].map((c) => {
+		const ch = new Float32Array(BLOCK);
+		for (let i = 0; i < BLOCK; i++) ch[i] = (c + 1) * 0.1 + i * 1e-4;
+		return ch;
+	});
+	const outs = [0, 1, 2, 3].map(() => new Float32Array(BLOCK));
+	p.process([ins], [outs]);
+	for (let c = 0; c < 4; c++) expect(Array.from(outs[c])).toEqual(Array.from(ins[c]));
+});
+
+test('4 channels shifted: each channel keeps its OWN content — no cross-talk between the pairs', () => {
+	// 200 Hz on the instrumental pair, 900 Hz on the guide pair, both shifted +4 semitones. If the pairs
+	// shared state, the guide pair would carry the instrumental's tone (or a sum), which is audibly the
+	// backing track arriving at the guide's gain.
+	const ratio = semitonesToRatio(4);
+	const { out } = run4(4, [200, 200, 900, 900]);
+	const tail = (sig: Float32Array) => sig.subarray(Math.floor(sig.length / 2));
+	expect(peakHz(tail(out[0]))).toBeCloseTo(200 * ratio, -1.4);
+	expect(peakHz(tail(out[1]))).toBeCloseTo(200 * ratio, -1.4);
+	expect(peakHz(tail(out[2]))).toBeCloseTo(900 * ratio, -1.4);
+	expect(peakHz(tail(out[3]))).toBeCloseTo(900 * ratio, -1.4);
+});
+
+test('4 channels: a missing input channel is silence, not a dropped block', () => {
+	// The splitter can hand the worklet fewer input channels than it outputs (a stereo file up-mixed to
+	// quad yields [L, R, 0, 0] per the spec's `speakers` rule). That must render as silence on the guide
+	// pair, never as a click or a copy of the instrumental — which is what makes a NON-mix song safe to
+	// play through a leftover split graph.
+	const Proc = loadProcessor();
+	const p = new Proc();
+	const ins = [0, 1].map(() => {
+		const ch = new Float32Array(BLOCK).fill(0.5);
+		return ch;
+	});
+	const outs = [0, 1, 2, 3].map(() => new Float32Array(BLOCK).fill(NaN));
+	expect(p.process([ins], [outs])).toBe(true);
+	expect(Array.from(outs[0])).toEqual(Array.from(ins[0]));
+	expect(Array.from(outs[2])).toEqual(Array.from(new Float32Array(BLOCK)));
+	expect(Array.from(outs[3])).toEqual(Array.from(new Float32Array(BLOCK)));
+});

@@ -37,13 +37,53 @@ export function effectiveGuideLevel(playback: Pick<PlaybackState, 'guideLevel'>,
 }
 
 /**
+ * HOW the TV should play this song's guide — the one decision that replaces a branch scattered across
+ * the player.
+ *
+ * Three answers, and the ordering between the first two is the whole point:
+ *
+ *   `mix`     — ONE 4-channel file through ONE media element. Channels 0/1 are the instrumental, 2/3 the
+ *               vocals, split apart in WebAudio and given their own gains. One decoder means one playhead,
+ *               so the guide CANNOT drift from the instrumental. Preferred whenever a mix exists.
+ *   `element` — the legacy two-element path: instrumental in the master, vocals in a second element held
+ *               in time by `guide-sync.ts`'s governor. Correct as far as it can be, and structurally
+ *               unable to be exact — see `Media.guideMixRef`. Kept for songs with no mix.
+ *   `none`    — not playable, or no vocals to offer.
+ *
+ * Returned as a discriminated union rather than a pair of booleans so the two paths cannot BOTH be taken:
+ * mounting a second element beside the mix would play the vocals twice, once in the mix at the room's
+ * level and once at the element's — audibly a doubled, flanged vocal, which is precisely the defect class
+ * this feature exists to remove. The type makes that state unrepresentable.
+ */
+export type GuidePath =
+	/** One 4-channel file, one playhead. `ref` is the mix. */
+	| { kind: 'mix'; ref: string }
+	/** Two elements and a drift governor. `ref` is the vocals stem. */
+	| { kind: 'element'; ref: string }
+	/** No guide is on offer. */
+	| { kind: 'none' };
+
+export function guidePath(m: Pick<Media, 'stemStatus' | 'instrumentalRef' | 'vocalsRef' | 'guideMixRef'>): GuidePath {
+	// Playability first: the guide is an overlay on something, and there is nothing to overlay until the
+	// song plays at all. This mirrors hasGuidingTrack rather than re-deriving it.
+	if (!isPlayable(m)) return { kind: 'none' };
+	if (m.guideMixRef) return { kind: 'mix', ref: m.guideMixRef };
+	if (m.vocalsRef) return { kind: 'element', ref: m.vocalsRef };
+	return { kind: 'none' };
+}
+
+/**
  * Can this song offer a guiding track (the original vocals mixed back under the instrumental)?
  *
- * Requires BOTH a playable instrumental and a vocals stem, because the guide is an overlay on
- * something — there is nothing to mix vocals under until the song is playable at all. Songs
- * separated before the ref was persisted, and songs whose vocals stem came back silent, report
- * false and simply do not offer the control.
+ * Defined AS `guidePath(m).kind !== 'none'` rather than re-deriving the condition, because two answers to
+ * one question is how a surface goes stale. This gates the phone's guide slider and the server's guide-level
+ * path; `guidePath` decides how the TV plays it. They agreed only by an unenforced coincidence — a mix is
+ * only ever published alongside a vocals stem — and the moment that stops being true (dropping the
+ * redundant single-stem vocals file once a mix exists is an obvious space win) the slider would vanish while
+ * the TV played the mix happily.
  */
-export function hasGuidingTrack(m: Pick<Media, 'stemStatus' | 'instrumentalRef' | 'vocalsRef'>): boolean {
-	return isPlayable(m) && !!m.vocalsRef;
+export function hasGuidingTrack(
+	m: Pick<Media, 'stemStatus' | 'instrumentalRef' | 'vocalsRef' | 'guideMixRef'>
+): boolean {
+	return guidePath(m).kind !== 'none';
 }

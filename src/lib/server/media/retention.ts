@@ -17,6 +17,7 @@ import { safeMediaPath } from './local-files';
 import {
 	instrumentalKey,
 	vocalsKey,
+	guideMixKey,
 	siblingVocalsRef,
 	rawCaptionKey,
 	CAPTION_KINDS,
@@ -242,6 +243,14 @@ export function derivedRefsOf(m: Media): string[] {
 		// m.vocalsRef is prepended because it is authoritative when the worker stored one.
 		m.vocalsRef,
 		...candidateVocalsRefs(m),
+		// The GUIDE MIX (both stems in one 4-channel file). Same rule as the vocals stem, and the same
+		// undercount if omitted: it is `derived/`, it is the LARGEST single stem artifact a song owns
+		// (roughly the two stems combined), and eviction would orphan it on disk forever while
+		// derivedBytesOf reported a volume smaller than it is. The stored ref is authoritative; the
+		// id-derived key is the fallback for a row whose mix exists but was never recorded — a key whose
+		// file is absent is skipped by the existsSync check below, so naming both is free.
+		m.guideMixRef,
+		guideMixKey(m.id),
 		// Every lyrics candidate's JSON, not just the chosen one (`lyricsRef`). Each source mints a
 		// distinct key, so the others are silently orphaned on eviction unless enumerated here.
 		...(m.lyricsCandidates ?? []).map((c) => c.ref),
@@ -336,7 +345,7 @@ export function ffmpegTranscoder(ffmpegBin = process.env.FFMPEG_BIN ?? 'ffmpeg')
 			// FLAC has no moov atom, so the MP4-era `-movflags +faststart` (and its "unrecognized
 			// option" degrade path) is gone with the AAC encoder — a single FLAC encode into the .flac
 			// destination is the whole operation.
-			const r = await run([ffmpegBin,...base, '-i', absFrom,...encode, absTo]);
+			const r = await run([ffmpegBin, ...base, '-i', absFrom, ...encode, absTo]);
 			if (!r.ok) transcodeDiagnostics.lastError = r.err.trim().split('\n')[0] ?? '';
 			return r.ok;
 		} catch (err) {

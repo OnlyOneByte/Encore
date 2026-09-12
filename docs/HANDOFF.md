@@ -30,14 +30,14 @@ the stems. Pillars: **UI-first, wicked-fast/optimistic, as close to one containe
 
 ## 2. Stack (locked — don't re-litigate)
 
-| Layer | Choice | Notes |
-|---|---|---|
-| Runtime | **Bun 1.3.14** | native WS pub/sub, `bun:sqlite`, `Bun.spawn` |
-| Web | **SvelteKit + Svelte 5 runes** + PWA | `svelte-adapter-bun` → `getHandler()` |
-| Bundler | **Vite 8** | `bun --bun` is **required** |
-| DB | **Drizzle + `bun:sqlite`** (WAL) | migrations in `drizzle/`, applied at boot |
-| Monorepo | **Bun workspaces** | `src/lib/contract` = the contract; `.`; `worker` |
-| Worker | **Python + Demucs + WhisperX** | container 2, dial-home WS client |
+| Layer    | Choice                               | Notes                                            |
+| -------- | ------------------------------------ | ------------------------------------------------ |
+| Runtime  | **Bun 1.3.14**                       | native WS pub/sub, `bun:sqlite`, `Bun.spawn`     |
+| Web      | **SvelteKit + Svelte 5 runes** + PWA | `svelte-adapter-bun` → `getHandler()`            |
+| Bundler  | **Vite 8**                           | `bun --bun` is **required**                      |
+| DB       | **Drizzle + `bun:sqlite`** (WAL)     | migrations in `drizzle/`, applied at boot        |
+| Monorepo | **Bun workspaces**                   | `src/lib/contract` = the contract; `.`; `worker` |
+| Worker   | **Python + Demucs + WhisperX**       | container 2, dial-home WS client                 |
 
 The case for Bun was made and accepted. Do not propose Node/Deno swaps.
 
@@ -60,16 +60,19 @@ Encore/
 ## 3. Running it
 
 **Run it.**
+
 ```bash
 cd . && bun run build
 PATH="/home/angryang/.local/share/mise/installs/python/3.12.13/bin:/home/angryang/ffmpeg:$PATH" \
   HOST=127.0.0.1 PORT=5180 bun run server.ts
 ```
+
 `yt-dlp` is invoked **by name via PATH**, so that directory must be on PATH or YouTube search silently
 returns empty. The worker is a separate process — `docker compose --profile stems up`, or the
 long-lived `encore-worker-live` container.
 
 Other entry points:
+
 ```bash
 bun run build && bun run start      # prod build + serve; `start` → server.ts
 bun run dev                         # vite HMR for UI ONLY — the WS hub lives in server.ts
@@ -78,12 +81,14 @@ docker compose --profile stems up   # + the Python worker
 ```
 
 **Verification gates — run all five on every change.**
+
 ```bash
 bun test                              # core + shared — runs from the REPO ROOT
 cd worker && python3 -m pytest   # worker suite
 bun run typecheck && bun run build    # both workspaces; typecheck must be 0 errors / 0 warnings
 bun run gate:measured                 # the layout rung — AFTER build; boots its own server + Chromium
 ```
+
 `runMigrations()` locates `drizzle` by walking up from `import.meta.dir`, so `bun test`
 works from anywhere. Re-measure the counts every time — they drift as tests land.
 
@@ -92,6 +97,7 @@ a passing suite and only surfaced by driving the app (§5). Anything with a rend
 eyes-on; screenshots live in `docs/mocks/` as `<id>-<what>-eyeson.png`.
 
 **Environment ceilings — flag these, do not fight them.**
+
 - `lrclib.net` fails DNS outright (`gaierror`) **on this laptop only**; `huggingface.co` and
   `www.youtube.com` resolve from the same shell — a box property, not a project fact, hence
   `ENCORE_LRCLIB_BASE`. WhisperX models **do** download, so real-ML lyrics work is verifiable here.
@@ -106,6 +112,7 @@ eyes-on; screenshots live in `docs/mocks/` as `<id>-<what>-eyeson.png`.
 swaps in an in-memory DB.
 
 **The worker without Docker:**
+
 ```bash
 cd worker && python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
@@ -113,6 +120,7 @@ PATH="$PWD/.venv/bin:$PATH" ENCORE_CORE_WS='ws://localhost:3000/ws?role=worker' 
   MEDIA_DIR=../core/media \
   .venv/bin/python -m src.dial_home
 ```
+
 Those two variables are the whole configuration — no capability list, no device. The worker probes its
 own hardware and installed engines at startup and prints both, one line per capability with the
 evidence; a missing tool is reported as loudly as a present one. It shells out to
@@ -139,12 +147,12 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
    phone can self-join), so treat them as LAN-visible. See ARCHITECTURE §10 (gating this is open work).
    Also: a fresh git worktree has no `node_modules`, so `bun test` reports ~39 phantom failures on
    `$lib/contract` until you run `bun install`.
-1. **`.npmrc` is repo-local and pins PUBLIC npm on purpose.** The *global* npmrc points at
+1. **`.npmrc` is repo-local and pins PUBLIC npm on purpose.** The _global_ npmrc points at
    CodeArtifact and 401s for public packages. Don't delete it; don't `npm config set` globally.
 2. **`bun --bun` is mandatory** for SvelteKit/Vite. Use `bun run <script>`; never call `vite` raw.
 3. **`globalThis`-backed singleton.** `getApp()`/`setPublish()` in `src/lib/server/app.ts` behind a
-   `globalThis` symbol, via the `$lib/server` alias. **Deliberate** — the SvelteKit handler is a *separate
-   bundle* from `server.ts`, so a module-level singleton split-brains (two queues, two DBs). Route
+   `globalThis` symbol, via the `$lib/server` alias. **Deliberate** — the SvelteKit handler is a _separate
+   bundle_ from `server.ts`, so a module-level singleton split-brains (two queues, two DBs). Route
    every new server singleton through `app.ts`.
 4. **`.gitignore` runtime dirs are ANCHORED (`/data/`, `/media/`).** An un-anchored `media/` once
    matched `src/lib/server/media/` and silently excluded the whole search subsystem from git.
@@ -166,8 +174,8 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
 10. **Cap eyes-on screenshots at ≤2000px** (1280×720 viewport, `deviceScaleFactor: 1`). An oversized
     image hard-fails the turn and keeps re-firing from history.
 11. **`soundfile` is REQUIRED for stems, and its absence looks like a hang.** torchaudio 2.8 has no
-    audio-write backend, so demucs separates to **100%** and *then* dies with `Couldn't find
-    appropriate backend to handle uri .../vocals.wav`. It reaches you as a song frozen at
+    audio-write backend, so demucs separates to **100%** and _then_ dies with `Couldn't find
+appropriate backend to handle uri .../vocals.wav`. It reaches you as a song frozen at
     "separating 100%" that silently retries 3× — a full separation pass each time. Now pinned in
     `requirements.txt`; before that it arrived only transitively via `whisperx`, so a stems-only
     worker was broken while the full install worked.
@@ -195,32 +203,44 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
 17. **`server.ts` serves the BUILT bundle, so a source edit is invisible until you rebuild.** Tuning a
     renderer and re-screenshotting gave byte-identical frames twice before this was obvious — the
     capture was of the previous build. `bun run build` between an edit and an eyes-on capture, always.
-18. **Routing a `<video>` into a Web Audio graph SILENCES it unless you reconnect `destination`.** No
-    audio graph exists on the TV yet, so this is a trap waiting for whoever adds one. Note the phone's
-    mic code deliberately does the opposite — `mic-capture.ts` connects source→analyser and *not* to
+18. **Routing a `<video>` into a Web Audio graph SILENCES it unless you reconnect `destination`.** The TV
+    now has a graph (`pitch-shift.ts`), and on a guide-mix song it builds EAGERLY on every song — so this
+    is a live trap, not a hypothetical one. Note the phone's
+    mic code deliberately does the opposite — `mic-capture.ts` connects source→analyser and _not_ to
     destination, on purpose. Copying that pattern onto the TV is exactly the bug, the symptom is a
     silent karaoke party, and no unit test catches it.
+19. **A 4-channel file played NATIVELY is downmixed, summing the isolated vocals into the instrumental at
+    full volume.** This is the most dangerous trap in the guide-mix feature and the reason the TV holds the
+    plain instrumental until its split graph is confirmed routed (`guide-mix-src.ts`'s `MixGate`). Two
+    tempting "simplifications" both ship a room that blasts the vocals over the backing track: assigning the
+    mix src as soon as the build is _requested_ rather than _settled_, and asking `isRouted` without also
+    asking `isSplit` (a graph built earlier for a ±key transpose is permanent and is NOT split). The
+    degradation is deliberate — no split graph means no guiding track, never a downmix.
+20. **`createMediaElementSource` is irreversible, so build every other node BEFORE it.** If a later
+    construction throws, the element is already captured and closing the context under it silences that
+    element for the life of the page. `outputChannelCount: [4]` is a real `NotSupportedError` candidate, so
+    this is not theoretical. Capture last, and never close a context that has already captured.
 
 ---
 
 ## 5. How to verify (not optional)
 
-The recent bug history is *unit tests green while production is broken*. All four found only by
+The recent bug history is _unit tests green while production is broken_. All four found only by
 driving the real app:
 
-| Defect | Why tests missed it |
-|---|---|
-| A plain queue add never started playback — TV stuck on attract forever | the feature was never *wired* to a trigger |
-| `WsClient` passed bare `setTimeout` as an option → `Illegal invocation` in a browser, so heartbeat and auto-reconnect were **silently dead in production** | tests injected fake timers |
-| An `add` with a missing `singerId` **killed the server process** | no test sent a malformed field |
-| The phone announced "No karaoke-ready songs yet" with 5 songs in the library | the copy was never asserted against a populated library |
+| Defect                                                                                                                                                     | Why tests missed it                                     |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| A plain queue add never started playback — TV stuck on attract forever                                                                                     | the feature was never _wired_ to a trigger              |
+| `WsClient` passed bare `setTimeout` as an option → `Illegal invocation` in a browser, so heartbeat and auto-reconnect were **silently dead in production** | tests injected fake timers                              |
+| An `add` with a missing `singerId` **killed the server process**                                                                                           | no test sent a malformed field                          |
+| The phone announced "No karaoke-ready songs yet" with 5 songs in the library                                                                               | the copy was never asserted against a populated library |
 
 So, after the AUTO gates pass:
 
 1. Boot the built server on 127.0.0.1:5180, worker container up if stems are in play.
 2. Drive real browser contexts with playwright (Node 20) — join → search → queue → TV.
 3. **Prefer assertions over pixels** for anything textual or numeric: `innerText`, input values,
-   element counts, DOM geometry. Screenshot for *look*, assert for *truth*. Mind case — CSS
+   element counts, DOM geometry. Screenshot for _look_, assert for _truth_. Mind case — CSS
    `text-transform` means `innerText` returns "NOW SINGING", so match case-insensitively.
 4. A **direct WS probe** (a Bun script opening `ws://127.0.0.1:5180/ws?role=phone`) is the decisive
    ground truth when browser/tab state is confusing.
@@ -307,11 +327,11 @@ has `no-new-privileges`, `cap_drop: [ALL]`, non-root user, pinned base image.
 
 Three live docs, and open work lives in GitHub issues (not in a file):
 
-| Doc | What it owns |
-|---|---|
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | **How the system works** + invariants |
-| [`HANDOFF.md`](HANDOFF.md) | **How to run and operate safely** + traps + verification |
-| [`DECISIONS.md`](DECISIONS.md) | **Ratified decisions**, the parked scope fence, lyrics-chain model |
+| Doc                                  | What it owns                                                       |
+| ------------------------------------ | ------------------------------------------------------------------ |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | **How the system works** + invariants                              |
+| [`HANDOFF.md`](HANDOFF.md)           | **How to run and operate safely** + traps + verification           |
+| [`DECISIONS.md`](DECISIONS.md)       | **Ratified decisions**, the parked scope fence, lyrics-chain model |
 
 Everything else is evidence: `mocks/` holds eyes-on frames, `benchmarks/` and `research/` hold
 measurements and write-ups, and [`../README.md`](../README.md) is the user-facing quickstart.

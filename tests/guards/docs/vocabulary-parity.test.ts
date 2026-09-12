@@ -28,7 +28,16 @@ import {
 import type { JobType } from '$lib/contract';
 import { requiredCapability } from '$lib/server/jobs/dispatch';
 import { DEFAULT_LEASE_CONFIG } from '$lib/server/jobs/leases';
-import { INSTRUMENTAL_EXT, VOCALS_EXT, audioKey, instrumentalKey, vocalsKey, rawCaptionKey } from '$lib/server/media/paths';
+import {
+	INSTRUMENTAL_EXT,
+	VOCALS_EXT,
+	GUIDE_MIX_EXT,
+	audioKey,
+	instrumentalKey,
+	vocalsKey,
+	guideMixKey,
+	rawCaptionKey
+} from '$lib/server/media/paths';
 import { SILENCE_FLOOR_DB } from '$lib/server/media/loudness';
 import { at } from '@encore/test-support';
 
@@ -79,7 +88,7 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 			const assigns = [...src.matchAll(/out\.artifacts\[["'](\w+)["']\]\s*=/g)].map((m) => m[1]!);
 			expect(assigns).toContain('stems');
 			expect(assigns).toContain('songProfile');
- // guideOffsetMs is a SIBLING too — a measurement, not a file — and is guarded the same
+			// guideOffsetMs is a SIBLING too — a measurement, not a file — and is guarded the same
 			// way, so a future edit that nested it inside `stems` reds here instead of at a party.
 			expect(assigns).toContain('guideOffsetMs');
 			// ...and never reaches through stems to do it.
@@ -99,7 +108,7 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 		expect(hub).toContain('artifacts?.songProfile');
 		// The exact drift that shipped once. Guard the shape, not just the presence of a read.
 		expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*songProfile/);
- // guideOffsetMs is read the same way — top-level, never through stems.
+		// guideOffsetMs is read the same way — top-level, never through stems.
 		expect(hub).toContain('artifacts?.guideOffsetMs');
 		expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*guideOffsetMs/);
 	});
@@ -416,7 +425,7 @@ describe('worker ML keepalive stays under the core progress lease', () => {
 	});
 
 	/**
- * The OTHER side of the same wire, previously unguarded: the core ADVERTISES
+	 * The OTHER side of the same wire, previously unguarded: the core ADVERTISES
 	 * `heartbeatIntervalSec` in the welcome handshake (worker-hub.ts). A worker that HONOURS the
 	 * advertised value paces its own `job:progress` by it, so the advertised interval is bound by the
 	 * SAME margin the worker constant above is: at the full lease, a worker doing exactly as told
@@ -562,6 +571,7 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 	test('INSTRUMENTAL_EXT / VOCALS_EXT agree across the seam', () => {
 		expect(pyStrConst('INSTRUMENTAL_EXT')).toBe(INSTRUMENTAL_EXT);
 		expect(pyStrConst('VOCALS_EXT')).toBe(VOCALS_EXT);
+		expect(pyStrConst('GUIDE_MIX_EXT')).toBe(GUIDE_MIX_EXT);
 	});
 
 	test('the instrumental stem key agrees byte-for-byte', () => {
@@ -580,6 +590,20 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 		expect(worker).toBe(vocalsKey(ID));
 	});
 
+	test('the GUIDE MIX key agrees byte-for-byte', () => {
+		// The fifth builder to cross this seam. The mix is what the TV plays as MASTER on a mix song, so a
+		// key mismatch is not a missing enhancement — it is a 404 on the file the room is trying to play,
+		// and `guidePath` has already committed to the mix path by then.
+		const worker = pyPathRef('guide_mix_path', {
+			media_id: ID,
+			GUIDE_MIX_EXT: pyStrConst('GUIDE_MIX_EXT')
+		});
+		expect(worker).toBe(guideMixKey(ID));
+		// Non-vacuity: pyPathRef returning '' on a parse miss would make the comparison trivially true if
+		// guideMixKey ever returned '' too. Pin the SHAPE as well as the equality.
+		expect(worker).toMatch(/^derived\/stems\/.+-guidemix\..+$/);
+	});
+
 	test('the raw source-audio key agrees byte-for-byte', () => {
 		// source_audio_path interpolates media_id and a default ext="wav"; audioKey defaults the same.
 		const worker = pyPathRef('source_audio_path', { media_id: ID, ext: 'wav' });
@@ -588,7 +612,7 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 
 	test('the retained raw caption key agrees byte-for-byte', () => {
 		// raw_caption_path(media_dir, media_id, kind, ext="vtt") is the FOURTH path builder that crosses
- // this seam; shipped it with no parity guard, and retention.ts enumerates it per (kind, ext)
+		// this seam; shipped it with no parity guard, and retention.ts enumerates it per (kind, ext)
 		// to count and evict the retained track. Check BOTH kinds and BOTH known exts so a drift on either
 		// side of the seam reds this. `kind` is a bare runtime arg, so it is supplied via subs.
 		for (const kind of ['captions', 'auto-captions']) {
@@ -612,7 +636,7 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 		expect(pyStrConst('INSTRUMENTAL_EXT').length).toBeGreaterThan(0);
 		expect(pyStrConst('VOCALS_EXT').length).toBeGreaterThan(0);
 		// A renamed segment or dropped `kind` in raw_caption_path would let a bare comparison pass
- // vacuously; pin the concrete shape.
+		// vacuously; pin the concrete shape.
 		const rawCap = pyPathRef('raw_caption_path', { media_id: ID, kind: 'captions', ext: 'vtt' });
 		expect(rawCap).toMatch(/^derived\/captions\/captions\/.+\.captions\..+$/);
 	});
@@ -839,7 +863,7 @@ describe('songProfile inner-field parity (worker dict vs shared type)', () => {
 	});
 
 	test('the measured loudness level crosses the wire under one name on both sides', () => {
- // Named explicitly, not just covered by the set equality above: this is the field adds,
+		// Named explicitly, not just covered by the set equality above: this is the field adds,
 		// and a set-equality guard stays green if BOTH sides are renamed to something the playback
 		// side does not read.
 		expect(pyProfileKeys()).toContain('loudnessLufs');

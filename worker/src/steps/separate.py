@@ -13,12 +13,14 @@ nothing happens. As a step, both engines get it.
 
 from __future__ import annotations
 
+import contextlib
 import os
 from collections.abc import AsyncIterator
 
-from ..analysis import measure_guide_offset_ms
+from ..analysis import measure_guide_offset_ms, wav_frame_length
 from ..processor import (
     ProgressEvent,
+    guide_mix_path,
     instrumental_path,
     is_silent,
     parse_max_volume_db,
@@ -29,7 +31,7 @@ from ..retry_policy import PermanentError
 from ..runtime.ctx import Ctx
 from ..runtime.runner import run_capture, run_quiet, run_stage
 from ..runtime.step import Step, StepResult
-from ..separation.demucs import decode_argv, encode_flac_argv
+from ..separation.demucs import decode_argv, encode_flac_argv, encode_guide_mix_argv
 from ..separation.engines import SeparatorEngine, engine_for
 from ..vocabulary import Stage
 
@@ -200,9 +202,19 @@ class PublishStems(Step):
     reads = frozenset({"job", "stems.raw", "stems", "runner"})
     writes = frozenset({"stems.published", "out"})
 
-    def __init__(self, ffmpeg_bin: str = "ffmpeg", flac_level: int = 8) -> None:
+    def __init__(
+        self, ffmpeg_bin: str = "ffmpeg", flac_level: int = 8, guide_mix: bool | None = None
+    ) -> None:
         self._ffmpeg = ffmpeg_bin
         self._flac_level = flac_level
+        # ENCORE_GUIDE_MIX=0 turns the extra encode off. It exists because the mix roughly DOUBLES a song's
+        # derived stem bytes (it is the two stems again, in one container), and a box tight on disk has no
+        # other way to keep processing songs without paying that. Off means every song takes the two-element
+        # guide path, which is the pre-feature behaviour — so this degrades the guide's precision, never the
+        # song. Injected rather than read inline so the step stays testable without touching the environment.
+        self._guide_mix_enabled = (
+            os.environ.get("ENCORE_GUIDE_MIX", "1") != "0" if guide_mix is None else guide_mix
+        )
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         job = ctx.job
@@ -229,6 +241,17 @@ class PublishStems(Step):
             except Exception:  # noqa: BLE001 — an enhancement must never fail the job
                 ctx.note("vocals encode failed (non-fatal) — publishing the instrumental alone")
 
+        # The GUIDE MIX: both stems folded into ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals).
+        # This is what lets the TV play the guide from a SINGLE media element, and therefore a single
+        # playhead — see `encode_guide_mix_argv` for why two elements cannot be held in sync from script
+        # at all, and `guide_mix_path` for why it lives beside the stems it is built from.
+        #
+        # Built from the RAW scratch WAVs, not the encoded FLACs: they are the sample-exact PCM
+        # separation just produced, so the mix inherits that alignment rather than trusting two decodes
+        # to agree. It is skipped entirely when there is no publishable vocals stem — a "mix" of the
+        # instrumental alone is just the instrumental, and offering one would advertise a guiding track
+        # that carries nothing (the same lie the silent-stem refusal above exists to prevent).
+        #
         # Measure the guide's OFFSET against the instrumental, from the RAW scratch WAVs — the guide-
         # alignment half of the guide feature made observable. Read the raw stems, not the encoded
         # ones: they are the same PCM measure_guide_offset_ms reads, and doing it here means no re-decode.
@@ -236,6 +259,10 @@ class PublishStems(Step):
         # was actually published (a silent/absent guide has nothing to align), never fatal, and a decline
         # reports None → the core stores null → the client holds the guide exactly as today. A freshly-processed
         # song's two FLAC stems decode to a common start, so this is ~0 for the whole library; the non-zero
+        # case is a legacy .m4a vocals stem (from before both stems shared one codec) or a deliberately
+        # shifted one.
+        #
+        # MEASURED BEFORE THE MIX IS BUILT, deliberately — the mix's eligibility depends on the answer. See
         # case is a legacy pre-change .m4a vocals stem or a deliberately shifted one.
         guide_offset_ms: int | None = None
         if ctx.stems.published.get("vocals"):
@@ -249,6 +276,83 @@ class PublishStems(Step):
                 f"guide offset: {'unmeasured' if guide_offset_ms is None else f'{guide_offset_ms} ms'}"
                 " (vocals stem vs instrumental)"
             )
+
+        # The GUIDE MIX: both stems folded into ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals).
+        # This is what lets the TV play the guide from a SINGLE media element, and therefore a single
+        # playhead — see `encode_guide_mix_argv` for why two elements cannot be held in sync from script at
+        # all, and `guide_mix_path` for why it lives beside the stems it is built from.
+        #
+        # Built from the RAW scratch WAVs, not the encoded FLACs: they are the sample-exact PCM separation
+        # just produced, so the mix inherits that alignment rather than trusting two decodes to agree.
+        #
+        # IT IS REFUSED WHEN THE PAIR IS NOT ALIGNED, and that refusal is the point of measuring first.
+        # One playhead means the alignment becomes PERMANENT: whatever offset the two stems carry at merge
+        # time is frozen into the mix, and `guide-sync.ts`'s governor — the only thing that could trim it
+        # out — is unreachable on the mix path by construction. So a measured non-zero offset must keep its
+        # song on the two-element path, where the offset is still correctable. Absent (unmeasured) and a
+        # measured 0 both mean "no reason to refuse": a pair of same-codec FLACs from one separation is
+        # aligned by construction, which is what moving both stems to one lossless codec bought.
+        #
+        # Skipped entirely when there is no publishable vocals stem — a "mix" of the instrumental alone is
+        # just the instrumental, and offering one would advertise a guiding track that carries nothing (the
+        # same lie the silent-stem refusal above exists to prevent).
+        #
+        # BEST-EFFORT: the instrumental is load-bearing and the mix is not, so a failure here leaves a room
+        # that plays the song with the two-element guide rather than a room that plays nothing.
+        mix_wanted = bool(raw_vox) and bool(ctx.stems.published.get("vocals"))
+        if mix_wanted and guide_offset_ms not in (None, 0):
+            ctx.note(
+                f"guide mix skipped — the stems measure {guide_offset_ms} ms apart, and one playhead"
+                " cannot correct that; this song keeps the two-element guide"
+            )
+            mix_wanted = False
+        if mix_wanted:
+            # `join` TRUNCATES to the shorter input and exits 0, and silently resamples a rate mismatch —
+            # both measured. Since channels 0/1 of this file are the instrumental the TV plays as master, a
+            # short vocals stem yields a mix that ENDS EARLY, and the room hears the song cut off with
+            # nothing in any log. Not reachable with today's engines (all three derive both stems from one
+            # model pass over one resampled input, so they are sample-aligned by construction) — which is
+            # exactly why it deserves a guard rather than a comment: nothing else would notice if that ever
+            # stopped being true. An unreadable header returns None and is treated as "cannot confirm",
+            # which skips the mix rather than shipping a possibly-truncated master.
+            assert raw_vox is not None
+            inst_len, vox_len = wav_frame_length(raw_inst), wav_frame_length(raw_vox)
+            if inst_len is None or vox_len is None or inst_len != vox_len:
+                ctx.note(
+                    f"guide mix skipped — the stems do not match ({inst_len} vs {vox_len} frames/rate);"
+                    " `join` would truncate the mix to the shorter one and the song would end early"
+                )
+                mix_wanted = False
+        if mix_wanted and not self._guide_mix_enabled:
+            ctx.note("guide mix disabled (ENCORE_GUIDE_MIX=0) — this song keeps the two-element guide")
+            mix_wanted = False
+        if mix_wanted:
+            mix = guide_mix_path(job.media_dir, job.media_id)
+            # ENCODE TO A TEMP SIBLING AND RENAME. ffmpeg writes its output incrementally, and a SIGTERM
+            # (which is how a timeout kills it) makes it FINALISE what it has — so a killed or ENOSPC'd
+            # encode leaves a *valid but short* FLAC. Written straight to the published path, that file is
+            # indistinguishable from a good one, and because the mix is what the TV plays as MASTER it owns
+            # `duration`, so the room hears the song cut off early with nothing in any log. A rename is
+            # atomic within a directory, so the published path only ever holds a complete file. Same idiom
+            # the core's sidecar writer uses, for the reason it records: "a crash, kill, or ENOSPC mid-write
+            # leaves partial" output.
+            tmp = f"{mix}.{os.getpid()}.tmp"
+            try:
+                assert raw_vox is not None  # narrowed by mix_wanted; keeps mypy honest about the argv
+                await run_quiet(
+                    ctx.runner,
+                    encode_guide_mix_argv(raw_inst, raw_vox, tmp, self._ffmpeg, self._flac_level),
+                )
+                os.replace(tmp, mix)
+                ctx.stems.published["guideMix"] = mix
+            except Exception:  # noqa: BLE001 — an enhancement must never fail the job
+                ctx.note("guide-mix encode failed (non-fatal) — the TV will fall back to two elements")
+            finally:
+                # Never leave the temp behind: it is in `derived/`, so an orphan would be counted by the
+                # retention cap forever while naming no artifact any media owns.
+                if os.path.exists(tmp):
+                    with contextlib.suppress(OSError):
+                        os.remove(tmp)
 
         # songProfile sits at the TOP level, a SIBLING of stems. The core reads it there; publishing it
         # nested inside `stems` is a shape mismatch that would stall every process at "Separating vocals"

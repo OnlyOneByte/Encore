@@ -148,12 +148,37 @@ export function candidateAudioRefs(mediaId: string): string[] {
  */
 export const INSTRUMENTAL_EXT = 'flac';
 export const VOCALS_EXT = 'flac';
+/**
+ * The GUIDE MIX extension. FLAC like the stems, and MUST match the worker's processor.py
+ * `GUIDE_MIX_EXT` — the TV resolves `/media/<ref>`, so a mismatch 404s on a file that exists.
+ */
+export const GUIDE_MIX_EXT = 'flac';
 
 export function instrumentalKey(mediaId: string, ext: string = INSTRUMENTAL_EXT): string {
 	return `derived/stems/${mediaId}-instrumental.${ext}`;
 }
 export function vocalsKey(mediaId: string, ext: string = VOCALS_EXT): string {
 	return `derived/stems/${mediaId}-vocals.${ext}`;
+}
+
+/**
+ * The GUIDE MIX: both stems in ONE 4-channel file — channels 0/1 instrumental, 2/3 vocals.
+ *
+ * Under `derived/stems/` beside the two single-stem files it is built from, because it is exactly as
+ * regenerable as they are — one ffmpeg pass over PCM separation already produced, no separation and no
+ * download — so it is safe to evict first.
+ *
+ * It exists because two stems are two media elements, which is two decoders and two clocks. Two clocks
+ * cannot be sample-locked from script: `guide-sync.ts` can only compare each element's reported
+ * `currentTime`, which excludes output latency, so its governor converges on a signal that does not
+ * describe what the ear hears and then stops correcting. One file has ONE playhead, so guide drift
+ * becomes unrepresentable rather than governed.
+ *
+ * `-guidemix` rather than `-mix` deliberately: nothing here is summed. Mirrors the worker's
+ * `guide_mix_path` byte-for-byte.
+ */
+export function guideMixKey(mediaId: string, ext: string = GUIDE_MIX_EXT): string {
+	return `derived/stems/${mediaId}-guidemix.${ext}`;
 }
 
 /**
@@ -266,7 +291,10 @@ export function toRelativeKey(uri: string | undefined | null): string | null {
 		if (abs.startsWith(dir + sep)) {
 			return (
 				prefix +
-				abs.slice(dir.length + 1).split(sep).join('/')
+				abs
+					.slice(dir.length + 1)
+					.split(sep)
+					.join('/')
 			);
 		}
 	}

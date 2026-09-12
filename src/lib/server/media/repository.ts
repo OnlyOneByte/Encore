@@ -29,6 +29,9 @@ const toRow = (m: Media): MediaRow => ({
 	annotationConfidence: m.annotation?.confidence ?? null,
 	instrumentalRef: m.instrumentalRef ?? null,
 	vocalsRef: m.vocalsRef ?? null,
+	// The guide mix (both stems, one 4-channel file), or null when there is none — the index copy of the
+	// sidecar's authoritative ref. Null maps back to the legacy two-element playback path.
+	guideMixRef: m.guideMixRef ?? null,
 	// The measured guide/instrumental offset in signed ms, or null when never measured. Null and a
 	// stored 0 mean the same to the client (guideOffsetSec maps both to 0), but they are kept distinct so
 	// the operator surface can tell "measured, aligned" from "never measured".
@@ -115,6 +118,8 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 			: undefined,
 	instrumentalRef: r.instrumentalRef ?? undefined,
 	vocalsRef: r.vocalsRef ?? undefined,
+	// A NULL column means no mix — leave it UNDEFINED, which guidePath() reads as the two-element path.
+	guideMixRef: r.guideMixRef ?? undefined,
 	// A NULL column means the offset was never measured — leave it UNDEFINED, which guideOffsetSec maps to
 	// 0 so the guide is held as today. A stored number (including 0, a measured "aligned") round-trips.
 	guideOffsetMs: r.guideOffsetMs ?? undefined,
