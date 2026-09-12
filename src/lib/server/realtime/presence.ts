@@ -16,7 +16,7 @@
 //
 // Socket-free so it unit-tests without a server; server.ts owns the wiring and drives the sweep.
 
-import { memberState, shouldStartClock, shouldClearClock, type MemberFacts, type MemberState } from '$lib/contract';
+import { memberState, shouldStartClock, shouldClearClock, type MemberFacts, type MemberState } from '../../contract';
 
 interface Record_ {
 	sockets: number;

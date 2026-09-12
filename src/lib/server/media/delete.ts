@@ -22,7 +22,7 @@
 //
 // A SERVER op with no QueueOp — packages/shared is untouched — so it lives beside the media modules.
 
-import type { QueueEntry, ServerEvent, Media } from '$lib/contract';
+import type { QueueEntry, ServerEvent, Media } from '../../contract';
 import type { HubDeps } from '../realtime/hub';
 import { cancelJobsForMedia, type CancelJobsDeps } from '../jobs/cancel';
 import { reconcileOnReady, emitNowPlaying, publishQueue } from '../realtime/player';

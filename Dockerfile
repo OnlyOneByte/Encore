@@ -4,19 +4,18 @@ FROM oven/bun:1.3-debian AS build
 WORKDIR /app
 
 # install deps first (layer cache). The repo-local .npmrc points at public npm.
+# One package.json: this is a single-package repo, not the apps/ + packages/ workspace it used to
+# be, so there is no member manifest to copy alongside it.
 COPY package.json bun.lock .npmrc ./
-COPY src/shared/package.json src/shared/
-COPY package.json 
 RUN bun install --frozen-lockfile
 
 # copy sources + build the SvelteKit app (svelte-adapter-bun -> build/)
 COPY . .
-WORKDIR /app/.
 RUN bun --bun run build
 
 # ── runtime image ──────────────────────────────────────────────────────────────
 FROM oven/bun:1.3-debian AS runtime
-WORKDIR /app/.
+WORKDIR /app
 
 # system media tools: ffmpeg + yt-dlp (keyless YouTube). yt-dlp via the static binary.
 # Pinned (Finding #4): a bare :latest auto-deploys whatever upstream publishes — non-reproducible
@@ -28,13 +27,12 @@ RUN apt-get update \
 	&& chmod a+rx /usr/local/bin/yt-dlp \
 	&& apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-# Recreate the full workspace so Bun's $shared workspace symlink resolves at runtime.
-# (Copying node_modules from the build stage doesn't preserve the workspace symlink reliably;
-#  a fresh install over the copied sources relinks it. Deps are layer-cached + offline-ish.)
+# Install production dependencies against the same lockfile. server.ts and the server-side sources
+# it pulls in are run from source at runtime, so their npm dependencies have to be present; the
+# adapter's build/ output does not bundle them. Copying node_modules from the build stage instead
+# would carry the dev dependencies too.
 COPY --from=build /app/package.json /app/bun.lock /app/.npmrc /app/
-COPY --from=build /app/packages /app/packages
-COPY --from=build /app/package.json /app/package.json
-RUN cd /app && bun install --frozen-lockfile
+RUN bun install --frozen-lockfile --production
 
 # the built app + server entry + migrations + server-side sources
 COPY --from=build /app/build ./build

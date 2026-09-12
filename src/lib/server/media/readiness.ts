@@ -4,7 +4,7 @@
 //
 // Pure: no DB, no network, no clock. The route supplies the catalog + resolver results.
 
-import { isProcessing, readyToSing, type Media } from '$lib/contract';
+import { isProcessing, readyToSing, type Media } from '../../contract';
 
 /** Where a song sits on the readiness axis. */
 export type Readiness =

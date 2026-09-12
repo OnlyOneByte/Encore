@@ -17,8 +17,8 @@ import type {
 	MediaStoreConfig,
 	GlobalSettings,
 	EffectiveSettings
-} from '$lib/contract';
-import { sourceUriFor, resolveProcessSeparator } from '$lib/contract';
+} from '../../contract';
+import { sourceUriFor, resolveProcessSeparator } from '../../contract';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';
