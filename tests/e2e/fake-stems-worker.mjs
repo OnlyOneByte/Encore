@@ -11,7 +11,7 @@
  * storage layout, the readiness gates and the browser's decode path. It does NOT prove separation
  * quality, alignment accuracy, or that yt-dlp can still reach YouTube.
  *
- *   EPORT=5200 MEDIA_DIR=/path/to/media bun apps/core/e2e/fake-stems-worker.mjs
+ *   EPORT=5200 MEDIA_DIR=/path/to/media bun tests/e2e/fake-stems-worker.mjs
  *
  * Fault injection, because the interesting defects are all in the unhappy paths:
  *   FAKE_SILENT_INSTRUMENTAL=1  publish a floor-level instrumental (the guard must refuse it)

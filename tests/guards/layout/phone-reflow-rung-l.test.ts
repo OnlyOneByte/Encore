@@ -9,7 +9,7 @@
 // scan** — both halves are geometry."
 //
 // SO WHY IS *THIS* FILE A SOURCE SCAN. Because it does not guard the overflow — it guards the GUARD.
-// The overflow is measured by `apps/core/e2e/probes/p15-phone-reflow.mjs`, a real rung-L driver: private
+// The overflow is measured by `tests/e2e/probes/p15-phone-reflow.mjs`, a real rung-L driver: private
 // Chromium, real server, `documentElement.scrollWidth` vs `clientWidth`, exit 1 on a failure. That
 // probe cannot run inside `bun test` — every e2e driver in this repo is a live-server `.mjs` invoked by
 // nothing in the suite, and making the root gate depend on a built UI and a user-level Chromium cache
@@ -25,7 +25,7 @@
 import { test, expect } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appCore } from '@encore/test-support';
+import { appCore, at } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -34,7 +34,7 @@ function stripComments(src: string): string {
 
 // apps/core, anchored at the repo root rather than counted up from this file's own location.
 const CORE = appCore;
-const PROBE_PATH = join(CORE, 'e2e', 'probes', 'p15-phone-reflow.mjs');
+const PROBE_PATH = at('tests', 'e2e', 'probes', 'p15-phone-reflow.mjs');
 const STATS_PATH = join(CORE, 'src', 'routes', 'stats', '+page.svelte');
 
 test('the rung-L reflow probe exists and this guard is not vacuous', () => {

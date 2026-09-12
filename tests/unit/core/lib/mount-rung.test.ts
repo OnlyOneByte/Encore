@@ -17,7 +17,7 @@
 //    it — `expect(w).toBeGreaterThan(0)` is a permanent red nobody trusts, and
 //    `if (w > 0) expect(w).toBeGreaterThanOrEqual(44)` is a permanent SILENT GREEN. So the harness
 //    throws instead, naming the rung and where the measurement can actually be taken (rung L,
-//    `apps/core/e2e/cdp.mjs`). Test 5 pins that, and test 6 pins the same discipline for the no-op
+//    `tests/e2e/cdp.mjs`). Test 5 pins that, and test 6 pins the same discipline for the no-op
 //    `ResizeObserver` that `bind:clientHeight` needs, which is deliberately NOT installed.
 //
 // The tension is the point: making zeros loud is what keeps a component that MEASURES off this rung,

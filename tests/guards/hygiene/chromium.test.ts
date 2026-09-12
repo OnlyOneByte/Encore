@@ -12,8 +12,8 @@ import { join } from 'node:path';
 import { appE2e } from '@encore/test-support';
 
 // Anchored on the repo root via `@encore/test-support`, not on this file's own location: the
-// walk below is a statement about where `apps/core/e2e` is, and it used to be written as
-// `at('apps/core/e2e')` — a statement about where the TEST was. A wrong root here is silent
+// walk below is a statement about where `tests/e2e` is, and it used to be written as
+// `at('tests/e2e')` — a statement about where the TEST was. A wrong root here is silent
 // (two of the four consumers assert an EMPTY offenders array), which is what the floor below exists for.
 const E2E = appE2e;
 const CANON = 'lib/chromium.mjs';

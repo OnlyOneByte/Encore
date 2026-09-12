@@ -15,11 +15,11 @@ import { test, expect } from 'bun:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { appCore, appE2e } from '@encore/test-support';
-import { HOOKS, PRESET_COLOUR_NAMES, SEL } from '../../../apps/core/e2e/contract';
+import { HOOKS, PRESET_COLOUR_NAMES, SEL } from '../../../tests/e2e/contract';
 import { classPresent, svelteFiles } from '$lib/test-helpers';
 
-// apps/core and apps/core/e2e, anchored at the repo root. `E2E` is what this guard's own location used
-// to supply as `at('apps/core/e2e')`: the e2e directory holding the drivers, party.mjs and probes/.
+// apps/core and tests/e2e, anchored at the repo root. `E2E` is what this guard's own location used
+// to supply as `at('tests/e2e')`: the e2e directory holding the drivers, party.mjs and probes/.
 const CORE = appCore;
 const E2E = appE2e;
 

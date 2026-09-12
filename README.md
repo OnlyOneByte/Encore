@@ -278,12 +278,12 @@ gates above reproduce from the repo alone. `pytest.ini` sets `asyncio_mode = aut
 missing test dep, not a real failure. `ruff check`, `ruff format --check` and `mypy` all exit 0 on a
 clean tree; any non-zero exit is a real finding.
 
-- `apps/core/e2e/contract.ts` is the **selector contract**: one declaration of every hook the browser
+- `tests/e2e/contract.ts` is the **selector contract**: one declaration of every hook the browser
   flows drive, guarded by `contract.test.ts` so `bun test` fails the moment a selector's anchor
   disappears from the source. It exists because the previous e2e rotted silently — three selector
   families moved and the suite stayed green.
-- `apps/core/e2e/party.mjs` — the full two-phone + TV flow against a live server.
-- `apps/core/e2e/capture.mjs` — regenerates every frame in `docs/mocks/`. See
+- `tests/e2e/party.mjs` — the full two-phone + TV flow against a live server.
+- `tests/e2e/capture.mjs` — regenerates every frame in `docs/mocks/`. See
   [`docs/mocks/README.md`](docs/mocks/README.md) for how to run it and the two things that make the
   playing-state frames possible.
 - Every UI surface is eyes-on verified; frames live in `docs/mocks/` as `tour-<what>-eyeson.png` —

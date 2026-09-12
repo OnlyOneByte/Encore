@@ -26,7 +26,7 @@ function stripComments(src: string): string {
 
 // The driver under scan, named absolutely instead of counted up three levels from this
 // file's own location.
-const PROBE_PATH = at('apps/core/e2e/fuzz.mjs');
+const PROBE_PATH = at('tests/e2e/fuzz.mjs');
 const RAW = readFileSync(PROBE_PATH, 'utf8');
 const PROBE = stripComments(RAW);
 

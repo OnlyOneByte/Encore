@@ -257,7 +257,7 @@ So the prerequisite is **two rungs, not one**:
   Cascade, computed declared values, effects, event handling. One consumer today
   (`playback-common-actions.test.ts`); blocker documented at `wake-lock.test.ts:18-27`.
 - **Rung L (layout)** — real headless Chromium, already in-repo and already used by the review
-  passes: `apps/core/e2e/cdp.mjs` + `capture.mjs` (see `apps/core/e2e/HARNESS.md`). The **only**
+  passes: `tests/e2e/cdp.mjs` + `capture.mjs` (see `tests/e2e/HARNESS.md`). The **only**
   place geometry, clipping, `env()`, `dvh`, and contrast-as-painted are decidable.
 
 The four measurement claims land on **rung L**. Rung M is still a prerequisite — it is what makes
@@ -275,7 +275,7 @@ one of the four claims checkable. Rows below are written against the correct run
 | **Statement** | The product's test harness provides a mount rung and a layout rung, and a written record states which classes of claim each rung can decide. |
 | **Surfaces** | Phone remote, TV, operator dashboards (harness-level; surface-agnostic) |
 | **Rationale** | An honour-system invariant and a checked one are indistinguishable to a reviewer unless the harness's reach is stated. |
-| **Source** | `bunfig.toml`; `tests/setup/svelte-dom-preload.ts`; `tests/guards/subsystem-tv/wake-lock.test.ts:18-27`; `apps/core/e2e/cdp.mjs`, `apps/core/e2e/HARNESS.md`; happy-dom limit at `node_modules/happy-dom/lib/nodes/element/Element.js:795-798`. **DERIVED** for the two-rung split — model: a claim is decidable on a rung iff the rung implements the API the claim reads; happy-dom returns a zero `DOMRect`, therefore geometry is not decidable on rung M. |
+| **Source** | `bunfig.toml`; `tests/setup/svelte-dom-preload.ts`; `tests/guards/subsystem-tv/wake-lock.test.ts:18-27`; `tests/e2e/cdp.mjs`, `tests/e2e/HARNESS.md`; happy-dom limit at `node_modules/happy-dom/lib/nodes/element/Element.js:795-798`. **DERIVED** for the two-rung split — model: a claim is decidable on a rung iff the rung implements the API the claim reads; happy-dom returns a zero `DOMRect`, therefore geometry is not decidable on rung M. |
 | **Acceptance** | **Given** the preload aliases `$app` and `$env`, **When** a test imports and mounts `apps/core/src/routes/tv/+page.svelte`, `SongRow.svelte`, `QueueRow.svelte` and `ColourPicker.svelte`, **Then** every mount returns without throwing and `flushSync()` runs their effects. **And** a checked-in document names, per rung, at least: box geometry, clipping/overflow, `env()`, `dvh`/`vh`, computed colour, computed `font-size`, and states which rung decides each. |
 | **Check** | The five mounts are themselves tests. The capability document is enforced by XR-VER-02, which cites it. |
 | **Priority** | **BLOCKER** — migration cannot begin without it; four at-risk concerns are undecidable until it lands. |
@@ -422,7 +422,7 @@ what is measured.
 | **Rationale** | The floor is Encore's own, stricter than WCAG's, and the guard that nominally enforces it has been structurally blind three times. |
 | **Source** | WCAG 2.2 SC 2.5.8 Target Size (Minimum) — https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html (24 px; Encore's 44 px is stricter, ratified at `docs/ROADMAP.md:276`). Blindness evidence: `touch-targets.test.ts:47`'s `CONTROL` regex carries no range-input token (28 px `.hue`); its `FILES` array excludes `routes/metrics/*` (32 px) and `lib/charts` (~11.4 px day columns). |
 | **Acceptance** | **Given** the app driven at 390×844, 360×740 and 430×932 with touch emulation, **When** every element in the control register is scrolled to centre and its vertical hit extent probed at thumb, mid and far-edge x positions, **Then** every reading is ≥ 44 px, and the register includes at minimum: `button`, `a` acting as a control, every `input[type="range"]`, `select`, checkbox and radio labels, tab stops, chips, icon buttons, and the day columns in `lib/charts/Trend.svelte`. |
-| **Check** | Rung L, driven through `apps/core/e2e/cdp.mjs`. Register membership is itself enumerated by XR-VER-13's exemption discipline — a control absent from the register is a register defect, not an exempt control. |
+| **Check** | Rung L, driven through `tests/e2e/cdp.mjs`. Register membership is itself enumerated by XR-VER-13's exemption discipline — a control absent from the register is a register defect, not an exempt control. |
 | **Priority** | **MUST** |
 
 ### XR-VER-10 — Every text-entry field's computed font size is measured at ≥ 16 px
@@ -548,7 +548,7 @@ an open action. `src/lib/components/ui/` remains deliberately empty.
 | **Rationale** | An oversized frame is silently unreadable to the reviewing tooling — it costs the review rather than erroring — and the TV type scale is `vh`-relative, so a frame at another height measures a different design. |
 | **Source** | `encore-design-handoff.md` / shared brief, *Verification posture*. **DERIVED** for the TV constraint's mechanism: `--tv-lyric` through `--tv-hero` are all `clamp(px, vh, px)` and the type floor is `max(2.7vh, 20px)`, so the resolved ladder is a function of viewport height alone. |
 | **Acceptance** | **Given** any frame submitted as evidence, **When** its pixel dimensions are read, **Then** both axes are < 2000 and, if it is a TV frame, dimensions are exactly 1920×1080. **And Given** `deviceScaleFactor` > 1, **When** a clip region is captured, **Then** the stated dimensions are the *image's*, not the CSS region's. |
-| **Check** | A dimension assertion in the capture path (`apps/core/e2e/capture.mjs`), so an unreadable frame fails at capture rather than at review. |
+| **Check** | A dimension assertion in the capture path (`tests/e2e/capture.mjs`), so an unreadable frame fails at capture rather than at review. |
 | **Priority** | **MUST** — cheap, and it is a failure that consumes the review silently. |
 
 ### XR-VER-19 — Both viewport cases are exercised: the full-panel case and the windowed case
@@ -611,7 +611,7 @@ an open action. `src/lib/components/ui/` remains deliberately empty.
 
 ## Requirements I deliberately did not write, and why
 
-- **A re-point requirement for `apps/core/e2e/contract.ts`** (~90 `SEL` entries, 44 `HOOKS`
+- **A re-point requirement for `tests/e2e/contract.ts`** (~90 `SEL` entries, 44 `HOOKS`
   pairs). Already enforced and enforced *well*: `unmodelled` is asserted empty, so an
   unmodellable shape **reds rather than degrading** — the good failure mode. The only new risk is
   someone relieving the pressure by widening an allowlist, which XR-VER-06 already covers as a

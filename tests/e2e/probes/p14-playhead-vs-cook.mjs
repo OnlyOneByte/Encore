@@ -1,27 +1,26 @@
 /*
- * P15 — DOES A MID-SONG TV RELOAD RESUME AT THE ROOM POSITION?
+ * P14 — DOES A COOK MOVE THE PLAYING SONG'S PLAYHEAD?
  *
- * The reported defect: reloading the TV page mid-song restarted the song from 0 instead of resuming
- * where the room is, and the reloaded TV's own telemetry then dragged the server's position backwards,
- * so every phone's progress bar jumped back with it.
+ * The invariant under test, stated as the owner did: "the currently playing song should absolutely
+ * NOT be affected by anything happening for processing."
  *
- * METHOD. Cook song A, get it genuinely playing and past the seek threshold, record the room position
- * from the phone socket's `playback:state`. Then RELOAD the TV page — a cold mount, the exact repro —
- * and watch the fresh master's playhead. On a cold mount the room's position rides `playback:state`,
- * which the server sends before the `nowplaying:changed` that mounts the <audio>, so the fix has to
- * HOLD that position and apply it on the master's `canplay`. A fresh master stuck near 0 while the
- * room is at ~6s is the defect. As the corroborating half, the server position must NOT fall after the
- * reload (the backwards-telemetry drag).
+ * METHOD. Cook song A, get it genuinely playing and past the seek threshold, then cook song B — a
+ * DIFFERENT media — and watch A's playhead across B's whole cook. B's cook produces the real event
+ * traffic: `media:status` progress frames, then `onMediaReady`'s `queue:sync` + `nowplaying:changed`.
+ * A backwards step in A's `currentTime` is the reported defect.
  *
- *   PORT=5251 bun apps/core/e2e/probes/p15-reload-resume.mjs
+ * WHY currentTime AND decoded bytes. `paused === false` is not proof of playback (see HARNESS.md), so
+ * the run first establishes A is really decoding, and only then treats a backwards step as meaningful.
+ * A monotonic playhead across a cook with zero decode is not evidence of anything.
  *
- * Exit: 0 the reload resumed at the room position and the server position held, 1 it restarted from 0
- * or dragged the server backwards, 2 the environment could not host the test.
+ *   PORT=5241 bun tests/e2e/probes/p14-playhead-vs-cook.mjs
  *
- * NOT-A-TV: this probe GRANTS autoplay. It has to — a reload has to resume a MOVING playhead, and a
- * real TV's gestureless policy leaves it at 0.00 where nothing can be observed (see p13/p14). This run
- * says nothing about whether a real television starts on its own; it says only what a reload does to a
- * song already playing.
+ * Exit: 0 the playhead held, 1 it moved backwards, 2 the environment could not host the test.
+ *
+ * NOT-A-TV: this probe GRANTS autoplay. It has to — the invariant is about a MOVING playhead being
+ * perturbed, so the playhead must be moving, and a real TV's gestureless policy leaves it at 0.00
+ * where nothing can be observed. This run therefore says nothing about whether a real television
+ * starts on its own (that is p13's job); it says only what a cook does to a song already playing.
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -30,14 +29,23 @@ import { connect, sleep } from '../cdp.mjs';
 import { findChromium } from '../lib/chromium.mjs';
 
 /**
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
+ * /pattern). Browser/Page are derived from cdp.mjs's own return types so they cannot
+ * drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped results
+ * are cast at the call site.
+ *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {import('node:child_process').ChildProcess} Child
+ *
+ * A media row as returned by /api/search (the fields this probe reads).
  * @typedef {{ id: string, title: string, source: string }} Media
+ *
+ * The audio-element readout evaluated in the TV page by READ.
  * @typedef {{ t: number, src: string, bytes: number, paused: boolean }} Readout
  */
 
-const PORT = Number(process.env.PORT ?? 5251);
+const PORT = Number(process.env.PORT ?? 5241);
 const CDP_PORT = Number(process.env.CDP_PORT ?? PORT + 100);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.SCRATCH ?? join('/tmp', `e2e-${PORT}`);
@@ -73,13 +81,6 @@ const bail = (m) => {
 
 /** @param {string} path @returns {Promise<any>} */
 const jget = async (path) => (await fetch(BASE + path)).json();
-/**
- * The room's authoritative position. The server exposes playback state only over the WebSocket
- * (`playback:state` frames), not over HTTP, so the phone socket records the latest reported
- * positionSec (see `ensureProbeWs`) and this reads it back out of the phone page.
- * @returns {Promise<number>}
- */
-const roomPos = async () => Number(await phone.evaluate(`window.__roomPos ?? NaN`));
 
 // ── boot a private instance ────────────────────────────────────────────────
 rmSync(SCRATCH, { recursive: true, force: true });
@@ -117,7 +118,9 @@ launch('bun', ['e2e/fake-stems-worker.mjs'], {
 });
 await sleep(1500);
 
-// ── join, cook one song ────────────────────────────────────────────────────
+// ── join, then cook two DIFFERENT songs ───────────────────────────────────
+// Search matches on title, so one query does not surface the whole seeded library. Union across the
+// four demo titles (seed-media.mjs) and de-duplicate by id.
 const QUERIES = ['caroline', 'believin', 'rhapsody', 'prayer'];
 /** @type {Map<string, Media>} */
 const found = new Map();
@@ -128,11 +131,13 @@ for (const q of QUERIES) {
 	}
 }
 const uniq = [...found.values()];
-if (uniq.length < 1) bail(`need 1 local fixture, found ${uniq.length}`);
-const songA = uniq[0];
+if (uniq.length < 2) bail(`need 2 distinct local fixtures, found ${uniq.length}`);
+const [songA, songB] = uniq;
 /** @param {Media} song @returns {string} */
 const qOf = (song) => QUERIES.find((q) => song.title.toLowerCase().includes(q)) ?? QUERIES[0];
 const qA = qOf(songA);
+const qB = qOf(songB);
+/** Has this media id become playable? Asked per-title, for the same reason the fixtures were. */
 /**
  * @param {string} id
  * @param {string} q
@@ -142,7 +147,8 @@ async function isReady(id, q) {
 	const d = await jget(`/api/search?q=${q}`);
 	return (d.ready ?? []).some(/** @param {Media} m */ (m) => m.id === id);
 }
-console.log(`fixture A (plays): ${songA.title} [${songA.id}]\n`);
+console.log(`fixture A (plays): ${songA.title} [${songA.id}]`);
+console.log(`fixture B (cooks): ${songB.title} [${songB.id}]\n`);
 
 // ── drive the TV ──────────────────────────────────────────────────────────
 const chromium = findChromium();
@@ -153,7 +159,7 @@ launch(chromium, [
 	'--no-sandbox',
 	'--disable-gpu',
 	'--no-first-run',
-	// NOT-A-TV, deliberately: see the header. The playhead must be moving to be resumed.
+	// NOT-A-TV, deliberately: see the header. The playhead must be moving to be perturbed.
 	'--autoplay-policy=no-user-gesture-required',
 	'--user-data-dir=' + join(SCRATCH, 'chrome-' + process.pid),
 	'about:blank'
@@ -169,39 +175,28 @@ try {
 }
 if (!browserMaybe) bail('could not attach to Chromium');
 const browser = browserMaybe;
-
+// A PHONE first: the singer session and the queue socket both have to be a real client, because the
+// queue validator requires entry.singerId to equal the acting session's singer.
 const phone = await browser.newPage();
 await phone.goto(`${BASE}/`);
 const singerId = await phone.evaluate(`(async () => {
   const r = await fetch('/api/join', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ displayName: 'P15-${process.pid}', color: '#ff5cae' })
+    body: JSON.stringify({ displayName: 'P14-${process.pid}', color: '#ff5cae' })
   });
   const d = await r.json().catch(() => ({}));
   return d?.singer?.id ?? d?.id ?? null;
 })()`);
 if (!singerId) bail('phone join did not yield a singer id');
 
+/** Open a raw socket in the phone page, so ops carry that page's session. */
 async function ensureProbeWs() {
 	await phone.evaluate(`(async () => {
     if (window.probeWs && window.probeWs.readyState === 1) return;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(proto + '://' + location.host + '/ws?role=phone');
     await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error('ws open failed')); });
-    // Record the room's authoritative position from every playback:state frame — the server does not
-    // expose it over HTTP, so this socket is the only read.
-    window.__roomPos = NaN;
-    ws.addEventListener('message', (ev) => {
-      try {
-        const m = JSON.parse(ev.data);
-        if (m && m.type === 'playback:state' && m.state && typeof m.state.positionSec === 'number') {
-          window.__roomPos = m.state.positionSec;
-        }
-      } catch {}
-    });
-    // Ask for a fresh authoritative snapshot so __roomPos is populated even between telemetry frames.
-    ws.send(JSON.stringify({ type: 'hello' }));
     window.probeWs = ws;
   })()`);
 }
@@ -210,7 +205,7 @@ async function queueAdd(mediaId) {
 	await ensureProbeWs();
 	const now = Date.now();
 	const entry = {
-		id: `p15-e-${now}-${Math.floor(Math.random() * 1e6)}`,
+		id: `p14-e-${now}-${Math.floor(Math.random() * 1e6)}`,
 		mediaId,
 		singerId,
 		status: 'queued',
@@ -218,7 +213,7 @@ async function queueAdd(mediaId) {
 		addedAt: now
 	};
 	const command = {
-		clientOpId: `p15-o-${now}-${Math.floor(Math.random() * 1e6)}`,
+		clientOpId: `p14-o-${now}-${Math.floor(Math.random() * 1e6)}`,
 		op: { op: 'add', entry }
 	};
 	await phone.evaluate(
@@ -234,6 +229,7 @@ const cook = (mediaId) =>
     body: JSON.stringify({ mediaId: ${JSON.stringify(mediaId)} })
   }).then(r => r.status)`);
 
+// Cook A and queue it, so the room has a real song to sing.
 await cook(songA.id);
 let readyA = false;
 for (let i = 0; i < 120; i++) {
@@ -256,68 +252,77 @@ const READ = `(() => {
 })()`;
 
 try {
-	// Past SEEK_JUMP_SEC (1.5s) by a clear margin, so a resume vs a restart-from-0 is unambiguous.
+	// Past SEEK_JUMP_SEC (1.5s) by a clear margin, so a stale-anchor re-seek is unambiguous.
 	await page.waitFor(`(${READ})?.t > 3`, { timeout: 60000 });
 } catch (err) {
-	bail(`song A never reached a playhead past 3s — nothing to resume. ${/** @type {Error} */ (err).message}`);
+	bail(`song A never reached a playhead past 3s — nothing to perturb. ${/** @type {Error} */ (err).message}`);
 }
 
 const before = /** @type {Readout} */ (await page.evaluate(READ));
-const roomBefore = await roomPos();
-console.log(
-	`A playing: TV t=${before.t.toFixed(2)}s decoded=${before.bytes}B | server positionSec=${roomBefore.toFixed(2)}s`
-);
-if (before.bytes <= 32768) bail(`A is not really decoding (${before.bytes}B) — a resume would prove nothing`);
-if (!Number.isFinite(roomBefore) || roomBefore <= 3) bail(`server position is not past 3s (${roomBefore}) — no resume to test`);
+console.log(`A playing: t=${before.t.toFixed(2)}s decoded=${before.bytes}B paused=${before.paused}`);
+if (before.bytes <= 32768) bail(`A is not really decoding (${before.bytes}B) — a held playhead would prove nothing`);
 
-// ── the actual test: RELOAD the TV mid-song ───────────────────────────────
-console.log(`\nreloading /tv mid-song (room at ${roomBefore.toFixed(2)}s) — the repro\n`);
-await page.goto(`${BASE}/tv`);
+// ── the actual test: cook B while A plays ────────────────────────────────
+console.log(`\ncooking B (${songB.title}) while A plays — sampling A's playhead\n`);
+await cook(songB.id);
 
-// Wait for the fresh master to mount and reach a real decode, then read where it landed.
-let after = null;
-for (let i = 0; i < 80; i++) {
+// The window is song A ONLY. A song CHANGE legitimately resets the playhead, so the moment the
+// element stops holding A's src the window closes — otherwise the natural advance to the next song
+// would read as the very defect under test.
+const srcA = before.src;
+let prev = before.t;
+let worstDrop = 0;
+/** @type {{ from: number, to: number } | null} */
+let worstAt = null;
+let readyB = false;
+let readyAtT = null;
+let samples = 0;
+let closedBecause = 'sampling budget spent';
+for (let i = 0; i < 90; i++) {
 	await sleep(200);
-	const r = /** @type {Readout | null} */ (await page.evaluate(READ));
-	if (r && r.bytes > 32768) {
-		after = r;
+	const now = await page.evaluate(READ);
+	if (!now) {
+		closedBecause = 'A’s element went away (song ended)';
 		break;
 	}
+	if (now.src !== srcA) {
+		closedBecause = 'the room advanced to the next song';
+		break;
+	}
+	const drop = prev - now.t;
+	if (drop > worstDrop) {
+		worstDrop = drop;
+		worstAt = { from: prev, to: now.t };
+	}
+	prev = now.t;
+	samples++;
+	if (!readyB && (await isReady(songB.id, qB))) {
+		readyB = true;
+		readyAtT = now.t;
+		console.log(
+			`  B reported READY at A t=${now.t.toFixed(2)}s — onMediaReady's queue:sync + nowplaying:changed land here`
+		);
+	}
 }
-if (!after) bail('the reloaded TV never mounted a decoding master — cannot judge the resume');
-const roomAfter = await roomPos();
+
+console.log(`\nwindow closed: ${closedBecause}`);
+console.log(`samples inside A: ${samples}, last playhead ${prev.toFixed(2)}s`);
 console.log(
-	`after reload: TV t=${after.t.toFixed(2)}s decoded=${after.bytes}B | server positionSec=${roomAfter.toFixed(2)}s`
+	`B reached ready inside the window: ${readyB}${readyAtT !== null ? ` (at A t=${readyAtT.toFixed(2)}s)` : ''}`
 );
 
-// (1) The fresh master must have RESUMED near the room position, not restarted from 0. The room keeps
-// advancing while the reload completes, so compare to the CURRENT room position with a generous
-// tolerance for reload+decode latency; the defect (restart from 0) is the whole song away.
-const RESUME_TOL = 2.5;
-const gap = Math.abs(after.t - roomAfter);
-// (2) The server position must not have been dragged BACKWARDS by the reloaded TV's telemetry. It only
-// ever advances; a fall below where it was before the reload is the backwards-drag half of the cold-mount defect.
-const SERVER_DRAG_TOL = 0.5;
-const serverDrop = roomBefore - roomAfter;
-
-let failed = false;
-if (gap > RESUME_TOL) {
-	console.error(
-		`\nFAIL — the reloaded master did NOT resume: TV t=${after.t.toFixed(2)}s vs room ${roomAfter.toFixed(2)}s (gap ${gap.toFixed(2)}s > ${RESUME_TOL}s).`
-	);
-	console.error('  A cold-mounted TV restarted the song from ~0 instead of resuming.');
-	failed = true;
+// A 0.25s tolerance covers ordinary decoder jitter on a sampled element; the defect is a jump back to
+// a stale COMMAND anchor, which is seconds, and is gated by seekPlan's own 1.5s threshold anyway.
+const TOL = 0.25;
+if (worstDrop > TOL) {
+	console.error(`\nFAIL — A's playhead moved BACKWARDS ${worstDrop.toFixed(2)}s during B's cook`);
+	if (worstAt) console.error(`  ${worstAt.from.toFixed(2)}s -> ${worstAt.to.toFixed(2)}s`);
+	console.error('  Processing another song perturbed the playing song.');
+	process.exit(1);
 }
-if (serverDrop > SERVER_DRAG_TOL) {
-	console.error(
-		`\nFAIL — the reloaded TV dragged the server position BACKWARDS ${serverDrop.toFixed(2)}s (${roomBefore.toFixed(2)}s -> ${roomAfter.toFixed(2)}s).`
-	);
-	console.error("  The fresh master's telemetry overwrote the room position from 0.");
-	failed = true;
+if (!readyB) {
+	bail(`B never cooked inside A's window (${closedBecause}), so the onMediaReady burst was not observed`);
 }
-if (failed) process.exit(1);
-
-console.log(
-	`\nPASS — the reload resumed at the room position (gap ${gap.toFixed(2)}s, tol ${RESUME_TOL}s) and the server position held (drop ${serverDrop.toFixed(2)}s, tol ${SERVER_DRAG_TOL}s).`
-);
+console.log(`\nPASS — A's playhead never stepped back (worst delta ${worstDrop.toFixed(3)}s, tol ${TOL}s)`);
+console.log("       across B's media:status progress frames AND its onMediaReady queue:sync burst.");
 process.exit(0);

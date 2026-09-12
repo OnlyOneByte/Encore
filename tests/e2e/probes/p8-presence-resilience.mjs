@@ -18,7 +18,7 @@
  * Chromium) and because the failure classes we care about show up at 8-10 already.
  *
  * Environment gaps (deno missing, ffmpeg decode-only, no torch/whisperx) are pre-recorded in
- * apps/core/e2e/HARNESS.md. Real defects go under CRITICAL/HIGH/MEDIUM/LOW; environment misses go
+ * tests/e2e/HARNESS.md. Real defects go under CRITICAL/HIGH/MEDIUM/LOW; environment misses go
  * under `ENV` and never inflate a real number.
  */
 

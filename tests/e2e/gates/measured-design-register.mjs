@@ -32,7 +32,22 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+// The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
+// and the runner agree on the root. Was `join(import.meta.dirname, …)`, which encoded this file's distance
+// from `apps/core` and broke the moment the e2e tree moved under `tests/`.
+const REPO_ROOT = (() => {
+	let dir = import.meta.dirname;
+	for (let i = 0; i < 10; i += 1) {
+		if (existsSync(join(dir, 'bunfig.toml'))) return dir;
+		const parent = dirname(dir);
+		if (parent === dir) break;
+		dir = parent;
+	}
+	throw new Error(`no bunfig.toml above ${import.meta.dirname}`);
+})();
+
 
 /**
  * Encore's own tap floor, stricter than WCAG 2.2 SC 2.5.8's 24px — READ OUT OF `--tap`.
@@ -50,7 +65,7 @@ export const TAP_FLOOR = 44;
 export const TAP = readTapToken();
 
 function readTapToken() {
-	const css = readFileSync(join(import.meta.dirname, '..', '..', 'src', 'app.css'), 'utf8');
+	const css = readFileSync(join(REPO_ROOT, 'apps', 'core', 'src', 'app.css'), 'utf8');
 	const m = css.match(/--tap:\s*([0-9.]+)px\s*;/);
 	if (!m) throw new Error('app.css declares no `--tap: <n>px` token — the measured gate has no floor to read');
 	const tap = Number(m[1]);

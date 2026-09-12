@@ -5,7 +5,7 @@
 // Params are computed at ASSIGN time, so this also shows a settings change taking effect on work that
 // was already queued.
 //
-//   EPORT=5199 bun apps/core/e2e/fake-align-worker.mjs
+//   EPORT=5199 bun tests/e2e/fake-align-worker.mjs
 const port = process.env.EPORT ?? '3000';
 const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?role=worker`);
 const timer = setTimeout(() => {

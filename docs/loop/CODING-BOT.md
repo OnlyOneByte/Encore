@@ -187,7 +187,7 @@ table is, because it says which hunk each named test bit on.
 For a rendered surface: the old reason `playwright-cli` was ruled out here (needs Node 20, box has
 18.20.2) **no longer holds** — node 20.20.2 and 22.22.3 are both installed. Whether `playwright-cli`
 itself works is **unverified**; check `node --version` in your own worktree before accepting either
-premise. Either way the repo's own zero-dep CDP driver in `apps/core/e2e/` remains the preferred path:
+premise. Either way the repo's own zero-dep CDP driver in `tests/e2e/` remains the preferred path:
 run it against a throwaway loopback server, read the frames you capture, and embed them. A screenshot
 you did not open is not evidence.
 

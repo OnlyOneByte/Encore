@@ -33,7 +33,7 @@
  * them and moves by the ratio when transposed. That property is what makes this test decisive rather
  * than approximate — a chord smeared by MP3 or a real recording could not carry it.
  *
- *   PORT=5223 bun apps/core/e2e/probes/p3-key-shift.mjs
+ *   PORT=5223 bun tests/e2e/probes/p3-key-shift.mjs
  *
  * Exit codes: 0 all findings clean · 1 a real defect · 2 environment could not host the test.
  */

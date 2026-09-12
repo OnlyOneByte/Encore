@@ -98,7 +98,7 @@ function bail(msg) {
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
 if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
-	bail(`no Encore server on ${base}. See apps/core/e2e/HARNESS.md for boot instructions.`);
+	bail(`no Encore server on ${base}. See tests/e2e/HARNESS.md for boot instructions.`);
 }
 const searchInit = await fetch(`${base}/api/search?q=caroline`).then((r) => r.json());
 const cookedIds = new Set((searchInit.ready ?? []).map((/** @type {ReadyRow} */ r) => r.id));

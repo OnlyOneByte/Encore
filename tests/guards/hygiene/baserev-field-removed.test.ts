@@ -88,7 +88,7 @@ test('no non-test source under apps/core references baseRev', () => {
 	expect(offenders).toEqual([]);
 });
 
-// The three .ts/.svelte scans above do NOT reach the e2e harness: `apps/core/e2e/**/*.mjs` are
+// The three .ts/.svelte scans above do NOT reach the e2e harness: `tests/e2e/**/*.mjs` are
 // live-server scripts invoked by nothing in `bun test`, so the deletion left three of them still sending or
 // documenting the dead field. This scan closes that gap — precedent for widening a source-scan
 // guard to `.mjs` is task-number-hygiene.test.ts.

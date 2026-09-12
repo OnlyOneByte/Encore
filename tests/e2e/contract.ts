@@ -691,7 +691,7 @@ export const HOOKS: Hook[] = [
 	},
 
 	/*
-	 * Anchors the CAPTURE flow depends on (apps/core/e2e/capture.mjs).
+	 * Anchors the CAPTURE flow depends on (tests/e2e/capture.mjs).
 	 *
 	 * Registered here for the same reason as everything above: capture is a long stateful chain, and
 	 * when an anchor moves the run does not go red in a useful way — it produces a plausible-looking

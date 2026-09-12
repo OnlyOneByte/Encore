@@ -18,7 +18,7 @@
  * run if anything is already listening on the port, to keep dispatch deterministic across cook cycles
  * (in particular the audible→silent worker swap needed for FAKE_SILENT_VOCALS).
  *
- *   EPORT=5222 bun apps/core/e2e/probes/p2-guiding-track.mjs
+ *   EPORT=5222 bun tests/e2e/probes/p2-guiding-track.mjs
  *
  * Exit 0 all passed · 1 a real failure · 2 the environment could not host the test.
  */

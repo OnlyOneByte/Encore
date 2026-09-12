@@ -112,7 +112,7 @@ function record(sev, name, ok, detail, evidence) {
 const healthRes = await fetch(`${base}/health`).catch(() => null);
 if (!healthRes?.ok) {
 	console.error(
-		`\nNo Encore core on ${base}. Boot one per apps/core/e2e/HARNESS.md and re-run:\n` +
+		`\nNo Encore core on ${base}. Boot one per tests/e2e/HARNESS.md and re-run:\n` +
 			`  PORT=${PORT} SCRATCH=$KIROCREW_SCRATCH/e2e-${PORT} bun run e2e/seed-media.mjs   # seed 4 demo tracks\n` +
 			`  ENCORE_EPHEMERAL=1 PORT=${PORT} HOST=127.0.0.1 MEDIA_DIR=$SCRATCH/media ENCORE_LYRICS_BACKFILL=0 ENCORE_VOCALS_BACKFILL=0 bun run ./server.ts &\n` +
 			`  EPORT=${PORT} MEDIA_DIR=$SCRATCH/media bun e2e/fake-stems-worker.mjs &\n`
@@ -255,7 +255,7 @@ try {
 		'S1a-cook-ready',
 		false,
 		String(e),
-		'apps/core/e2e/fake-stems-worker.mjs (must be running with fetch/stems/align caps)'
+		'tests/e2e/fake-stems-worker.mjs (must be running with fetch/stems/align caps)'
 	);
 	// If the cook never completes, everything downstream is meaningless.
 	process.exit(2);
@@ -341,7 +341,7 @@ if (!believin) {
 		'S2-fixture',
 		false,
 		'Livin on a Prayer local fixture missing -- expected from seed-media.mjs',
-		'apps/core/e2e/seed-media.mjs'
+		'tests/e2e/seed-media.mjs'
 	);
 } else {
 	// It might already be cooked from a prior run (ENCORE_EPHEMERAL=1 resets state but keeps media

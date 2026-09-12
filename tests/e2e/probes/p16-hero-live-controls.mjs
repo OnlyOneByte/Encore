@@ -58,17 +58,31 @@
  *   - `class:disabled={false}` on `.gt` → XR-PH-03 FAILS, because the reason is then no longer
  *     outside a dimmed subtree for the reason that matters: nothing is dimmed.
  *
- *   EPORT=5216 bun apps/core/e2e/probes/p16-hero-live-controls.mjs
+ *   EPORT=5216 bun tests/e2e/probes/p16-hero-live-controls.mjs
  *
  * Exit 0 all passed / 1 a real failure / 2 the environment could not host the test.
  */
 import { spawn as spawnChild } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+// The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
+// and the runner agree on the root. Was `join(import.meta.dirname, …)`, which encoded this file's distance
+// from `apps/core` and broke the moment the e2e tree moved under `tests/`.
+const REPO_ROOT = (() => {
+	let dir = import.meta.dirname;
+	for (let i = 0; i < 10; i += 1) {
+		if (existsSync(join(dir, 'bunfig.toml'))) return dir;
+		const parent = dirname(dir);
+		if (parent === dir) break;
+		dir = parent;
+	}
+	throw new Error(`no bunfig.toml above ${import.meta.dirname}`);
+})();
+
 
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -79,7 +93,7 @@ import { findChromium } from '../lib/chromium.mjs';
 const PORT = process.env.EPORT ?? '5216';
 const BASE = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9356);
-const CORE_DIR = join(import.meta.dirname, '..', '..');
+const CORE_DIR = join(REPO_ROOT, 'apps', 'core');
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? process.env.TMPDIR ?? '/tmp';
 const RUN_DIR = join(SCRATCH, `p16-hero-controls-${process.pid}`);
 const MEDIA_DIR = join(RUN_DIR, 'media');

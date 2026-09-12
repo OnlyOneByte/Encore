@@ -1,13 +1,13 @@
 // guard: the tap-to-start affordance — the ONLY route out of a silent TV — is exercisable e2e
 // ONLY if the CDP driver can deliver a REAL user gesture, and only if some probe actually uses it.
 //
-// every click verb in apps/core/e2e/cdp.mjs is a synthetic `el.click()` through
+// every click verb in tests/e2e/cdp.mjs is a synthetic `el.click()` through
 // Runtime.evaluate, which dispatches an UNTRUSTED event and grants NO user activation, so it can
 // never unblock autoplay. The fix adds a `realClick(x, y)` verb that dispatches a trusted
 // mousePressed/mouseReleased pair through the CDP Input domain, and a gestureless probe
 // (e2e/probes/p13-tap-to-start.mjs) that taps the /tv stage and asserts decoded bytes climb.
 //
-// WHY A SOURCE SCAN: e2e probes under apps/core/e2e/probes/ are live-server .mjs scripts invoked by
+// WHY A SOURCE SCAN: e2e probes under tests/e2e/probes/ are live-server .mjs scripts invoked by
 // NOTHING in `bun test` — there is no unit harness and no pure function to exercise. So the verb and
 // its use are decidable properties of the driver's and probe's own text. Reverting either half
 // (deleting realClick, or the probe ceasing to call it) leaves the whole suite green while the
@@ -22,11 +22,11 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Was `at('apps/core/e2e')`, counted out from this guard's old home in
+// Was `at('tests/e2e')`, counted out from this guard's old home in
 // apps/core/src/server/realtime. The driver and the probe are named from the repo root now, and `read`
 // throws on a missing file rather than handing the `.not` assertions below an empty string.
-const CDP = stripComments(read('apps/core/e2e/cdp.mjs'));
-const PROBE = stripComments(read('apps/core/e2e/probes/p13-tap-to-start.mjs'));
+const CDP = stripComments(read('tests/e2e/cdp.mjs'));
+const PROBE = stripComments(read('tests/e2e/probes/p13-tap-to-start.mjs'));
 
 test('the CDP driver files are non-empty (guard is not vacuous)', () => {
 	// A broken path would read '' and every match below would trivially fail-open on a .not; assert

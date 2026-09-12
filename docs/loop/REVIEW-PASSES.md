@@ -227,7 +227,7 @@ TV/4K sizes (this project's TV scales down well and has historically failed scal
 here (needs Node 20, box has 18.20.2) **no longer holds** — node 20.20.2 and 22.22.3 are both
 installed; whether `playwright-cli` itself works is **unverified**, so check `node --version` in your
 own worktree before accepting either premise. The preferred path is unchanged: the repo's own zero-dep
-CDP driver in `apps/core/e2e/` with a throwaway loopback server, plus the committed frames in
+CDP driver in `tests/e2e/` with a throwaway loopback server, plus the committed frames in
 `docs/mocks/`. Read the frames you capture; a screenshot you did not open is not evidence.
 
 Rotation: `src/lib/components` · `src/lib/tv` · `src/routes/+page.svelte` + `src/routes/join` ·
@@ -419,7 +419,7 @@ and belongs to the charter that owns that surface.
 Rotation: `src/server/state` + `src/server/realtime` · `src/server/jobs` + `src/server/media` ·
 `src/routes/api` + `src/server/db` · `src/lib/stores` + `src/lib/ws` + `src/lib/tv` ·
 `src/routes` components · `packages/shared/src` · `apps/worker/src` domains ·
-`apps/core/e2e` + harness
+`tests/e2e` + harness
 
 ---
 

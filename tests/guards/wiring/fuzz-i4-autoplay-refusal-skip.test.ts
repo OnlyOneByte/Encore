@@ -28,7 +28,7 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-const PROBE = stripComments(read('apps/core/e2e/fuzz.mjs'));
+const PROBE = stripComments(read('tests/e2e/fuzz.mjs'));
 
 // Capture the body of `async function checkI4(w) { ... }`: locate the unique declaration, walk to its
 // opening `{`, then advance with a brace-depth counter to the matching close so the slice is exactly

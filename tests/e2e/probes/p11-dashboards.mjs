@@ -14,7 +14,7 @@
  * lease to expire, second worker completes). We PLAY some songs so the play log has non-zero content.
  * Then we count each thing ourselves and compare to what the dashboards say.
  *
- *   PORT=5231 bun apps/core/e2e/probes/p11-dashboards.mjs
+ *   PORT=5231 bun tests/e2e/probes/p11-dashboards.mjs
  *
  * Exit codes:
  *   0 — every finding is at LOW severity ("environmental note" or "as documented")
@@ -1034,7 +1034,7 @@ async function main() {
 						`observed rollup: /api/metrics.stages = ${JSON.stringify(metrics.stages)}`,
 						'src/lib/metrics-format.ts:52-56 — STAGE_LABELS: downloading / separating / aligning',
 						'apps/worker/src/vocabulary.py:48-50 — Stage.SEPARATING="separating", Stage.ALIGNING="aligning"',
-						'apps/core/e2e/fake-stems-worker.mjs — emits short "separate"/"align" tokens; harness-only'
+						'tests/e2e/fake-stems-worker.mjs — emits short "separate"/"align" tokens; harness-only'
 					]
 				);
 			} else {

@@ -29,10 +29,10 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Was `at('apps/core/e2e/probes/p4-transport.mjs')`, counted up three
+// Was `at('tests/e2e/probes/p4-transport.mjs')`, counted up three
 // from apps/core/src/server/realtime to apps/core. Named from the repo root now; `read` throws if the
 // probe moves, so this cannot degrade into scanning an empty string.
-const PROBE_PATH = 'apps/core/e2e/probes/p4-transport.mjs';
+const PROBE_PATH = 'tests/e2e/probes/p4-transport.mjs';
 const PROBE = stripComments(read(PROBE_PATH));
 
 // Capture the `else` arm body: from the `} else {` that opens the single-cooked-song branch up to

@@ -12,7 +12,7 @@
  *   4. Reports findings by SEVERITY (CRITICAL/HIGH/MEDIUM/LOW) with the source path:line evidence,
  *      separate from any ENVIRONMENT LIMITS that make a proof impossible on this box.
  *
- *   PORT=5225 bun apps/core/e2e/probes/p5-cook-lifecycle.mjs
+ *   PORT=5225 bun tests/e2e/probes/p5-cook-lifecycle.mjs
  *
  * Exit: 0 all defensible findings hold, 1 a real defect surfaced, 2 the environment could not host.
  */

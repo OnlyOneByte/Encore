@@ -12,7 +12,7 @@ monotonically while only the `tour-` set ever told you what the app looks like *
 frames were retired; the archive docs that cited them carry a note saying so.
 
 The frames are **generated, not hand-taken**: each one is the real app driven into that state through
-its real controls by `apps/core/e2e/capture.mjs`. That matters because the states worth looking at are
+its real controls by `tests/e2e/capture.mjs`. That matters because the states worth looking at are
 the ones a guest actually hits — a song cooking in the rotation, the sheet pulled up, the ball sitting
 on the word being sung — and none of them are reachable by opening a URL.
 

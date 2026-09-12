@@ -50,7 +50,12 @@ export default tseslint.config(
 	// Out-of-tsconfig TypeScript (e2e/**, scripts/**, *.config.ts). Syntactic + unused rules only;
 	// no type-aware rules because there is no program for these files (follow-up work).
 	{
-		files: ['apps/core/e2e/**/*.ts', 'apps/core/scripts/**/*.ts', 'apps/core/*.config.ts'],
+		// The `.mjs` extension is here deliberately: `tests/e2e/**` is 40 browser-driving drivers run by
+		// `bun run`, and they are not in any tsconfig program. When the e2e tree moved under `tests/`, the
+		// lint glob covered only `{ts,svelte}` there, so all 40 silently dropped out of coverage — visible
+		// only because the warning count fell from 82 to 41. Second time that shape has bitten in this
+		// reorganisation, hence the extension list rather than a bare `*.ts`.
+		files: ['tests/e2e/**/*.{ts,mjs}', 'apps/core/scripts/**/*.ts', 'apps/core/*.config.ts'],
 		languageOptions: {
 			parser: tseslint.parser,
 			parserOptions: { projectService: false },

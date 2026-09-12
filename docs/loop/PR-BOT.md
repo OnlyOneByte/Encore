@@ -180,7 +180,7 @@ bun test · cd apps/worker && python3 -m pytest -q · bun run build · bun run t
 - `bun run gate:measured` → **exit 0**. The layout rung; run it AFTER `bun run build`,
   because it drives the real bundle. It boots its own ephemeral server and its own headless Chromium
   and has **no skip path** — a missing browser or an unbuilt app is a red gate, by design. Its
-  quarantine (`apps/core/e2e/gates/measured-design-register.mjs`) records the controls already under
+  quarantine (`tests/e2e/gates/measured-design-register.mjs`) records the controls already under
   the 44px floor; it reds on a new one, on one getting worse, **and** on one that starts passing,
   since a quarantine whose defect no longer reproduces is a finding to re-decide rather than a number
   to adjust.
@@ -223,7 +223,7 @@ For a rendered surface: is there a screenshot, and does it show what the body cl
 `playwright-cli` was ruled out here (needs Node 20, box has 18.20.2) **no longer holds** — node
 20.20.2 and 22.22.3 are both installed; whether `playwright-cli` itself works is **unverified**, so
 check `node --version` in your own worktree before accepting either premise. Either way
-`apps/core/e2e/`'s CDP driver remains the preferred path if you need your own frame. A UI PR with no
+`tests/e2e/`'s CDP driver remains the preferred path if you need your own frame. A UI PR with no
 visual evidence is a blocker, because a green suite has never once caught a UI defect in this project.
 
 ---

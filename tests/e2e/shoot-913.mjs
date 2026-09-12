@@ -6,7 +6,7 @@
  * phone viewport, and shoots the four surfaces whose components this PR replaced.
  *
  * Run it once per tree and diff the pairs:
- *   EPORT=5217 OUT=/tmp/after  bun apps/core/e2e/shoot-913.mjs
+ *   EPORT=5217 OUT=/tmp/after  bun tests/e2e/shoot-913.mjs
  *
  * Deliberately NOT added to any gate list. A screenshot cannot fail a build, and a capture script that
  * pretends to be a check is how a suite grows something nobody reads.
@@ -14,15 +14,29 @@
 import { spawn as spawnChild } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, readdirSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
+// The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
+// and the runner agree on the root. Was `join(import.meta.dirname, …)`, which encoded this file's distance
+// from `apps/core` and broke the moment the e2e tree moved under `tests/`.
+const REPO_ROOT = (() => {
+	let dir = import.meta.dirname;
+	for (let i = 0; i < 10; i += 1) {
+		if (existsSync(join(dir, 'bunfig.toml'))) return dir;
+		const parent = dirname(dir);
+		if (parent === dir) break;
+		dir = parent;
+	}
+	throw new Error(`no bunfig.toml above ${import.meta.dirname}`);
+})();
+
 
 const PORT = process.env.EPORT ?? '5217';
 const BASE = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9361);
-const CORE = join(import.meta.dirname, '..');
+const CORE = join(REPO_ROOT, 'apps', 'core');
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? process.env.TMPDIR ?? '/tmp';
 const RUN = join(SCRATCH, `shoot913-${process.pid}`);
 const MEDIA = join(RUN, 'media');

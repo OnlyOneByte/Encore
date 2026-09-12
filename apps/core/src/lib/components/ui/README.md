@@ -128,7 +128,7 @@ do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if 
    `RETIRED` registry for that). A guard whose premise a change ends must not be left passing
    vacuously.
 6. Look at it. #913's four worst defects were all correct in source and wrong on screen, and every one
-   was found by comparing before/after screenshots — `apps/core/e2e/shoot-913.mjs` is the capture
+   was found by comparing before/after screenshots — `tests/e2e/shoot-913.mjs` is the capture
    script, and it runs against either tree.
 
 ## What is deliberately NOT here

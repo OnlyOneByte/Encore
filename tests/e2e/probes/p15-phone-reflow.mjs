@@ -32,7 +32,7 @@
  * SELF-HOSTING: boots its own ephemeral server and its own Chromium on ports it owns, so there is no
  * fixture to prepare. It needs no cooked song and no worker — the tiles render at zero.
  *
- *   bun apps/core/e2e/probes/p15-phone-reflow.mjs
+ *   bun tests/e2e/probes/p15-phone-reflow.mjs
  *
  * Exit 0 every surface reflows / 1 at least one overflows / 2 the environment could not host it.
  */

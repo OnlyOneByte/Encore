@@ -2,7 +2,7 @@
 // validateCommand add arm requires, so the probe's scenarios reach the cook-lifecycle behaviour
 // they exist to check instead of dying at setup on an op:reject.
 //
-// THE DEFECT: queueViaWs (apps/core/e2e/probes/p5-cook-lifecycle.mjs) built its add-op entry
+// THE DEFECT: queueViaWs (tests/e2e/probes/p5-cook-lifecycle.mjs) built its add-op entry
 // as { id, mediaId, singerId, source: 'phone', requestedBy: 'guest' } — three real QueueEntry
 // fields plus two that are NOT QueueEntry fields at all. It was missing addedAt, status and
 // rotationSeq. hub.ts's add arm rejects a non-finite addedAt ('invalid addedAt', :164) and any
@@ -27,10 +27,10 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Was `at('apps/core/e2e/probes/p5-cook-lifecycle.mjs')`, counted out
+// Was `at('tests/e2e/probes/p5-cook-lifecycle.mjs')`, counted out
 // from this guard's old home in apps/core/src/server/realtime. Named from the repo root now, and `read`
 // throws on a missing probe rather than letting the literal isolation below run on an empty string.
-const PROBE_PATH = 'apps/core/e2e/probes/p5-cook-lifecycle.mjs';
+const PROBE_PATH = 'tests/e2e/probes/p5-cook-lifecycle.mjs';
 const PROBE = stripComments(read(PROBE_PATH));
 
 // Isolate the object literal passed as the add op's `entry` inside queueViaWs. We locate the

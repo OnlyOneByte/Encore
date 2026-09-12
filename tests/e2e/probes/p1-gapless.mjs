@@ -23,7 +23,7 @@
  * (see e2e/HARNESS.md). Nothing here needs any of them: the fake worker publishes real 16-bit PCM WAV
  * by hand (wav.mjs) and the whole cook happens over the real wire.
  *
- *   PORT=5221 EPORT=5221 bun apps/core/e2e/probes/p1-gapless.mjs   # boot server + worker first
+ *   PORT=5221 EPORT=5221 bun tests/e2e/probes/p1-gapless.mjs   # boot server + worker first
  *
  * Exit codes:  0 = all findings collected AND no CRITICAL/HIGH  ·  1 = at least one HIGH+ defect  ·
  *              2 = the environment could not host the test (no server, no library, no Chromium)
@@ -393,7 +393,7 @@ try {
 		'PROBE-CRASH',
 		'the probe itself blew up',
 		String(/** @type {Error} */ (err)?.stack ?? err),
-		'apps/core/e2e/probes/p1-gapless.mjs'
+		'tests/e2e/probes/p1-gapless.mjs'
 	);
 } finally {
 	browser?.close();
@@ -444,7 +444,7 @@ function analyze(tl, ctx) {
 			'P1-NO-SAMPLES',
 			'no timeline samples were collected',
 			'',
-			'apps/core/e2e/probes/p1-gapless.mjs'
+			'tests/e2e/probes/p1-gapless.mjs'
 		);
 		return;
 	}

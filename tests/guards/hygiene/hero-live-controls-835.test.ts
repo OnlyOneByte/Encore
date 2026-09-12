@@ -44,7 +44,7 @@ function render<P extends Record<string, unknown>>(Comp: unknown, props: P): HTM
 /*
  * `openTools` was deleted with the four arms that used it. Opening the disclosure is only
  * meaningful for a claim about what is INSIDE it, and every such claim now runs on the layout rung in
- * `apps/core/e2e/probes/p16-hero-live-controls.mjs` — the hero cannot be mounted here at all while its
+ * `tests/e2e/probes/p16-hero-live-controls.mjs` — the hero cannot be mounted here at all while its
  * disclosure is a Bits UI Collapsible, which reads getBoundingClientRect (XR-VER-03).
  */
 
@@ -60,7 +60,7 @@ const NOTE = 'No isolated vocals for this song, so the guiding track stays off. 
  *   - the reason sits OUTSIDE the subtree the disabled control dims with opacity (XR-PH-03)
  *   - the sentence is in the disclosure BODY, never in the collapsed summary
  *
- * They live in `apps/core/e2e/probes/p16-hero-live-controls.mjs` now, and this is NOT a relocation of
+ * They live in `tests/e2e/probes/p16-hero-live-controls.mjs` now, and this is NOT a relocation of
  * convenience. The Slider adoption moved GuidingTrack's control onto shadcn's <Slider>, which is Bits UI, and Bits UI
  * needs a real layout engine in two independent ways the mount rung deliberately refuses to provide:
  * it reads `offsetWidth`, which the preload replaces with a throw because happy-dom fabricates a zero;

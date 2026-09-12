@@ -14,7 +14,7 @@
  * That distinction is exactly the FLAC-in-a-<video> defect: valid file, element "playing", zero
  * decoded bytes, silent room.
  *
- *   EPORT=5210 bun apps/core/e2e/playback.mjs
+ *   EPORT=5210 bun tests/e2e/playback.mjs
  *
  * Exit 0 all passed · 1 a real failure · 2 the environment could not host the test (no server,
  * no Chromium, empty library) — never conflated with a failure, because a skipped audio test that

@@ -3,7 +3,7 @@
 // ── WHY A SOURCE SCAN GUARDS A MEASURED GATE ───────────────────────────────────────────────────
 //
 // The measured-design gate moved four measurement claims onto real headless Chromium. The measurement itself is in
-// `apps/core/e2e/gates/measured-design.mjs`, which needs a browser and a booted server and therefore
+// `tests/e2e/gates/measured-design.mjs`, which needs a browser and a booted server and therefore
 // cannot run inside `bun test`. That leaves a gap this file closes, and it is the same gap the issue's
 // own triage named: a measured check nothing runs is not a gate.
 //
@@ -34,12 +34,12 @@ import {
 	RETIRED,
 	TAP,
 	TAP_FLOOR
-} from '../../../apps/core/e2e/gates/measured-design-register.mjs';
+} from '../../../tests/e2e/gates/measured-design-register.mjs';
 
 // Anchored on the repo-root marker rather than `at('.')`, which
 // only meant the repo root while this file sat in apps/core/src/lib.
 const REPO = repoRoot;
-const GATE_REL = 'apps/core/e2e/gates/measured-design.mjs';
+const GATE_REL = 'tests/e2e/gates/measured-design.mjs';
 const gate = readFileSync(join(REPO, GATE_REL), 'utf8');
 
 /** The script name every lane runs. Changing it means changing all four briefs in the same commit. */
@@ -180,7 +180,7 @@ test('the CDP driver exposes exactly ONE safe-area method, and every caller uses
 	// Definition-only detection, mirroring that file's approach: match the method DEFINITIONS on the page
 	// object, never a call site and never the CDP wire method (`Emulation.setSafeAreaInsetsOverride`),
 	// which is the protocol's name and not ours to dedupe.
-	const cdp = readFileSync(join(REPO, 'apps/core/e2e/cdp.mjs'), 'utf8');
+	const cdp = readFileSync(join(REPO, 'tests/e2e/cdp.mjs'), 'utf8');
 	const defined = [...cdp.matchAll(/^\t\tasync\s+(\w+)\s*\(/gm)].map((m) => m[1]!).filter((n) => /safearea/i.test(n));
 	expect(defined).toEqual(['safeAreaInsets']);
 
@@ -210,7 +210,7 @@ test('the CDP driver exposes exactly ONE safe-area method, and every caller uses
 			}
 		}
 	};
-	walk(join(REPO, 'apps/core/e2e'));
+	walk(join(REPO, 'tests/e2e'));
 	expect(offenders).toEqual([]);
 	// Non-vacuity floor (XR-VER-05): TWO call sites today — this gate's live docked-band arm sets a
 	// simulated inset and then resets it. A walk that finds none would pass while enforcing nothing.

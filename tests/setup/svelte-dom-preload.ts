@@ -24,7 +24,7 @@
 // MOUNT rung: mounting, the cascade, computed DECLARED values, effects and event handling. Box
 // geometry, clipping/overflow, `env()`, `dvh`/`vh`, computed colour and computed font-size are NOT
 // decidable here and belong to the LAYOUT rung — a real headless Chromium driven through
-// `apps/core/e2e/cdp.mjs` (see `apps/core/e2e/HARNESS.md`).
+// `tests/e2e/cdp.mjs` (see `tests/e2e/HARNESS.md`).
 //
 // Tests get the CLIENT `mount`/`unmount`/`flushSync` from `tests/setup/svelte-client.ts` (the bare
 // `svelte` specifier resolves to the SERVER build under `bun test`, whose `mount()` throws). A
@@ -122,7 +122,7 @@ function unmeasurable(api: string): never {
 		`${api} cannot measure on the MOUNT rung: happy-dom has no layout engine and fabricates a zero ` +
 		`(node_modules/happy-dom/lib/nodes/element/Element.js, .../html-element/HTMLElement.js). Box ` +
 		`geometry, clipping, env() and dvh/vh are decidable only on the LAYOUT rung — drive a real ` +
-		`render through apps/core/e2e/cdp.mjs (see apps/core/e2e/HARNESS.md and ` +
+		`render through tests/e2e/cdp.mjs (see tests/e2e/HARNESS.md and ` +
 		`docs/ux/04-verification.md, XR-VER-03). Do not read a zero here as a measurement.`
 	);
 }

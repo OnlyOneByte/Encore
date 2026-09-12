@@ -8,7 +8,7 @@
  * measures an environment no television is in. Every click verb in cdp.mjs is a synthetic el.click()
  * via Runtime.evaluate, an UNTRUSTED event granting NO user activation, so it cannot unblock autoplay.
  *
- *   EPORT=5213 bun apps/core/e2e/probes/p13-tap-to-start.mjs
+ *   EPORT=5213 bun tests/e2e/probes/p13-tap-to-start.mjs
  *
  * Exit 0 all passed / 1 a real failure / 2 the environment could not host the test.
  */

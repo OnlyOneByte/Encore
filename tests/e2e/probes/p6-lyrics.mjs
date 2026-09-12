@@ -16,7 +16,7 @@
  * time-varying findings against a corrected fixture written by the probe itself.
  *
  *   EPORT=5226 MEDIA_DIR=$KIROCREW_SCRATCH/e2e-5226/media \
- *     bun apps/core/e2e/probes/p6-lyrics.mjs
+ *     bun tests/e2e/probes/p6-lyrics.mjs
  *
  * Exit 0 — every finding passed; 1 — one or more real defects; 2 — the environment could
  * not host the test. Never conflate 2 with 0 (HARNESS.md).
@@ -412,7 +412,7 @@ try {
 		'fake-worker align artifact uses the field names the TV parser reads',
 		fixtureShapeMatchesParser
 			? ''
-			: `apps/core/e2e/fake-stems-worker.mjs:196-207 writes {startSec,endSec,text} but ` +
+			: `tests/e2e/fake-stems-worker.mjs:196-207 writes {startSec,endSec,text} but ` +
 					`apps/core/src/lib/tv/lyrics.ts:31-51 reads {start,end,word}. ` +
 					`Every word entry is dropped by parseLyricsDoc; line bounds resolve to null; ` +
 					`activeLineIndex returns 0 forever. Real Python worker (apps/worker/src/lyrics/artifact.py:6-7) ` +
@@ -445,9 +445,9 @@ try {
 				// glyph so downstream matching sees "here". Reading the last text-node child would
 				// also work, but this is trivially reversible.
 				const rawActive = a ? a.textContent.trim() : null;
-				const active = rawActive ? rawActive.replace(/^[●·]+\s*/, '') : null;
+				const active = rawActive ? rawActive.replace(/^[●·]+\\s*/, '').trim() : null;
 				const rawCurrent = c ? c.textContent.trim() : null;
-				const current = rawCurrent ? rawCurrent.replace(/^[●·]+\s*/, '').trim() : null;
+				const current = rawCurrent ? rawCurrent.replace(/^[●·]+\\s*/, '').trim() : null;
 				return {
 					wall: performance.now(),
 					currentTime: v ? v.currentTime : -1,

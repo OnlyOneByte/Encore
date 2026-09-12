@@ -392,7 +392,7 @@ happy-dom 20.14.0's `getBoundingClientRect()` is a stub — `Element.js:795`, `/
 implementation`, `return new DOMRect()`, all zeros — and it has **no layout engine**.
 
 So: **rung M** (mount — cascade, computed declared values, effects; unblocked by the aliasing) and
-**rung L** (layout — real headless Chromium, already in-repo at `apps/core/e2e/cdp.mjs`). The four
+**rung L** (layout — real headless Chromium, already in-repo at `tests/e2e/cdp.mjs`). The four
 measurement claims land on **rung L**. A plan that stops at rung M has made none of them checkable.
 
 ### Superseded: four "not decided" items were already decided

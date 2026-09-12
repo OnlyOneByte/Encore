@@ -73,8 +73,17 @@ for (const landmark of ['bunfig.toml', 'package.json', 'apps/core', 'packages/sh
 export const appCore: string = join(repoRoot, 'apps', 'core');
 /** `apps/core/src` — where routes, lib and server live. */
 export const appSrc: string = join(appCore, 'src');
-/** `apps/core/e2e` — drivers, probes, gates and the selector contract. */
-export const appE2e: string = join(appCore, 'e2e');
+/** `tests/e2e` — drivers, probes, gates and the selector contract. */
+/**
+ * `tests/e2e` — the browser-driving drivers, probes and gates.
+ *
+ * NOT under `apps/core` any more, despite the name. These lived at `apps/core/e2e` until the test
+ * reorganisation moved every test out of the source tree; the export keeps its name because 13 guards
+ * import it and the thing it names has not changed, only its address. When it moved, all 13 failed with
+ * `ENOENT: scandir apps/core/e2e` — loudly, and from one place, which is the whole argument for a named
+ * anchor over 13 copies of a path.
+ */
+export const appE2e: string = join(repoRoot, 'tests', 'e2e');
 /** `packages/shared/src` — the domain code both the app and (by hand-mirroring) the worker use. */
 export const sharedSrc: string = join(repoRoot, 'packages', 'shared', 'src');
 /** `apps/worker` — the Python side. Layer 1B. */

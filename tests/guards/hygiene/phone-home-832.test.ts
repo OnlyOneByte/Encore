@@ -114,7 +114,7 @@ test('the transport is disabled when there is nothing for it to act on', () => {
  * mounted here at all, and faking the geometry to keep this test would manufacture exactly the silent
  * green that refusal exists to prevent.
  *
- * Both halves of the claim now live in `apps/core/e2e/probes/p16-hero-live-controls.mjs`, against a
+ * Both halves of the claim now live in `tests/e2e/probes/p16-hero-live-controls.mjs`, against a
  * real render rather than a stub: that the disclosure starts closed with its summary standing in for
  * the controls and the control not visible, and that once opened the control sits in the body and never
  * inside the toggle. p16 is where the neighbouring XR-PH-15 and XR-PH-03 claims already live.

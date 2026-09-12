@@ -2,7 +2,7 @@
 // validateCommand add arm requires — { id, mediaId, singerId, status, rotationSeq, addedAt } — so a
 // future contract move REDS this guard instead of silently killing a probe at setup.
 //
-// THE SYSTEMIC DEFECT (from the rotted-probe repair). Nothing in `bun test` invokes apps/core/e2e/ — the probes
+// THE SYSTEMIC DEFECT (from the rotted-probe repair). Nothing in `bun test` invokes tests/e2e/ — the probes
 // are live-server scripts run by hand. So when the add contract moved (addedAt made finite, then
 // status narrowed to 'queued'), a probe whose add frame predated the move kept sending a
 // stale frame that validateCommand now REJECTS: queueViaWs threw at setup and EVERY scenario in the
@@ -34,8 +34,8 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Was `at('apps/core/e2e')`, counted up three from
-// apps/core/src/server/realtime to apps/core. `appE2e` is that same apps/core/e2e directory named
+// Was `at('tests/e2e')`, counted up three from
+// apps/core/src/server/realtime to apps/core. `appE2e` is that same tests/e2e directory named
 // directly. The walk below keeps its own exclusion list, so it is not replaced by `filesUnder`; a
 // missing root still throws out of readdirSync, and the >10 floor at the bottom is the vacuity trap.
 const E2E_DIR = appE2e;

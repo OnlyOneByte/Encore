@@ -13,9 +13,9 @@
  * passed · 1 real failure · 2 environment could not host the test) so a skipped run does not report
  * green.
  *
- * Run it against a booted server on YOUR port (5229 here). See apps/core/e2e/HARNESS.md.
+ * Run it against a booted server on YOUR port (5229 here). See tests/e2e/HARNESS.md.
  *
- *   EPORT=5229 bun apps/core/e2e/probes/p9-settings.mjs
+ *   EPORT=5229 bun tests/e2e/probes/p9-settings.mjs
  */
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -144,7 +144,7 @@ function openPhoneWs(cookie) {
 
 // ── environment sanity ──────────────────────────────────────────────────────
 if (!(await fetch(`${BASE}/health`).catch(() => null))?.ok) {
-	bail(`no Encore server on ${BASE}. Follow apps/core/e2e/HARNESS.md.`);
+	bail(`no Encore server on ${BASE}. Follow tests/e2e/HARNESS.md.`);
 }
 const serverHasEnvOrigin = (process.env.EXPECTED_ENV_ORIGIN ?? '').trim();
 // serverHasEnvOrigin: what the test EXPECTS the server was booted with as ENCORE_PUBLIC_ORIGIN. When
@@ -196,7 +196,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		missing.length === 0 ? 'PASS' : 'HIGH',
 		'coverage',
 		`persistence probe covers every SEL.SETTING_IDS entry (${SEL.SETTING_IDS.length})`,
-		missing.length ? `uncovered: ${missing.join(', ')}` : `apps/core/e2e/contract.ts:104-115`
+		missing.length ? `uncovered: ${missing.join(', ')}` : `tests/e2e/contract.ts:104-115`
 	);
 
 	const start = await getSettings();
