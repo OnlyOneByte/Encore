@@ -48,7 +48,7 @@ Reference, not read by a lane:
 
 **An edit is not a deployment.** A long-lived worker or reviewer session reads its brief **once, at
 creation**, and works from that copy forever. Measured 2026-09-06: an edit to the reviewer brief left
-four live slots emitting the old verdict template across seven consecutive verdicts (#272–#279). So
+four live slots emitting the old verdict template across seven consecutive verdicts. So
 either order a re-read at the start of the next work item, or retire the slot. A cron lane is
 different — each run is a fresh session, so a cron brief edit takes effect on the next fire.
 

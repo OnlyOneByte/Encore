@@ -1,10 +1,10 @@
-# Spike · QueueSheet on the shadcn/vaul drawer (#827)
+# Spike · QueueSheet on the shadcn/vaul drawer
 
-> **⚠ SUPERSEDED BY #903 — this document is history, not a plan.** Its verdict ("GO on the drawer") was
+> **⚠ SUPERSEDED — this document is history, not a plan.** Its verdict ("GO on the drawer") was
 > never acted on, and the question it answered is closed the other way: the ratified phone design has no
-> drawer, #832 built the inline-rows/hero/docked-band home instead, and neither `QueueSheet.svelte` nor
+> drawer; direction A built the inline-rows/hero/docked-band home instead, and neither `QueueSheet.svelte` nor
 > the `QueueSheetDrawer.svelte` port ever rendered anywhere a guest could reach — both existed only in
-> the `/components` gallery. #903 deleted the whole drawer surface along with `vaul-svelte`, `bits-ui`
+> the `/components` gallery. An earlier change deleted the whole drawer surface along with `vaul-svelte`, `bits-ui`
 > and `@internationalized/date`. The file:line citations below are left UNREPAIRED on purpose: the files
 > are gone, so there is nothing to re-point them at, and the measurements are kept because they are the
 > evidence for the decision. The band contract these numbers circle around survives as `--dock-h` on
@@ -12,7 +12,7 @@
 
 **Verdict: GO on the drawer, with two costs to accept and one number that will change.** All four
 do-not-regress values hold exactly on the port, snap points work under a real pointer drag, and the
-motion is CSS. What the port costs is guard coverage (already ruled on: #827 Q1 · C) and a sheet that
+motion is CSS. What the port costs is guard coverage (already ruled on: Q1 · C) and a sheet that
 is always 82dvh tall instead of shrink-wrapping its content.
 
 Measured on `d325c64`, branch `spike/queuesheet-shadcn-827`, `vaul-svelte@1.0.0-next.7` +
@@ -20,11 +20,15 @@ Measured on `d325c64`, branch `spike/queuesheet-shadcn-827`, `vaul-svelte@1.0.0-
 
 Reproduce:
 
+> **The file this spike measured no longer exists.** `drawer-spike-827.test.ts` was deleted with the
+> dead drawer surface it pinned. The command below is kept verbatim because this document is a record
+> of a measurement that was taken, not an instruction to re-run it — repointing it at a file that
+> never held these numbers would make the record false rather than current.
 ```bash
-cd apps/core && bun run build
+cd . && bun run build
 ENCORE_EPHEMERAL=1 PORT=5271 HOST=127.0.0.1 bun run ./server.ts &
 EPORT=5271 bun e2e/probes/spike827-queuesheet-drawer.mjs      # 17/17
-bun test apps/core/src/lib/components/drawer-spike-827.test.ts # 5/5
+bun test src/lib/components/drawer-spike-827.test.ts # 5/5
 ```
 
 ## The four numbers
@@ -48,7 +52,7 @@ under `@media (max-height: 480px)`. The value the page actually resolves is **ne
 `QueueSheet.svelte:60` writes the measured peek height inline on `documentElement` and an inline
 property outranks any media query. Measured: 164px at 844 tall and 151px at 480 tall — the 84px rule
 never wins while the sheet is mounted. The port keeps that contract intact, including the unmount
-teardown (#460 §14).
+teardown (§14).
 
 Two corrections to how the issue frames N4, both measured by removing the inline property and
 re-reading the cascade (deterministic, no racing hydration):
@@ -83,13 +87,13 @@ The animated properties are `transform` and `opacity` only, so the layout-proper
 satisfied — if it could reach them. It cannot: the rules live in a 291-line `<style global>` at
 `dist/components/drawer/drawer.svelte:92-383` inside `node_modules`, which `test-helpers.ts:36`'s
 `SKIP_DIRS` skips by name, plus inline styles written from JS. This is now asserted rather than
-asserted-in-prose, in `apps/core/src/lib/components/drawer-spike-827.test.ts`.
+asserted-in-prose, in `src/lib/components/drawer-spike-827.test.ts`.
 
 **Risk 3 · the four numbers — GO. All four match exactly.** See the table.
 
 **Risk 4 · drag reorder — OUT OF SCOPE.** The drawer is the *sheet pull*, which the incumbent already
 implements with pointer handlers. Row reorder is `svelte-dnd-action` (`docs/ux/02-phone.md` XR-PH-06)
-and #836 owns it. Its "blocked on #827" premise does not hold — different library, different gesture.
+and the reorder-mode work owns it. Its "blocked" premise does not hold — different library, different gesture.
 
 **Risk 5 · do the guards keep working — NO, as already ruled (Q1 · C).** Confirmed, and narrowed.
 The port takes exactly two named assertions out of scope, and **both fail loudly**, which is the good
@@ -144,7 +148,7 @@ its own imports — verified: `Cannot find package 'bits-ui'`. The adopting comm
 itself, with nothing upstream stating a compatible range. `1.0.0-next.7` published 2025-03-24 and is
 still the newest.
 
-**4. A ported QueueSheet cannot be loaded by `bun test`, so the mount rung (#822) goes dark on it.**
+**4. A ported QueueSheet cannot be loaded by `bun test`, so the mount rung goes dark on it.**
 This is the sharpest cost the spike found, and it was not on the issue's list.
 `vaul-svelte`'s `exports["."]` declares only `types` and `svelte` — **no `default`, no `import`, no
 `require`**. Vite/SvelteKit apply the `svelte` condition, so the app builds; `bun test` does not, so
@@ -178,5 +182,5 @@ the assistive-technology consequences of a dialog that is never closed.
   deliberately, so risk 5 could be tested at its most favourable; a real shadcn drawer would replace
   those rules with utilities, which is strictly worse for every class-name-resolving guard.
 - The a11y consequences of the never-closed dialog (see above).
-- `#791` and `#835` are both still open and both rewrite `.body`, the surface N3 measures. These
+- Two follow-ups are both still open and both rewrite `.body`, the surface N3 measures. These
   numbers are true of `d325c64` and will need re-measuring after either lands.

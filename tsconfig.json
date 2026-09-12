@@ -1,19 +1,36 @@
 {
+	"extends": "./.svelte-kit/tsconfig.json",
 	"compilerOptions": {
-		"target": "ESNext",
-		"module": "ESNext",
-		"moduleResolution": "bundler",
-		"lib": ["ESNext", "DOM", "DOM.Iterable"],
-		"types": ["bun-types"],
-		"strict": true,
-		"noUncheckedIndexedAccess": true,
+		"allowJs": true,
+		"checkJs": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
 		"skipLibCheck": true,
-		"verbatimModuleSyntax": true,
-		"allowImportingTsExtensions": true,
-		"noEmit": true,
-		"paths": {
-			"@encore/shared": ["./packages/shared/src/index.ts"]
-		}
+		"sourceMap": true,
+		"strict": true,
+		"moduleResolution": "bundler",
+		"types": ["bun-types"]
 	},
-	"include": ["packages", "apps/core/server.ts", "apps/core/src"]
+	// SvelteKit's generated config includes `../tests/**` — a sensible default when tests sit beside the
+	// app, which after flattening the `apps/` layer away they do. But this repo's test tree has its OWN
+	// tsconfig (`tests/tsconfig.json`) declaring `@encore/test-support` and the `$lib` aliases it needs, so
+	// pulling it into the APP's program instead produced 167 svelte-check errors on imports the app config
+	// has no reason to know about.
+	//
+	// `exclude` REPLACES the base's list rather than extending it, so SvelteKit's own service-worker
+	// exclusions are repeated here — dropping them would type-check the service worker against DOM lib
+	// definitions it deliberately does not use.
+	"exclude": [
+		"node_modules/**",
+		"tests/**",
+		"src/service-worker.js",
+		"src/service-worker/**/*.js",
+		"src/service-worker.ts",
+		"src/service-worker/**/*.ts",
+		"src/service-worker.d.ts",
+		"src/service-worker/**/*.d.ts"
+	]
+	// $lib/contract resolves via the Bun workspace symlink; no tsconfig paths needed
+	// (a baseUrl/paths block here would conflict with SvelteKit's generated tsconfig).
 }

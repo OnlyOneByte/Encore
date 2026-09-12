@@ -1,0 +1,127 @@
+// defect 1: the boot maintenance chain must ISOLATE each pass. One pass failing/hanging must not
+// disable the passes after it, and a failure must be visible + NAMED (not one terminal catch that
+// cannot say which of six passes died). Two halves: the runner's behaviour (here, in a pure harness)
+// and the app.ts wiring that this runner is what the boot chain uses (source scan — getApp() has no
+// unit harness).
+import { test, expect } from 'bun:test';
+import { read } from '@encore/test-support';
+import { runBootMaintenance, type BootTask } from '$lib/server/boot-maintenance';
+
+test('a pass that throws does NOT skip the passes after it (the whole point of the isolated boot runner)', async () => {
+	const ran: string[] = [];
+	const warnings: string[] = [];
+	const tasks: BootTask[] = [
+		{
+			name: 'first',
+			run: async () => {
+				ran.push('first');
+			}
+		},
+		{
+			name: 'exploder',
+			run: async () => {
+				ran.push('exploder');
+				throw new Error('one hand-edited sidecar');
+			}
+		},
+		{
+			name: 'third',
+			run: async () => {
+				ran.push('third');
+			}
+		},
+		{
+			name: 'fourth',
+			run: async () => {
+				ran.push('fourth');
+			}
+		}
+	];
+
+	const { failed } = await runBootMaintenance(tasks, (m) => warnings.push(m));
+
+	// Before the fix, the throw in `exploder` would abort the chain: 'third' and 'fourth' never run.
+	// After: every pass runs regardless of an earlier failure.
+	expect(ran).toEqual(['first', 'exploder', 'third', 'fourth']);
+	expect(failed).toEqual(['exploder']);
+});
+
+test('a failed pass surfaces a NAMED, non-silent note that keeps the stack', async () => {
+	const warnings: string[] = [];
+	const boom = new Error('instrumental is undefined');
+	const tasks: BootTask[] = [
+		{
+			name: 'guiding-track backfill',
+			run: async () => {
+				throw boom;
+			}
+		}
+	];
+
+	await runBootMaintenance(tasks, (m) => warnings.push(m));
+
+	expect(warnings).toHaveLength(1);
+	// The note names WHICH pass — the exact thing the single terminal catch could not do.
+	expect(warnings[0]).toContain('guiding-track backfill');
+	expect(warnings[0]).toContain('FAILED');
+	// And keeps the stack rather than discarding it (the old `(err as Error)?.message`).
+	expect(warnings[0]).toContain('instrumental is undefined');
+});
+
+test('a thrown non-Error is reported as text, never "[object Object]"', async () => {
+	const warnings: string[] = [];
+	const tasks: BootTask[] = [
+		// The old catch did `(err as Error)?.message ?? err`; a thrown object has no .message, so it
+		// interpolated as "[object Object]".
+		{
+			name: 'weird',
+			run: async () => {
+				throw { code: 'ENOSPC' };
+			}
+		}
+	];
+	await runBootMaintenance(tasks, (m) => warnings.push(m));
+	expect(warnings[0]).not.toContain('[object Object]');
+	expect(warnings[0]).toContain('ENOSPC');
+});
+
+test('a disabled pass is skipped silently (not counted as a failure)', async () => {
+	const ran: string[] = [];
+	const warnings: string[] = [];
+	const tasks: BootTask[] = [
+		{
+			name: 'off',
+			enabled: () => false,
+			run: async () => {
+				ran.push('off');
+			}
+		},
+		{
+			name: 'on',
+			run: async () => {
+				ran.push('on');
+			}
+		}
+	];
+	const { failed } = await runBootMaintenance(tasks, (m) => warnings.push(m));
+	expect(ran).toEqual(['on']);
+	expect(failed).toEqual([]);
+	expect(warnings).toHaveLength(0);
+});
+
+// ── wiring: the boot chain in app.ts must USE this runner, not a bare try-less chain ──────────────
+function stripComments(src: string): string {
+	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
+	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
+}
+// Was `at('src/lib/server/app.ts')` — the wiring subject was this guard's own SIBLING in
+// src/lib/server, which is also where `boot-maintenance` above was imported with a bare `./`.
+const APP = stripComments(read('src/lib/server/app.ts'));
+
+test('app.ts imports runBootMaintenance and drives the boot passes through it (the wiring)', () => {
+	expect(APP).toMatch(/import\s*\{[^}]*\brunBootMaintenance\b[^}]*\}\s*from\s*'\.\/boot-maintenance'/);
+	// The passes are a table, and that table is handed to the isolated runner. A revert to the old
+	// single `.then(...).catch(...)` chain would break both matches.
+	expect(APP).toMatch(/const\s+bootTasks\s*:\s*BootTask\[\]\s*=/);
+	expect(APP).toMatch(/runBootMaintenance\(\s*bootTasks\b/);
+});

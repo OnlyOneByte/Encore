@@ -37,8 +37,8 @@ in here.
 
 ## Why CUDA needs no Dockerfile but Intel once did
 
-`apps/worker/Dockerfile` already exposes `ARG TORCH_INDEX_URL`, so switching accelerator is a wheel
-index swap. Both of these carry the exact versions `apps/worker/requirements.txt` already pins —
+`worker/Dockerfile` already exposes `ARG TORCH_INDEX_URL`, so switching accelerator is a wheel
+index swap. Both of these carry the exact versions `worker/requirements.txt` already pins —
 `torch 2.8.0`, `torchaudio 2.8.0`, `torchvision 0.23.0` — so **no requirements edit is needed** for
 either:
 

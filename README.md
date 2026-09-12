@@ -52,7 +52,7 @@ Then open **`/tv`** on the television, and **scan the QR** with phones.
 To run it natively instead of in Docker:
 
 ```bash
-cd apps/worker
+cd worker
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt        # torch + demucs + whisperx (multi-GB)
 
@@ -80,7 +80,7 @@ enabled via `--remote-components ejs:github`. Miss either and extraction degrade
 audio-only format resolves at all, so every process fails at download with `Requested format is not
 available` — which reads as a broken worker rather than a missing dependency. The Docker images ship
 `deno` plus `/etc/yt-dlp.conf`; a native run does not, so install `deno` and either copy
-`apps/worker/yt-dlp.conf` to `/etc/yt-dlp.conf` or point yt-dlp at it with `--config-location`.
+`worker/yt-dlp.conf` to `/etc/yt-dlp.conf` or point yt-dlp at it with `--config-location`.
 
 Separately: **not every YouTube video will download.** Upstream bot-checking rejects some, and a
 handful of failed processes on specific videos is not a broken install — see
@@ -157,14 +157,14 @@ container for core; a Python **separator + WhisperX** worker joins as container 
 ## Layout
 
 ```
-packages/shared/   ← the realtime contract, made physical (imported by client AND server)
-apps/core/         ← Container 1: Bun + SvelteKit
+src/lib/contract/   ← the realtime contract, made physical (imported by client AND server)
+         ← Container 1: Bun + SvelteKit
   server.ts          Bun.serve entry: HTTP + native WS pub/sub hub (one process)
   src/server/        authoritative backend (state, rotation, playback, jobs, media, db)
   src/lib/           client: optimistic store, ws client, components, TV gapless controller
   src/routes/        phone (+page), /join, /tv, /settings, /stats, /metrics, /api
   e2e/               selector contract + guard, the party flow, the screenshot capture
-apps/worker/       ← Container 2: Python stems/align (dials home; `--profile stems`)
+worker/       ← Container 2: Python stems/align (dials home; `--profile stems`)
 docs/              ← ARCHITECTURE + HANDOFF + DECISIONS; loop/ deploy/ benchmarks/ mocks/ research/
 ```
 
@@ -264,8 +264,8 @@ bun test          # unit/integration tests — runnable from the root
 bun run check     # svelte-check + types, 0 errors
 bun run typecheck # both workspaces
 
-# Worker (apps/worker) — install the pinned dev toolchain once, then run all four gates:
-cd apps/worker && pip install -r requirements.txt -r requirements-dev.txt
+# Worker (worker) — install the pinned dev toolchain once, then run all four gates:
+cd worker && pip install -r requirements.txt -r requirements-dev.txt
 pytest -q                    # worker unit tests (asyncio_mode=auto)
 ruff check .                 # lint (pyflakes/pycodestyle/isort/bugbear/pyupgrade/tidy-imports)
 ruff format --check .        # format gate (ruff is the formatter; no separate black)
@@ -278,12 +278,12 @@ gates above reproduce from the repo alone. `pytest.ini` sets `asyncio_mode = aut
 missing test dep, not a real failure. `ruff check`, `ruff format --check` and `mypy` all exit 0 on a
 clean tree; any non-zero exit is a real finding.
 
-- `apps/core/e2e/contract.ts` is the **selector contract**: one declaration of every hook the browser
+- `tests/e2e/contract.ts` is the **selector contract**: one declaration of every hook the browser
   flows drive, guarded by `contract.test.ts` so `bun test` fails the moment a selector's anchor
   disappears from the source. It exists because the previous e2e rotted silently — three selector
   families moved and the suite stayed green.
-- `apps/core/e2e/party.mjs` — the full two-phone + TV flow against a live server.
-- `apps/core/e2e/capture.mjs` — regenerates every frame in `docs/mocks/`. See
+- `tests/e2e/party.mjs` — the full two-phone + TV flow against a live server.
+- `tests/e2e/capture.mjs` — regenerates every frame in `docs/mocks/`. See
   [`docs/mocks/README.md`](docs/mocks/README.md) for how to run it and the two things that make the
   playing-state frames possible.
 - Every UI surface is eyes-on verified; frames live in `docs/mocks/` as `tour-<what>-eyeson.png` —
