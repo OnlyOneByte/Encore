@@ -31,7 +31,7 @@
 		PROCESS_STEPS
 	} from '$lib/tv/screen';
 	import { isAutoTranscribed, provenanceLabel } from '$lib/tv/lyrics';
-	import { processStageLabel } from '$lib/process-phrasing';
+	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { mergeCatalog, snapshot, processIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
 	import { makePhraseBag, reducedMotionPhrase, seedFromString, ATTRACT_PHRASES } from '$lib/tv/phrases';
 

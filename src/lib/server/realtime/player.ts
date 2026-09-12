@@ -11,7 +11,7 @@ import {
 	type PlaybackState,
 	type ServerEvent
 } from '../../contract';
-import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
+import { nextPlayable, upNextAfter, isEntryReady } from '../rotation';
 import { entryResolves } from '../state/store';
 import { mediaFor, orderingOf, type HubDeps } from './hub';
 

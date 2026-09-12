@@ -7,7 +7,7 @@
 // AUTH: gated to a joined singer, which is every guest today (owner ruling an earlier change: admin/host only, but
 // everyone is host now). Structured so a real host gate slots in at the marked line without touching
 // the delete itself — swap the joined-singer check for a can(actor, "admin:delete") once a host role
-// exists (auth/capabilities.ts).
+// exists (capabilities.ts).
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp, buildHubDeps } from '$lib/server/app';

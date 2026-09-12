@@ -10,7 +10,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
-import { can } from '$lib/server/auth/capabilities';
+import { can } from '$lib/server/capabilities';
 import type { GlobalSettings } from '$lib/contract';
 
 export const GET: RequestHandler = async () => {

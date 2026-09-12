@@ -2,7 +2,7 @@
 // non-sighted guest who scanned cannot otherwise perceive, so the sentence is the acceptance — and it
 // must NEVER re-present the code. Each assertion targets one branch of the builder.
 import { test, expect } from 'bun:test';
-import { roomPresenceSentence } from '$lib/room-presence-sentence';
+import { roomPresenceSentence } from '$lib/phrasing/room-presence-sentence';
 
 test('an empty room says the guest will be first — not "0 people"', () => {
 	const s = roomPresenceSentence({ code: 'ABCD23', presentCount: 0, names: [] });

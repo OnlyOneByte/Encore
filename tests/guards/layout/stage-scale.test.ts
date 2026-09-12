@@ -389,7 +389,7 @@ test('the TV process wording comes from process-phrasing, not a hand-written str
 		['routes/tv/+page.svelte', TV_ROUTE],
 		['lib/tv/TvLobby.svelte', TV_LOBBY]
 	] as const) {
-		expect(src).toContain("from '$lib/process-phrasing'");
+		expect(src).toContain("from '$lib/phrasing/process-phrasing'");
 		expect(src.includes('processStageLabel')).toBe(true);
 	}
 	// and the retired musician's-word phrasings must be gone from the TV surfaces

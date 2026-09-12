@@ -5,7 +5,7 @@
 	// importing file. Tests currently living under `src` inherit
 	// `.svelte-kit/tsconfig.json`, which SvelteKit generates with `$lib`, `$lib/server` and
 	// `$lib/contract` in it. A test moved to `tests/` leaves that context entirely, and a probe confirmed
-	// the failure is immediate and loud: `Cannot find module '$lib/position-sentence'`. So the aliases have
+	// the failure is immediate and loud: `Cannot find module '$lib/phrasing/position-sentence'`. So the aliases have
 	// to be re-declared here, once, rather than rewritten into hundreds of relative paths.
 	//
 	// WHY NOT ADD THESE TO THE ROOT tsconfig INSTEAD. The root config `include`s `src`, so a

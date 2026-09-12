@@ -19,7 +19,7 @@ import { handlePlayerCommand, handleTelemetry, reconcileOnReady, nowPlayingEvent
 import { validateWorkerMessage } from './src/lib/server/jobs/worker-hub';
 import { getApp, setPublish, buildHubDeps } from './src/lib/server/app';
 import { readSessionToken } from './src/lib/server/singers/repository';
-import { can } from './src/lib/server/auth/capabilities';
+import { can } from './src/lib/server/capabilities';
 import { isForeignRoom, subscribeTopicFor, broadcastTopicFor } from './src/lib/server/realtime/room-scope';
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
 import { presentTracks, type LocalTrack } from './src/lib/server/media/local';
@@ -377,7 +377,7 @@ const server = Bun.serve<SocketData>({
 				case 'player:command':
 					// Pausing or skipping is an act on the whole room's music, so it needs an actor. Every
 					// joined singer is a host today; the gate here is only that you are IN the room, which a
-					// socket that never joined is not. See src/server/auth/capabilities.ts.
+					// socket that never joined is not. See src/server/capabilities.ts.
 					if (!can({ singerId: ws.data.singerId }, 'player:control')) break;
 					handlePlayerCommand(evt.command, deps);
 					break;

@@ -1,6 +1,6 @@
 import { EMPTY_SONG_PROFILE, Media, MediaStatus } from '$lib/contract';
 import { canProcess, displayReadiness, entryPlayable, nextPlayableEntryId, processingGroupIds, queueCardKind, readinessOf, readyEmptyState } from '$lib/readiness';
-import { isEntryReady } from '$lib/server/rotation/index';
+import { isEntryReady } from '$lib/server/rotation';
 import { expect, test } from 'bun:test';
 // The client's readiness view must agree with the server's classification, and must let a live
 // media:status win over a stale catalog copy — otherwise tapping "✨ Karaoke" leaves the row looking
