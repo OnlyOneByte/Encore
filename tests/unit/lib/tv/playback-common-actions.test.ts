@@ -35,7 +35,7 @@
 // matrix) is in the PR body; the guards for "which source line" remain the two files above.
 import { test, expect, beforeEach, afterEach } from 'bun:test';
 import type { ComponentProps } from 'svelte';
-import { mount, flushSync } from '../../../../tests/setup/svelte-client';
+import { mount, flushSync } from '$setup/svelte-client';
 import TvPlayer from '$lib/tv/TvPlayer.svelte';
 import type { PlaybackSnapshot } from '$lib/tv/catalog';
 import { makeReactive } from './playback-common-actions.harness.svelte';

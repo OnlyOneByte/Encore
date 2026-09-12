@@ -26,7 +26,7 @@ import {
 // symbols above it is NOT re-exported from `src/lib/contract/index.ts`, so `$lib/contract` cannot
 // reach it and a repo-relative import is the only route — same shape as
 // tests/guards/design-system/colour-tokens.test.ts reaching its own registry JSON.
-import { AGREEMENT_PARITY_CORPUS } from '../../../src/lib/contract/lyrics/lyrics-agreement-corpus';
+import { AGREEMENT_PARITY_CORPUS } from '$lib/contract/lyrics/lyrics-agreement-corpus';
 
 let _t = 0;
 const cand = (

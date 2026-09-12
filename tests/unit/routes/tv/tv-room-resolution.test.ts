@@ -5,7 +5,7 @@
 // BASE-RED: on origin/main the loader ignores ?room entirely — roomCode is always the activeRoom code
 // and there is no roomCode in the returned data at all — so a TV cannot be pointed at another party.
 import { test, expect, afterEach } from 'bun:test';
-import { load } from '../../../../src/routes/tv/+page.server';
+import { load } from '$routes/tv/+page.server';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
 import { migratedDb } from '$lib/server/db/test-db';

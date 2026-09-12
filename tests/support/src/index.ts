@@ -1,10 +1,11 @@
 // unit: the package entry. Re-exports the tree anchors so `@encore/test-support` works as a bare import.
 //
 // Subpaths also resolve (`@encore/test-support/tree`) because this package's exports map carries `"./*"`.
-// That is deliberate and it fixes a trap the repo already has: `$lib/contract`'s map carries only `"."`,
-// which is why `colour-tokens.test.ts` reaches its own registry through
-// `'../../../../src/lib/contract/presentation/player-palette-48.json'` — a relative path that exists
-// only because the subpath import does not resolve. Repeating that here would defeat the purpose of a
-// module whose job is to delete relative paths.
+//
+// A note that used to sit here claimed `$lib/contract` subpaths do NOT resolve, and cited
+// `colour-tokens.test.ts` reaching its registry through a four-hop relative path as the proof. That was
+// wrong: `tests/tsconfig.json` maps `$lib/*` to `../src/lib/*`, so `$lib/contract/presentation/...json`
+// and `$lib/contract/core/ulid` both resolve, verified by importing them. The relative paths were not a
+// workaround for anything — they were just hop counts, and they are gone.
 
 export * from './tree.ts';

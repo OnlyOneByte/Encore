@@ -8,11 +8,11 @@
 // This file pins the parts that ARE decidable without a layout engine; each test reds on a revert of
 // the hunk it targets.
 import { test, expect } from 'bun:test';
-import { mount, unmount, flushSync } from '../../../../tests/setup/svelte-client';
+import { mount, unmount, flushSync } from '$setup/svelte-client';
 import CodeEntry from '$lib/components/CodeEntry.svelte';
 import JoinLanding from '$lib/components/JoinLanding.svelte';
 
-type StateStub = typeof import('../../../../tests/setup/kit/app-state');
+type StateStub = typeof import('$setup/kit/app-state');
 const stateStub = async (): Promise<StateStub> => (await import('$app/state')) as unknown as StateStub;
 
 // happy-dom's Event/InputEvent/KeyboardEvent — bun defines its own globals, and happy-dom's

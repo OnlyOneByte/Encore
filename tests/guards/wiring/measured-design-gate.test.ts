@@ -34,7 +34,7 @@ import {
 	RETIRED,
 	TAP,
 	TAP_FLOOR
-} from '../../../tests/e2e/gates/measured-design-register.mjs';
+} from '$e2e/gates/measured-design-register.mjs';
 
 // Anchored on the repo-root marker rather than `at('.')`, which
 // only meant the repo root while this file sat in src/lib.

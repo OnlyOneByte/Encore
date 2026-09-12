@@ -8,8 +8,8 @@
 // request. The shared `clampDays` now applies `Math.max(1, …)`, so the documented lower bound
 // is true. This drives the REAL GET handlers and asserts the returned window is >= 1.
 import { test, expect, afterEach } from 'bun:test';
-import { GET as statsGET } from '../../../../src/routes/api/stats/+server';
-import { GET as metricsGET } from '../../../../src/routes/api/metrics/+server';
+import { GET as statsGET } from '$routes/api/stats/+server';
+import { GET as metricsGET } from '$routes/api/metrics/+server';
 
 const APP_KEY = Symbol.for('encore.app');
 

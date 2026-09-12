@@ -15,7 +15,7 @@ import { test, expect } from 'bun:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { e2eDir, repoRoot } from '@encore/test-support';
-import { HOOKS, PRESET_COLOUR_NAMES, SEL } from '../../../tests/e2e/contract';
+import { HOOKS, PRESET_COLOUR_NAMES, SEL } from '$e2e/contract';
 import { classPresent, svelteFiles } from '$lib/test-helpers';
 
 // . and tests/e2e, anchored at the repo root. `E2E` is what this guard's own location used

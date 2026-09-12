@@ -9,7 +9,7 @@ import { contrastRatio } from '$lib/contract';
 // through an alias: `$lib/contract`'s exports map carries only `"."`, so a subpath import of this
 // JSON does not resolve — the same reason `colour-tokens.test.ts` reaches it relatively. A wrong
 // depth here fails loudly with `Cannot find module`, never silently.
-import registry from '../../../src/lib/contract/presentation/player-palette-48.json';
+import registry from '$lib/contract/presentation/player-palette-48.json';
 
 /**
  * The 48-stop player palette registry (`XR-COL-01`), and the guards that keep its published figures

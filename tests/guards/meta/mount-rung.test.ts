@@ -32,7 +32,7 @@
 import { test, expect, beforeEach } from 'bun:test';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { mount, unmount, flushSync } from '../../../tests/setup/svelte-client';
+import { mount, unmount, flushSync } from '$setup/svelte-client';
 import { at, repoRoot, srcDir } from '@encore/test-support';
 
 // src — where routes, lib and server live. Anchored from the repo root via
@@ -64,10 +64,10 @@ const KIT_IMPORT = /import\s[^;]*?from\s*['"](\$(?:app|env)\/[^'"]+)['"]/g;
 // and still be typechecked against what the stub actually exports. `typeof import(...)` is a type-only
 // reference — it adds no second runtime import, so there is still exactly one module instance shared
 // with the component under test.
-type NavStub = typeof import('../../../tests/setup/kit/app-navigation');
-type StateStub = typeof import('../../../tests/setup/kit/app-state');
-type EnvironmentStub = typeof import('../../../tests/setup/kit/app-environment');
-type PublicEnvStub = typeof import('../../../tests/setup/kit/env-dynamic-public');
+type NavStub = typeof import('$setup/kit/app-navigation');
+type StateStub = typeof import('$setup/kit/app-state');
+type EnvironmentStub = typeof import('$setup/kit/app-environment');
+type PublicEnvStub = typeof import('$setup/kit/env-dynamic-public');
 
 const navStub = async (): Promise<NavStub> => (await import('$app/navigation')) as unknown as NavStub;
 const stateStub = async (): Promise<StateStub> => (await import('$app/state')) as unknown as StateStub;

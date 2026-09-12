@@ -11,7 +11,7 @@
 // mountable at all — the harness aliases neither virtual module today.
 import { test, expect, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
-import { mount, unmount, flushSync } from '../../../tests/setup/svelte-client';
+import { mount, unmount, flushSync } from '$setup/svelte-client';
 import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
 import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 import QueueRow from '$lib/components/QueueRow.svelte';
