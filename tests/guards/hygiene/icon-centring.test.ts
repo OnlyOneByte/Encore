@@ -18,7 +18,7 @@ import { join } from 'node:path';
 import { appSrc } from '@encore/test-support';
 import { svelteFiles } from '$lib/test-helpers';
 
-const SRC = appSrc; // apps/core/src
+const SRC = appSrc; // src
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

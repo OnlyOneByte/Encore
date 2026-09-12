@@ -27,10 +27,10 @@ import { fetcherFor, needsFetch, sourceUriFor, DEFAULT_FETCHER } from '$lib/cont
 
 /** The five sites the finding names, each read from the real tree. */
 const SITES = [
-	'apps/core/src/lib/contract/cook/fetchers.ts',
-	'apps/core/src/lib/contract/core/types.ts',
-	'apps/core/src/lib/server/media/spotify.ts',
-	'apps/core/src/routes/api/search/+server.ts',
+	'src/lib/contract/cook/fetchers.ts',
+	'src/lib/contract/core/types.ts',
+	'src/lib/server/media/spotify.ts',
+	'src/routes/api/search/+server.ts',
 	'docs/DECISIONS.md'
 ] as const;
 
@@ -123,7 +123,7 @@ test('F2 the denial is PRESENT where the false claim did the most damage', () =>
 	// free to re-derive the same wrong conclusion from the `if (source === 'spotify') return
 	// DEFAULT_FETCHER` line, which reads as a refusal until something says otherwise. fetchers.ts owns
 	// that line, so fetchers.ts has to carry the denial — and in the explicit form, not by attribution.
-	const fetchers = sources.get('apps/core/src/lib/contract/cook/fetchers.ts')!;
+	const fetchers = sources.get('src/lib/contract/cook/fetchers.ts')!;
 	expect(refusalWindows(fetchers).filter(isDenial).length).toBeGreaterThan(0);
 	// and it must say what the floor IS, not merely what it is not
 	expect(fetchers).toMatch(/floor/i);

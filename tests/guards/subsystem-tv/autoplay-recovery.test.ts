@@ -34,10 +34,10 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, (_m, p1) => p1 + '');
 }
 
-// Both subjects are named absolutely. TV_PLAYER used to be `at('apps/core/src/lib/tv/TvPlayer.svelte')` — "the component next to me", which only identified the TV player while this
+// Both subjects are named absolutely. TV_PLAYER used to be `at('src/lib/tv/TvPlayer.svelte')` — "the component next to me", which only identified the TV player while this
 // test sat in lib/tv/; nothing could infer WHICH component it meant once it moved.
-const TV_PLAYER = at('apps/core/src/lib/tv/TvPlayer.svelte');
-const TV_ROUTE = at('apps/core/src/routes/tv/+page.svelte');
+const TV_PLAYER = at('src/lib/tv/TvPlayer.svelte');
+const TV_ROUTE = at('src/routes/tv/+page.svelte');
 
 test('TvPlayer latches recovery on NotAllowedError SPECIFICALLY, not on every rejection', () => {
 	const src = stripComments(readFileSync(TV_PLAYER, 'utf8'));

@@ -41,13 +41,13 @@ import { SKIP_DIRS, classPresent, markupControls, styleFiles, svelteFiles } from
 /*
  * REPO-ROOT anchored, and the consumer list is repo-relative.
  *
- * This was `CORE = join(import.meta.dir, '..', '..')` — apps/core — with each consumer named relative to
+ * This was `CORE = join(import.meta.dir, '..', '..')` — . — with each consumer named relative to
  * it. The reorganisation moved nine of the ten consumers into `tests/guards/**`, i.e. clean out of the
  * tree this file could address at all, so the list had to become repo-relative rather than merely be
  * re-pointed. Every entry is asserted to exist below, which is what turns a stale path into a red rather
  * than into a quietly shorter list.
  */
-const HOME = 'apps/core/src/lib/test-helpers.ts';
+const HOME = 'src/lib/test-helpers.ts';
 
 /** The five helpers XR-VER-14 names, and the one module allowed to declare them. */
 const HELPERS = ['svelteFiles', 'styleFiles', 'markupControls', 'allSvelte', 'classPresent'];
@@ -152,19 +152,19 @@ test('the shared walk excludes built and vendored trees, and allowlists no direc
 
 test('the shared walk actually skips a directory in the exclusion set', () => {
 	// Behavioural arm, so the assertions above cannot pass over a SKIP_DIRS the walk never reads.
-	// apps/core/node_modules holds .svelte and .css files from installed packages, so a walk that
+	// node_modules holds .svelte and .css files from installed packages, so a walk that
 	// ignored SKIP_DIRS would return far more than the source tree does — and would report on
 	// vendored CSS the app never paints.
-	const src = svelteFiles(at('apps/core/src'));
-	const fromCore = svelteFiles(at('apps/core'));
+	const src = svelteFiles(at('src'));
+	const fromCore = svelteFiles(at('.'));
 	expect(src.length).toBeGreaterThanOrEqual(20);
 	expect(fromCore.some((f) => f.includes(`${join('', 'node_modules', '')}`))).toBe(false);
-	expect(styleFiles(at('apps/core')).some((f) => f.includes(`${join('', 'node_modules', '')}`))).toBe(
+	expect(styleFiles(at('.')).some((f) => f.includes(`${join('', 'node_modules', '')}`))).toBe(
 		false
 	);
 	// …and the walk is otherwise unfiltered: `styleFiles` is `svelteFiles` widened to `.css`, never
 	// narrowed, so it is a strict superset. A drift that narrowed either reds here.
-	const style = new Set(styleFiles(at('apps/core/src')));
+	const style = new Set(styleFiles(at('src')));
 	expect(src.every((f) => style.has(f))).toBe(true);
 	expect(style.size).toBeGreaterThan(src.length);
 });

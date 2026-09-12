@@ -14,11 +14,11 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/lib/components/ProcessingCard.svelte')` —
+// A SIBLING READ, re-anchored explicitly. This was `at('src/lib/components/ProcessingCard.svelte')` —
 // "the component next to me" — which no longer names anything once the test leaves lib/components/.
 // The subject is that directory's ProcessingCard, and `read` throws if it is missing, so a wrong path
 // is a loud PATH failure rather than a guard that silently examines an empty string.
-const SRC = read('apps/core/src/lib/components/ProcessingCard.svelte');
+const SRC = read('src/lib/components/ProcessingCard.svelte');
 
 // Strip HTML/JS/CSS comments so a comment mentioning `class="bar"` or the old layout cannot
 // satisfy or trip any check below.

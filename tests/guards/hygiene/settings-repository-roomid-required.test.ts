@@ -22,7 +22,7 @@
 // away. The constant is deleted; these two arms keep it deleted.
 //   ARM 3 — the identifier occurs 0 times in the repository, comments INCLUDED, so neither the export
 //           nor the docstring that made it look correct can come back.
-//   ARM 4 — no NON-TEST file under apps/core/src, plus apps/core/server.ts, mentions it either, so it
+//   ARM 4 — no NON-TEST file under src, plus server.ts, mentions it either, so it
 //           cannot be reintroduced somewhere else and re-acquire a production caller.
 // Both read raw rather than stripped source deliberately: stripping would let the misleading docstring
 // return, and the comment contradicting its code is half of what the DEFAULT_ROOM_ID report flagged.
@@ -37,18 +37,18 @@ function stripComments(src: string): string {
 }
 
 // Every path below is named absolutely rather than counted from this file's own location —
-// `at('apps/core/src/lib/server/state/settings-repository.ts')` meant "the repository next to me", and the two
-// census walks meant "apps/core/src" and "apps/core/server.ts" by arithmetic. ARM 4's census is the
+// `at('src/lib/server/state/settings-repository.ts')` meant "the repository next to me", and the two
+// census walks meant "src" and "server.ts" by arithmetic. ARM 4's census is the
 // dangerous one: a wrong root yields an empty file list, which reads exactly like a clean tree.
-const REPO_FILE = at('apps/core/src/lib/server/state/settings-repository.ts');
+const REPO_FILE = at('src/lib/server/state/settings-repository.ts');
 const REPO_RAW = readFileSync(REPO_FILE, 'utf8');
 const REPO = stripComments(REPO_RAW);
 
-// Every NON-TEST source file the app ships from apps/core: the whole of src, plus server.ts (the
+// Every NON-TEST source file the app ships from .: the whole of src, plus server.ts (the
 // Bun.serve entry, which sits OUTSIDE src and is exactly the file a src-scoped grep misses).
 const SRC_DIR = appSrc;
 const PROD_FILES = [
-	at('apps/core/server.ts'),
+	at('server.ts'),
 	...readdirSync(SRC_DIR, { recursive: true, encoding: 'utf8' })
 		.filter((p) => /\.(ts|svelte)$/.test(p) && !/\.test\.ts$/.test(p))
 		.map((p) => join(SRC_DIR, p))
@@ -56,13 +56,13 @@ const PROD_FILES = [
 
 // The seven production files that call the room-scoped methods (from the roomId-default census).
 const CALLER_PATHS = [
-	at('apps/core/server.ts'), // the Bun.serve entry, outside src
-	at('apps/core/src/lib/server/app.ts'),
-	at('apps/core/src/lib/server/singers/join.ts'),
-	at('apps/core/src/routes/api/settings/+server.ts'),
-	at('apps/core/src/routes/api/settings/room/+server.ts'),
-	at('apps/core/src/routes/settings/+page.server.ts'),
-	at('apps/core/src/routes/tv/+page.server.ts')
+	at('server.ts'), // the Bun.serve entry, outside src
+	at('src/lib/server/app.ts'),
+	at('src/lib/server/singers/join.ts'),
+	at('src/routes/api/settings/+server.ts'),
+	at('src/routes/api/settings/room/+server.ts'),
+	at('src/routes/settings/+page.server.ts'),
+	at('src/routes/tv/+page.server.ts')
 ];
 const CALLERS = CALLER_PATHS.map((p) => stripComments(readFileSync(p, 'utf8')));
 
@@ -100,9 +100,9 @@ test('ARM 3 — the repository no longer names DEFAULT_ROOM_ID at all, comments 
 	expect(REPO_RAW).not.toMatch(/DEFAULT_ROOM_ID/);
 });
 
-test('ARM 4 — no non-test production file under apps/core mentions DEFAULT_ROOM_ID', () => {
+test('ARM 4 — no non-test production file under . mentions DEFAULT_ROOM_ID', () => {
 	// Wider than ARM 3: the constant must not come back anywhere a production caller could reach it.
-	// Only apps/core/drizzle/0004_rekey_room_settings.sql still names it, as shipped historical prose
+	// Only drizzle/0004_rekey_room_settings.sql still names it, as shipped historical prose
 	// about the pre-default-removal world; a .sql migration is not scanned here and must not be edited.
 	const offenders = PROD_FILES.filter((f) => readFileSync(f, 'utf8').includes('DEFAULT_ROOM_ID'));
 	expect(offenders).toEqual([]);

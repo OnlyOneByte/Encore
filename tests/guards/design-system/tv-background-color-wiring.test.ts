@@ -32,10 +32,10 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, (_m, p1) => p1 + '');
 }
 
-// The subject named explicitly. This guard used to sit in apps/core/src/lib/tv, where the route was
-// `at('apps/core/src/routes/tv/+page.svelte')` — arithmetic about where the TEST
+// The subject named explicitly. This guard used to sit in src/lib/tv, where the route was
+// `at('src/routes/tv/+page.svelte')` — arithmetic about where the TEST
 // lived. `read` throws if the path is wrong, so a bad anchor cannot scan nothing and pass.
-const tvSrc = () => stripComments(read('apps/core/src/routes/tv/+page.svelte'));
+const tvSrc = () => stripComments(read('src/routes/tv/+page.svelte'));
 
 test('the TV route derives the visualizer angle from the stored colour via hueOfColor', () => {
 	const src = tvSrc();

@@ -22,11 +22,11 @@ import {
 	SUSPECT_COVERAGE,
 	SEQUENCE_WEIGHT
 } from '$lib/contract';
-// Was `'./lyrics-agreement-corpus'`, a sibling of this test in apps/core/src/lib/contract/lyrics. Unlike the
-// symbols above it is NOT re-exported from `apps/core/src/lib/contract/index.ts`, so `$lib/contract` cannot
+// Was `'./lyrics-agreement-corpus'`, a sibling of this test in src/lib/contract/lyrics. Unlike the
+// symbols above it is NOT re-exported from `src/lib/contract/index.ts`, so `$lib/contract` cannot
 // reach it and a repo-relative import is the only route — same shape as
 // tests/guards/design-system/colour-tokens.test.ts reaching its own registry JSON.
-import { AGREEMENT_PARITY_CORPUS } from '../../../apps/core/src/lib/contract/lyrics/lyrics-agreement-corpus';
+import { AGREEMENT_PARITY_CORPUS } from '../../../src/lib/contract/lyrics/lyrics-agreement-corpus';
 
 let _t = 0;
 const cand = (
@@ -241,7 +241,7 @@ test('agreement is count- and position-aware (repeats and reorders cost the scor
 });
 
 test('agreement matches the shared cross-language corpus (parity with the Python mirror)', () => {
-	// The Python suite (apps/worker/tests/test_lyrics_agreement_542.py) asserts this SAME table, so a
+	// The Python suite (worker/tests/test_lyrics_agreement_542.py) asserts this SAME table, so a
 	// drift on either implementation reds one of the two suites. Expectations are integer [num, den]
 	// pairs worked out by hand — not by running this code — so a bug cannot agree with itself.
 	for (const c of AGREEMENT_PARITY_CORPUS) {
@@ -319,9 +319,9 @@ test('hasUsableTiming is true for word/line, false for none', () => {
 // SUSPECT_AGREEMENT on purpose, to tell a reader still carrying 0.25 in their head that the axis moved.
 // A bare substring scan would fire on that prose and make the guard unfalsifiable.
 test('lyrics.ts no longer declares the retired SUSPECT_AGREEMENT', () => {
-	// Was `at('apps/core/src/lib/contract/lyrics/lyrics.ts')` — the module under test was this guard's own SIBLING in
-	// apps/core/src/lib/contract/lyrics, so it is now named from the repo root.
-	const source = read('apps/core/src/lib/contract/lyrics/lyrics.ts');
+	// Was `at('src/lib/contract/lyrics/lyrics.ts')` — the module under test was this guard's own SIBLING in
+	// src/lib/contract/lyrics, so it is now named from the repo root.
+	const source = read('src/lib/contract/lyrics/lyrics.ts');
 	expect(source).toMatch(/export const SUSPECT_COVERAGE\s*=/);
 	expect(source).not.toMatch(/export const SUSPECT_AGREEMENT\s*=/);
 });

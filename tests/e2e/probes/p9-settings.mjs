@@ -153,8 +153,8 @@ const serverHasEnvOrigin = (process.env.EXPECTED_ENV_ORIGIN ?? '').trim();
 console.log(`[p9] driving ${BASE}\n`);
 
 // ═══ 1. Auth boundary — anonymous PUTs must be refused. ═════════════════════
-//   Evidence: apps/core/src/routes/api/settings/+server.ts:23 (401 for no singer)
-//   Evidence: apps/core/src/routes/api/settings/room/+server.ts:15
+//   Evidence: src/routes/api/settings/+server.ts:23 (401 for no singer)
+//   Evidence: src/routes/api/settings/room/+server.ts:15
 {
 	const g = await api('PUT', '/api/settings', { body: { syncMode: 'lines' } });
 	add(
@@ -210,7 +210,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		gotJoin === 'http://phones.example:8080' ? 'PASS' : 'HIGH',
 		'persistence',
 		'#join-origin persists via PUT /api/settings',
-		`stored=${JSON.stringify(gotJoin)}  — apps/core/src/lib/contract/core/settings.ts:normalizeJoinOrigin`
+		`stored=${JSON.stringify(gotJoin)}  — src/lib/contract/core/settings.ts:normalizeJoinOrigin`
 	);
 
 	// sync-mode (global) — a real GlobalSettings field with two live modes.
@@ -219,7 +219,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		patch2.body?.global?.syncMode === 'lines' ? 'PASS' : 'HIGH',
 		'persistence',
 		'#sync-mode persists via PUT /api/settings',
-		`stored=${JSON.stringify(patch2.body?.global?.syncMode)}  — apps/core/src/lib/contract/lyrics/lyrics-engines.ts:118`
+		`stored=${JSON.stringify(patch2.body?.global?.syncMode)}  — src/lib/contract/lyrics/lyrics-engines.ts:118`
 	);
 
 	// All room-scope SEL.SETTING_IDS in one write to prove the persistence contract; per-field errors
@@ -295,7 +295,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 // ═══ 3. Validation — garbage must not persist. ═══════════════════════════════
 {
 	// Each garbage payload targets one field. Normalizer contract is "reject-to-current per-field",
-	// asserted in apps/core/src/lib/contract/core/settings.ts (normalizeGlobalSettings/normalizeRoomSettings).
+	// asserted in src/lib/contract/core/settings.ts (normalizeGlobalSettings/normalizeRoomSettings).
 	const baseline = await getSettings();
 	/** @type {{ scope: 'global' | 'room', body: Record<string, unknown>, field: string, expect: unknown }[]} */
 	const garbage = [

@@ -7,7 +7,7 @@
 // the phone threw it away and rebuilt query-blind.
 //
 // THE FIX moves the id-selection into the pure `cookingGroupIds` helper (unit-tested in
-// apps/core/src/lib/cooking-group-query-scope.test.ts) and feeds it the server's query-matched group
+// src/lib/cooking-group-query-scope.test.ts) and feeds it the server's query-matched group
 // via a new `cookingResults` state. The helper carries the logic; but the LINES that wire it into
 // routes/+page.svelte — hold `j.cooking`, clear it with the box, and pass it to the helper — live in
 // a Svelte component bun test never imports (Encore has no jsdom; every UI invariant is a source-scan
@@ -29,9 +29,9 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// The phone page named explicitly. This guard used to sit in apps/core/src/routes, where the subject was
-// `at('apps/core/src/routes/+page.svelte')` — "the page next to me", which nothing can infer from tests/.
-const PAGE = stripComments(read('apps/core/src/routes/+page.svelte'));
+// The phone page named explicitly. This guard used to sit in src/routes, where the subject was
+// `at('src/routes/+page.svelte')` — "the page next to me", which nothing can infer from tests/.
+const PAGE = stripComments(read('src/routes/+page.svelte'));
 
 test('the page imports the query-scope helper it wires', () => {
 	expect(PAGE).toMatch(/import\s*\{[^}]*\bcookingGroupIds\b[^}]*\}\s*from\s*'\$lib\/readiness'/);

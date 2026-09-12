@@ -45,7 +45,7 @@ function stripComments(src: string): string {
 		.replace(/\/\*[\s\S]*?\*\//g, blank)
 		.replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
 }
-const RAW = readFileSync(at('apps/core/src/routes/+page.svelte'), 'utf8');
+const RAW = readFileSync(at('src/routes/+page.svelte'), 'utf8');
 const PAGE = stripComments(RAW);
 
 // ── mechanism 1: the three readiness chips ───────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ test('— the retired tag-filter wiring guard is deleted, and its server sibling
 	// A retired guard left in the suite is indistinguishable from one that is working (XR-VER-07).
 	//
 	// EVERY PATH HERE IS NOW IN THE tests/ TREE, because the reorganisation moved all of them. That matters
-	// for the NEGATIVE assertion in particular: asserting a file is absent from `apps/core/src/routes/` is
+	// for the NEGATIVE assertion in particular: asserting a file is absent from `src/routes/` is
 	// trivially true of every test file now, so it would have become a check that passes for the wrong
 	// reason. A deleted guard and a moved guard have to stay distinguishable, which means naming the place
 	// it would live if it existed.
@@ -230,7 +230,7 @@ test('— the docked box survives the on-screen keyboard, by the one mechanism t
 	// `interactive-widget=resizes-content` shrinks the layout viewport instead, which is what lifts the
 	// dock. Pinned here because it is a one-attribute claim that reads as cosmetic and is not: the gate
 	// cannot check it (headless Chromium has no soft keyboard), so this scan is the only thing that does.
-	const html = readFileSync(at('apps/core/src/app.html'), 'utf8');
+	const html = readFileSync(at('src/app.html'), 'utf8');
 	expect(html).toMatch(/name="viewport"/);
 	expect(html).toContain('interactive-widget=resizes-content');
 	// And the band really is fixed to the bottom, or the attribute is lifting nothing.

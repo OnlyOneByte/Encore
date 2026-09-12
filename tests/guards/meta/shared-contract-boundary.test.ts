@@ -4,8 +4,8 @@
 //
 // `src/lib/contract` was `packages/shared`, its own workspace package, and two facts made the rule unbreakable
 // rather than merely unbroken: its `tsconfig.json` carried `paths: []`, and its `package.json` declared no
-// dependency on `apps/core`. A shared module could not import server code because the import was
-// UNRESOLVABLE. Folding it into `apps/core/src/lib/contract` destroyed that, and this guard replaced it.
+// dependency on `.`. A shared module could not import server code because the import was
+// UNRESOLVABLE. Folding it into `src/lib/contract` destroyed that, and this guard replaced it.
 //
 // THE SERVER HALF IS NOW A BUILD-TIME GUARANTEE AGAIN, and a better one than the original. Server-only
 // code moved from `src/server` to `src/lib/server`, a path SvelteKit gives meaning to: importing anything
@@ -65,7 +65,7 @@ test('no file in the isomorphic contract imports server, lib, app or env code', 
 			offenders.push(
 				`${relative(abs)} imports \`${alias[1]}\`. This tree is browser-bundled: reaching ${alias[1]} ` +
 					`ships app — and in the \`$server\` case, database — code to every phone. It was impossible ` +
-					`while this was a separate package with no aliases and no dependency on apps/core; this test ` +
+					`while this was a separate package with no aliases and no dependency on .; this test ` +
 					`is what replaced that guarantee.`
 			);
 		}

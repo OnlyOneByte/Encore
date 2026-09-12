@@ -103,7 +103,7 @@ test('THE INVARIANT: a cook never reports a stage it has already passed', () => 
 		version: '1'
 	});
 
-	// The stage plans are the worker's real ones (apps/worker/src/vocabulary.py STAGE_PLANS): stems and
+	// The stage plans are the worker's real ones (worker/src/vocabulary.py STAGE_PLANS): stems and
 	// align BOTH open with a download of their own, which is precisely what used to leak through.
 	runStep(h, 'fetch', ['downloading'], { annotation: undefined });
 	runStep(h, 'stems', ['downloading', 'separating'], { stems: { instrumental: 'derived/stems/m1-instrumental.flac' } });

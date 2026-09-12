@@ -6,7 +6,7 @@
 // alone counts singers who have gone. Present-in-THIS-room is their intersection, and each test below
 // reds on a revert to either half alone.
 import { test, expect, afterEach } from 'bun:test';
-import { GET } from '../../../../../../apps/core/src/routes/api/room-preview/+server';
+import { GET } from '../../../../../../src/routes/api/room-preview/+server';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { SingerRepository } from '$lib/server/singers/repository';
 import { PresenceTracker } from '$lib/server/realtime/presence';

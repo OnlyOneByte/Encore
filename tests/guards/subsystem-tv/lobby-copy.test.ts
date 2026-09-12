@@ -14,10 +14,10 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Both subjects named explicitly. This guard used to sit in apps/core/src/lib/tv, so TvLobby.svelte was
+// Both subjects named explicitly. This guard used to sit in src/lib/tv, so TvLobby.svelte was
 // "the component next to me" and the route was two levels up; neither is inferable from tests/.
-const LOBBY = read('apps/core/src/lib/tv/TvLobby.svelte');
-const TV_ROUTE = read('apps/core/src/routes/tv/+page.svelte');
+const LOBBY = read('src/lib/tv/TvLobby.svelte');
+const TV_ROUTE = read('src/routes/tv/+page.svelte');
 
 test('the lobby distinguishes "nothing picked" from "picked but still cooking"', () => {
 	// A single unconditional headline is the shape the bug had.

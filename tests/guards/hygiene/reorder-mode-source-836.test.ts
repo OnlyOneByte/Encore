@@ -12,12 +12,12 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// SIBLING READS, now named explicitly. This guard used to sit in apps/core/src/lib/components/, so
-// `at('apps/core/src/lib/components/QueueRow.svelte')` meant "the row component next to me" and
-// `at('apps/core/src/lib/components/ui/button/button.svelte')` meant "the shared control below me".
+// SIBLING READS, now named explicitly. This guard used to sit in src/lib/components/, so
+// `at('src/lib/components/QueueRow.svelte')` meant "the row component next to me" and
+// `at('src/lib/components/ui/button/button.svelte')` meant "the shared control below me".
 // Nothing can infer those subjects from tests/, so both are spelled out against the repo root.
-const ROW = 'apps/core/src/lib/components/QueueRow.svelte';
-const PAGE = 'apps/core/src/routes/+page.svelte';
+const ROW = 'src/lib/components/QueueRow.svelte';
+const PAGE = 'src/routes/+page.svelte';
 const row = () => read(ROW);
 const page = () => read(PAGE);
 /*
@@ -25,7 +25,7 @@ const page = () => read(PAGE);
  * that must be scanned for XR-PH-17's `cursor: grab` is now this one. The invariant is UNCHANGED — the
  * declaration is still on the grip control and on no row — only its address moved.
  */
-const BUTTON = 'apps/core/src/lib/components/ui/button/button.svelte';
+const BUTTON = 'src/lib/components/ui/button/button.svelte';
 const button = () => read(BUTTON);
 
 /** Blank both comment forms: this file's own rationale names the very strings it forbids. */
@@ -252,7 +252,7 @@ test('driven-find 5 · focus return is re-found by attribute, not by a held elem
 test('· the cooking row dims too, with a surface and not opacity', () => {
 	// Another guest's cooking song is one of the rows the mode has to de-emphasise — found by driving the
 	// mode, where the only non-mine row on screen was a ProcessingCard and stayed at full weight.
-	const src = stripComments(read('apps/core/src/lib/components/ProcessingCard.svelte'));
+	const src = stripComments(read('src/lib/components/ProcessingCard.svelte'));
 	const rule = /\.dimmed\s*\{([^}]*)\}/.exec(src);
 	expect(rule).not.toBeNull(); // sentinel
 	const body = rule![1]!;
@@ -285,7 +285,7 @@ test('XR-PH-06 · no drag library is pulled in for the mode', () => {
 	const src = page() + row();
 	expect(src).not.toContain('svelte-dnd-action');
 	expect(src).not.toContain('dndzone');
-	const pkg = JSON.parse(read('apps/core/package.json'));
+	const pkg = JSON.parse(read('package.json'));
 	const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
 	expect(Object.keys(deps)).not.toContain('svelte-dnd-action');
 });

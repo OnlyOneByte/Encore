@@ -37,7 +37,7 @@ const SINGER_WHEEL: readonly string[] = SINGER_HUES.map((h) => hueToHex(h));
 
 // The token layer, named from the repo root rather than counted up from this file's own location.
 // Reading it from a guard has precedent: `song-display.test.ts:59`, `pin-base-prose-790.test.ts:32`.
-const appCss = read('apps/core/src/app.css');
+const appCss = read('src/app.css');
 
 /**
  * Pull a `--name: #hex;` declaration out of `app.css` — the single source of truth for what the app
@@ -45,11 +45,11 @@ const appCss = read('apps/core/src/app.css');
  * instead of leaving it measuring a value nothing declares.
  *
  * A local ~4-line reader rather than an import of `contrast.test.ts`'s `token()`: that helper lives
- * in `apps/core`, which `apps/core/src/lib/contract` cannot import across the package boundary.
+ * in `.`, which `src/lib/contract` cannot import across the package boundary.
  */
 function token(name: string): string {
 	const m = appCss.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})\\s*;`));
-	if (!m) throw new Error(`token --${name} not found in apps/core/src/app.css (renamed? then update this guard)`);
+	if (!m) throw new Error(`token --${name} not found in src/app.css (renamed? then update this guard)`);
 	return m[1]!;
 }
 
@@ -537,7 +537,7 @@ test('normalizeStageDim clamps to [0,1], rounds to a hundredth, and keeps the ba
 // line of a CONFIDENT duet and NOTHING on a solo/undiarized song, and `duetPartColors` maps those
 // letters onto DISTINCT, LEGIBLE colours drawn from the singer-identity palette. This is the pure,
 // mutation-strong half of the discriminating test the issue asks for — the rendered `--reel-part`
-// wiring is scanned in `apps/core/src/lib/tv/lyrics-duet-part-wiring.test.ts` and the pixels are in
+// wiring is scanned in `src/lib/tv/lyrics-duet-part-wiring.test.ts` and the pixels are in
 // the PR's CDP frames. Reverting `duetPartColors` reds these.
 
 test('a diarized duet gets two DISTINCT, LEGIBLE part colours', () => {

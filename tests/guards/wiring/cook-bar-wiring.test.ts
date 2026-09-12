@@ -18,9 +18,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { at } from '@encore/test-support';
 
-// Named absolutely. This used to be `at('apps/core/src/lib/components')` — "the components
-// directory next to me", which only meant apps/core/src/lib/components while this test sat in lib/.
-const COMPONENTS = at('apps/core/src/lib/components');
+// Named absolutely. This used to be `at('src/lib/components')` — "the components
+// directory next to me", which only meant src/lib/components while this test sat in lib/.
+const COMPONENTS = at('src/lib/components');
 
 // Every component that renders a cook progress bar. Both MUST route the bar's fill through
 // overallCookPct, never the raw per-step pct. Add a component here when it grows a cook bar.
@@ -72,7 +72,7 @@ test('SongRow derives its cook bar from overallCookPct', () => {
 // the guard must cover the caller too. Scan every <SongRow …> element and require: if it passes pct=,
 // it passes status=. This is the repo's most-repeated defect shape (a caller that stops calling).
 test('every +page.svelte SongRow that passes pct also passes status', () => {
-	const src = readFileSync(at('apps/core/src/routes/+page.svelte'), 'utf8');
+	const src = readFileSync(at('src/routes/+page.svelte'), 'utf8');
 	// Each <SongRow …> element, self-closing or not, across newlines.
 	const elements = src.match(/<SongRow\b[\s\S]*?\/?>/g) ?? [];
 	expect(elements.length, 'expected to find <SongRow> usages in +page.svelte').toBeGreaterThan(0);

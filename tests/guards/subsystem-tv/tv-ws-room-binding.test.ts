@@ -10,7 +10,7 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-const SRC = read('apps/core/src/routes/tv/+page.svelte');
+const SRC = read('src/routes/tv/+page.svelte');
 
 test('the TV opens its WS as role=tv (the room-identity work keeps the TV role)', () => {
 	expect(SRC).toMatch(/\/ws\?role=tv/);

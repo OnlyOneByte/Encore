@@ -54,10 +54,10 @@ test('transportFor: the room pause reaches the master', () => {
  * the transport effect back to reading only `active/visible/playing`, this fails instead of the room
  * going silent again.
  */
-// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/lib/tv/, where
-// `at('apps/core/src/lib/tv/TvPlayer.svelte')` meant "the player component next to me". Confirmed
+// SIBLING READ, now named explicitly. This guard used to live in src/lib/tv/, where
+// `at('src/lib/tv/TvPlayer.svelte')` meant "the player component next to me". Confirmed
 // present at this path before re-anchoring.
-const src = read('apps/core/src/lib/tv/TvPlayer.svelte');
+const src = read('src/lib/tv/TvPlayer.svelte');
 
 test('TvPlayer wires the transport to the src, not to declaration order: the transport decision is driven by transportFor', () => {
 	expect(src).toContain('transportFor(');

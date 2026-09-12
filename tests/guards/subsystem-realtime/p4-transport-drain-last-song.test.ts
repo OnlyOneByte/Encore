@@ -7,7 +7,7 @@
 // or an entry left behind by an interrupted earlier run). The old arm issued exactly ONE
 // clickByLabel('skip') and then asserted currentEntryId === null (T6a, CRITICAL) plus, downstream,
 // that the transport controls are disabled (T5a/b/c, HIGH). With an extra queued turn, one skip
-// advances INTO it — the correct rotation per apps/core/src/lib/server/realtime/player.ts advance() —
+// advances INTO it — the correct rotation per src/lib/server/realtime/player.ts advance() —
 // so currentEntryId stays set and isPlaying stays true. All four assertions then fire as PHANTOMS
 // against a room that behaved correctly, and the CRITICAL costs a maintainer a full triage cycle.
 //
@@ -30,7 +30,7 @@ function stripComments(src: string): string {
 }
 
 // Was `at('tests/e2e/probes/p4-transport.mjs')`, counted up three
-// from apps/core/src/lib/server/realtime to apps/core. Named from the repo root now; `read` throws if the
+// from src/lib/server/realtime to .. Named from the repo root now; `read` throws if the
 // probe moves, so this cannot degrade into scanning an empty string.
 const PROBE_PATH = 'tests/e2e/probes/p4-transport.mjs';
 const PROBE = stripComments(read(PROBE_PATH));

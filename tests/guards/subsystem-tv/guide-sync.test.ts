@@ -12,10 +12,10 @@ import {
 	seekPlan
 } from '$lib/tv/guide-sync';
 
-// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/lib/tv/, so
-// `at('apps/core/src/lib/tv/TvPlayer.svelte')` meant "the player component next to me"; from tests/ the
+// SIBLING READ, now named explicitly. This guard used to live in src/lib/tv/, so
+// `at('src/lib/tv/TvPlayer.svelte')` meant "the player component next to me"; from tests/ the
 // subject has to be stated. Confirmed present at this path before re-anchoring.
-const TV_PLAYER = 'apps/core/src/lib/tv/TvPlayer.svelte';
+const TV_PLAYER = 'src/lib/tv/TvPlayer.svelte';
 
 /*
  * These tests exist for one reported defect: the guiding track crackled. The cause was that drift was
@@ -322,7 +322,7 @@ it('TvPlayer applies the seek plan to BOTH elements: re-runs the seek effect on 
 	expect(effectCode).toContain('seekRev');
 	// And the prop must exist and be plumbed from playback:state's rev on the page.
 	expect(src).toContain('seekRev?: number');
-	const page = read('apps/core/src/routes/tv/+page.svelte');
+	const page = read('src/routes/tv/+page.svelte');
 	expect(page).toContain('seekRev = e.rev');
 	expect(page).toContain('seekRev={seekRev}');
 });

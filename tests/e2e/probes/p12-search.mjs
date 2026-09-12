@@ -224,7 +224,7 @@ if (!localCaroline) {
 		'S1a-local-fixture',
 		false,
 		'local library did not return Sweet Caroline -- seed missing or server did not reindex',
-		'apps/core/server.ts:84 seededLibrary + apps/core/src/lib/server/media/local.ts'
+		'server.ts:84 seededLibrary + src/lib/server/media/local.ts'
 	);
 	process.exit(2);
 }
@@ -237,7 +237,7 @@ if (mk1.status !== 200 || (!mk1.body?.job && !mk1.body?.alreadyReady)) {
 		'S1a-cook-start',
 		false,
 		`make-karaoke for ${localCaroline.id} → ${mk1.status} ${JSON.stringify(mk1.body).slice(0, 200)}`,
-		'apps/core/src/routes/api/make-karaoke/+server.ts:1'
+		'src/routes/api/make-karaoke/+server.ts:1'
 	);
 }
 try {
@@ -269,7 +269,7 @@ record(
 	'S1-catalog-precedence',
 	inReady && !inResults,
 	'a cooked local song must appear in `ready` (not `results`) even when the resolver returns many higher-ranked raw rows',
-	`ready=${after.body.ready.length}, cooking=${after.body.cooking.length}, results=${after.body.results.length}; sweet-caroline in ready=${inReady} in results=${inResults}. See apps/core/src/lib/server/media/readiness.ts:51 partitionSearch (catalog upserted before resolver hits into a byId Map).`
+	`ready=${after.body.ready.length}, cooking=${after.body.cooking.length}, results=${after.body.results.length}; sweet-caroline in ready=${inReady} in results=${inResults}. See src/lib/server/media/readiness.ts:51 partitionSearch (catalog upserted before resolver hits into a byId Map).`
 );
 
 // Dedupe by (source, sourceRef): search a second time and confirm the cooked song appears exactly once.
@@ -281,7 +281,7 @@ record(
 	'S1b-dedupe-by-id',
 	idCount === 1,
 	'one media id must appear at most once across ready/cooking/results',
-	`sweet-caroline appears ${idCount} times. See apps/core/src/routes/api/search/+server.ts:81 (materialize -- upsert-or-reuse by id) + readiness.ts:60 (byId Map dedupe).`
+	`sweet-caroline appears ${idCount} times. See src/routes/api/search/+server.ts:81 (materialize -- upsert-or-reuse by id) + readiness.ts:60 (byId Map dedupe).`
 );
 
 // Cross-source dedupe is INTENTIONAL non-dedupe: a local file "Bohemian Rhapsody" and a YouTube "Queen
@@ -297,7 +297,7 @@ record(
 	'S1c-cross-source-coexists',
 	!!(bohLocal && bohYT),
 	'a local file and a YouTube upload of the same title should coexist as separate rows (different recordings)',
-	`local=${!!bohLocal} youtube=${!!bohYT}. See apps/core/src/routes/api/search/+server.ts:82 (dedupe key is source+sourceRef, not title -- a local file and a YouTube upload of the same song are two rows).`
+	`local=${!!bohLocal} youtube=${!!bohYT}. See src/routes/api/search/+server.ts:82 (dedupe key is source+sourceRef, not title -- a local file and a YouTube upload of the same song are two rows).`
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -370,7 +370,7 @@ if (!believin) {
 				'S2a-ws-transition',
 				sawSeparating && sawReady,
 				'unacquired → cooking → ready must arrive on the WebSocket without reload',
-				`events=${JSON.stringify(sub.events)}. See apps/core/src/lib/server/jobs/worker-hub.ts + media-status.ts.`
+				`events=${JSON.stringify(sub.events)}. See src/lib/server/jobs/worker-hub.ts + media-status.ts.`
 			);
 
 			// Monotonic pct in the separating phase (never regresses on the way to done).
@@ -428,14 +428,14 @@ if (cookableCandidate) {
 			'S2c-cooking-visible',
 			sawCooking,
 			'a mid-flight song must appear in the `cooking` bucket',
-			'apps/core/src/lib/server/media/readiness.ts:15 readinessOf + apps/core/src/routes/api/search/+server.ts:83 (partitionSearch groups cooking into its own bucket)'
+			'src/lib/server/media/readiness.ts:15 readinessOf + src/routes/api/search/+server.ts:83 (partitionSearch groups cooking into its own bucket)'
 		);
 		record(
 			'HIGH',
 			'S2d-cooking-queueable',
 			queueableWhileCooking,
 			"a cooking row's stemStatus must read `queued` so the client's readinessOf → 'cooking' and the row still shows .add (rotation holds its slot)",
-			'apps/core/src/lib/readiness.ts:12 readinessOf + apps/core/src/lib/components/SongRow.svelte:174-194 ({#if onmake} .sing {:else} .add {/if}) + apps/core/src/routes/+page.svelte:864-877 (cooking row uses onmake={canCook(r) ? ... : undefined}; a cooking readiness returns false for canCook so onmake is undefined and .add renders)'
+			'src/lib/readiness.ts:12 readinessOf + src/lib/components/SongRow.svelte:174-194 ({#if onmake} .sing {:else} .add {/if}) + src/routes/+page.svelte:864-877 (cooking row uses onmake={canCook(r) ? ... : undefined}; a cooking readiness returns false for canCook so onmake is undefined and .add renders)'
 		);
 		// Let it finish so subsequent probes see a stable ready state.
 		try {
@@ -481,7 +481,7 @@ record(
 	'S3a-ready-order-consistency',
 	orderAgrees,
 	'search ready group iterates mediaById in insertion order while /api/library uses desc(id) newest-first -- same songs, different order',
-	`search-ready(caroline shared)=${JSON.stringify(sharedIds)} vs library-ready(shared)=${JSON.stringify(libOrderOnShared)}. See apps/core/src/lib/server/media/readiness.ts:51 partitionSearch (ready group is Map insertion order, not sorted) vs apps/core/src/lib/server/media/repository.ts:149 listReady (orderBy desc(media.id) newest-first ULID).`
+	`search-ready(caroline shared)=${JSON.stringify(sharedIds)} vs library-ready(shared)=${JSON.stringify(libOrderOnShared)}. See src/lib/server/media/readiness.ts:51 partitionSearch (ready group is Map insertion order, not sorted) vs src/lib/server/media/repository.ts:149 listReady (orderBy desc(media.id) newest-first ULID).`
 );
 
 // The label: search returns three arrays named `ready`, `cooking`, `results`. The client renders
@@ -493,7 +493,7 @@ record(
 	'S3b-search-shape-stable',
 	['cooking', 'ready', 'results'].every((k) => shape.includes(k)),
 	'the search response must expose ready/cooking/results at minimum',
-	`keys=${JSON.stringify(shape)}. See apps/core/src/routes/api/search/+server.ts:94.`
+	`keys=${JSON.stringify(shape)}. See src/routes/api/search/+server.ts:94.`
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -524,7 +524,7 @@ record(
 	'S4b-whitespace-empty',
 	Array.isArray(oneSpace.body.recent),
 	'a whitespace query must be treated as empty',
-	`oneSpace body=${JSON.stringify(oneSpace.body).slice(0, 120)}. See apps/core/src/routes/api/search/+server.ts:66 (q.trim()).`
+	`oneSpace body=${JSON.stringify(oneSpace.body).slice(0, 120)}. See src/routes/api/search/+server.ts:66 (q.trim()).`
 );
 
 // A garbage query with no matches: server responds { ready:[], cooking:[], results:[] } and the phone
@@ -617,7 +617,7 @@ record(
 	// Currently baseline=true parenised=false starred=false, which is the defect.
 	baselineHasLocal && parenisedHasLocal && starredHasLocal,
 	'FTS5 metacharacters ("(", ")", "*") in the query silently drop local matches -- safeSearch catches the tokeniser throw and returns []',
-	`baseline(caroline)=local:${baselineHasLocal}, "(caroline)"=local:${parenisedHasLocal}, "caroline*"=local:${starredHasLocal}. See apps/core/src/lib/server/media/local.ts:56 (\`.replace(/["']/g,'')\` strips quotes but not parens/star, then appends \`*\` -- the resulting FTS5 expression throws at tokenise time) + apps/core/src/routes/api/search/+server.ts:19 safeSearch (silences the throw and returns []).`
+	`baseline(caroline)=local:${baselineHasLocal}, "(caroline)"=local:${parenisedHasLocal}, "caroline*"=local:${starredHasLocal}. See src/lib/server/media/local.ts:56 (\`.replace(/["']/g,'')\` strips quotes but not parens/star, then appends \`*\` -- the resulting FTS5 expression throws at tokenise time) + src/routes/api/search/+server.ts:19 safeSearch (silences the throw and returns []).`
 );
 
 // Injection surface: verify the query text is echoed VERBATIM into any resolvable field. Nothing
@@ -696,7 +696,7 @@ record(
 	'S7a-artist-facet-present',
 	!!artistFacet && artistFacet.count >= 1,
 	`browse-by-artist facet must include a cooked song's artist. Currently: local-library files (${localReady.length} cooked) carry \`artist\` but NOT \`artistCanonical\`, and artistFacets() filters on artistCanonical -- so a library of only-local files exposes ZERO browsable artists`,
-	`library has ${libFull.body.library?.length ?? 0} ready song(s), ${localReady.length} of them local; facets.artists=${JSON.stringify(libFull.body.facets?.artists)}. See apps/core/src/lib/server/media/repository.ts:217 artistFacets (filters isNotNull(artistCanonical)) + apps/core/src/lib/server/media/local.ts (local files never set artistCanonical) + apps/core/src/lib/server/jobs/annotation.ts (MusicBrainz runs during the fetch job, which does not run for a local file).`
+	`library has ${libFull.body.library?.length ?? 0} ready song(s), ${localReady.length} of them local; facets.artists=${JSON.stringify(libFull.body.facets?.artists)}. See src/lib/server/media/repository.ts:217 artistFacets (filters isNotNull(artistCanonical)) + src/lib/server/media/local.ts (local files never set artistCanonical) + src/lib/server/jobs/annotation.ts (MusicBrainz runs during the fetch job, which does not run for a local file).`
 );
 
 if (artistFacet) {
@@ -707,7 +707,7 @@ if (artistFacet) {
 		'S7b-browse-by-artist',
 		returnedIds.includes(localCaroline.id),
 		'browse-by-artist must return the cooked song whose artist matches the facet',
-		`browse artist='Neil Diamond' returned ${JSON.stringify(returnedIds)}. Expected includes ${localCaroline.id}. See apps/core/src/lib/server/media/repository.ts:241 byArtist.`
+		`browse artist='Neil Diamond' returned ${JSON.stringify(returnedIds)}. Expected includes ${localCaroline.id}. See src/lib/server/media/repository.ts:241 byArtist.`
 	);
 
 	// Case-sensitivity of the browse endpoint: repository.byArtist uses `eq(...artistCanonical, artist)`
@@ -722,7 +722,7 @@ if (artistFacet) {
 		'S7c-browse-artist-case-sensitive',
 		true, // this is documenting behaviour, not asserting a bug
 		`browse-by-artist compares canonically (exact string). Manual '?artist=neil diamond' finds it: ${foundWrong}. Users click a facet chip so the string is always exact, but flag as LOW so it is known.`,
-		'apps/core/src/lib/server/media/repository.ts:241 byArtist uses eq() -- case-sensitive.'
+		'src/lib/server/media/repository.ts:241 byArtist uses eq() -- case-sensitive.'
 	);
 }
 
@@ -760,7 +760,7 @@ if (MEDIA_DIR) {
 			'S7d-orphan-stem-listed',
 			stillListed && stillReady,
 			`a song whose stem was deleted under the DB is still shown as ready by search and library (the DB has no filesystem check)${alreadyMissing ? ' -- stem was already missing from a prior run' : ''}`,
-			`ready=${stillReady} library=${stillListed} media_endpoint_status=${mediaStatus}. See apps/core/src/lib/server/media/repository.ts:149 listReady (relies on stemStatus + instrumentalRef, no fs check).`
+			`ready=${stillReady} library=${stillListed} media_endpoint_status=${mediaStatus}. See src/lib/server/media/repository.ts:149 listReady (relies on stemStatus + instrumentalRef, no fs check).`
 		);
 		record(
 			'HIGH',
@@ -814,7 +814,7 @@ record(
 	'S8a-failed-cold-load-invisible',
 	true, // this test verifies the DEFECT is documented and REPORTED, not passing
 	'a failed cook is invisible after phone reload: /api/library.cooking excludes anything whose readinessOf is not "cooking", and readiness.ts:14 documents that "failed" never appears in the catalog',
-	`cooking.failed=${failedInCooking} (always false by construction). See apps/core/src/lib/server/media/readiness.ts:15 (catalog cannot express failed) + apps/core/src/routes/api/library/+server.ts:33 (cooking = readinessOf === 'cooking'). Live phones see it via WebSocket only (mediaStatus map, routes/+page.svelte:180-210); cold reload loses it.`
+	`cooking.failed=${failedInCooking} (always false by construction). See src/lib/server/media/readiness.ts:15 (catalog cannot express failed) + src/routes/api/library/+server.ts:33 (cooking = readinessOf === 'cooking'). Live phones see it via WebSocket only (mediaStatus map, routes/+page.svelte:180-210); cold reload loses it.`
 );
 
 // The failed BROADCAST guarantee is testable by wiring the fake worker to fail. Spawn a fail-worker
@@ -878,7 +878,7 @@ try {
 					'S8c-failed-cleared-from-catalog',
 					!stillInCooking,
 					'catalog cooking group must NOT contain a failed song (settleStemsGate resets stemStatus back to "none")',
-					`library.cooking contains it=${stillInCooking}. See apps/core/src/lib/server/jobs/worker-hub.ts settleStemsGate.`
+					`library.cooking contains it=${stillInCooking}. See src/lib/server/jobs/worker-hub.ts settleStemsGate.`
 				);
 			} else if (seenReady) {
 				record(
@@ -978,7 +978,7 @@ if (!chromium) {
 			'S9a-one-action-per-row',
 			eachExactlyOne,
 			'every SongRow must expose EXACTLY one queueing action (.add for ready, .sing for raw/cooking/failed)',
-			`perRow=${JSON.stringify(perRow).slice(0, 500)}. See apps/core/src/lib/components/SongRow.svelte:174-194 ({#if onmake} .sing {:else} .add {/if}).`
+			`perRow=${JSON.stringify(perRow).slice(0, 500)}. See src/lib/components/SongRow.svelte:174-194 ({#if onmake} .sing {:else} .add {/if}).`
 		);
 
 		// A ready row must show .add; a raw row must show .sing.
@@ -1007,7 +1007,7 @@ if (!chromium) {
 			'S9c-empty-state-copy',
 			noResultsText.length > 0 && !mentionsYtDlpUnavailable,
 			`the "no results" copy tells the singer yt-dlp is missing even when it isn't -- the message is only correct for a broken install, but shows for a legitimate zero-match query`,
-			`rendered="${noResultsText}". See apps/core/src/routes/+page.svelte:875 ("No results. YouTube search needs yt-dlp installed on the server.").`
+			`rendered="${noResultsText}". See src/routes/+page.svelte:875 ("No results. YouTube search needs yt-dlp installed on the server.").`
 		);
 
 		// Empty-state for a query the ready library cannot answer: this is where readyEmptyState fires
@@ -1026,7 +1026,7 @@ if (!chromium) {
 			'S9d-nonmatching-query-empty-state',
 			namesTheCount,
 			"a non-matching query's empty state must name how many songs the library HAS (so the singer knows it isn't empty)",
-			`rendered="${readyEmpty}". See apps/core/src/lib/readiness.ts:75 readyEmptyState.`
+			`rendered="${readyEmpty}". See src/lib/readiness.ts:75 readyEmptyState.`
 		);
 	} catch (err) {
 		record('MEDIUM', 'S9-ui-checks', false, `browser flow crashed: ${String(err).slice(0, 200)}`);

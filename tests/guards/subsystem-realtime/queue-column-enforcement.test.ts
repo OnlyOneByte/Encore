@@ -17,9 +17,9 @@ import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 import { rooms, singers, media, queueEntries } from '$lib/server/db/schema';
 
-// The source under scan, named absolutely. Each arm below reached it as `at('apps/core/src/lib/server/realtime/hub.ts')` — "the hub next to me", which identified the realtime hub only while this test sat in
+// The source under scan, named absolutely. Each arm below reached it as `at('src/lib/server/realtime/hub.ts')` — "the hub next to me", which identified the realtime hub only while this test sat in
 // server/realtime/.
-const HUB = at('apps/core/src/lib/server/realtime/hub.ts');
+const HUB = at('src/lib/server/realtime/hub.ts');
 
 // A migrated in-memory DB seeded with the FK parents a queue_entries row needs.
 function seededDb() {

@@ -93,13 +93,13 @@ test('nothing playing offers no live control and no sentence about one', () => {
 
 
 // ── the route rung: the derivation and the copy ───────────────────────────────────────────────────
-const PAGE = read('apps/core/src/routes/+page.svelte');
+const PAGE = read('src/routes/+page.svelte');
 /**
  * Comments stripped, exactly as `drawer-ui-cleanup-253.test.ts` does and for the same reason: the
  * component's own prose NAMES the line the cleanup removed, so an unstripped read would trip a ban the
  * shipped code satisfies. Stripping keeps the two guards reading the same subject.
  */
-const GUIDING_TRACK = read('apps/core/src/lib/components/GuidingTrack.svelte')
+const GUIDING_TRACK = read('src/lib/components/GuidingTrack.svelte')
 	.replace(/<!--[\s\S]*?-->/g, '')
 	.replace(/\/\*[\s\S]*?\*\//g, '')
 	.replace(/(^|[^:])\/\/[^\n]*/g, '$1');

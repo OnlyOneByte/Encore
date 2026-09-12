@@ -29,12 +29,12 @@ function strip(s: string): string {
 		.replace(/\/\*[\s\S]*?\*\//g, '') // css/js block comments
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1'); // line comments (avoid eating http://)
 }
-// Was `at('apps/core/src/lib/components')` — the two subjects were this guard's own SIBLINGS in
-// apps/core/src/lib/components. That spelling said "next to me", which stops meaning anything once the
+// Was `at('src/lib/components')` — the two subjects were this guard's own SIBLINGS in
+// src/lib/components. That spelling said "next to me", which stops meaning anything once the
 // guard does not live there, so the directory is now named explicitly and anchored on the repo root.
 // `read` throws on a missing file, so a wrong subject reds as a path failure rather than passing vacuously.
 function read(rel: string): string {
-	return strip(readRepoFile('apps/core/src/lib/components', rel));
+	return strip(readRepoFile('src/lib/components', rel));
 }
 
 test('GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the control', () => {

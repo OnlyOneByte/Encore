@@ -2,7 +2,7 @@
  * P3 — DOES THE PITCH SHIFTER ACTUALLY MAKE A SOUND, AT THE RIGHT PITCH?
  *
  * A prior numerical review left an unproven suspicion that the browser-side OLA pitch shifter
- * (apps/core/src/lib/tv/pitch-shift.ts) SILENCES or DESTROYS the audio at every non-zero shift. The
+ * (src/lib/tv/pitch-shift.ts) SILENCES or DESTROYS the audio at every non-zero shift. The
  * unit tests (pitch-worklet.test.ts) run the REAL worklet source through a stub `AudioWorkletProcessor`
  * and pass, so the numerical maths cannot be the whole story — but a unit test cannot see:
  *

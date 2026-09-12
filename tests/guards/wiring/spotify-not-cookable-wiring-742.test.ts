@@ -18,14 +18,14 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
-// make-karaoke.ts was `at('apps/core/src/lib/server/jobs/make-karaoke.ts')` — this guard's own SIBLING in
-// apps/core/src/lib/server/jobs. The other two came off `CORE = at('apps/core/src')`, which
-// from that directory meant apps/core/src. All three are named from the repo root now, and `read` throws
+// make-karaoke.ts was `at('src/lib/server/jobs/make-karaoke.ts')` — this guard's own SIBLING in
+// src/lib/server/jobs. The other two came off `CORE = at('src')`, which
+// from that directory meant src. All three are named from the repo root now, and `read` throws
 // on a miss, which is what keeps the length floors below from passing on an empty read.
-const makeKaraokeRaw = read('apps/core/src/lib/server/jobs/make-karaoke.ts');
+const makeKaraokeRaw = read('src/lib/server/jobs/make-karaoke.ts');
 const makeKaraokeCode = stripComments(makeKaraokeRaw);
-const readinessRaw = read('apps/core/src/lib/readiness.ts');
-const songRowRaw = read('apps/core/src/lib/components/SongRow.svelte');
+const readinessRaw = read('src/lib/readiness.ts');
+const songRowRaw = read('src/lib/components/SongRow.svelte');
 
 test('non-vacuous: the three production files were really read', () => {
 	// A rename or a move must fail loudly here rather than letting every scan below pass on an empty read.

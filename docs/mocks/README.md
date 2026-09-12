@@ -22,7 +22,7 @@ captured frame.
 ## Regenerate
 
 ```bash
-cd apps/core
+cd .
 ENCORE_EPHEMERAL=1 PORT=3500 MEDIA_DIR=./media bun run start
 EPORT=3500 bun run e2e/capture.mjs                   # writes here by default
 ```

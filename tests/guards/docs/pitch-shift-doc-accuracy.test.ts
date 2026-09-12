@@ -10,12 +10,12 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Was `const TV = at('apps/core/src/lib/tv')` — this guard used to LIVE in apps/core/src/lib/tv, so its three
+// Was `const TV = at('src/lib/tv')` — this guard used to LIVE in src/lib/tv, so its three
 // subjects were siblings. Named from the repo root now: the two production files are stable, and the
 // citing test is named at its own location so a wrong path throws rather than scanning nothing.
-const PITCH = 'apps/core/src/lib/tv/pitch-shift.ts';
+const PITCH = 'src/lib/tv/pitch-shift.ts';
 const LIFETIME = 'tests/guards/subsystem-tv/pitch-shift-graph-lifetime.test.ts';
-const TVPLAYER = 'apps/core/src/lib/tv/TvPlayer.svelte';
+const TVPLAYER = 'src/lib/tv/TvPlayer.svelte';
 
 const pitchSrc = read(PITCH);
 

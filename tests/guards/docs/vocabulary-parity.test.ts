@@ -2,7 +2,7 @@
  * The TS↔Python vocabulary is enforced HERE, not by comment discipline.
  *
  * The worker is Python and cannot import $lib/contract, so every shared enum is hand-mirrored in
- * apps/worker/src/vocabulary.py and the capability strings are hand-typed in capabilities.py. Core
+ * worker/src/vocabulary.py and the capability strings are hand-typed in capabilities.py. Core
  * then matches those capability strings by RAW STRING EQUALITY in dispatch.ts. Nothing checked that
  * the two sides agreed — the claim lived only in prose, in both files' doc comments.
  *
@@ -38,12 +38,12 @@ import {
 	rawCaptionKey
 } from '$lib/server/media/paths';
 
-// Was `at('apps/worker/src')`, counted out from this guard's old home in
-// apps/core/src/lib/server/jobs. The Python side is a repo-level tree, so it is now named from the repo root.
+// Was `at('worker/src')`, counted out from this guard's old home in
+// src/lib/server/jobs. The Python side is a repo-level tree, so it is now named from the repo root.
 const WORKER_SRC = join(worker, 'src');
-// The core file this guard reads was its own SIBLING (`at('apps/core/src/lib/server/jobs/worker-hub.ts')`); it is
+// The core file this guard reads was its own SIBLING (`at('src/lib/server/jobs/worker-hub.ts')`); it is
 // the worker hub whose artifact reads and heartbeat advertisement are asserted below.
-const WORKER_HUB = 'apps/core/src/lib/server/jobs/worker-hub.ts';
+const WORKER_HUB = 'src/lib/server/jobs/worker-hub.ts';
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
 const capabilities = readFileSync(join(WORKER_SRC, 'capabilities.py'), 'utf8');
 const protocolPy = readFileSync(join(WORKER_SRC, 'protocol.py'), 'utf8');
@@ -127,7 +127,7 @@ test('artifact envelope parity (worker yield vs core read): core reads it from t
 // `name?:` / `name:` at the start of an indented line inside the interface body — the same
 // read-source-as-text idiom used above, so no build step is needed to know the declared set.
 function declaredArtifactKeys(): Set<string> {
-	const events = read('apps/core/src/lib/contract/core/events.ts');
+	const events = read('src/lib/contract/core/events.ts');
 	const m = events.match(/export interface JobArtifacts \{([\s\S]*?)\n\}/);
 	expect(m, 'JobArtifacts interface not found in events.ts').toBeTruthy();
 	const body = m![1]!;
@@ -283,7 +283,7 @@ test('TS↔Python vocabulary parity: every JobType routes to a capability the wo
 /**
  * The WIRE VERBS were the last contract in this file guarded only by a comment.
  *
- * `protocol.py` carries `# message type strings (must match apps/core/src/lib/contract/core/events.ts)` above
+ * `protocol.py` carries `# message type strings (must match src/lib/contract/core/events.ts)` above
  * eleven frame names, and nothing checked it. Rename a frame on either side and every test here
  * stayed green while the worker silently ignored an unrecognised `type` (or the core dropped the
  * worker's) — a worker that connects, handshakes, and then never accepts a job. That is the same
@@ -468,9 +468,9 @@ test('worker ML keepalive stays under the core progress lease: the advertised he
  * The STEM EXTENSION / KEY MIRROR is the last cross-language contract in the media layer guarded only
  * by prose. Both sides declare it MUST agree byte-for-byte:
  *
- *  - core `apps/core/src/lib/server/media/paths.ts` — `INSTRUMENTAL_EXT`, `VOCALS_EXT`, and the key
+ *  - core `src/lib/server/media/paths.ts` — `INSTRUMENTAL_EXT`, `VOCALS_EXT`, and the key
  *    builders `audioKey` / `instrumentalKey` / `vocalsKey` (what goes in the DB and on the wire).
- *  - worker `apps/worker/src/processor.py` — `INSTRUMENTAL_EXT`, `VOCALS_EXT`, and the path builders
+ *  - worker `worker/src/processor.py` — `INSTRUMENTAL_EXT`, `VOCALS_EXT`, and the path builders
  *    `instrumental_path` / `vocals_path` / `source_audio_path` (what the worker writes to disk).
  *
  * The TV resolves `/media/<ref>`, so a mismatch is SILENT: the file exists, the player 404s. And the
@@ -620,7 +620,7 @@ test('stem path/extension parity (worker processor.py vs core paths.ts): non-vac
  * separator contract with no guard.
  *
  * `demucs.py` carries `DEMUCS_MODELS = ("htdemucs", ...)` under a comment that says it "Mirrors the
- * `demucs` engine's model whitelist in apps/core/src/lib/contract/lyrics/separators.ts" — but nothing enforced the
+ * `demucs` engine's model whitelist in src/lib/contract/lyrics/separators.ts" — but nothing enforced the
  * mirror. Its roformer twin IS guarded (the token↔checkpoint block above reads ROFORMER_MODELS as
  * text and pins it against the offered set); the demucs side lived only in that prose comment.
  *
@@ -679,7 +679,7 @@ test('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts): de
  * nothing about what is inside it — and the inside is written in Python (`_NULL_PROFILE` in
  * `analysis/song_profile.py`, the one place the always-publish null shape is built) and read in
  * TypeScript (`SongProfile` + `EMPTY_SONG_PROFILE` + `normalizeSongProfile` in
- * `apps/core/src/lib/contract/cook/song-profile.ts`). There is no generator between them. The worker's pytest
+ * `src/lib/contract/cook/song-profile.ts`). There is no generator between them. The worker's pytest
  * asserts its own dict, the shared package's bun test asserts its own literal, and neither has ever
  * seen the other's shape — the identical blind spot that let `songProfile` itself ship at the wrong
  * envelope level.
@@ -694,7 +694,7 @@ test('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts): de
  * the TS interface DECLARATION (read as text, since a type is erased at runtime), and the runtime keys
  * of `EMPTY_SONG_PROFILE`.
  */
-const SHARED_SONG_PROFILE = at('apps/core/src/lib/contract/cook/song-profile.ts');
+const SHARED_SONG_PROFILE = at('src/lib/contract/cook/song-profile.ts');
 const WORKER_SONG_PROFILE = join(WORKER_SRC, 'analysis/song_profile.py');
 
 /** Keys of `_NULL_PROFILE = { "name": None, ... }`, read from the Python as text. */

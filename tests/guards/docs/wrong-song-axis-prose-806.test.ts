@@ -21,11 +21,11 @@ import { isLikelyWrongSong, lyricsRank, SUSPECT_COVERAGE } from '$lib/contract';
 
 // The two documented files were already named repo-relative here; what was derived from this test's own
 // location was the ROOT they were joined to (`at('.')`, four levels
-// up from apps/core/src/lib/contract/lyrics). `read` supplies that root and throws if a site moves, so a renamed
+// up from src/lib/contract/lyrics). `read` supplies that root and throws if a site moves, so a renamed
 // file is a path failure rather than a silently empty prose scan.
 const SITES = {
-	lyrics: 'apps/core/src/lib/contract/lyrics/lyrics.ts',
-	types: 'apps/core/src/lib/contract/core/types.ts'
+	lyrics: 'src/lib/contract/lyrics/lyrics.ts',
+	types: 'src/lib/contract/core/types.ts'
 } as const;
 
 const sources = new Map<string, string>(Object.values(SITES).map((rel) => [rel, read(rel)] as const));

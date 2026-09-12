@@ -11,7 +11,7 @@
  *
  * WHY THIS PROBE AND NOT A UNIT TEST. The defect is a rendered stacking-order fact — which element is
  * topmost at the join card's own centre — and Encore has no jsdom, so it is not decidable in `bun test`.
- * The suite guard is a source scan (apps/core/src/lib/tv/autoplay-recovery.test.ts, "the /tv autoplay hint is scoped to the on-stage band"); this is the
+ * The suite guard is a source scan (src/lib/tv/autoplay-recovery.test.ts, "the /tv autoplay hint is scoped to the on-stage band"); this is the
  * rendered half.
  *
  * GESTURELESS BY CONSTRUCTION: no --autoplay-policy flag anywhere below. That restriction is the whole

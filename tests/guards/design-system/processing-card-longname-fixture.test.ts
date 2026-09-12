@@ -23,14 +23,14 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/routes/components/, so
-// `at('apps/core/src/routes/components/+page.svelte')` meant "the gallery route next to me" — a subject nothing can
+// SIBLING READ, now named explicitly. This guard used to live in src/routes/components/, so
+// `at('src/routes/components/+page.svelte')` meant "the gallery route next to me" — a subject nothing can
 // infer from tests/. Confirmed present at this path before re-anchoring.
-const PAGE = 'apps/core/src/routes/components/+page.svelte';
+const PAGE = 'src/routes/components/+page.svelte';
 const src = read(PAGE);
 
 // The profile-name maxlength is what a real singer name can reach; the fixture must hit it.
-const repo = read('apps/core/src/lib/server/singers/repository.ts');
+const repo = read('src/lib/server/singers/repository.ts');
 const maxLen = Number(repo.match(/\.slice\(0,\s*(\d+)\)/)![1]);
 
 test('the gallery demos a ProcessingCard with actions AND an UNBROKEN maxlength singer name', () => {
@@ -54,7 +54,7 @@ test('the gallery demos a ProcessingCard with actions AND an UNBROKEN maxlength 
 });
 
 test("ProcessingCard's identity-dot comment states the true 0px-collapse mechanism", () => {
-	const CARD = 'apps/core/src/lib/components/ProcessingCard.svelte';
+	const CARD = 'src/lib/components/ProcessingCard.svelte';
 	const card = read(CARD);
 
 	// Isolate the `.who i` explanatory comment block so unrelated prose can't satisfy or trip us.

@@ -14,10 +14,10 @@ import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
 // The prod entrypoint, named from the repo root rather than counted from this file's old location
-// (`at('apps/core/server.ts')`). Read ONCE, since `read` throws when the
+// (`at('server.ts')`). Read ONCE, since `read` throws when the
 // file is missing — which is exactly the failure this guard must not tolerate quietly: every assertion
 // below is a text match, and several are `.not.toMatch(...)` absence checks an empty string satisfies.
-const SERVER_RAW = read('apps/core/server.ts');
+const SERVER_RAW = read('server.ts');
 
 // Blank block and line comments, preserving newlines, so a commented-out wiring line cannot satisfy a match.
 function stripComments(src: string): string {
@@ -36,7 +36,7 @@ test('server.ts actually PARSES — a source scan is blind to a SyntaxError in t
 	// (it calls Bun.serve + process.exit), so the wiring assertions read it as TEXT — which passes
 	// happily on a file that does not compile. That is exactly how a `break` illegally crossing the
 	// message-handler function boundary (TS1107) shipped to review with 1964 green tests: `bun test`
-	// never parses this file, `bun run build` is the SvelteKit app not this entry, and apps/core's
+	// never parses this file, `bun run build` is the SvelteKit app not this entry, and .'s
 	// svelte-check tsconfig excludes it. Feed the source we already read to the transpiler so every
 	// edit to server.ts gets a parse check from `bun test`, closing the whole class cheaply.
 	expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(SERVER_RAW)).not.toThrow();

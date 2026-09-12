@@ -35,7 +35,7 @@ function stripComments(src: string): string {
 }
 
 // Was `at('tests/e2e')`, counted up three from
-// apps/core/src/lib/server/realtime to apps/core. `appE2e` is that same tests/e2e directory named
+// src/lib/server/realtime to .. `appE2e` is that same tests/e2e directory named
 // directly. The walk below keeps its own exclusion list, so it is not replaced by `filesUnder`; a
 // missing root still throws out of readdirSync, and the >10 floor at the bottom is the vacuity trap.
 const E2E_DIR = appE2e;

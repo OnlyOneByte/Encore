@@ -18,11 +18,11 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/lib/tv/LyricsOverlay.svelte')` —
+// A SIBLING READ, re-anchored explicitly. This was `at('src/lib/tv/LyricsOverlay.svelte')` —
 // "the component next to me" — and the component is the TV lyric reel whose `.lyrics` rule carries the
 // stroke. `read` throws on a missing subject, which matters here more than usual: both assertions below
 // are satisfiable by nothing at all if the source ever came back empty.
-const OVERLAY = 'apps/core/src/lib/tv/LyricsOverlay.svelte';
+const OVERLAY = 'src/lib/tv/LyricsOverlay.svelte';
 
 /** Blank comments out, keeping newlines so reported line numbers stay true (matches lyrics-reel-cap). */
 function stripComments(src: string): string {

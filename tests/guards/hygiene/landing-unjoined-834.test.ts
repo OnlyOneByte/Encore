@@ -6,10 +6,10 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Was `at('apps/core/src/routes/+page.svelte')` — from this guard's old home in
-// apps/core/src/routes that resolved back into the same directory, i.e. the home route itself. Now
+// Was `at('src/routes/+page.svelte')` — from this guard's old home in
+// src/routes that resolved back into the same directory, i.e. the home route itself. Now
 // named in full and anchored on the repo root.
-const src = read('apps/core/src/routes/+page.svelte');
+const src = read('src/routes/+page.svelte');
 
 // Strip comments so a `/join` mentioned in a comment (there is one, explaining the retirement) does not
 // masquerade as a live bounce.

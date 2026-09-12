@@ -159,8 +159,8 @@ function stripComments(src: string): string {
 		.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
-const route = stripComments(read('apps/core/src/routes/tv/+page.svelte'));
-const player = stripComments(read('apps/core/src/lib/tv/TvPlayer.svelte'));
+const route = stripComments(read('src/routes/tv/+page.svelte'));
+const player = stripComments(read('src/lib/tv/TvPlayer.svelte'));
 
 it('the element-advancing signal is wired from the master element to the gate: feeds lyricsAdvancing a real element signal, not the room intent twice', () => {
 	// The fourth argument must be `masterAdvancing` — passing `isPlaying` again would compile and stay

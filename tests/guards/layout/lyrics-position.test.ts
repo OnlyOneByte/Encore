@@ -57,9 +57,9 @@ test('playing: the elapsed term is floored at 0 so the draw position never dips 
 // The pure test above can prove the function is path-independent, but not that LyricsOverlay draws
 // from it. These guards fail if the accumulator ever comes back.
 
-// Was a sibling read of the component this guard sat beside in apps/core/src/lib/tv — the lyrics
+// Was a sibling read of the component this guard sat beside in src/lib/tv — the lyrics
 // overlay, named from the repo root now that the guard no longer lives next to it.
-const OVERLAY = read('apps/core/src/lib/tv/LyricsOverlay.svelte');
+const OVERLAY = read('src/lib/tv/LyricsOverlay.svelte');
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src

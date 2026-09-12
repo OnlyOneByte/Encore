@@ -27,7 +27,7 @@ function stripComments(src: string): string {
 		.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
-const MEDIA_DIR = at('apps/core/src/lib/server/media');
+const MEDIA_DIR = at('src/lib/server/media');
 const SRC_ROOT = appSrc;
 const SPAWN_CAPTURE_REL = join('lib', 'server', 'media', 'spawn-capture.ts');
 
@@ -80,7 +80,7 @@ const SEARCH = sliceFunction(YTDLP, 'ytDlpSearch');
 
 // ── ARM 1: one timed-spawn implementation, in the file that owns the boundary ────────────────────
 
-test('ARM 1: no production file under apps/core/src calls Bun.spawn( except spawn-capture.ts', () => {
+test('ARM 1: no production file under src calls Bun.spawn( except spawn-capture.ts', () => {
 	const offenders: string[] = [];
 	for (const f of PRODUCTION) {
 		if (f.rel.split(sep).join(sep) === SPAWN_CAPTURE_REL) continue;

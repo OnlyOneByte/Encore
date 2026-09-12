@@ -21,9 +21,9 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Was a sibling read of the route handler this guard sat beside in apps/core/src/routes/api/library —
+// Was a sibling read of the route handler this guard sat beside in src/routes/api/library —
 // the GET /api/library handler, named from the repo root now that the guard no longer sits next to it.
-const SRC = stripComments(read('apps/core/src/routes/api/library/+server.ts'));
+const SRC = stripComments(read('src/routes/api/library/+server.ts'));
 
 test('the route reads tags with the tag KIND, not the genre default', () => {
 	// tagsOf(id) defaults to 'genre'; the sidecar write path is setTags(id, "tag", …). A read that

@@ -21,7 +21,7 @@
 export interface Hook {
 	/** What the flow calls it. */
 	id: string;
-	/** Source file, relative to apps/core. */
+	/** Source file, relative to .. */
 	file: string;
 	/** Substring that must appear in that file. The anchor. */
 	anchor: string;

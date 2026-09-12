@@ -13,7 +13,7 @@
 // until phase 0 of the test reorganisation closed it.
 //
 // THE CONTRACT. Anchors are discovered by walking UP to the repo root marker, never by counting down from
-// a caller. So a test importing this resolves the same paths from `apps/core/src/lib/`, from `tests/unit/`,
+// a caller. So a test importing this resolves the same paths from `src/lib/`, from `tests/unit/`,
 // or from anywhere else — which is what makes the move mechanical instead of 207 individual
 // recalculations, and what stops the NEXT move from being a project.
 //
@@ -59,7 +59,7 @@ export const repoRoot: string = findRepoRoot();
  * below names a landmark that cannot plausibly be absent from a correct root, so this fires on a
  * misresolution rather than on an ordinary refactor.
  */
-for (const landmark of ['bunfig.toml', 'package.json', 'apps/core', 'apps/core/src/lib/contract']) {
+for (const landmark of ['bunfig.toml', 'package.json', '.', 'src/lib/contract']) {
 	if (!existsSync(join(repoRoot, landmark))) {
 		throw new Error(
 			`@encore/test-support: resolved repoRoot to ${repoRoot}, but it has no ${landmark}.\n` +
@@ -69,32 +69,41 @@ for (const landmark of ['bunfig.toml', 'package.json', 'apps/core', 'apps/core/s
 	}
 }
 
-/** `apps/core` — the SvelteKit app package. */
-export const appCore: string = join(repoRoot, 'apps', 'core');
-/** `apps/core/src` — where routes, lib and server live. */
+/** `.` — the SvelteKit app package. */
+/**
+ * The app root. Now the REPO root, because the `apps/` layer is gone — one TypeScript app does not need a
+ * directory to hold it, and `apps/core` was that directory holding exactly one thing.
+ *
+ * Kept as a named export rather than deleted: 40-odd guards import it, the concept ("where the app is")
+ * still exists, and a named anchor is the whole reason this flattening needed one edit here instead of one
+ * per consumer. When it was wrong, 25 guards failed pointing at `apps/core/src` — from this line.
+ */
+export const appCore: string = repoRoot;
+/** `src` — where routes, lib and server live. */
 export const appSrc: string = join(appCore, 'src');
 /** `tests/e2e` — drivers, probes, gates and the selector contract. */
 /**
  * `tests/e2e` — the browser-driving drivers, probes and gates.
  *
- * NOT under `apps/core` any more, despite the name. These lived at `apps/core/e2e` until the test
+ * NOT under `.` any more, despite the name. These lived at `e2e` until the test
  * reorganisation moved every test out of the source tree; the export keeps its name because 13 guards
  * import it and the thing it names has not changed, only its address. When it moved, all 13 failed with
- * `ENOENT: scandir apps/core/e2e` — loudly, and from one place, which is the whole argument for a named
+ * `ENOENT: scandir e2e` — loudly, and from one place, which is the whole argument for a named
  * anchor over 13 copies of a path.
  */
 export const appE2e: string = join(repoRoot, 'tests', 'e2e');
-/** `apps/core/src/lib/contract/src` — the domain code both the app and (by hand-mirroring) the worker use. */
+/** `src/lib/contract/src` — the domain code both the app and (by hand-mirroring) the worker use. */
 /**
  * The ISOMORPHIC contract — code imported by both `src/lib` (client) and `src/lib/server` (authoritative).
  *
- * Was `packages/shared/src` as its own workspace package; folded into the app as `apps/core/src/lib/contract`.
+ * Was `packages/shared/src` as its own workspace package; folded into the app as `src/lib/contract`.
  * The export keeps its name because the thing it names has not changed, only its address — and because a
  * named anchor is why this move needed ONE edit here instead of one per consumer.
  */
 export const sharedSrc: string = join(appSrc, 'lib', 'contract');
-/** `apps/worker` — the Python side. Layer 1B. */
-export const worker: string = join(repoRoot, 'apps', 'worker');
+/** `worker` — the Python side. Layer 1B. */
+/** `worker` — the Python side. Layer 1B. Was `apps/worker` until the apps/ layer was flattened away. */
+export const worker: string = join(repoRoot, 'worker');
 
 /** An absolute path from a repo-relative one. Does not check existence — see `read`. */
 export function at(...parts: string[]): string {

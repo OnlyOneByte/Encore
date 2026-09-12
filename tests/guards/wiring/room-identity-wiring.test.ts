@@ -19,13 +19,13 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// All three were counted off `at('apps/core/src/lib/server/rooms')` when this guard lived in apps/core/src/lib/server/rooms:
-// `'..', 'app.ts'` for the server entry, and `'..', '..'` (which landed at apps/core/src) for the other
+// All three were counted off `at('src/lib/server/rooms')` when this guard lived in src/lib/server/rooms:
+// `'..', 'app.ts'` for the server entry, and `'..', '..'` (which landed at src) for the other
 // two. Named from the repo root now, and `read` throws on a miss so a wrong subject reds as a path
 // failure rather than leaving these scans to pass over an empty string.
-const APP = stripComments(read('apps/core/src/lib/server/app.ts'));
-const JOIN_PAGE = stripComments(read('apps/core/src/lib/components/JoinLanding.svelte'));
-const ME_ROUTE = stripComments(read('apps/core/src/routes/api/me/+server.ts'));
+const APP = stripComments(read('src/lib/server/app.ts'));
+const JOIN_PAGE = stripComments(read('src/lib/components/JoinLanding.svelte'));
+const ME_ROUTE = stripComments(read('src/routes/api/me/+server.ts'));
 
 test('app.ts mints the active room at boot and exposes its id', () => {
 	// boot mint: activeRoomId comes from rooms.ensureActive(...).id.

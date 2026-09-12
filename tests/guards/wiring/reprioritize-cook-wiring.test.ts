@@ -22,9 +22,9 @@ function stripComments(src: string): string {
 }
 
 // app.ts named explicitly — where buildHubDeps (the single HubDeps composition site) wires this seam.
-// The old form was `at('apps/core/src/lib/server/app.ts')`, which meant this file only while the guard
-// sat in apps/core/src/lib/server/jobs.
-const APP = stripComments(read('apps/core/src/lib/server/app.ts'));
+// The old form was `at('src/lib/server/app.ts')`, which meant this file only while the guard
+// sat in src/lib/server/jobs.
+const APP = stripComments(read('src/lib/server/app.ts'));
 
 test('app.ts imports reprioritizeCookForMedia', () => {
 	expect(APP).toMatch(/import\s*\{\s*reprioritizeCookForMedia\s*\}\s*from\s*'\.\/jobs\/reprioritize-cook'/);

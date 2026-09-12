@@ -17,7 +17,7 @@ import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
 // The Bun.serve entry, named from the repo root.
-const SERVER = 'apps/core/server.ts';
+const SERVER = 'server.ts';
 
 // Blank block and line comments, preserving newlines, so a commented-out exit line cannot satisfy or
 // trip a guard.

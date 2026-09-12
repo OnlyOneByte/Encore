@@ -21,7 +21,7 @@ function stripComments(src: string): string {
 		.replace(/\/\*[\s\S]*?\*\//g, '')
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
-const RAW = read('apps/core/src/routes/+page.svelte');
+const RAW = read('src/routes/+page.svelte');
 const PAGE = stripComments(RAW);
 
 // ── the queue IS home ────────────────────────────────────────────────────────────────────────────
@@ -238,7 +238,7 @@ test('the route no longer declares the transport styles the hero now owns', () =
 	expect(PAGE).not.toContain('class="ic ');
 	expect(PAGE).not.toContain('no-drag');
 	// The hero owns them now, derived from the token rather than the number.
-	const HERO = read('apps/core/src/lib/components/NowPlayingHero.svelte');
+	const HERO = read('src/lib/components/NowPlayingHero.svelte');
 	expect(HERO).toContain('aria-label="play/pause"');
 	expect(HERO).not.toContain('44px');
 });

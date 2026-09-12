@@ -19,12 +19,12 @@ import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { SINGER_COLORS, lyricHighlightColor } from '$lib/contract';
 
-// A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/routes/components/+page.svelte')` — and
+// A SIBLING READ, re-anchored explicitly. This was `at('src/routes/components/+page.svelte')` — and
 // `+page.svelte` is the most ambiguous sibling read in the repo, since every route directory has one.
 // The subject is the /components GALLERY page, the route this guard has always sat inside, which is
 // where the four singer-colour cards live. `read` throws when it is missing, so an ambiguity resolved
 // wrongly reds as a path failure instead of scanning some other route's page.
-const src = read('apps/core/src/routes/components/+page.svelte');
+const src = read('src/routes/components/+page.svelte');
 
 /** The `{#each …}` block holding the singer-colour cards, located by the property only those cards carry. */
 const block = /\{#each \[\{[^\]]*singer:[^\]]*\}\][^}]*\}/.exec(src);

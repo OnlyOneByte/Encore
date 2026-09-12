@@ -16,14 +16,14 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
-// Was `at('apps/core/src/lib/components/SongRow.svelte')` / `'ProcessingCard.svelte'` — both subjects were this
-// guard's own SIBLINGS in apps/core/src/lib/components, so the paths are now stated in full and
+// Was `at('src/lib/components/SongRow.svelte')` / `'ProcessingCard.svelte'` — both subjects were this
+// guard's own SIBLINGS in src/lib/components, so the paths are now stated in full and
 // anchored on the repo root. The other three were counted out with `..` from the same directory.
-const songRow = stripComments(read('apps/core/src/lib/components/SongRow.svelte'));
-const processingCard = stripComments(read('apps/core/src/lib/components/ProcessingCard.svelte'));
-const page = stripComments(read('apps/core/src/routes/+page.svelte'));
-const cookAndQueue = stripComments(read('apps/core/src/lib/cook-and-queue.ts'));
-const readiness = stripComments(read('apps/core/src/lib/readiness.ts'));
+const songRow = stripComments(read('src/lib/components/SongRow.svelte'));
+const processingCard = stripComments(read('src/lib/components/ProcessingCard.svelte'));
+const page = stripComments(read('src/routes/+page.svelte'));
+const cookAndQueue = stripComments(read('src/lib/cook-and-queue.ts'));
+const readiness = stripComments(read('src/lib/readiness.ts'));
 
 // ── F1: the .sing branch must consume `inQueue`, and singThis must skip the queue step on a retry ──
 

@@ -501,10 +501,10 @@ function owningSelector(rules: Rule[], at: number): string | null {
 
 test('every animation declaration honours prefers-reduced-motion', () => {
 	const svelte = [
-		...svelteFiles(at('apps/core/src/lib')),
-		...svelteFiles(at('apps/core/src/routes'))
+		...svelteFiles(at('src/lib')),
+		...svelteFiles(at('src/routes'))
 	];
-	const files = [...svelte, at('apps/core/src/app.css')];
+	const files = [...svelte, at('src/app.css')];
 	// test 3 had NO count floor: the exact vacuity gap the count floors closed for
 	// tests 1 and 2 was left out here. Give it the same real-count floor + which-files sentinel.
 	expect(files.length).toBeGreaterThanOrEqual(24); // @nvf-floor files.length
@@ -774,8 +774,8 @@ function classLists(markup: string): { where: string; tokens: string[] }[] {
 
 test('no utility class expresses motion the declaration scans cannot see', () => {
 	const svelte = [
-		...svelteFiles(at('apps/core/src/lib')),
-		...svelteFiles(at('apps/core/src/routes'))
+		...svelteFiles(at('src/lib')),
+		...svelteFiles(at('src/routes'))
 	];
 	// Non-vacuity floor + which-files sentinel, the same pair tests 1-3 carry (XR-VER-05). A firing
 	// floor is a FINDING, never a number to adjust — XR-VER-06.
@@ -828,9 +828,9 @@ test('no motion utility name appears anywhere in source, in any position', () =>
 	// source at all. So the extractor above supplies the precise message, and this arm supplies the
 	// coverage: a spelling the extractor misses still reds here rather than passing silently.
 	const netFiles = [
-		...svelteFiles(at('apps/core/src/lib')),
-		...svelteFiles(at('apps/core/src/routes')),
-		...tsSources(at('apps/core/src/lib'))
+		...svelteFiles(at('src/lib')),
+		...svelteFiles(at('src/routes')),
+		...tsSources(at('src/lib'))
 	];
 	expect(netFiles.length).toBeGreaterThanOrEqual(40); // @nvf-floor netFiles.length
 

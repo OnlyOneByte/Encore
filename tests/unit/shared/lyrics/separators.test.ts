@@ -509,8 +509,8 @@ const settingsForSongBound = (syncMode: 'forced' | 'lines', room: Partial<RoomSe
 /**
  * A LINE-ONLY SONG, in the shape the real worker publishes.
  *
- * Verified against `apps/worker/src/lyrics/source.py:line_synced_lyrics` (the doc) and
- * `apps/worker/src/steps/lyrics.py:333` (the candidate): a refused or skipped alignment publishes
+ * Verified against `worker/src/lyrics/source.py:line_synced_lyrics` (the doc) and
+ * `worker/src/steps/lyrics.py:333` (the candidate): a refused or skipped alignment publishes
  * `{"lines":[{start,end,text,"words":[]}],"words":[]}` and records `"timing": "line"`. The
  * candidate's `timing` is the ONLY per-song granularity signal a pure resolver can read — it has
  * no doc and no filesystem — so it is the field the inner bound must key on.

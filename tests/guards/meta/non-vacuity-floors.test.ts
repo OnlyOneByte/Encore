@@ -93,7 +93,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 20,
 			count: 1,
 			guards:
-				'the walk over the isomorphic contract. This floor carries unusual weight: the guard REPLACED a structural guarantee (the old package had no aliases and no dependency on apps/core, so a server import was unresolvable), and an empty walk reports the boundary intact while it is wide open. 26 files at the time of writing.'
+				'the walk over the isomorphic contract. This floor carries unusual weight: the guard REPLACED a structural guarantee (the old package had no aliases and no dependency on ., so a server import was unresolvable), and an empty walk reports the boundary intact while it is wide open. 26 files at the time of writing.'
 		}
 	],
 	'tests/guards/meta/e2e-reachability.test.ts': [
@@ -183,13 +183,6 @@ const FLOORS: Record<string, Floor[]> = {
 			count: 1,
 			guards:
 				'the walk over the whole test tree that collects every external import. An empty walk yields an empty undeclared list, which reads exactly like a tree whose dependencies are all declared. 287 files at the time of writing, so 200 leaves room for the suite to shrink without the floor becoming the thing that fails first.'
-		},
-		{
-			subject: 'Object.keys(declaredForTests).length',
-			min: 1,
-			count: 1,
-			guards:
-				'the version-lockstep comparison. It iterates the packages tests/package.json declares, so an emptied manifest would make it compare nothing and pass — while the test tree silently lost the declaration that makes drizzle-orm resolve at all.'
 		}
 	],
 	'tests/guards/design-system/ui-scoped-style-reach-913.test.ts': [
@@ -287,7 +280,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 200,
 			count: 1,
 			guards:
-				"every test file in the repo, which the stale-$app-claim scan reads. This walk was rooted at apps/core/src alone — correct when every test sat beside its source, and quietly wrong the moment the reorganisation began moving them into tests/. Measured: the narrow walk sees 252 files today and would see 120 once the guards move, while its old floor of >50 kept passing. Coverage would have halved with no signal. The walk now spans every root and this floor is set against the whole population, so losing a root reds instead."
+				"every test file in the repo, which the stale-$app-claim scan reads. This walk was rooted at src alone — correct when every test sat beside its source, and quietly wrong the moment the reorganisation began moving them into tests/. Measured: the narrow walk sees 252 files today and would see 120 once the guards move, while its old floor of >50 kept passing. Coverage would have halved with no signal. The walk now spans every root and this floor is set against the whole population, so losing a root reds instead."
 		}
 	],
 	'tests/guards/design-system/tailwind-toolchain.test.ts': [
@@ -522,12 +515,12 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 		{
 			subject: 'scanned',
 			reason:
-				'RETIRED BY the drawer deletion with the guard it floored: `a keydown handler that preventDefault()s on a snippet host early-returns on foreign targets`. XR-VER-06 record. (a) The invariant: an inline-arrow onkeydown that cancels the event must early-return on `e.target !== e.currentTarget`, so a key pressed on a child control is not swallowed by its host. (b) What left scope: its ENTIRE population. QueueSheet.svelte and QueueSheetDrawer.svelte were measured to be the only two files under apps/core/src matching an inline-arrow onkeydown that calls preventDefault(, and both were deleted with the drawer surface — so the scan would have examined 0 files and this floor (>= 1) would have fired every run. (c) What covers it now: NOTHING, because there is nothing left to cover — no surviving surface has a preventDefault-ing inline keydown host. The floor was doing its job by firing; it is retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires. If such a host reappears, restore the guard AND this floor together rather than reviving one alone.'
+				'RETIRED BY the drawer deletion with the guard it floored: `a keydown handler that preventDefault()s on a snippet host early-returns on foreign targets`. XR-VER-06 record. (a) The invariant: an inline-arrow onkeydown that cancels the event must early-return on `e.target !== e.currentTarget`, so a key pressed on a child control is not swallowed by its host. (b) What left scope: its ENTIRE population. QueueSheet.svelte and QueueSheetDrawer.svelte were measured to be the only two files under src matching an inline-arrow onkeydown that calls preventDefault(, and both were deleted with the drawer surface — so the scan would have examined 0 files and this floor (>= 1) would have fired every run. (c) What covers it now: NOTHING, because there is nothing left to cover — no surviving surface has a preventDefault-ing inline keydown host. The floor was doing its job by firing; it is retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires. If such a host reappears, restore the guard AND this floor together rather than reviving one alone.'
 		},
 		{
 			subject: 'the dvh sheet-cap scan (every bottom-docked sheet caps its height in dvh, not vh)',
 			reason:
-				'RETIRED BY the drawer deletion. The guard looped over a hardcoded list of exactly two files — QueueSheet.svelte and QueueSheetDrawer.svelte — asserting each declared a max-height in dvh/svh and none in vh (iOS resolves vh against the LARGE viewport, so a vh-capped sheet hides its own footer while the URL bar shows). Both files were deleted, so the list is empty and there is NO successor address: the only viewport-unit cap left under apps/core/src is lib/tv/TvLobby.svelte\u2019s `max-height: 20vh`, a TV surface, in vh — re-pointing there would INVERT the assertion into a failure. Its PENDING_RULING said RE-ANCHOR, DO NOT DELETE, and that ruling was correct for what it anticipated: a PORT, where the sheet still existed at a new address. This is a REMOVAL, so there is no address to move to and nothing is being laundered away — no surface docked to the bottom caps itself in a viewport fraction any more. SHEET_CAP_FRACTION was retired from the measured-design register in the same commit for the same reason.'
+				'RETIRED BY the drawer deletion. The guard looped over a hardcoded list of exactly two files — QueueSheet.svelte and QueueSheetDrawer.svelte — asserting each declared a max-height in dvh/svh and none in vh (iOS resolves vh against the LARGE viewport, so a vh-capped sheet hides its own footer while the URL bar shows). Both files were deleted, so the list is empty and there is NO successor address: the only viewport-unit cap left under src is lib/tv/TvLobby.svelte\u2019s `max-height: 20vh`, a TV surface, in vh — re-pointing there would INVERT the assertion into a failure. Its PENDING_RULING said RE-ANCHOR, DO NOT DELETE, and that ruling was correct for what it anticipated: a PORT, where the sheet still existed at a new address. This is a REMOVAL, so there is no address to move to and nothing is being laundered away — no surface docked to the bottom caps itself in a viewport fraction any more. SHEET_CAP_FRACTION was retired from the measured-design register in the same commit for the same reason.'
 		}
 	],
 	'tests/guards/layout/phone-reflow-rung-l.test.ts': [
@@ -684,13 +677,19 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// guard's entire population was the two deleted drawer components), and +1 for the `scanned` floor
 	// on the drawer-deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
 	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
-	// prescribes rather than counted: raised absurdly high, read `Received: 65`.
+	// prescribes rather than counted: raised absurdly high, read `Received: 64`.
+	//
+	// 65 -> 64 when the test tree's own manifest was deleted: flattening `apps/` away made the app's
+	// manifest the ROOT manifest, so `tests/package.json` had nothing left to declare. The version-lockstep
+	// arm it fed was RETIRED rather than repointed — with one manifest there are no two numbers to disagree,
+	// and an arm comparing a thing with itself is what no assertion looks like when it passes. A floor going
+	// DOWN is as much a finding as one going up, and this is its reason.
 	//
 	// 51 -> 55 when the test tree was reorganised: four floors were REGISTERED, none invented. Two belong
 	// to the new test-tree-deps guard, one is direction C's own `filesWalked`, and one is a floor on
 	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
 	// surfaced it. Both literals were re-measured, not incremented.
-	expect(located).toBeGreaterThanOrEqual(65);
+	expect(located).toBeGreaterThanOrEqual(64);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -781,7 +780,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(65);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(64);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

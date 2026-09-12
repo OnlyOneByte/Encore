@@ -15,7 +15,7 @@ import { appSrc, read } from '@encore/test-support';
 import { svelteFiles } from '$lib/test-helpers';
 
 const SRC = appSrc;
-const css = read('apps/core/src/app.css');
+const css = read('src/app.css');
 
 /** Pull a `--name: #hex;` token out of app.css. Fails loudly rather than silently defaulting. */
 function token(name: string): string {

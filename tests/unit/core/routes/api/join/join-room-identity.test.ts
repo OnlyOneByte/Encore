@@ -12,7 +12,7 @@
 //
 // BASE-RED: on origin/main the route neither reads `code` nor returns a roomId, and it sets TWO cookies.
 import { test, expect, afterEach } from 'bun:test';
-import { POST } from '../../../../../../apps/core/src/routes/api/join/+server';
+import { POST } from '../../../../../../src/routes/api/join/+server';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { SingerRepository, SESSION_COOKIE } from '$lib/server/singers/repository';
 import { PresenceTracker } from '$lib/server/realtime/presence';

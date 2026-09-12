@@ -18,8 +18,8 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Was `at('apps/core/src/lib/server/app.ts')`, counted one level up from apps/core/src/lib/server/media.
-const APP = stripComments(read('apps/core/src/lib/server/app.ts'));
+// Was `at('src/lib/server/app.ts')`, counted one level up from src/lib/server/media.
+const APP = stripComments(read('src/lib/server/app.ts'));
 
 test('app.ts passes a third protectedIds argument to planEviction', () => {
 	// The two-argument call `planEviction(candidates, cap)` defaults protectedIds to an empty Set —

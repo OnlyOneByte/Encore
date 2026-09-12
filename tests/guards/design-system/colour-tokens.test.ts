@@ -19,7 +19,7 @@
  * WHY THIS FILE AND NOT `contrast.test.ts`. That file is deliberately a pure token-VALUE guard: it reads
  * `app.css` as text and computes ratios, and it does not know the registry exists. The claims here are
  * about the relationship between the token layer and the registry, so they need the registry — imported
- * the same way `apps/core/src/lib/contract/presentation/palette-registry-820.test.ts:7` imports it, from the one committed
+ * the same way `src/lib/contract/presentation/palette-registry-820.test.ts:7` imports it, from the one committed
  * artifact `XR-COL-01` makes the only place a stop's values exist.
  *
  * The ratios below are recomputed from the hex values rather than read out of the registry's `r_*`
@@ -34,13 +34,13 @@ import { appSrc, read } from '@encore/test-support';
 // carries only `"."`, so a subpath import does not resolve. An import specifier cannot be routed
 // through `at()` (that returns a runtime string, not a module), so this stays relative — but it is a
 // relative IMPORT, which fails loudly with `Cannot find module` rather than silently reading nothing.
-import registry from '../../../apps/core/src/lib/contract/presentation/player-palette-48.json';
+import registry from '../../../src/lib/contract/presentation/player-palette-48.json';
 import { svelteFiles } from '$lib/test-helpers';
 
-// Anchored on `appSrc` (apps/core/src) instead of `at('apps/core/src')`, which meant the same
-// directory only while this file sat in apps/core/src/lib.
+// Anchored on `appSrc` (src) instead of `at('src')`, which meant the same
+// directory only while this file sat in src/lib.
 const SRC = appSrc;
-const APP_CSS = read('apps/core/src/app.css');
+const APP_CSS = read('src/app.css');
 
 /** Every `.svelte` file that can carry a rule block or a style binding. */
 const FILES = [...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
@@ -170,7 +170,7 @@ test('every per-stop role reaches CSS as a custom property (XR-COL-24): the fill
  *
  * This is the assertion that makes "read from the single source" enforceable in a stylesheet, which
  * cannot import JSON. Same price, and for the same stated reason, as `SURFACES` in
- * `apps/core/src/lib/contract/presentation/colors.ts` and the surfaces block in `palette-registry-820.test.ts`: the
+ * `src/lib/contract/presentation/colors.ts` and the surfaces block in `palette-registry-820.test.ts`: the
  * literal lives in one place and a named test reds the moment it stops matching the artifact.
  *
  * It deliberately does NOT pin WHICH stop. Re-seeding the brand default is a design decision; taking

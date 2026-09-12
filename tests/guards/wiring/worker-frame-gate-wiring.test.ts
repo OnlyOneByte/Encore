@@ -1,4 +1,4 @@
-// SOURCE-SCAN wiring guard for the worker-frame validation gate in apps/core/server.ts.
+// SOURCE-SCAN wiring guard for the worker-frame validation gate in server.ts.
 //
 // WHY A SOURCE SCAN: the gate lives inside Bun.serve's `message(ws, raw)` closure. That closure is
 // not exported and only runs with a live socket + full app wiring, so it has no unit harness — the
@@ -20,7 +20,7 @@ function stripComments(src: string): string {
 }
 
 // The Bun.serve entry, named from the repo root.
-const SERVER = stripComments(read('apps/core/server.ts'));
+const SERVER = stripComments(read('server.ts'));
 
 test('server.ts imports validateWorkerMessage from worker-hub', () => {
 	expect(SERVER).toMatch(

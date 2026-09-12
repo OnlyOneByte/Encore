@@ -24,9 +24,9 @@ import { join } from 'node:path';
 import { at } from '@encore/test-support';
 import { svelteFiles, styleFiles } from '$lib/test-helpers';
 
-// Repo-root anchors. `LIB` was `join(at('apps/core/src/lib'))` and `ROUTES` was `at('apps/core/src/routes')` — both statements about where this test sat rather than about the two trees it scans.
-const LIB = at('apps/core/src/lib');
-const ROUTES = at('apps/core/src/routes');
+// Repo-root anchors. `LIB` was `join(at('src/lib'))` and `ROUTES` was `at('src/routes')` — both statements about where this test sat rather than about the two trees it scans.
+const LIB = at('src/lib');
+const ROUTES = at('src/routes');
 const VENDORED = join('components', 'ui') + '/';
 
 /**
@@ -58,7 +58,7 @@ function sources(): string[] {
 	// `src/app.css` is included DELIBERATELY: it is the shared design system and by far the likeliest
 	// home for an `@apply text-primary`, and it sits outside both LIB and ROUTES so the earlier list
 	// never read it at all.
-	const appCss = at('apps/core/src/app.css');
+	const appCss = at('src/app.css');
 	return [
 		...new Set([
 			...svelteFiles(LIB),

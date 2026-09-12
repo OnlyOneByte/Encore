@@ -148,11 +148,11 @@ function guideBranchBody(s: string): string {
 	return s.slice(open, i + 1);
 }
 
-// A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/lib/tv/TvPlayer.svelte')` — "the
+// A SIBLING READ, re-anchored explicitly. This was `at('src/lib/tv/TvPlayer.svelte')` — "the
 // component next to me" — and the component in question is the TV player whose pitch $effect part B
 // scans. `read` throws when it is missing, so a wrong path reds as a path failure rather than handing
 // the two scans below an empty string they would both pass on.
-const TV = read('apps/core/src/lib/tv/TvPlayer.svelte');
+const TV = read('src/lib/tv/TvPlayer.svelte');
 
 test('guard: the pitch effect re-applies the room level to the guide graph via setGain(effectiveGuide)', () => {
 	const body = stripComments(guideBranchBody(TV));

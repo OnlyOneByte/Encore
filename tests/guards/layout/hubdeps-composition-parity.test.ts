@@ -2,7 +2,7 @@
 // declares — a PARITY guard against HubDeps itself, not a thirteenth one-hook wiring guard.
 //
 // HubDeps (hub.ts) has 3 required fields and 12 OPTIONAL ones. Because every optional key is
-// type-legal to omit, a composition site can silently drop a hook and the whole apps/core suite stays
+// type-legal to omit, a composition site can silently drop a hook and the whole . suite stays
 // green: each hook feeds a LIVE service (onNowPlaying → app.plays, recordAdd → app.popularity,
 // onSang → app.singers, onEntryRemoved → cancelJobsForMedia, hasOp → the re-ack peek …), but
 // no test reads the composition, so none can tell a wired bag from an empty one. Measured on base:
@@ -53,15 +53,15 @@ function literalBody(src: string, openMarker: RegExp): string {
 }
 
 // The three subjects, named from the repo root rather than counted off this file's old location.
-// `join(REALTIME_DIR, '..', '..', '..', 'server.ts')` was apps/core/server.ts (the Bun.serve entry),
+// `join(REALTIME_DIR, '..', '..', '..', 'server.ts')` was server.ts (the Bun.serve entry),
 // `join(REALTIME_DIR, '..', 'app.ts')` was the server composition root, and `join(REALTIME_DIR,
 // 'hub.ts')` was a SIBLING READ — "the hub next to me" — which is the realtime hub declaring the
 // HubDeps interface this guard derives its key list FROM. That derivation is why `read`'s throw-on-
 // missing matters most for hub.ts: an empty body would yield zero OPTIONAL_KEYS and the parity check
 // would pass having compared nothing. (The sentinel below floors the key count for the same reason.)
-const SERVER = stripComments(read('apps/core/server.ts'));
-const HUB = stripComments(read('apps/core/src/lib/server/realtime/hub.ts'));
-const APP = stripComments(read('apps/core/src/lib/server/app.ts'));
+const SERVER = stripComments(read('server.ts'));
+const HUB = stripComments(read('src/lib/server/realtime/hub.ts'));
+const APP = stripComments(read('src/lib/server/app.ts'));
 
 // ── Derive the optional-hook key list from the HubDeps interface body itself ──────────────────────
 // Take the `export interface HubDeps { ... }` body and pull every optional declaration `<name>?:`.

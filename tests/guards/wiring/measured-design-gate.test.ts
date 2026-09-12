@@ -37,7 +37,7 @@ import {
 } from '../../../tests/e2e/gates/measured-design-register.mjs';
 
 // Anchored on the repo-root marker rather than `at('.')`, which
-// only meant the repo root while this file sat in apps/core/src/lib.
+// only meant the repo root while this file sat in src/lib.
 const REPO = repoRoot;
 const GATE_REL = 'tests/e2e/gates/measured-design.mjs';
 const gate = readFileSync(join(REPO, GATE_REL), 'utf8');
@@ -262,7 +262,7 @@ test('every quarantined control carries a substantive reason and a real identity
 });
 
 test('the register mirrors the tokens it measures against, so the two cannot drift apart', () => {
-	const css = readFileSync(join(REPO, 'apps/core/src/app.css'), 'utf8');
+	const css = readFileSync(join(REPO, 'src/app.css'), 'utf8');
 	// `TAP` is parsed out of this very declaration now (the register), so asserting it
 	// equals TAP compares the value to itself. What is still a real question — and the reason the
 	// register imports a separate floor — is whether the token still holds the app's commitment.

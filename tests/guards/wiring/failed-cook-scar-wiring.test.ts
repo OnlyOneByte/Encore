@@ -25,9 +25,9 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Was `at('apps/core/src/routes/+page.svelte')` — the subject was the page this guard SAT BESIDE in
-// apps/core/src/routes, so it is now named from the repo root.
-const PAGE = stripComments(read('apps/core/src/routes/+page.svelte'));
+// Was `at('src/routes/+page.svelte')` — the subject was the page this guard SAT BESIDE in
+// src/routes, so it is now named from the repo root.
+const PAGE = stripComments(read('src/routes/+page.svelte'));
 
 test('the page imports the scar helpers it wires', () => {
 	// All three must be imported — a partial import would fail typecheck, but pinning it here means the

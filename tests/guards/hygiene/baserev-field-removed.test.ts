@@ -24,10 +24,10 @@ function stripComments(src: string): string {
 
 // Anchored on the repo root marker rather than counted up from this file's own location.
 const REPO_ROOT = repoRoot;
-const OPS_PATH = at('apps', 'core', 'src', 'lib', 'contract', 'core', 'ops.ts');
-// apps/core/src — the server + client TypeScript that could read the field.
+const OPS_PATH = at('src', 'lib', 'contract', 'core', 'ops.ts');
+// src — the server + client TypeScript that could read the field.
 const CORE_SRC = appSrc;
-const CORE_ENTRY = at('apps/core/server.ts');
+const CORE_ENTRY = at('server.ts');
 
 // Slice out the `export interface ClientCommand { ... }` body via a brace-depth walk located from
 // its unique declaration, so we assert on the CONTRACT itself, not on a substring anywhere in the
@@ -71,11 +71,11 @@ function collectSources(root: string): string[] {
 		}
 	};
 	walk(root);
-	out.push(CORE_ENTRY); // the Bun.serve entry lives at apps/core/server.ts
+	out.push(CORE_ENTRY); // the Bun.serve entry lives at server.ts
 	return out;
 }
 
-test('no non-test source under apps/core references baseRev', () => {
+test('no non-test source under . references baseRev', () => {
 	const files = collectSources(CORE_SRC);
 	// Sentinel: a broken walk that finds nothing must not pass vacuously.
 	expect(files.length).toBeGreaterThan(50);

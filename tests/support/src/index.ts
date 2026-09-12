@@ -3,7 +3,7 @@
 // Subpaths also resolve (`@encore/test-support/tree`) because this package's exports map carries `"./*"`.
 // That is deliberate and it fixes a trap the repo already has: `$lib/contract`'s map carries only `"."`,
 // which is why `colour-tokens.test.ts` reaches its own registry through
-// `'../../../../apps/core/src/lib/contract/presentation/player-palette-48.json'` — a relative path that exists
+// `'../../../../src/lib/contract/presentation/player-palette-48.json'` — a relative path that exists
 // only because the subpath import does not resolve. Repeating that here would defeat the purpose of a
 // module whose job is to delete relative paths.
 

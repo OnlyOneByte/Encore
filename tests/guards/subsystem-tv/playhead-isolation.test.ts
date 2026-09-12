@@ -31,9 +31,9 @@ import { cookIsTerminal, mergeCatalog, snapshot } from '$lib/tv/catalog';
  */
 
 // Both subjects named from the repo root. `player` was a sibling read of the component this guard used
-// to sit beside in apps/core/src/lib/tv; it is the TV player, so it is named explicitly here.
-const player = read('apps/core/src/lib/tv/TvPlayer.svelte');
-const route = read('apps/core/src/routes/tv/+page.svelte');
+// to sit beside in src/lib/tv; it is the TV player, so it is named explicitly here.
+const player = read('src/lib/tv/TvPlayer.svelte');
+const route = read('src/routes/tv/+page.svelte');
 
 /** Blank comments, preserving newlines: a dependency mentioned in prose is not a reactive read. */
 function stripComments(src: string): string {

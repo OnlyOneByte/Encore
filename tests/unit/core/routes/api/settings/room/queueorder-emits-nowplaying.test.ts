@@ -12,7 +12,7 @@
 //
 // Expected next is HARD-CODED, never re-derived with the projection the code runs (the COMMON.md trap).
 import { test, expect, afterEach } from 'bun:test';
-import { PUT } from '../../../../../../../apps/core/src/routes/api/settings/room/+server';
+import { PUT } from '../../../../../../../src/routes/api/settings/room/+server';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { PlayTracker } from '$lib/server/media/plays';

@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { appSrc } from '@encore/test-support';
 import { svelteFiles, TAP, TAP_FLOOR } from '$lib/test-helpers';
 
-// `appSrc` (apps/core/src), replacing `at('apps/core/src')`. Every `join(SRC, …)` below
+// `appSrc` (src), replacing `at('src')`. Every `join(SRC, …)` below
 // is unchanged, and so is the `f.replace(SRC, 'src')` that turns an absolute hit into an offender
 // string reading `src/lib/tv/…`.
 const SRC = appSrc;

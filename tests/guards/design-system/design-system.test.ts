@@ -651,7 +651,7 @@ test('every @media width literal in source is a declared breakpoint', () => {
 	// acceptance's scope. styleFiles walks .svelte + .css (the widths live in component <style> blocks
 	// AND in app.css), and *.test.* files are excluded — the 5000px in motion.test.ts and the 380px in
 	// song-row-sparkle-sibling.test.ts are guard prose about queries, not queries.
-	const roots = [join(REPO, 'apps')].filter((d) => existsSync(d));
+	const roots = [join(REPO, 'src')].filter((d) => existsSync(d));
 	const WIDTH_RE = /@media[^{]*?\b(?:min|max)-width\s*:\s*(\d+)px/g;
 	const offences: string[] = [];
 	let literalsFound = 0;
@@ -692,7 +692,7 @@ test('the colour picker has exactly one name per shared preset colour', () => {
 	// announces `blue`.) Length parity plus the contract's name check bound the blast radius to a
 	// same-length reorder, which a human reading either file can still see.
 	const picker = readFileSync(join(SRC, 'lib/components/ColourPicker.svelte'), 'utf8');
-	const shared = readFileSync(at('apps/core/src/lib/contract/presentation/colors.ts'), 'utf8');
+	const shared = readFileSync(at('src/lib/contract/presentation/colors.ts'), 'utf8');
 
 	const names = /PRESET_NAMES\s*=\s*\[([^\]]*)\]/.exec(picker)?.[1];
 	expect(names).toBeDefined();

@@ -28,7 +28,7 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, (_m, p1) => p1 + '');
 }
 
-const TV_ROUTE = at('apps/core/src/routes/tv/+page.svelte');
+const TV_ROUTE = at('src/routes/tv/+page.svelte');
 const tvSrc = () => stripComments(readFileSync(TV_ROUTE, 'utf8'));
 
 test('the TV route constructs and opens a WsClient for role=tv', () => {

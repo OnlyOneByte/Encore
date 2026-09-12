@@ -10,7 +10,7 @@
 // back the DEFAULT (2500) and getRoom('main') becomes 5000 — both assertions below invert. Reverting
 // EITHER threaded argument (setRoom's roomId or getEffective's) reds this file.
 import { test, expect, afterEach } from 'bun:test';
-import { PUT } from '../../../../../../../apps/core/src/routes/api/settings/room/+server';
+import { PUT } from '../../../../../../../src/routes/api/settings/room/+server';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
 import { migratedDb } from '$lib/server/db/test-db';
 import { DEFAULT_ROOM_SETTINGS } from '$lib/contract';

@@ -14,7 +14,7 @@
 //
 // BASE-RED: on origin/main every key-set assertion below reports an extra `roomId`.
 import { test, expect, afterEach } from 'bun:test';
-import { GET, PATCH } from '../../../../../../apps/core/src/routes/api/me/+server';
+import { GET, PATCH } from '../../../../../../src/routes/api/me/+server';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { SingerRepository } from '$lib/server/singers/repository';
 import { PresenceTracker } from '$lib/server/realtime/presence';

@@ -15,8 +15,8 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Named explicitly: this guard used to sit in apps/core/src/lib/tv beside pitch-shift.ts.
-const src = read('apps/core/src/lib/tv/pitch-shift.ts');
+// Named explicitly: this guard used to sit in src/lib/tv beside pitch-shift.ts.
+const src = read('src/lib/tv/pitch-shift.ts');
 
 // The worklet source string spans from PITCH_WORKLET_SOURCE to its closing backtick; the module code
 // is everything before it. Split so "is X exported from the module" is not fooled by a substring that

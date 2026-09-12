@@ -28,7 +28,7 @@ function stripComments(src: string): string {
 }
 
 // Was `at('tests/e2e/probes/p5-cook-lifecycle.mjs')`, counted out
-// from this guard's old home in apps/core/src/lib/server/realtime. Named from the repo root now, and `read`
+// from this guard's old home in src/lib/server/realtime. Named from the repo root now, and `read`
 // throws on a missing probe rather than letting the literal isolation below run on an empty string.
 const PROBE_PATH = 'tests/e2e/probes/p5-cook-lifecycle.mjs';
 const PROBE = stripComments(read(PROBE_PATH));

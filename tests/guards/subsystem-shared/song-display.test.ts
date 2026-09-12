@@ -56,9 +56,9 @@ test('null / undefined media degrade to an empty title and no artist, never thro
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
-const SELF = at('apps/core/src/lib/contract/presentation/song-display.ts');
-const STATS = at('apps/core/src/routes/api/stats/+server.ts');
-const METRICS = at('apps/core/src/routes/api/metrics/+server.ts');
+const SELF = at('src/lib/contract/presentation/song-display.ts');
+const STATS = at('src/routes/api/stats/+server.ts');
+const METRICS = at('src/routes/api/metrics/+server.ts');
 
 // The loose pattern matters: song-display.ts states the rule in prose without an object prefix, so a
 // stricter `\w+\.title` would count raw == stripped there and not prove stripping works. This one

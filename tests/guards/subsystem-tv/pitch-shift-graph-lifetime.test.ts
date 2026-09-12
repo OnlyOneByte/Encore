@@ -131,10 +131,10 @@ function resetEffectBody(s: string): string {
 	return s.slice(from, i + 1);
 }
 
-// Was `at('apps/core/src/lib/tv/TvPlayer.svelte')` — the scanned component was this guard's own SIBLING
-// in apps/core/src/lib/tv (it is the file whose per-song reset effect the source-scan half pins), so it
+// Was `at('src/lib/tv/TvPlayer.svelte')` — the scanned component was this guard's own SIBLING
+// in src/lib/tv (it is the file whose per-song reset effect the source-scan half pins), so it
 // is now named in full and anchored on the repo root.
-const TV = read('apps/core/src/lib/tv/TvPlayer.svelte');
+const TV = read('src/lib/tv/TvPlayer.svelte');
 
 test('guard: the per-song reset resets the master graph via setShift(0)', () => {
 	const body = stripComments(resetEffectBody(TV));

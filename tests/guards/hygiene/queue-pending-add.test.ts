@@ -97,13 +97,13 @@ test('a pending REORDER marks its row as move — not as an add, and not as noth
 // Source-scan guards for the two call-site wirings the store test cannot exercise (they are Svelte
 // markup, not store behaviour). These red on base: base passes the dead MAX_SAFE_INTEGER comparison
 // and ProcessingCard has no pending prop at all.
-// Were `at('apps/core/src/routes/+page.svelte')` and three siblings like it, resolved from
-// apps/core/src/lib/stores. Each is now a repo-root-anchored path; `read` throws on a missing file, so
+// Were `at('src/routes/+page.svelte')` and three siblings like it, resolved from
+// src/lib/stores. Each is now a repo-root-anchored path; `read` throws on a missing file, so
 // the non-vacuity floors below cannot be satisfied by an empty read.
-const PAGE = read('apps/core/src/routes/+page.svelte');
-const ROW = read('apps/core/src/lib/components/QueueRow.svelte');
-const PROC = read('apps/core/src/lib/components/ProcessingCard.svelte');
-const GALLERY = read('apps/core/src/routes/components/+page.svelte');
+const PAGE = read('src/routes/+page.svelte');
+const ROW = read('src/lib/components/QueueRow.svelte');
+const PROC = read('src/lib/components/ProcessingCard.svelte');
+const GALLERY = read('src/routes/components/+page.svelte');
 
 test('the +page.svelte call sites gate pending on the real pending set, not the placeholder seq', () => {
 	// The dead comparison is gone entirely...

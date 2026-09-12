@@ -21,9 +21,9 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Named explicitly: this guard used to sit in apps/core/src/lib/stores beside cook-scars.ts, so
+// Named explicitly: this guard used to sit in src/lib/stores beside cook-scars.ts, so
 // "the module next to me" is no longer inferable. `read` throws if the path is wrong.
-const SRC_RAW = read('apps/core/src/lib/stores/cook-scars.ts');
+const SRC_RAW = read('src/lib/stores/cook-scars.ts');
 const SRC = stripComments(SRC_RAW);
 
 test('cook-scars.ts parses — a source scan is blind to a SyntaxError', () => {

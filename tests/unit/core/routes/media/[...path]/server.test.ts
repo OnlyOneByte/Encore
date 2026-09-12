@@ -5,7 +5,7 @@
 // real GET handler against a real ObjectMediaStore (backed by an in-memory fake S3) and assert the
 // actual status + Content-Range + partial bytes, so the object-store path is pinned to 206, not 200.
 import { test, expect, afterEach } from 'bun:test';
-import { GET } from '../../../../../../apps/core/src/routes/media/[...path]/+server';
+import { GET } from '../../../../../../src/routes/media/[...path]/+server';
 import { ObjectMediaStore, type S3Like } from '$lib/server/media/object-store';
 import type { MediaStore } from '$lib/server/media/store';
 

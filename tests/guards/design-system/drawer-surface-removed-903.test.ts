@@ -23,9 +23,9 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { appCore, appSrc } from '@encore/test-support';
 
-// Repo-root anchors, replacing `at('apps/core/src')` / `join(SRC, '..')`. They mean the same
-// two directories this guard has always walked and sliced against — apps/core/src for the source scan,
-// apps/core for the package.json read and the `rel` offender strings.
+// Repo-root anchors, replacing `at('src')` / `join(SRC, '..')`. They mean the same
+// two directories this guard has always walked and sliced against — src for the source scan,
+// . for the package.json read and the `rel` offender strings.
 const SRC = appSrc;
 const CORE = appCore;
 
@@ -42,7 +42,7 @@ function stripComments(s: string): string {
 }
 
 /**
- * Every PRODUCTION source file under apps/core/src — tests excluded, deliberately.
+ * Every PRODUCTION source file under src — tests excluded, deliberately.
  *
  * A test file is the one place the retired names SHOULD still appear: phone-home-shell-832.test.ts
  * asserts `--peek-h` is absent from the route, and non-vacuity-floors.test.ts's RETIRED map quotes
@@ -63,7 +63,7 @@ function sourceFiles(): string[] {
 			if (!/\.(svelte|ts|css)$/.test(ent.name)) continue;
 			if (/\.test\.ts$/.test(ent.name)) continue;
 			// The `abs === at('tests/guards/design-system/drawer-surface-removed-903.test.ts')` self-exclusion that sat here is gone with the move: this
-			// guard now lives under tests/, outside the apps/core/src tree it walks, so it cannot read
+			// guard now lives under tests/, outside the src tree it walks, so it cannot read
 			// itself. The `.test.ts` filter above already covered it in any case.
 			out.push(abs);
 		}
@@ -122,7 +122,7 @@ test('no live code imports, renders or reads the deleted drawer surface', () => 
 	// Non-vacuity floor (XR-VER-05): the walk must have READ a real population. An empty walk — a wrong
 	// root, a broken extension filter, a test-file exclusion that swallowed everything — reports zero
 	// offenders over zero files, which is the exact failure this arm exists to prevent. Measured, not
-	// counted by eye: 140 production .svelte/.ts/.css files under apps/core/src today, floored at 100 so
+	// counted by eye: 140 production .svelte/.ts/.css files under src today, floored at 100 so
 	// ordinary growth and deletion do not touch it but a collapsed walk reds.
 	expect(scanned).toBeGreaterThanOrEqual(100); // @nvf-floor scanned
 });

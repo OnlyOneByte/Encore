@@ -300,7 +300,7 @@ it('the same invariants hold for a library of finished songs alone: a finished-o
 // The production file under scan, named absolutely. It was reached as `join(HERE,
 // 'repository.ts')` off `dirname(fileURLToPath(import.meta.url))` — "the repository next to me",
 // which identified the MEDIA repository only while this test sat in server/media/.
-const SRC = readFileSync(at('apps/core/src/lib/server/media/repository.ts'), 'utf8');
+const SRC = readFileSync(at('src/lib/server/media/repository.ts'), 'utf8');
 
 /** Strip comments, so a docstring quoting the narrowing is never mistaken for a second one. */
 const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');

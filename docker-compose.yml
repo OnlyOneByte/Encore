@@ -15,8 +15,8 @@ services:
   core:
     <<: *hardening
     build:
-      context: . # repo root — the Dockerfile copies apps/core/src/shared + apps/core
-      dockerfile: apps/core/Dockerfile
+      context: . # repo root — the Dockerfile copies src/shared + .
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
@@ -51,13 +51,13 @@ services:
     init: true
     build:
       context: .
-      dockerfile: apps/worker/Dockerfile
+      dockerfile: worker/Dockerfile
     profiles: ["stems"] # not started in the default MVP up
     environment:
       # The ONLY two settings a deployer must get right. Everything else the worker measures about
       # itself at startup: which accelerator is present, how many cores it may actually use, how much
       # memory, and which engines are installed (and therefore which capabilities it can honestly
-      # advertise). See apps/worker/src/hardware.py and capabilities.py.
+      # advertise). See worker/src/hardware.py and capabilities.py.
       - ENCORE_CORE_WS=ws://core:3000/ws?role=worker
       # MEDIA_DIR is set by the image; the volume below is what has to agree with core's.
       #
@@ -94,7 +94,7 @@ services:
     volumes:
       # Shares the local MediaStore volume (single-box mode). The worker writes raw audio into
       # audio/ and stems into derived/ using the SAME keys the core resolves — see
-      # apps/worker/src/processor.py, which must stay byte-for-byte in step with core paths.ts.
+      # worker/src/processor.py, which must stay byte-for-byte in step with core paths.ts.
       - ${ENCORE_MEDIA_VOLUME:-./media}:/app/media
       # Model + tool cache, kept OUT of the container's writable layer so it survives `docker rm`.
       # Holds the demucs checkpoints, the RoFormer checkpoint (~700 MB, fetched on the first

@@ -14,10 +14,10 @@ import { readFileSync } from 'node:fs';
 import { TAP } from '$lib/test-helpers';
 import { at } from '@encore/test-support';
 
-// Both subjects are named absolutely. PAGE used to be `at('apps/core/src/routes/+page.svelte')`
+// Both subjects are named absolutely. PAGE used to be `at('src/routes/+page.svelte')`
 // — "the page next to me", which identified the phone home page only while this test sat in routes/.
-const PAGE = at('apps/core/src/routes/+page.svelte');
-const SONNER = at('apps/core/src/lib/components/ui/sonner/sonner.svelte');
+const PAGE = at('src/routes/+page.svelte');
+const SONNER = at('src/lib/components/ui/sonner/sonner.svelte');
 
 /** Body of the first `<style>`-scoped rule whose selector matches `sel`. */
 function ruleBody(src: string, sel: string): string | null {

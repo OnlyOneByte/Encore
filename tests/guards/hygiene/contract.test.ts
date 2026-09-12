@@ -18,7 +18,7 @@ import { appCore, appE2e } from '@encore/test-support';
 import { HOOKS, PRESET_COLOUR_NAMES, SEL } from '../../../tests/e2e/contract';
 import { classPresent, svelteFiles } from '$lib/test-helpers';
 
-// apps/core and tests/e2e, anchored at the repo root. `E2E` is what this guard's own location used
+// . and tests/e2e, anchored at the repo root. `E2E` is what this guard's own location used
 // to supply as `at('tests/e2e')`: the e2e directory holding the drivers, party.mjs and probes/.
 const CORE = appCore;
 const E2E = appE2e;
@@ -144,14 +144,14 @@ test('the contract exposes a hook for each surface the flow has to reach', () =>
  * whole suite green, 7 pass 0 fail, while a real capture run would have failed on step one. HOOKS and
  * SEL are two hand-kept copies of the same truth, and only one was ever checked.
  *
- * This resolves EVERY concrete SEL selector against the whole apps/core/src source tree, so a
+ * This resolves EVERY concrete SEL selector against the whole src source tree, so a
  * selector aimed at a class or attribute that no longer exists fails HERE, in `bun test`, instead of
  * silently in a browser run nobody triggers. It reads SEL directly — not HOOKS — precisely because
  * SEL is the thing that rotted unwatched.
  */
 
 /*
- * Every .svelte source file under apps/core/src — the whole surface the flow can drive — comes from
+ * Every .svelte source file under src — the whole surface the flow can drive — comes from
  * `svelteFiles` in ../src/lib/test-helpers (XR-VER-14). This file used to carry a local walker
  * that was a VERBATIM copy of it under a different name, so the two could disagree about what the
  * flow's surface even is while the design guards under src/lib kept the other answer.
@@ -324,7 +324,7 @@ test('every SEL selector resolves to an anchor in the source (the guard, non-vac
 	// produces AND what a guard reading nothing produces. Over a NARROWED walk — a moved directory, a
 	// copy-in path the walk misses — the surviving files can still carry every SEL anchor while whole
 	// surfaces go unexamined, and nothing says so. The walk finds 27 `.svelte` files under
-	// apps/core/src today. A firing floor is a FINDING: restore the walk's scope, never lower the
+	// src today. A firing floor is a FINDING: restore the walk's scope, never lower the
 	// number (XR-VER-06).
 	expect(sources.length).toBeGreaterThanOrEqual(20); // @nvf-floor sources.length
 

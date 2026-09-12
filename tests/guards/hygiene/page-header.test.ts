@@ -22,10 +22,10 @@ import { at } from '@encore/test-support';
  */
 
 // Anchored on the repo root, not on this file's own location: the old form was
-// `at('apps/core/src/routes')`, which meant apps/core/src/routes only while this guard
-// sat in apps/core/src/lib/ui. A wrong walk root is the SILENT failure this whole tree exists to close —
+// `at('src/routes')`, which meant src/routes only while this guard
+// sat in src/lib/ui. A wrong walk root is the SILENT failure this whole tree exists to close —
 // the floor in `routePages()` below is the backstop, but the anchor is the fix.
-const SRC = at('apps/core/src/routes');
+const SRC = at('src/routes');
 
 // Routes that are their own thing. Each entry states WHY, so an addition is a decision, not a drive-by.
 const EXEMPT: Record<string, string> = {

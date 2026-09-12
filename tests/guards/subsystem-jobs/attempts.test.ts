@@ -283,10 +283,10 @@ const stripComments = (src: string): string => {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 };
-// The source under scan, named absolutely: this was `at('apps/core/src/lib/server/jobs/attempts.ts')`
+// The source under scan, named absolutely: this was `at('src/lib/server/jobs/attempts.ts')`
 // — "the module next to me", which identified the attempt ledger only while this test sat in
 // server/jobs/.
-const SRC = stripComments(readFileSync(at('apps/core/src/lib/server/jobs/attempts.ts'), 'utf8'));
+const SRC = stripComments(readFileSync(at('src/lib/server/jobs/attempts.ts'), 'utf8'));
 
 it('the removed row-count window stays removed: attempts.ts exposes no `allFinished` method outside comments', () => {
 	expect(SRC).not.toMatch(/\ballFinished\b/);

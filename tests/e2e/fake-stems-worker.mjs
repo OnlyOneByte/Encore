@@ -178,7 +178,7 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 			// and — inside `words` — `word`. An earlier version of this file wrote `startSec`, `endSec`
 			// and `text`, which parsed to an empty reel: no active word ever appeared, and a probe read
 			// that as the overlay being broken when the app was fine and the FIXTURE was wrong. Keep
-			// these names identical to what apps/worker publishes.
+			// these names identical to what worker publishes.
 			const words = ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
 			const lines = words.map((w, i) => ({
 				start: i * 0.8,

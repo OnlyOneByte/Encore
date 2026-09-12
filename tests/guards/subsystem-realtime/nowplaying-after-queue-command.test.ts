@@ -4,7 +4,7 @@
 // preload slot all read (routes/tv/+page.svelte: `applyNowPlaying` is its only writer). It had exactly
 // two BROADCAST producers, both playback transitions in player.ts — `reconcileOnReady` and
 // `handlePlayerCommand`. A QUEUE mutation produced none: `handleQueueCommand` publishes `queue:patch`
-// alone (hub.ts), and apps/core/server.ts's `queue:command` arm only called `reconcileOnReady` when the
+// alone (hub.ts), and server.ts's `queue:command` arm only called `reconcileOnReady` when the
 // current entry no longer RESOLVED — i.e. only when the room was idle or the playing entry had been
 // pruned.
 //
@@ -17,7 +17,7 @@
 // invariant "the advertised next equals the true next" was maintained across every PLAYBACK transition
 // and across none of the QUEUE transitions.
 //
-// The fix is the `else emitNowPlaying(deps)` on that gate in apps/core/server.ts — the branch the `if`
+// The fix is the `else emitNowPlaying(deps)` on that gate in server.ts — the branch the `if`
 // deliberately excludes, which is exactly the reported window (a song IS playing, so no recovery is
 // due). Two halves are needed to pin it, and both are here:
 //
@@ -28,7 +28,7 @@
 //     the Bun.serve entry and has no unit harness (telemetry-frame-lean.test.ts:15). Taken alone this
 //     half is vacuous with respect to the production line, which is why half 2 exists.
 //  2. SOURCE SCAN (bottom): pin the `else emitNowPlaying(deps)` and its import on the live writer,
-//     apps/core/server.ts. server.ts contains no `emitNowPlaying` on base, so this half is RED on base
+//     server.ts. server.ts contains no `emitNowPlaying` on base, so this half is RED on base
 //     and it is what makes the production hunks mutation-proven. Same technique as
 //     dangling-current-entry.test.ts (the recovery gate on this very line) and
 //     session-cookie-attributes.test.ts.
@@ -209,8 +209,8 @@ test('without the else, a mid-song queue mutation leaves the advertised next nam
 	expect(advertisedUpNextId(published)).toBeNull();
 });
 
-// ── SOURCE-SCAN GUARD for the production line (apps/core/server.ts) ───────────────────────────────
-// apps/core/server.ts is the Bun.serve entry: no unit harness, so the behavioural half above drives a
+// ── SOURCE-SCAN GUARD for the production line (server.ts) ───────────────────────────────
+// server.ts is the Bun.serve entry: no unit harness, so the behavioural half above drives a
 // MIRROR of its composition and cannot tell whether production actually re-emits. Comments are
 // blanked first so a commented-out call cannot satisfy it (the explanatory comment beside the fix
 // names the call, so this is load-bearing here, not boilerplate).
@@ -231,10 +231,10 @@ function stripComments(src: string): string {
 }
 
 // Anchored on the repo root. `player.ts` was a SIBLING READ — this guard used to live in
-// apps/core/src/lib/server/realtime/, so `at('apps/core/src/lib/server/realtime/player.ts')` meant "the player module next
+// src/lib/server/realtime/, so `at('src/lib/server/realtime/player.ts')` meant "the player module next
 // to me"; both subjects are named explicitly now and were confirmed present before re-anchoring.
-const SERVER = stripComments(read('apps/core/server.ts'));
-const PLAYER = stripComments(read('apps/core/src/lib/server/realtime/player.ts'));
+const SERVER = stripComments(read('server.ts'));
+const PLAYER = stripComments(read('src/lib/server/realtime/player.ts'));
 
 test('server.ts re-emits nowplaying after a queue:command that did NOT need recovery', () => {
 	// Non-vacuous: the seam this property hangs on must still be here. If the queue:command arm is

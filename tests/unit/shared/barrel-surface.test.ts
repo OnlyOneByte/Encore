@@ -1,4 +1,4 @@
-// — apps/core/src/lib/contract/src is grouped into domain subdirectories (core/, queue/, lyrics/, cook/,
+// — src/lib/contract/src is grouped into domain subdirectories (core/, queue/, lyrics/, cook/,
 // presentation/), and `index.ts` re-exports each so `$lib/contract` import paths never move. THIS TEST
 // IS THE CONTRACT that the move preserved: the barrel's exported-name set is frozen here. A future move
 // that drops a re-export line, points it at the wrong subdir, or renames a symbol changes this set and

@@ -36,7 +36,7 @@ import { appSrc } from '@encore/test-support';
  * A naive grep over the bundle reports it resolved and misses the defect.
  */
 
-// `appSrc` (apps/core/src), the repo-root anchor, rather than `at('apps/core/src')` — which
+// `appSrc` (src), the repo-root anchor, rather than `at('src')` — which
 // was a statement about where this TEST lived embedded in a statement about where the SOURCE lived.
 // Every `join(SRC, …)` below is unchanged, and so is the `SRC.length + 1` slicing that turns an
 // absolute hit into a `lib/…` / `routes/…` offender string.
@@ -104,7 +104,7 @@ const PRE_EXISTING: Record<string, string> = {
 	'reselect-paste': 'LyricsReselect.svelte — paste affordance, no rule on main',
 	meta: 'tv/JoinBadge.svelte — the TV badge lays out by its own grid; this token adds nothing on main either'
 	// `stub-controls` was here, justified by phone-home-832.harness.svelte. That harness moved out of
-	// apps/core/src with its test, so the token is no longer in this scan's population and the entry had to
+	// src with its test, so the token is no longer in this scan's population and the entry had to
 	// go — which the both-directions arm below detected and refused to let pass. If a harness ever returns
 	// to the app tree, its entry returns with it.
 };

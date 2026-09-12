@@ -57,7 +57,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.SCRATCH ?? join(process.env.KIROCREW_SCRATCH ?? '/tmp', `e2e-${PORT}`);
 const MEDIA_DIR = join(SCRATCH, 'media');
 const SHOTS_DIR = join(SCRATCH, 'shots');
-const REPO = resolve(new URL('../..', import.meta.url).pathname); // apps/core
+const REPO = resolve(new URL('../..', import.meta.url).pathname); // .
 
 // ── finding recorder ───────────────────────────────────────────────────────
 /** @type {Finding[]} */
@@ -451,7 +451,7 @@ async function main() {
 	let addedAt = Date.now();
 	/** @param {string} mediaId @returns {string} */
 	function queueEntry(mediaId) {
-		// A full QueueEntry (apps/core/src/lib/contract/core/types.ts:185): id + mediaId + singerId + status +
+		// A full QueueEntry (src/lib/contract/core/types.ts:185): id + mediaId + singerId + status +
 		// rotationSeq + addedAt. Missing addedAt trips the queue_entries.added_at NOT NULL
 		// constraint on flush, taking the whole process down — the state store applies queue ops
 		// synchronously, so the persistence exception unwinds through the WS handler and crashes
@@ -852,7 +852,7 @@ async function main() {
 		}
 	}
 
-	// fake-separator/e2e-tone is not in the whitelist (apps/core/src/lib/contract/lyrics/separators.ts), so
+	// fake-separator/e2e-tone is not in the whitelist (src/lib/contract/lyrics/separators.ts), so
 	// separatorCost() must return undefined → declared=undefined, ratioToDeclared=null. The API must
 	// still ship the row so the operator sees a measurement was taken.
 	{
@@ -870,7 +870,7 @@ async function main() {
 				'fake-separator/e2e-tone declared cost was fabricated — not in the whitelist',
 				`declared=${JSON.stringify(fake.declared)}. separatorCost() should return undefined for this pair.`,
 				[
-					'apps/core/src/lib/contract/lyrics/separators.ts:227-230 — separatorCost returns undefined for a pair not in the engine list'
+					'src/lib/contract/lyrics/separators.ts:227-230 — separatorCost returns undefined for a pair not in the engine list'
 				]
 			);
 		} else if (fake.ratioToDeclared !== null) {
@@ -892,7 +892,7 @@ async function main() {
 				'cost-per-model degrades correctly when the model has no declared rtFactor',
 				`observed fake-separator/e2e-tone: n=${fake.n}, meanRtFactor=${fake.meanRtFactor.toFixed(4)}×, declared=undefined, ratioToDeclared=null — the /metrics table renders "—" in the benchmark and vs columns for this row, which is the documented degradation`,
 				[
-					'apps/core/src/lib/contract/lyrics/separators.ts:227-230 — separatorCost undefined for an unknown pair',
+					'src/lib/contract/lyrics/separators.ts:227-230 — separatorCost undefined for an unknown pair',
 					'src/routes/metrics/+page.svelte:172-176 — "—" for a null declared, "—" for a null ratioToDeclared'
 				]
 			);
@@ -1021,7 +1021,7 @@ async function main() {
 				);
 			} else if (!leaksInternalPercentiles && !leaksStepInTables && leaksStageInBar) {
 				// The fake worker emits stages "separate"/"align" (short) while the real Python worker's
-				// vocabulary is Stage.SEPARATING/ALIGNING (long, per apps/worker/src/vocabulary.py:48).
+				// vocabulary is Stage.SEPARATING/ALIGNING (long, per worker/src/vocabulary.py:48).
 				// STAGE_LABELS is designed against the long names, so this leak is a HARNESS artefact
 				// rather than a real UI defect — a genuine cook feeds the map correctly. Flagged at LOW
 				// as an environment note so the operator eyeballing the screenshot knows why the bars
@@ -1029,11 +1029,11 @@ async function main() {
 				record(
 					'LOW',
 					'"Where the time goes" bar labels read "separate"/"align" — harness artefact, not a UI defect',
-					`the fake-stems-worker emits short stage tokens in its job:complete stages array, while the real Python worker uses the long forms (apps/worker/src/vocabulary.py:48). STAGE_LABELS is keyed on the long forms, so a real cook renders "removing vocals" / "timing lyrics" as intended. The leak in this probe's screenshots is expected.`,
+					`the fake-stems-worker emits short stage tokens in its job:complete stages array, while the real Python worker uses the long forms (worker/src/vocabulary.py:48). STAGE_LABELS is keyed on the long forms, so a real cook renders "removing vocals" / "timing lyrics" as intended. The leak in this probe's screenshots is expected.`,
 					[
 						`observed rollup: /api/metrics.stages = ${JSON.stringify(metrics.stages)}`,
 						'src/lib/metrics-format.ts:52-56 — STAGE_LABELS: downloading / separating / aligning',
-						'apps/worker/src/vocabulary.py:48-50 — Stage.SEPARATING="separating", Stage.ALIGNING="aligning"',
+						'worker/src/vocabulary.py:48-50 — Stage.SEPARATING="separating", Stage.ALIGNING="aligning"',
 						'tests/e2e/fake-stems-worker.mjs — emits short "separate"/"align" tokens; harness-only'
 					]
 				);

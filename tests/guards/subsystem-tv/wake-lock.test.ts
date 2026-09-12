@@ -17,8 +17,8 @@
 //
 // WHY A SOURCE SCAN (not a mount). The mount rung landed a happy-dom + Svelte-loader harness that CAN mount leaf
 // components (it stubs navigator.AudioContext and still reds on real defects), and a follow-up aliased the
-// `$app`/`$env` virtual modules, so apps/core/src/routes/tv/+page.svelte now IMPORTS fine under the
-// harness — pinned by apps/core/src/lib/mount-rung.test.ts. Two things still stand between that import
+// `$app`/`$env` virtual modules, so src/routes/tv/+page.svelte now IMPORTS fine under the
+// harness — pinned by src/lib/mount-rung.test.ts. Two things still stand between that import
 // and a mount of THIS route, and neither is in this file's scope: the component destructures a `data`
 // prop supplied by +page.server.ts's load (mounting it means constructing that payload), and it reads
 // `el.offsetHeight` for the card band, which THROWS on the mount rung — that follow-up made all six geometry
@@ -42,7 +42,7 @@ function stripComments(src: string): string {
 }
 
 // The /tv route, named from the repo root so this guard's own location cannot move it.
-const TV_ROUTE = 'apps/core/src/routes/tv/+page.svelte';
+const TV_ROUTE = 'src/routes/tv/+page.svelte';
 
 function tvSource(): string {
 	return stripComments(read(TV_ROUTE));

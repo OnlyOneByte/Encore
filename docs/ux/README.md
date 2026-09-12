@@ -83,8 +83,8 @@ Self-contained HTML using the real tokens, in the **workspace, not the repo** â€
 `tests/e2e/capture.mjs` and documents that nothing else belongs there.
 
 Two of those files are now **exceptions**: the 48-stop player palette's generator and its registry
-moved into the repo as `apps/core/src/lib/contract/scripts/_player_palette.py` and
-`apps/core/src/lib/contract/presentation/player-palette-48.json`, because `XR-COL-01`/`XR-COL-02` require the
+moved into the repo as `src/lib/contract/scripts/_player_palette.py` and
+`src/lib/contract/presentation/player-palette-48.json`, because `XR-COL-01`/`XR-COL-02` require the
 registry to be tracked and its regeneration to be checkable. The HTML mockups stay in the workspace.
 
 `tv-chosen.html` is the decided TV design (split-panel attract, full roster lobby, full-screen

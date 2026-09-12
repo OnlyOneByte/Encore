@@ -278,7 +278,7 @@ test('deleting a song with NO queue entries publishes no queue:patch (F3)', () =
 // Reads the real production file (not a fixture) and scans only the function BODY, so the docstrings
 // above it — which quote `m.lyricsRef` while explaining the defect — cannot satisfy or trip it.
 test('derivedRefsFor delegates the stored-ref enumeration instead of keeping a rival copy (F2)', () => {
-	const src = read('apps/core/src/lib/server/media/delete.ts');
+	const src = read('src/lib/server/media/delete.ts');
 	const start = src.indexOf('function derivedRefsFor');
 	expect(start).toBeGreaterThan(-1);
 	const body = src.slice(start, src.indexOf('\n}\n', start));

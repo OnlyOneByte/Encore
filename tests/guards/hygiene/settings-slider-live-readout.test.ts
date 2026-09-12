@@ -15,10 +15,10 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/routes/settings/, so
-// `at('apps/core/src/routes/settings/+page.svelte')` meant "the settings route next to me" — a subject nothing can
+// SIBLING READ, now named explicitly. This guard used to live in src/routes/settings/, so
+// `at('src/routes/settings/+page.svelte')` meant "the settings route next to me" — a subject nothing can
 // infer from tests/. Confirmed present at this path before re-anchoring.
-const PAGE = 'apps/core/src/routes/settings/+page.svelte';
+const PAGE = 'src/routes/settings/+page.svelte';
 
 // Blank /* */, <!-- -->, and // line comments, preserving newlines so line-based reasoning holds and a
 // commented-out oninput does NOT count as wired. Deliberately does not touch string contents; the

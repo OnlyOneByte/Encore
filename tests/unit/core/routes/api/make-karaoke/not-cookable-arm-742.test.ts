@@ -11,7 +11,7 @@
 // state through a chain of `if (state === …)` comparisons — a new member type-checks perfectly while
 // the route keeps falling through. Only a test can hold this arm in place.
 import { test, expect, afterEach } from 'bun:test';
-import { POST } from '../../../../../../apps/core/src/routes/api/make-karaoke/+server';
+import { POST } from '../../../../../../src/routes/api/make-karaoke/+server';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { migratedDb } from '$lib/server/db/test-db';

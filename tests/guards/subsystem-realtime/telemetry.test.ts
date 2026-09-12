@@ -232,9 +232,9 @@ test('the TV wires sendTelemetry through the pure telemetryFrame(status, current
 	// reverting the client hunk would break: sendTelemetry must delegate to telemetryFrame passing
 	// the live `current` (not a hardcoded/undefined id) and must not resurrect the ended-only form.
 	// The route named explicitly: the old form was
-	// `at('apps/core/src/routes/tv/+page.svelte')`, which only meant this file
-	// while the test sat in apps/core/src/lib/server/realtime. `read` throws on a wrong path.
-	const src = read('apps/core/src/routes/tv/+page.svelte');
+	// `at('src/routes/tv/+page.svelte')`, which only meant this file
+	// while the test sat in src/lib/server/realtime. `read` throws on a wrong path.
+	const src = read('src/routes/tv/+page.svelte');
 	const body = src.split('function sendTelemetry(')[1]?.split('\n\t}')[0] ?? '';
 	expect(body).toContain('telemetryFrame(status, current'); // delegates, passing the live current
 	expect(body).not.toContain("status === 'ended' ?"); // the ended-only form is the stale-frame bug

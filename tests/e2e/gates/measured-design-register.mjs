@@ -2,7 +2,7 @@
  * THE CONTROL REGISTER AND THE MEASURED NUMBERS — data only, no driving.
  *
  * Split out of `measured-design.mjs` so two different readers can use it: the gate itself, which
- * measures against it, and `apps/core/src/lib/measured-design-gate.test.ts`, which runs inside
+ * measures against it, and `src/lib/measured-design-gate.test.ts`, which runs inside
  * `bun test` on every box and asserts this register is non-vacuous, that every quarantine entry
  * carries a substantive reason, and that the gate is actually wired into the gate list. A register
  * that only the gate can read is a register nobody checks when the gate does not run.
@@ -36,7 +36,7 @@ import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 // The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
 // and the runner agree on the root. Was `join(import.meta.dirname, …)`, which encoded this file's distance
-// from `apps/core` and broke the moment the e2e tree moved under `tests/`.
+// from `.` and broke the moment the e2e tree moved under `tests/`.
 const REPO_ROOT = (() => {
 	let dir = import.meta.dirname;
 	for (let i = 0; i < 10; i += 1) {
@@ -65,7 +65,7 @@ export const TAP_FLOOR = 44;
 export const TAP = readTapToken();
 
 function readTapToken() {
-	const css = readFileSync(join(REPO_ROOT, 'apps', 'core', 'src', 'app.css'), 'utf8');
+	const css = readFileSync(join(REPO_ROOT, 'src', 'app.css'), 'utf8');
 	const m = css.match(/--tap:\s*([0-9.]+)px\s*;/);
 	if (!m) throw new Error('app.css declares no `--tap: <n>px` token — the measured gate has no floor to read');
 	const tap = Number(m[1]);

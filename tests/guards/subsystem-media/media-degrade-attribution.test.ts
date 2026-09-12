@@ -22,10 +22,10 @@ function stripComments(src: string): string {
 		.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
-// Both subjects named explicitly. The old form read `at('apps/core/src/lib/server/media')` as the media directory, which was
-// only true while this guard sat in apps/core/src/lib/server/media. `read` throws on a wrong path.
-const SPOTIFY = stripComments(read('apps/core/src/lib/server/media/spotify.ts'));
-const THUMBS = stripComments(read('apps/core/src/lib/server/media/thumbs.ts'));
+// Both subjects named explicitly. The old form read `at('src/lib/server/media')` as the media directory, which was
+// only true while this guard sat in src/lib/server/media. `read` throws on a wrong path.
+const SPOTIFY = stripComments(read('src/lib/server/media/spotify.ts'));
+const THUMBS = stripComments(read('src/lib/server/media/thumbs.ts'));
 
 /**
  * Slice one function body out by brace balance, so a match cannot come from a neighbour. Skips the

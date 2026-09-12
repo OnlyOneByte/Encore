@@ -38,8 +38,8 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { appSrc, at } from '@encore/test-support';
 
-// `at('apps/core/src/lib/components/ui')`, replacing `at('apps/core/src/lib/components/ui')`.
-const UI = at('apps/core/src/lib/components/ui');
+// `at('src/lib/components/ui')`, replacing `at('src/lib/components/ui')`.
+const UI = at('src/lib/components/ui');
 /*
  * The APP side is in scope too, and leaving it out let a real defect ship.
  *
@@ -52,9 +52,9 @@ const UI = at('apps/core/src/lib/components/ui');
  * to a component must be reached the same two ways as in `ui/` — `:global()`, or a plain element here.
  */
 // The same two roots as before, named from the repo root instead of counted from this file:
-// `at('apps/core/src/lib/components')` was apps/core/src/lib/components, and
-// `at('apps/core/src/routes')` was apps/core/src/routes.
-const APP = [at('apps/core/src/lib/components'), at('apps/core/src/routes')];
+// `at('src/lib/components')` was src/lib/components, and
+// `at('src/routes')` was src/routes.
+const APP = [at('src/lib/components'), at('src/routes')];
 
 function svelteFiles(dir: string): string[] {
 	const out: string[] = [];
@@ -381,7 +381,7 @@ test('every data-slot styled via :global is emitted by markup in this tree', () 
 	// The emitter can be ANY component in the app, not only one in ui/: a compound component's parts
 	// style each other's slots, and a page may spell one itself.
 	const emitted = new Set<string>();
-	// `appSrc` (apps/core/src), replacing `at('apps/core/src')` — the whole app tree, because a
+	// `appSrc` (src), replacing `at('src')` — the whole app tree, because a
 	// styled slot's emitter can be any component or page, not only one under ui/.
 	for (const f of svelteFiles(appSrc)) {
 		const markup = markupOnly(readFileSync(f, 'utf8'));

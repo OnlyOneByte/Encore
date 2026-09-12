@@ -1,6 +1,6 @@
 // Wire-tests for the two optional HubDeps hooks that funnel core session state into the media
 // trackers: `onNowPlaying` (play tracking) and `recordAdd` (popularity shortcuts). Both are wired
-// in production at apps/core/server.ts (onNowPlaying: server.ts, recordAdd: server.ts), but until
+// in production at server.ts (onNowPlaying: server.ts, recordAdd: server.ts), but until
 // this file NO test supplied either through HubDeps — the tracker methods were exercised directly
 // (plays.test.ts calls tracker.onNowPlaying(...), popularity.test.ts calls p.recordAdd(...)),
 // leaving the one line that FEEDS each tracker unasserted. Each hook could be turned into a no-op
@@ -45,7 +45,7 @@ const entry = (id: string, singerId: string, addedAt: number, mediaId = 'm1'): Q
 });
 
 /**
- * The same wiring apps/core/server.ts builds for a client socket, so these drive the ACTUAL seam
+ * The same wiring server.ts builds for a client socket, so these drive the ACTUAL seam
  * rather than a mock of it. `plays`/`popularity` are the REAL trackers; `onNowPlaying`/`recordAdd`
  * point at them exactly as server.ts wires app.plays.onNowPlaying / app.popularity.recordAdd.
  */
@@ -87,8 +87,8 @@ const add = (entryId: string, mediaId: string, clientOpId: string): ClientComman
 	op: { op: 'add', entry: entry(entryId, 'ana', Number(clientOpId) || 1, mediaId) }
 });
 
-// ── Site A: play tracking (apps/core/server.ts onNowPlaying → app.plays.onNowPlaying, fed at
-//    apps/core/src/lib/server/realtime/player.ts emitNowPlaying) ──
+// ── Site A: play tracking (server.ts onNowPlaying → app.plays.onNowPlaying, fed at
+//    src/lib/server/realtime/player.ts emitNowPlaying) ──
 
 test('play tracking: starting a song feeds the current entry through HubDeps.onNowPlaying', () => {
 	const h = harness();
@@ -115,8 +115,8 @@ test('play tracking: advancing to the next song feeds the new entry, and only ge
 	expect(h.plays.lastCountedEntryId()).toBe('q2');
 });
 
-// ── Site B: popularity shortcuts (apps/core/server.ts recordAdd → app.popularity.recordAdd, fed at
-//    apps/core/src/lib/server/realtime/hub.ts handleQueueCommand add path) ──
+// ── Site B: popularity shortcuts (server.ts recordAdd → app.popularity.recordAdd, fed at
+//    src/lib/server/realtime/hub.ts handleQueueCommand add path) ──
 
 test('popularity: an accepted queue-add feeds the media id through HubDeps.recordAdd', () => {
 	const h = harness();

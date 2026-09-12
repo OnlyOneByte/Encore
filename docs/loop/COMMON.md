@@ -63,7 +63,7 @@ the only safety net the repo has.
 
 ```bash
 bun test                                # expect 0 fail
-cd apps/worker && python3 -m pytest -q  # expect 0 fail
+cd worker && python3 -m pytest -q  # expect 0 fail
 bun run build                           # expect exit 0
 bun run typecheck                       # expect exit 0, 0 errors, 0 warnings
 bun run gate:measured                   # expect exit 0 — the layout rung, AFTER build

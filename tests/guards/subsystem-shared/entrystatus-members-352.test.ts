@@ -15,8 +15,8 @@ const stripComments = (s: string): string =>
 		.replace(/\/\*[\s\S]*?\*\//g, '') // block comments
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1'); // line comments (avoid eating http://)
 
-// `readSrc` was `readFileSync(at('apps/core/src/lib/contract/queue'))`, so all four subjects were spelled as
-// offsets from this file's old home in apps/core/src/lib/contract/queue — including a `../../../../apps/core`
+// `readSrc` was `readFileSync(at('src/lib/contract/queue'))`, so all four subjects were spelled as
+// offsets from this file's old home in src/lib/contract/queue — including a `../../../../.`
 // climb out of the package entirely. They are named from the repo root now, and `read` throws when one
 // is missing: load-bearing here, because every REMOVED-member assertion is an ABSENCE check that an
 // empty read would satisfy while proving nothing.
@@ -26,7 +26,7 @@ const REMOVED = ["'waiting'", "'skipped'"] as const;
 const LIVE = ["'queued'", "'playing'", "'done'"] as const;
 
 test('the EntryStatus union in types.ts holds exactly queued/playing/done', () => {
-	const src = stripComments(readSrc('apps/core/src/lib/contract/core/types.ts'));
+	const src = stripComments(readSrc('src/lib/contract/core/types.ts'));
 	const m = src.match(/export type EntryStatus =[^;]*;/);
 	expect(m).not.toBeNull(); // not-vacuous: the declaration must exist
 	const decl = m![0];
@@ -35,8 +35,8 @@ test('the EntryStatus union in types.ts holds exactly queued/playing/done', () =
 });
 
 test('the drizzle queue_entries.status enum mirrors exactly queued/playing/done', () => {
-	// schema.ts lives in apps/core, named from the repo root (was a four-level `../../../../` climb).
-	const src = stripComments(readSrc('apps/core/src/lib/server/db/schema.ts'));
+	// schema.ts lives in ., named from the repo root (was a four-level `../../../../` climb).
+	const src = stripComments(readSrc('src/lib/server/db/schema.ts'));
 	// isolate the status column's own enum:[...] array, not any other enum in the file.
 	const m = src.match(/status:\s*text\('status',\s*\{\s*enum:\s*\[([^\]]*)\]/);
 	expect(m).not.toBeNull(); // not-vacuous
@@ -46,9 +46,9 @@ test('the drizzle queue_entries.status enum mirrors exactly queued/playing/done'
 });
 
 test('the two isTerminal predicates carry no dead "skipped" arm', () => {
-	// The shared canonical predicate. A SIBLING READ before the move — `./rotation.ts`, "the rotation\n	// next to me" — which is apps/core/src/lib/contract/queue/rotation.ts, the queue module that exports the one
+	// The shared canonical predicate. A SIBLING READ before the move — `./rotation.ts`, "the rotation\n	// next to me" — which is src/lib/contract/queue/rotation.ts, the queue module that exports the one
 	// canonical isTerminal. Named explicitly now, since nothing can infer it from tests/guards/.
-	const rot = stripComments(readSrc('apps/core/src/lib/contract/queue/rotation.ts'));
+	const rot = stripComments(readSrc('src/lib/contract/queue/rotation.ts'));
 	const rm = rot.match(/export function isTerminal\([^)]*\)[^{]*\{([^}]*)\}/);
 	expect(rm).not.toBeNull(); // not-vacuous
 	const body = rm![1];
@@ -56,7 +56,7 @@ test('the two isTerminal predicates carry no dead "skipped" arm', () => {
 	expect(body).not.toContain("'skipped'");
 
 	// leave.ts must NOT re-introduce a hand-duplicated local copy — it imports the shared one.
-	const leave = stripComments(readSrc('apps/core/src/lib/server/singers/leave.ts'));
+	const leave = stripComments(readSrc('src/lib/server/singers/leave.ts'));
 	expect(leave).toMatch(/import\s*\{[^}]*\bisTerminal\b[^}]*\}\s*from\s*'\$lib\/contract'/); // uses the shared predicate
 	expect(leave).not.toMatch(/const isTerminal\s*=/); // no local re-definition
 });

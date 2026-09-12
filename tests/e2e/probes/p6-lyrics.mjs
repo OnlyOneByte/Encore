@@ -413,9 +413,9 @@ try {
 		fixtureShapeMatchesParser
 			? ''
 			: `tests/e2e/fake-stems-worker.mjs:196-207 writes {startSec,endSec,text} but ` +
-					`apps/core/src/lib/tv/lyrics.ts:31-51 reads {start,end,word}. ` +
+					`src/lib/tv/lyrics.ts:31-51 reads {start,end,word}. ` +
 					`Every word entry is dropped by parseLyricsDoc; line bounds resolve to null; ` +
-					`activeLineIndex returns 0 forever. Real Python worker (apps/worker/src/lyrics/artifact.py:6-7) ` +
+					`activeLineIndex returns 0 forever. Real Python worker (worker/src/lyrics/artifact.py:6-7) ` +
 					`writes the correct shape — this is a FIXTURE bug in the e2e harness, not an overlay defect.`
 	);
 
@@ -503,7 +503,7 @@ try {
 
 	// ── Override the artifact file with the CORRECT shape, so we can measure real
 	// tracking behavior of the overlay itself. Field names {start,end,word} match the
-	// real Python worker at apps/worker/src/lyrics/artifact.py.
+	// real Python worker at worker/src/lyrics/artifact.py.
 	if (!cooked.row.lyricsRef) throw new Error('cooked song has no lyricsRef');
 	const lyricsPath = join(MEDIA_DIR, cooked.row.lyricsRef);
 	const correctedDoc = {
@@ -664,7 +664,7 @@ try {
 	console.log('  reel geometry:', JSON.stringify(geom));
 
 	// TVs at 1080p are read from ~10 feet away — the app's own type scale
-	// (apps/core/src/app.css --tv-lyric) sits in the 60-90px range. Anything below
+	// (src/app.css --tv-lyric) sits in the 60-90px range. Anything below
 	// 40px would be unreadable from a couch.
 	const sizeOk = !!geom && geom.currentTextPx >= 40;
 	record(
@@ -718,7 +718,7 @@ try {
 	}))()`);
 	console.log('  provenance state:', JSON.stringify(provState));
 	// This is a LEGIT env limit rather than a real defect: real ASR workers (whisperx.py
-	// via apps/worker/src/lyrics/artifact.py) also pass candidates alongside the uri, so
+	// via worker/src/lyrics/artifact.py) also pass candidates alongside the uri, so
 	// the label DOES appear in a real cook. The fake worker exposes the surface — the
 	// probe therefore records the finding but classifies it as MEDIUM/env-limit.
 	const provOk = provState.asrLabel === 'Auto-transcribed' && provState.unverified;
@@ -733,7 +733,7 @@ try {
 					`ROOT CAUSE (env limit): fake-stems-worker.mjs align branch does not send ` +
 					`artifacts.lyrics.candidates; worker-hub.ts:245 calls setMediaLyrics without candidates; ` +
 					`chosenCandidate(media) returns null; isAutoTranscribed(null)=false. ` +
-					`Real workers via apps/worker do send candidates, so this surface works in a real cook.`
+					`Real workers via worker do send candidates, so this surface works in a real cook.`
 	);
 
 	// ── FINDING (6): live settings changes take effect with NO restart ────

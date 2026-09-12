@@ -43,9 +43,9 @@ import { existsSync, readFileSync } from 'node:fs';
 /**
  * The repo root, found by walking up for `bunfig.toml`.
  *
- * WHY NOT `import.meta.dir`. This file used to reach `apps/core` as `join(import.meta.dir, '..', 'apps',
+ * WHY NOT `import.meta.dir`. This file used to reach `.` as `join(import.meta.dir, '..', 'apps',
  * 'core')`, which was correct only while it lived at the repo root in `test-setup/`. Moving it to
- * `tests/setup/` made that expression resolve to `tests/apps/core`, and the whole suite went to
+ * `tests/setup/` made that expression resolve to `tests/.`, and the whole suite went to
  * 0 pass / 291 fail — the preload could no longer resolve `runed`, so no Bits UI component mounted.
  *
  * `bunfig.toml` is the marker because it is the SAME file bun uses to locate this preload, so the runner
@@ -239,7 +239,7 @@ plugin({
 //
 //   Cannot find package 'runed' from …/.bun/svelte-sonner@…/node_modules/svelte-sonner/dist/internal/ctx.js
 //
-// Declaring it in apps/core AND at the workspace root, and a forced reinstall, all left it failing, so
+// Declaring it in . AND at the workspace root, and a forced reinstall, all left it failing, so
 // this is the test runtime's module resolution rather than the manifest. The consequence is not
 // cosmetic: the home route imports the Toaster, so WITHOUT this the mount rung cannot load
 // `routes/+page.svelte` at all.
@@ -264,7 +264,7 @@ plugin({
 const RUNED_ENTRY = (() => {
 	let ssPkg: string;
 	try {
-		ssPkg = createRequire(join(REPO_ROOT, 'apps', 'core') + '/').resolve('svelte-sonner/package.json');
+		ssPkg = createRequire(REPO_ROOT + '/').resolve('svelte-sonner/package.json');
 	} catch {
 		return null;
 	}

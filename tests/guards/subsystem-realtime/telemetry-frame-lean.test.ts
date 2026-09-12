@@ -18,7 +18,7 @@
 // wire frame, the handler type, the forwarder AND the client-side PRODUCER must not resurrect
 // durationSec/bufferedNextPct, and `bufferedNextPct` (the hardcoded-100 field, whose reappearance is
 // the sharpest regression) must not exist ANYWHERE in production. Review caught that the earlier version
-// scanned only events.ts/player.ts/server.ts and NOT the producer apps/core/src/lib/tv/telemetry.ts —
+// scanned only events.ts/player.ts/server.ts and NOT the producer src/lib/tv/telemetry.ts —
 // the one file the `<audio>.buffered` value is actually available at, and the natural place a
 // developer would re-add the field — so a hardcoded `bufferedNextPct: 100` there left the guard 5/5
 // green. The producer is now scanned directly (its own TelemetryFrame interface + the telemetryFrame()
@@ -40,16 +40,16 @@ function stripComments(src: string): string {
 }
 
 // Anchored on the repo root. `player.ts` was a SIBLING READ — this guard used to live in
-// apps/core/src/lib/server/realtime/, so `at('apps/core/src/lib/server/realtime/player.ts')` meant "the player module next
+// src/lib/server/realtime/, so `at('src/lib/server/realtime/player.ts')` meant "the player module next
 // to me"; every subject is named explicitly now and was confirmed present before re-anchoring.
-const EVENTS = stripComments(read('apps/core/src/lib/contract/core/events.ts'));
-const PLAYER = stripComments(read('apps/core/src/lib/server/realtime/player.ts'));
-const SERVER = stripComments(read('apps/core/server.ts'));
+const EVENTS = stripComments(read('src/lib/contract/core/events.ts'));
+const PLAYER = stripComments(read('src/lib/server/realtime/player.ts'));
+const SERVER = stripComments(read('server.ts'));
 // The client-side producer of the frame. It declares its OWN copy of the wire type
 // (`TelemetryFrame`) and builds the object literal that gets JSON.stringify'd to the server — so the
 // shared union is never applied to the value and typecheck cannot catch a field added to both this
 // interface and this literal.
-const PRODUCER = stripComments(read('apps/core/src/lib/tv/telemetry.ts'));
+const PRODUCER = stripComments(read('src/lib/tv/telemetry.ts'));
 
 // The tv:telemetry ClientEvent variant, isolated so a durationSec/bufferedNextPct on some OTHER event
 // (or the legitimate Media.durationSec) does not falsely trip these checks.

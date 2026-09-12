@@ -15,11 +15,11 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Both were counted off `at('apps/core/src')` from apps/core/src/routes/tv, which meant
-// apps/core/src. Named from the repo root now; `read` throws on a missing subject so neither can scan
+// Both were counted off `at('src')` from src/routes/tv, which meant
+// src. Named from the repo root now; `read` throws on a missing subject so neither can scan
 // nothing and report green.
-const ROUTE = read('apps/core/src/routes/tv/+page.svelte');
-const OVERLAY = read('apps/core/src/lib/tv/LyricsOverlay.svelte');
+const ROUTE = read('src/routes/tv/+page.svelte');
+const OVERLAY = read('src/lib/tv/LyricsOverlay.svelte');
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

@@ -10,7 +10,7 @@
 // deriving a per-frame brightness variant or clamping illegible colours to the accent. So there is no
 // new contrast rule to test here; the rule that does apply is the identity floor
 // (`lyricHighlightColor` -> `isLegibleSingerColor`), and that is exercised behaviourally on the pure
-// function in `apps/core/src/lib/contract/presentation/colors.test.ts`.
+// function in `src/lib/contract/presentation/colors.test.ts`.
 //
 // WHY A SOURCE SCAN, and why it is not mutation-blind. There is no Svelte compiler and no DOM under
 // `bun test`, so a `$props()` declaration, a custom property appended to an inline `style` string, and
@@ -49,8 +49,8 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
 }
 
-const OVERLAY = 'apps/core/src/lib/tv/LyricsOverlay.svelte';
-const TV_ROUTE = 'apps/core/src/routes/tv/+page.svelte';
+const OVERLAY = 'src/lib/tv/LyricsOverlay.svelte';
+const TV_ROUTE = 'src/routes/tv/+page.svelte';
 
 const overlaySrc = () => stripComments(read(OVERLAY));
 const routeSrc = () => stripComments(read(TV_ROUTE));

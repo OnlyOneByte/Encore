@@ -20,7 +20,7 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-const SRC = read('apps/core/src/lib/tv/JoinBadge.svelte');
+const SRC = read('src/lib/tv/JoinBadge.svelte');
 
 /** Blank comments so a commented-out declaration cannot satisfy an assertion. */
 function stripComments(s: string): string {

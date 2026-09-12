@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 import { gripVisible, ownSlots, ordinal, dropTarget, modeInvalidation } from '$lib/reorder-mode';
 
-const PAGE = at('apps/core/src/routes/+page.svelte');
+const PAGE = at('src/routes/+page.svelte');
 
 // The three-true case, so each test below can negate exactly one condition.
 const OK = { mine: true, ownQueuedCount: 2, reorderMeaningful: true };

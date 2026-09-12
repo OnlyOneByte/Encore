@@ -107,7 +107,7 @@ function postureOf(body: string): Posture {
 }
 
 test('every API route method applies the auth gate this registry records', () => {
-	const routes = filesUnder('apps/core/src/routes/api', ['+server.ts']);
+	const routes = filesUnder('src/routes/api', ['+server.ts']);
 	// Non-vacuity: the walk found the route tree. An empty walk yields no offenders, which reads exactly
 	// like a surface whose every gate is correct.
 	expect(routes.length).toBeGreaterThan(10); // @nvf-floor routes.length
@@ -118,7 +118,7 @@ test('every API route method applies the auth gate this registry records', () =>
 
 	for (const abs of routes) {
 		const route = relative(abs)
-			.replace('apps/core/src/routes/api/', '')
+			.replace('src/routes/api/', '')
 			.replace('/+server.ts', '');
 		const bodies = methodBodies(readFileSync(abs, 'utf8'));
 		for (const [method, body] of Object.entries(bodies)) {

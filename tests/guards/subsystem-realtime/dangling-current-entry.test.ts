@@ -151,7 +151,7 @@ test('hydrate() leaves a currentEntryId that DOES resolve untouched', () => {
 
 // SOURCE-SCAN GUARD for the trigger line (server.ts). The behavioural cases above drive a mirror of
 // the server's queue:command composition, so they pin `reconcileOnReady`'s recovery logic but NOT
-// the one production line that FIRES it — apps/core/server.ts is the Bun.serve entry with no unit
+// the one production line that FIRES it — server.ts is the Bun.serve entry with no unit
 // harness, and reverting its call to the pre-fix `if (!currentEntryId)` form leaves the whole suite
 // green while resurrecting the dangling id (the recovery never fires on the reported path). This scan pins
 // that the arm FIRES the recovery, and that the recovery predicate keys on RESOLUTION rather than
@@ -168,11 +168,11 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Both subjects named explicitly. The old forms were `at('apps/core/server.ts')`
-// and `at('apps/core/src/lib/server/realtime/player.ts')` — arithmetic that only held while this guard sat in
-// apps/core/src/lib/server/realtime. `read` throws on a wrong path rather than scanning nothing.
-const SERVER = stripComments(read('apps/core/server.ts'));
-const PLAYER = stripComments(read('apps/core/src/lib/server/realtime/player.ts'));
+// Both subjects named explicitly. The old forms were `at('server.ts')`
+// and `at('src/lib/server/realtime/player.ts')` — arithmetic that only held while this guard sat in
+// src/lib/server/realtime. `read` throws on a wrong path rather than scanning nothing.
+const SERVER = stripComments(read('server.ts'));
+const PLAYER = stripComments(read('src/lib/server/realtime/player.ts'));
 
 test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying on resolution not nullness', () => {
 	// The recovery must be wired to the client queue path (handleQueueCommand is the sole prune that
@@ -230,7 +230,7 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 // running it, so pin it here: the raw store.ts text must NOT re-assert a boot resync/reconcile that
 // starts anything, and MUST name the three real recovery sites. Read RAW (not stripComments): the
 // assertions are ABOUT the comment, so blanking comments would make every check vacuous.
-const STORE = read('apps/core/src/lib/server/state/store.ts');
+const STORE = read('src/lib/server/state/store.ts');
 
 test("hydrate()'s heal comment (store.ts) tells the truth about boot recovery", () => {
 	// Non-vacuous: the heal the comment describes must actually be present, or the checks below
@@ -267,14 +267,14 @@ test("hydrate()'s heal comment (store.ts) tells the truth about boot recovery", 
 // and name the three real recovery sites). It does not pin whether that prose is TRUE, because every
 // assertion reads store.ts as text and the facts live in other files. The comment's load-bearing
 // claim — "there is no boot resync or boot reconcile, so nothing starts a singer at hydrate time" —
-// is a claim about reconcileOnReady's call sites in apps/core, not about store.ts. So the moment a
+// is a claim about reconcileOnReady's call sites in ., not about store.ts. So the moment a
 // later product decision adds the boot reconcile that correction deliberately quarantined ("DO NOT add a
 // reconcileOnReady call ... a rebooted room starts playing audio unprompted is a product call the
 // owner has not made"), the comment is false again — the exact false-premise defect the correction removed — and the
 // spelling guard above stays green. Pin the STRUCTURE here instead.
 //
 // Anchored on the repo-root markers, not on this file's own location: the old forms were
-// `at('apps/core')` and `at('apps/core/src')`. A wrong walk root
+// `at('.')` and `at('src')`. A wrong walk root
 // here is the SILENT failure mode — the file-set census below would report an empty set and pass.
 const CORE_ROOT = appCore;
 const SRC_ROOT = appSrc;
@@ -298,7 +298,7 @@ function collectNonTestSources(): string[] {
 const RECONCILE_CALL = /(?<!function\s)\breconcileOnReady\s*\(/;
 
 test('reconcileOnReady is called from exactly the three non-boot sites: queue:command, onMediaReady, and the entry-delete', () => {
-	// The set of NON-TEST files in apps/core that CALL reconcileOnReady must be exactly server.ts (the
+	// The set of NON-TEST files in . that CALL reconcileOnReady must be exactly server.ts (the
 	// queue:command arm) and src/server/app.ts (the onMediaReady handler). A reconcile added anywhere
 	// else — e.g. a new boot module — reds this; deleting the last call in app.ts reds it too.
 	const sites = collectNonTestSources()

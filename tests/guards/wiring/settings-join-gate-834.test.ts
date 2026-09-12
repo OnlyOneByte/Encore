@@ -9,7 +9,7 @@ import { test, expect, afterEach } from 'bun:test';
 // The route module under test. There is no alias for `routes/`, so this is a correct repo-relative
 // path from tests/guards/wiring/ rather than the old `./+page.server`. It fails LOUDLY with
 // `Cannot find module` if the depth is wrong.
-import { load } from '../../../apps/core/src/routes/settings/+page.server';
+import { load } from '../../../src/routes/settings/+page.server';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { SingerRepository } from '$lib/server/singers/repository';
 import { SettingsRepository } from '$lib/server/state/settings-repository';
@@ -57,11 +57,11 @@ test("leaving the room sends the guest to / (the landing page), not the retired 
 	// The leave handler clears the session cookie and navigates; after Q2-A the honest destination
 	// is `/` (which shows the join UI unjoined), never `/join`. Source-scan: mounting the settings page
 	// needs its full load data, so the navigation target is pinned from the source. A revert reds here.
-	// A SIBLING READ, re-anchored explicitly: `at('apps/core/src/routes/settings/+page.svelte')` meant the settings
+	// A SIBLING READ, re-anchored explicitly: `at('src/routes/settings/+page.svelte')` meant the settings
 	// route's own page — the one whose leave handler navigates — and every route directory has a
 	// `+page.svelte`, so the subject has to be named. `read` throws if it is gone, which keeps the two
 	// assertions below from passing over an empty string.
-	const page = read('apps/core/src/routes/settings/+page.svelte')
+	const page = read('src/routes/settings/+page.svelte')
 		.replace(/<!--[\s\S]*?-->/g, ' ')
 		.replace(/\/\*[\s\S]*?\*\//g, ' ');
 	expect(page).toMatch(/await goto\(\s*['"`]\/['"`]\s*\)/);

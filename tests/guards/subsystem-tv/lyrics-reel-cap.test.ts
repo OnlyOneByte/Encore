@@ -24,9 +24,9 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
-// Named absolutely. This used to be `at('apps/core/src/lib/tv/LyricsOverlay.svelte')` — "the
+// Named absolutely. This used to be `at('src/lib/tv/LyricsOverlay.svelte')` — "the
 // component next to me", which identified the lyrics overlay only while this test sat in lib/tv/.
-const OVERLAY = at('apps/core/src/lib/tv/LyricsOverlay.svelte');
+const OVERLAY = at('src/lib/tv/LyricsOverlay.svelte');
 
 /** Blank comments out, keeping newlines so reported line numbers stay true (matches lyrics-clamp). */
 function stripComments(src: string): string {

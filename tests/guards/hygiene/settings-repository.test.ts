@@ -371,7 +371,7 @@ it('SettingsRepository room scope: tv progress style — every persisted room fi
 // are valid live-selectable / valid-separator pairs rather than independently flipped values.
 //
 // defaultFetcher is deliberately NOT round-trip-checked here, and NOT because a dedicated test
-// covers it — it does not. normalizeGlobalSettings (apps/core/src/lib/contract/core/settings.ts) refuses the
+// covers it — it does not. normalizeGlobalSettings (src/lib/contract/core/settings.ts) refuses the
 // only other FETCHERS member ('local', which degrades to the default), and setGlobal is the sole
 // writer to global_settings, so no value distinct from the default can ever reach the column
 // through the public API. Its SELECT line is therefore UNOBSERVABLE today: deleting it changes no
@@ -617,7 +617,7 @@ it('SettingsRepository room scope: the ordering algorithm — the baseline is ne
 	// place makes drizzle replay it and throw on CREATE TABLE of an already-existing table, reproduced
 	// end to end. So the rule is: 0000 stays as shipped and CARRIES these columns, while any
 	// later schema change arrives as a NEW numbered file that only ALTERs. This asserts both halves.
-	const folder = process.env.ENCORE_MIGRATIONS_DIR ?? at('apps/core/drizzle');
+	const folder = process.env.ENCORE_MIGRATIONS_DIR ?? at('drizzle');
 	const journal = JSON.parse(readFileSync(join(folder, 'meta', '_journal.json'), 'utf8')) as {
 		entries: { idx: number; tag: string }[];
 	};

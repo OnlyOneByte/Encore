@@ -4,7 +4,7 @@
  * ── WHY THIS PROBE EXISTS ──────────────────────────────────────────────────────────────────────
  *
  * These four claims used to be `bun test` mount-rung tests in
- * `apps/core/src/lib/components/hero-live-controls-835.test.ts`. An earlier change moved GuidingTrack's control
+ * `src/lib/components/hero-live-controls-835.test.ts`. An earlier change moved GuidingTrack's control
  * onto shadcn's <Slider>, which is built on Bits UI, and Bits UI's slider needs a LAYOUT
  * ENVIRONMENT to exist at all:
  *
@@ -71,7 +71,7 @@ import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 // The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
 // and the runner agree on the root. Was `join(import.meta.dirname, …)`, which encoded this file's distance
-// from `apps/core` and broke the moment the e2e tree moved under `tests/`.
+// from `.` and broke the moment the e2e tree moved under `tests/`.
 const REPO_ROOT = (() => {
 	let dir = import.meta.dirname;
 	for (let i = 0; i < 10; i += 1) {
@@ -93,7 +93,7 @@ const REPO_ROOT = (() => {
 const PORT = process.env.EPORT ?? '5216';
 const BASE = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9356);
-const CORE_DIR = join(REPO_ROOT, 'apps', 'core');
+const CORE_DIR = REPO_ROOT;
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? process.env.TMPDIR ?? '/tmp';
 const RUN_DIR = join(SCRATCH, `p16-hero-controls-${process.pid}`);
 const MEDIA_DIR = join(RUN_DIR, 'media');
@@ -391,7 +391,7 @@ async function main() {
 	 * itself after the build for the same reason.
 	 */
 	if (!existsSync(join(CORE_DIR, 'build'))) {
-		bail('apps/core/build is missing. Run `bun run build` first — this probe drives the BUILT app.');
+		bail('build is missing. Run `bun run build` first — this probe drives the BUILT app.');
 	}
 	const builtNewerThan = (/** @type {string} */ f) => {
 		try {
@@ -401,7 +401,7 @@ async function main() {
 		}
 	};
 	for (const f of ['src/lib/components/GuidingTrack.svelte', 'src/lib/components/ui/slider/slider.svelte']) {
-		if (!builtNewerThan(f)) bail(`${f} is newer than apps/core/build. Run \`bun run build\` — this probe drives the BUILT app.`);
+		if (!builtNewerThan(f)) bail(`${f} is newer than build. Run \`bun run build\` — this probe drives the BUILT app.`);
 	}
 
 	server = await bootServer();

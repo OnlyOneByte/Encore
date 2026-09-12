@@ -63,7 +63,7 @@ const CDP_PORT = Number(process.env.CDP_PORT ?? 9422);
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? '/tmp';
 const RUN_DIR = join(SCRATCH, `p2-guide-${PORT}-${process.pid}`);
 const MEDIA_DIR = process.env.MEDIA_DIR ?? join(RUN_DIR, 'media');
-const CORE_DIR = resolve(new URL('../../', import.meta.url).pathname); // apps/core
+const CORE_DIR = resolve(new URL('../../', import.meta.url).pathname); // .
 
 // ── reporting ──────────────────────────────────────────────────────────────
 /** @type {{ sev: Severity, name: string, ok: boolean, obs?: string, exp?: string }[]} */
@@ -780,8 +780,8 @@ async function main() {
 		'LOW',
 		'vocalsRef absent: unmeasured (environment limit; fake worker always publishes vocals artifact)',
 		true,
-		`apps/core/src/lib/contract/lyrics/guide-level.ts:hasGuidingTrack requires !!m.vocalsRef`,
-		`covered by unit tests apps/core/src/lib/contract/lyrics/guide-level.test.ts:hasGuidingTrack; not reproducible via the fake worker without editing it`
+		`src/lib/contract/lyrics/guide-level.ts:hasGuidingTrack requires !!m.vocalsRef`,
+		`covered by unit tests src/lib/contract/lyrics/guide-level.test.ts:hasGuidingTrack; not reproducible via the fake worker without editing it`
 	);
 
 	// ── screenshot for the record ─────────────────────────────────────────

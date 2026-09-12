@@ -138,7 +138,7 @@ test('isCooking is gate-driven — it catches a song sitting between two gates',
 //
 // THE DEFECT. gates.ts carried a SECOND guest-facing cook vocabulary: a `pendingLabel` field
 // on CookGate ('Separating vocals' / 'Timing lyrics') read only by `currentGateLabel`, which itself
-// had zero non-test callers. The phone's real cook sub-line is apps/core/src/lib/cook-phrasing.ts
+// had zero non-test callers. The phone's real cook sub-line is src/lib/cook-phrasing.ts
 // (wired to SongRow, ProcessingCard, TvLobby and tv/+page.svelte) — its header asserts it is "the ONE
 // place the cook is described to a guest … there is no third vocabulary to drift into", and names
 // 'Separating vocals', the exact string that was stranded in gates.ts, as copy "written for the
@@ -164,11 +164,11 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/lib/contract/queue/, so
-// `at('apps/core/src/lib/contract/queue/gates.ts')` meant "the gate table next to me" — note the comment that used to
-// sit here claimed `at('apps/core/src/lib/contract/queue') === apps/core/src/lib/contract/src`, which was already stale by one level.
+// SIBLING READ, now named explicitly. This guard used to live in src/lib/contract/queue/, so
+// `at('src/lib/contract/queue/gates.ts')` meant "the gate table next to me" — note the comment that used to
+// sit here claimed `at('src/lib/contract/queue') === src/lib/contract/src`, which was already stale by one level.
 // Confirmed present at this path before re-anchoring.
-const GATES_SRC = stripComments(read('apps/core/src/lib/contract/queue/gates.ts'));
+const GATES_SRC = stripComments(read('src/lib/contract/queue/gates.ts'));
 
 test('gates.ts source was read (guard is not vacuous)', () => {
 	// A sentinel that must be present regardless of this fix, so an empty/misread file cannot make the
@@ -178,14 +178,14 @@ test('gates.ts source was read (guard is not vacuous)', () => {
 });
 
 test('gates.ts no longer carries the dead second cook vocabulary', () => {
-	// The phone's cook copy lives ONLY in apps/core/src/lib/cook-phrasing.ts. gates.ts must not
+	// The phone's cook copy lives ONLY in src/lib/cook-phrasing.ts. gates.ts must not
 	// re-declare a guest-facing label field or the caller-less function that read it.
 	expect(GATES_SRC).not.toMatch(/pendingLabel/);
 	expect(GATES_SRC).not.toMatch(/currentGateLabel/);
 });
 
 test('the live half of the gate table survives — this is a scoped deletion, not a gutting', () => {
-	// CookGate.stage is read at apps/core/src/lib/server/jobs/media-status.ts; done/required drive
+	// CookGate.stage is read at src/lib/server/jobs/media-status.ts; done/required drive
 	// readyToSing/pendingGates/isCooking. Those must stay, so the guard cannot be satisfied by
 	// deleting the whole table.
 	expect(GATES_SRC).toMatch(/readonly stage: MediaStage/);

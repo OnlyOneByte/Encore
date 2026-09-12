@@ -14,7 +14,7 @@ import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { MIN_LYRICS_SCALE_PCT, MAX_LYRICS_SCALE_PCT } from '$lib/contract';
 
-const src = read('apps/core/src/routes/components/+page.svelte');
+const src = read('src/routes/components/+page.svelte');
 
 test('the gallery scale frames demonstrate the real MIN and MAX of the band', () => {
 	// Collect every scalePct the gallery demos.

@@ -311,7 +311,7 @@ it('reelOffset - the sung row lands in the UNMASKED window, not inside a fade ra
 // render path calls it) — this repo's built-and-unit-tested-but-unwired shape. This source-scan guard,
 // modelled on the drawPosition wiring guard in lyrics-position.test.ts (same directory, same extraction
 // shape), reds the moment measureReel stops consuming reelOffset with viewportEl.clientHeight.
-const OVERLAY = readFileSync(at('apps/core/src/lib/tv/LyricsOverlay.svelte'), 'utf8');
+const OVERLAY = readFileSync(at('src/lib/tv/LyricsOverlay.svelte'), 'utf8');
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src

@@ -29,9 +29,9 @@ import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, basename } from 'node:path';
 
-// import.meta.dir === apps/core/src/lib. Two roots up is apps/core; four up is the repo root, which is
-// how the worker (Python) source is reached — CWD-independent, since `bun test` runs from apps/core.
-// import.meta.dir === apps/core/src/lib; four levels up is the repo root.
+// import.meta.dir === src/lib. Two roots up is .; four up is the repo root, which is
+// how the worker (Python) source is reached — CWD-independent, since `bun test` runs from ..
+// import.meta.dir === src/lib; four levels up is the repo root.
 // Repo-root anchored; `git ls-files` is run with -C REPO, so this must be the real root.
 const REPO = repoRoot;
 
@@ -256,7 +256,7 @@ function trackedScannedFiles(): string[] {
  * core, the shared packages, and the Python worker (its src AND its tests) — minus this guard itself
  * and the documented EXEMPT_PREFIXES. Driving off `git ls-files` (rather than a raw filesystem walk) is
  * what keeps the coverage matching this guard's name AND its scope: a task ref that lands in
- * `packages/` or `apps/worker/tests/` is the same defect and must not hide, but a ref inside an
+ * `packages/` or `worker/tests/` is the same defect and must not hide, but a ref inside an
  * untracked / git-ignored operational tree is not a repo defect and must not red this guard.
  */
 function scannedFiles(): string[] {
@@ -307,12 +307,12 @@ test('the docs/loop/ exemption stays narrow and the guard still bites everywhere
 	// 1. The patterns still fire. A planted token in a scanned, non-exempt path is still an offender,
 	//    and all three families still match — so the exemption did not arrive with a quiet regex
 	//    narrowing or with `.md` dropped from SCANNED_EXT.
-	const planted = offendersIn('apps/core/src/lib/planted.ts', 'const n = 1; // shipped in T-1\n');
+	const planted = offendersIn('src/lib/planted.ts', 'const n = 1; // shipped in T-1\n');
 	expect(planted).toHaveLength(1);
-	expect(planted[0]).toContain('apps/core/src/lib/planted.ts:1');
+	expect(planted[0]).toContain('src/lib/planted.ts:1');
 	expect(planted[0]).toContain('"T-1"');
 	expect(offendersIn('docs/ARCHITECTURE.md', 'closed by B-8')).toHaveLength(1);
-	expect(offendersIn('apps/worker/Dockerfile', '# M6-C1')).toHaveLength(1);
+	expect(offendersIn('worker/Dockerfile', '# M6-C1')).toHaveLength(1);
 
 	// 2. The exemption covers docs/loop/ and nothing adjacent. `docs/loopback.md` is the trailing-slash
 	//    trap: a bare `docs/loop` prefix would swallow it.
@@ -323,8 +323,8 @@ test('the docs/loop/ exemption stays narrow and the guard still bites everywhere
 		'docs/loopback.md',
 		'docs/loop.md',
 		'README.md',
-		'apps/core/src/lib/x.ts',
-		'apps/worker/Dockerfile'
+		'src/lib/x.ts',
+		'worker/Dockerfile'
 	]) {
 		expect(isExempt(rel)).toBe(false);
 	}

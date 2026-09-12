@@ -9,7 +9,7 @@ import { contrastRatio } from '$lib/contract';
 // through an alias: `$lib/contract`'s exports map carries only `"."`, so a subpath import of this
 // JSON does not resolve — the same reason `colour-tokens.test.ts` reaches it relatively. A wrong
 // depth here fails loudly with `Cannot find module`, never silently.
-import registry from '../../../apps/core/src/lib/contract/presentation/player-palette-48.json';
+import registry from '../../../src/lib/contract/presentation/player-palette-48.json';
 
 /**
  * The 48-stop player palette registry (`XR-COL-01`), and the guards that keep its published figures
@@ -29,20 +29,20 @@ import registry from '../../../apps/core/src/lib/contract/presentation/player-pa
 
 // The repo root, discovered by walking up for the `bunfig.toml` marker, rather than counted
 // out of this file's own location as `at('.')`.
-// Precedent for reading the token layer from a test outside apps/core: `colors.test.ts`,
+// Precedent for reading the token layer from a test outside .: `colors.test.ts`,
 // `song-display.test.ts`.
 const REPO = repoRoot;
-const appCss = readFileSync(at('apps/core/src/app.css'), 'utf8');
+const appCss = readFileSync(at('src/app.css'), 'utf8');
 
 /**
  * Pull a `--name: #hex;` declaration out of `app.css`. Same shape as `colors.test.ts`'s reader, and
- * a local copy for the same stated reason: this package cannot import `apps/core`'s helper across
+ * a local copy for the same stated reason: this package cannot import `.`'s helper across
  * the package boundary. Throws rather than defaulting, so a renamed token reds instead of leaving
  * the suite measuring a value nothing declares.
  */
 function token(name: string): string {
 	const m = appCss.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})\\s*;`));
-	if (!m) throw new Error(`token --${name} not found in apps/core/src/app.css (renamed? then update this guard)`);
+	if (!m) throw new Error(`token --${name} not found in src/app.css (renamed? then update this guard)`);
 	return m[1]!;
 }
 
@@ -131,17 +131,17 @@ test('the registry regenerates byte-identically from its committed inputs (XR-CO
 	// "Generated, never hand-edited" is only true if a hand edit is detectable. This is the only
 	// assertion that detects one, so it pays ~10s of interpreter time to run the real generator.
 	const out = join(mkdtempSync(join(tmpdir(), 'palette-')), 'regenerated.json');
-	const run = spawnSync('python3', [join(REPO, 'apps/core/src/lib/contract/scripts/_player_palette.py')], {
+	const run = spawnSync('python3', [join(REPO, 'src/lib/contract/scripts/_player_palette.py')], {
 		env: { ...process.env, PLAYER_PALETTE_OUT: out },
 		encoding: 'utf8'
 	});
 	// A missing interpreter fails loudly rather than skipping: a silent skip is how this guard
 	// would stop guarding without anyone noticing. `python3` is already a build prerequisite —
-	// `apps/worker` is a pytest suite.
+	// `worker` is a pytest suite.
 	expect(run.error ?? null).toBeNull();
 	expect(run.status).toBe(0);
 
-	const committed = readFileSync(join(REPO, 'apps/core/src/lib/contract/presentation/player-palette-48.json'), 'utf8');
+	const committed = readFileSync(join(REPO, 'src/lib/contract/presentation/player-palette-48.json'), 'utf8');
 	const regenerated = readFileSync(out, 'utf8');
 	if (regenerated !== committed) {
 		// Name the stop that differs, per XR-COL-02's acceptance, instead of dumping 42 KB of JSON.
@@ -154,7 +154,7 @@ test('the registry regenerates byte-identically from its committed inputs (XR-CO
 		throw new Error(
 			`committed registry is not what the generator produces. Differing chromatic stops: ` +
 				`${differing.length ? differing.join(', ') : '(none — surfaces or stats block)'}. ` +
-				`Run: python3 apps/core/src/lib/contract/scripts/_player_palette.py`
+				`Run: python3 src/lib/contract/scripts/_player_palette.py`
 		);
 	}
 	expect(regenerated).toBe(committed);

@@ -4,7 +4,7 @@
 #     --profile stems up -d
 #
 # PARKED. The deploy target moved to NVIDIA (see docker-compose.cuda.yml). Kept because the Arc box
-# may come back, and because the selection logic in apps/worker/src/backends.py already models `xpu`
+# may come back, and because the selection logic in worker/src/backends.py already models `xpu`
 # as a torch DEVICE rather than a separate backend — so this path needs no separator code, only wheels
 # and device passthrough.
 #

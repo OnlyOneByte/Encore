@@ -21,7 +21,7 @@ import {
 	voiceBandSentence,
 	voiceBandZones,
 	type SongProfile
-} from '../../../../apps/core/src/lib/contract/cook/song-profile';
+} from '../../../../src/lib/contract/cook/song-profile';
 
 /** A fully-populated profile: G major, living D3-A4, extremes C3-C5, mastered at -12 LUFS. */
 function profile(over: Partial<SongProfile> = {}): SongProfile {
@@ -70,7 +70,7 @@ test('key spelling: spells black notes sharp by default and flat on request', ()
 	expect(keyLabel(1, 'minor', 'flat')).toBe('Db minor');
 });
 
-// The guard in apps/core/src/lib/ui/icons.test.ts bans 0x2600-0x27BF from client surfaces, which
+// The guard in src/lib/ui/icons.test.ts bans 0x2600-0x27BF from client surfaces, which
 // contains U+266F and U+266D. A label carrying one would render as tofu on a stripped TV font.
 test('key spelling: never emits a typographic sharp or flat sign', () => {
 	for (let tonic = 0; tonic < 12; tonic++) {

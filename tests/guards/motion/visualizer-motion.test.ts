@@ -13,10 +13,10 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Was `at('apps/core/src/lib/tv/VisualizerStage.svelte')` — the scanned component was this guard's own
-// SIBLING in apps/core/src/lib/tv (it is the canvas rAF loop every assertion below is about), so it is
+// Was `at('src/lib/tv/VisualizerStage.svelte')` — the scanned component was this guard's own
+// SIBLING in src/lib/tv (it is the canvas rAF loop every assertion below is about), so it is
 // now named in full and anchored on the repo root.
-const SRC = read('apps/core/src/lib/tv/VisualizerStage.svelte');
+const SRC = read('src/lib/tv/VisualizerStage.svelte');
 
 test('the visualizer consults prefers-reduced-motion', () => {
 	expect(SRC).toContain('prefers-reduced-motion: reduce');

@@ -13,12 +13,12 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/lib/server/app.ts')` — "the app.ts next
+// A SIBLING READ, re-anchored explicitly. This was `at('src/lib/server/app.ts')` — "the app.ts next
 // to me" — and the file it meant is the server composition root that declares getApp(), the function
 // the §4 fix changed. `read` throws when it is missing, which matters because the two `expect(...).not
 // .toMatch(...)` arms below would PASS on an empty body: `start`/`end` would be -1, `body` would be '',
 // and the absence assertions would be satisfied by nothing at all.
-const src = read('apps/core/src/lib/server/app.ts');
+const src = read('src/lib/server/app.ts');
 
 // Only look at getApp()'s body, from its signature to setPublish (the next export). A `null as never`
 // legitimately used elsewhere in the file would not concern §4.

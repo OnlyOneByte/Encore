@@ -7,7 +7,7 @@
 	// gate: this final batch brought in the transport + capture + remaining probes/drivers, and the two
 	// already-clean helpers (seed-media.mjs, wav.mjs) so nothing e2e is left untypechecked.
 	// The strictness base still lives with the app it type-checks against; only this config moved.
-	"extends": "../apps/core/tsconfig.server.json",
+	"extends": "../tsconfig.server.json",
 	"compilerOptions": {
 		"allowJs": true,
 		"checkJs": true,

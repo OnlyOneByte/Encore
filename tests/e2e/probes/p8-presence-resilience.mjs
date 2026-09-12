@@ -617,7 +617,7 @@ async function main() {
 				'HIGH',
 				'not every phone confirmed a joined session',
 				`hasMe counts: ${perPhoneSingers.filter((s) => s.hasMe).length}/${NUM_PHONES}`,
-				`apps/core/src/routes/api/me/+server.ts`
+				`src/routes/api/me/+server.ts`
 			);
 		} else {
 			report('PASS', `${NUM_PHONES}/${NUM_PHONES} phones report a joined session`);
@@ -631,7 +631,7 @@ async function main() {
 					'CRITICAL',
 					'duplicate display name JOINED anyway',
 					`the name "${PHONE_NAMES[0]}" was reused and the server accepted it`,
-					`apps/core/src/lib/server/singers/join.ts:31 assertNameFree; ${BASE}/api/join`
+					`src/lib/server/singers/join.ts:31 assertNameFree; ${BASE}/api/join`
 				);
 			} else {
 				const msg = (dup.outcome || '').replace(/^err:/, '');
@@ -641,7 +641,7 @@ async function main() {
 						'HIGH',
 						'name-collision error is not human-legible',
 						`phone displayed: ${JSON.stringify(msg)}`,
-						`apps/core/src/lib/components/JoinLanding.svelte:26 error rendering; server: apps/core/src/lib/server/singers/join.ts:21 NameTakenError message`
+						`src/lib/components/JoinLanding.svelte:26 error rendering; server: src/lib/server/singers/join.ts:21 NameTakenError message`
 					);
 				} else {
 					// The form must remain usable — the input the user can now edit is the whole point of
@@ -667,7 +667,7 @@ async function main() {
 							'HIGH',
 							'join form is not recoverable after a 409',
 							`state=${JSON.stringify(usable)} — the form must let the user retype and resubmit`,
-							`apps/core/src/lib/components/JoinLanding.svelte:14 submitting flag reset`
+							`src/lib/components/JoinLanding.svelte:14 submitting flag reset`
 						);
 					} else {
 						// And prove recovery actually works: type a fresh name and submit.
@@ -725,7 +725,7 @@ async function main() {
 						'CRITICAL',
 						'phone did not reconnect after a WebSocket drop',
 						`connectCount stayed at ${before} for 10s`,
-						`apps/core/src/lib/ws/client.ts:107 scheduleReconnect + capped backoff`
+						`src/lib/ws/client.ts:107 scheduleReconnect + capped backoff`
 					);
 				} else {
 					// Have another phone queue a song WHILE the victim was down, then verify the victim
@@ -758,14 +758,14 @@ async function main() {
 								'HIGH',
 								'queue-add on the witness phone did not produce a row',
 								`witness rows=${witnessRows}, server rev=${rev} — the add appeared to succeed (button clicked) but no row landed on the source phone`,
-								`apps/core/src/lib/stores/queue.ts:120 #optimistic`
+								`src/lib/stores/queue.ts:120 #optimistic`
 							);
 						} else if (victimState.rows.length !== witnessRows) {
 							report(
 								'HIGH',
 								'reconnected phone did not resync the queue',
 								`victim sees ${victimState.rows.length} rows, witness sees ${witnessRows}`,
-								`apps/core/src/lib/stores/queue.ts:154 #onSync (rebase on queue:sync)`
+								`src/lib/stores/queue.ts:154 #onSync (rebase on queue:sync)`
 							);
 						} else {
 							report(
@@ -826,7 +826,7 @@ async function main() {
 						'HIGH',
 						'severed phone did not show up as AWAY on the TV within 15s',
 						`the TV\u2019s roster never marked ${away.name} as away — presence.disconnect broadcast should be near-instant on close(3000)`,
-						`apps/core/src/lib/server/realtime/presence.ts:69 disconnect; apps/core/server.ts (websocket.close handler); ${shot}`
+						`src/lib/server/realtime/presence.ts:69 disconnect; server.ts (websocket.close handler); ${shot}`
 					);
 				} else {
 					const shot = await tv.screenshot(join(OUT_DIR, '02-tv-away.png'));
@@ -843,7 +843,7 @@ async function main() {
 						'CRITICAL',
 						'severed phone LOST its queued song',
 						`another phone reports ${otherSurface} queue rows; the disconnected singer\u2019s song should survive`,
-						`apps/core/src/lib/server/realtime/presence.ts:79 (grace clock does not start while pending songs exist)`
+						`src/lib/server/realtime/presence.ts:79 (grace clock does not start while pending songs exist)`
 					);
 				} else {
 					report('PASS', 'a phone\u2019s queued song survives the phone going away', `others see ${otherSurface} rows`);
@@ -870,7 +870,7 @@ async function main() {
 						'MEDIUM',
 						`away phone did not return to "here" after network came back`,
 						`the TV chip stayed grey`,
-						`apps/core/src/lib/ws/client.ts:64 wake(); apps/core/src/lib/server/realtime/presence.ts:61 connect()`
+						`src/lib/ws/client.ts:64 wake(); src/lib/server/realtime/presence.ts:61 connect()`
 					);
 				} else {
 					report('PASS', 'away phone rejoins as here when the network comes back');
@@ -934,7 +934,7 @@ async function main() {
 						'HIGH',
 						'offline tap produced no optimistic row',
 						'the store must render locally before hearing back from the server',
-						`apps/core/src/lib/stores/queue.ts:120 #optimistic`
+						`src/lib/stores/queue.ts:120 #optimistic`
 					);
 				}
 				// Bring the network back and let the client wake up.
@@ -955,7 +955,7 @@ async function main() {
 							'HIGH',
 							'offline queue-add reconciled but origin/others disagree',
 							`witness=${after} rows, origin=${offlineRowsOnP} rows — a phantom local row survived reconcile`,
-							`apps/core/src/lib/stores/queue.ts:150 #onPatch rebase / apps/core/src/lib/stores/queue.ts:154 #onSync rebase`
+							`src/lib/stores/queue.ts:150 #onPatch rebase / src/lib/stores/queue.ts:154 #onSync rebase`
 						);
 					} else {
 						report(
@@ -970,14 +970,14 @@ async function main() {
 							'CRITICAL',
 							'offline queue-add was silently lost',
 							`origin phone shows ${offlineRowsOnP} rows, witness shows delta ${delta} — the op never reached the server AND the origin has a phantom`,
-							`apps/core/src/lib/ws/client.ts:80 trySend drops on non-open; apps/core/src/lib/stores/queue.ts:126 pending map`
+							`src/lib/ws/client.ts:80 trySend drops on non-open; src/lib/stores/queue.ts:126 pending map`
 						);
 					} else {
 						report(
 							'HIGH',
 							'offline queue-add left no trace on either surface',
 							`witness delta=0, origin rows=0 — op was neither sent, nor optimistic, nor rejected`,
-							`apps/core/src/lib/stores/queue.ts:120 #optimistic`
+							`src/lib/stores/queue.ts:120 #optimistic`
 						);
 					}
 				} else {
@@ -1020,7 +1020,7 @@ async function main() {
 						'HIGH',
 						'leave removed fewer rows from the room than the API reported',
 						`api removed=${removed}, room delta=${drop}, previewQueued=${preview.queuedCount}`,
-						`apps/core/src/lib/server/singers/leave.ts:40 doLeave`
+						`src/lib/server/singers/leave.ts:40 doLeave`
 					);
 				} else {
 					report(
@@ -1040,7 +1040,7 @@ async function main() {
 					'HIGH',
 					`name did not return to the pool after leave`,
 					`rejoin outcome=${rejoin.outcome}`,
-					`apps/core/src/lib/server/realtime/presence.ts:105 forget`
+					`src/lib/server/realtime/presence.ts:105 forget`
 				);
 				await rejoin.page.close();
 			} else {
@@ -1083,14 +1083,14 @@ async function main() {
 					'HIGH',
 					'phones disagree on the queue length after a burst of adds',
 					`counts=${JSON.stringify(counts)} (expected all=${expected})`,
-					`apps/core/src/lib/server/realtime/hub.ts:98 handleQueueCommand broadcasts to room`
+					`src/lib/server/realtime/hub.ts:98 handleQueueCommand broadcasts to room`
 				);
 			} else if (uniq[0] !== expected) {
 				report(
 					'HIGH',
 					'burst of adds lost/duplicated rows',
 					`observed=${uniq[0]}, expected=${expected} (before=${before} + burst=${NUM_BURST})`,
-					`apps/core/src/lib/server/state/store.ts:91 applyQueueOp / applyAndReseq`
+					`src/lib/server/state/store.ts:91 applyQueueOp / applyAndReseq`
 				);
 			} else {
 				// Also verify no duplicate row ids — a duplicate row with different ids would still add
@@ -1118,8 +1118,8 @@ async function main() {
 			report(
 				'PASS',
 				'concurrency reduces to clientOpId dedupe — no revision context in the envelope',
-				'apps/core/src/lib/server/realtime/hub.ts validateCommand has no revision check; the envelope carries clientOpId + op only, so duplicate-op replays are the only conflict shape and they dedupe idempotently.',
-				`apps/core/src/lib/contract/core/ops.ts ClientCommand (clientOpId + op; the dead baseRev field was removed)`
+				'src/lib/server/realtime/hub.ts validateCommand has no revision check; the envelope carries clientOpId + op only, so duplicate-op replays are the only conflict shape and they dedupe idempotently.',
+				`src/lib/contract/core/ops.ts ClientCommand (clientOpId + op; the dead baseRev field was removed)`
 			);
 		}
 	} catch (err) {

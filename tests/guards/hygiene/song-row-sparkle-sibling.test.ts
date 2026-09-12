@@ -20,8 +20,8 @@ function stripComments(src: string): string {
 }
 
 // The subject is named explicitly rather than read as "the .svelte next to me" — this guard used to sit
-// in apps/core/src/lib/components beside SongRow.svelte, and `read` throws if the path is wrong.
-const src = stripComments(read('apps/core/src/lib/components/SongRow.svelte'));
+// in src/lib/components beside SongRow.svelte, and `read` throws if the path is wrong.
+const src = stripComments(read('src/lib/components/SongRow.svelte'));
 
 // Collect EVERY rule for a class selector, matching the selector repeatedly and brace-matching each
 // body — the same read tests 2 and 3 rely on. Returns one entry per rule with its declaration body.

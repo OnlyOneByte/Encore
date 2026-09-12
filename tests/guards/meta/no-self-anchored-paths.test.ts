@@ -1,9 +1,9 @@
 // guard: no test under `tests/` may derive a path from its own location — docs/ux/04-verification.md XR-VER-05.
 //
 // THE DEFECT THIS EXISTS FOR, AND IT IS NOT HYPOTHETICAL. The reorganisation moved 141 guards out of
-// `apps/core/src` into `tests/guards/`. Four separate agents moved files correctly and left their path
+// `src` into `tests/guards/`. Four separate agents moved files correctly and left their path
 // arithmetic pointing at the old depth, so `join(import.meta.dir, '..')` — which had meant
-// `apps/core/src` — now meant `tests/guards/`. Sixty-one files ended up in that state.
+// `src` — now meant `tests/guards/`. Sixty-one files ended up in that state.
 //
 // WHY NOTHING CAUGHT IT. Those sixty-one ran 207 pass / 1 fail. A guard whose scan root is wrong does not
 // error: it walks the wrong tree, finds no violations there, and reports green. The agents had been told
@@ -109,7 +109,7 @@ test('the anchors this guard points people at fail loudly rather than quietly', 
 	 * a file would swap a loud error for a silent empty scan — the same defect in a new place. Pinned here
 	 * so a future convenience overload cannot quietly remove the property this guard depends on.
 	 */
-	expect(() => read('apps/core/src/does-not-exist.ts')).toThrow(/no file at/);
-	expect(() => filesUnder('apps/core/src/nope', ['.ts'])).toThrow(/no directory at/);
+	expect(() => read('src/does-not-exist.ts')).toThrow(/no file at/);
+	expect(() => filesUnder('src/nope', ['.ts'])).toThrow(/no directory at/);
 	expect(existsSync(at('bunfig.toml'))).toBe(true);
 });

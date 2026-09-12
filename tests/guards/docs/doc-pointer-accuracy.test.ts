@@ -7,8 +7,8 @@
 // Comment stripping is INVERTED on purpose: the defect lives IN the source comments, so the SOURCE side
 // is read as comment text (never stripped) while the TARGET side is comment-STRIPPED, so a target's own
 // prose about a symbol it no longer owns cannot satisfy a claim about its code. Precedent for the
-// inversion: apps/core/.../leave/doc-accuracy.test.ts; for the SCANNED + length sentinel shape:
-// apps/core/src/lib/tv/pitch-shift-doc-accuracy.test.ts.
+// inversion: .../leave/doc-accuracy.test.ts; for the SCANNED + length sentinel shape:
+// src/lib/tv/pitch-shift-doc-accuracy.test.ts.
 //
 // The package's production modules now live in domain subdirectories (core/, queue/, lyrics/,
 // cook/, presentation/). The scan RECURSES so a subdir module is still covered, and a comment that
@@ -21,8 +21,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { repoRoot, sharedSrc } from '@encore/test-support';
 
-// apps/core/src/lib/contract/src — the tree this guard scans. The old form was a bare `at('apps/core/src/lib/contract/src')`, i.e. "the
-// directory I am in", which was only apps/core/src/lib/contract/src while this file sat at that package's root.
+// src/lib/contract/src — the tree this guard scans. The old form was a bare `at('src/lib/contract/src')`, i.e. "the
+// directory I am in", which was only src/lib/contract/src while this file sat at that package's root.
 // A wrong root here is the silent failure this tree exists to close: `walk()` over a missing directory
 // would throw, but a root pointing at some OTHER real directory would scan the wrong tree and the
 // SCANNED / pointer-count sentinels below are what catch that.
@@ -114,7 +114,7 @@ function allPointers(): Pointer[] {
 }
 
 // The repo root, from the repo-root marker rather than by counting `../` off SRC. Used only to tell a
-// REAL cross-package citation (e.g. `hub.ts`, which lives at apps/core/src/lib/server/realtime/hub.ts) apart
+// REAL cross-package citation (e.g. `hub.ts`, which lives at src/lib/server/realtime/hub.ts) apart
 // from a stale or MISSPELLED in-package citation (e.g. `rotaton.ts`, a typo of rotation.ts, which exists
 // nowhere). The domain regrouping moved modules into subdirs, so a citation that no longer resolves must
 // still be caught — the earlier
@@ -140,7 +140,7 @@ function walkBasenames(dir: string, out: Set<string>): void {
 	}
 }
 const repoTsBasenames = new Set<string>();
-for (const top of ['apps']) walkBasenames(join(REPO_ROOT, top), repoTsBasenames);
+for (const top of ['src']) walkBasenames(join(REPO_ROOT, top), repoTsBasenames);
 
 // Resolve a cited bare filename to its path anywhere in the package, then read its stripped code.
 // Returns null when the cited file is not a scanned PACKAGE module. `resolves()` then decides: a name
@@ -156,7 +156,7 @@ function resolves(p: Pointer): boolean {
 	const code = targetCode(p.target);
 	if (code === null) {
 		// Not a package module. If the cited filename exists somewhere in the repo (e.g. `hub.ts` in
-		// apps/core), it is a real cross-package reference and out of this guard's remit — skip. If it
+		// .), it is a real cross-package reference and out of this guard's remit — skip. If it
 		// exists nowhere, it is a stale or misspelled citation of the exact kind this guard exists for — fail.
 		return repoTsBasenames.has(p.target);
 	}
@@ -191,7 +191,7 @@ test('every in-file symbol pointer in a comment names the file whose CODE holds 
 	expect(new RegExp('\\b__PLANTED_PROOF_SYMBOL__\\b').test(stripComments(planted))).toBe(false);
 	// (5) the missing-in-package arm discriminates: a citation of a MISSPELLED package module
 	//     (a name that exists nowhere in the repo) must FAIL, while a citation of a real cross-package
-	//     file (`hub.ts`, in apps/core) is out of remit and must PASS. Without this the recursion's
+	//     file (`hub.ts`, in .) is out of remit and must PASS. Without this the recursion's
 	//     basename resolver would let `rotaton.ts` (a typo of rotation.ts) pass silently.
 	expect(resolves({ file: 'core/ops.ts', ident: 'applyOp', target: 'rotaton.ts' }), 'a misspelled in-package citation must be caught, not skipped').toBe(false);
 	expect(resolves({ file: 'core/ops.ts', ident: 'HubState', target: 'hub.ts' }), 'a real cross-package citation is out of remit and must be skipped').toBe(true);

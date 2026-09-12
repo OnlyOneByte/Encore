@@ -114,9 +114,9 @@ function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
-// Was `at('apps/core/src/lib/server/app.ts')` — the wiring subject was this guard's own SIBLING in
-// apps/core/src/lib/server, which is also where `boot-maintenance` above was imported with a bare `./`.
-const APP = stripComments(read('apps/core/src/lib/server/app.ts'));
+// Was `at('src/lib/server/app.ts')` — the wiring subject was this guard's own SIBLING in
+// src/lib/server, which is also where `boot-maintenance` above was imported with a bare `./`.
+const APP = stripComments(read('src/lib/server/app.ts'));
 
 test('app.ts imports runBootMaintenance and drives the boot passes through it (the wiring)', () => {
 	expect(APP).toMatch(/import\s*\{[^}]*\brunBootMaintenance\b[^}]*\}\s*from\s*'\.\/boot-maintenance'/);

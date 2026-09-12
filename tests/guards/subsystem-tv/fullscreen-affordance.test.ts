@@ -37,9 +37,9 @@ function stripComments(s: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, (_m, p1) => p1 + '');
 }
 
-// The TV page named explicitly. This guard used to sit in apps/core/src/routes/tv, where the page was
-// `at('apps/core/src/routes/tv/+page.svelte')` — "the page next to me", not inferable from tests/.
-const raw = read('apps/core/src/routes/tv/+page.svelte');
+// The TV page named explicitly. This guard used to sit in src/routes/tv, where the page was
+// `at('src/routes/tv/+page.svelte')` — "the page next to me", not inferable from tests/.
+const raw = read('src/routes/tv/+page.svelte');
 const src = stripComments(raw);
 
 /** The <script> body with comments stripped, so a match cannot come from markup or <style>. */
@@ -126,7 +126,7 @@ test('.fs-btn and the corner join QR do NOT share the same bottom-right anchor',
 	const fsBody = fsRule![1]!;
 	expect(fsBody).toMatch(/z-index\s*:\s*var\(--z-tv-card\)\s*;/);
 
-	const joinRaw = read('apps/core/src/lib/tv/JoinBadge.svelte');
+	const joinRaw = read('src/lib/tv/JoinBadge.svelte');
 	const joinStyle = /<style[^>]*>([\s\S]*?)<\/style>/.exec(joinRaw);
 	expect(joinStyle).not.toBeNull();
 	// `.corner:not(.badqr)` — the during-playback QR card treatment (NOT the unreachable-join alert).

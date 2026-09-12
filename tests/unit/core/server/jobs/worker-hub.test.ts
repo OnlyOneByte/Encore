@@ -286,7 +286,7 @@ test('guard arm — #onFailed status: a failure while still assigned (not runnin
 // leading `!job` arm never fires. Delete it from any handler and the suite stays green — the exact
 // mutation this issue reproduces. With `!job` gone, `byId` returns undefined for an unknown id and
 // `job.status` dereferences undefined, throwing a TypeError straight out of the unguarded
-// apps/core/server.ts:212 message handler (its only try/catch wraps the JSON.parse), which ends the
+// server.ts:212 message handler (its only try/catch wraps the JSON.parse), which ends the
 // worker socket: "one malformed frame must never end a party". Each test below fires a WELL-FORMED
 // frame carrying a jobId that was never enqueued, so `!job` is the SOLE defence (there is no row for
 // the status/workerId arms to read), and asserts .not.toThrow() plus that nothing was created or

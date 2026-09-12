@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { appSrc } from '@encore/test-support';
 
-// `apps/core/src`, named rather than counted: this was `at('apps/core/src')`,
+// `src`, named rather than counted: this was `at('src')`,
 // which is only that directory from inside routes/tv/. Both reads below hang off it.
 const SRC = appSrc;
 const ROUTE = readFileSync(join(SRC, 'routes', 'tv', '+page.svelte'), 'utf8');

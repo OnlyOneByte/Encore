@@ -25,7 +25,7 @@ import { appSrc } from '@encore/test-support';
 import { ICON_NAMES, ICON_PATHS } from '$lib/ui/icons';
 import { svelteFiles } from '$lib/test-helpers';
 
-const SRC = appSrc; // apps/core/src
+const SRC = appSrc; // src
 
 /** Codepoints that now have a mark in icons.ts. Named so a failure says what to use instead. */
 const REPLACED: Record<string, string> = {

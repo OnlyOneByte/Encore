@@ -11,11 +11,11 @@ import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { TAP, TAP_FLOOR } from '$lib/test-helpers';
 
-const TREND = read('apps/core/src/lib/charts/Trend.svelte');
-const CSS = read('apps/core/src/app.css');
+const TREND = read('src/lib/charts/Trend.svelte');
+const CSS = read('src/app.css');
 // S4: /stats' own source is no longer read here — the containment claim moved to ui/card
 // with the rule, and the chart's tap-target arms read Trend.svelte directly.
-const CARD_COMPONENT = 'apps/core/src/lib/components/ui/card/card.svelte';
+const CARD_COMPONENT = 'src/lib/components/ui/card/card.svelte';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

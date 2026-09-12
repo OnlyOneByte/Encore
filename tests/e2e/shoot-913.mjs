@@ -20,7 +20,7 @@ import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 // The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
 // and the runner agree on the root. Was `join(import.meta.dirname, …)`, which encoded this file's distance
-// from `apps/core` and broke the moment the e2e tree moved under `tests/`.
+// from `.` and broke the moment the e2e tree moved under `tests/`.
 const REPO_ROOT = (() => {
 	let dir = import.meta.dirname;
 	for (let i = 0; i < 10; i += 1) {
@@ -36,7 +36,7 @@ const REPO_ROOT = (() => {
 const PORT = process.env.EPORT ?? '5217';
 const BASE = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9361);
-const CORE = join(REPO_ROOT, 'apps', 'core');
+const CORE = REPO_ROOT;
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? process.env.TMPDIR ?? '/tmp';
 const RUN = join(SCRATCH, `shoot913-${process.pid}`);
 const MEDIA = join(RUN, 'media');
@@ -148,7 +148,7 @@ async function kill(p) {
 
 async function main() {
 	mkdirSync(RUN, { recursive: true });
-	if (!existsSync(join(CORE, 'build'))) bail('apps/core/build is missing — run `bun run build` first');
+	if (!existsSync(join(CORE, 'build'))) bail('build is missing — run `bun run build` first');
 	const chromium = findChromium();
 	if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
 

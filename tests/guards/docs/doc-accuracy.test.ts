@@ -18,13 +18,13 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { at, read } from '@encore/test-support';
 
-// Was `at('apps/core/src/routes/api/leave/+server.ts')` — the subject was the handler this guard SAT BESIDE in
-// apps/core/src/routes/api/leave, so the route is now named explicitly. `read` throws if it is absent,
+// Was `at('src/routes/api/leave/+server.ts')` — the subject was the handler this guard SAT BESIDE in
+// src/routes/api/leave, so the route is now named explicitly. `read` throws if it is absent,
 // which matters here: this guard's whole subject is that file's header comment.
-const SERVER = 'apps/core/src/routes/api/leave/+server.ts';
-// The routes/ root, was `at('apps/core/src/routes')` from the leave leaf. A path claim like
+const SERVER = 'src/routes/api/leave/+server.ts';
+// The routes/ root, was `at('src/routes')` from the leave leaf. A path claim like
 // /api/leave still maps to <ROUTES>/api/leave. The existsSync below asserts TRUE, so a wrong root reds.
-const ROUTES = at('apps/core/src/routes');
+const ROUTES = at('src/routes');
 
 const src = read(SERVER);
 

@@ -31,7 +31,7 @@ function stripComments(src: string): string {
 }
 
 // The two API routes that write and clear the session cookie, named from the repo root.
-const ROUTES = 'apps/core/src/routes/api';
+const ROUTES = 'src/routes/api';
 const JOIN = stripComments(read(ROUTES, 'join', '+server.ts'));
 const LEAVE = stripComments(read(ROUTES, 'leave', '+server.ts'));
 

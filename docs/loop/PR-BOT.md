@@ -70,7 +70,7 @@ mid-write.
 branch** and check whether the fix narrows one and leaves the rest wrong. A fix that handles one
 branch of a chain is the single most common incomplete fix in this codebase.
 
-**If the diff touches the schema**, `apps/core/drizzle/` is a single folded `0000_baseline.sql` with a
+**If the diff touches the schema**, `drizzle/` is a single folded `0000_baseline.sql` with a
 journal guard asserting the journal is exactly `['0000_baseline']`. So ask the question the gates
 cannot: is the change **additive against a database built at the previous schema**, or does it only
 work on a fresh one? A new column must be nullable or defaulted, the fold must not have rewritten an
@@ -163,7 +163,7 @@ worktree** (`../encore-rev-<n>`, checked out at this PR's head, `bun install` al
 the main checkout and never in another reviewer's tree:
 
 ```bash
-bun test · cd apps/worker && python3 -m pytest -q · bun run build · bun run typecheck · bun run gate:measured
+bun test · cd worker && python3 -m pytest -q · bun run build · bun run typecheck · bun run gate:measured
 ```
 
 **Gate expectations on a clean tree, as of 2026-09-06** — anything else is a regression this PR caused:

@@ -21,11 +21,11 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
-// Was a local `ROOT = at('apps/core')` (apps/core) with its own `read(rel)`
+// Was a local `ROOT = at('.')` (.) with its own `read(rel)`
 // helper resolving against it. Both subjects are now named in full from the repo root, and the read
 // itself throws on a missing file rather than reporting an empty scan.
-const songRowRaw = read('apps/core/src/lib/components/SongRow.svelte');
-const pageRaw = read('apps/core/src/routes/+page.svelte');
+const songRowRaw = read('src/lib/components/SongRow.svelte');
+const pageRaw = read('src/routes/+page.svelte');
 const songRow = stripComments(songRowRaw);
 const page = stripComments(pageRaw);
 

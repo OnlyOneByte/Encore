@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { appSrc } from '@encore/test-support';
 
-// Was `at('apps/core/src')` from apps/core/src/lib, which meant apps/core/src. `appSrc` is that
+// Was `at('src')` from src/lib, which meant src. `appSrc` is that
 // same directory named directly, and it is derived from the repo-root marker rather than from wherever
 // this test happens to sit — the four reads below all throw on a missing file, so a wrong root is loud.
 const SRC = appSrc;

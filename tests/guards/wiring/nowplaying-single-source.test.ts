@@ -1,7 +1,7 @@
-// SINGLE-SOURCE GUARD for the two things player.ts owns and apps/core/server.ts used to re-derive:
+// SINGLE-SOURCE GUARD for the two things player.ts owns and server.ts used to re-derive:
 // the recovery predicate and the nowplaying:changed payload.
 //
-// Two findings, one root cause: the WebSocket switch in apps/core/server.ts wrote its own copy of
+// Two findings, one root cause: the WebSocket switch in server.ts wrote its own copy of
 //   (1) the recovery predicate — `entries.some((e) => e.id === playback.currentEntryId)` — to
 //       decide whether to call reconcileOnReady, which already evaluates that same predicate itself;
 //   (2) the `nowplaying:changed` payload, hand-derived and hand-built in the `hello` resync arm,
@@ -13,14 +13,14 @@
 // The incentive was inverted — the incomplete edit was silent, the complete one punished. For (2)
 // `deps.publish` is typed `(event: ServerEvent) => void` (hub.ts) but the resync writes through
 // `ws.send(JSON.stringify(...))`, which accepts anything: adding one required field to the
-// nowplaying:changed variant (apps/core/src/lib/contract/core/events.ts) produced exactly ONE tsc error, at
+// nowplaying:changed variant (src/lib/contract/core/events.ts) produced exactly ONE tsc error, at
 // player.ts, and ZERO at server.ts. So a reconnecting TV or a reloading phone would be served the
 // old projection while every live client got the new one — the same class as an advertised next that
 // disagrees with the truth, reached from the resync seam.
 //
 // These are FILE-SET censuses, not line coordinates: the fix moves lines, so asserting a `path:line`
 // would red on the very change it is meant to protect. Each arm names the file that must own the
-// construct and requires no other non-test production file in apps/core to carry it.
+// construct and requires no other non-test production file in . to carry it.
 //
 // Sentinels below exist so no arm can be satisfied by DELETING the thing it protects — a census that
 // only counts occurrences passes at zero.
@@ -30,7 +30,7 @@ import { join, relative } from 'node:path';
 import { appCore, appSrc, read } from '@encore/test-support';
 
 // Anchored on the repo-root markers, not on this file's own location: the old forms were
-// `at('apps/core')` and `at('apps/core/src')`. Every arm below is a
+// `at('.')` and `at('src')`. Every arm below is a
 // file-set census, so a wrong walk root would make all four pass at zero — the exact silent green these
 // anchors exist to prevent.
 const CORE_ROOT = appCore;
@@ -41,7 +41,7 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-/** Every NON-TEST production .ts/.svelte in apps/core, including the Bun.serve entry at the package
+/** Every NON-TEST production .ts/.svelte in ., including the Bun.serve entry at the package
  *  root — server.ts sits OUTSIDE src/, and a src-scoped walk would miss the very file this guards. */
 function collectNonTestSources(): string[] {
 	const out: string[] = [];
@@ -131,7 +131,7 @@ test('ARM 1 cannot be satisfied by deleting the invariant — the resolution tes
 // ── PROSE ARM: the comment that tells the next developer the predicate is single-sourced ────────────
 // This pins the comment-only hunk of this fix, which by construction cannot red a behavioural test —
 // `docs/loop/CODING-BOT.md` §3 sanctions exactly this shape, and the in-repo precedents are
-// apps/core/src/lib/contract/pin-base-prose-790.test.ts and spotify-enforcement-prose-742.test.ts. Read RAW
+// src/lib/contract/pin-base-prose-790.test.ts and spotify-enforcement-prose-742.test.ts. Read RAW
 // (not stripComments), because the comment text IS the subject: blanking comments would make every
 // assertion below vacuous.
 //
@@ -139,7 +139,7 @@ test('ARM 1 cannot be satisfied by deleting the invariant — the resolution tes
 // someone writes one. The comment is what stops them writing it — the next developer standing at this
 // predicate needs to know their edit is complete here, and that callers deliberately decide nothing.
 // Delete the disclosure and the duplication grows back for the same reason it grew the first time.
-const PLAYER_RAW = read('apps/core/src/lib/server/realtime/player.ts');
+const PLAYER_RAW = read('src/lib/server/realtime/player.ts');
 
 test('player.ts discloses where the recovery predicate is single-sourced', () => {
 	// Non-vacuous: anchor on the symbol the prose documents, so a rename reds here rather than passing
@@ -252,7 +252,7 @@ test('the typed-builder precedent this follows still exists: syncEvent', () => {
 	// nowPlayingEvent is modelled on hub.ts's syncEvent — a typed event builder with the identical
 	// `Extract<ServerEvent, { type: … }>` return shape, called by this same hello arm one line above.
 	// If that precedent is ever removed the shape here should be revisited, not silently diverge.
-	const HUB = stripComments(read('apps/core/src/lib/server/realtime/hub.ts'));
+	const HUB = stripComments(read('src/lib/server/realtime/hub.ts'));
 	expect(HUB).toMatch(/export function syncEvent\(/);
 	expect(HUB).toMatch(/Extract<ServerEvent,\s*\{\s*type:\s*'queue:sync'\s*\}>/);
 });

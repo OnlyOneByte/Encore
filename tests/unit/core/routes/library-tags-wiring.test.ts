@@ -16,7 +16,7 @@ function stripComments(src: string): string {
 // The subject is named from the REPO ROOT rather than from wherever this test happens to sit
 // (XR-VER-05). `read()` throws on a miss, so a wrong path reds loudly instead of stripping an empty
 // string and reporting three green arms over nothing.
-const PAGE = stripComments(read('apps/core/src/routes/+page.svelte'));
+const PAGE = stripComments(read('src/routes/+page.svelte'));
 
 test('the page holds a libraryTags map keyed by mediaId', () => {
 	expect(PAGE).toMatch(/let\s+libraryTags\s*=\s*\$state<Record<string,\s*string\[\]>>\(\{\}\)/);

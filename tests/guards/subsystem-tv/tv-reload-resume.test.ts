@@ -64,10 +64,10 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, (_m, p1) => p1 + '');
 }
 
-// Was `at('apps/core/src/lib/tv/TvPlayer.svelte')` — the subject was this guard's own SIBLING in
-// apps/core/src/lib/tv, which is also where `guide-sync` above was imported from with a bare `./`.
+// Was `at('src/lib/tv/TvPlayer.svelte')` — the subject was this guard's own SIBLING in
+// src/lib/tv, which is also where `guide-sync` above was imported from with a bare `./`.
 // Named in full now, so neither depends on where this test lives.
-const raw = read('apps/core/src/lib/tv/TvPlayer.svelte');
+const raw = read('src/lib/tv/TvPlayer.svelte');
 const src = stripComments(raw);
 
 it('TvPlayer.svelte is wired to resume on a cold mount: imports and calls the resumeSeekTarget decision (not a hand-rolled inline comparison)', () => {

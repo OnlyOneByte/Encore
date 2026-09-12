@@ -134,7 +134,7 @@ name, and prove that arm discriminates by injecting a renamed copy with the same
 
 ```bash
 bun test                                # expect 0 fail
-cd apps/worker && python3 -m pytest -q  # expect 0 fail
+cd worker && python3 -m pytest -q  # expect 0 fail
 bun run build                           # expect exit 0
 bun run typecheck                       # expect exit 0, 0 errors, 0 warnings
 bun run gate:measured                   # expect exit 0 — the layout rung, AFTER build

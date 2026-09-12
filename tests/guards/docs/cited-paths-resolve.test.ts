@@ -25,7 +25,11 @@ const TRACKED = new Set(
 );
 
 /** Source-file references in prose: repo-relative, pointing into a real source or test tree. */
-const CITED = /\b((?:apps|packages|tests)\/[A-Za-z0-9_./-]+\.(?:test\.ts|harness\.svelte|svelte|ts|py|css|json))\b/g;
+// The tree prefixes a citation can start with. `src` and `worker` replaced `apps` when the apps/ layer
+// was flattened away, and `packages` is gone entirely — but this list is the guard's whole reach, so
+// getting it wrong makes the guard pass by seeing NOTHING. That is exactly what happened on the flatten:
+// every source citation became `src/…`, matched no prefix here, and three arms went quietly green.
+const CITED = /\b((?:src|worker|tests)\/[A-Za-z0-9_./-]+\.(?:test\.ts|harness\.svelte|svelte|ts|py|css|json))\b/g;
 
 /*
  * Documents whose references are DELIBERATELY historical, with the reason each one is exempt.
@@ -97,12 +101,12 @@ test('every exempt document still exists and still carries its stale reference',
 test('the citation pattern reads paths and not prose that resembles them', () => {
 	const find = (s: string): string[] => [...s.matchAll(CITED)].map((m) => m[1]!);
 	// real citations
-	expect(find('see `apps/core/src/lib/clock.ts` for the derivation')).toEqual(['apps/core/src/lib/clock.ts']);
+	expect(find('see `src/lib/clock.ts` for the derivation')).toEqual(['src/lib/clock.ts']);
 	expect(find('`tests/guards/a11y/contrast.test.ts` pins it')).toEqual(['tests/guards/a11y/contrast.test.ts']);
-	expect(find('`apps/core/src/lib/contract/queue/rotation.ts`')).toEqual(['apps/core/src/lib/contract/queue/rotation.ts']);
-	expect(find('`apps/worker/src/separate.py`')).toEqual(['apps/worker/src/separate.py']);
+	expect(find('`src/lib/contract/queue/rotation.ts`')).toEqual(['src/lib/contract/queue/rotation.ts']);
+	expect(find('`worker/src/separate.py`')).toEqual(['worker/src/separate.py']);
 	// not citations: a bare directory, a glob, and a package name that merely starts the same way
-	expect(find('everything under apps/core/src is in scope')).toEqual([]);
-	expect(find('the `apps/**/*.ts` glob')).toEqual([]);
-	expect(find('appsflyer/tracking.ts is unrelated')).toEqual([]);
+	expect(find('everything under src is in scope')).toEqual([]);
+	expect(find('the `src/**/*.ts` glob')).toEqual([]);
+	expect(find('srcfoo/tracking.ts is unrelated')).toEqual([]);
 });

@@ -32,7 +32,7 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// apps/core, anchored at the repo root rather than counted up from this file's own location.
+// ., anchored at the repo root rather than counted up from this file's own location.
 const CORE = appCore;
 const PROBE_PATH = at('tests', 'e2e', 'probes', 'p15-phone-reflow.mjs');
 const STATS_PATH = join(CORE, 'src', 'routes', 'stats', '+page.svelte');

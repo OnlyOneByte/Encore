@@ -21,7 +21,7 @@
 // deliberately one assertion per production hunk, so reverting any single wiring hunk reds a NAMED
 // test rather than the suite staying green on a half-connected feature. The mutation-STRONG proof
 // that the mapping is correct (two distinct legible colours vs an empty map) is behavioural, on the
-// pure `duetPartColors` in `apps/core/src/lib/contract/presentation/colors.test.ts`; the RENDERED pixels are the CDP
+// pure `duetPartColors` in `src/lib/contract/presentation/colors.test.ts`; the RENDERED pixels are the CDP
 // frames in the PR body.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
@@ -36,10 +36,10 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
 }
 
-// Was `at('apps/core/src/lib/tv/LyricsOverlay.svelte')` — the subject was this guard's own SIBLING in
-// apps/core/src/lib/tv, so it is now named in full and anchored on the repo root. `read` throws when
+// Was `at('src/lib/tv/LyricsOverlay.svelte')` — the subject was this guard's own SIBLING in
+// src/lib/tv, so it is now named in full and anchored on the repo root. `read` throws when
 // the file is absent, which is what keeps the NEGATIVE assertions below from passing on an empty string.
-const OVERLAY = 'apps/core/src/lib/tv/LyricsOverlay.svelte';
+const OVERLAY = 'src/lib/tv/LyricsOverlay.svelte';
 const overlaySrc = () => stripComments(read(OVERLAY));
 
 // Non-vacuity floor: every assertion below matches a file's text, so a read that silently produced

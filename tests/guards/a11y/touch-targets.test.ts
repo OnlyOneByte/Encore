@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { appSrc } from '@encore/test-support';
 import { TAP, TAP_FLOOR, expressesTap, restatesTapNumber, markupControls, svelteFiles } from '$lib/test-helpers';
 
-const SRC = appSrc; // apps/core/src
+const SRC = appSrc; // src
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

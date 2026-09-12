@@ -18,10 +18,10 @@ function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
-// Was `at('apps/core/src/routes/api/library/+server.ts')` — the scanned route was this guard's own SIBLING in
-// apps/core/src/routes/api/library, i.e. the GET /api/library handler every assertion below is about,
+// Was `at('src/routes/api/library/+server.ts')` — the scanned route was this guard's own SIBLING in
+// src/routes/api/library, i.e. the GET /api/library handler every assertion below is about,
 // so it is now named in full and anchored on the repo root.
-const SRC = stripComments(read('apps/core/src/routes/api/library/+server.ts'));
+const SRC = stripComments(read('src/routes/api/library/+server.ts'));
 
 test('the route reads a ?tag= param and selects the library via byTag', () => {
 	// reads the tag query param

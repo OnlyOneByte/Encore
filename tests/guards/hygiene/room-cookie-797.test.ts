@@ -34,8 +34,8 @@ import { join } from 'node:path';
 import { appSrc } from '@encore/test-support';
 
 /**
- * apps/core/src — the production tree this guard walks. Was `at('apps/core/src')`, counted
- * out from this guard's old home in apps/core/src/lib/server/singers; it is the shared anchor now, so the
+ * src — the production tree this guard walks. Was `at('src')`, counted
+ * out from this guard's old home in src/lib/server/singers; it is the shared anchor now, so the
  * scan cannot be pointed at nothing by moving the test.
  */
 const SRC = appSrc;
@@ -49,7 +49,7 @@ const SRC = appSrc;
  */
 const stripComments = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-/** Every non-test production source under apps/core/src. */
+/** Every non-test production source under src. */
 function productionSources(dir: string, out: string[] = []): string[] {
 	for (const e of readdirSync(dir, { withFileTypes: true })) {
 		const p = join(dir, e.name);
@@ -72,7 +72,7 @@ const sources = new Map(FILES.map((p) => [p, readFileSync(p, 'utf8')]));
 /** The cookie, by constant name or by its literal value. */
 const NAMES_THE_COOKIE = /ROOM_COOKIE|['"`]encore_room['"`]/;
 
-test('F1 non-vacuous: the scan really walks apps/core/src and can see cookie code', () => {
+test('F1 non-vacuous: the scan really walks src and can see cookie code', () => {
 	// A scan that found no files, or files it could not read, would pass every ban below on silence.
 	expect(FILES.length).toBeGreaterThan(100);
 	const sessionHits = FILES.filter((p) => /SESSION_COOKIE/.test(stripComments(sources.get(p)!)));

@@ -21,8 +21,8 @@ vendoring, and copying with attribution are all open to us — no licence blocke
 
 **Adopted ALONGSIDE `bs-roformer-infer` — both engines, not one over the other (owner
 ruling Q1(b)).** The ruling is settled, and the dependency has **LANDED**: `python-audio-separator` is
-pinned in `apps/worker/requirements.txt` and the `audiosep` engine is wired in
-`apps/worker/src/separation/engines.py` (`engine_for` resolves `demucs`, `roformer` and now
+pinned in `worker/requirements.txt` and the `audiosep` engine is wired in
+`worker/src/separation/engines.py` (`engine_for` resolves `demucs`, `roformer` and now
 `audiosep`). It JOINS `bs-roformer-infer` rather than replacing it, selected per job
 (`params.engine`) through `engine_for` — the seam both engines resolve behind. The two coexist behind
 one seam; when the mel-band engine is added, it does not replace the roformer one.
@@ -31,9 +31,9 @@ checkpoint ONCE per long-lived worker, not per cook) and its repointable sha256-
 registry. **This is ratified: a pass proposing to drop one of the two engines is re-opening a
 ratified decision.** Equally, a pass that finds only one separator engine on disk has found unlanded
 work, not a contradiction of this ruling. That includes the `#: KNOWN MISMATCH` note in
-`apps/worker/src/separation/roformer.py` about the approved `ep_317` checkpoint being unreachable
+`worker/src/separation/roformer.py` about the approved `ep_317` checkpoint being unreachable
 through `bs-roformer-infer` — a model-registry gap, not a case for removing the engine.
-`bs-roformer-infer`'s own pin comment carries the same reason at `apps/worker/requirements.txt`.
+`bs-roformer-infer`'s own pin comment carries the same reason at `worker/requirements.txt`.
 
 **Why adding `python-audio-separator` is the highest-value change.** Two independent wins from one
 dependency:
@@ -85,7 +85,7 @@ source only**: a Spotify resolver joins the `/api/search` fan-out and surfaces c
 artist/title/duration (where a YouTube upload title has to be reverse-engineered), but its bytes are
 never pulled from Spotify — the audio is still acquired from YouTube, consistent with the annotator
 rule below. There is deliberately no `fetch:spotify` worker capability and no `librespot`; a
-spotify-sourced media is not cookable — `isCookableSource` (`apps/core/src/lib/contract/cook/fetchers.ts`) is the
+spotify-sourced media is not cookable — `isCookableSource` (`src/lib/contract/cook/fetchers.ts`) is the
 one authority that says so, and every layer that decides whether a cook is possible asks it:
 `cookState` answers `not-cookable`, the phone's `canCook` withholds the Sing and Add affordances, and
 `requestMakeKaraoke` declines. (`fetcherFor` does NOT refuse a spotify source — it returns the default

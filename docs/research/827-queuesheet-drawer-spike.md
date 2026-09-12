@@ -25,10 +25,10 @@ Reproduce:
 > of a measurement that was taken, not an instruction to re-run it — repointing it at a file that
 > never held these numbers would make the record false rather than current.
 ```bash
-cd apps/core && bun run build
+cd . && bun run build
 ENCORE_EPHEMERAL=1 PORT=5271 HOST=127.0.0.1 bun run ./server.ts &
 EPORT=5271 bun e2e/probes/spike827-queuesheet-drawer.mjs      # 17/17
-bun test apps/core/src/lib/components/drawer-spike-827.test.ts # 5/5
+bun test src/lib/components/drawer-spike-827.test.ts # 5/5
 ```
 
 ## The four numbers
@@ -87,7 +87,7 @@ The animated properties are `transform` and `opacity` only, so the layout-proper
 satisfied — if it could reach them. It cannot: the rules live in a 291-line `<style global>` at
 `dist/components/drawer/drawer.svelte:92-383` inside `node_modules`, which `test-helpers.ts:36`'s
 `SKIP_DIRS` skips by name, plus inline styles written from JS. This is now asserted rather than
-asserted-in-prose, in `apps/core/src/lib/components/drawer-spike-827.test.ts`.
+asserted-in-prose, in `src/lib/components/drawer-spike-827.test.ts`.
 
 **Risk 3 · the four numbers — GO. All four match exactly.** See the table.
 

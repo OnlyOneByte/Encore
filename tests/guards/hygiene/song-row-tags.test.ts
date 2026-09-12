@@ -16,9 +16,9 @@ function stripComments(src: string): string {
 		.replace(/\/\*[\s\S]*?\*\//g, '')
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
-// Was `at('apps/core/src/lib/components/SongRow.svelte')` — the subject was this guard's own SIBLING in
-// apps/core/src/lib/components, so the path is now stated in full and anchored on the repo root.
-const src = stripComments(read('apps/core/src/lib/components/SongRow.svelte'));
+// Was `at('src/lib/components/SongRow.svelte')` — the subject was this guard's own SIBLING in
+// src/lib/components, so the path is now stated in full and anchored on the repo root.
+const src = stripComments(read('src/lib/components/SongRow.svelte'));
 
 test('SongRow accepts a tags prop and destructures it', () => {
 	expect(src).toMatch(/tags\?\s*:\s*string\[\]/); // interface member
@@ -53,9 +53,9 @@ test('the tag chip is a NEUTRAL family, not a status tint', () => {
 	 * and still the point — a tag is a describing word, not a warning — so it is asserted against the
 	 * rules that actually paint it rather than against a class SongRow no longer writes.
 	 */
-	// Was `at('apps/core/src/lib/components/ui/badge/badge.svelte')` — a sibling-relative read of the
+	// Was `at('src/lib/components/ui/badge/badge.svelte')` — a sibling-relative read of the
 	// components tree this guard used to live in, now named from the repo root.
-	const badge = read('apps/core/src/lib/components/ui/badge/badge.svelte');
+	const badge = read('src/lib/components/ui/badge/badge.svelte');
 	expect(badge, 'ui/badge must define a tag tone').toMatch(/\.encore-chip-tag\s*\{/);
 	const accent = badge.match(/\.encore-chip-accent\s*\{([^}]*)\}/);
 	expect(accent, 'the tag tone builds on the accent wash').not.toBeNull();

@@ -24,9 +24,9 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Was `at('apps/core/src/routes/tv/+page.svelte')` counted from
-// apps/core/src/lib/tv. Named from the repo root instead, so it does not depend on where this test sits.
-const ROUTE = 'apps/core/src/routes/tv/+page.svelte';
+// Was `at('src/routes/tv/+page.svelte')` counted from
+// src/lib/tv. Named from the repo root instead, so it does not depend on where this test sits.
+const ROUTE = 'src/routes/tv/+page.svelte';
 
 /** Blank comments out, keeping newlines so a comment describing the stroke cannot satisfy the scan. */
 function stripComments(src: string): string {
@@ -67,8 +67,8 @@ test('the lower-third stroke paints BEHIND the glyph so it does not eat the ink'
 // measured 1.10:1 before the fix. This is arithmetic, so it bites without a browser.
 test('the lower-third stroke colour clears WCAG body contrast on a white stage', () => {
 	// --scrim-strong, read from app.css so a change to the token is caught here rather than assumed.
-	// Was `at('apps/core/src/app.css')` from apps/core/src/lib/tv; named in full now.
-	const css = read('apps/core/src/app.css');
+	// Was `at('src/app.css')` from src/lib/tv; named in full now.
+	const css = read('src/app.css');
 	const m = css.match(/--scrim-strong:\s*rgba?\(([^)]+)\)\s*;/);
 	expect(m, '--scrim-strong not found in app.css (renamed? update this guard)').not.toBeNull();
 	const parts = m![1]!.split(',').map((s) => parseFloat(s.trim()));

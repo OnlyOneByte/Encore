@@ -1,8 +1,8 @@
 // guard: the test tree's own dependencies stay in lockstep with the package they test — XR-VER-05.
 //
-// WHY THIS EXISTS. Moving the tests into `tests/` moved them out of the reach of `apps/core/node_modules`.
+// WHY THIS EXISTS. Moving the tests into `tests/` moved them out of the reach of `node_modules`.
 // Node resolves a bare specifier by walking UP from the importing file, so a test at
-// `apps/core/src/lib/server/media/` found `drizzle-orm` and the same test at `tests/unit/core/server/media/`
+// `src/lib/server/media/` found `drizzle-orm` and the same test at `tests/unit/core/server/media/`
 // did not. Two tests failed with `Cannot find package 'drizzle-orm'`, which was the loud, honest version
 // of the problem.
 //
@@ -55,21 +55,18 @@ function externalImports(src: string): string[] {
 	return out;
 }
 
-const testsManifest = JSON.parse(read('tests/package.json')) as {
-	devDependencies?: Record<string, string>;
-};
-const coreManifest = JSON.parse(read('apps/core/package.json')) as {
-	dependencies?: Record<string, string>;
-	devDependencies?: Record<string, string>;
-};
-const rootManifest = JSON.parse(read('package.json')) as {
+/*
+ * ONE MANIFEST. There used to be two — `tests/package.json`, added so `drizzle-orm` resolved from a test
+ * that had moved out of `apps/core`, and the app's own. Flattening the `apps/` layer away made the app's
+ * manifest the ROOT manifest, so a test resolves a package by walking up like every other file and the
+ * separate test manifest was deleted.
+ */
+const manifest = JSON.parse(read('package.json')) as {
 	dependencies?: Record<string, string>;
 	devDependencies?: Record<string, string>;
 };
 
-const declaredForTests = testsManifest.devDependencies ?? {};
-const coreAll = { ...(coreManifest.dependencies ?? {}), ...(coreManifest.devDependencies ?? {}) };
-const rootAll = { ...(rootManifest.dependencies ?? {}), ...(rootManifest.devDependencies ?? {}) };
+const declared = { ...(manifest.dependencies ?? {}), ...(manifest.devDependencies ?? {}) };
 
 test('every external package the test tree imports is declared somewhere it can resolve from', () => {
 	const files = filesUnder('tests', ['.test.ts', '.svelte']);
@@ -81,34 +78,29 @@ test('every external package the test tree imports is declared somewhere it can 
 	for (const f of files) for (const p of externalImports(read(relative(f)))) seen.add(p);
 
 	const undeclared = [...seen]
-		.filter((p) => !(p in declaredForTests) && !(p in rootAll))
+		.filter((p) => !(p in declared))
 		.sort();
 
 	expect(
 		undeclared,
-		'the test tree imports a package that neither tests/package.json nor the root manifest declares. ' +
+		'the test tree imports a package the root manifest does not declare. ' +
 			'It resolves today only by where node_modules happens to be hoisted, and will stop the moment the ' +
 			'dependency graph shifts — which is exactly how moving these tests broke drizzle-orm. Declare it ' +
 			'in tests/package.json, where the import lives.'
 	).toEqual([]);
 });
 
-test('a package declared for the tests matches the version the app under test runs', () => {
-	// Non-vacuity: there is something to compare. An emptied tests manifest would make this vacuous.
-	expect(Object.keys(declaredForTests).length).toBeGreaterThanOrEqual(1); // @nvf-floor Object.keys(declaredForTests).length
-
-	const drifted = Object.entries(declaredForTests)
-		.filter(([name]) => name in coreAll)
-		.filter(([name, range]) => coreAll[name] !== range)
-		.map(([name, range]) => `${name}: tests wants ${range}, apps/core runs ${coreAll[name]}`);
-
-	expect(
-		drifted,
-		'the test tree and the app disagree on a package version. A test asserting behaviour against a ' +
-			'different library than the app runs is worse than no test: it is green about the wrong thing. ' +
-			'Move both declarations together.'
-	).toEqual([]);
-});
+/*
+ * RETIRED: 'a package declared for the tests matches the version the app under test runs'.
+ *
+ * It compared `tests/package.json` against the app's manifest, because a test asserting behaviour against a
+ * DIFFERENT library version than the app runs is worse than no test — it is green about the wrong thing.
+ *
+ * That risk no longer exists. There is one manifest, so there are no two numbers to disagree. The arm is
+ * removed rather than rewritten to compare a thing with itself, which is what "no assertion" looks like
+ * when it is dressed as a passing test (XR-VER-06/07). Its floor was retired from the registry in the same
+ * commit, for the same reason.
+ */
 
 test('the scan reads import STATEMENTS and not import-shaped fixtures', () => {
 	/*

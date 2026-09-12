@@ -60,7 +60,7 @@ const PORT = Number(process.env.EPORT ?? 5244);
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9455);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.SCRATCH ?? join(process.env.KIROCREW_SCRATCH ?? '/tmp', `e2e-reflow-${PORT}`);
-const CORE = resolve(new URL('../..', import.meta.url).pathname); // apps/core
+const CORE = resolve(new URL('../..', import.meta.url).pathname); // .
 
 /** @type {{ name: string, ok: boolean }[]} */
 const checks = [];

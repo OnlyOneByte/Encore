@@ -59,7 +59,7 @@ Three ways it differs from a probe, all deliberate:
   indistinguishable from the rot it was meant to catch.
 - **It measures rather than drives.** It reads what a real layout engine resolved: hit extents against
   `--tap`, computed field font sizes, the drawer's cap against `innerHeight`, `env(safe-area-inset-*)`
-  under a simulated inset, and the painted focus ring. `apps/core/src/lib/measured-design-gate.test.ts`
+  under a simulated inset, and the painted focus ring. `src/lib/measured-design-gate.test.ts`
   is its always-on half — it runs in `bun test` on every box and asserts the gate stays wired.
 
 Two methodology notes it paid for, beyond the ones in `docs/ux/04-verification.md`:
@@ -80,7 +80,7 @@ Two methodology notes it paid for, beyond the ones in `docs/ux/04-verification.m
 Every probe gets its own port and media dir, so runs never collide.
 
 ```bash
-cd apps/core
+cd .
 PORT=52NN                      # yours alone
 SCRATCH=$KIROCREW_SCRATCH/e2e-$PORT
 rm -rf "$SCRATCH"; mkdir -p "$SCRATCH/media"

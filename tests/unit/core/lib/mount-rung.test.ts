@@ -35,7 +35,7 @@ import { join } from 'node:path';
 import { mount, unmount, flushSync } from '../../../../tests/setup/svelte-client';
 import { appSrc, repoRoot, at } from '@encore/test-support';
 
-// apps/core/src — where routes, lib and server live. Anchored from the repo root via
+// src — where routes, lib and server live. Anchored from the repo root via
 // @encore/test-support, never from where this test sits, so a move is a git mv (no-self-anchored-paths).
 const SRC = appSrc;
 
@@ -44,7 +44,7 @@ const SRC = appSrc;
 const REPO_ROOT = repoRoot;
 const PRELOAD = at('tests', 'setup', 'svelte-dom-preload.ts');
 
-/** Every `.ts`/`.svelte` file under apps/core/src, excluding SvelteKit's generated tree. */
+/** Every `.ts`/`.svelte` file under src, excluding SvelteKit's generated tree. */
 function sourceFiles(dir: string): string[] {
 	const out: string[] = [];
 	for (const ent of readdirSync(dir, { withFileTypes: true })) {
@@ -327,7 +327,7 @@ test('no test still documents the $app/$env virtual modules as un-aliased', () =
 	const stale = /does\s+not\s+alias\s+the[\s\S]{0,40}\$app/;
 	const offenders: string[] = [];
 	/*
-	 * EVERY test file in the repo, wherever it lives — not every test file under `apps/core/src`.
+	 * EVERY test file in the repo, wherever it lives — not every test file under `src`.
 	 *
 	 * This walked `SRC` alone, which was the whole population when every test sat beside its source. The
 	 * reorganisation moves them into `tests/`, and a walk rooted at `SRC` would then examine only what had

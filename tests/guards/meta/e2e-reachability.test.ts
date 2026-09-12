@@ -1,6 +1,6 @@
 // guard: every e2e driver and probe is reachable from a command, or is recorded as not being — XR-VER-05.
 //
-// WHY THIS EXISTS. Moving `apps/core/e2e/` into `tests/e2e/` would otherwise have laundered dead code into
+// WHY THIS EXISTS. Moving `e2e/` into `tests/e2e/` would otherwise have laundered dead code into
 // a tidier address. 19 of the 38 files here are reachable from NOTHING: no npm script, no import, not even
 // a basename mentioned by a file that is reachable. Together they are ~12,000 lines carrying 226
 // severity-tagged assertions that no command has run.

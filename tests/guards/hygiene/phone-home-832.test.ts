@@ -252,7 +252,7 @@ test('the gallery carries the hero and BOTH position branches, adjacent', () => 
 	 * The PAIR is the point for the position card: "no minutes clause" is only judgeable against the
 	 * clause it replaces, so a gallery with only the happy branch cannot show the degradation at all.
 	 */
-	const gallery = read('apps/core/src/routes/components/+page.svelte');
+	const gallery = read('src/routes/components/+page.svelte');
 	expect(gallery).toContain('<NowPlayingHero');
 	expect(gallery).toContain('<MyPositionCard');
 	// The imports too, separately: dropping one breaks `build` and leaves `bun test` green, so without

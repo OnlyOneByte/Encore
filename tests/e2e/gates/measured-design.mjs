@@ -214,7 +214,7 @@ if (!chromium) {
 if (!existsSync(join(CORE, 'build', 'handler.js')) && !existsSync(join(CORE, 'build'))) {
 	unmeetable(
 		'the app has been built — the gate drives the real bundle, not the dev server',
-		'apps/core/build is missing. Run `bun run build` (gate 3) before this gate; it is deliberately ordered after it.'
+		'build is missing. Run `bun run build` (gate 3) before this gate; it is deliberately ordered after it.'
 	);
 }
 

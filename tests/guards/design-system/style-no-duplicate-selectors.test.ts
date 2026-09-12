@@ -26,9 +26,9 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// Was a sibling read of the page this guard sat beside in apps/core/src/routes/tv — the TV
+// Was a sibling read of the page this guard sat beside in src/routes/tv — the TV
 // lower-third page, named from the repo root now that the guard no longer colocates with it.
-const raw = read('apps/core/src/routes/tv/+page.svelte');
+const raw = read('src/routes/tv/+page.svelte');
 
 /** Extract every <style> block's body, comments blanked so a selector-in-prose is not counted. */
 function styleBodies(src: string): string {

@@ -126,10 +126,10 @@ function stripComments(s: string): string {
 	return s.replace(/[/][*][\s\S]*?[*][/]/g, '').replace(/(^|[^:])[/][/][^\n]*/g, '$1');
 }
 
-// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/lib/tv/, where
-// `at('apps/core/src/lib/tv/TvPlayer.svelte')` meant "the player component next to me". Confirmed
+// SIBLING READ, now named explicitly. This guard used to live in src/lib/tv/, where
+// `at('src/lib/tv/TvPlayer.svelte')` meant "the player component next to me". Confirmed
 // present at this path before re-anchoring.
-const TV = read('apps/core/src/lib/tv/TvPlayer.svelte');
+const TV = read('src/lib/tv/TvPlayer.svelte');
 
 test('the level effect applies the master level at BOTH the native and routed sites', () => {
 	// The dedicated master-level $effect: `master.volume = effectiveMasterLevel` (native path) AND
@@ -185,7 +185,7 @@ test('effectiveMasterLevel is derived clamped to [0,1] (attenuate-only, never a 
 test('the TV route resolves masterLevel from the loudness gain and passes it to both slots', () => {
 	// The decision lives in the route (it owns the library catalog + the room toggle); the player is a
 	// pure applier. Prove the route wires the pure gain function to a per-slot masterLevel prop.
-	const route = read('apps/core/src/routes/tv/+page.svelte');
+	const route = read('src/routes/tv/+page.svelte');
 	const src = stripComments(route);
 	expect(src).toMatch(/loudnessNormalizationGain[(]/);
 	expect(src).toMatch(/enabled:\s*settings[.]room[.]loudnessNormalization/);

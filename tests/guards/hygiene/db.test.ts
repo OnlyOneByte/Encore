@@ -23,11 +23,11 @@ import { DEFAULT_STAGE_COLOR, STAGE_BG_C, STAGE_BG_L, hueToHex, stageHueToHex } 
 import type { PlaybackState, QueueEntry } from '$lib/contract';
 
 /**
- * The real migration folder. Was `at('apps/core/drizzle')` at seven sites,
- * counted out from this test's old home in apps/core/src/lib/server/db; it is apps/core/drizzle, named once
+ * The real migration folder. Was `at('drizzle')` at seven sites,
+ * counted out from this test's old home in src/lib/server/db; it is drizzle, named once
  * here and anchored on the repo root.
  */
-const DRIZZLE = at('apps/core/drizzle');
+const DRIZZLE = at('drizzle');
 
 test('migrations create all tables and every entity round-trips', () => {
 	// in-memory bun:sqlite — no disk, fully isolated per test run
@@ -696,7 +696,7 @@ test('0005 defaults an off-step or out-of-range hue instead of leaving it unmapp
 // with stageHueToHex, so a change to the stage tier that leaves the migration behind reds here rather
 // than silently shipping a wrong backfill on the 23 rows the upgrade test does not spot-check.
 test('every WHEN arm of the 0005 backfill CASE equals stageHueToHex(hue)', () => {
-	const sql = read('apps/core/drizzle/0005_tv_background_color.sql');
+	const sql = read('drizzle/0005_tv_background_color.sql');
 	const arms = [...sql.matchAll(/WHEN\s+(\d+)\s+THEN\s+'(#[0-9a-fA-F]{6})'/g)].map((m) => ({
 		hue: Number(m[1]),
 		hex: m[2]!.toLowerCase()
