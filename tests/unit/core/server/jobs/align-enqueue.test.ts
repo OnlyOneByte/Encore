@@ -2,7 +2,7 @@
 // and `job:assign` could not carry what align needs. These pin both, plus the confidence rule that
 // decides whether a lyrics lookup is even attempted.
 import { test, expect } from 'bun:test';
-import { assignParams, followUps } from '$server/jobs/dispatch';
+import { assignParams, followUps } from '$lib/server/jobs/dispatch';
 import { DEFAULT_GLOBAL_SETTINGS, type Media } from '$shared';
 
 const media = (over: Partial<Media> = {}): Media => ({

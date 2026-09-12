@@ -37,9 +37,9 @@
 // `upNextAfter` — a test that recomputed the projection with the same function the code uses could not
 // detect a wrong projection at all.
 import { test, expect } from 'bun:test';
-import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { reconcileOnReady, emitNowPlaying } from '$server/realtime/player';
-import { AuthoritativeState } from '$server/state/store';
+import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { reconcileOnReady, emitNowPlaying } from '$lib/server/realtime/player';
+import { AuthoritativeState } from '$lib/server/state/store';
 import { EMPTY_SONG_PROFILE } from '$shared';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$shared';
 
@@ -231,10 +231,10 @@ function stripComments(src: string): string {
 }
 
 // Anchored on the repo root. `player.ts` was a SIBLING READ — this guard used to live in
-// apps/core/src/server/realtime/, so `at('apps/core/src/server/realtime/player.ts')` meant "the player module next
+// apps/core/src/lib/server/realtime/, so `at('apps/core/src/lib/server/realtime/player.ts')` meant "the player module next
 // to me"; both subjects are named explicitly now and were confirmed present before re-anchoring.
 const SERVER = stripComments(read('apps/core/server.ts'));
-const PLAYER = stripComments(read('apps/core/src/server/realtime/player.ts'));
+const PLAYER = stripComments(read('apps/core/src/lib/server/realtime/player.ts'));
 
 test('server.ts re-emits nowplaying after a queue:command that did NOT need recovery', () => {
 	// Non-vacuous: the seam this property hangs on must still be here. If the queue:command arm is

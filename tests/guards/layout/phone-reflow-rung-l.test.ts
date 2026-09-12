@@ -17,7 +17,7 @@
 // exists, still measures on the layout rung, still measures at the criterion's numbers, and still
 // fails. Delete the probe, drop its viewport to 390px, stop doubling the root font-size, or turn its
 // `process.exit(1)` into a print, and this file reds by name. Precedent for the split:
-// `src/server/realtime/e2e-real-gesture-verb.test.ts` and `src/lib/tv/autoplay-recovery.test.ts`, both
+// `src/lib/server/realtime/e2e-real-gesture-verb.test.ts` and `src/lib/tv/autoplay-recovery.test.ts`, both
 // of which pin a rendered driver from inside the suite.
 //
 // Comments are blanked before matching, so prose describing a number can neither satisfy nor trip an

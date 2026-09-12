@@ -2,7 +2,7 @@
 // a stems job at need-priority, dedups repeats, and refuses to disrupt the live song. markMediaReady
 // flips to the playable instrumental. Plus the round-trip: cook → held → ready → plays at its slot.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
+import { migratedDb } from '$lib/server/db/test-db';
 import {
 	requestMakeKaraoke,
 	markMediaReady,
@@ -16,11 +16,11 @@ import {
 	countInFlightCooks,
 	MAX_CONCURRENT_COOKS_PER_SINGER,
 	type MakeKaraokeDeps
-} from '$server/jobs/make-karaoke';
+} from '$lib/server/jobs/make-karaoke';
 import { pendingGates, EMPTY_SONG_PROFILE } from '$shared';
-import { JobRepository } from '$server/jobs/repository';
-import { AuthoritativeState } from '$server/state/store';
-import { nextPlayable, isEntryReady } from '$server/rotation/index';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { nextPlayable, isEntryReady } from '$lib/server/rotation/index';
 import { playbackRef, type Media, type QueueEntry } from '$shared';
 
 const T0 = 1_700_000_000_000;

@@ -25,7 +25,7 @@
 import { expect, test } from 'bun:test';
 import { read } from '@encore/test-support';
 
-const cancelSrc = read('apps/core/src/server/jobs/cancel.ts');
+const cancelSrc = read('apps/core/src/lib/server/jobs/cancel.ts');
 const typesSrc = read('apps/core/src/shared/core/types.ts');
 
 /** Strip line and block comments so prose describing the old layout cannot satisfy or trip a scan. */

@@ -111,7 +111,7 @@ export interface Media {
 	 *
 	 * Present means the file existed AND carried audio when the job completed. Both halves matter: a
 	 * separation can succeed and still write digital silence, and a ref set on trust alone advertises
-	 * a guiding track that plays nothing (see `apps/core/src/server/media/loudness.ts`). Absent → the
+	 * a guiding track that plays nothing (see `apps/core/src/lib/server/media/loudness.ts`). Absent → the
 	 * phone control is unavailable and the TV renders no second element, which is the honest
 	 * degradation rather than a broken mix.
 	 */

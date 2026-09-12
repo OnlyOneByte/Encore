@@ -2,12 +2,12 @@
 // it survives persistence, changing it re-derives the live queue, and the sing-history stamp lands
 // BEFORE the reseq that reads it.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { SettingsRepository } from '$server/state/settings-repository';
-import { SingerRepository } from '$server/singers/repository';
-import { AuthoritativeState } from '$server/state/store';
-import { handlePlayerCommand } from '$server/realtime/player';
-import { orderingOf, type HubDeps } from '$server/realtime/hub';
+import { migratedDb } from '$lib/server/db/test-db';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { SingerRepository } from '$lib/server/singers/repository';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { handlePlayerCommand } from '$lib/server/realtime/player';
+import { orderingOf, type HubDeps } from '$lib/server/realtime/hub';
 import {
 	singHistoryFrom,
 	type Media,

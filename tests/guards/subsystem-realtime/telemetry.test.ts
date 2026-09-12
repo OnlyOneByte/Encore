@@ -1,9 +1,9 @@
 // Ended telemetry advances rotation, picks next by seq; nowplaying carries upNext.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from '$server/realtime/player';
-import { AuthoritativeState } from '$server/state/store';
-import { type HubDeps } from '$server/realtime/hub';
+import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from '$lib/server/realtime/player';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { type HubDeps } from '$lib/server/realtime/hub';
 import { type ServerEvent, type Media, type QueueEntry } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 
@@ -233,7 +233,7 @@ test('the TV wires sendTelemetry through the pure telemetryFrame(status, current
 	// the live `current` (not a hardcoded/undefined id) and must not resurrect the ended-only form.
 	// The route named explicitly: the old form was
 	// `at('apps/core/src/routes/tv/+page.svelte')`, which only meant this file
-	// while the test sat in apps/core/src/server/realtime. `read` throws on a wrong path.
+	// while the test sat in apps/core/src/lib/server/realtime. `read` throws on a wrong path.
 	const src = read('apps/core/src/routes/tv/+page.svelte');
 	const body = src.split('function sendTelemetry(')[1]?.split('\n\t}')[0] ?? '';
 	expect(body).toContain('telemetryFrame(status, current'); // delegates, passing the live current

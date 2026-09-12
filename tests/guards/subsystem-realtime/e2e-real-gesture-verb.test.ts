@@ -23,7 +23,7 @@ function stripComments(src: string): string {
 }
 
 // Was `at('tests/e2e')`, counted out from this guard's old home in
-// apps/core/src/server/realtime. The driver and the probe are named from the repo root now, and `read`
+// apps/core/src/lib/server/realtime. The driver and the probe are named from the repo root now, and `read`
 // throws on a missing file rather than handing the `.not` assertions below an empty string.
 const CDP = stripComments(read('tests/e2e/cdp.mjs'));
 const PROBE = stripComments(read('tests/e2e/probes/p13-tap-to-start.mjs'));

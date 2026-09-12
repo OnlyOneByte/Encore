@@ -7,9 +7,9 @@
 // mutation — the behaviour under test IS the interaction between the ops and the ordering layer, so
 // hand-writing the "after" state would pin my belief about it rather than the thing itself.
 import { test, expect } from 'bun:test';
-import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { reconcileOnReady } from '$server/realtime/player';
-import { AuthoritativeState } from '$server/state/store';
+import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { reconcileOnReady } from '$lib/server/realtime/player';
+import { AuthoritativeState } from '$lib/server/state/store';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 import { modeInvalidation, ownSlots, gripVisible } from '$lib/reorder-mode';

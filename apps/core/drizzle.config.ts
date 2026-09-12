@@ -5,7 +5,7 @@ import { defineConfig } from 'drizzle-kit';
 //   (migrations are applied programmatically at boot — see db/migrate.ts)
 export default defineConfig({
 	dialect: 'sqlite',
-	schema: './src/server/db/schema.ts',
+	schema: './src/lib/server/db/schema.ts',
 	out: './drizzle',
 	dbCredentials: { url: process.env.DATA_DIR ? `${process.env.DATA_DIR}/encore.sqlite` : './data/encore.sqlite' }
 });

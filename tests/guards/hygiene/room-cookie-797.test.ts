@@ -6,7 +6,7 @@
 // SESSION cookie, and `readSessionToken` parses only that name. The room-cookie design made the room identity a
 // cookie the phone carries; the room-scope decision then chose the session token instead and said why — a room is a
 // tenancy boundary, so its id must resolve through the singers row rather than arriving as a client
-// claim ($server/realtime/room-scope). All of the room-identity tickets are closed, so no reader was ever coming.
+// claim ($lib/server/realtime/room-scope). All of the room-identity tickets are closed, so no reader was ever coming.
 //
 // A pure deletion cannot red a behavioural test by construction, which is why this guard exists in two
 // arms:
@@ -35,7 +35,7 @@ import { appSrc } from '@encore/test-support';
 
 /**
  * apps/core/src — the production tree this guard walks. Was `at('apps/core/src')`, counted
- * out from this guard's old home in apps/core/src/server/singers; it is the shared anchor now, so the
+ * out from this guard's old home in apps/core/src/lib/server/singers; it is the shared anchor now, so the
  * scan cannot be pointed at nothing by moving the test.
  */
 const SRC = appSrc;
@@ -78,7 +78,7 @@ test('F1 non-vacuous: the scan really walks apps/core/src and can see cookie cod
 	const sessionHits = FILES.filter((p) => /SESSION_COOKIE/.test(stripComments(sources.get(p)!)));
 	expect(sessionHits.length).toBeGreaterThan(3);
 	// and the session cookie's own declaration is still where the room cookie's used to be
-	expect(sources.get(join(SRC, 'server', 'singers', 'repository.ts'))!).toContain(
+	expect(sources.get(join(SRC, 'lib', 'server', 'singers', 'repository.ts'))!).toContain(
 		"export const SESSION_COOKIE = 'encore_singer'"
 	);
 });
@@ -109,7 +109,7 @@ test('F1 the corrective prose is PRESENT where a reader would look', () => {
 	const joinRoute = sources.get(join(SRC, 'routes', 'api', 'join', '+server.ts'))!;
 	expect(joinRoute).toMatch(/room-scope/);
 	expect(joinRoute).toMatch(/no reader/i);
-	const schema = sources.get(join(SRC, 'server', 'db', 'schema.ts'))!;
+	const schema = sources.get(join(SRC, 'lib', 'server', 'db', 'schema.ts'))!;
 	expect(schema).toMatch(/doJoin/);
 });
 
@@ -167,10 +167,10 @@ test('F1 the prose ban DISCRIMINATES — it still flags the exact sentences that
 test('F1 the mechanism that DID win is still the one the code uses', () => {
 	// Pins the replacement rather than only the absence: if a later change starts resolving a room from
 	// anything but the session token, this stops being the right guard and should red loudly.
-	const roomScope = sources.get(join(SRC, 'server', 'realtime', 'room-scope.ts'))!;
+	const roomScope = sources.get(join(SRC, 'lib', 'server', 'realtime', 'room-scope.ts'))!;
 	expect(roomScope).toMatch(/session token/i);
 	expect(roomScope).toMatch(/tenancy boundary/);
-	const repository = sources.get(join(SRC, 'server', 'singers', 'repository.ts'))!;
+	const repository = sources.get(join(SRC, 'lib', 'server', 'singers', 'repository.ts'))!;
 	expect(repository).toContain('export function readSessionToken');
 	// readSessionToken parses exactly one cookie name, and it is the session one
 	expect(stripComments(repository).match(/if \(k === (\w+)\)/)?.[1]).toBe('SESSION_COOKIE');
@@ -253,7 +253,7 @@ test('F2 both docstrings now say where a phone DOES learn its room', () => {
 	// The positive half: deleting the false parenthetical and saying nothing would satisfy the ban above
 	// while leaving `listPublic`'s asymmetry unexplained, which is what the finding is about. Each of the
 	// two blocks is asserted separately so a correction to one cannot cover for the other.
-	const repository = sources.get(join(SRC, 'server', 'singers', 'repository.ts'))!;
+	const repository = sources.get(join(SRC, 'lib', 'server', 'singers', 'repository.ts'))!;
 
 	const storedDoc = docBlockBefore(repository, 'export type StoredSinger');
 	expect(storedDoc).toMatch(/\/api\/join/); // where the phone learns it

@@ -14,7 +14,7 @@ import {
 	perStep,
 	processingMs,
 	queueWaitMs
-} from '$server/jobs/metrics';
+} from '$lib/server/jobs/metrics';
 
 const T0 = 1_700_000_000_000;
 

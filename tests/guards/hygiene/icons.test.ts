@@ -20,7 +20,7 @@
 // deleted within a week.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { appSrc } from '@encore/test-support';
 import { ICON_NAMES, ICON_PATHS } from '$lib/ui/icons';
 import { svelteFiles } from '$lib/test-helpers';
@@ -183,6 +183,14 @@ test('no emoji in any UI-visible string', () => {
 test('no emoji in user-facing copy in $lib', () => {
 	const offenders: string[] = [];
 	for (const f of tsFiles(join(SRC, 'lib'))) {
+		// `lib/server` is excluded, and the paragraph above is why: server-side files legitimately hold
+		// emoji as DATA — `track-title.ts` strips 🎵 out of scraped titles and its fixtures must keep them.
+		//
+		// That scoping used to be free, because the server tree sat at `src/server`, outside this walk.
+		// Moving it under `src/lib/server` (so SvelteKit enforces the client boundary at build time) put it
+		// inside, and the scan started reporting the `→` in two operator log lines as user-facing copy.
+		// The rule has not changed; only the address of the thing it was never about.
+		if (f.includes(`${sep}lib${sep}server${sep}`)) continue;
 		const src = stripComments(readFileSync(f, 'utf8'));
 		for (const m of src.matchAll(/(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
 			for (const { cp } of emojiIn(m[2]!)) {

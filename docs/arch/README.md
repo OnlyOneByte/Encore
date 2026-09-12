@@ -25,7 +25,7 @@ importance: a ship-blocking row lives in whichever tree its subject belongs to.
 
 Two areas deliberately did **not** get a namespace here:
 
-- **`server/realtime`** extends `XR-CON` instead. Concurrency and authority already govern that
+- **`lib/server/realtime`** extends `XR-CON` instead. Concurrency and authority already govern that
   ground and already cite its call sites; a second namespace over the same subject would produce
   two places to look and two rows to keep in agreement.
 - **`lib/components` and `lib/tv`** went to `../ux/` as `XR-CMP` and `XR-TVM`. They are the

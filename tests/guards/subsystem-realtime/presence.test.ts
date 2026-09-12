@@ -1,8 +1,8 @@
 import { expect, it } from 'bun:test';
 import { read } from '@encore/test-support';
-import { PresenceTracker } from '$server/realtime/presence';
-import { syncEvent } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
+import { PresenceTracker } from '$lib/server/realtime/presence';
+import { syncEvent } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
 import { graceMsOf } from '$shared';
 
 const NOW = 1_000_000;
@@ -249,7 +249,7 @@ it('membership rides the sync handshake: omits both entirely when no membership 
 // Deletion has no runtime-observable regression (nothing called them), so guard the SOURCE.
 const stripComments = (src: string) =>
 	src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/\/\/[^\n]*/g, '');
-const source = stripComments(read('apps/core/src/server/realtime/presence.ts'));
+const source = stripComments(read('apps/core/src/lib/server/realtime/presence.ts'));
 
 it('membership: the discredited socket-count predicate stays deleted — does not re-expose isOnline() or count() on PresenceTracker', () => {
 	expect(source).not.toMatch(/\bisOnline\s*\(/);

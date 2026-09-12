@@ -185,7 +185,7 @@ test('gates.ts no longer carries the dead second cook vocabulary', () => {
 });
 
 test('the live half of the gate table survives — this is a scoped deletion, not a gutting', () => {
-	// CookGate.stage is read at apps/core/src/server/jobs/media-status.ts; done/required drive
+	// CookGate.stage is read at apps/core/src/lib/server/jobs/media-status.ts; done/required drive
 	// readyToSing/pendingGates/isCooking. Those must stay, so the guard cannot be satisfied by
 	// deleting the whole table.
 	expect(GATES_SRC).toMatch(/readonly stage: MediaStage/);

@@ -5,8 +5,8 @@
 // (results) group alongside a YouTube hit — deduped, each song once. RED on base: SearchResult.source
 // and MediaSource do not admit 'spotify' there, so this file does not type-check / the value is absent.
 import { test, expect } from 'bun:test';
-import { resultToMedia, type SearchResult } from '$server/media/resolver';
-import { partitionSearch } from '$server/media/readiness';
+import { resultToMedia, type SearchResult } from '$lib/server/media/resolver';
+import { partitionSearch } from '$lib/server/media/readiness';
 import type { Media } from '$shared';
 
 test('a spotify result materializes and appears in the merged, deduped search output', () => {

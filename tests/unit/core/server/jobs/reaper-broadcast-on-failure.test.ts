@@ -12,11 +12,11 @@
 // reaper.test.ts asserts the media STATE after the settle, but nothing about a broadcast — there was
 // no broadcast seam before this fix.
 import { test, expect, spyOn } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { JobReaper } from '$server/jobs/reaper';
-import { JobRepository } from '$server/jobs/repository';
-import { ackDeadline, progressDeadline } from '$server/jobs/leases';
-import { reportTerminalFailure } from '$server/jobs/make-karaoke';
+import { migratedDb } from '$lib/server/db/test-db';
+import { JobReaper } from '$lib/server/jobs/reaper';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { ackDeadline, progressDeadline } from '$lib/server/jobs/leases';
+import { reportTerminalFailure } from '$lib/server/jobs/make-karaoke';
 import type { Media, ServerEvent } from '$shared';
 
 const T0 = 1_700_000_000_000;

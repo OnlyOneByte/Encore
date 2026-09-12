@@ -7,9 +7,9 @@
 // survives as an optional narrowing filter.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
-import { resultToMedia, type MediaResolver, type SearchResult } from '$server/media/resolver';
-import { partitionSearch } from '$server/media/readiness';
+import { getApp } from '$lib/server/app';
+import { resultToMedia, type MediaResolver, type SearchResult } from '$lib/server/media/resolver';
+import { partitionSearch } from '$lib/server/media/readiness';
 import { ulid, type Media } from '$shared';
 
 const PER_SOURCE_LIMIT = 12;

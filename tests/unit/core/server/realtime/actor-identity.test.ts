@@ -2,8 +2,8 @@
 // presence — nothing authorized against it — so any socket could mutate the queue, and an `add` was
 // credited to whatever singerId the client put in the frame. These lock the gate shut.
 import { test, expect } from 'bun:test';
-import { validateCommand, handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
+import { validateCommand, handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
 import { ulid, type ServerEvent, type Media, type ClientCommand } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

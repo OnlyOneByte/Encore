@@ -13,28 +13,28 @@
 //
 // The expected next is HARD-CODED ('q-stay'), never re-derived with upNextAfter — the trap COMMON.md names.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { doJoin } from '$server/singers/join';
-import { doLeave } from '$server/singers/leave';
-import { SingerRepository } from '$server/singers/repository';
-import { RoomRepository } from '$server/rooms/repository';
+import { migratedDb } from '$lib/server/db/test-db';
+import { doJoin } from '$lib/server/singers/join';
+import { doLeave } from '$lib/server/singers/leave';
+import { SingerRepository } from '$lib/server/singers/repository';
+import { RoomRepository } from '$lib/server/rooms/repository';
 import { SINGER_COLORS, type ServerEvent, type Media, type QueueEntry } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
-import { LocalLibrary } from '$server/media/local';
-import { YouTubeResolver } from '$server/media/youtube';
-import { SpotifyResolver } from '$server/media/spotify-resolver';
-import { createPopularityTracker } from '$server/media/popularity';
-import { MediaRepository } from '$server/media/repository';
-import { JobRepository } from '$server/jobs/repository';
-import { SettingsRepository } from '$server/state/settings-repository';
-import { JobReaper } from '$server/jobs/reaper';
-import { WorkerRegistry } from '$server/jobs/registry';
-import { WorkerHub } from '$server/jobs/worker-hub';
-import { LocalMediaStore } from '$server/media/store';
-import { PresenceTracker } from '$server/realtime/presence';
-import { AuthoritativeState } from '$server/state/store';
-import { PlayTracker } from '$server/media/plays';
-import type { EncoreApp } from '$server/app';
+import { LocalLibrary } from '$lib/server/media/local';
+import { YouTubeResolver } from '$lib/server/media/youtube';
+import { SpotifyResolver } from '$lib/server/media/spotify-resolver';
+import { createPopularityTracker } from '$lib/server/media/popularity';
+import { MediaRepository } from '$lib/server/media/repository';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { JobReaper } from '$lib/server/jobs/reaper';
+import { WorkerRegistry } from '$lib/server/jobs/registry';
+import { WorkerHub } from '$lib/server/jobs/worker-hub';
+import { LocalMediaStore } from '$lib/server/media/store';
+import { PresenceTracker } from '$lib/server/realtime/presence';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { PlayTracker } from '$lib/server/media/plays';
+import type { EncoreApp } from '$lib/server/app';
 
 const NOW = 1_700_000_000_000;
 

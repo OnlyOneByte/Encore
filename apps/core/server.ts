@@ -11,16 +11,16 @@ import {
 	type WorkerMessage,
 	type WorkerCommand
 } from '$shared';
-import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
-import { handlePlayerCommand, handleTelemetry, reconcileOnReady, nowPlayingEvent } from './src/server/realtime/player';
-import { validateWorkerMessage } from './src/server/jobs/worker-hub';
-import { getApp, setPublish, buildHubDeps } from './src/server/app';
-import { readSessionToken } from './src/server/singers/repository';
-import { can } from './src/server/auth/capabilities';
-import { isForeignRoom, subscribeTopicFor, broadcastTopicFor } from './src/server/realtime/room-scope';
-import { tvRoomId } from './src/server/rooms/tv-room';
-import { presentTracks, type LocalTrack } from './src/server/media/local';
-import { safeMediaPath } from './src/server/media/local-files';
+import { handleQueueCommand, syncEvent, type HubDeps } from './src/lib/server/realtime/hub';
+import { handlePlayerCommand, handleTelemetry, reconcileOnReady, nowPlayingEvent } from './src/lib/server/realtime/player';
+import { validateWorkerMessage } from './src/lib/server/jobs/worker-hub';
+import { getApp, setPublish, buildHubDeps } from './src/lib/server/app';
+import { readSessionToken } from './src/lib/server/singers/repository';
+import { can } from './src/lib/server/auth/capabilities';
+import { isForeignRoom, subscribeTopicFor, broadcastTopicFor } from './src/lib/server/realtime/room-scope';
+import { tvRoomId } from './src/lib/server/rooms/tv-room';
+import { presentTracks, type LocalTrack } from './src/lib/server/media/local';
+import { safeMediaPath } from './src/lib/server/media/local-files';
 import { existsSync } from 'node:fs';
 
 const PORT = Number(process.env.PORT ?? 3000);

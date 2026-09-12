@@ -30,7 +30,7 @@ const PAGE = 'apps/core/src/routes/components/+page.svelte';
 const src = read(PAGE);
 
 // The profile-name maxlength is what a real singer name can reach; the fixture must hit it.
-const repo = read('apps/core/src/server/singers/repository.ts');
+const repo = read('apps/core/src/lib/server/singers/repository.ts');
 const maxLen = Number(repo.match(/\.slice\(0,\s*(\d+)\)/)![1]);
 
 test('the gallery demos a ProcessingCard with actions AND an UNBROKEN maxlength singer name', () => {

@@ -1,6 +1,6 @@
 // Worker registry — in-memory liveness + slot accounting.
 import { test, expect } from 'bun:test';
-import { WorkerRegistry } from '$server/jobs/registry';
+import { WorkerRegistry } from '$lib/server/jobs/registry';
 
 const T0 = 1_700_000_000_000;
 

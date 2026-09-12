@@ -2,7 +2,7 @@
 // but that the decision lives in ONE function, so narrowing it later is an edit there and nowhere else.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { can, type Capability } from '$server/auth/capabilities';
+import { can, type Capability } from '$lib/server/auth/capabilities';
 
 const ALL: Capability[] = [
 	'player:control',

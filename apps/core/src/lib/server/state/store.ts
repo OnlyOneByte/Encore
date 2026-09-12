@@ -107,7 +107,7 @@ export class AuthoritativeState {
 			// reconcile, so nothing starts a singer at hydrate time. The room is left genuinely idle with a
 			// ready queue, and recovery happens on the next real event that runs reconcileOnReady: the next
 			// queue:command (apps/core/server.ts, on a dangling/absent current), a cook completing
-			// (reconcileOnReady in onMediaReady, apps/core/src/server/app.ts), or a manual play — the play
+			// (reconcileOnReady in onMediaReady, apps/core/src/lib/server/app.ts), or a manual play — the play
 			// control stays enabled because a non-empty queue satisfies its gate (routes/+page.svelte).
 			if (this.#playback.currentEntryId !== null && !entryResolves(this.#entries, this.#playback.currentEntryId)) {
 				this.#playback = { ...this.#playback, currentEntryId: null, isPlaying: false };

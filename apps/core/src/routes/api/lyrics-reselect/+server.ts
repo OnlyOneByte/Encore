@@ -7,10 +7,10 @@
 // "joined" (owner ruling Q1=A: any joined singer may re-pick, same as every other room control).
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
-import { SESSION_COOKIE } from '$server/singers/repository';
-import { mediaStatusFor } from '$server/jobs/media-status';
-import { requestLyricsReselect, type ReselectRefusal } from '$server/jobs/make-karaoke';
+import { getApp } from '$lib/server/app';
+import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { mediaStatusFor } from '$lib/server/jobs/media-status';
+import { requestLyricsReselect, type ReselectRefusal } from '$lib/server/jobs/make-karaoke';
 import type { MediaStatus } from '$shared';
 
 // The honest status code for each refusal — a 409 (conflict with the song's current state) except an

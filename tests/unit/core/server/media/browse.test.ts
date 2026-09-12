@@ -2,11 +2,11 @@
 // for 7 cooked songs on the live box), so the invariant under test is that browse only ever shows
 // songs you can actually SING, and that an uncertain artist never becomes a heading.
 import { beforeEach, expect, it } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { MediaRepository } from '$server/media/repository';
+import { migratedDb } from '$lib/server/db/test-db';
+import { MediaRepository } from '$lib/server/media/repository';
 import type { Media } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
-import { instrumentalKey } from '$server/media/paths';
+import { instrumentalKey } from '$lib/server/media/paths';
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
 	id,
@@ -53,7 +53,7 @@ it('canonical metadata in the index: a partial patch (album/year OMITTED) leaves
 	// REGRESSION (FIX 2): album/year used to be written unconditionally, so the boot browse-sync —
 	// which passes them as null for most songs — re-nulled any populated album/year on EVERY restart.
 	// With the undefined-skip guard, omitting them means "do not touch".
-	const { media } = await import('$server/db/schema');
+	const { media } = await import('$lib/server/db/schema');
 	const { eq } = await import('drizzle-orm');
 	const db = migratedDb();
 	const r = new MediaRepository(db);
@@ -71,7 +71,7 @@ it('canonical metadata in the index: a partial patch (album/year OMITTED) leaves
 });
 
 it('canonical metadata in the index: an EXPLICIT null album/year still clears (a full authoritative mirror can un-set)', async () => {
-	const { media } = await import('$server/db/schema');
+	const { media } = await import('$lib/server/db/schema');
 	const { eq } = await import('drizzle-orm');
 	const db = migratedDb();
 	const r = new MediaRepository(db);

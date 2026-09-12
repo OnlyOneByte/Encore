@@ -5,7 +5,7 @@
 // spectator of the served room, so "point the TV at room B" is not expressible. The binding these
 // tests assert is exactly what the PR adds.
 import { test, expect } from 'bun:test';
-import { tvRoomId } from '$server/rooms/tv-room';
+import { tvRoomId } from '$lib/server/rooms/tv-room';
 
 const A = 'room-A';
 const B = 'room-B';

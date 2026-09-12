@@ -3,10 +3,10 @@
 // enqueues the stems job (dedup: two requests → one job), and broadcasts an initial media:status.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
-import { SESSION_COOKIE } from '$server/singers/repository';
-import { completedStatusFor, mediaStatusFor } from '$server/jobs/media-status';
-import { cookState, requestMakeKaraoke, MAX_CONCURRENT_COOKS_PER_SINGER } from '$server/jobs/make-karaoke';
+import { getApp } from '$lib/server/app';
+import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { completedStatusFor, mediaStatusFor } from '$lib/server/jobs/media-status';
+import { cookState, requestMakeKaraoke, MAX_CONCURRENT_COOKS_PER_SINGER } from '$lib/server/jobs/make-karaoke';
 import type { MediaStatus } from '$shared';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {

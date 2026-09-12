@@ -86,7 +86,7 @@ export const appSrc: string = join(appCore, 'src');
 export const appE2e: string = join(repoRoot, 'tests', 'e2e');
 /** `apps/core/src/shared/src` — the domain code both the app and (by hand-mirroring) the worker use. */
 /**
- * The ISOMORPHIC contract — code imported by both `src/lib` (client) and `src/server` (authoritative).
+ * The ISOMORPHIC contract — code imported by both `src/lib` (client) and `src/lib/server` (authoritative).
  *
  * Was `packages/shared/src` as its own workspace package; folded into the app as `apps/core/src/shared`.
  * The export keeps its name because the thing it names has not changed, only its address — and because a

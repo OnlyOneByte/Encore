@@ -1,10 +1,10 @@
 // POST /api/join — { displayName, color } -> creates a singer, sets session cookie, returns it.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
-import { doJoin, NameTakenError, RoomNotFoundError } from '$server/singers/join';
-import { SESSION_COOKIE } from '$server/singers/repository';
-import { publicOriginIsHttps } from '$server/public-origin';
+import { getApp } from '$lib/server/app';
+import { doJoin, NameTakenError, RoomNotFoundError } from '$lib/server/singers/join';
+import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { publicOriginIsHttps } from '$lib/server/public-origin';
 
 export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	const body = await request.json().catch(() => ({}));
@@ -24,7 +24,7 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 		// NOT `url.protocol === 'https:'`: adapter-node reports https for every request unless
 		// PROTOCOL_HEADER is set, so that marked this cookie Secure on a plain-HTTP LAN party and the
 		// phone discarded it — /join succeeded and /api/me then 401'd with no cookie to read. See
-		// $server/public-origin.
+		// $lib/server/public-origin.
 		secure: publicOriginIsHttps(request, url),
 		maxAge: 60 * 60 * 24 * 30
 	});
@@ -32,7 +32,7 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	// plan that the room-scoping chain would read it; that chain then chose a different mechanism and the
 	// room cookie was left with no reader at all (and was later deleted). The scope token IS the session
 	// token: it resolves through the singers row to exactly one `room_id`, which is why a room may not
-	// be read from a client-supplied value — see $server/realtime/room-scope. The phone gets its own
+	// be read from a client-supplied value — see $lib/server/realtime/room-scope. The phone gets its own
 	// room id from the response body below, which is all it needs.
 	//
 	// don't leak the session token in the body

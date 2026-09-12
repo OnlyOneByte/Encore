@@ -7,10 +7,10 @@
 // Read-only and unauthenticated, like /api/search — queueing still requires a joined singer.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
-import { hydrateMediaCatalog } from '$server/media/repository';
-import { readinessOf } from '$server/media/readiness';
-import { mediaStatusFor } from '$server/jobs/media-status';
+import { getApp } from '$lib/server/app';
+import { hydrateMediaCatalog } from '$lib/server/media/repository';
+import { readinessOf } from '$lib/server/media/readiness';
+import { mediaStatusFor } from '$lib/server/jobs/media-status';
 import type { MediaStatus } from '$shared';
 
 export const GET: RequestHandler = async ({ url }) => {

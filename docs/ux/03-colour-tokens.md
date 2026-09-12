@@ -346,7 +346,7 @@ right in build. Do **not** apply it unilaterally and do **not** write a guard en
 
 **Correction to the handoff's premise for this row (verified in repo, 2026-09-08).** `isValidColor`
 no longer exists — it survives only as history in a comment at
-`apps/core/src/server/singers/join.ts:104`. `doJoin`'s **blanket rewrite to violet is already
+`apps/core/src/lib/server/singers/join.ts:104`. `doJoin`'s **blanket rewrite to violet is already
 gone**: it calls `normalizeSingerColor` (`join.ts:109`), which accepts any hex clearing the 3:1 dot
 rule and canonicalises it. So the repo has already moved past the 8-value allowlist, and the
 residual defect is the **opposite** of the one the handoff describes — not "47 of 48 legal choices
@@ -360,7 +360,7 @@ are discarded", but "an unbounded set of *un-certified* colours is admitted." `X
 | **Statement** | When a submitted identity colour is refused, the product either reports the refusal to the guest or assigns a registry stop and tells them which — it never stores a different colour than the one chosen without saying so. |
 | **Surfaces** | Phone (join, settings), server |
 | **Rationale** | Silent substitution is the defect the previous allowlist shipped — "a guest who carefully picked teal joined as violet with nothing said" — and `normalizeSingerColor`'s surviving fallback to `SINGER_COLORS[0]` is the same behaviour for a narrower input set. |
-| **Source** | `apps/core/src/server/singers/join.ts:104–108` (the defect, in the repo's own words); `apps/core/src/shared/presentation/colors.ts:338–345` (`normalizeSingerColor`'s fallback). Note the sibling `lyricHighlightColor` at `:323` already models the honest alternative — it returns `null` rather than substituting, explicitly because a fallback there "would hand one guest somebody else's identity colour". |
+| **Source** | `apps/core/src/lib/server/singers/join.ts:104–108` (the defect, in the repo's own words); `apps/core/src/shared/presentation/colors.ts:338–345` (`normalizeSingerColor`'s fallback). Note the sibling `lyricHighlightColor` at `:323` already models the honest alternative — it returns `null` rather than substituting, explicitly because a fallback there "would hand one guest somebody else's identity colour". |
 | **Acceptance** | **Given** the join and settings paths, **When** a refused colour is submitted, **Then** the response distinguishes "stored as chosen" from "stored as substituted", and the client surfaces the difference. Falsified by a 200 response whose body is indistinguishable between the two cases. |
 | **Check** | Server unit test on the join path asserting the discriminated result; rendered check for the client message where reachable. Whether the guest sees a toast, an inline note or a pre-selected swatch is `EXEMPT` — a copy and layout judgement for build. |
 | **Priority** | **High.** With a discrete grid the *only* way to submit an off-registry colour is a stale client or a hand-crafted request, so the volume is low — but a substitution nobody is told about is unrecoverable for the guest, who cannot see their own dot on someone else's TV. |
@@ -392,7 +392,7 @@ are discarded", but "an unbounded set of *un-certified* colours is admitted." `X
 | **Statement** | Adopting the 48-stop palette changes no database schema, no wire type, and no render-site signature; every row stored under the previous palette continues to render. |
 | **Surfaces** | Server, phone, TV |
 | **Rationale** | `singers.color` is `text NOT NULL` (`schema.ts:26`), the wire type is already `string` (`types.ts:177`), and all render sites take an opaque string — the colour was never modelled as an enum, so widening it is not a migration. |
-| **Source** | Handoff §3, *The data path needs no migration*. **Its two line citations are stale** — verified in repo: the column is `apps/core/src/server/db/schema.ts:26` (handoff says `:19`) and the wire field is `apps/core/src/shared/core/types.ts:177` (handoff says `:119`). The claims themselves hold at both corrected locations. |
+| **Source** | Handoff §3, *The data path needs no migration*. **Its two line citations are stale** — verified in repo: the column is `apps/core/src/lib/server/db/schema.ts:26` (handoff says `:19`) and the wire field is `apps/core/src/shared/core/types.ts:177` (handoff says `:119`). The claims themselves hold at both corrected locations. |
 | **Acceptance** | **Given** a database populated with the eight legacy preset colours, **When** the 48-stop build runs against it, **Then** no migration executes and every legacy row renders a visible dot. Falsified by a migration file touching `singers.color`, or by a legacy row rendering nothing. |
 | **Check** | Migration-directory assertion plus a fixture DB holding the eight legacy presets. Note the interaction with `XR-COL-20`: a legacy preset is **not** a registry stop, so the validator must treat *stored* legacy values as renderable while refusing them as *new* choices — that asymmetry needs stating, or tightening the gate silently invalidates every existing singer. |
 | **Priority** | **Blocking**, for the asymmetry clause specifically. The no-migration finding itself needs no work. |

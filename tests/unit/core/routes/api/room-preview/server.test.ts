@@ -7,10 +7,10 @@
 // reds on a revert to either half alone.
 import { test, expect, afterEach } from 'bun:test';
 import { GET } from '../../../../../../apps/core/src/routes/api/room-preview/+server';
-import { RoomRepository } from '$server/rooms/repository';
-import { SingerRepository } from '$server/singers/repository';
-import { PresenceTracker } from '$server/realtime/presence';
-import { migratedDb } from '$server/db/test-db';
+import { RoomRepository } from '$lib/server/rooms/repository';
+import { SingerRepository } from '$lib/server/singers/repository';
+import { PresenceTracker } from '$lib/server/realtime/presence';
+import { migratedDb } from '$lib/server/db/test-db';
 
 const APP_KEY = Symbol.for('encore.app');
 

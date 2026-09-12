@@ -1,8 +1,8 @@
 // The play log exists for the one question a counter cannot answer: WHEN.
 import { expect, it } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { PlayLog } from '$server/media/play-log';
-import { PlayTracker } from '$server/media/plays';
+import { migratedDb } from '$lib/server/db/test-db';
+import { PlayLog } from '$lib/server/media/play-log';
+import { PlayTracker } from '$lib/server/media/plays';
 
 const T0 = Date.UTC(2026, 8, 4, 12, 0, 0); // 2026-09-04T12:00:00Z
 const DAY = 86_400_000;

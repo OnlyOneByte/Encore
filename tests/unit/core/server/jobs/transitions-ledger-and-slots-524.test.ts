@@ -17,10 +17,10 @@
 //           progress-lease-expiry branch (leases.sweep) and the worker-hub `job:failed` handler,
 //           which on base spelled the same policy as the complement `attempts < job.maxAttempts`.
 import { test, expect } from 'bun:test';
-import { JobRepository } from '$server/jobs/repository';
-import { AttemptLedger } from '$server/jobs/attempts';
-import { attemptsExhausted, sweep } from '$server/jobs/leases';
-import { migratedDb } from '$server/db/test-db';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { AttemptLedger } from '$lib/server/jobs/attempts';
+import { attemptsExhausted, sweep } from '$lib/server/jobs/leases';
+import { migratedDb } from '$lib/server/db/test-db';
 import type { Job } from '$shared';
 
 const T0 = 1_700_000_000_000;

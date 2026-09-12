@@ -1,27 +1,27 @@
 // join -> singer:joined broadcast -> singer appears (validated via doJoin).
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { doJoin, NameTakenError, RoomNotFoundError } from '$server/singers/join';
-import { SingerRepository } from '$server/singers/repository';
-import { RoomRepository } from '$server/rooms/repository';
+import { migratedDb } from '$lib/server/db/test-db';
+import { doJoin, NameTakenError, RoomNotFoundError } from '$lib/server/singers/join';
+import { SingerRepository } from '$lib/server/singers/repository';
+import { RoomRepository } from '$lib/server/rooms/repository';
 import { SINGER_COLORS, SINGER_HUES, hueToHex, type ServerEvent } from '$shared';
-import { LocalLibrary } from '$server/media/local';
-import { YouTubeResolver } from '$server/media/youtube';
-import { SpotifyResolver } from '$server/media/spotify-resolver';
-import { createPopularityTracker } from '$server/media/popularity';
-import { MediaRepository } from '$server/media/repository';
-import { JobRepository } from '$server/jobs/repository';
-import { SettingsRepository } from '$server/state/settings-repository';
-import { JobReaper } from '$server/jobs/reaper';
-import { WorkerRegistry } from '$server/jobs/registry';
-import { WorkerHub } from '$server/jobs/worker-hub';
-import { LocalMediaStore } from '$server/media/store';
-import { PresenceTracker } from '$server/realtime/presence';
-import { AuthoritativeState } from '$server/state/store';
-import { PlayTracker } from '$server/media/plays';
-import type { EncoreApp } from '$server/app';
-import { AttemptLedger } from '$server/jobs/attempts';
-import { PlayLog } from '$server/media/play-log';
+import { LocalLibrary } from '$lib/server/media/local';
+import { YouTubeResolver } from '$lib/server/media/youtube';
+import { SpotifyResolver } from '$lib/server/media/spotify-resolver';
+import { createPopularityTracker } from '$lib/server/media/popularity';
+import { MediaRepository } from '$lib/server/media/repository';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { JobReaper } from '$lib/server/jobs/reaper';
+import { WorkerRegistry } from '$lib/server/jobs/registry';
+import { WorkerHub } from '$lib/server/jobs/worker-hub';
+import { LocalMediaStore } from '$lib/server/media/store';
+import { PresenceTracker } from '$lib/server/realtime/presence';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { PlayTracker } from '$lib/server/media/plays';
+import type { EncoreApp } from '$lib/server/app';
+import { AttemptLedger } from '$lib/server/jobs/attempts';
+import { PlayLog } from '$lib/server/media/play-log';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[]; rooms: RoomRepository; activeRoomId: string } {
 	const db = migratedDb();

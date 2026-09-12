@@ -7,11 +7,11 @@
 
 import { expect, it } from 'bun:test';
 import { realtimeFactor, attemptSelection } from '$shared';
-import { AttemptLedger } from '$server/jobs/attempts';
-import { JobRepository } from '$server/jobs/repository';
-import { inheritsCook } from '$server/jobs/dispatch';
-import type { DB } from '$server/db/index';
-import { migratedDb } from '$server/db/test-db';
+import { AttemptLedger } from '$lib/server/jobs/attempts';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { inheritsCook } from '$lib/server/jobs/dispatch';
+import type { DB } from '$lib/server/db/index';
+import { migratedDb } from '$lib/server/db/test-db';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
 
@@ -283,10 +283,10 @@ const stripComments = (src: string): string => {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 };
-// The source under scan, named absolutely: this was `at('apps/core/src/server/jobs/attempts.ts')`
+// The source under scan, named absolutely: this was `at('apps/core/src/lib/server/jobs/attempts.ts')`
 // — "the module next to me", which identified the attempt ledger only while this test sat in
 // server/jobs/.
-const SRC = stripComments(readFileSync(at('apps/core/src/server/jobs/attempts.ts'), 'utf8'));
+const SRC = stripComments(readFileSync(at('apps/core/src/lib/server/jobs/attempts.ts'), 'utf8'));
 
 it('the removed row-count window stays removed: attempts.ts exposes no `allFinished` method outside comments', () => {
 	expect(SRC).not.toMatch(/\ballFinished\b/);

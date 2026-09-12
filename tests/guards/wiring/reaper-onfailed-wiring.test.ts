@@ -26,13 +26,13 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Both subjects named from the repo root. `at('apps/core/src/server/app.ts')` was the server
-// composition root, and `at('apps/core/src/server/jobs/make-karaoke.ts')` was a SIBLING READ — "the
+// Both subjects named from the repo root. `at('apps/core/src/lib/server/app.ts')` was the server
+// composition root, and `at('apps/core/src/lib/server/jobs/make-karaoke.ts')` was a SIBLING READ — "the
 // make-karaoke next to me" — which is the jobs module that exports reportTerminalFailure, the shared
 // epilogue this guard pins. `read` throws on either being missing, which is load-bearing here: several
 // arms below are `.not.toMatch(...)` absence checks that an empty read would satisfy.
-const APP = stripComments(read('apps/core/src/server/app.ts'));
-const MK = stripComments(read('apps/core/src/server/jobs/make-karaoke.ts'));
+const APP = stripComments(read('apps/core/src/lib/server/app.ts'));
+const MK = stripComments(read('apps/core/src/lib/server/jobs/make-karaoke.ts'));
 
 test('app.ts imports reportTerminalFailure — the one shared terminal-fail epilogue', () => {
 	expect(APP).toMatch(/import\s*\{[^}]*\breportTerminalFailure\b[^}]*\}\s*from\s*'\.\/jobs\/make-karaoke'/);

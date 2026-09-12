@@ -6,11 +6,11 @@
 // pins media.lyricsOverrideRef so dispatch sends the worker `pinnedRef`. These reds if the
 // cancel-then-enqueue is reverted (the enqueue returns the old ready job), or the pin is dropped.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { requestLyricsReselect, manualLyricsRef, type MakeKaraokeDeps } from '$server/jobs/make-karaoke';
-import { assignParams } from '$server/jobs/dispatch';
-import { JobRepository } from '$server/jobs/repository';
-import { AuthoritativeState } from '$server/state/store';
+import { migratedDb } from '$lib/server/db/test-db';
+import { requestLyricsReselect, manualLyricsRef, type MakeKaraokeDeps } from '$lib/server/jobs/make-karaoke';
+import { assignParams } from '$lib/server/jobs/dispatch';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { AuthoritativeState } from '$lib/server/state/store';
 import type { LyricsCandidate, Media } from '$shared';
 
 const T0 = 1_700_000_000_000;

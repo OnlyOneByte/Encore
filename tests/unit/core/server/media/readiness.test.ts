@@ -2,7 +2,7 @@
 // song appears EXACTLY ONCE — the old source-tab UI could show the same song as both "cooked in the
 // library" and "raw on YouTube", which is the confusion this partition exists to prevent.
 import { test, expect } from 'bun:test';
-import { readinessOf, matchesQuery, partitionSearch } from '$server/media/readiness';
+import { readinessOf, matchesQuery, partitionSearch } from '$lib/server/media/readiness';
 import type { Media } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

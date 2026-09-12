@@ -6,9 +6,9 @@
 // BASE-RED: on origin/main the join URL is always a bare `${origin}/join` with no room code.
 import { test, expect, afterEach } from 'bun:test';
 import { load } from '../../../../../apps/core/src/routes/tv/+page.server';
-import { RoomRepository } from '$server/rooms/repository';
-import { SettingsRepository } from '$server/state/settings-repository';
-import { migratedDb } from '$server/db/test-db';
+import { RoomRepository } from '$lib/server/rooms/repository';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { migratedDb } from '$lib/server/db/test-db';
 
 const APP_KEY = Symbol.for('encore.app');
 

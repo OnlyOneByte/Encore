@@ -23,13 +23,13 @@
 //    REAPER, so removing the periodic trigger reds them.
 
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { JobReaper } from '$server/jobs/reaper';
-import { WorkerHub } from '$server/jobs/worker-hub';
-import { WorkerRegistry } from '$server/jobs/registry';
-import { JobRepository } from '$server/jobs/repository';
-import { AttemptLedger } from '$server/jobs/attempts';
-import { reportTerminalFailure, settleStemsGate } from '$server/jobs/make-karaoke';
+import { migratedDb } from '$lib/server/db/test-db';
+import { JobReaper } from '$lib/server/jobs/reaper';
+import { WorkerHub } from '$lib/server/jobs/worker-hub';
+import { WorkerRegistry } from '$lib/server/jobs/registry';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { AttemptLedger } from '$lib/server/jobs/attempts';
+import { reportTerminalFailure, settleStemsGate } from '$lib/server/jobs/make-karaoke';
 import type { Media, ServerEvent } from '$shared';
 
 const T0 = 1_700_000_000_000;

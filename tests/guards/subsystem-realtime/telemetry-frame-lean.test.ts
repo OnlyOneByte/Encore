@@ -40,10 +40,10 @@ function stripComments(src: string): string {
 }
 
 // Anchored on the repo root. `player.ts` was a SIBLING READ — this guard used to live in
-// apps/core/src/server/realtime/, so `at('apps/core/src/server/realtime/player.ts')` meant "the player module next
+// apps/core/src/lib/server/realtime/, so `at('apps/core/src/lib/server/realtime/player.ts')` meant "the player module next
 // to me"; every subject is named explicitly now and was confirmed present before re-anchoring.
 const EVENTS = stripComments(read('apps/core/src/shared/core/events.ts'));
-const PLAYER = stripComments(read('apps/core/src/server/realtime/player.ts'));
+const PLAYER = stripComments(read('apps/core/src/lib/server/realtime/player.ts'));
 const SERVER = stripComments(read('apps/core/server.ts'));
 // The client-side producer of the frame. It declares its OWN copy of the wire type
 // (`TelemetryFrame`) and builds the object literal that gets JSON.stringify'd to the server — so the

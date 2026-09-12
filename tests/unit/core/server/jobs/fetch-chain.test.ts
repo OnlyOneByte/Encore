@@ -4,7 +4,7 @@
 // enqueueing `stems` directly would dispatch a separation before its input existed, and a `fetch`
 // that chained to nothing would leave every song stuck with audio on disk and no instrumental.
 import { test, expect } from 'bun:test';
-import { followUps, requiredCapability, assignParams } from '$server/jobs/dispatch';
+import { followUps, requiredCapability, assignParams } from '$lib/server/jobs/dispatch';
 import { DEFAULT_GLOBAL_SETTINGS, type GlobalSettings, type Media } from '$shared';
 
 const settings = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({ ...DEFAULT_GLOBAL_SETTINGS, ...o });

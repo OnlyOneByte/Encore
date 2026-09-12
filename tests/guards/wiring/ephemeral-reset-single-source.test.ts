@@ -10,9 +10,9 @@ import { read } from '@encore/test-support';
 // (or the historical keyShift leak) can neither satisfy nor trip the assertions.
 const strip = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
-// Was a sibling read of the module this guard sat beside in apps/core/src/server/realtime — the
+// Was a sibling read of the module this guard sat beside in apps/core/src/lib/server/realtime — the
 // realtime player, named from the repo root now that the guard no longer sits next to it.
-const playerSrc = strip(read('apps/core/src/server/realtime/player.ts'));
+const playerSrc = strip(read('apps/core/src/lib/server/realtime/player.ts'));
 
 // Extract the object-literal argument of every `state.setPlayback({ ... })` call, matched by
 // balanced braces so nested objects do not truncate the slice. A LATER FINDING: pinning a FLOOR on the

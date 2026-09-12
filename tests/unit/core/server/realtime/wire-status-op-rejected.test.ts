@@ -12,10 +12,10 @@
 // The load-bearing assertion is the seam property: the bad op is NOT applied, NOT broadcast, and yields
 // op:reject — so none of (a)/(b)/(c) is reachable from the wire.
 import { test, expect } from 'bun:test';
-import { validateCommand, handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
-import { removableOnLeave } from '$server/singers/leave';
-import type { EncoreApp } from '$server/app';
+import { validateCommand, handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { removableOnLeave } from '$lib/server/singers/leave';
+import type { EncoreApp } from '$lib/server/app';
 import { ulid, type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

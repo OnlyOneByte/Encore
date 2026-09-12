@@ -10,9 +10,9 @@
 // idle when none is ready. These tests exercise the exact server.ts composition, plus the boot-time
 // self-heal in AuthoritativeState.hydrate().
 import { test, expect } from 'bun:test';
-import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { reconcileOnReady } from '$server/realtime/player';
-import { AuthoritativeState } from '$server/state/store';
+import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { reconcileOnReady } from '$lib/server/realtime/player';
+import { AuthoritativeState } from '$lib/server/state/store';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand, type PlaybackState } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 
@@ -169,10 +169,10 @@ function stripComments(src: string): string {
 }
 
 // Both subjects named explicitly. The old forms were `at('apps/core/server.ts')`
-// and `at('apps/core/src/server/realtime/player.ts')` — arithmetic that only held while this guard sat in
-// apps/core/src/server/realtime. `read` throws on a wrong path rather than scanning nothing.
+// and `at('apps/core/src/lib/server/realtime/player.ts')` — arithmetic that only held while this guard sat in
+// apps/core/src/lib/server/realtime. `read` throws on a wrong path rather than scanning nothing.
 const SERVER = stripComments(read('apps/core/server.ts'));
-const PLAYER = stripComments(read('apps/core/src/server/realtime/player.ts'));
+const PLAYER = stripComments(read('apps/core/src/lib/server/realtime/player.ts'));
 
 test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying on resolution not nullness', () => {
 	// The recovery must be wired to the client queue path (handleQueueCommand is the sole prune that
@@ -230,7 +230,7 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 // running it, so pin it here: the raw store.ts text must NOT re-assert a boot resync/reconcile that
 // starts anything, and MUST name the three real recovery sites. Read RAW (not stripComments): the
 // assertions are ABOUT the comment, so blanking comments would make every check vacuous.
-const STORE = read('apps/core/src/server/state/store.ts');
+const STORE = read('apps/core/src/lib/server/state/store.ts');
 
 test("hydrate()'s heal comment (store.ts) tells the truth about boot recovery", () => {
 	// Non-vacuous: the heal the comment describes must actually be present, or the checks below
@@ -305,14 +305,14 @@ test('reconcileOnReady is called from exactly the three non-boot sites: queue:co
 		.filter((f) => RECONCILE_CALL.test(stripComments(readFileSync(f, 'utf8'))))
 		.map((f) => relative(CORE_ROOT, f))
 		.sort();
-	expect(sites).toEqual(['server.ts', 'src/server/app.ts', 'src/server/media/delete.ts']);
+	expect(sites).toEqual(['server.ts', 'src/lib/server/app.ts', 'src/lib/server/media/delete.ts']);
 
 	// The app.ts call must be INSIDE the onMediaReady handler and be the ONLY reconcile in the file.
 	// This is what pins the comment's actual claim: a boot-time reconcile (the quarantined mutation)
 	// would sit at the top level of createApp — outside onMediaReady — and red here even though the
 	// per-file set above is unchanged (app.ts is already in it). Deleting the onMediaReady call also
 	// reds here (zero calls inside the handler).
-	const APP = stripComments(readFileSync(join(SRC_ROOT, 'server', 'app.ts'), 'utf8'));
+	const APP = stripComments(readFileSync(join(SRC_ROOT, 'lib', 'server', 'app.ts'), 'utf8'));
 	const handlerKey = APP.indexOf('onMediaReady:');
 	expect(handlerKey).toBeGreaterThanOrEqual(0); // non-vacuous: the handler must exist
 	const arrowBrace = APP.indexOf('{', APP.indexOf('=>', handlerKey));

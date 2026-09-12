@@ -1,7 +1,7 @@
 // The guiding-track backfill: which cooked songs need a vocals ref, and the existence-then-loudness
 // scan that links them. Fully injected IO — no disk, no ffmpeg.
 import { it, expect } from 'bun:test';
-import { needsVocalsBackfill, candidateVocalsRefs, backfillVocalsRefs, type VocalsBackfillIO } from '$server/media/vocals-backfill';
+import { needsVocalsBackfill, candidateVocalsRefs, backfillVocalsRefs, type VocalsBackfillIO } from '$lib/server/media/vocals-backfill';
 import type { Media } from '$shared';
 
 const m = (id: string, over: Partial<Media> = {}): Media => ({

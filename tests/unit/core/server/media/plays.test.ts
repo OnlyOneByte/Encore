@@ -3,7 +3,7 @@
 // `addedAt`: a song added months ago and sung weekly would be dropped before one added yesterday and
 // never played. Exactly backwards.
 import { expect, it } from 'bun:test';
-import { PlayTracker, bumpPlay } from '$server/media/plays';
+import { PlayTracker, bumpPlay } from '$lib/server/media/plays';
 
 const entry = (id: string, mediaId: string) => ({ id, mediaId });
 
@@ -72,7 +72,7 @@ it('bumpPlay: increments the count and stamps the time', () => {
 it('the LRU signal this feeds: a frequently-played old song now outranks a never-played new one', async () => {
 	// The concrete regression: planEviction sorts by lastUsedAt. With addedAt as the only signal the
 	// old song lost; with lastPlayedAt populated it wins.
-	const { planEviction } = await import('$server/media/retention');
+	const { planEviction } = await import('$lib/server/media/retention');
 	const oldButLoved = { mediaId: 'loved', derivedBytes: 100, lastUsedAt: 9_000 }; // played recently
 	const newButIgnored = { mediaId: 'ignored', derivedBytes: 100, lastUsedAt: 1_000 }; // added later, never played
 	expect(planEviction([oldButLoved, newButIgnored], 100)).toEqual(['ignored']);

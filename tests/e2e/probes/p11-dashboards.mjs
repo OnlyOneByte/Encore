@@ -554,7 +554,7 @@ async function main() {
 				`observed library.ready=${libReady} (want 3), sings.total=${total} (want 4), distinctSongs=${distinct} (want 3), window=${window} (want 4)`,
 				[
 					'src/routes/api/stats/+server.ts:22-51 — library.ready reads listReady, sings.* read PlayLog',
-					'src/server/media/plays.ts:24-49 — PlayTracker dedupes on entryId, sink fires once per fresh currentEntryId'
+					'src/lib/server/media/plays.ts:24-49 — PlayTracker dedupes on entryId, sink fires once per fresh currentEntryId'
 				]
 			);
 		}
@@ -608,7 +608,7 @@ async function main() {
 				'the /stats trend line has exactly one bar today with 4 plays',
 				`perDay=[${stats.perDay.map((/** @type {any} */ d) => `${d.day}:${d.plays}`).join(', ')}] — the log has no zero-fill (an absent day = "we can't tell if it was quiet or the server was off"), so a fresh install shows one bar and honest copy`,
 				[
-					'src/server/media/play-log.ts:75-88 — perDay omits days with no plays rather than 0-filling',
+					'src/lib/server/media/play-log.ts:75-88 — perDay omits days with no plays rather than 0-filling',
 					'src/routes/stats/+page.svelte:95-100 — footnote makes the ambiguity explicit'
 				]
 			);
@@ -689,8 +689,8 @@ async function main() {
 				'LOCAL-source cooks correctly skip the fetch step',
 				`every audit log for a demo-library song shows 0 fetch attempts. make-karaoke.ts:154 branches on needsFetch(media.source) and starts a local cook directly at the stems step, saving a redundant download of a file that already exists.`,
 				[
-					'src/server/jobs/make-karaoke.ts:154-155 — needsFetch(source) is false for source:"local"',
-					'src/server/jobs/dispatch.ts:53-88 — assignParams still fills fetcher=local for chained stems, without a separate fetch step'
+					'src/lib/server/jobs/make-karaoke.ts:154-155 — needsFetch(source) is false for source:"local"',
+					'src/lib/server/jobs/dispatch.ts:53-88 — assignParams still fills fetcher=local for chained stems, without a separate fetch step'
 				]
 			);
 		} else {
@@ -805,7 +805,7 @@ async function main() {
 					`observed: /api/audit/${prayer.id}.cooks[0].outcome = "${prA.cookOutcome}"`,
 					`observed: /api/metrics.slowestCooks[].cookId = [${[...cooksInMetrics].join(', ')}] (${cooksInMetrics.size} cooks, prayer absent)`,
 					`observed: /api/metrics.e2e.n = ${metrics.e2e.n} (expected 3 including prayer)`,
-					'src/server/jobs/metrics.ts:127-146 — perCook: `complete = sealed.length === list.length && sealed.every(a => a.outcome === "ready")` — abandoned makes complete=false',
+					'src/lib/server/jobs/metrics.ts:127-146 — perCook: `complete = sealed.length === list.length && sealed.every(a => a.outcome === "ready")` — abandoned makes complete=false',
 					'src/routes/api/audit/[mediaId]/+server.ts:71-76 — cookOutcome ignores "abandoned"; a retried cook reads "ready"',
 					'consequence: /metrics "Start to finish" tile understates n by one cook per retried song; slowestCooks omits the retried outliers a person specifically wants to see'
 				]
@@ -821,7 +821,7 @@ async function main() {
 				'MEDIUM',
 				'metrics.slowestCooks and audit endpoint disagree on which cooks completed (unexpected pattern)',
 				`caroline in metrics=${carolineInMetrics}, dontstop=${dontstopInMetrics}, prayer=${prayerInMetrics}`,
-				['src/server/jobs/metrics.ts:127-146 — perCook filters to complete=every attempt.outcome===ready']
+				['src/lib/server/jobs/metrics.ts:127-146 — perCook filters to complete=every attempt.outcome===ready']
 			);
 		}
 	}
@@ -884,7 +884,7 @@ async function main() {
 				'MEDIUM',
 				'fake-separator/e2e-tone measured rtFactor is null despite a completed cook',
 				`meanRtFactor=${fake.meanRtFactor}. audioSec is snapshotted from media.durationSec (250 for caroline); this should have been a real number.`,
-				['src/server/jobs/worker-hub.ts:390-401 — audioSec is captured at assign time from media.durationSec']
+				['src/lib/server/jobs/worker-hub.ts:390-401 — audioSec is captured at assign time from media.durationSec']
 			);
 		} else {
 			record(
@@ -1104,7 +1104,7 @@ async function main() {
 				'/api/stats is aggregate-only — no singer keys in the payload',
 				`response contains no singer / singerId / displayName / color / sessionToken keys`,
 				[
-					'src/server/db/schema.ts — plays table has no singer column',
+					'src/lib/server/db/schema.ts — plays table has no singer column',
 					'src/routes/api/stats/+server.ts — endpoint only reads library, playLog, and popularity'
 				]
 			);

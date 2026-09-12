@@ -444,10 +444,10 @@ async function scenario1_silentInstrumental() {
 						.join(', ')}]`,
 					`observed: /api/library.library contains ${media.id}: ${inReady}`,
 					`observed: on-disk stem ${stemBytes} bytes, samples all-zero: ${allZeroAudio}`,
-					'apps/core/src/server/jobs/worker-hub.ts:158-186 — #onComplete calls markMediaReady with reportedUri, no loudness check',
-					'apps/core/src/server/media/loudness.ts:14-20 — ffmpegLoudnessProbe/isDigitalSilence exist',
-					'apps/core/src/server/app.ts:257-297 — probe ONLY invoked for backfill, never for live publish',
-					'apps/core/src/server/jobs/make-karaoke.ts:220-238 — markMediaReady only defends against a downrank, not a silent artifact',
+					'apps/core/src/lib/server/jobs/worker-hub.ts:158-186 — #onComplete calls markMediaReady with reportedUri, no loudness check',
+					'apps/core/src/lib/server/media/loudness.ts:14-20 — ffmpegLoudnessProbe/isDigitalSilence exist',
+					'apps/core/src/lib/server/app.ts:257-297 — probe ONLY invoked for backfill, never for live publish',
+					'apps/core/src/lib/server/jobs/make-karaoke.ts:220-238 — markMediaReady only defends against a downrank, not a silent artifact',
 					'ENV: this host has decode-only ffmpeg (no volumedetect), so even a wired guard would return null=unmeasurable=not-silent — a fix must therefore delegate content assurance to the worker OR ship a full ffmpeg with the core'
 				]
 			);
@@ -496,7 +496,7 @@ async function scenario2_silentVocals() {
 				[
 					`observed: terminal status=${last.status}, /api/library.contains=${inReady}`,
 					`observed: vocalsRef=${vocRef} — a workers-trust design (setMediaVocals docstring)`,
-					'apps/core/src/server/jobs/make-karaoke.ts:410-421 — setMediaVocals trusts the worker report, does not probe content'
+					'apps/core/src/lib/server/jobs/make-karaoke.ts:410-421 — setMediaVocals trusts the worker report, does not probe content'
 				]
 			);
 		} else {
@@ -548,7 +548,7 @@ async function scenario3_skipWrite() {
 						.statusOf(media.id)
 						.map((e) => e.status)
 						.join(', ')}]`,
-					'apps/core/src/server/jobs/make-karaoke.ts:220-238 — markMediaReady sets stemStatus=ready + instrumentalRef, no fs.exists check',
+					'apps/core/src/lib/server/jobs/make-karaoke.ts:220-238 — markMediaReady sets stemStatus=ready + instrumentalRef, no fs.exists check',
 					'apps/core/src/routes/media/[...path]/+server.ts:35, 46, 51, 70 — 404 responses are silent (no room broadcast, no automated re-cook)'
 				]
 			);
@@ -591,7 +591,7 @@ async function scenario4_noProfile() {
 				`ready reached, song listed in /api/library. setMediaSongProfile normalizes the absent record to EMPTY_SONG_PROFILE by design.`,
 				[
 					`observed: terminal status=${last.status}, catalog.songProfile=${JSON.stringify(cat.songProfile ?? null)}`,
-					'apps/core/src/server/jobs/make-karaoke.ts:437-476 — setMediaSongProfile ALWAYS writes; presence, not content, satisfies the gate',
+					'apps/core/src/lib/server/jobs/make-karaoke.ts:437-476 — setMediaSongProfile ALWAYS writes; presence, not content, satisfies the gate',
 					'apps/core/src/shared/queue/gates.ts:52-76 — stems gate checks stemStatus + instrumentalRef only, not the profile'
 				]
 			);
@@ -654,8 +654,8 @@ async function scenario5_failStems() {
 						.join(', ')}]`,
 					`observed: /api/search after fail — ready=${inReady} cooking=${inCooking} results=${inRaw}`,
 					`observed: retry POST /api/make-karaoke -> ${retry.status}, jobId=${retryBody?.job?.id ?? 'null'}`,
-					'apps/core/src/server/jobs/worker-hub.ts:225-252 — #onFailed calls settleStemsGate for fetch|stems',
-					'apps/core/src/server/jobs/make-karaoke.ts:284-298 — settleStemsGate resets stemStatus to "none"',
+					'apps/core/src/lib/server/jobs/worker-hub.ts:225-252 — #onFailed calls settleStemsGate for fetch|stems',
+					'apps/core/src/lib/server/jobs/make-karaoke.ts:284-298 — settleStemsGate resets stemStatus to "none"',
 					'apps/core/src/routes/+page.svelte:309-324 — cookingRows INCLUDES failed entries so the row is visible with a retry button',
 					'apps/core/src/lib/components/SongRow.svelte:159-162 — readiness===failed renders the failure chip',
 					'apps/core/src/lib/readiness.ts:34-44 — displayReadiness returns "failed" when live.status=failed and !readyToSing'
@@ -732,7 +732,7 @@ async function scenario6_removeMidCook() {
 				[
 					`observed: last media:status = "${last.status}" pct=${last.pct}`,
 					`observed: full transitions = ${transitions}`,
-					'apps/core/src/server/jobs/cancel.ts:117-133 — cancelJobsForMedia broadcasts { type:media:status, status:canceled } after settleStemsGate',
+					'apps/core/src/lib/server/jobs/cancel.ts:117-133 — cancelJobsForMedia broadcasts { type:media:status, status:canceled } after settleStemsGate',
 					'apps/core/src/lib/readiness.ts:41-43 — displayReadiness treats "canceled" as terminal and returns to catalog readiness (un-cooked), NOT "failed"',
 					'apps/core/src/routes/+page.svelte:314-316 — cookingRows deliberately EXCLUDES canceled entries; the removed row does not linger'
 				]
@@ -749,7 +749,7 @@ async function scenario6_removeMidCook() {
 				'MEDIUM',
 				'mid-cook remove: settle status did not arrive within 8s',
 				`terminal=${last.status}. Transitions observed: ${transitions}. This may indicate a race where the cancel arrived before findLive could locate the running job, OR the media:status:canceled broadcast is not being sent for this scenario shape. See ${worker.log} for the worker's view.`,
-				[`observed transitions: ${transitions}`, 'apps/core/src/server/jobs/cancel.ts:117-133 — settle broadcast']
+				[`observed transitions: ${transitions}`, 'apps/core/src/lib/server/jobs/cancel.ts:117-133 — settle broadcast']
 			);
 		}
 		phone.close();
@@ -806,9 +806,9 @@ async function scenario7_killWorker() {
 				`After SIGKILL on the running worker, the progress lease expired and the reaper produced a recovery action. No forever-stranded job.`,
 				[
 					`observed: elapsed=${elapsed}s from SIGKILL to signal, requeue=${JSON.stringify(requeuedSignal ?? null)}, terminal=${terminal}`,
-					'apps/core/src/server/jobs/reaper.ts:38-52 — tick() applies sweep actions on lease expiry',
-					'apps/core/src/server/jobs/leases.ts:20-22 — DEFAULT_LEASE_CONFIG progressLeaseMs=30_000',
-					'apps/core/src/server/jobs/leases.ts:56-77 — sweep bumps attempts on progress-lease-expired'
+					'apps/core/src/lib/server/jobs/reaper.ts:38-52 — tick() applies sweep actions on lease expiry',
+					'apps/core/src/lib/server/jobs/leases.ts:20-22 — DEFAULT_LEASE_CONFIG progressLeaseMs=30_000',
+					'apps/core/src/lib/server/jobs/leases.ts:56-77 — sweep bumps attempts on progress-lease-expired'
 				]
 			);
 		} else {
@@ -820,7 +820,7 @@ async function scenario7_killWorker() {
 				`terminal=${terminal}, last media:status = ${JSON.stringify(phone.lastStatus(media.id))}. Server log: ${server.log}. This may be Bun-serve WS idle timeout (30s) + progress lease (30s) racing on a slow host.`,
 				[
 					`observed: elapsed=${elapsed}s, files in SCRATCH: ${log.join(',')}`,
-					'apps/core/src/server/jobs/leases.ts:20-22 — progress lease is 30s',
+					'apps/core/src/lib/server/jobs/leases.ts:20-22 — progress lease is 30s',
 					'apps/core/server.ts:79 — Bun.serve idleTimeout: 30'
 				]
 			);
@@ -853,7 +853,7 @@ async function scenario8_perSingerCap() {
 				'MEDIUM',
 				'per-singer cap could not be exercised — fewer than 4 local songs in the library',
 				`only ${medias.length} local songs indexed; the cap is 3, so 4 distinct medias are needed. Seed the missing tracks under $MEDIA_DIR/library/ and re-run.`,
-				['apps/core/src/server/jobs/make-karaoke.ts:56-64 — MAX_CONCURRENT_COOKS_PER_SINGER = 3']
+				['apps/core/src/lib/server/jobs/make-karaoke.ts:56-64 — MAX_CONCURRENT_COOKS_PER_SINGER = 3']
 			);
 			phone.close();
 			return;
@@ -895,7 +895,7 @@ async function scenario8_perSingerCap() {
 					`observed: 3rd-song statuses=[${rs.map((r) => r.status).join(',')}] — all 200`,
 					`observed: 4th tap status=${fourth.status}, body=${JSON.stringify(body)}`,
 					'apps/core/src/routes/api/make-karaoke/+server.ts:31-40 — 429 branch names reason:"over-limit"',
-					'apps/core/src/server/jobs/make-karaoke.ts:56-64,73-89 — MAX_CONCURRENT_COOKS_PER_SINGER + countInFlightCooks (attribution via queue entries)'
+					'apps/core/src/lib/server/jobs/make-karaoke.ts:56-64,73-89 — MAX_CONCURRENT_COOKS_PER_SINGER + countInFlightCooks (attribution via queue entries)'
 				]
 			);
 		} else if (fourth.status === 429) {
@@ -914,8 +914,8 @@ async function scenario8_perSingerCap() {
 				'per-singer cap did not fire when queue-then-cook was reproduced',
 				`4th tap status=${fourth.status}, body=${JSON.stringify(body)}. Queue entries observed on last patch: ${totalEntries} (need ≥3 for the cap to trigger). NOTE: the cap only attributes cooks through singer queue entries (make-karaoke.ts:73-89 docstring). A direct API caller who never queues bypasses the cap by design — worth flagging on its own if that is undesired.`,
 				[
-					'apps/core/src/server/jobs/make-karaoke.ts:56-64 — cap constant',
-					'apps/core/src/server/jobs/make-karaoke.ts:73-89 — attribution IS through queue entries, so a raw POST /api/make-karaoke without queueing bypasses the cap'
+					'apps/core/src/lib/server/jobs/make-karaoke.ts:56-64 — cap constant',
+					'apps/core/src/lib/server/jobs/make-karaoke.ts:73-89 — attribution IS through queue entries, so a raw POST /api/make-karaoke without queueing bypasses the cap'
 				]
 			);
 		}

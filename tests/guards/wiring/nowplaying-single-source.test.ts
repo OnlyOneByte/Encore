@@ -85,10 +85,10 @@ test('the census actually covers this package, including the harness-less Bun.se
 	expect(SOURCES.length).toBeGreaterThanOrEqual(50);
 	const rel = SOURCES.map(REL);
 	expect(rel).toContain('server.ts');
-	expect(rel).toContain('src/server/realtime/player.ts');
+	expect(rel).toContain('src/lib/server/realtime/player.ts');
 	// a walk BLIND to store.ts is exactly how the first census missed the third copy, so assert
 	// store.ts's membership rather than assume it.
-	expect(rel).toContain('src/server/state/store.ts');
+	expect(rel).toContain('src/lib/server/state/store.ts');
 	// And the stripper must really blank comments, or a commented-out copy would count as a live one.
 	const planted = stripComments(
 		[
@@ -115,14 +115,14 @@ test('the recovery predicate exists in exactly one production file, store.ts', (
 	// Base (pre-extraction) FAILS with 2: src/server/realtime/player.ts and src/server/state/store.ts,
 	// the two byte-identical-modulo-receiver copies consolidated into `entryResolves`. The earlier
 	// census had already removed server.ts's third copy. After it the sole home is the helper.
-	expect(filesMatching(RECOVERY_PREDICATE)).toEqual(['src/server/state/store.ts']);
+	expect(filesMatching(RECOVERY_PREDICATE)).toEqual(['src/lib/server/state/store.ts']);
 });
 
 test('ARM 1 cannot be satisfied by deleting the invariant — the resolution test still exists', () => {
 	// Sentinel. A census counting sites passes at ZERO, so deleting the predicate outright would
 	// satisfy ARM 1 while re-opening the recovery defect. Require the resolution form to be present in store.ts,
 	// inside the exported `entryResolves` helper that both askers now call.
-	const STORE = stripComments(readFileSync(join(SRC_ROOT, 'server', 'state', 'store.ts'), 'utf8'));
+	const STORE = stripComments(readFileSync(join(SRC_ROOT, 'lib', 'server', 'state', 'store.ts'), 'utf8'));
 	const fnIdx = STORE.indexOf('export function entryResolves(');
 	expect(fnIdx).toBeGreaterThanOrEqual(0);
 	expect(STORE.slice(fnIdx)).toMatch(RECOVERY_PREDICATE);
@@ -139,7 +139,7 @@ test('ARM 1 cannot be satisfied by deleting the invariant — the resolution tes
 // someone writes one. The comment is what stops them writing it — the next developer standing at this
 // predicate needs to know their edit is complete here, and that callers deliberately decide nothing.
 // Delete the disclosure and the duplication grows back for the same reason it grew the first time.
-const PLAYER_RAW = read('apps/core/src/server/realtime/player.ts');
+const PLAYER_RAW = read('apps/core/src/lib/server/realtime/player.ts');
 
 test('player.ts discloses where the recovery predicate is single-sourced', () => {
 	// Non-vacuous: anchor on the symbol the prose documents, so a rename reds here rather than passing
@@ -221,14 +221,14 @@ const NOWPLAYING_LITERAL = /type:\s*'nowplaying:changed'/;
 
 test('the upNext projection exists in exactly one production file, player.ts', () => {
 	// Base FAILS with 2 (player.ts's emitNowPlaying + server.ts's hello arm).
-	expect(filesMatching(UPNEXT_PROJECTION)).toEqual(['src/server/realtime/player.ts']);
+	expect(filesMatching(UPNEXT_PROJECTION)).toEqual(['src/lib/server/realtime/player.ts']);
 });
 
 test('the nowplaying:changed payload is stated in exactly one production file, player.ts', () => {
 	// Base FAILS with 2. Counted per FILE, not per occurrence: player.ts legitimately names the
 	// literal twice after the fix — once in nowPlayingEvent's `Extract<ServerEvent, …>` return type
 	// and once in the returned object — and an occurrence count would read that as unfixed.
-	expect(filesMatching(NOWPLAYING_LITERAL)).toEqual(['src/server/realtime/player.ts']);
+	expect(filesMatching(NOWPLAYING_LITERAL)).toEqual(['src/lib/server/realtime/player.ts']);
 });
 
 test('ARM 3/4 cannot be satisfied by dropping the resync frame — hello still sends three frames', () => {
@@ -245,14 +245,14 @@ test('ARM 3/4 cannot be satisfied by dropping the resync frame — hello still s
 	expect(arm).toMatch(/type:\s*'playback:state'/);
 	expect(arm).toMatch(/ws\.send\(JSON\.stringify\(nowPlayingEvent\(deps\)\)\)/);
 	// Imported from the player module — the owner — not re-implemented locally.
-	expect(SERVER).toMatch(/import\s*\{[^}]*\bnowPlayingEvent\b[^}]*\}\s*from\s*'\.\/src\/server\/realtime\/player'/);
+	expect(SERVER).toMatch(/import\s*\{[^}]*\bnowPlayingEvent\b[^}]*\}\s*from\s*'\.\/src\/lib\/server\/realtime\/player'/);
 });
 
 test('the typed-builder precedent this follows still exists: syncEvent', () => {
 	// nowPlayingEvent is modelled on hub.ts's syncEvent — a typed event builder with the identical
 	// `Extract<ServerEvent, { type: … }>` return shape, called by this same hello arm one line above.
 	// If that precedent is ever removed the shape here should be revisited, not silently diverge.
-	const HUB = stripComments(read('apps/core/src/server/realtime/hub.ts'));
+	const HUB = stripComments(read('apps/core/src/lib/server/realtime/hub.ts'));
 	expect(HUB).toMatch(/export function syncEvent\(/);
 	expect(HUB).toMatch(/Extract<ServerEvent,\s*\{\s*type:\s*'queue:sync'\s*\}>/);
 });
@@ -260,7 +260,7 @@ test('the typed-builder precedent this follows still exists: syncEvent', () => {
 test('nowPlayingEvent has a non-test caller', () => {
 	// A builder nothing calls is dead weight, and the whole point of the extraction is that the
 	// resync path goes through it. Grep the production set, excluding player.ts's own definition.
-	const callers = SOURCES.filter((f) => REL(f) !== 'src/server/realtime/player.ts').filter((f) =>
+	const callers = SOURCES.filter((f) => REL(f) !== 'src/lib/server/realtime/player.ts').filter((f) =>
 		/(?<!function\s)\bnowPlayingEvent\s*\(/.test(stripComments(readFileSync(f, 'utf8')))
 	);
 	expect(callers.map(REL)).toEqual(['server.ts']);

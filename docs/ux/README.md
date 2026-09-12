@@ -56,7 +56,7 @@ in-repo at `tests/e2e/cdp.mjs`). The four measurement claims land on **rung L**.
 stops at rung M has made none of them checkable. See `XR-VER-01`.
 
 **3. Four concurrency premises were stale.** A host **mechanism** already exists and is
-centralised (`server/auth/capabilities.ts`, `can(actor, cap)`), carrying the owner's dated ruling
+centralised (`lib/server/auth/capabilities.ts`, `can(actor, cap)`), carrying the owner's dated ruling
 that "today every joined singer is a host". A **cross-singer host reorder already ships**
 (a direct rewrite of the stored ordered list — no durable pin; pinning was deleted step 3
 — still gated on `queue:reorder-any`, with the arrow/drag "move to index" wiring landing

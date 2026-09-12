@@ -1,7 +1,7 @@
 // A resent command (same clientOpId) must NOT double-apply; re-ack only.
 import { test, expect } from 'bun:test';
-import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
+import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
 import { type ServerEvent, type Media, type ClientCommand } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

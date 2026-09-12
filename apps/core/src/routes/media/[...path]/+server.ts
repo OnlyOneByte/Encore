@@ -6,12 +6,12 @@
 // iOS) probes a media resource with `Range: bytes=0-1` and abandons it if the server replies `200`
 // with the whole body, so a range-less route means the TV's `<video>` never plays at all — silently,
 // with no `error` event to notice. It is also the only way seeking can work in ANY browser. The range
-// arithmetic lives in $server/media/http-range so it is tested without a server; see that file for the
+// arithmetic lives in $lib/server/media/http-range so it is tested without a server; see that file for the
 // full write-up of how the failure hides.
 import type { RequestHandler } from '@sveltejs/kit';
-import { safeMediaPath } from '$server/media/local-files';
-import { parseRangeHeader, contentRange, unsatisfiedContentRange } from '$server/media/http-range';
-import { getApp } from '$server/app';
+import { safeMediaPath } from '$lib/server/media/local-files';
+import { parseRangeHeader, contentRange, unsatisfiedContentRange } from '$lib/server/media/http-range';
+import { getApp } from '$lib/server/app';
 
 const CONTENT_TYPES: Record<string, string> = {
 	mp4: 'video/mp4',

@@ -1,7 +1,7 @@
 // Drive a command -> assert broadcast envelope + new rev.
 import { test, expect } from 'bun:test';
-import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
+import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
 import { ulid, type ServerEvent, type Media, type ClientCommand } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

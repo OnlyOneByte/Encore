@@ -3,7 +3,7 @@
 	//
 	// WHY THIS FILE EXISTS. bun resolves path aliases from the NEAREST tsconfig walking up from the
 	// importing file. Tests currently living under `apps/core/src` inherit
-	// `apps/core/.svelte-kit/tsconfig.json`, which SvelteKit generates with `$lib`, `$server` and
+	// `apps/core/.svelte-kit/tsconfig.json`, which SvelteKit generates with `$lib`, `$lib/server` and
 	// `$shared` in it. A test moved to `tests/` leaves that context entirely, and a probe confirmed
 	// the failure is immediate and loud: `Cannot find module '$lib/position-sentence'`. So the aliases have
 	// to be re-declared here, once, rather than rewritten into hundreds of relative paths.
@@ -26,8 +26,8 @@
 			"$shared/*": ["../apps/core/src/shared/*.ts"],
 			"$lib": ["../apps/core/src/lib"],
 			"$lib/*": ["../apps/core/src/lib/*"],
-			"$server": ["../apps/core/src/server"],
-			"$server/*": ["../apps/core/src/server/*"]
+			"$lib/server": ["../apps/core/src/lib/server"],
+			"$lib/server/*": ["../apps/core/src/lib/server/*"]
 		}
 	},
 	"include": ["**/*.ts", "./support/src/**/*.ts"]

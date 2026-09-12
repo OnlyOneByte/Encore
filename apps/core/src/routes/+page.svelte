@@ -620,7 +620,7 @@
 	 * concurrent ways to narrow one list, and the ruling was to delete them rather than tidy them.
 	 *
 	 * The SERVER half stays: /api/library still computes the facets and still honours ?artist= and
-	 * ?tag= (`server/media/repository.ts`, guarded by browse-ready-parity.test.ts and
+	 * ?tag= (`lib/server/media/repository.ts`, guarded by browse-ready-parity.test.ts and
 	 * library-tag-filter.test.ts). Nothing on the phone asks for them any more, which is the point;
 	 * removing a working, tested endpoint capability is a separate decision nobody has made.
 	 */

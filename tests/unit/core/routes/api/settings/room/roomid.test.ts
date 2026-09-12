@@ -11,8 +11,8 @@
 // EITHER threaded argument (setRoom's roomId or getEffective's) reds this file.
 import { test, expect, afterEach } from 'bun:test';
 import { PUT } from '../../../../../../../apps/core/src/routes/api/settings/room/+server';
-import { SettingsRepository } from '$server/state/settings-repository';
-import { migratedDb } from '$server/db/test-db';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { migratedDb } from '$lib/server/db/test-db';
 import { DEFAULT_ROOM_SETTINGS } from '$shared';
 
 const APP_KEY = Symbol.for('encore.app');

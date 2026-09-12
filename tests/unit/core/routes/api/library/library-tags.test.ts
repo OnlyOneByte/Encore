@@ -5,9 +5,9 @@
 // This test proves reading with 'tag' returns exactly what setTags wrote, and that the default 'genre'
 // read does NOT see it — which is why the route must pass the kind explicitly.
 import { test, expect } from 'bun:test';
-import { MediaRepository } from '$server/media/repository';
-import { migratedDb } from '$server/db/test-db';
-import { instrumentalKey } from '$server/media/paths';
+import { MediaRepository } from '$lib/server/media/repository';
+import { migratedDb } from '$lib/server/db/test-db';
+import { instrumentalKey } from '$lib/server/media/paths';
 import type { Media } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

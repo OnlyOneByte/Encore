@@ -6,9 +6,9 @@
 // change, not to 0, and it must reset at EVERY song-start site — the state object is long-lived and
 // reset field-by-field, so a site that forgets a field leaks it into the next song.
 import { test, expect } from 'bun:test';
-import { handlePlayerCommand, reconcileOnReady } from '$server/realtime/player';
-import { AuthoritativeState } from '$server/state/store';
-import { type HubDeps } from '$server/realtime/hub';
+import { handlePlayerCommand, reconcileOnReady } from '$lib/server/realtime/player';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { type HubDeps } from '$lib/server/realtime/hub';
 import { type Media, type QueueEntry, type ServerEvent } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

@@ -1,10 +1,10 @@
 // Done-when: a stalled job requeues; boot recovery clears in-flight. Drives the real
 // JobRepository (in-memory sqlite) through the reaper with an injected clock — no wall-clock waits.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { JobReaper } from '$server/jobs/reaper';
-import { JobRepository } from '$server/jobs/repository';
-import { ackDeadline, progressDeadline } from '$server/jobs/leases';
+import { migratedDb } from '$lib/server/db/test-db';
+import { JobReaper } from '$lib/server/jobs/reaper';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { ackDeadline, progressDeadline } from '$lib/server/jobs/leases';
 
 function setup(now: () => number, onReaped?: () => void) {
 	const db = migratedDb();
@@ -131,7 +131,7 @@ test('onReaped fires once per tick that changed ≥1 job, and not on a no-op', (
 // forever: readyToSing never flipped and rotation held the queue entry on every pass, even with the
 // instrumental on disk. The reaper has no catalog, so app.ts wires its onFailed hook to
 // settleGatesForFailedJob(job, mediaById) — this test drives that live wiring, not a reimplementation.
-import { settleGatesForFailedJob } from '$server/jobs/make-karaoke';
+import { settleGatesForFailedJob } from '$lib/server/jobs/make-karaoke';
 import type { Media } from '$shared';
 
 const mkMedia = (id: string, over: Partial<Media> = {}): Media => ({

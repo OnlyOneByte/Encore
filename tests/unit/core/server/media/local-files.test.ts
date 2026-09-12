@@ -2,8 +2,8 @@
 // MEDIA_DIR. These are the attack vectors the route depends on it rejecting.
 import { test, expect, beforeEach } from 'bun:test';
 import { resolve, sep } from 'node:path';
-import { safeMediaPath } from '$server/media/local-files';
-import { mediaRoot } from '$server/media/paths';
+import { safeMediaPath } from '$lib/server/media/local-files';
+import { mediaRoot } from '$lib/server/media/paths';
 
 beforeEach(() => {
 	process.env.MEDIA_DIR = '/srv/encore/media';

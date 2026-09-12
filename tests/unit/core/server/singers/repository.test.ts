@@ -1,7 +1,7 @@
 // Create singer -> token set -> resolve from cookie.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { SingerRepository, readSessionToken, mintSessionToken, SESSION_COOKIE } from '$server/singers/repository';
+import { migratedDb } from '$lib/server/db/test-db';
+import { SingerRepository, readSessionToken, mintSessionToken, SESSION_COOKIE } from '$lib/server/singers/repository';
 
 // A singer is created IN a room now. These tests exercise a single room, and the FK is not
 // enforced on this bun:sqlite DB, so a fixed literal room id is enough — no `rooms` row required.

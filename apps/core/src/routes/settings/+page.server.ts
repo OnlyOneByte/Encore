@@ -3,9 +3,9 @@
 // choice was lost" rather than "still loading".
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getApp } from '$server/app';
-import { SESSION_COOKIE } from '$server/singers/repository';
-import { fallbackJoinOrigin, publicOriginIsHttps } from '$server/public-origin';
+import { getApp } from '$lib/server/app';
+import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { fallbackJoinOrigin, publicOriginIsHttps } from '$lib/server/public-origin';
 
 /**
  * The three scopes, resolved server-side so the FIRST paint is already on the right tab — a deep link
@@ -48,7 +48,7 @@ export const load: PageServerLoad = async ({ cookies, request, url }) => {
 		// How THIS phone reached the server. An https join address on a plain-http party is the one
 		// mistake in that field worth warning about, and only the server knows the real scheme —
 		// `location.protocol` in the browser cannot be trusted here for the same reason `url.protocol`
-		// cannot on the server (see $server/public-origin).
+		// cannot on the server (see $lib/server/public-origin).
 		requestIsHttps: publicOriginIsHttps(request, url)
 	};
 };

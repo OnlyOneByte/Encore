@@ -5,11 +5,11 @@
 // unless PROTOCOL_HEADER is set (so `url.origin` produced an unopenable https QR on a plain-HTTP LAN),
 // and the TV's own address is frequently one only the TV can reach — a WSL2 host opens /tv at
 // `localhost`, which would hand every phone a QR pointing at itself. `joinOrigin()` prefers the
-// declared address (settings, then env) and falls back to the request. See $server/public-origin.
+// declared address (settings, then env) and falls back to the request. See $lib/server/public-origin.
 import type { PageServerLoad } from './$types';
 import QRCode from 'qrcode';
-import { getApp } from '$server/app';
-import { joinOrigin, fallbackJoinOrigin } from '$server/public-origin';
+import { getApp } from '$lib/server/app';
+import { joinOrigin, fallbackJoinOrigin } from '$lib/server/public-origin';
 import { DEFAULT_EFFECTIVE_SETTINGS, type EffectiveSettings } from '$shared';
 
 export const load: PageServerLoad = async ({ url, request }) => {

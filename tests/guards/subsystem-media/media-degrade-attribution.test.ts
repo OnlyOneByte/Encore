@@ -22,10 +22,10 @@ function stripComments(src: string): string {
 		.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
-// Both subjects named explicitly. The old form read `at('apps/core/src/server/media')` as the media directory, which was
-// only true while this guard sat in apps/core/src/server/media. `read` throws on a wrong path.
-const SPOTIFY = stripComments(read('apps/core/src/server/media/spotify.ts'));
-const THUMBS = stripComments(read('apps/core/src/server/media/thumbs.ts'));
+// Both subjects named explicitly. The old form read `at('apps/core/src/lib/server/media')` as the media directory, which was
+// only true while this guard sat in apps/core/src/lib/server/media. `read` throws on a wrong path.
+const SPOTIFY = stripComments(read('apps/core/src/lib/server/media/spotify.ts'));
+const THUMBS = stripComments(read('apps/core/src/lib/server/media/thumbs.ts'));
 
 /**
  * Slice one function body out by brace balance, so a match cannot come from a neighbour. Skips the
@@ -121,7 +121,7 @@ test('ARM 2: every `!res.ok` refusal in a guarded region names res.status', () =
 // ── ARM 3: a specific failure cause is OBSERVABLE — the discriminating behavioural check ──────────
 
 test('ARM 3: distinct Spotify token failures (401, 200-no-token) are observable, clean empty is not', async () => {
-	const { spotifySearch, _resetSpotifyToken } = await import('$server/media/spotify');
+	const { spotifySearch, _resetSpotifyToken } = await import('$lib/server/media/spotify');
 	const env = { clientId: 'id', clientSecret: 'secret' };
 
 	const warned: string[] = [];

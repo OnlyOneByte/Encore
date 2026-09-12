@@ -5,15 +5,15 @@
 // (handleQueueCommand -> onEntryAdded -> reprioritizeCookForMedia) + the real dispatch policy, so
 // the assertion is the observable end effect: the drained dispatch ORDER, not just a priority field.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { JobRepository } from '$server/jobs/repository';
-import { planAssignments } from '$server/jobs/dispatch';
-import { reprioritizeCookForMedia } from '$server/jobs/reprioritize-cook';
-import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
-import { NO_QUEUE_PRIORITY } from '$server/jobs/make-karaoke';
+import { migratedDb } from '$lib/server/db/test-db';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { planAssignments } from '$lib/server/jobs/dispatch';
+import { reprioritizeCookForMedia } from '$lib/server/jobs/reprioritize-cook';
+import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { NO_QUEUE_PRIORITY } from '$lib/server/jobs/make-karaoke';
 import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ClientCommand, type ServerEvent } from '$shared';
-import type { WorkerSession } from '$server/jobs/registry';
+import type { WorkerSession } from '$lib/server/jobs/registry';
 
 const T0 = 1_700_000_000_000;
 

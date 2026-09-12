@@ -17,8 +17,8 @@
 // handleQueueCommand + AuthoritativeState, with onEntryRemoved/onEntryAdded recorders wired the way
 // server.ts wires them. This mirrors queue-add-shape.test.ts, the sibling guard in this arm.
 import { test, expect } from 'bun:test';
-import { validateCommand, handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
+import { validateCommand, handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
 import type { Media, QueueEntry, ClientCommand, ServerEvent } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 
@@ -198,8 +198,8 @@ test('END-TO-END: the same-media steal is NOT applied/broadcast and s1 still hol
 // Driven end-to-end through the real validateCommand + handleQueueCommand + AuthoritativeState with the
 // server's own start path (applyQueueOp status:'playing' + setPlayback), then through the real
 // removableOnLeave + doLeave against a minimal EncoreApp shim (the only fields those two functions read).
-import { removableOnLeave, doLeave } from '$server/singers/leave';
-import type { EncoreApp } from '$server/app';
+import { removableOnLeave, doLeave } from '$lib/server/singers/leave';
+import type { EncoreApp } from '$lib/server/app';
 
 // s1 re-adds q1 (its OWN live song) with a fresh clientOpId and client-minted status:'queued'.
 const readdLiveQ1: ClientCommand = {

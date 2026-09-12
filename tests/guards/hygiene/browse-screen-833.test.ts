@@ -17,7 +17,7 @@
 // `browseFilter` that could hold a tag, `setBrowse('tag', …)`, the `?tag=` query and the tag rail
 // itself — every one of which is a mechanism direction B removes. Its premise was "the tag filter is
 // wired through the phone page"; the ruling is that the phone page has no tag filter. The SERVER half
-// of the tag filter is untouched and still guarded (`server/media/library-tag-filter.test.ts`,
+// of the tag filter is untouched and still guarded (`lib/server/media/library-tag-filter.test.ts`,
 // `routes/api/library/library-tag-filter-wiring.test.ts`), which is why only one of the three
 // similarly-named files retires. The absence is pinned below so it cannot creep back in unnoticed.
 import { test, expect } from 'bun:test';

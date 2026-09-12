@@ -16,13 +16,13 @@
 // fires the machine's release hook, so slotsFree goes 0 → 1 and planAssignments lands a job on the
 // still-busy worker.
 import { test, expect } from 'bun:test';
-import { JobRepository } from '$server/jobs/repository';
-import { AttemptLedger } from '$server/jobs/attempts';
-import { WorkerRegistry } from '$server/jobs/registry';
-import { JobReaper } from '$server/jobs/reaper';
-import { planAssignments } from '$server/jobs/dispatch';
-import { progressDeadline, DEFAULT_LEASE_CONFIG } from '$server/jobs/leases';
-import { migratedDb } from '$server/db/test-db';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { AttemptLedger } from '$lib/server/jobs/attempts';
+import { WorkerRegistry } from '$lib/server/jobs/registry';
+import { JobReaper } from '$lib/server/jobs/reaper';
+import { planAssignments } from '$lib/server/jobs/dispatch';
+import { progressDeadline, DEFAULT_LEASE_CONFIG } from '$lib/server/jobs/leases';
+import { migratedDb } from '$lib/server/db/test-db';
 
 const T0 = 1_700_000_000_000;
 

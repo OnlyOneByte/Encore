@@ -17,11 +17,11 @@
 // materialized media directly, which is what the configured-Spotify box produces on every query
 // (routes/api/search/+server.ts persists every hit as a durable, queueable Media).
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { requestMakeKaraoke, cookState, type MakeKaraokeDeps } from '$server/jobs/make-karaoke';
-import { JobRepository } from '$server/jobs/repository';
-import { AuthoritativeState } from '$server/state/store';
-import { nextPlayable } from '$server/rotation/index';
+import { migratedDb } from '$lib/server/db/test-db';
+import { requestMakeKaraoke, cookState, type MakeKaraokeDeps } from '$lib/server/jobs/make-karaoke';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { nextPlayable } from '$lib/server/rotation/index';
 import { cookAndQueue } from '$lib/cook-and-queue';
 import { canCook, readinessOf } from '$lib/readiness';
 import { isCookableSource, fetcherFor, DEFAULT_FETCHER, METADATA_ONLY_SOURCES } from '$shared';

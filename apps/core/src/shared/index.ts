@@ -1,5 +1,5 @@
 // $shared — the single import surface for the realtime contract.
-// Imported by BOTH apps/core/src/server (authoritative) and apps/core/src/lib (client).
+// Imported by BOTH apps/core/src/lib/server (authoritative) and apps/core/src/lib (client).
 //
 // Modules are grouped into domain subdirectories; the barrel is the only public surface, so
 // these re-exports keep every `$shared` import path byte-identical for consumers.

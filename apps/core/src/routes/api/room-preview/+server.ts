@@ -15,7 +15,7 @@
 // presence-filtered, so it counts singers who have gone. Present-in-THIS-room is their intersection.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
+import { getApp } from '$lib/server/app';
 import { normalizeRoomCodeInput, CODE_LENGTH } from '$shared';
 
 export const GET: RequestHandler = async ({ url }) => {

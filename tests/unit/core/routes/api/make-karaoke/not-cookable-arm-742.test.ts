@@ -12,9 +12,9 @@
 // the route keeps falling through. Only a test can hold this arm in place.
 import { test, expect, afterEach } from 'bun:test';
 import { POST } from '../../../../../../apps/core/src/routes/api/make-karaoke/+server';
-import { AuthoritativeState } from '$server/state/store';
-import { JobRepository } from '$server/jobs/repository';
-import { migratedDb } from '$server/db/test-db';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { migratedDb } from '$lib/server/db/test-db';
 import type { Media } from '$shared';
 
 const APP_KEY = Symbol.for('encore.app');

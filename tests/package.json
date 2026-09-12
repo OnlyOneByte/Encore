@@ -6,7 +6,7 @@
 		"The test tree is a workspace member so that it can DECLARE what it imports (phase 3).",
 		"",
 		"WHY THIS FILE EXISTS. Node and bun resolve a bare package specifier by walking UP from the importing",
-		"file looking for node_modules. While a test sat at apps/core/src/server/media/, that walk reached",
+		"file looking for node_modules. While a test sat at apps/core/src/lib/server/media/, that walk reached",
 		"apps/core/node_modules and found drizzle-orm. From tests/unit/core/server/media/ it never does, and the",
 		"move turned two passing tests into `Cannot find package 'drizzle-orm'`.",
 		"",

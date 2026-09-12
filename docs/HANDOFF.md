@@ -142,12 +142,12 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
 1. **`.npmrc` is repo-local and pins PUBLIC npm on purpose.** The *global* npmrc points at
    CodeArtifact and 401s for public packages. Don't delete it; don't `npm config set` globally.
 2. **`bun --bun` is mandatory** for SvelteKit/Vite. Use `bun run <script>`; never call `vite` raw.
-3. **`globalThis`-backed singleton.** `getApp()`/`setPublish()` in `src/server/app.ts` behind a
-   `globalThis` symbol, via the `$server` alias. **Deliberate** — the SvelteKit handler is a *separate
+3. **`globalThis`-backed singleton.** `getApp()`/`setPublish()` in `src/lib/server/app.ts` behind a
+   `globalThis` symbol, via the `$lib/server` alias. **Deliberate** — the SvelteKit handler is a *separate
    bundle* from `server.ts`, so a module-level singleton split-brains (two queues, two DBs). Route
    every new server singleton through `app.ts`.
 4. **`.gitignore` runtime dirs are ANCHORED (`/data/`, `/media/`).** An un-anchored `media/` once
-   matched `src/server/media/` and silently excluded the whole search subsystem from git.
+   matched `src/lib/server/media/` and silently excluded the whole search subsystem from git.
 5. **Don't kill processes by broad pattern.** `pkill -f 'bun ...'` can self-match the harness. Use
    `lsof -ti tcp:5180 | xargs -r kill`.
 6. **Stage files explicitly; never `git add .`** — `.kiro/` is local tooling and stays untracked. And

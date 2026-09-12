@@ -5,7 +5,7 @@
 // `https://192.168.1.20:3000` on the deployment the README documents, and the QR encoded a URL no phone
 // on the LAN could open. Invisible in normal testing because the usual path is an https tunnel.
 import { test, expect } from 'bun:test';
-import { publicOrigin, publicOriginIsHttps, joinOrigin, fallbackJoinOrigin, resolveOrigin } from '$server/public-origin';
+import { publicOrigin, publicOriginIsHttps, joinOrigin, fallbackJoinOrigin, resolveOrigin } from '$lib/server/public-origin';
 
 const req = (headers: Record<string, string> = {}) => new Request('https://ignored.example/tv', { headers });
 const url = new URL('https://ignored.example/tv');

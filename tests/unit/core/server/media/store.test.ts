@@ -10,8 +10,8 @@ import {
 	objectKey,
 	mediaProxyUrl,
 	LocalMediaStore
-} from '$server/media/store';
-import { ObjectMediaStore, type S3Like } from '$server/media/object-store';
+} from '$lib/server/media/store';
+import { ObjectMediaStore, type S3Like } from '$lib/server/media/object-store';
 
 // ── pure config resolver ─────────────────────────────────────────────────────────
 test('resolveMediaStoreConfig defaults to local', () => {

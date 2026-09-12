@@ -12,14 +12,14 @@
 // corrected comments so the belief cannot creep back in (the hazard §3 of the review charter names: a
 // credible-sounding rationale read as fact), and pins which client-minted add fields the server owns.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
+import { migratedDb } from '$lib/server/db/test-db';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
-import { rooms, singers, media, queueEntries } from '$server/db/schema';
+import { rooms, singers, media, queueEntries } from '$lib/server/db/schema';
 
-// The source under scan, named absolutely. Each arm below reached it as `at('apps/core/src/server/realtime/hub.ts')` — "the hub next to me", which identified the realtime hub only while this test sat in
+// The source under scan, named absolutely. Each arm below reached it as `at('apps/core/src/lib/server/realtime/hub.ts')` — "the hub next to me", which identified the realtime hub only while this test sat in
 // server/realtime/.
-const HUB = at('apps/core/src/server/realtime/hub.ts');
+const HUB = at('apps/core/src/lib/server/realtime/hub.ts');
 
 // A migrated in-memory DB seeded with the FK parents a queue_entries row needs.
 function seededDb() {

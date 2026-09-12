@@ -27,8 +27,8 @@ import {
 	normalizeSongProfile
 } from '$shared';
 import type { JobType } from '$shared';
-import { requiredCapability } from '$server/jobs/dispatch';
-import { DEFAULT_LEASE_CONFIG } from '$server/jobs/leases';
+import { requiredCapability } from '$lib/server/jobs/dispatch';
+import { DEFAULT_LEASE_CONFIG } from '$lib/server/jobs/leases';
 import {
 	INSTRUMENTAL_EXT,
 	VOCALS_EXT,
@@ -36,14 +36,14 @@ import {
 	instrumentalKey,
 	vocalsKey,
 	rawCaptionKey
-} from '$server/media/paths';
+} from '$lib/server/media/paths';
 
 // Was `at('apps/worker/src')`, counted out from this guard's old home in
-// apps/core/src/server/jobs. The Python side is a repo-level tree, so it is now named from the repo root.
+// apps/core/src/lib/server/jobs. The Python side is a repo-level tree, so it is now named from the repo root.
 const WORKER_SRC = join(worker, 'src');
-// The core file this guard reads was its own SIBLING (`at('apps/core/src/server/jobs/worker-hub.ts')`); it is
+// The core file this guard reads was its own SIBLING (`at('apps/core/src/lib/server/jobs/worker-hub.ts')`); it is
 // the worker hub whose artifact reads and heartbeat advertisement are asserted below.
-const WORKER_HUB = 'apps/core/src/server/jobs/worker-hub.ts';
+const WORKER_HUB = 'apps/core/src/lib/server/jobs/worker-hub.ts';
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
 const capabilities = readFileSync(join(WORKER_SRC, 'capabilities.py'), 'utf8');
 const protocolPy = readFileSync(join(WORKER_SRC, 'protocol.py'), 'utf8');
@@ -468,7 +468,7 @@ test('worker ML keepalive stays under the core progress lease: the advertised he
  * The STEM EXTENSION / KEY MIRROR is the last cross-language contract in the media layer guarded only
  * by prose. Both sides declare it MUST agree byte-for-byte:
  *
- *  - core `apps/core/src/server/media/paths.ts` — `INSTRUMENTAL_EXT`, `VOCALS_EXT`, and the key
+ *  - core `apps/core/src/lib/server/media/paths.ts` — `INSTRUMENTAL_EXT`, `VOCALS_EXT`, and the key
  *    builders `audioKey` / `instrumentalKey` / `vocalsKey` (what goes in the DB and on the wire).
  *  - worker `apps/worker/src/processor.py` — `INSTRUMENTAL_EXT`, `VOCALS_EXT`, and the path builders
  *    `instrumental_path` / `vocals_path` / `source_audio_path` (what the worker writes to disk).

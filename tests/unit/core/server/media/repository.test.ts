@@ -1,10 +1,10 @@
-import { instrumentalKey } from '$server/media/paths';
-import { migratedDb } from '$server/db/test-db';
+import { instrumentalKey } from '$lib/server/media/paths';
+import { migratedDb } from '$lib/server/db/test-db';
 // The durable media catalog. Search results and cooked songs are persisted so the catalog
 // survives a restart — which is what lets the saved-karaoke library exist and what stops
 // requestMakeKaraoke from re-cooking an instrumental that's already on disk.
 import { test, expect } from 'bun:test';
-import { MediaRepository, hydrateMediaCatalog } from '$server/media/repository';
+import { MediaRepository, hydrateMediaCatalog } from '$lib/server/media/repository';
 import type { Media } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

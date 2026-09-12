@@ -9,9 +9,9 @@
 // singerId case. The gap was one layer further out: the OP was validated, the thing CONTAINING it was
 // not — and the caller read a property before validation ran at all.
 import { test, expect } from 'bun:test';
-import { validateCommand, handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { handlePlayerCommand, handleTelemetry } from '$server/realtime/player';
-import { AuthoritativeState } from '$server/state/store';
+import { validateCommand, handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { handlePlayerCommand, handleTelemetry } from '$lib/server/realtime/player';
+import { AuthoritativeState } from '$lib/server/state/store';
 import type { Media } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

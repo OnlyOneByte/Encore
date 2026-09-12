@@ -13,7 +13,7 @@
 // check, so none of this is expressible — the isolation it asserts is exactly what the PR adds.
 import { test, expect } from 'bun:test';
 import { roomTopic } from '$shared';
-import { isForeignRoom, subscribeTopicFor, broadcastTopicFor } from '$server/realtime/room-scope';
+import { isForeignRoom, subscribeTopicFor, broadcastTopicFor } from '$lib/server/realtime/room-scope';
 
 const A = 'room-A';
 const B = 'room-B';

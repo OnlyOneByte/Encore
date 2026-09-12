@@ -14,10 +14,10 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/server/jobs/, so
-// `at('apps/core/src/server/jobs/worker-hub.ts')` meant "the hub next to me". Confirmed present at this path
+// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/lib/server/jobs/, so
+// `at('apps/core/src/lib/server/jobs/worker-hub.ts')` meant "the hub next to me". Confirmed present at this path
 // before re-anchoring.
-const HUB = stripComments(read('apps/core/src/server/jobs/worker-hub.ts'));
+const HUB = stripComments(read('apps/core/src/lib/server/jobs/worker-hub.ts'));
 
 /** The brace-balanced body of `#<name>(...)`, skipping past the parameter list's own braces. */
 function methodBody(src: string, name: string): string {

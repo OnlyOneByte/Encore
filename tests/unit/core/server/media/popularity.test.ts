@@ -1,6 +1,6 @@
 // Done-when: shortcuts populated from session history (recent + popular).
 import { test, expect } from 'bun:test';
-import { createPopularityTracker } from '$server/media/popularity';
+import { createPopularityTracker } from '$lib/server/media/popularity';
 
 test('recent returns most-recently-added first', () => {
 	const p = createPopularityTracker();

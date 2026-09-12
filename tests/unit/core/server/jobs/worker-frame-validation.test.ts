@@ -12,10 +12,10 @@
 // Each test is RED on base: validateWorkerMessage does not exist there (import fails), and the
 // gate() mirror throws exactly as production did.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { WorkerHub, validateWorkerMessage } from '$server/jobs/worker-hub';
-import { WorkerRegistry } from '$server/jobs/registry';
-import { JobRepository } from '$server/jobs/repository';
+import { migratedDb } from '$lib/server/db/test-db';
+import { WorkerHub, validateWorkerMessage } from '$lib/server/jobs/worker-hub';
+import { WorkerRegistry } from '$lib/server/jobs/registry';
+import { JobRepository } from '$lib/server/jobs/repository';
 import type { WorkerMessage } from '$shared';
 
 function harness() {

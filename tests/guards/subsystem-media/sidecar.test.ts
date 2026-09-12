@@ -17,7 +17,7 @@ import {
 	clearArtifacts,
 	SIDECAR_SCHEMA,
 	type MediaSidecar
-} from '$server/media/sidecar';
+} from '$lib/server/media/sidecar';
 
 const NOW = 1_788_400_000_000;
 

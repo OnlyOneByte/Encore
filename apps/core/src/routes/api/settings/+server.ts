@@ -8,9 +8,9 @@
 // rather than persisting garbage or naming an engine no worker can run.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
-import { SESSION_COOKIE } from '$server/singers/repository';
-import { can } from '$server/auth/capabilities';
+import { getApp } from '$lib/server/app';
+import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { can } from '$lib/server/auth/capabilities';
 import type { GlobalSettings } from '$shared';
 
 export const GET: RequestHandler = async () => {

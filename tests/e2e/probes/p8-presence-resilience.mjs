@@ -631,7 +631,7 @@ async function main() {
 					'CRITICAL',
 					'duplicate display name JOINED anyway',
 					`the name "${PHONE_NAMES[0]}" was reused and the server accepted it`,
-					`apps/core/src/server/singers/join.ts:31 assertNameFree; ${BASE}/api/join`
+					`apps/core/src/lib/server/singers/join.ts:31 assertNameFree; ${BASE}/api/join`
 				);
 			} else {
 				const msg = (dup.outcome || '').replace(/^err:/, '');
@@ -641,7 +641,7 @@ async function main() {
 						'HIGH',
 						'name-collision error is not human-legible',
 						`phone displayed: ${JSON.stringify(msg)}`,
-						`apps/core/src/lib/components/JoinLanding.svelte:26 error rendering; server: apps/core/src/server/singers/join.ts:21 NameTakenError message`
+						`apps/core/src/lib/components/JoinLanding.svelte:26 error rendering; server: apps/core/src/lib/server/singers/join.ts:21 NameTakenError message`
 					);
 				} else {
 					// The form must remain usable — the input the user can now edit is the whole point of
@@ -826,7 +826,7 @@ async function main() {
 						'HIGH',
 						'severed phone did not show up as AWAY on the TV within 15s',
 						`the TV\u2019s roster never marked ${away.name} as away — presence.disconnect broadcast should be near-instant on close(3000)`,
-						`apps/core/src/server/realtime/presence.ts:69 disconnect; apps/core/server.ts (websocket.close handler); ${shot}`
+						`apps/core/src/lib/server/realtime/presence.ts:69 disconnect; apps/core/server.ts (websocket.close handler); ${shot}`
 					);
 				} else {
 					const shot = await tv.screenshot(join(OUT_DIR, '02-tv-away.png'));
@@ -843,7 +843,7 @@ async function main() {
 						'CRITICAL',
 						'severed phone LOST its queued song',
 						`another phone reports ${otherSurface} queue rows; the disconnected singer\u2019s song should survive`,
-						`apps/core/src/server/realtime/presence.ts:79 (grace clock does not start while pending songs exist)`
+						`apps/core/src/lib/server/realtime/presence.ts:79 (grace clock does not start while pending songs exist)`
 					);
 				} else {
 					report('PASS', 'a phone\u2019s queued song survives the phone going away', `others see ${otherSurface} rows`);
@@ -870,7 +870,7 @@ async function main() {
 						'MEDIUM',
 						`away phone did not return to "here" after network came back`,
 						`the TV chip stayed grey`,
-						`apps/core/src/lib/ws/client.ts:64 wake(); apps/core/src/server/realtime/presence.ts:61 connect()`
+						`apps/core/src/lib/ws/client.ts:64 wake(); apps/core/src/lib/server/realtime/presence.ts:61 connect()`
 					);
 				} else {
 					report('PASS', 'away phone rejoins as here when the network comes back');
@@ -1020,7 +1020,7 @@ async function main() {
 						'HIGH',
 						'leave removed fewer rows from the room than the API reported',
 						`api removed=${removed}, room delta=${drop}, previewQueued=${preview.queuedCount}`,
-						`apps/core/src/server/singers/leave.ts:40 doLeave`
+						`apps/core/src/lib/server/singers/leave.ts:40 doLeave`
 					);
 				} else {
 					report(
@@ -1040,7 +1040,7 @@ async function main() {
 					'HIGH',
 					`name did not return to the pool after leave`,
 					`rejoin outcome=${rejoin.outcome}`,
-					`apps/core/src/server/realtime/presence.ts:105 forget`
+					`apps/core/src/lib/server/realtime/presence.ts:105 forget`
 				);
 				await rejoin.page.close();
 			} else {
@@ -1083,14 +1083,14 @@ async function main() {
 					'HIGH',
 					'phones disagree on the queue length after a burst of adds',
 					`counts=${JSON.stringify(counts)} (expected all=${expected})`,
-					`apps/core/src/server/realtime/hub.ts:98 handleQueueCommand broadcasts to room`
+					`apps/core/src/lib/server/realtime/hub.ts:98 handleQueueCommand broadcasts to room`
 				);
 			} else if (uniq[0] !== expected) {
 				report(
 					'HIGH',
 					'burst of adds lost/duplicated rows',
 					`observed=${uniq[0]}, expected=${expected} (before=${before} + burst=${NUM_BURST})`,
-					`apps/core/src/server/state/store.ts:91 applyQueueOp / applyAndReseq`
+					`apps/core/src/lib/server/state/store.ts:91 applyQueueOp / applyAndReseq`
 				);
 			} else {
 				// Also verify no duplicate row ids — a duplicate row with different ids would still add
@@ -1118,7 +1118,7 @@ async function main() {
 			report(
 				'PASS',
 				'concurrency reduces to clientOpId dedupe — no revision context in the envelope',
-				'apps/core/src/server/realtime/hub.ts validateCommand has no revision check; the envelope carries clientOpId + op only, so duplicate-op replays are the only conflict shape and they dedupe idempotently.',
+				'apps/core/src/lib/server/realtime/hub.ts validateCommand has no revision check; the envelope carries clientOpId + op only, so duplicate-op replays are the only conflict shape and they dedupe idempotently.',
 				`apps/core/src/shared/core/ops.ts ClientCommand (clientOpId + op; the dead baseRev field was removed)`
 			);
 		}

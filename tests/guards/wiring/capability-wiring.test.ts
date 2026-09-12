@@ -28,10 +28,10 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
-// hub.ts named explicitly. The old form was `at('apps/core/src/server/realtime/hub.ts')`
-// — the same own-location arithmetic as `at('apps/core/src/server/auth')` in a different spelling, and it only
-// resolved while this guard sat in apps/core/src/server/auth. `read` throws on a wrong path.
-const hubSrc = read('apps/core/src/server/realtime/hub.ts');
+// hub.ts named explicitly. The old form was `at('apps/core/src/lib/server/realtime/hub.ts')`
+// — the same own-location arithmetic as `at('apps/core/src/lib/server/auth')` in a different spelling, and it only
+// resolved while this guard sat in apps/core/src/lib/server/auth. `read` throws on a wrong path.
+const hubSrc = read('apps/core/src/lib/server/realtime/hub.ts');
 
 // Strip // line comments and /* */ block comments so prose mentioning a capability string (the remove
 // arm's own comment literally contains `queue:remove-any`) can neither satisfy nor trip an assertion.

@@ -3,7 +3,7 @@
 // stalls every later pass SILENTLY forever, and a hang is not a rejection so the chain's .catch never
 // fires. runCapturing adds the kill timer (the ratified pattern already on yt-dlp search).
 import { test, expect } from 'bun:test';
-import { runCapturing } from '$server/media/spawn-capture';
+import { runCapturing } from '$lib/server/media/spawn-capture';
 
 // A fake child that NEVER exits on its own — `exited` resolves only once kill() is called. Models a
 // hung ffmpeg. `stdout`/`stderr` are empty streams so the Response reads resolve.

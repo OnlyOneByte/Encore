@@ -3,7 +3,7 @@
 // YouTube uploader, so four of the five would have been grouped under a lyric-video channel and would
 // have missed an LRCLIB lookup entirely.
 import { expect, it } from 'bun:test';
-import { parseTrackTitle, cleanTitleNoise, primaryArtist } from '$server/media/track-title';
+import { parseTrackTitle, cleanTitleNoise, primaryArtist } from '$lib/server/media/track-title';
 
 it('the live library (the reason this exists): "John Mayer - New Light (Lyrics)" by uploader "Evolve"', () => {
 	const p = parseTrackTitle('John Mayer - New Light (Lyrics)', 'Evolve');

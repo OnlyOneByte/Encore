@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
-import { followUps, separatorFor } from '$server/jobs/dispatch';
-import { markMediaReady } from '$server/jobs/make-karaoke';
+import { followUps, separatorFor } from '$lib/server/jobs/dispatch';
+import { markMediaReady } from '$lib/server/jobs/make-karaoke';
 import {
 	isQualityUpgrade,
 	qualityRank,

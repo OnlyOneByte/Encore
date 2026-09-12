@@ -3,10 +3,10 @@
 // round-trip pin below cannot even be authored against base: RoomRepository does not exist there.
 import { test, expect } from 'bun:test';
 import { eq } from 'drizzle-orm';
-import { openDb } from '$server/db/index';
-import { runMigrations } from '$server/db/migrate';
-import { rooms } from '$server/db/schema';
-import { RoomRepository, mintRoomCode } from '$server/rooms/repository';
+import { openDb } from '$lib/server/db/index';
+import { runMigrations } from '$lib/server/db/migrate';
+import { rooms } from '$lib/server/db/schema';
+import { RoomRepository, mintRoomCode } from '$lib/server/rooms/repository';
 
 function freshRepo() {
 	const { db } = openDb(':memory:');

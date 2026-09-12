@@ -1,6 +1,6 @@
 import { it, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { SettingsRepository } from '$server/state/settings-repository';
+import { migratedDb } from '$lib/server/db/test-db';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
 import {
 	DEFAULT_GLOBAL_SETTINGS,
 	DEFAULT_ROOM_SETTINGS,

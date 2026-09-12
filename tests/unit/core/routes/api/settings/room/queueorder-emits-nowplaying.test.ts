@@ -13,11 +13,11 @@
 // Expected next is HARD-CODED, never re-derived with the projection the code runs (the COMMON.md trap).
 import { test, expect, afterEach } from 'bun:test';
 import { PUT } from '../../../../../../../apps/core/src/routes/api/settings/room/+server';
-import { SettingsRepository } from '$server/state/settings-repository';
-import { AuthoritativeState } from '$server/state/store';
-import { PlayTracker } from '$server/media/plays';
-import { migratedDb } from '$server/db/test-db';
-import { orderingOf } from '$server/realtime/hub';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { PlayTracker } from '$lib/server/media/plays';
+import { migratedDb } from '$lib/server/db/test-db';
+import { orderingOf } from '$lib/server/realtime/hub';
 import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ServerEvent } from '$shared';
 
 const APP_KEY = Symbol.for('encore.app');

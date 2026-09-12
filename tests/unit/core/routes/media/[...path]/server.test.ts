@@ -6,8 +6,8 @@
 // actual status + Content-Range + partial bytes, so the object-store path is pinned to 206, not 200.
 import { test, expect, afterEach } from 'bun:test';
 import { GET } from '../../../../../../apps/core/src/routes/media/[...path]/+server';
-import { ObjectMediaStore, type S3Like } from '$server/media/object-store';
-import type { MediaStore } from '$server/media/store';
+import { ObjectMediaStore, type S3Like } from '$lib/server/media/object-store';
+import type { MediaStore } from '$lib/server/media/store';
 
 const APP_KEY = Symbol.for('encore.app');
 

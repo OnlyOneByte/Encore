@@ -6,9 +6,9 @@
 // is gone and the singer is forgotten, so the confirm is the only place the cost can be stated.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
-import { SESSION_COOKIE } from '$server/singers/repository';
-import { doLeave, removableOnLeave } from '$server/singers/leave';
+import { getApp } from '$lib/server/app';
+import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { doLeave, removableOnLeave } from '$lib/server/singers/leave';
 
 export const GET: RequestHandler = async ({ cookies }) => {
 	const app = getApp();

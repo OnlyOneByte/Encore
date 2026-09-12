@@ -1,8 +1,8 @@
 // Pure dispatch policy — need-order (priority ASC, createdAt tiebreak), least-loaded worker,
 // capability match, capacity respected within a single planning pass.
 import { test, expect } from 'bun:test';
-import { planAssignments, hasCapableWorker, eligible } from '$server/jobs/dispatch';
-import type { WorkerSession } from '$server/jobs/registry';
+import { planAssignments, hasCapableWorker, eligible } from '$lib/server/jobs/dispatch';
+import type { WorkerSession } from '$lib/server/jobs/registry';
 import type { Job, JobType } from '$shared';
 
 const T0 = 1_700_000_000_000;

@@ -252,8 +252,8 @@ suite pass vacuously here), or an assertion checking a **shape** where it should
 top-level key-set check is satisfied by a field re-nested under a preserved key — that exact hole
 shipped a real bug). It is the highest-value finding class this repo has produced.
 
-Rotation: `src/server/state` + `src/server/realtime` · `src/server/jobs` · `src/server/media` +
-`src/server/db` · `src/server/rotation` + `src/server/singers` + `src/server/auth` ·
+Rotation: `src/lib/server/state` + `src/lib/server/realtime` · `src/lib/server/jobs` · `src/lib/server/media` +
+`src/lib/server/db` · `src/lib/server/rotation` + `src/lib/server/singers` + `src/lib/server/auth` ·
 `apps/core/src/shared/src` · `src/lib/stores` + `src/lib/ws` · `src/routes/api`
 
 ### `rev:worker-arch` — Encore Worker, architecture and code quality
@@ -416,8 +416,8 @@ per §3 a settled design is not reopenable as a bug.
 produce a wrong result on a reachable path. Never `user-facing`: if a singer can see it, it is a defect
 and belongs to the charter that owns that surface.
 
-Rotation: `src/server/state` + `src/server/realtime` · `src/server/jobs` + `src/server/media` ·
-`src/routes/api` + `src/server/db` · `src/lib/stores` + `src/lib/ws` + `src/lib/tv` ·
+Rotation: `src/lib/server/state` + `src/lib/server/realtime` · `src/lib/server/jobs` + `src/lib/server/media` ·
+`src/routes/api` + `src/lib/server/db` · `src/lib/stores` + `src/lib/ws` + `src/lib/tv` ·
 `src/routes` components · `apps/core/src/shared/src` · `apps/worker/src` domains ·
 `tests/e2e` + harness
 

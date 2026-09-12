@@ -8,7 +8,7 @@
 // the "recent favourites" ranking, so a quiet week cannot make the library look empty.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
+import { getApp } from '$lib/server/app';
 import { clampDays, songDisplay } from '$shared';
 
 const DAY_MS = 86_400_000;

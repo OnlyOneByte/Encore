@@ -29,7 +29,7 @@ import { fetcherFor, needsFetch, sourceUriFor, DEFAULT_FETCHER } from '$shared';
 const SITES = [
 	'apps/core/src/shared/cook/fetchers.ts',
 	'apps/core/src/shared/core/types.ts',
-	'apps/core/src/server/media/spotify.ts',
+	'apps/core/src/lib/server/media/spotify.ts',
 	'apps/core/src/routes/api/search/+server.ts',
 	'docs/DECISIONS.md'
 ] as const;

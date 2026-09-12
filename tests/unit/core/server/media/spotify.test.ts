@@ -2,7 +2,7 @@
 // (not ms) duration and joined artist billing, AND spotifySearch degrades to [] when creds are unset.
 // RED on base: no spotify backend exists there.
 import { test, expect } from 'bun:test';
-import { parseSpotifySearchJson, spotifyEnv, spotifySearch, _resetSpotifyToken } from '$server/media/spotify';
+import { parseSpotifySearchJson, spotifyEnv, spotifySearch, _resetSpotifyToken } from '$lib/server/media/spotify';
 
 test('parses tracks.items into spotify-sourced results (ms -> seconds, joined artists)', () => {
 	const payload = {

@@ -1,7 +1,7 @@
 // Done-when: FTS returns ranked local matches.
 import { test, expect } from 'bun:test';
-import { LocalLibrary } from '$server/media/local';
-import { resultToMedia } from '$server/media/resolver';
+import { LocalLibrary } from '$lib/server/media/local';
+import { resultToMedia } from '$lib/server/media/resolver';
 import { isPlayable } from '$shared';
 
 function lib() {
@@ -56,7 +56,7 @@ test('resultToMedia leaves a local file UNCOOKED, so it is not playable yet', as
 // The dev seed listed four library demos with no files behind them. They were searchable and
 // cookable, and a cook failed 3x on `ffmpeg exited 254: No such file or directory`, then left the
 // song pinned in the phone's "cooking" list permanently.
-import { presentTracks, type LocalTrack } from '$server/media/local';
+import { presentTracks, type LocalTrack } from '$lib/server/media/local';
 
 const track = (ref: string): LocalTrack => ({ sourceRef: ref, title: ref, durationSec: 1 });
 

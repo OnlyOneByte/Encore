@@ -3,7 +3,7 @@
 // untouched until the next full sync.
 import { test, expect } from 'bun:test';
 import { readinessOf, displayReadiness, canCook, readyEmptyState, queueCardKind } from '$lib/readiness';
-import { readinessOf as serverReadinessOf } from '$server/media/readiness';
+import { readinessOf as serverReadinessOf } from '$lib/server/media/readiness';
 import type { Media } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 
@@ -138,7 +138,7 @@ test('a blank query while searchActive still reads sensibly (no empty quotes)', 
 // whose stems are still cooking, so whenever row 0 was cooking the phone promised a song the TV was
 // about to skip past. These pin the agreement.
 import { entryPlayable, nextPlayableEntryId } from '$lib/readiness';
-import { isEntryReady } from '$server/rotation/index';
+import { isEntryReady } from '$lib/server/rotation/index';
 
 const entry = (id: string, mediaId: string) => ({ id, mediaId });
 

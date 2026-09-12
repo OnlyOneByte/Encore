@@ -3,9 +3,9 @@
 // phone since nothing is "current"). This exercises the exact server.ts composition:
 // handleQueueCommand -> (if idle) reconcileOnReady.
 import { test, expect } from 'bun:test';
-import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { reconcileOnReady } from '$server/realtime/player';
-import { AuthoritativeState } from '$server/state/store';
+import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { reconcileOnReady } from '$lib/server/realtime/player';
+import { AuthoritativeState } from '$lib/server/state/store';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

@@ -1,7 +1,7 @@
 // Loudness probing — the check that stops a SILENT vocals stem being published as a working
 // guiding track. Pure parser + verdict; the ffmpeg spawn is not exercised here.
 import { it, expect } from 'bun:test';
-import { parseVolumeDetect, isDigitalSilence, SILENCE_FLOOR_DB } from '$server/media/loudness';
+import { parseVolumeDetect, isDigitalSilence, SILENCE_FLOOR_DB } from '$lib/server/media/loudness';
 
 // Real ffmpeg volumedetect output, trimmed to the summary block.
 const HEALTHY = `

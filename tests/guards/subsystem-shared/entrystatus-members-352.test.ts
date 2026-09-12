@@ -36,7 +36,7 @@ test('the EntryStatus union in types.ts holds exactly queued/playing/done', () =
 
 test('the drizzle queue_entries.status enum mirrors exactly queued/playing/done', () => {
 	// schema.ts lives in apps/core, named from the repo root (was a four-level `../../../../` climb).
-	const src = stripComments(readSrc('apps/core/src/server/db/schema.ts'));
+	const src = stripComments(readSrc('apps/core/src/lib/server/db/schema.ts'));
 	// isolate the status column's own enum:[...] array, not any other enum in the file.
 	const m = src.match(/status:\s*text\('status',\s*\{\s*enum:\s*\[([^\]]*)\]/);
 	expect(m).not.toBeNull(); // not-vacuous
@@ -56,7 +56,7 @@ test('the two isTerminal predicates carry no dead "skipped" arm', () => {
 	expect(body).not.toContain("'skipped'");
 
 	// leave.ts must NOT re-introduce a hand-duplicated local copy — it imports the shared one.
-	const leave = stripComments(readSrc('apps/core/src/server/singers/leave.ts'));
+	const leave = stripComments(readSrc('apps/core/src/lib/server/singers/leave.ts'));
 	expect(leave).toMatch(/import\s*\{[^}]*\bisTerminal\b[^}]*\}\s*from\s*'\$shared'/); // uses the shared predicate
 	expect(leave).not.toMatch(/const isTerminal\s*=/); // no local re-definition
 });

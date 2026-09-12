@@ -37,10 +37,10 @@ function stripComments(src: string): string {
 }
 
 // Every path below is named absolutely rather than counted from this file's own location —
-// `at('apps/core/src/server/state/settings-repository.ts')` meant "the repository next to me", and the two
+// `at('apps/core/src/lib/server/state/settings-repository.ts')` meant "the repository next to me", and the two
 // census walks meant "apps/core/src" and "apps/core/server.ts" by arithmetic. ARM 4's census is the
 // dangerous one: a wrong root yields an empty file list, which reads exactly like a clean tree.
-const REPO_FILE = at('apps/core/src/server/state/settings-repository.ts');
+const REPO_FILE = at('apps/core/src/lib/server/state/settings-repository.ts');
 const REPO_RAW = readFileSync(REPO_FILE, 'utf8');
 const REPO = stripComments(REPO_RAW);
 
@@ -57,8 +57,8 @@ const PROD_FILES = [
 // The seven production files that call the room-scoped methods (from the roomId-default census).
 const CALLER_PATHS = [
 	at('apps/core/server.ts'), // the Bun.serve entry, outside src
-	at('apps/core/src/server/app.ts'),
-	at('apps/core/src/server/singers/join.ts'),
+	at('apps/core/src/lib/server/app.ts'),
+	at('apps/core/src/lib/server/singers/join.ts'),
 	at('apps/core/src/routes/api/settings/+server.ts'),
 	at('apps/core/src/routes/api/settings/room/+server.ts'),
 	at('apps/core/src/routes/settings/+page.server.ts'),

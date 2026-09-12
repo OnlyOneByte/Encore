@@ -1,7 +1,7 @@
 // Done-when: second identical query served from cache (no upstream call).
 import { test, expect } from 'bun:test';
-import { YouTubeResolver } from '$server/media/youtube';
-import type { SearchResult } from '$server/media/resolver';
+import { YouTubeResolver } from '$lib/server/media/youtube';
+import type { SearchResult } from '$lib/server/media/resolver';
 
 const fakeResult = (id: string): SearchResult => ({
 	source: 'youtube',

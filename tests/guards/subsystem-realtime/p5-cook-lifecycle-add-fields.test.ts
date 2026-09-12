@@ -20,7 +20,7 @@
 // trip the check. Dropping any required key from the literal reds this guard.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { queueEntries } from '$server/db/schema';
+import { queueEntries } from '$lib/server/db/schema';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -28,7 +28,7 @@ function stripComments(src: string): string {
 }
 
 // Was `at('tests/e2e/probes/p5-cook-lifecycle.mjs')`, counted out
-// from this guard's old home in apps/core/src/server/realtime. Named from the repo root now, and `read`
+// from this guard's old home in apps/core/src/lib/server/realtime. Named from the repo root now, and `read`
 // throws on a missing probe rather than letting the literal isolation below run on an empty string.
 const PROBE_PATH = 'tests/e2e/probes/p5-cook-lifecycle.mjs';
 const PROBE = stripComments(read(PROBE_PATH));

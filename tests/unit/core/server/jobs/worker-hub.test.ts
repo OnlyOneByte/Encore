@@ -2,11 +2,11 @@
 // dispatch-on-hello, progress→media:status rebroadcast, reject/requeue, retryable vs terminal
 // failure, and need-ordered dispatch across workers. No real socket — sinks capture the effects.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { WorkerHub } from '$server/jobs/worker-hub';
-import { WorkerRegistry } from '$server/jobs/registry';
-import { JobRepository } from '$server/jobs/repository';
-import { AttemptLedger } from '$server/jobs/attempts';
+import { migratedDb } from '$lib/server/db/test-db';
+import { WorkerHub } from '$lib/server/jobs/worker-hub';
+import { WorkerRegistry } from '$lib/server/jobs/registry';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { AttemptLedger } from '$lib/server/jobs/attempts';
 import { attemptSelection } from '$shared';
 import {
 	attemptStages,

@@ -1,9 +1,9 @@
 // Mutate -> rev bumps -> async persist -> reload-from-db equals memory.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { AuthoritativeState } from '$server/state/store';
-import { sqlitePersistence } from '$server/state/persistence';
-import { hydrate } from '$server/db/migrate';
+import { migratedDb } from '$lib/server/db/test-db';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { sqlitePersistence } from '$lib/server/state/persistence';
+import { hydrate } from '$lib/server/db/migrate';
 import { ulid, type QueueEntry, type PlaybackState } from '$shared';
 
 const entry = (singerId: string, addedAt: number): QueueEntry => ({

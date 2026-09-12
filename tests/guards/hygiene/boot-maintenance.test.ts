@@ -5,7 +5,7 @@
 // unit harness).
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { runBootMaintenance, type BootTask } from '$server/boot-maintenance';
+import { runBootMaintenance, type BootTask } from '$lib/server/boot-maintenance';
 
 test('a pass that throws does NOT skip the passes after it (the whole point of the isolated boot runner)', async () => {
 	const ran: string[] = [];
@@ -114,9 +114,9 @@ function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
-// Was `at('apps/core/src/server/app.ts')` — the wiring subject was this guard's own SIBLING in
-// apps/core/src/server, which is also where `boot-maintenance` above was imported with a bare `./`.
-const APP = stripComments(read('apps/core/src/server/app.ts'));
+// Was `at('apps/core/src/lib/server/app.ts')` — the wiring subject was this guard's own SIBLING in
+// apps/core/src/lib/server, which is also where `boot-maintenance` above was imported with a bare `./`.
+const APP = stripComments(read('apps/core/src/lib/server/app.ts'));
 
 test('app.ts imports runBootMaintenance and drives the boot passes through it (the wiring)', () => {
 	expect(APP).toMatch(/import\s*\{[^}]*\brunBootMaintenance\b[^}]*\}\s*from\s*'\.\/boot-maintenance'/);

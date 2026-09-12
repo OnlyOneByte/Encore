@@ -16,11 +16,11 @@
 // (the status map, the stage passthrough, the completion handler) and a unit test of any one of them
 // would have passed while the sequence a guest sees still regressed.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { WorkerHub } from '$server/jobs/worker-hub';
-import { WorkerRegistry } from '$server/jobs/registry';
-import { JobRepository } from '$server/jobs/repository';
-import { completedStatusFor, jobStageFloor, mediaStatusFor, shouldBroadcastCook } from '$server/jobs/media-status';
+import { migratedDb } from '$lib/server/db/test-db';
+import { WorkerHub } from '$lib/server/jobs/worker-hub';
+import { WorkerRegistry } from '$lib/server/jobs/registry';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { completedStatusFor, jobStageFloor, mediaStatusFor, shouldBroadcastCook } from '$lib/server/jobs/media-status';
 import {
 	mediaStagePosition,
 	pendingGates,

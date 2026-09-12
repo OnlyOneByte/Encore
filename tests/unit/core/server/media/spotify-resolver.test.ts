@@ -2,8 +2,8 @@
 // resolver is a no-op when its injected backend returns [] (creds unset) — RED on base: no
 // SpotifyResolver exists there.
 import { test, expect } from 'bun:test';
-import { SpotifyResolver } from '$server/media/spotify-resolver';
-import type { SearchResult } from '$server/media/resolver';
+import { SpotifyResolver } from '$lib/server/media/spotify-resolver';
+import type { SearchResult } from '$lib/server/media/resolver';
 
 const fakeResult = (id: string): SearchResult => ({
 	source: 'spotify',

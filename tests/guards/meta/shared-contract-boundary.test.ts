@@ -1,35 +1,46 @@
 // guard: the isomorphic contract cannot reach into the app — XR-VER-07.
 //
-// THIS GUARD REPLACES A STRUCTURAL GUARANTEE, AND THAT IS A DOWNGRADE WORTH STATING PLAINLY.
+// WHAT THIS STILL GUARDS, AND WHAT THE FRAMEWORK TOOK BACK.
 //
-// `src/shared` was `packages/shared`, its own workspace package. Two facts made this rule unbreakable
-// rather than merely unbroken:
+// `src/shared` was `packages/shared`, its own workspace package, and two facts made the rule unbreakable
+// rather than merely unbroken: its `tsconfig.json` carried `paths: []`, and its `package.json` declared no
+// dependency on `apps/core`. A shared module could not import server code because the import was
+// UNRESOLVABLE. Folding it into `apps/core/src/shared` destroyed that, and this guard replaced it.
 //
-//   * its `tsconfig.json` carried `paths: []` — zero aliases, so `$server` and `$lib` did not exist here
-//   * its `package.json` declared no dependency on `apps/core`
+// THE SERVER HALF IS NOW A BUILD-TIME GUARANTEE AGAIN, and a better one than the original. Server-only
+// code moved from `src/server` to `src/lib/server`, a path SvelteKit gives meaning to: importing anything
+// under it from code that reaches the browser fails the BUILD with
 //
-// A shared module therefore could not import server code because the import was UNRESOLVABLE. Nobody had
-// to remember the rule; the module graph enforced it.
+//     Cannot import $lib/server/app.ts into code that runs in the browser,
+//     as this could leak sensitive information
 //
-// Folding the package into `apps/core/src/shared` destroys that. Every alias the app has is now in scope,
-// so `import { db } from '$server/db'` in a file here would compile, typecheck, and pass every other test
-// in this suite. What it would also do is ship the database client to every phone in the room, because
-// `colors.ts` states the stake in its own header: this code is BROWSER-BUNDLED.
+// and it holds TRANSITIVELY — a component importing this contract, which imported `$lib/server`, is caught.
+// Verified by planting exactly that import in `SongRow.svelte`: `bun run build` exits 1 with the message
+// above. That beats the old package boundary, which relied on resolution merely failing, and it beats this
+// test, which can be deleted.
 //
-// So the boundary is now a test. A test can be deleted where a missing dependency cannot be wished away —
-// that is the real cost of the fold, and it is recorded here rather than left for someone to discover.
+// WHAT IS LEFT HERE IS THE PART NOTHING IN THE TOOLCHAIN POLICES: `$lib` (client code — the contract must
+// not depend on the UI consuming it) and `$app` / `$env` (SvelteKit's own runtime, which would make a
+// module unusable from the server half). No build step objects to either, so they stay guarded here.
 //
-// BOTH SPELLINGS ARE CLOSED. An alias ban alone is trivially defeated by `../server/db`, which resolves to
+// BOTH SPELLINGS ARE CLOSED. An alias ban alone is trivially defeated by `../lib/x`, which resolves to
 // exactly the same module, so relative escapes out of this directory are refused too.
 
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { sharedSrc, filesUnder, relative } from '@encore/test-support';
 
-/** Aliases that reach code this tree must not depend on. `$shared` itself is obviously fine. */
-const FORBIDDEN_ALIAS = /(?:from|import)\s*\(?\s*['"](\$server|\$lib|\$app|\$env)(?:\/[^'"]*)?['"]/;
+/**
+ * Aliases reaching code this tree must not depend on.
+ *
+ * `$lib/server` is deliberately ABSENT as its own entry: it is the one case SvelteKit enforces itself, at
+ * build time and transitively, so naming it here would duplicate a stronger check and rot quietly if the
+ * framework's rule ever changed. (`$lib` matches it as a prefix anyway — a harmless overlap, not the
+ * load-bearing part.)
+ */
+const FORBIDDEN_ALIAS = /(?:from|import)\s*\(?\s*['"](\$lib|\$app|\$env)(?:\/[^'"]*)?['"]/;
 /** A relative path that climbs out of `src/shared` — the way round an alias ban. */
-const ESCAPING_RELATIVE = /(?:from|import)\s*\(?\s*['"](\.\.\/(?:\.\.\/)*)(server|lib|routes)\//;
+const ESCAPING_RELATIVE = /(?:from|import)\s*\(?\s*['"](\.\.\/(?:\.\.\/)*)(lib|routes)\//;
 
 function code(abs: string): string {
 	// Comments are stripped because this file's own neighbours explain the rule in prose, and several
@@ -74,11 +85,14 @@ test('the ban catches both spellings, and does not catch a legitimate import', (
 	 * Mutation arms in both directions. The alias half and the relative half are checked separately because
 	 * a fix to one has repeatedly broken the other in this suite.
 	 */
-	expect(FORBIDDEN_ALIAS.test("import { db } from '$server/db';")).toBe(true);
+	expect(FORBIDDEN_ALIAS.test("import { db } from '$lib/server/db';")).toBe(true);
 	expect(FORBIDDEN_ALIAS.test("import { page } from '$app/state';")).toBe(true);
 	expect(FORBIDDEN_ALIAS.test("import { PUBLIC_X } from '$env/dynamic/public';")).toBe(true);
-	expect(ESCAPING_RELATIVE.test("import { db } from '../server/db';")).toBe(true);
-	expect(ESCAPING_RELATIVE.test("import { x } from '../../server/state/store';")).toBe(true);
+	// The relative escape is now spelled through `lib`, because that is where the server tree lives. The
+	// dangerous direction (server code reaching the browser) is the framework's job; this arm is about the
+	// contract depending on the UI at all.
+	expect(ESCAPING_RELATIVE.test("import { x } from '../lib/components/SongRow.svelte';")).toBe(true);
+	expect(ESCAPING_RELATIVE.test("import { db } from '../../lib/server/db';")).toBe(true);
 
 	// …and the things this tree legitimately does.
 	expect(FORBIDDEN_ALIAS.test("import { rotation } from './queue/rotation';")).toBe(false);
@@ -86,6 +100,12 @@ test('the ban catches both spellings, and does not catch a legitimate import', (
 	expect(FORBIDDEN_ALIAS.test("import type { Media } from '$shared';")).toBe(false);
 	expect(ESCAPING_RELATIVE.test("import { x } from './presentation/colors';")).toBe(false);
 	expect(ESCAPING_RELATIVE.test("import { y } from '../core/types';")).toBe(false);
+	// …and `$lib/server` is NOT this guard's business any more: the build refuses it. Pinned as a
+	// deliberate non-assertion so nobody re-adds it thinking it was an oversight.
+	expect(
+		FORBIDDEN_ALIAS.test("import { db } from '$lib/server/db';"),
+		'matches only because `$lib` is a prefix of it — SvelteKit is what actually enforces this one'
+	).toBe(true);
 });
 
 test('the comment stripper does not blind the scan', () => {
@@ -97,15 +117,15 @@ test('the comment stripper does not blind the scan', () => {
 
 	const withRealImport = strip(
 		[
-			"// This module must never import from '$server/db' — it is browser-bundled.",
+			"// This module must never import from '$lib/server/db' — it is browser-bundled.",
 			"import { rotation } from './queue/rotation';",
-			"/* nor '../server/state' by the relative route */",
-			"import { db } from '$server/db';"
+			"/* nor '../lib/server/state' by the relative route */",
+			"import { db } from '$lib/server/db';"
 		].join('\n')
 	);
 	expect(FORBIDDEN_ALIAS.test(withRealImport), 'the real import on the last line must survive').toBe(true);
 
-	const commentsOnly = strip(["// mentions '$server/db'", "/* and '../server/x' */"].join('\n'));
+	const commentsOnly = strip(["// mentions '$lib/server/db'", "/* and '../lib/x' */"].join('\n'));
 	expect(FORBIDDEN_ALIAS.test(commentsOnly)).toBe(false);
 	expect(ESCAPING_RELATIVE.test(commentsOnly)).toBe(false);
 });

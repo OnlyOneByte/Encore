@@ -29,11 +29,11 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/server/app.ts')` from
-// apps/core/src/server — the Bun.serve composition root that constructs AuthoritativeState. `read`
+// A SIBLING READ, re-anchored explicitly. This was `at('apps/core/src/lib/server/app.ts')` from
+// apps/core/src/lib/server — the Bun.serve composition root that constructs AuthoritativeState. `read`
 // throws when it is missing, which is what keeps the two `.not.toMatch(...)` absence arms below from
 // being satisfied by an empty string.
-const APP = stripComments(read('apps/core/src/server/app.ts'));
+const APP = stripComments(read('apps/core/src/lib/server/app.ts'));
 
 // The AuthoritativeState construction and the getter it takes as its ordering argument. The getter is
 // the third constructor argument — an arrow (`() => ...`) that produces the current Ordering. Capture

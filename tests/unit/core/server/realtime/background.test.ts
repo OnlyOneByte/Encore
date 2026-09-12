@@ -6,9 +6,9 @@
 // leaks the previous singer's choice into the next turn, and no type error catches that — hence one
 // test per path rather than one test for "it resets".
 import { test, expect } from 'bun:test';
-import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from '$server/realtime/player';
-import { AuthoritativeState } from '$server/state/store';
-import { type HubDeps } from '$server/realtime/hub';
+import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from '$lib/server/realtime/player';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { type HubDeps } from '$lib/server/realtime/hub';
 import type { ServerEvent, Media, QueueEntry } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

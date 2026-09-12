@@ -1,8 +1,8 @@
 // player:command mutates playback state + broadcasts playback:state.
 import { test, expect } from 'bun:test';
-import { handlePlayerCommand } from '$server/realtime/player';
-import { AuthoritativeState } from '$server/state/store';
-import { type HubDeps } from '$server/realtime/hub';
+import { handlePlayerCommand } from '$lib/server/realtime/player';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { type HubDeps } from '$lib/server/realtime/hub';
 import { type ServerEvent, type Media, type QueueEntry, EMPTY_SONG_PROFILE } from '$shared';
 
 const media = (id: string): Media => ({

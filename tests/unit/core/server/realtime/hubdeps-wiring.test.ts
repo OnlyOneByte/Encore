@@ -15,11 +15,11 @@
 // neutering player.ts's `deps.onNowPlaying?.(...)` reds only the play-tracking tests; removing
 // hub.ts's `deps.recordAdd?.(...)` reds only the popularity tests (see the PR body for the RED runs).
 import { test, expect } from 'bun:test';
-import { AuthoritativeState } from '$server/state/store';
-import { handlePlayerCommand } from '$server/realtime/player';
-import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { PlayTracker } from '$server/media/plays';
-import { createPopularityTracker } from '$server/media/popularity';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { handlePlayerCommand } from '$lib/server/realtime/player';
+import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { PlayTracker } from '$lib/server/media/plays';
+import { createPopularityTracker } from '$lib/server/media/popularity';
 import type { Media, QueueEntry, ServerEvent, ClientCommand } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 
@@ -88,7 +88,7 @@ const add = (entryId: string, mediaId: string, clientOpId: string): ClientComman
 });
 
 // ── Site A: play tracking (apps/core/server.ts onNowPlaying → app.plays.onNowPlaying, fed at
-//    apps/core/src/server/realtime/player.ts emitNowPlaying) ──
+//    apps/core/src/lib/server/realtime/player.ts emitNowPlaying) ──
 
 test('play tracking: starting a song feeds the current entry through HubDeps.onNowPlaying', () => {
 	const h = harness();
@@ -116,7 +116,7 @@ test('play tracking: advancing to the next song feeds the new entry, and only ge
 });
 
 // ── Site B: popularity shortcuts (apps/core/server.ts recordAdd → app.popularity.recordAdd, fed at
-//    apps/core/src/server/realtime/hub.ts handleQueueCommand add path) ──
+//    apps/core/src/lib/server/realtime/hub.ts handleQueueCommand add path) ──
 
 test('popularity: an accepted queue-add feeds the media id through HubDeps.recordAdd', () => {
 	const h = harness();

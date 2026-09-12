@@ -27,9 +27,9 @@ function stripComments(src: string): string {
 		.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
-const MEDIA_DIR = at('apps/core/src/server/media');
+const MEDIA_DIR = at('apps/core/src/lib/server/media');
 const SRC_ROOT = appSrc;
-const SPAWN_CAPTURE_REL = join('server', 'media', 'spawn-capture.ts');
+const SPAWN_CAPTURE_REL = join('lib', 'server', 'media', 'spawn-capture.ts');
 
 function productionTsFiles(dir: string, out: string[] = []): string[] {
 	for (const name of readdirSync(dir)) {
@@ -155,6 +155,6 @@ test('sentinel 4: the comment stripper removes a planted Bun.spawn( and a plante
 
 test('sentinel 5: the production file list is real and includes the file under guard', () => {
 	expect(PRODUCTION.length).toBeGreaterThan(50);
-	expect(PRODUCTION.map((f) => f.rel)).toContain(join('server', 'media', 'ytdlp.ts'));
+	expect(PRODUCTION.map((f) => f.rel)).toContain(join('lib', 'server', 'media', 'ytdlp.ts'));
 	expect(PRODUCTION.map((f) => f.rel)).toContain(SPAWN_CAPTURE_REL);
 });

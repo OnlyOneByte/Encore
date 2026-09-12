@@ -9,14 +9,14 @@
 // buildHubDeps().getSettings() and assertNameFree read 'main' and never saw a value written to the live
 // room — the getSettings assertion below inverts.
 import { test, expect, afterEach } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { RoomRepository } from '$server/rooms/repository';
-import { SingerRepository } from '$server/singers/repository';
-import { PresenceTracker } from '$server/realtime/presence';
-import { AuthoritativeState } from '$server/state/store';
-import { SettingsRepository } from '$server/state/settings-repository';
-import { buildHubDeps, type EncoreApp } from '$server/app';
-import { assertNameFree } from '$server/singers/join';
+import { migratedDb } from '$lib/server/db/test-db';
+import { RoomRepository } from '$lib/server/rooms/repository';
+import { SingerRepository } from '$lib/server/singers/repository';
+import { PresenceTracker } from '$lib/server/realtime/presence';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { buildHubDeps, type EncoreApp } from '$lib/server/app';
+import { assertNameFree } from '$lib/server/singers/join';
 
 const APP_KEY = Symbol.for('encore.app');
 

@@ -1,6 +1,6 @@
 // GET /api/thumb?u=<encoded remote url> — proxied + on-disk-cached thumbnail.
 import type { RequestHandler } from '@sveltejs/kit';
-import { serveThumb } from '$server/media/thumbs';
+import { serveThumb } from '$lib/server/media/thumbs';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const u = url.searchParams.get('u');

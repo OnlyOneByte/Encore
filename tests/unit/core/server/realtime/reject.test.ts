@@ -1,7 +1,7 @@
 // Bad command -> op:reject{clientOpId,reason} to ORIGINATOR ONLY, no broadcast.
 import { test, expect } from 'bun:test';
-import { handleQueueCommand, validateCommand, type HubDeps } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
+import { handleQueueCommand, validateCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
 import { ulid, type ServerEvent, type Media, type ClientCommand } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 

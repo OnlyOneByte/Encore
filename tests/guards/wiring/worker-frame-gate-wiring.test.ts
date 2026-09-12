@@ -24,7 +24,7 @@ const SERVER = stripComments(read('apps/core/server.ts'));
 
 test('server.ts imports validateWorkerMessage from worker-hub', () => {
 	expect(SERVER).toMatch(
-		/import\s*\{[^}]*\bvalidateWorkerMessage\b[^}]*\}\s*from\s*'\.\/src\/server\/jobs\/worker-hub'/
+		/import\s*\{[^}]*\bvalidateWorkerMessage\b[^}]*\}\s*from\s*'\.\/src\/lib\/server\/jobs\/worker-hub'/
 	);
 });
 

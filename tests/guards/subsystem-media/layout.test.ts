@@ -14,8 +14,8 @@ import {
 	classOf,
 	toRelativeKey,
 	mediaRoot
-} from '$server/media/paths';
-import { planMigration, applyMigration, ensureLayout } from '$server/media/migrate-layout';
+} from '$lib/server/media/paths';
+import { planMigration, applyMigration, ensureLayout } from '$lib/server/media/migrate-layout';
 
 // What `migrateStorageLayout` itself checks -- asserted the same way here, so the test cannot pass
 // against a predicate production does not use.
@@ -23,7 +23,7 @@ const nothingLeftToDo = (root: string) => {
 	const plan = planMigration(root);
 	return plan.moves.length === 0 && plan.prunes.length === 0;
 };
-import { safeMediaPath } from '$server/media/local-files';
+import { safeMediaPath } from '$lib/server/media/local-files';
 
 let root: string;
 const saved: Record<string, string | undefined> = {};

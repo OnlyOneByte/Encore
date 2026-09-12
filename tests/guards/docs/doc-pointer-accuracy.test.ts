@@ -114,7 +114,7 @@ function allPointers(): Pointer[] {
 }
 
 // The repo root, from the repo-root marker rather than by counting `../` off SRC. Used only to tell a
-// REAL cross-package citation (e.g. `hub.ts`, which lives at apps/core/src/server/realtime/hub.ts) apart
+// REAL cross-package citation (e.g. `hub.ts`, which lives at apps/core/src/lib/server/realtime/hub.ts) apart
 // from a stale or MISSPELLED in-package citation (e.g. `rotaton.ts`, a typo of rotation.ts, which exists
 // nowhere). The domain regrouping moved modules into subdirs, so a citation that no longer resolves must
 // still be caught — the earlier

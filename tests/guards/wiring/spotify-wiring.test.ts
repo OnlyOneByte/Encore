@@ -13,7 +13,7 @@ function stripComments(src: string): string {
 }
 
 // Both subjects are named absolutely rather than counted out of this file's own location.
-const APP = stripComments(readFileSync(at('apps/core/src/server/app.ts'), 'utf8'));
+const APP = stripComments(readFileSync(at('apps/core/src/lib/server/app.ts'), 'utf8'));
 const SEARCH = stripComments(readFileSync(at('apps/core/src/routes/api/search/+server.ts'), 'utf8'));
 
 test('app.ts constructs and exposes a SpotifyResolver on the app', () => {

@@ -20,11 +20,11 @@
 //      (a) through the `add` op.
 // The fix rejects all of these at the add arm's seam so nothing bad is ever applied or persisted.
 import { test, expect } from 'bun:test';
-import { validateCommand, handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
+import { validateCommand, handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
 import type { Media, QueueEntry, ClientCommand, ServerEvent } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
-import { queueEntries } from '$server/db/schema';
+import { queueEntries } from '$lib/server/db/schema';
 
 const media = (id: string): Media => ({
 	id,

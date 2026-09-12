@@ -10,10 +10,10 @@ import { test, expect, afterEach } from 'bun:test';
 // path from tests/guards/wiring/ rather than the old `./+page.server`. It fails LOUDLY with
 // `Cannot find module` if the depth is wrong.
 import { load } from '../../../apps/core/src/routes/settings/+page.server';
-import { RoomRepository } from '$server/rooms/repository';
-import { SingerRepository } from '$server/singers/repository';
-import { SettingsRepository } from '$server/state/settings-repository';
-import { migratedDb } from '$server/db/test-db';
+import { RoomRepository } from '$lib/server/rooms/repository';
+import { SingerRepository } from '$lib/server/singers/repository';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { migratedDb } from '$lib/server/db/test-db';
 import { read } from '@encore/test-support';
 
 const APP_KEY = Symbol.for('encore.app');

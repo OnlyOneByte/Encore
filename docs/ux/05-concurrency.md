@@ -14,9 +14,9 @@ because a reader who trusts the brief will write the wrong requirement.
 
 | Brief says | `main` actually has | Consequence |
 |---|---|---|
-| "There is no host concept in the product yet, so introducing one is itself a product decision" | `apps/core/src/server/auth/capabilities.ts` — a five-member `Capability` union, an `Actor` type, and `can(actor, cap)` as "the ONE place that answers *is this actor allowed to do that?*" | The **mechanism** exists and is centralised. What is open is only the **policy content** per capability. Introducing a host is now an edit to one function, which is much cheaper than the brief assumes. |
+| "There is no host concept in the product yet, so introducing one is itself a product decision" | `apps/core/src/lib/server/auth/capabilities.ts` — a five-member `Capability` union, an `Actor` type, and `can(actor, cap)` as "the ONE place that answers *is this actor allowed to do that?*" | The **mechanism** exists and is centralised. What is open is only the **policy content** per capability. Introducing a host is now an edit to one function, which is much cheaper than the brief assumes. |
 | "reorder is within-singer only … not to be reopened" | The queue is a single **stored ordered list** and a reorder rewrites it in place (`rotation.ts` `storedOrder`/`assignSeqs`); pinning was deleted (`move-global`, `unpin`, `pinnedSeq`, `placePins`) | A **cross-singer reorder is expressible without a pin** — it rewrites the stored list directly, durable by construction, gated on `queue:reorder-any`. The within-singer rule still holds for the `move` op, but the product is no longer within-singer only; wiring the arrows/drag to a "move to index" op is still unshipped. |
-| "Rate limits — none exist" | `MAX_CONCURRENT_COOKS_PER_SINGER = 3` (`apps/core/src/server/jobs/make-karaoke.ts:53`), refused as `over-limit` and answered **HTTP 429** with a phone-showable reason (`routes/api/make-karaoke/+server.ts:45-53`) | One limit exists, on the **expensive** axis (worker fleet). The **cheap** axis — queue depth per singer — is uncapped: `validateCommand`'s `add` arm has no depth check. |
+| "Rate limits — none exist" | `MAX_CONCURRENT_COOKS_PER_SINGER = 3` (`apps/core/src/lib/server/jobs/make-karaoke.ts:53`), refused as `over-limit` and answered **HTTP 429** with a phone-showable reason (`routes/api/make-karaoke/+server.ts:45-53`) | One limit exists, on the **expensive** axis (worker fleet). The **cheap** axis — queue depth per singer — is uncapped: `validateCommand`'s `add` arm has no depth check. |
 | "whether a guest whose optimistic action lost a race is **told**, or the UI silently reverts" | It is told. `hub.ts:335` emits `op:reject`; `lib/stores/queue.ts:280` rolls back to the pre-op snapshot and calls `onReject`; `routes/+page.svelte:177` wires that to `showError`, rendered as `.error-toast` with `role="alert"` (`+page.svelte:1294`) | The **channel is built**. What is undecided is the **policy**: which rejects deserve disclosure, in whose words, and on which surface. |
 
 The owner's actual ruling is recorded in `capabilities.ts:9-11`, dated: *"Today every joined singer
@@ -232,7 +232,7 @@ any other refusal a guest caused are still surfaced on that guest's phone in the
 | **Rationale** | An estimate shown to many people at once becomes a claim the room can check against reality, so two surfaces computing it separately produce a visible contradiction rather than a rounding difference. |
 | **Source** | `UNSOURCED` for the precision. Grounding: **no wait-time ETA exists in the product today.** `myPositionLabel` (`routes/+page.svelte:116-131`) states position and the preceding singer's name only — `"You're #3 · after Sam"` — with no time term. The `etaSec` field that exists (`events.ts:80`, `events.ts:134`) is **cook progress**, a different quantity. The "roughly 11 minutes" phrasing comes from `encore-design-handoff.md` §1 direction A and is **unbuilt**. |
 | **Acceptance** | **Given** a wait estimate rendered anywhere, **when** its value is traced, **then** it resolves to one shared function and not a per-surface computation; **and when** the queue changes, **then** every surface showing it updates from the same broadcast. **Given** no shared function exists, **then** no surface displays a time. |
-| **Check** | A source-scan asserting a single exported estimator and no second arithmetic site — the same single-source shape `server/ordering-single-source.test.ts` already applies to ordering. |
+| **Check** | A source-scan asserting a single exported estimator and no second arithmetic site — the same single-source shape `lib/server/ordering-single-source.test.ts` already applies to ordering. |
 | **Priority** | **Should ship.** Blocking only for the estimate itself, not for the position label, which already works without one. |
 
 > **Recommendation (not decided).** State the estimate in **songs, not minutes**, until real song
@@ -374,7 +374,7 @@ changes its severity independently of its technical impact.
    `apps/core/src/shared/queue/queue-order.ts`, and a test named literally *"round-robin: everyone's 1st
    pick before anyone's 2nd"*. Restating it would pad the document with a rule that was never at risk.
 2. **Self-only removal and within-singer reorder.** Enforced server-side —
-   `server/realtime/queue-own-entry-ownership.test.ts`, and `hub.ts:240` records the deliberate
+   `lib/server/realtime/queue-own-entry-ownership.test.ts`, and `hub.ts:240` records the deliberate
    subtlety that `can()` is consulted **only** for someone else's entry so a narrowing never blocks a
    guest from their own song. Referenced by `XR-CON-04`, not rewritten.
 3. **Host-only media deletion.** Enforced at `routes/api/delete-media/+server.ts`, which already
@@ -384,11 +384,11 @@ changes its severity independently of its technical impact.
 4. **A specific skip-authority policy, a specific rate limit, a specific latency budget, a specific
    contention rule.** No source supports any of them and inventing one would present a choice as a
    finding. They are named-decision rows above and enumerated options below.
-5. **Multi-room concurrency.** `server/realtime/room-scope.ts` already centralises tenancy *"like
+5. **Multi-room concurrency.** `lib/server/realtime/room-scope.ts` already centralises tenancy *"like
    `can()` for capability"*, and `isForeignRoom` drops foreign frames at `apps/core/server.ts:320`.
    The product's concurrency problem is many guests in **one** room; a second room is a different
    spec.
-6. **Departure settling.** `server/singers/leave.ts` already routes one `remove` op per entry through
+6. **Departure settling.** `lib/server/singers/leave.ts` already routes one `remove` op per entry through
    the authoritative path *"so every client converges the same way it would on a hand-tapped remove"*,
    special-cases the playing entry via `keptPlaying`, and exposes `removableOnLeave` explicitly *"so
    the phone can name the cost before asking"*. Stated, enforced, and better than a new row.

@@ -4,11 +4,11 @@
 // separator policy: global answers "what can this deployment do", room "how does this party run".
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
-import { SESSION_COOKIE } from '$server/singers/repository';
-import { can } from '$server/auth/capabilities';
-import { mediaFor } from '$server/realtime/hub';
-import { emitNowPlaying } from '$server/realtime/player';
+import { getApp } from '$lib/server/app';
+import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { can } from '$lib/server/auth/capabilities';
+import { mediaFor } from '$lib/server/realtime/hub';
+import { emitNowPlaying } from '$lib/server/realtime/player';
 import type { RoomSettings } from '$shared';
 
 export const PUT: RequestHandler = async ({ request, cookies, url }) => {

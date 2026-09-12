@@ -60,8 +60,8 @@ function literalBody(src: string, openMarker: RegExp): string {
 // missing matters most for hub.ts: an empty body would yield zero OPTIONAL_KEYS and the parity check
 // would pass having compared nothing. (The sentinel below floors the key count for the same reason.)
 const SERVER = stripComments(read('apps/core/server.ts'));
-const HUB = stripComments(read('apps/core/src/server/realtime/hub.ts'));
-const APP = stripComments(read('apps/core/src/server/app.ts'));
+const HUB = stripComments(read('apps/core/src/lib/server/realtime/hub.ts'));
+const APP = stripComments(read('apps/core/src/lib/server/app.ts'));
 
 // ── Derive the optional-hook key list from the HubDeps interface body itself ──────────────────────
 // Take the `export interface HubDeps { ... }` body and pull every optional declaration `<name>?:`.

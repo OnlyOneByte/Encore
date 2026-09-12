@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
-import { requiredCapability, planAssignments, hasCapableWorker, type CapabilityFor } from '$server/jobs/dispatch';
+import { requiredCapability, planAssignments, hasCapableWorker, type CapabilityFor } from '$lib/server/jobs/dispatch';
 import { DEFAULT_GLOBAL_SETTINGS, type Job, type GlobalSettings } from '$shared';
-import type { WorkerSession } from '$server/jobs/registry';
+import type { WorkerSession } from '$lib/server/jobs/registry';
 
 function job(id: string, jobType: Job['jobType']): Job {
 	return {

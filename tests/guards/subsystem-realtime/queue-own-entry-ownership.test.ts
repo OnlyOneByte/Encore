@@ -21,8 +21,8 @@
 //       is unreachable for an owner. Reverting hub.ts to base (gate not wrapped) reds these.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { validateCommand, type HubDeps } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
+import { validateCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
 import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ClientCommand } from '$shared';
 
 const media = (id: string): Media => ({
@@ -104,7 +104,7 @@ test('an unknown entry rejects before any ownership/capability check', () => {
 
 // (2) Source-scan: the ownership short-circuit must precede the can() gate in BOTH arms, so a future
 // narrowed can() can never refuse an owner their own song. This is the load-bearing narrowing proof.
-const hubSrc = read('apps/core/src/server/realtime/hub.ts');
+const hubSrc = read('apps/core/src/lib/server/realtime/hub.ts');
 
 // Strip comments so the explanatory prose (which mentions can() and the capability strings) can neither
 // satisfy nor trip the checks.

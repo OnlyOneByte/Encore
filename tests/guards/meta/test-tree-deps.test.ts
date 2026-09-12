@@ -2,7 +2,7 @@
 //
 // WHY THIS EXISTS. Moving the tests into `tests/` moved them out of the reach of `apps/core/node_modules`.
 // Node resolves a bare specifier by walking UP from the importing file, so a test at
-// `apps/core/src/server/media/` found `drizzle-orm` and the same test at `tests/unit/core/server/media/`
+// `apps/core/src/lib/server/media/` found `drizzle-orm` and the same test at `tests/unit/core/server/media/`
 // did not. Two tests failed with `Cannot find package 'drizzle-orm'`, which was the loud, honest version
 // of the problem.
 //
@@ -37,7 +37,7 @@ function externalImports(src: string): string[] {
 	const push = (spec: string): void => {
 		if (/^[./]/.test(spec)) return; // relative
 		if (/^(node:|bun:)/.test(spec)) return; // builtin
-		if (/^(\$lib|\$server|\$shared|\$app|\$env)/.test(spec)) return; // tsconfig path alias
+		if (/^(\$lib|\$shared|\$app|\$env)/.test(spec)) return; // tsconfig path alias ($lib covers $lib/server)
 		if (/^@encore\//.test(spec)) return; // workspace sibling, resolved by alias
 		out.push(spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]!);
 	};

@@ -15,12 +15,12 @@
 // BASE-RED: on origin/main every key-set assertion below reports an extra `roomId`.
 import { test, expect, afterEach } from 'bun:test';
 import { GET, PATCH } from '../../../../../../apps/core/src/routes/api/me/+server';
-import { RoomRepository } from '$server/rooms/repository';
-import { SingerRepository } from '$server/singers/repository';
-import { PresenceTracker } from '$server/realtime/presence';
-import { AuthoritativeState } from '$server/state/store';
-import { SettingsRepository } from '$server/state/settings-repository';
-import { migratedDb } from '$server/db/test-db';
+import { RoomRepository } from '$lib/server/rooms/repository';
+import { SingerRepository } from '$lib/server/singers/repository';
+import { PresenceTracker } from '$lib/server/realtime/presence';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { migratedDb } from '$lib/server/db/test-db';
 import type { PublicSinger, ServerEvent } from '$shared';
 
 const APP_KEY = Symbol.for('encore.app');

@@ -3,10 +3,10 @@
 // with zero production call sites. So these tests are about the wiring, not the pure functions —
 // the failure mode they guard is "the capability exists but nothing calls it".
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { WorkerHub } from '$server/jobs/worker-hub';
-import { WorkerRegistry } from '$server/jobs/registry';
-import { JobRepository } from '$server/jobs/repository';
+import { migratedDb } from '$lib/server/db/test-db';
+import { WorkerHub } from '$lib/server/jobs/worker-hub';
+import { WorkerRegistry } from '$lib/server/jobs/registry';
+import { JobRepository } from '$lib/server/jobs/repository';
 import type { WorkerCommand, ServerEvent, Media, WorkerHost } from '$shared';
 
 const T0 = 1_700_000_000_000;

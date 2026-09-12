@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 // Thumb cache-key logic + extension/content-type mapping + safety.
 import { test, expect } from 'bun:test';
-import { thumbKey, thumbPath, contentTypeFor, isAllowedThumbUrl, serveThumb } from '$server/media/thumbs';
+import { thumbKey, thumbPath, contentTypeFor, isAllowedThumbUrl, serveThumb } from '$lib/server/media/thumbs';
 
 test('thumbKey is stable + filesystem-safe (no slashes) for a URL', () => {
 	const k = thumbKey('https://i.ytimg.com/vi/abc123/hqdefault.jpg');

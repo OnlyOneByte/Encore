@@ -224,7 +224,7 @@ if (!localCaroline) {
 		'S1a-local-fixture',
 		false,
 		'local library did not return Sweet Caroline -- seed missing or server did not reindex',
-		'apps/core/server.ts:84 seededLibrary + apps/core/src/server/media/local.ts'
+		'apps/core/server.ts:84 seededLibrary + apps/core/src/lib/server/media/local.ts'
 	);
 	process.exit(2);
 }
@@ -269,7 +269,7 @@ record(
 	'S1-catalog-precedence',
 	inReady && !inResults,
 	'a cooked local song must appear in `ready` (not `results`) even when the resolver returns many higher-ranked raw rows',
-	`ready=${after.body.ready.length}, cooking=${after.body.cooking.length}, results=${after.body.results.length}; sweet-caroline in ready=${inReady} in results=${inResults}. See apps/core/src/server/media/readiness.ts:51 partitionSearch (catalog upserted before resolver hits into a byId Map).`
+	`ready=${after.body.ready.length}, cooking=${after.body.cooking.length}, results=${after.body.results.length}; sweet-caroline in ready=${inReady} in results=${inResults}. See apps/core/src/lib/server/media/readiness.ts:51 partitionSearch (catalog upserted before resolver hits into a byId Map).`
 );
 
 // Dedupe by (source, sourceRef): search a second time and confirm the cooked song appears exactly once.
@@ -370,7 +370,7 @@ if (!believin) {
 				'S2a-ws-transition',
 				sawSeparating && sawReady,
 				'unacquired → cooking → ready must arrive on the WebSocket without reload',
-				`events=${JSON.stringify(sub.events)}. See apps/core/src/server/jobs/worker-hub.ts + media-status.ts.`
+				`events=${JSON.stringify(sub.events)}. See apps/core/src/lib/server/jobs/worker-hub.ts + media-status.ts.`
 			);
 
 			// Monotonic pct in the separating phase (never regresses on the way to done).
@@ -428,7 +428,7 @@ if (cookableCandidate) {
 			'S2c-cooking-visible',
 			sawCooking,
 			'a mid-flight song must appear in the `cooking` bucket',
-			'apps/core/src/server/media/readiness.ts:15 readinessOf + apps/core/src/routes/api/search/+server.ts:83 (partitionSearch groups cooking into its own bucket)'
+			'apps/core/src/lib/server/media/readiness.ts:15 readinessOf + apps/core/src/routes/api/search/+server.ts:83 (partitionSearch groups cooking into its own bucket)'
 		);
 		record(
 			'HIGH',
@@ -481,7 +481,7 @@ record(
 	'S3a-ready-order-consistency',
 	orderAgrees,
 	'search ready group iterates mediaById in insertion order while /api/library uses desc(id) newest-first -- same songs, different order',
-	`search-ready(caroline shared)=${JSON.stringify(sharedIds)} vs library-ready(shared)=${JSON.stringify(libOrderOnShared)}. See apps/core/src/server/media/readiness.ts:51 partitionSearch (ready group is Map insertion order, not sorted) vs apps/core/src/server/media/repository.ts:149 listReady (orderBy desc(media.id) newest-first ULID).`
+	`search-ready(caroline shared)=${JSON.stringify(sharedIds)} vs library-ready(shared)=${JSON.stringify(libOrderOnShared)}. See apps/core/src/lib/server/media/readiness.ts:51 partitionSearch (ready group is Map insertion order, not sorted) vs apps/core/src/lib/server/media/repository.ts:149 listReady (orderBy desc(media.id) newest-first ULID).`
 );
 
 // The label: search returns three arrays named `ready`, `cooking`, `results`. The client renders
@@ -617,7 +617,7 @@ record(
 	// Currently baseline=true parenised=false starred=false, which is the defect.
 	baselineHasLocal && parenisedHasLocal && starredHasLocal,
 	'FTS5 metacharacters ("(", ")", "*") in the query silently drop local matches -- safeSearch catches the tokeniser throw and returns []',
-	`baseline(caroline)=local:${baselineHasLocal}, "(caroline)"=local:${parenisedHasLocal}, "caroline*"=local:${starredHasLocal}. See apps/core/src/server/media/local.ts:56 (\`.replace(/["']/g,'')\` strips quotes but not parens/star, then appends \`*\` -- the resulting FTS5 expression throws at tokenise time) + apps/core/src/routes/api/search/+server.ts:19 safeSearch (silences the throw and returns []).`
+	`baseline(caroline)=local:${baselineHasLocal}, "(caroline)"=local:${parenisedHasLocal}, "caroline*"=local:${starredHasLocal}. See apps/core/src/lib/server/media/local.ts:56 (\`.replace(/["']/g,'')\` strips quotes but not parens/star, then appends \`*\` -- the resulting FTS5 expression throws at tokenise time) + apps/core/src/routes/api/search/+server.ts:19 safeSearch (silences the throw and returns []).`
 );
 
 // Injection surface: verify the query text is echoed VERBATIM into any resolvable field. Nothing
@@ -696,7 +696,7 @@ record(
 	'S7a-artist-facet-present',
 	!!artistFacet && artistFacet.count >= 1,
 	`browse-by-artist facet must include a cooked song's artist. Currently: local-library files (${localReady.length} cooked) carry \`artist\` but NOT \`artistCanonical\`, and artistFacets() filters on artistCanonical -- so a library of only-local files exposes ZERO browsable artists`,
-	`library has ${libFull.body.library?.length ?? 0} ready song(s), ${localReady.length} of them local; facets.artists=${JSON.stringify(libFull.body.facets?.artists)}. See apps/core/src/server/media/repository.ts:217 artistFacets (filters isNotNull(artistCanonical)) + apps/core/src/server/media/local.ts (local files never set artistCanonical) + apps/core/src/server/jobs/annotation.ts (MusicBrainz runs during the fetch job, which does not run for a local file).`
+	`library has ${libFull.body.library?.length ?? 0} ready song(s), ${localReady.length} of them local; facets.artists=${JSON.stringify(libFull.body.facets?.artists)}. See apps/core/src/lib/server/media/repository.ts:217 artistFacets (filters isNotNull(artistCanonical)) + apps/core/src/lib/server/media/local.ts (local files never set artistCanonical) + apps/core/src/lib/server/jobs/annotation.ts (MusicBrainz runs during the fetch job, which does not run for a local file).`
 );
 
 if (artistFacet) {
@@ -707,7 +707,7 @@ if (artistFacet) {
 		'S7b-browse-by-artist',
 		returnedIds.includes(localCaroline.id),
 		'browse-by-artist must return the cooked song whose artist matches the facet',
-		`browse artist='Neil Diamond' returned ${JSON.stringify(returnedIds)}. Expected includes ${localCaroline.id}. See apps/core/src/server/media/repository.ts:241 byArtist.`
+		`browse artist='Neil Diamond' returned ${JSON.stringify(returnedIds)}. Expected includes ${localCaroline.id}. See apps/core/src/lib/server/media/repository.ts:241 byArtist.`
 	);
 
 	// Case-sensitivity of the browse endpoint: repository.byArtist uses `eq(...artistCanonical, artist)`
@@ -722,7 +722,7 @@ if (artistFacet) {
 		'S7c-browse-artist-case-sensitive',
 		true, // this is documenting behaviour, not asserting a bug
 		`browse-by-artist compares canonically (exact string). Manual '?artist=neil diamond' finds it: ${foundWrong}. Users click a facet chip so the string is always exact, but flag as LOW so it is known.`,
-		'apps/core/src/server/media/repository.ts:241 byArtist uses eq() -- case-sensitive.'
+		'apps/core/src/lib/server/media/repository.ts:241 byArtist uses eq() -- case-sensitive.'
 	);
 }
 
@@ -760,7 +760,7 @@ if (MEDIA_DIR) {
 			'S7d-orphan-stem-listed',
 			stillListed && stillReady,
 			`a song whose stem was deleted under the DB is still shown as ready by search and library (the DB has no filesystem check)${alreadyMissing ? ' -- stem was already missing from a prior run' : ''}`,
-			`ready=${stillReady} library=${stillListed} media_endpoint_status=${mediaStatus}. See apps/core/src/server/media/repository.ts:149 listReady (relies on stemStatus + instrumentalRef, no fs check).`
+			`ready=${stillReady} library=${stillListed} media_endpoint_status=${mediaStatus}. See apps/core/src/lib/server/media/repository.ts:149 listReady (relies on stemStatus + instrumentalRef, no fs check).`
 		);
 		record(
 			'HIGH',
@@ -814,7 +814,7 @@ record(
 	'S8a-failed-cold-load-invisible',
 	true, // this test verifies the DEFECT is documented and REPORTED, not passing
 	'a failed cook is invisible after phone reload: /api/library.cooking excludes anything whose readinessOf is not "cooking", and readiness.ts:14 documents that "failed" never appears in the catalog',
-	`cooking.failed=${failedInCooking} (always false by construction). See apps/core/src/server/media/readiness.ts:15 (catalog cannot express failed) + apps/core/src/routes/api/library/+server.ts:33 (cooking = readinessOf === 'cooking'). Live phones see it via WebSocket only (mediaStatus map, routes/+page.svelte:180-210); cold reload loses it.`
+	`cooking.failed=${failedInCooking} (always false by construction). See apps/core/src/lib/server/media/readiness.ts:15 (catalog cannot express failed) + apps/core/src/routes/api/library/+server.ts:33 (cooking = readinessOf === 'cooking'). Live phones see it via WebSocket only (mediaStatus map, routes/+page.svelte:180-210); cold reload loses it.`
 );
 
 // The failed BROADCAST guarantee is testable by wiring the fake worker to fail. Spawn a fail-worker
@@ -878,7 +878,7 @@ try {
 					'S8c-failed-cleared-from-catalog',
 					!stillInCooking,
 					'catalog cooking group must NOT contain a failed song (settleStemsGate resets stemStatus back to "none")',
-					`library.cooking contains it=${stillInCooking}. See apps/core/src/server/jobs/worker-hub.ts settleStemsGate.`
+					`library.cooking contains it=${stillInCooking}. See apps/core/src/lib/server/jobs/worker-hub.ts settleStemsGate.`
 				);
 			} else if (seenReady) {
 				record(

@@ -3,7 +3,7 @@
 // and nobody re-cooks a working song.
 import { test, expect } from 'bun:test';
 import type { LyricsCandidate, Media } from '$shared';
-import { needsLyricsBackfill, BACKFILL_PRIORITY } from '$server/jobs/backfill';
+import { needsLyricsBackfill, BACKFILL_PRIORITY } from '$lib/server/jobs/backfill';
 
 let n = 0;
 const media = (over: Partial<Media> = {}): Media => ({

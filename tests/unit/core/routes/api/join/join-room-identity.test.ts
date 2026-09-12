@@ -6,19 +6,19 @@
 //
 // A cleanup removed the second cookie this route used to set (`encore_room`), which had no reader anywhere:
 // the room a socket may act in is derived from the session token via the singers row, never from a
-// client-supplied value (see $server/realtime/room-scope). So the cookie assertions here pin the
+// client-supplied value (see $lib/server/realtime/room-scope). So the cookie assertions here pin the
 // COOKIE SET ITSELF — exactly one cookie, the session one — rather than naming the deleted constant,
 // which makes re-adding any second cookie on this path red regardless of what it is called.
 //
 // BASE-RED: on origin/main the route neither reads `code` nor returns a roomId, and it sets TWO cookies.
 import { test, expect, afterEach } from 'bun:test';
 import { POST } from '../../../../../../apps/core/src/routes/api/join/+server';
-import { RoomRepository } from '$server/rooms/repository';
-import { SingerRepository, SESSION_COOKIE } from '$server/singers/repository';
-import { PresenceTracker } from '$server/realtime/presence';
-import { AuthoritativeState } from '$server/state/store';
-import { SettingsRepository } from '$server/state/settings-repository';
-import { migratedDb } from '$server/db/test-db';
+import { RoomRepository } from '$lib/server/rooms/repository';
+import { SingerRepository, SESSION_COOKIE } from '$lib/server/singers/repository';
+import { PresenceTracker } from '$lib/server/realtime/presence';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
+import { migratedDb } from '$lib/server/db/test-db';
 
 const APP_KEY = Symbol.for('encore.app');
 

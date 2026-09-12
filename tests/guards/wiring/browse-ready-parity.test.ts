@@ -28,9 +28,9 @@
 import { expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
-import { MediaRepository } from '$server/media/repository';
-import { migratedDb } from '$server/db/test-db';
-import { instrumentalKey, lyricsKey } from '$server/media/paths';
+import { MediaRepository } from '$lib/server/media/repository';
+import { migratedDb } from '$lib/server/db/test-db';
+import { instrumentalKey, lyricsKey } from '$lib/server/media/paths';
 import type { Media } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 
@@ -300,7 +300,7 @@ it('the same invariants hold for a library of finished songs alone: a finished-o
 // The production file under scan, named absolutely. It was reached as `join(HERE,
 // 'repository.ts')` off `dirname(fileURLToPath(import.meta.url))` — "the repository next to me",
 // which identified the MEDIA repository only while this test sat in server/media/.
-const SRC = readFileSync(at('apps/core/src/server/media/repository.ts'), 'utf8');
+const SRC = readFileSync(at('apps/core/src/lib/server/media/repository.ts'), 'utf8');
 
 /** Strip comments, so a docstring quoting the narrowing is never mistaken for a second one. */
 const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');

@@ -11,7 +11,7 @@
 // and unit-tested — a SvelteKit +server.ts may only export HTTP method handlers.
 import type { RequestHandler } from '@sveltejs/kit';
 import { error, json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
+import { getApp } from '$lib/server/app';
 import { groupCooks } from './audit-shape';
 
 export const GET: RequestHandler = async ({ params }) => {

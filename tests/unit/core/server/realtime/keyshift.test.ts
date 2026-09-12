@@ -1,9 +1,9 @@
 // The `key` player command transposes a make-karaoke (file) song, clamped to ±MAX_KEY_SHIFT,
 // and resets to 0 on every song change. No-op on a YouTube iframe or a not-yet-ready file.
 import { test, expect } from 'bun:test';
-import { handlePlayerCommand } from '$server/realtime/player';
-import { AuthoritativeState } from '$server/state/store';
-import { type HubDeps } from '$server/realtime/hub';
+import { handlePlayerCommand } from '$lib/server/realtime/player';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { type HubDeps } from '$lib/server/realtime/hub';
 import { MAX_KEY_SHIFT, type Media, type QueueEntry, type ServerEvent, EMPTY_SONG_PROFILE } from '$shared';
 
 let _s = 0;

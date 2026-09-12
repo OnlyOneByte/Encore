@@ -17,7 +17,7 @@ import {
 	derivedBytesOf,
 	ffmpegTranscoder,
 	transcodeDiagnostics
-} from '$server/media/retention';
+} from '$lib/server/media/retention';
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
 	id,
@@ -327,10 +327,10 @@ import { join as _join } from 'node:path';
 // retention.ts's docstrings mention `-instrumental.` in prose, which would satisfy a naive scan.
 const stripComments = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
-// Was `_join(at('apps/core/src/server/media'))` — the three scanned sources (retention.ts, vocals-backfill.ts, paths.ts)
-// were this test's own SIBLINGS in apps/core/src/server/media, so the directory is now named in full and
+// Was `_join(at('apps/core/src/lib/server/media'))` — the three scanned sources (retention.ts, vocals-backfill.ts, paths.ts)
+// were this test's own SIBLINGS in apps/core/src/lib/server/media, so the directory is now named in full and
 // anchored on the repo root. `_readFileSync` still throws on a missing file, so a wrong name is loud.
-const mediaSrcDir = at('apps/core/src/server/media');
+const mediaSrcDir = at('apps/core/src/lib/server/media');
 const readSrc = (name: string) => _readFileSync(_join(mediaSrcDir, name), 'utf8');
 
 it('§1 — evictDerived reports only bytes it actually freed: counts ZERO bytes for a file it could not delete, and leaves it on disk', () => {

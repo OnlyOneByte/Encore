@@ -8,9 +8,9 @@
 // joining could not.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp } from '$server/app';
-import { SESSION_COOKIE } from '$server/singers/repository';
-import { assertNameFree, NameTakenError } from '$server/singers/join';
+import { getApp } from '$lib/server/app';
+import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { assertNameFree, NameTakenError } from '$lib/server/singers/join';
 import { normalizeSingerColor } from '$shared';
 
 export const GET: RequestHandler = async ({ cookies }) => {

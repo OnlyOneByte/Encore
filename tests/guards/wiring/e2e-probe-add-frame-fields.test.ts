@@ -27,7 +27,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { appE2e } from '@encore/test-support';
-import { queueEntries } from '$server/db/schema';
+import { queueEntries } from '$lib/server/db/schema';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -35,7 +35,7 @@ function stripComments(src: string): string {
 }
 
 // Was `at('tests/e2e')`, counted up three from
-// apps/core/src/server/realtime to apps/core. `appE2e` is that same tests/e2e directory named
+// apps/core/src/lib/server/realtime to apps/core. `appE2e` is that same tests/e2e directory named
 // directly. The walk below keeps its own exclusion list, so it is not replaced by `filesUnder`; a
 // missing root still throws out of readdirSync, and the >10 floor at the bottom is the vacuity trap.
 const E2E_DIR = appE2e;

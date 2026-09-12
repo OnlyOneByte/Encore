@@ -4,13 +4,13 @@
 // media) is NOT cancelled; an already-terminal (ready) job is not touched; and the whole thing runs
 // through the real queue-command remove path (handleQueueCommand) exactly as server.ts composes it.
 import { test, expect } from 'bun:test';
-import { migratedDb } from '$server/db/test-db';
-import { cancelJobsForMedia } from '$server/jobs/cancel';
-import { JobRepository } from '$server/jobs/repository';
-import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
-import { AuthoritativeState } from '$server/state/store';
-import { WorkerHub } from '$server/jobs/worker-hub';
-import { WorkerRegistry } from '$server/jobs/registry';
+import { migratedDb } from '$lib/server/db/test-db';
+import { cancelJobsForMedia } from '$lib/server/jobs/cancel';
+import { JobRepository } from '$lib/server/jobs/repository';
+import { handleQueueCommand, type HubDeps } from '$lib/server/realtime/hub';
+import { AuthoritativeState } from '$lib/server/state/store';
+import { WorkerHub } from '$lib/server/jobs/worker-hub';
+import { WorkerRegistry } from '$lib/server/jobs/registry';
 import type { WorkerCommand, QueueEntry, Media, ClientCommand, ServerEvent } from '$shared';
 import { readyToSing } from '$shared';
 

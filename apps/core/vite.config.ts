@@ -29,19 +29,25 @@ export default defineConfig({
 			},
 			adapter: adapter(),
 			alias: {
-				// The isomorphic contract — imported by BOTH `src/lib` (client) and `src/server`
-				// (authoritative), which is what "shared" means here. It was the `$shared` workspace
-				// package until the fold; the name is now `$shared`, matching this repo's own `$lib` /
-				// `$server` convention for an internal alias rather than advertising a package that no
-				// longer exists.
+				// The isomorphic contract — imported by BOTH `src/lib` (client) and `src/lib/server`
+				// (authoritative). That is what "shared" means here: client↔server within one app, never
+				// app↔worker, since the worker is Python and cannot import TypeScript at all.
 				//
-				// Pointing at the DIRECTORY, not at `index.ts`. The old package's `exports` map carried only
-				// `"."`, so a subpath import did not resolve and tests reached the palette registry through
-				// `'../../../../packages/shared/…json'`. SvelteKit generates both `$shared` and `$shared/*`
-				// from a directory, so those relative reaches can go.
-				$shared: 'src/shared',
-				// server-only modules (authoritative state, repos) reachable from +server.ts routes
-				$server: 'src/server'
+				// Pointing at the DIRECTORY, not at `index.ts`. The old workspace package's `exports` map
+				// carried only `"."`, so a subpath import did not resolve and tests reached the palette
+				// registry through `'../../../../packages/shared/…json'`. A directory alias gives SvelteKit
+				// both `$shared` and `$shared/*`, so those relative reaches can go.
+				$shared: 'src/shared'
+				//
+				// THERE IS NO `$server` ALIAS, and its absence is the point.
+				//
+				// Server-only code lives at `src/lib/server`, reached as `$lib/server` — a path SvelteKit
+				// gives MEANING to: it refuses to bundle anything under it into client code, and fails the
+				// build saying so. The previous `$server: 'src/lib/server'` was only a name; nothing stopped a
+				// Svelte component importing the database through it, and that was held by a test instead.
+				//
+				// Re-adding an alias here would create a second route to the same modules that the framework
+				// does not police, which is exactly the hole the move closed. It stays gone.
 			}
 		})
 	]

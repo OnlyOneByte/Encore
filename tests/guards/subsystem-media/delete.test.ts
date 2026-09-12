@@ -11,12 +11,12 @@
 // handleQueueCommand ultimately calls — so the fixture does not depend on the command layer's actor
 // validation, only on the queue state the delete acts upon.
 import { test, expect } from 'bun:test';
-import { deleteMediaEntirely, type DeleteMediaDeps } from '$server/media/delete';
-import { AuthoritativeState } from '$server/state/store';
-import type { HubDeps } from '$server/realtime/hub';
+import { deleteMediaEntirely, type DeleteMediaDeps } from '$lib/server/media/delete';
+import { AuthoritativeState } from '$lib/server/state/store';
+import type { HubDeps } from '$lib/server/realtime/hub';
 import { type Media, type QueueEntry, type ServerEvent, type LyricsCandidate } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
-import { metaKey, audioKey } from '$server/media/paths';
+import { metaKey, audioKey } from '$lib/server/media/paths';
 import { read } from '@encore/test-support';
 
 const media = (id: string): Media => ({
@@ -278,7 +278,7 @@ test('deleting a song with NO queue entries publishes no queue:patch (F3)', () =
 // Reads the real production file (not a fixture) and scans only the function BODY, so the docstrings
 // above it — which quote `m.lyricsRef` while explaining the defect — cannot satisfy or trip it.
 test('derivedRefsFor delegates the stored-ref enumeration instead of keeping a rival copy (F2)', () => {
-	const src = read('apps/core/src/server/media/delete.ts');
+	const src = read('apps/core/src/lib/server/media/delete.ts');
 	const start = src.indexOf('function derivedRefsFor');
 	expect(start).toBeGreaterThan(-1);
 	const body = src.slice(start, src.indexOf('\n}\n', start));

@@ -31,7 +31,7 @@ it('the unreachable browse-by-genre feature stays removed: the uncalled POST /ap
 });
 
 it('the unreachable browse-by-genre feature stays removed: the dead genre read methods are gone from the media repository', () => {
-	const repo = read('server/media/repository.ts');
+	const repo = read('lib/server/media/repository.ts');
 	expect(repo).not.toMatch(/\bgenreFacets\s*\(/);
 	expect(repo).not.toMatch(/\bbyGenre\s*\(/);
 });
@@ -52,7 +52,7 @@ it('the unreachable browse-by-genre feature stays removed: the phone has no Brow
 // removal — it is used elsewhere and the owner did not name it. Assert it survived, so a future
 // over-eager cleanup cannot delete the reusable primitive under cover of this guard.
 it('the unreachable browse-by-genre feature stays removed: the generic setTags/tagsOf primitive is retained', () => {
-	const repo = read('server/media/repository.ts');
+	const repo = read('lib/server/media/repository.ts');
 	expect(repo).toMatch(/\bsetTags\s*\(/);
 	expect(repo).toMatch(/\btagsOf\s*\(/);
 });

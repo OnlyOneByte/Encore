@@ -44,11 +44,11 @@ test('server.ts actually PARSES — a source scan is blind to a SyntaxError in t
 
 test('server.ts imports the room-scope isolation helpers and the TV-room resolver', () => {
 	expect(SERVER).toMatch(
-		/import\s*\{[^}]*\bisForeignRoom\b[^}]*\bsubscribeTopicFor\b[^}]*\bbroadcastTopicFor\b[^}]*\}\s*from\s*['"]\.\/src\/server\/realtime\/room-scope['"]/
+		/import\s*\{[^}]*\bisForeignRoom\b[^}]*\bsubscribeTopicFor\b[^}]*\bbroadcastTopicFor\b[^}]*\}\s*from\s*['"]\.\/src\/lib\/server\/realtime\/room-scope['"]/
 	);
 	// the TV-room resolver is imported too — dropping it (while the usage stays) fails to
 	// compile, which a source scan is blind to, so pin the import here alongside the room-scope helpers.
-	expect(SERVER).toMatch(/import\s*\{[^}]*\btvRoomId\b[^}]*\}\s*from\s*['"]\.\/src\/server\/rooms\/tv-room['"]/);
+	expect(SERVER).toMatch(/import\s*\{[^}]*\btvRoomId\b[^}]*\}\s*from\s*['"]\.\/src\/lib\/server\/rooms\/tv-room['"]/);
 });
 
 test('the WS upgrade captures a roomId scope onto the socket, not just the id (re-anchored for the TV branch)', () => {

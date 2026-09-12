@@ -1,7 +1,7 @@
 // Migrate a temp db and round-trip one row of each table.
 import { test, expect } from 'bun:test';
-import { openDb } from '$server/db/index';
-import { runMigrations, hydrate } from '$server/db/migrate';
+import { openDb } from '$lib/server/db/index';
+import { runMigrations, hydrate } from '$lib/server/db/migrate';
 import {
 	rooms,
 	singers,
@@ -11,20 +11,20 @@ import {
 	jobs,
 	jobAttempts,
 	roomSettings
-} from '$server/db/schema';
+} from '$lib/server/db/schema';
 import { mkdtempSync, mkdirSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { at, read } from '@encore/test-support';
-import { sqlitePersistence } from '$server/state/persistence';
-import { SingerRepository } from '$server/singers/repository';
-import { SettingsRepository } from '$server/state/settings-repository';
+import { sqlitePersistence } from '$lib/server/state/persistence';
+import { SingerRepository } from '$lib/server/singers/repository';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
 import { DEFAULT_STAGE_COLOR, STAGE_BG_C, STAGE_BG_L, hueToHex, stageHueToHex } from '$shared';
 import type { PlaybackState, QueueEntry } from '$shared';
 
 /**
  * The real migration folder. Was `at('apps/core/drizzle')` at seven sites,
- * counted out from this test's old home in apps/core/src/server/db; it is apps/core/drizzle, named once
+ * counted out from this test's old home in apps/core/src/lib/server/db; it is apps/core/drizzle, named once
  * here and anchored on the repo root.
  */
 const DRIZZLE = at('apps/core/drizzle');

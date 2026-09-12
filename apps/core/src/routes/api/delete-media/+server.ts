@@ -10,9 +10,9 @@
 // exists (auth/capabilities.ts).
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { getApp, buildHubDeps } from '$server/app';
-import { SESSION_COOKIE } from '$server/singers/repository';
-import { deleteMediaEntirely } from '$server/media/delete';
+import { getApp, buildHubDeps } from '$lib/server/app';
+import { SESSION_COOKIE } from '$lib/server/singers/repository';
+import { deleteMediaEntirely } from '$lib/server/media/delete';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();

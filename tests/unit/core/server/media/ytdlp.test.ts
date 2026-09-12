@@ -1,6 +1,6 @@
 // Done-when: resolve memoizes; cache hit on repeat id. Plus parser + graceful degrade.
 import { test, expect, spyOn } from 'bun:test';
-import { parseSearchJson, ytDlpSearch, ytThumbnailUrl } from '$server/media/ytdlp';
+import { parseSearchJson, ytDlpSearch, ytThumbnailUrl } from '$lib/server/media/ytdlp';
 
 test('parseSearchJson parses one-json-object-per-line into SearchResults', () => {
 	const lines = [

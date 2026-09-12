@@ -11,11 +11,11 @@
 // Runtime, against a real migrated DB — the query shape is the thing under test, so exercise it.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { MediaRepository } from '$server/media/repository';
-import { migratedDb } from '$server/db/test-db';
-import { openDb } from '$server/db/index';
-import { runMigrations } from '$server/db/migrate';
-import { instrumentalKey } from '$server/media/paths';
+import { MediaRepository } from '$lib/server/media/repository';
+import { migratedDb } from '$lib/server/db/test-db';
+import { openDb } from '$lib/server/db/index';
+import { runMigrations } from '$lib/server/db/migrate';
+import { instrumentalKey } from '$lib/server/media/paths';
 import type { Media } from '$shared';
 import { EMPTY_SONG_PROFILE } from '$shared';
 
@@ -213,10 +213,10 @@ test('the push-down is pure: identical answers across every readiness state', ()
 
 /** The real production file, read once. Comments are stripped per-assertion, not here — the prose
  *  guards below have the comments as their subject. */
-// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/server/media/, so
+// SIBLING READ, now named explicitly. This guard used to live in apps/core/src/lib/server/media/, so
 // `dirname(fileURLToPath(import.meta.url))` + 'repository.ts' meant "the media repository next to me".
 // Confirmed present at this path before re-anchoring.
-const SRC = read('apps/core/src/server/media/repository.ts');
+const SRC = read('apps/core/src/lib/server/media/repository.ts');
 
 test('readyTagged hands its media ids down to readySongs, unconditionally', () => {
 	// Shape ban beside the row-count pins: the regression has exactly two spellings, and both are
