@@ -79,8 +79,8 @@ function briefFiles(): string[] {
 
 test('the measured-design gate imports the layout-rung driver, and names each claim it measures', () => {
 	// XR-VER-02's Check, verbatim: "for each measurement-classified entry, assert its implementing
-	// file imports the layout-rung driver". `cdp.mjs` IS the layout rung.
-	expect(gate).toMatch(/import \{[^}]*\bconnect\b[^}]*\} from '\.\.\/cdp\.mjs';/);
+	// file imports the layout-rung driver". `driver.mjs` IS the layout rung.
+	expect(gate).toMatch(/import \{[^}]*\bconnect\b[^}]*\} from '\.\.\/driver\.mjs';/);
 	// …and the Chromium it drives is discovered through the single-sourced helper, not a private copy
 	//. e2e/lib/chromium.test.ts bans a redefinition; this pins that this gate uses it.
 	expect(gate).toMatch(/import \{ findChromium \} from '\.\.\/lib\/chromium\.mjs';/);
@@ -171,7 +171,7 @@ test('the CDP driver exposes exactly ONE safe-area method, and every caller uses
 	// THE COLLISION THIS EXISTS FOR. Two branches both needed a safe-area override and both added one to
 	// the shared driver in the same hour: `setSafeAreaInsets` here, `safeAreaInsets` on main. Same
 	// body, same CDP call, two names — and the merge conflicted on the hunk. This side dropped its own and
-	// adopted the incumbent, so `cdp.mjs` is untouched by this PR. This arm is what stops a THIRD.
+	// adopted the incumbent, so `driver.mjs` is untouched by this PR. This arm is what stops a THIRD.
 	//
 	// It is the same defect class `e2e/lib/chromium.test.ts` guards for `findChromium`, which was
 	// copy-pasted into 15 drivers and drifted three ways — except here the duplication would
@@ -180,7 +180,7 @@ test('the CDP driver exposes exactly ONE safe-area method, and every caller uses
 	// Definition-only detection, mirroring that file's approach: match the method DEFINITIONS on the page
 	// object, never a call site and never the CDP wire method (`Emulation.setSafeAreaInsetsOverride`),
 	// which is the protocol's name and not ours to dedupe.
-	const cdp = readFileSync(join(REPO, 'tests/e2e/cdp.mjs'), 'utf8');
+	const cdp = readFileSync(join(REPO, 'tests/e2e/driver.mjs'), 'utf8');
 	const defined = [...cdp.matchAll(/^\t\tasync\s+(\w+)\s*\(/gm)].map((m) => m[1]!).filter((n) => /safearea/i.test(n));
 	expect(defined).toEqual(['safeAreaInsets']);
 

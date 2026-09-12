@@ -35,16 +35,15 @@
  *   0 all passed · 1 a real failure · 2 the environment could not host the test (no server,
  *   no Chromium, no processed song).
  */
-import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * pattern the other out-of-program drivers use). Browser/Page are derived from cdp.mjs's own return types so they
+ * pattern the other out-of-program drivers use). Browser/Page are derived from driver.mjs's own return types so they
  * cannot drift from the driver. page.evaluate()/fetch().json() come back Promise<any>, so DOM/API-shaped
  * results are cast at the call site via the domain typedefs below.
  *
@@ -149,21 +148,7 @@ async function readServerPlayback(timeoutMs = 2500) {
 }
 
 // ── browser boot ──────────────────────────────────────────────────────────────────────────────────
-const proc = spawn(
-	chromium,
-	[
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		'--user-data-dir=' + join(process.env.KIROCREW_SCRATCH ?? '/tmp', `encore-p4-${process.pid}`),
-		// The real /tv has nobody to tap it. The app also must not DEPEND on a gesture; asserted below.
-		'--autoplay-policy=no-user-gesture-required',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 // The TV probes the master element by looking for the audio element inside the VISIBLE slot. The
 // gapless controller mounts TWO slots (A and B); the hidden slot pre-warms the upNext song and
@@ -241,7 +226,7 @@ function parseClock(text) {
 /** @type {Browser | undefined} */
 let browser;
 try {
-	const b = await connect(CDP_PORT);
+	const b = await connect();
 	browser = b;
 
 	// ── two phones, each its own singer ───────────────────────────────────────────
@@ -711,7 +696,6 @@ try {
 		browser?.close();
 	} catch {}
 	try {
-		proc.kill();
 	} catch {}
 }
 

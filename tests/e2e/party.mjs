@@ -23,21 +23,20 @@
  *   - Every selector comes from ./contract.ts, which contract.test.ts verifies against the source on
  *     every `bun test` run. The script and the guard cannot drift apart, and rot fails in CI without
  *     needing a browser at all.
- *   - The driver is ./cdp.mjs, which speaks the protocol Chromium already understands. No install.
+ *   - The driver is ./driver.mjs, which speaks the protocol Chromium already understands. No install.
  *
  * Controls are driven by ACCESSIBLE NAME wherever one exists, not by class. If a control loses its
  * accessible name, this flow should break — that is a real regression, and a class-based flow would
  * have hidden it.
  */
-import { spawn } from 'node:child_process';
-import { connect, sleep } from './cdp.mjs';
+import { connect, sleep } from './driver.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver (earlier changes–an earlier change pattern). Browser/Page derive from
- * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * driver.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check
@@ -76,23 +75,12 @@ if (!res?.ok) {
 	process.exit(2);
 }
 
-const proc = spawn(
-	chromium,
-	[
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--remote-allow-origins=*',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @type {Browser | undefined} */
 let browser;
 try {
-	const browser0 = await connect(CDP_PORT);
+	const browser0 = await connect();
 	browser = browser0;
 
 	// ── the TV, BEFORE anyone joins ───────────────────────────────────────────
@@ -133,11 +121,10 @@ try {
 	 * reporting `computed 0px`, which is the ORIGINAL false-failure symptom wearing a different hat. So
 	 * wait for the socket, let the sync land, and re-check the screen at the moment of measurement.
 	 */
-	const socketUp = await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.tvConnected)}) !== null`, { timeout: 8000 }).catch(() => false);
+	const socketUp = await tv.waitForSelector(SEL.tvConnected , { timeout: 8000 }).catch(() => false);
 	if (!socketUp) {
 		console.error(`\nThe TV never opened its WebSocket to ${base}. Is the server still running?`);
 		browser0.close();
-		proc.kill();
 		process.exit(2);
 	}
 	// `connected` flips on `onopen`, and the roster arrives one `hello`→`queue:sync` round trip later, so
@@ -146,7 +133,7 @@ try {
 	// flake that reads as a product defect.
 	await sleep(SYNC_SETTLE_MS);
 
-	const onAttract = await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.attract)}) !== null`, { timeout: 4000 }).catch(() => false);
+	const onAttract = await tv.waitForSelector(SEL.attract , { timeout: 4000 }).catch(() => false);
 	if (!onAttract) {
 		console.error(
 			'\nThis flow needs an empty room — the attract screen only renders before anyone joins,\n' +
@@ -154,7 +141,6 @@ try {
 				`  ENCORE_EPHEMERAL=1 PORT=${PORT} MEDIA_DIR=<seeded dir> ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:${PORT} bun run start`
 		);
 		browser0.close();
-		proc.kill();
 		process.exit(2);
 	}
 	const unreachableOrigin = (await tv.count(SEL.badQr)) > 0;
@@ -167,7 +153,6 @@ try {
 				`  ENCORE_EPHEMERAL=1 PORT=${PORT} MEDIA_DIR=<seeded dir> ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:${PORT} bun run start`
 		);
 		browser0.close();
-		proc.kill();
 		process.exit(2);
 	}
 
@@ -190,7 +175,6 @@ try {
 				'and re-run.'
 		);
 		browser0.close();
-		proc.kill();
 		process.exit(2);
 	}
 	check(
@@ -381,7 +365,6 @@ try {
 	check(`the flow ran to completion`, false, String(err));
 } finally {
 	browser?.close();
-	proc.kill();
 }
 
 const failed = checks.filter((c) => !c.ok);

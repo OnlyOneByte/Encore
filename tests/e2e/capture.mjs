@@ -24,10 +24,9 @@
  * The TV is captured at 1920x1080 because its type scale is vh-relative: a frame taken at the wrong
  * height is measuring a different design.
  */
-import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { connect, sleep } from './cdp.mjs';
+import { connect, sleep } from './driver.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
@@ -51,7 +50,7 @@ const at = (...parts) => __join(repoRoot, ...parts);
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * same pattern as the other e2e drivers). Browser/Page are derived from cdp.mjs's own return types so they
+ * same pattern as the other e2e drivers). Browser/Page are derived from driver.mjs's own return types so they
  * cannot drift from the driver. page.evaluate() comes back Promise<any>, so DOM-shaped results are
  * cast at the call site.
  *
@@ -90,22 +89,7 @@ const shots = [];
 /** @type {{ name: string, why: string }[]} */
 const skipped = [];
 
-const proc = spawn(
-	chromium,
-	[
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--hide-scrollbars',
-		// see the header note — without these the playing frames capture the lobby instead
-		'--autoplay-policy=no-user-gesture-required',
-		'--mute-audio',
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--remote-allow-origins=*',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @param {Page} page @param {string} name @param {string} note */
 async function shoot(page, name, note) {
@@ -245,7 +229,10 @@ async function ensurePlaying(tv, phone, { attempts = 3 } = {}) {
 /** @type {Browser | undefined} */
 let browser;
 try {
-	const browser0 = await connect(CDP_PORT);
+	// `--autoplay-policy=no-user-gesture-required` is NECESSARY here, per this file's own header: without
+	// it the <video> never starts and every captured frame is the poster. The driver does not grant it by
+	// default — a flow that needs it says so, because `fuzz.mjs` and the gestureless probes need it ABSENT.
+	const browser0 = await connect(undefined, { args: ['--autoplay-policy=no-user-gesture-required'] });
 	browser = browser0;
 
 	// ── TV first: attract only exists while the room is empty ─────────────────
@@ -259,7 +246,7 @@ try {
 	 * it moves far less often than the presentational class beside it. It is also registered in
 	 * contract.ts, so if it does move, `bun test` says so before a capture run does.
 	 */
-	await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.qrImage)}) !== null`);
+	await tv.waitForSelector(SEL.qrImage);
 	await frame('tv-attract', () => shoot(tv, 'tv-attract', 'nobody here yet — the QR owns the screen'));
 
 	// ── join, both ways of picking a colour ──────────────────────────────────
@@ -370,13 +357,13 @@ try {
 			 * best-effort by design: a miss costs one frame and is reported, never the run.
 			 */
 			await frame('tv-song-intro', async () => {
-				await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.stateNext)}) !== null`, {
+				await tv.waitForSelector(SEL.stateNext , {
 					timeout: 20_000
 				});
 				await shoot(tv, 'tv-song-intro', 'the song-intro card names who is up before the music starts');
 			});
 			// the TV naming a singer means a song is CURRENT — not that it is moving
-			await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.lowerThird)}) !== null`, {
+			await tv.waitForSelector(SEL.lowerThird , {
 				timeout: 25_000
 			});
 			const moving = await ensurePlaying(tv, maya);
@@ -420,7 +407,7 @@ try {
 		 * frozen-playback bug also looks like. Waiting for `.word.active` proves the words are moving.
 		 */
 		await frame('tv-lyrics-word', async () => {
-			await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.activeWord)}) !== null`, {
+			await tv.waitForSelector(SEL.activeWord , {
 				timeout: 60_000
 			});
 			await shoot(tv, 'tv-lyrics-word', 'word-timed lyrics: the ball sits on the word being sung');
@@ -669,7 +656,7 @@ try {
 	// ── the dashboards ───────────────────────────────────────────────────────
 	await frame('stats-public', async () => {
 		await ada.goto(`${base}/stats`);
-		await ada.waitFor(`document.querySelector(${JSON.stringify(SEL.pageHeading)}) !== null`);
+		await ada.waitForSelector(SEL.pageHeading);
 		await sleep(900);
 		await fitViewport(ada, 1280);
 		await shoot(ada, 'stats-public', 'the public page: library size, most-sung, top artists, sings per day');
@@ -677,7 +664,7 @@ try {
 
 	await frame('metrics-internal', async () => {
 		await ada.goto(`${base}/metrics`);
-		await ada.waitFor(`document.querySelector(${JSON.stringify(SEL.pageHeading)}) !== null`);
+		await ada.waitForSelector(SEL.pageHeading);
 		await sleep(900);
 		await fitViewport(ada, 1280);
 		await shoot(ada, 'metrics-internal', 'the internal page: time per step, cost per model against its own claim');
@@ -705,7 +692,6 @@ try {
 	process.exitCode = 1;
 } finally {
 	browser?.close();
-	proc.kill();
 }
 
 console.log(`\n${shots.length} frames written to ${OUT}`);

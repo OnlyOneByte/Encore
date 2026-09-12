@@ -62,11 +62,10 @@
  *
  * Exit 0 all passed / 1 a real failure / 2 the environment could not host the test.
  */
-import { spawn as spawnChild } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 // The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
@@ -375,7 +374,6 @@ async function openToolsFor(phone, title) {
 // ── the probe ──────────────────────────────────────────────────────────────
 /** @type {import('node:child_process').ChildProcess | undefined} */ let server;
 /** @type {import('node:child_process').ChildProcess | undefined} */ let worker;
-/** @type {import('node:child_process').ChildProcess | undefined} */ let chrome;
 /** @type {Browser | undefined} */ let browser;
 
 async function main() {
@@ -426,23 +424,8 @@ async function main() {
 	if (!wv?.vocalsRef) bail(`"${withStem.title}" processed with NO vocals ref; the with-stem arm has no subject`);
 	if (nv?.vocalsRef) bail(`FAKE_NO_VOCALS did not withhold the vocals ref (got ${nv.vocalsRef}); the degraded arm has no subject`);
 
-	chrome = spawnChild(
-		chromium,
-		[
-			`--remote-debugging-port=${CDP_PORT}`,
-			'--headless=new',
-			'--no-sandbox',
-			'--disable-gpu',
-			'--no-first-run',
-			`--user-data-dir=${join(RUN_DIR, 'chrome')}`,
-			// This probe reads DOM structure and state, never whether audio started, so autoplay policy
-			// is irrelevant here and granted to keep the hero from parking on a tap-to-start card.
-			'--autoplay-policy=no-user-gesture-required',
-			'about:blank'
-		],
-		{ stdio: 'ignore' }
-	);
-	browser = await waitFor(() => connect(CDP_PORT).catch(() => null), { timeout: 20_000, name: 'CDP' });
+
+	browser = await waitFor(() => connect().catch(() => null), { timeout: 20_000, name: 'CDP' });
 	const phone = await browser.newPage();
 	await phone.setViewport?.({ width: 390, height: 844 });
 
@@ -536,7 +519,6 @@ try {
 		// A browser that already died closes with a throw. The child processes below are killed either
 		// way, and failing teardown must not mask the verdict this probe already reported.
 	}
-	await kill(chrome);
 	await kill(worker);
 	await kill(server);
 }

@@ -1,7 +1,7 @@
 // guard: the tap-to-start affordance — the ONLY route out of a silent TV — is exercisable e2e
 // ONLY if the CDP driver can deliver a REAL user gesture, and only if some probe actually uses it.
 //
-// every click verb in tests/e2e/cdp.mjs is a synthetic `el.click()` through
+// every click verb in tests/e2e/driver.mjs is a synthetic `el.click()` through
 // Runtime.evaluate, which dispatches an UNTRUSTED event and grants NO user activation, so it can
 // never unblock autoplay. The fix adds a `realClick(x, y)` verb that dispatches a trusted
 // mousePressed/mouseReleased pair through the CDP Input domain, and a gestureless probe
@@ -25,7 +25,7 @@ function stripComments(src: string): string {
 // Was `at('tests/e2e')`, counted out from this guard's old home in
 // src/lib/server/realtime. The driver and the probe are named from the repo root now, and `read`
 // throws on a missing file rather than handing the `.not` assertions below an empty string.
-const CDP = stripComments(read('tests/e2e/cdp.mjs'));
+const CDP = stripComments(read('tests/e2e/driver.mjs'));
 const PROBE = stripComments(read('tests/e2e/probes/p13-tap-to-start.mjs'));
 
 test('the CDP driver files are non-empty (guard is not vacuous)', () => {
@@ -35,21 +35,27 @@ test('the CDP driver files are non-empty (guard is not vacuous)', () => {
 	expect(PROBE.length).toBeGreaterThan(1000);
 });
 
-test('cdp.mjs exposes a realClick verb that delivers a TRUSTED gesture via CDP Input', () => {
+test('driver.mjs exposes a realClick verb that delivers a TRUSTED gesture, not a synthetic dispatch', () => {
 	// The verb must exist by name...
 	expect(CDP).toMatch(/async\s+realClick\s*\(\s*x\s*,\s*y\s*\)/);
-	// ...and it must use the Input domain, not another synthetic el.click(). A trusted click is a
-	// mousePressed followed by a mouseReleased — assert BOTH halves, in order, or a half-verb (press
-	// with no release, or release with no press) would grant activation unreliably and still pass a
-	// single-token check.
-	const pressed = CDP.indexOf('Input.dispatchMouseEvent');
-	expect(pressed).toBeGreaterThanOrEqual(0);
-	expect(CDP).toMatch(/Input\.dispatchMouseEvent[^\n]*type:\s*'mousePressed'/);
-	expect(CDP).toMatch(/Input\.dispatchMouseEvent[^\n]*type:\s*'mouseReleased'/);
-	const iPress = CDP.indexOf("'mousePressed'");
-	const iRelease = CDP.indexOf("'mouseReleased'");
-	expect(iPress).toBeGreaterThanOrEqual(0);
-	expect(iRelease).toBeGreaterThan(iPress);
+	// ...and it must go through the browser's real input pipeline, not another synthetic el.click().
+	//
+	// WHAT CHANGED, AND WHAT DID NOT. This used to assert a raw CDP `Input.dispatchMouseEvent` pair —
+	// `mousePressed` then `mouseReleased`, in that order — because the driver spoke CDP by hand. The driver
+	// is Playwright now and `page.mouse` IS that pipeline: Playwright dispatches through the same Input
+	// domain internally, and `mouse.click()` is a press and a release. So the CLAIM is unchanged — a
+	// trusted gesture, because a synthetic click grants no user activation and autoplay stays blocked — and
+	// only the spelling of the evidence moved.
+	expect(CDP).toMatch(/async\s+realClick[\s\S]{0,200}?page\.mouse\.(?:click|down)\s*\(/);
+	// And the negative half, which is the point of the guard: realClick must NOT be an evaluate-based
+	// `el.click()`. That is what every other click verb was, and what does not grant activation.
+	const realClickBody = CDP.slice(CDP.indexOf('async realClick'), CDP.indexOf('async drag'));
+	expect(realClickBody).not.toMatch(/evaluate\s*\(/);
+	expect(realClickBody).not.toMatch(/\.click\s*\(\s*\)/);
+	// `drag` shares the pipeline: a drag handler that never sees a trusted pointer sequence is the same
+	// defect one interaction further on, so pin it here rather than letting it regress separately.
+	expect(CDP).toMatch(/async\s+drag[\s\S]{0,400}?page\.mouse\.down\s*\(/);
+	expect(CDP).toMatch(/async\s+drag[\s\S]{0,600}?page\.mouse\.up\s*\(/);
 });
 
 test('a probe actually EXERCISES the tap-to-start affordance with realClick', () => {

@@ -24,7 +24,7 @@ export * from './core/events';
 // `overallProcessPct` is NOT re-exported here, deliberately. It lives at `$lib/process-progress`
 // because the client is its only consumer, and a module used by one side is not a contract — so the
 // barrel re-exporting it would invert the dependency this whole directory exists to keep one-way.
-// Its two call sites import it directly; `tests/unit/shared/barrel-surface.test.ts` records the removal.
+// Its two call sites import it directly; `tests/unit/contract/barrel-surface.test.ts` records the removal.
 export * from './lyrics/separators';
 export * from './core/settings';
 export * from './process/fetchers';

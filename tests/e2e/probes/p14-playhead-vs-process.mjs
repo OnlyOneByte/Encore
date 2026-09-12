@@ -25,13 +25,13 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { findChromium } from '../lib/chromium.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * /pattern). Browser/Page are derived from cdp.mjs's own return types so they cannot
- * drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped results
+ * /pattern). Browser/Page are derived from driver.mjs's own return types so they cannot
+ * drift from the driver. page.evaluate() is typed Promise<any> by driver.mjs, so DOM/API-shaped results
  * are cast at the call site.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -152,23 +152,13 @@ console.log(`fixture B (processes): ${songB.title} [${songB.id}]\n`);
 // ── drive the TV ──────────────────────────────────────────────────────────
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
-launch(chromium, [
-	'--remote-debugging-port=' + CDP_PORT,
-	'--headless=new',
-	'--no-sandbox',
-	'--disable-gpu',
-	'--no-first-run',
-	// NOT-A-TV, deliberately: see the header. The playhead must be moving to be perturbed.
-	'--autoplay-policy=no-user-gesture-required',
-	'--user-data-dir=' + join(SCRATCH, 'chrome-' + process.pid),
-	'about:blank'
-]);
+
 await sleep(2500);
 
 /** @type {Browser | undefined} */
 let browserMaybe;
 try {
-	browserMaybe = await connect(CDP_PORT);
+	browserMaybe = await connect();
 } catch (err) {
 	bail(`could not attach to Chromium: ${/** @type {Error} */ (err).message}`);
 }

@@ -71,7 +71,7 @@ Two methodology notes it paid for, beyond the ones in `docs/ux/04-verification.m
 - **Headless has no notch.** Every `env(safe-area-inset-*)` resolves to 0, so
   `calc(10px + env(safe-area-inset-bottom, 0px))` and a bare `10px` measure identically and a guard
   comparing them proves nothing. `page.safeAreaInsets({ bottom: 34 })` is what makes that arm real —
-  the helper #827's spike added to `cdp.mjs`, which this gate consumes rather than adding a second copy
+  the helper #827's spike added to `driver.mjs`, which this gate consumes rather than adding a second copy
   of. Two identical helpers under two names on the shared driver is the drift `lib/chromium.mjs`'s
   single-source rule exists to prevent.
 
@@ -159,7 +159,7 @@ reference for this.
 ## Writing a probe
 
 Put it at `e2e/probes/<your-id>.mjs` so parallel authors never touch the same file. Import `connect`
-and `sleep` from `../cdp.mjs` and every selector from `../contract.ts` — never hand-write a selector,
+and `sleep` from `../driver.mjs` and every selector from `../contract.ts` — never hand-write a selector,
 because `contract.test.ts` guards those against the source and a hand-written one rots silently.
 
 Exit codes: `0` all passed, `1` a real failure, `2` the environment could not host the test. Never

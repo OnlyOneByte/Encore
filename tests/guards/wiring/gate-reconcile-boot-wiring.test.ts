@@ -1,7 +1,7 @@
 /*
  * guard: the boot reconciliation of stale readiness gates is actually WIRED, and wired where it works.
  *
- * The behavioural arms live in tests/unit/core/server/jobs/gate-reconcile-boot.test.ts and drive
+ * The behavioural arms live in tests/unit/server/jobs/gate-reconcile-boot.test.ts and drive
  * `reconcileStrandedGates` directly. They stay green if app.ts never calls it — which is the whole
  * defect class this fix belongs to: XR-JOB-04's first half was a settle that worked in memory and was
  * never persisted, and the sibling XR-JOB-11 was a TTL whose check was never reached because nothing

@@ -27,15 +27,15 @@
  * WRITES SCREENSHOTS TO $SCRATCH/shots/p10/. Changes NO other file in the tree.
  */
 
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SEL } from '../contract.ts';
 
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
- * the fuzz.mjs pattern). Browser/Page derive from cdp.mjs's own return types; every
- * page.evaluate() result is protocol-shaped and stays loose (cdp.mjs types evaluate as Promise<any>),
+ * the fuzz.mjs pattern). Browser/Page derive from driver.mjs's own return types; every
+ * page.evaluate() result is protocol-shaped and stays loose (driver.mjs types evaluate as Promise<any>),
  * cast at the call site.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -94,7 +94,7 @@ async function driveRoomToPlaying() {
 	const phone = await browser.newPage();
 	await phone.viewport(430, 900, 1);
 	await phone.goto(`http://127.0.0.1:${PORT}/join`);
-	await phone.waitFor(`document.querySelector('input[placeholder^="e.g."]') != null`, { timeout: 5000 });
+	await phone.waitForSelector('input[placeholder^="e.g."]' , { timeout: 5000 });
 	const uniq = `Driver-${Date.now().toString(36).slice(-5)}`;
 	await phone.fill('input[placeholder^="e.g."]', uniq);
 	await phone.evaluate(
@@ -102,7 +102,7 @@ async function driveRoomToPlaying() {
 	);
 	await phone.waitFor(`location.pathname === '/'`, { timeout: 5000 });
 	// Add the ready song to the queue (whichever action is offered — .add on ready songs).
-	await phone.waitFor(`document.querySelector(${JSON.stringify(SEL.songRow)}) != null`, { timeout: 6000 });
+	await phone.waitForSelector(SEL.songRow , { timeout: 6000 });
 	const clicked = await phone.evaluate(`(() => {
 		const row = document.querySelector(${JSON.stringify(SEL.songRow)});
 		if (!row) return 'no-row';
@@ -387,7 +387,7 @@ async function measureRemote(label, w, h) {
 	await page.viewport(w, h, 1);
 	// Join first so the page lands on the room UI, not the /join redirect.
 	await page.goto(`http://127.0.0.1:${PORT}/join`);
-	await page.waitFor(`document.querySelector('input[placeholder^="e.g."]') != null`, { timeout: 5000 });
+	await page.waitForSelector('input[placeholder^="e.g."]' , { timeout: 5000 });
 	const uniq = `P10-${label}-${Date.now().toString(36).slice(-4)}`;
 	await page.fill('input[placeholder^="e.g."]', uniq);
 	// Wait for submit, then click.

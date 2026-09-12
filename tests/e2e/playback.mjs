@@ -20,16 +20,15 @@
  * no Chromium, empty library) — never conflated with a failure, because a skipped audio test that
  * reports green is how this hole stayed open.
  */
-import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { connect, sleep } from './cdp.mjs';
+import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver (pattern). Browser/Page derive from
- * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * driver.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check
@@ -77,28 +76,12 @@ if (!ready.length) {
 }
 console.log(`fixture: "${ready[0].title}" → ${ready[0].instrumentalRef}\n`);
 
-const proc = spawn(
-	chromium,
-	[
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		'--user-data-dir=' + join(process.env.KIROCREW_SCRATCH ?? '/tmp', `encore-playback-${process.pid}`),
-		// Autoplay is the whole point of a TV with no user gesture: the real /tv has nobody to tap it,
-		// so a run WITHOUT this flag is testing a restriction the living room does not have. The app
-		// still must not DEPEND on a gesture; that is asserted separately below.
-		'--autoplay-policy=no-user-gesture-required',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @type {Browser | undefined} */
 let browser;
 try {
-	browser = await connect(CDP_PORT);
+	browser = await connect();
 
 	// ── a singer joins and queues the processed song, through the real UI ──────────
 	const phone = await browser.newPage();
@@ -242,7 +225,6 @@ try {
 	check('the flow ran to completion', false, String(err instanceof Error ? err.stack : err));
 } finally {
 	browser?.close();
-	proc.kill();
 }
 
 const failed = checks.filter((c) => !c.ok);

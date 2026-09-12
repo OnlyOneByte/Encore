@@ -74,7 +74,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { connect, sleep } from './cdp.mjs';
+import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
@@ -98,7 +98,7 @@ const at = (...parts) => __join(repoRoot, ...parts);
 
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json; the shapes
- * below are derived from cdp.mjs's own return types so they cannot drift from the driver.
+ * below are derived from driver.mjs's own return types so they cannot drift from the driver.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
@@ -106,7 +106,7 @@ const at = (...parts) => __join(repoRoot, ...parts);
  * @typedef {keyof typeof BASE_WEIGHT} InputName
  *
  * A driven input as recorded in the sequence. `evaluate`-derived fields stay loose on purpose: the CDP
- * bridge returns protocol-shaped values (cdp.mjs types `evaluate` as `Promise<any>`), so call sites cast.
+ * bridge returns protocol-shaped values (driver.mjs types `evaluate` as `Promise<any>`), so call sites cast.
  * @typedef {{ who: string, input: string, detail: string, noop?: boolean, seam?: string | null }} Step
  *
  * @typedef {{ present: boolean, disabled: boolean }} TransportState
@@ -541,19 +541,11 @@ async function lyricsFor(ref) {
 // ── the browser ──────────────────────────────────────────────────────────────────────────────────
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM to an existing browser binary.');
-const chromeArgs = [
-	`--remote-debugging-port=${CDP_PORT}`,
-	'--headless=new',
-	'--no-sandbox',
-	'--disable-gpu',
-	'--no-first-run',
-	'--user-data-dir=' + join(process.env.KIROCREW_SCRATCH ?? '/tmp', `encore-fuzz-chrome-${process.pid}`)
-];
-// Deliberately CONDITIONAL. Without the flag this is a television; with it, it is not.
-if (AUTOPLAY) chromeArgs.push('--autoplay-policy=no-user-gesture-required');
-chromeArgs.push('about:blank');
-const chrome = spawn(chromium, chromeArgs, { stdio: 'ignore' });
-owned.procs.push(chrome);
+// The flags this flow needs are passed to the DRIVER, which launches the browser. Only one of them is
+// interesting: the autoplay policy is CONDITIONAL and is the experiment itself — without the flag this is a
+// television, with it, it is not. It must stay a per-run choice rather than a driver default, or the negative
+// half of the fuzz stops being runnable while still reporting a pass.
+const chromeArgs = AUTOPLAY ? ['--autoplay-policy=no-user-gesture-required'] : [];
 
 /**
  * The TV's on-stage master element.
@@ -1364,7 +1356,7 @@ function printSummary() {
 }
 
 /**
- * THE GESTURE, DELIVERED — AND KEPT. A trusted real tap was added to the driver (cdp.mjs realClick,
+ * THE GESTURE, DELIVERED — AND KEPT. A trusted real tap was added to the driver (driver.mjs realClick,
  * proven 7/7 by p13-tap-to-start.mjs), but this randomised driver never called it — so gesturelessly
  * the TV never started and I4/I6 could only ever SKIP. Deliver the real tap the first time
  * the room has a mounted master on the current song and claims to be playing, and re-apply it whenever
@@ -1404,7 +1396,7 @@ async function maybeDeliverTap(world) {
 // ── run ──────────────────────────────────────────────────────────────────────────────────────────
 let exitCode = 0;
 try {
-	browser = await connect(CDP_PORT);
+	browser = await connect(undefined, { args: chromeArgs });
 
 	// Two phones, each its own isolated context and therefore its own session — two genuinely
 	// different guests, not one guest in two tabs. That is the whole point of the topology: a
@@ -1432,7 +1424,7 @@ try {
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
 	await tv
-		.waitFor(`document.querySelector(${JSON.stringify(SEL.tvConnected)}) !== null`, { timeout: 15000 })
+		.waitForSelector(SEL.tvConnected , { timeout: 15000 })
 		.catch(() => {});
 
 	// The room starts empty; seed it with one add so the first input has something to act on. Recorded

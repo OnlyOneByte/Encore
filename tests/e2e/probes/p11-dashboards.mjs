@@ -32,11 +32,11 @@ import { findChromium } from '../lib/chromium.mjs';
 
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
- * the an earlier change fuzz.mjs pattern). The Browser/Page shapes are derived from cdp.mjs's own return types
+ * the an earlier change fuzz.mjs pattern). The Browser/Page shapes are derived from driver.mjs's own return types
  * so they cannot drift from the driver; every JSON endpoint and page.evaluate() result is
- * protocol-/API-shaped and stays loose (cdp.mjs types evaluate as Promise<any>), cast at the call site.
+ * protocol-/API-shaped and stays loose (driver.mjs types evaluate as Promise<any>), cast at the call site.
  *
- * @typedef {Awaited<ReturnType<typeof import('../cdp.mjs').connect>>} Browser
+ * @typedef {Awaited<ReturnType<typeof import('../driver.mjs').connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
  *
@@ -896,31 +896,11 @@ async function main() {
 
 	// ── (6) SSR + screenshots at 390 & 1440 ──────────────────────────────
 	console.log('\n[step 7] screenshot the three dashboards at 390 and 1440');
-	const chromiumProc = launch(
-		chromium,
-		[
-			'--headless=new',
-			'--no-sandbox',
-			'--disable-gpu',
-			`--remote-debugging-port=${CDP_PORT}`,
-			'--remote-allow-origins=*',
-			'about:blank'
-		],
-		{ stdio: 'ignore' }
-	);
-	// Poll for CDP readiness.
-	let cdpReady = false;
-	for (let i = 0; i < 40 && !cdpReady; i++) {
-		try {
-			const r = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
-			if (r.ok) cdpReady = true;
-		} catch {}
-		if (!cdpReady) await sleep(200);
-	}
-	if (!cdpReady) bail('Chromium CDP port never came up — cannot screenshot the dashboards');
-
-	const { connect } = await import('../cdp.mjs');
-	const browser = await connect(CDP_PORT);
+	// The driver launches its own browser, so there is no child to start and no CDP port to poll for.
+	// This used to spawn Chromium here and then wait up to 8s for `/json/version` to answer before
+	// attaching; `connect()` does its own waiting internally.
+	const { connect } = await import('../driver.mjs');
+	const browser = await connect();
 	try {
 		/**
 		 * @param {string} path
@@ -933,7 +913,7 @@ async function main() {
 			await page.viewport(w, h, 1);
 			await page.goto(url);
 			// Wait for the h1 heading to exist so a shot of a still-loading spinner is impossible.
-			await page.waitFor(`document.querySelector('h1') !== null`, { timeout: 8000 }).catch(() => null);
+			await page.waitForSelector('h1' , { timeout: 8000 }).catch(() => null);
 			// Give client-side fetch()es an extra beat to resolve.
 			await sleep(600);
 			await page.screenshot(path, { fullPage: true });
@@ -974,7 +954,7 @@ async function main() {
 		const dompage = await browser.newPage();
 		await dompage.viewport(1440, 900, 1);
 		await dompage.goto(`${BASE}/metrics`);
-		await dompage.waitFor(`document.querySelector('h1') !== null`, { timeout: 8000 });
+		await dompage.waitForSelector('h1' , { timeout: 8000 });
 		await sleep(400);
 		// Column headers on the "each step" table.
 		const headerRow = await dompage.texts('table th');
@@ -1082,7 +1062,6 @@ async function main() {
 		);
 	} finally {
 		browser.close();
-		killProc(chromiumProc);
 	}
 
 	// ── (7) documented security posture ──────────────────────────────────
@@ -1153,33 +1132,16 @@ async function main() {
 	// ── (8) UI parity — the numbers in the page match the API ────────────
 	// Re-open a phone-sized viewport and pull the rendered text; compare it against the API.
 	{
-		const chromium2 = launch(
-			chromium,
-			[
-				'--headless=new',
-				'--no-sandbox',
-				'--disable-gpu',
-				`--remote-debugging-port=${CDP_PORT + 1}`,
-				'--remote-allow-origins=*',
-				'about:blank'
-			],
-			{ stdio: 'ignore' }
-		);
-		let cdpReady2 = false;
-		for (let i = 0; i < 40 && !cdpReady2; i++) {
-			try {
-				const r = await fetch(`http://127.0.0.1:${CDP_PORT + 1}/json/version`);
-				if (r.ok) cdpReady2 = true;
-			} catch {}
-			if (!cdpReady2) await sleep(200);
-		}
-		if (cdpReady2) {
-			const browser2 = await connect(CDP_PORT + 1);
+		// A second browser for the parity pass. No spawn and no readiness poll: the driver launches its
+		// own, so `cdpReady2` had nothing to wait for and the `if (cdpReady2)` guard would have skipped
+		// this whole check silently if the poll ever failed.
+		const browser2 = await connect();
+		{
 			try {
 				const p = await browser2.newPage();
 				await p.viewport(1440, 900, 1);
 				await p.goto(`${BASE}/stats`);
-				await p.waitFor(`document.querySelector(${JSON.stringify(SEL.dashTileNumber)}) !== null`, { timeout: 8000 });
+				await p.waitForSelector(SEL.dashTileNumber , { timeout: 8000 });
 				await sleep(400);
 				const tiles = await p.texts(SEL.dashTileNumber);
 				// Order in DOM: songs sung, ready to sing, different songs (see /stats markup).
@@ -1205,7 +1167,6 @@ async function main() {
 				}
 			} finally {
 				browser2.close();
-				killProc(chromium2);
 			}
 		}
 	}

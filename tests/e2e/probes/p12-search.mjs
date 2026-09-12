@@ -43,14 +43,14 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * earlier changes pattern). Browser/Page are derived from cdp.mjs's own return types.
+ * earlier changes pattern). Browser/Page are derived from driver.mjs's own return types.
  * fetch().json() and page.evaluate() are Promise<any>, so API-shaped results are typed via the Media
  * row shape and the SearchBody/LibraryBody response shapes below, cast at the call site.
  *
@@ -919,21 +919,10 @@ if (!chromium) {
 	);
 } else {
 	const CDP_PORT = Number(process.env.CDP_PORT ?? 9433);
-	const proc = spawn(
-		chromium,
-		[
-			'--headless=new',
-			'--no-sandbox',
-			'--disable-gpu',
-			`--remote-debugging-port=${CDP_PORT}`,
-			'--remote-allow-origins=*',
-			'about:blank'
-		],
-		{ stdio: 'ignore' }
-	);
+
 	let browser;
 	try {
-		browser = await connect(CDP_PORT);
+		browser = await connect();
 		const phone = await browser.newPage();
 
 		// Join first (the phone route redirects to /join when no session cookie).
@@ -1018,7 +1007,6 @@ if (!chromium) {
 		record('MEDIUM', 'S9-ui-checks', false, `browser flow crashed: ${String(err).slice(0, 200)}`);
 	} finally {
 		browser?.close();
-		proc.kill();
 	}
 }
 

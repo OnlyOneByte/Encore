@@ -5,7 +5,7 @@
 // THE DEFECT THIS PINS. `MediaStore.url()` presigned a 1-hour direct S3 URL and was documented as "how
 // the TV resolves a playable source for a Media". It had ZERO production callers: `TvPlayer.svelte` and
 // `LyricsOverlay.svelte` string-build `/media/${ref}`, and the route serves every store kind by range.
-// Its ONLY callers were in `tests/unit/core/server/media/store.test.ts` — so the method was covered,
+// Its ONLY callers were in `tests/unit/server/media/store.test.ts` — so the method was covered,
 // exercised, and green, while being unreachable from the running product. A coverage number cannot tell
 // those two states apart, which is exactly why this guard reads CALL SITES instead.
 //

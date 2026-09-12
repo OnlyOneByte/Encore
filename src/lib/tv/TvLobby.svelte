@@ -52,9 +52,24 @@
 	 * 56px chip; headroom is ~12 before the chips must shrink. Above CHIP_STEPDOWN the roster switches to
 	 * a smaller chip tier (the `.roster.dense` modifier) so 13+ guests still fit without clipping or
 	 * overflowing the title-safe area, rather than letting a bigger party push chips off-screen.
+	 *
+	 * A COUNT IS NOT THE CONSTRAINT — TOTAL WIDTH IS, and keying only on the count clipped the roster.
+	 * The "~12" headroom was measured with names of a typical length, but `displayName` is user-typed and
+	 * `repository.ts` admits up to 32 characters. At that ceiling a chip is roughly three times as wide,
+	 * so NINE guests already overflow the two rows `max-height: 26vh` allows, while the count rule sits
+	 * quiet until 13 — and `overflow: hidden` then cut the tail off silently. `e2e/lobby-overlap` caught
+	 * it at every viewport below 1080p: nine 32-character names clipped 9 chips at 720p, 7 at 768p.
+	 *
+	 * So the rule now keys on the thing that actually wraps: total characters across the roster.
+	 * CHAR_BUDGET is CHIP_STEPDOWN × a typical name, which keeps the measured behaviour for ordinary
+	 * parties — 12 guests at ~10 characters is still not dense — and steps down early exactly when the
+	 * names are what consume the row. Still a rule, still no geometry read: `.dense` is derived from the
+	 * data, never from measuring the rendered strip.
 	 */
 	const CHIP_STEPDOWN = 12;
-	const dense = $derived(roster.length > CHIP_STEPDOWN);
+	const CHAR_BUDGET = 120;
+	const rosterChars = $derived(roster.reduce((n, m) => n + m.displayName.length, 0));
+	const dense = $derived(roster.length > CHIP_STEPDOWN || rosterChars > CHAR_BUDGET);
 	/* Scheme-less AND query-less, matching attract: nobody types "http://" or the redundant ?room=CODE
 	   off a wall (the QR carries the full URL). Stripping the query is also what keeps the address to one
 	   line so it cannot collide with a full roster below it. */

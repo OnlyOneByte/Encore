@@ -94,7 +94,7 @@ test('the retired tag-filter wiring guard is deleted, and its server sibling is 
 	// a name, and colocation used to be the only thing telling them apart. It no longer is, so the
 	// absence is stated twice — at the address the phone-page guard would occupy, and as a sweep proving
 	// it has not reappeared at any OTHER address under tests/.
-	const RETIRED = 'tests/unit/core/routes/library-tag-filter-wiring.test.ts';
+	const RETIRED = 'tests/unit/routes/library-tag-filter-wiring.test.ts';
 	expect(existsSync(at(RETIRED))).toBe(false);
 	const sameName = filesUnder('tests', ['.test.ts'])
 		.map((f) => relative(f))
@@ -106,7 +106,7 @@ test('the retired tag-filter wiring guard is deleted, and its server sibling is 
 	).toEqual(['tests/guards/wiring/library-tag-filter-wiring.test.ts']);
 	// Its sibling pins PER-ROW tag chips, which this change does not touch, and the server halves
 	// of still hold. Deleting any of the three under cover of this ruling would be wrong.
-	expect(existsSync(at('tests/unit/core/routes/library-tags-wiring.test.ts'))).toBe(true);
+	expect(existsSync(at('tests/guards/wiring/library-tags-page-wiring.test.ts'))).toBe(true);
 	expect(existsSync(at('tests/guards/wiring/library-tag-filter-wiring.test.ts'))).toBe(true);
 	expect(existsSync(at('tests/guards/subsystem-media/library-tag-filter.test.ts'))).toBe(true);
 });
