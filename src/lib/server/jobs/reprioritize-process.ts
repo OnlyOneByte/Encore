@@ -1,4 +1,4 @@
-// Re-prioritising a process whose turn arrived AFTER it was filed — the starvation half of an earlier change.
+// Re-prioritising a process whose turn arrived AFTER it was filed — the starvation half of the problem.
 //
 // A process's `priority` is a snapshot of `soonestSeqFor` taken ONCE, at enqueue (process.ts).
 // The queue entry that gives a song its rotation position, though, does not always exist yet when

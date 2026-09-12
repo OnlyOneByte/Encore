@@ -14,14 +14,14 @@
 import { test, expect } from 'bun:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { appCore, appE2e } from '@encore/test-support';
+import { e2eDir, repoRoot } from '@encore/test-support';
 import { HOOKS, PRESET_COLOUR_NAMES, SEL } from '../../../tests/e2e/contract';
 import { classPresent, svelteFiles } from '$lib/test-helpers';
 
 // . and tests/e2e, anchored at the repo root. `E2E` is what this guard's own location used
 // to supply as `at('tests/e2e')`: the e2e directory holding the drivers, party.mjs and probes/.
-const CORE = appCore;
-const E2E = appE2e;
+const CORE = repoRoot;
+const E2E = e2eDir;
 
 test('every file the e2e depends on still exists', () => {
 	const missing = HOOKS.filter((h) => !existsSync(join(CORE, h.file))).map((h) => `${h.id}: ${h.file}`);

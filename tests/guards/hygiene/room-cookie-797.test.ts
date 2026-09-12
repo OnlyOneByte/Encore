@@ -31,14 +31,14 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc } from '@encore/test-support';
+import { srcDir } from '@encore/test-support';
 
 /**
  * src — the production tree this guard walks. Was `at('src')`, counted
  * out from this guard's old home in src/lib/server/singers; it is the shared anchor now, so the
  * scan cannot be pointed at nothing by moving the test.
  */
-const SRC = appSrc;
+const SRC = srcDir;
 
 /**
  * Blank out comments while preserving line structure.

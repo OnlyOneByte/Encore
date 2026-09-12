@@ -165,6 +165,22 @@ export interface Media {
 	 */
 	lyricsOverrideRef?: string;
 	/**
+	 * The WORDS a human pasted for a `manual` re-pick — the text `lyricsOverrideRef` names but that no
+	 * provider has ever produced, so nothing on disk holds it yet.
+	 *
+	 * It lives HERE, beside the ref, because `assignParams` derives every job parameter from the MEDIA:
+	 * a job row carries no params, so a paste kept anywhere narrower (an in-memory map, a field on the
+	 * live Job) is lost by a restart between enqueue and dispatch — the reaper requeues the align,
+	 * dispatch re-derives its params from this record, and the worker gets `pinnedRef` with nothing
+	 * behind it. Persisted in the sidecar and mirrored in the index for exactly that reason.
+	 *
+	 * PAIRED WITH `lyricsOverrideRef`, always: this is the text stored under that ref, so picking a
+	 * different candidate CLEARS it. Left behind it would outrank the ref in the worker's pinned path and
+	 * re-time abandoned words over the candidate the human actually chose. Absent means "the pin names a
+	 * candidate already on disk" (or there is no pin), and the worker re-times that stored doc.
+	 */
+	lyricsOverrideText?: string;
+	/**
 	 * How far the `align` step has got — the lyrics half of the process gate (see gates.ts).
 	 *
 	 * `ready` means alignment RAN, not that it found words: a genuine instrumental completes with no

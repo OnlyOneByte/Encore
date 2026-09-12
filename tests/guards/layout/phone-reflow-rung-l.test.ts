@@ -25,7 +25,7 @@
 import { test, expect } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appCore, at } from '@encore/test-support';
+import { at, repoRoot } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -33,7 +33,7 @@ function stripComments(src: string): string {
 }
 
 // ., anchored at the repo root rather than counted up from this file's own location.
-const CORE = appCore;
+const CORE = repoRoot;
 const PROBE_PATH = at('tests', 'e2e', 'probes', 'p15-phone-reflow.mjs');
 const STATS_PATH = join(CORE, 'src', 'routes', 'stats', '+page.svelte');
 

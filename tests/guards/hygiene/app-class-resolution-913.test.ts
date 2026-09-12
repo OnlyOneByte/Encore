@@ -1,7 +1,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc } from '@encore/test-support';
+import { srcDir } from '@encore/test-support';
 
 /*
  * ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -36,11 +36,11 @@ import { appSrc } from '@encore/test-support';
  * A naive grep over the bundle reports it resolved and misses the defect.
  */
 
-// `appSrc` (src), the repo-root anchor, rather than `at('src')` — which
+// `srcDir` (src), the repo-root anchor, rather than `at('src')` — which
 // was a statement about where this TEST lived embedded in a statement about where the SOURCE lived.
 // Every `join(SRC, …)` below is unchanged, and so is the `SRC.length + 1` slicing that turns an
 // absolute hit into a `lib/…` / `routes/…` offender string.
-const SRC = appSrc;
+const SRC = srcDir;
 /** Stands in for a `{…}` expression, so a token fused to one is recognisable as dynamic. */
 const DYNAMIC = '\u0000';
 const VENDORED = join('components', 'ui');

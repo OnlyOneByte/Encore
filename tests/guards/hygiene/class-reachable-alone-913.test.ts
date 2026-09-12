@@ -47,12 +47,12 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc } from '@encore/test-support';
+import { srcDir } from '@encore/test-support';
 
 // The tree anchor comes from @encore/test-support rather than a relative walk: this guard moved
 // from src/lib/ into tests/ during the test-architecture refactor, and a relative path would have
-// to change again on the next move. `appSrc` is the repo's single source for 'where is src'.
-const SRC = appSrc;
+// to change again on the next move. `srcDir` is the repo's single source for 'where is src'.
+const SRC = srcDir;
 const VENDORED = join('components', 'ui');
 
 function svelteFiles(dir: string): string[] {

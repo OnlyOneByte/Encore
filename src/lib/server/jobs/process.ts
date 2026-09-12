@@ -236,7 +236,8 @@ export function manualLyricsRef(mediaId: string): string {
  * job and nothing would run — silently. So we CANCEL the live align first (cancel frees the slot),
  * then enqueue a fresh one, and reopen the lyrics gate. The owner rejected special-casing `align`
  * inside `findLive` (it would let a chained align race a manual one); cancel-then-enqueue is the
- * durable seam. `dispatch.ts` then reads `media.lyricsOverrideRef` and sends the worker `pinnedRef`.
+ * durable seam. `dispatch.ts` then reads `media.lyricsOverrideRef` and sends the worker `pinnedRef`, plus
+ * `pinnedText` when the pick was a paste — the words themselves, which no file on disk holds yet.
  *
  * Q1=A: no capability gate here — any joined singer may re-pick, like every other room control. The
  * endpoint enforces "joined"; this function does not re-check identity.
@@ -259,6 +260,12 @@ export function requestLyricsReselect(
 		ref = manualLyricsRef(mediaId);
 	} else {
 		const picked = typeof choice.ref === 'string' ? choice.ref : '';
+		// A paste of nothing but whitespace is a `no-text` refusal, not a fall-through to the ref branch:
+		// the caller named the paste shape, so answering `unknown-candidate` would blame a ref they never
+		// sent. The endpoint refuses this shape too; the refusal belongs here as well because THIS is where
+		// the pin is written and the job enqueued, and a blank paste must not pin a `manual` ref over a
+		// song's working lyrics.
+		if (!picked && typeof choice.text === 'string') return 'no-text';
 		// A pick must name a candidate actually on disk — a ref not in the set would pin the media to a
 		// pointer nothing resolves, blanking the overlay. The paste path is the way to introduce a NEW ref.
 		if (!picked || !(media.lyricsCandidates ?? []).some((c) => c.ref === picked)) return 'unknown-candidate';
@@ -267,6 +274,14 @@ export function requestLyricsReselect(
 
 	// Pin the human choice BEFORE enqueue so `dispatch.assignParams` reads it onto the align's params.
 	media.lyricsOverrideRef = ref;
+	// The PASTED WORDS, which the ref alone cannot carry: a manual ref names a candidate no provider has
+	// written, so without the text the worker receives a pointer to a file that does not exist and stops.
+	// Stored on the media (not on the job, which has no params) because dispatch derives an align job's
+	// params from this record — including after a restart requeues the job, which is what makes this the
+	// durable seam rather than a convenience. CLEARED on a ref pick: the text belongs to the pin it was
+	// pasted for, and a leftover paste outranks `pinnedRef` in the worker and would be re-timed over the
+	// candidate the human just chose.
+	media.lyricsOverrideText = pasted || undefined;
 
 	const priority = soonestSeqFor(mediaId, deps.state.entries);
 	const now = deps.now();
@@ -357,6 +372,72 @@ export function settleStemsGate(mediaId: string, mediaById: Map<string, Media>):
 }
 
 /**
+ * THE per-gate settlement rule, as a table — what leaves a readiness gate in flight, which job types
+ * can still settle it, and how it settles when none of them ever will.
+ *
+ * It is a TABLE rather than three `if`s inside `settleGatesForFailedJob` because the rule now has TWO
+ * readers, and a second copy of it is exactly how the two halves of this fix would drift apart:
+ *
+ *   • `settleGatesForFailedJob` (below) — ONE job just died. Which gate does it settle?
+ *   • `reconcileStrandedGates` (gate-reconcile.ts) — at boot, NO job is alive for this gate and none
+ *     ever will be. Same settle, arrived at from the other direction: it must know which job types
+ *     to look for before it may conclude the gate is stale, and that list is this same mapping read
+ *     backwards. Hard-coding `['fetch','stems']` over there would mean a future step added here
+ *     silently escapes the boot pass — and the failure mode is the worst one in this subsystem
+ *     (a song that reads as processing forever), reintroduced quietly.
+ *
+ * Mirrors `GATES` in `$lib/contract/queue/gates.ts` deliberately, in the same pipeline order and under
+ * the same gate ids: that table says whether a step is DONE, this one says what happens when a step
+ * can never finish. Adding a future gate means one entry in each.
+ *
+ * `stems-upgrade` appears in no `settledBy` list, which is the whole of its rule: the song still has
+ * its working instrumental, so a dead upgrade settles nothing.
+ */
+export interface GateSettlement {
+	/** Matches the `ProcessGate.id` in the contract's `GATES`, so a log line reads the same on both sides. */
+	readonly id: 'stems' | 'lyrics';
+	/** Job types whose completion or failure is what moves this gate. */
+	readonly settledBy: readonly JobType[];
+	/**
+	 * Is this gate MID-FLIGHT for this song — a step actively claimed as running, as opposed to done
+	 * (`ProcessGate.done`) or never started?
+	 *
+	 * Narrow on purpose: only the explicit `'queued'` marker counts. A NULL/absent `lyricsStatus` means
+	 * "this row predates the gate" and an absent stems status means "nothing ever started" — neither is
+	 * a claim that work is in progress, so neither may be settled. Settling a never-started lyrics gate
+	 * would forge an align that never ran and mark an unprocessed song finished.
+	 */
+	readonly inFlight: (m: Media) => boolean;
+	/** How the gate settles when nothing will ever finish it. */
+	readonly settle: (mediaId: string, mediaById: Map<string, Media>) => boolean;
+}
+
+export const GATE_SETTLEMENT: readonly GateSettlement[] = [
+	{
+		id: 'stems',
+		// `fetch` counts because requestProcess marks the media processing BEFORE the download starts,
+		// so a song mid-fetch has a legitimately in-flight stems gate and no stems job yet.
+		settledBy: ['fetch', 'stems'],
+		inFlight: (m) => m.stemStatus === 'queued',
+		settle: settleStemsGate
+	},
+	{
+		id: 'lyrics',
+		settledBy: ['align'],
+		inFlight: (m) => m.lyricsStatus === 'queued',
+		settle: settleLyricsGate
+	}
+] as const;
+
+/**
+ * The subset of a `Job` this rule actually reads. Widened from `Job` so the boot reconciliation can ask
+ * the same question about a job that no longer EXISTS — a gate stranded by a row that was cancelled and
+ * had its dedup slot freed has no `Job` to pass, and fabricating a fake one with invented attempts and
+ * timestamps just to reach the rule would be worse than naming the two fields the rule needs.
+ */
+export type SettleableJob = Pick<Job, 'mediaId' | 'jobType'>;
+
+/**
  * Settle the right gate for a job that has reached terminal `failed`, by job type. THE single rule
  * for what a dead process does to its song's readiness, so every terminal-fail path settles the same
  * way and a fourth one cannot silently reopen the hole.
@@ -367,7 +448,8 @@ export function settleStemsGate(mediaId: string, mediaById: Map<string, Media>):
  * `lyricsStatus`/`stemStatus` mid-flight forever: `readyToSing` never flips, rotation holds the
  * queue entry on every pass, and the song never plays even with its instrumental on disk.
  *
- * The per-type rule (unchanged from where it used to live inline in #onFailed):
+ * The per-type rule (unchanged from where it used to live inline in #onFailed) is now read off
+ * `GATE_SETTLEMENT` above rather than restated here, so the boot reconciliation cannot drift from it:
  *   • `align`        → settle the LYRICS gate. The song already plays; a dead align must not keep it
  *                      from ever being sung — let the party continue with no words on screen.
  *   • `fetch`/`stems`→ settle the STEMS gate back to un-processed. A dead download or separation used
@@ -378,10 +460,9 @@ export function settleStemsGate(mediaId: string, mediaById: Map<string, Media>):
  *
  * Returns whether it changed anything (a gate was settled), for the caller's logging.
  */
-export function settleGatesForFailedJob(job: Job, mediaById: Map<string, Media>): boolean {
-	if (job.jobType === 'align') return settleLyricsGate(job.mediaId, mediaById);
-	if (job.jobType === 'fetch' || job.jobType === 'stems') return settleStemsGate(job.mediaId, mediaById);
-	return false; // stems-upgrade: keep the working instrumental
+export function settleGatesForFailedJob(job: SettleableJob, mediaById: Map<string, Media>): boolean {
+	const gate = GATE_SETTLEMENT.find((g) => g.settledBy.includes(job.jobType));
+	return gate ? gate.settle(job.mediaId, mediaById) : false; // no gate: stems-upgrade keeps its instrumental
 }
 
 /**

@@ -265,7 +265,7 @@ copy-in rationale had already been retracted in place for the drawer (see the co
 below). That left a toolchain installed, fenced and guarded since an earlier change and used by **nothing**.
 
 The owner's ruling is to **adopt shadcn-svelte for the primitive layer across the app** — 42 buttons,
-21 inputs, 16 selects, 11 range inputs and the alert/disclosure surfaces, sliced S0–S5 in an earlier change. What
+21 inputs, 16 selects, 11 range inputs and the alert/disclosure surfaces, sliced S0–S5. What
 stays hand-rolled is not "not yet" but **not ever, unless something changes**: the whole TV tree (a
 ten-foot surface with its own type ladder has no business borrowing phone primitives), `SongRow`,
 `RangeBar`, and the composites `NowPlayingHero` / `ProcessingCard` / `QueueRow` — whose _primitives_
@@ -605,10 +605,14 @@ Parked deliberately. These return only if the owner says so.
   - _Score-reactive modulation._ Has no data to react to at all: scoring was REMOVED outright.
   - _Visualizers on the no-lyrics screens_ (lobby, `waiting`, interstitial). The ratified band for
     backgrounds is playing-only; extending it is a separate decision.
-    One incidental note that is load-bearing for any FFT work: it is possible at all only because
-    `TvPlayer.fileSrc` hardcodes `/media/${ref}` instead of `MediaStore.url(ref)`, so the media element is
-    always same-origin. Switch the TV to presigned object-store URLs and every FFT visualizer silently
-    goes flat with no error.
+  One incidental note that is load-bearing for any FFT work: it is possible at all only because
+  `TvPlayer.fileSrc` hardcodes `/media/${ref}`, so the media element is always same-origin. A
+  cross-origin source taints `MediaElementAudioSourceNode` and every FFT visualizer silently goes flat
+  with no error. This is no longer merely incidental: the `MediaStore.url()` presign path that could have
+  made the element cross-origin was **deleted** (it had no production caller — `docs/arch/01-media.md`
+  `XR-MED-10`), so same-origin playback is now a structural property of the store interface, guarded by
+  `tests/guards/subsystem-media/store-members-have-production-callers.test.ts`. Reinstating a URL-returning
+  store member is a decision about *this* deferred work, and must be argued here.
 - **Milkdrop-class WebGL preset rendering.** A hand-rolled fragment shader if ever, not `butterchurn`:
   this project vendored Lucide _path geometry_ rather than accept a webfont, to stay offline-LAN-safe.
 - **Human lyrics review UI** (idea from `karaoke-gen`). Provenance _labelling_ shipped; review is the

@@ -27,7 +27,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { queueEntries } from '$lib/server/db/schema';
-import { appE2e } from '@encore/test-support';
+import { e2eDir } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -35,7 +35,7 @@ function stripComments(src: string): string {
 }
 
 // Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
-const E2E_DIR = appE2e;
+const E2E_DIR = e2eDir;
 
 function collectMjs(root: string): string[] {
 	const out: string[] = [];

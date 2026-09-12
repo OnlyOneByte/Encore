@@ -11,6 +11,7 @@
 		"check": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json",
 		"typecheck": "bun run typecheck:app && bun run typecheck:root && bun run typecheck:e2e",
 		"test": "bun test",
+		"gates": "bun test || { echo 'gates: FAILED at leg 1/5 - bun test'; exit 1; }; (cd worker && python3 -m pytest -q) || { echo 'gates: FAILED at leg 2/5 - cd worker && python3 -m pytest -q'; exit 1; }; bun run typecheck || { echo 'gates: FAILED at leg 3/5 - bun run typecheck'; exit 1; }; bun run lint || { echo 'gates: FAILED at leg 4/5 - bun run lint'; exit 1; }; bun run build || { echo 'gates: FAILED at leg 5/5 - bun run build'; exit 1; }; echo 'gates: all 5 legs green'",
 		"gate:measured": "bun run tests/e2e/gates/measured-design.mjs",
 		"lint": "eslint --cache --cache-location .eslintcache 'src/**/*.{ts,mjs,svelte}' 'server.ts' 'tests/**/*.{ts,mjs,svelte}'",
 		"format": "prettier --write 'src/**/*.{ts,svelte,mjs}' 'tests/**/*.{ts,svelte}' '*.{json,md}'",

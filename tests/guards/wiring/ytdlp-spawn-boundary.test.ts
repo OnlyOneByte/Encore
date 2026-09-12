@@ -19,7 +19,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { appSrc, at } from '@encore/test-support';
+import { at, srcDir } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	return src
@@ -28,7 +28,7 @@ function stripComments(src: string): string {
 }
 
 const MEDIA_DIR = at('src/lib/server/media');
-const SRC_ROOT = appSrc;
+const SRC_ROOT = srcDir;
 const SPAWN_CAPTURE_REL = join('lib', 'server', 'media', 'spawn-capture.ts');
 
 function productionTsFiles(dir: string, out: string[] = []): string[] {

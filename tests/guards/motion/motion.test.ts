@@ -6,7 +6,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { styleFiles, svelteFiles } from '$lib/test-helpers';
-import { appSrc, at } from '@encore/test-support';
+import { at, srcDir } from '@encore/test-support';
 
 // ALLOWLIST, not a denylist: the file header states the rule positively —
 // animations/transitions may touch ONLY GPU-composited properties. Flag anything animated
@@ -225,7 +225,7 @@ function inlineTransitionProps(css: string): string[] {
 
 test('no transition animates a layout-triggering property (transform/opacity only)', () => {
 	// scan every .svelte + .css under src/ — including src/lib/tv, src/lib/ui and src/app.css
-	const files = styleFiles(appSrc);
+	const files = styleFiles(srcDir);
 	// count floor: a directory rename / moved src / glob typo would make this
 	// scan pass VACUOUSLY. The asserted floor (>= 24) is the guard — a broken walk reds instead of
 	// silently passing, the exact failure mode an earlier guard shipped under. (No live count in prose —
@@ -279,7 +279,7 @@ function keyframeProps(body: string): string[] {
 }
 
 test('@keyframes animate only GPU-composited properties', () => {
-	const files = styleFiles(appSrc);
+	const files = styleFiles(srcDir);
 	expect(files.length).toBeGreaterThanOrEqual(24); // @nvf-floor files.length
 	assertScanIntact(files);
 	const bad: string[] = [];

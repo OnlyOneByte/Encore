@@ -12,10 +12,10 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc } from '@encore/test-support';
+import { srcDir } from '@encore/test-support';
 import { svelteFiles } from '$lib/test-helpers';
 
-const SRC = appSrc; // src
+const SRC = srcDir; // src
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

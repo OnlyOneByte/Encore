@@ -13,12 +13,12 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc } from '@encore/test-support';
+import { srcDir } from '@encore/test-support';
 
-// Was `at('src')` from src/lib, which meant src. `appSrc` is that
+// Was `at('src')` from src/lib, which meant src. `srcDir` is that
 // same directory named directly, and it is derived from the repo-root marker rather than from wherever
 // this test happens to sit — the four reads below all throw on a missing file, so a wrong root is loud.
-const SRC = appSrc;
+const SRC = srcDir;
 const METRICS = join(SRC, 'routes/metrics/+page.svelte');
 const AUDIT = join(SRC, 'routes/metrics/[mediaId]/+page.svelte');
 const FORMAT = join(SRC, 'lib/metrics-format.ts');

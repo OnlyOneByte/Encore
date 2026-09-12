@@ -27,14 +27,14 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { appCore, appSrc, read } from '@encore/test-support';
+import { read, repoRoot, srcDir } from '@encore/test-support';
 
 // Anchored on the repo-root markers, not on this file's own location: the old forms were
 // `at('.')` and `at('src')`. Every arm below is a
 // file-set census, so a wrong walk root would make all four pass at zero — the exact silent green these
 // anchors exist to prevent.
-const CORE_ROOT = appCore;
-const SRC_ROOT = appSrc;
+const CORE_ROOT = repoRoot;
+const SRC_ROOT = srcDir;
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

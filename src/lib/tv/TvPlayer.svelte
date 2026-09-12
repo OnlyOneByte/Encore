@@ -48,7 +48,7 @@
 		seekRev?: number;
 		keyShift?: number; // ± semitones for a file song — selects the keyed instrumental
 		guideLevel?: number; // 0..1 — how loud the original vocals sit under the instrumental
-		// The MASTER instrumental level (0..1), the loudness-normalization pulldown for an earlier change. Resolved by
+		// The MASTER instrumental level (0..1), the loudness-normalization pulldown. Resolved by
 		// the TV route from the room's `loudnessNormalization` toggle, this song's measured loudness, and
 		// the library median (see loudness-normalization.ts). 1 = untouched, which is the whole existing
 		// library and every song when the feature is off / below floor / unmeasured. Attenuate-only:
@@ -611,7 +611,7 @@
 	});
 
 	/**
-	 * Lock the guide onto the master CURRENT playhead -- the pre-roll alignment, and the fix for an earlier change.
+	 * Lock the guide onto the master CURRENT playhead -- the pre-roll alignment, and the fix.
 	 *
 	 * Called at the moment the guide can actually play (its canplay) and on a transport arm, never at
 	 * effect time before the buffer exists. The decision is prerollSeekTarget in guide-sync.ts: it reads
@@ -738,7 +738,7 @@
 	}
 
 	/**
-	 * Resume the master to the room's position on a COLD MOUNT — the fix for an earlier change, and the master's
+	 * Resume the master to the room's position on a COLD MOUNT — the fix, and the master's
 	 * counterpart to `alignGuidePreroll`.
 	 *
 	 * Called at the moment the master can actually play (its `canplay`), never at effect time before

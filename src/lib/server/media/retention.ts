@@ -222,7 +222,7 @@ export function planEviction(
  * Callers dedupe with a Set, so overlap (a candidate that equals `lyricsRef`) is free.
  *
  * Exported because `media/delete.ts` needs the same answer: it had grown a SECOND enumeration
- * (`derivedRefsFor`) that omitted `lyricsCandidates`, re-creating the exact undercount an earlier change/an earlier change closed
+ * (`derivedRefsFor`) that omitted `lyricsCandidates`, re-creating the exact undercount two earlier changes closed
  * here — N−1 lyrics JSONs orphaned forever, since a hard delete removes the sidecar and the row and
  * nothing can ever enumerate that media again. Two hand-maintained answers to "what does this media own
  * on disk" is the defect; this is the one answer. The delete adds id-derived keys on top (it must name
@@ -250,7 +250,7 @@ export function derivedRefsOf(m: Media): string[] {
 		// ENCORE_KEEP_RAW_CAPTIONS — so it is enumerated from the id, one key per (kind, ext). Without this
 		// it inherits NONE of the "safe to delete, first to evict" retention its own docstring claims:
 		// derivedBytesOf undercounts and evictDerived orphans the file on disk permanently, the identical
-		// undercount an earlier change/an earlier change closed for the vocals/lyrics siblings above. Naming both exts per kind is
+		// undercount two earlier changes closed for the vocals/lyrics siblings above. Naming both exts per kind is
 		// free: the ext is chosen from the winning file at process time (.vtt/.srt), and a key whose file is
 		// absent is skipped by the existsSync check below. Callers dedupe with a Set.
 		...CAPTION_KINDS.flatMap((kind) => KNOWN_CAPTION_EXTS.map((ext) => rawCaptionKey(m.id, kind, ext)))

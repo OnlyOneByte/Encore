@@ -107,7 +107,7 @@ def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed(
 
     Part (1) is the original an earlier change finding: "nothing plays [the vocals stem]" — false, the vocals stem is
     the guiding track, a second <audio> the TV mixes under the instrumental at up to full gain and pitch-
-    shifts with the key (src/lib/tv/TvPlayer.svelte). Part (2) is an earlier change's tail-cleanup of an earlier change:
+    shifts with the key (src/lib/tv/TvPlayer.svelte). Part (2) is a later change's tail-cleanup:
     once an earlier change pointed PublishStems at encode_flac_argv, the AAC vocals path (STEM_BITRATE + encode_stem_argv
     + the ENCORE_STEM_BITRATE knob) reached no argv, so it was deleted. There is no behaviour to test, so
     this pins the prose and the delete: the guiding-track reason stays named, and the dead AAC names must

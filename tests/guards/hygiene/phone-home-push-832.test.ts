@@ -12,10 +12,10 @@
 import { test, expect } from 'bun:test';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { appE2e } from '@encore/test-support';
+import { e2eDir } from '@encore/test-support';
 import { SEL, HOOKS } from '../../../tests/e2e/contract';
 
-const E2E = appE2e;
+const E2E = e2eDir;
 
 /** Every driver and probe: the .mjs files that actually drive a browser. */
 function driverFiles(): string[] {
