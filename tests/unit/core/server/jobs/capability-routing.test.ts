@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import { requiredCapability, planAssignments, hasCapableWorker, type CapabilityFor } from '$server/jobs/dispatch';
-import { DEFAULT_GLOBAL_SETTINGS, type Job, type GlobalSettings } from '@encore/shared';
+import { DEFAULT_GLOBAL_SETTINGS, type Job, type GlobalSettings } from '$shared';
 import type { WorkerSession } from '$server/jobs/registry';
 
 function job(id: string, jobType: Job['jobType']): Job {

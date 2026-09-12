@@ -9,14 +9,14 @@ This module owns "where does text come from". A `LyricsSource` yields text plus 
 timing layer in whisperx.py then force-aligns whatever arrived. Sources are collected into a list and
 run INDEPENDENTLY — not first-hit — because text quality and timing fidelity are independent axes and
 ASR runs on every cook regardless (it is also the only signal that catches a confidently WRONG
-LRCLIB match; see agreementScore in packages/shared/src/lyrics/lyrics.ts).
+LRCLIB match; see agreementScore in apps/core/src/shared/lyrics/lyrics.ts).
 
 New module rather than an addition to lyrics/source.py: the LRCLIB adapter needs
 `whisperx.lrclib_to_segments`, and whisperx.py already imports the lyrics package — putting the adapter
 there would close an import cycle.
 
 PURE of network/ML by construction: every source is injectable, so the whole chain tests with fakes.
-Candidate metadata mirrors `LyricsCandidate` in packages/shared/src/lyrics/lyrics.ts — that TS module is the
+Candidate metadata mirrors `LyricsCandidate` in apps/core/src/shared/lyrics/lyrics.ts — that TS module is the
 authority on RANKING; this side only reports what it produced and how trustworthy it is.
 """
 
@@ -87,7 +87,7 @@ BASELINE_CAPTIONS_AUTO = 2
 
 def is_authoritative_text(text_source: str, text_confidence: str) -> bool:
     """Is this text trustworthy enough to be the song's real words? Mirror of `isAuthoritativeText`
-    in packages/shared/src/lyrics/lyrics.ts — that module is the authority; keep the two in step.
+    in apps/core/src/shared/lyrics/lyrics.ts — that module is the authority; keep the two in step.
 
     Mirrored rather than re-derived because it is now load-bearing on BOTH sides of the seam: the TV
     uses it to decide whether to caption the overlay "auto-transcribed", and the worker uses the same
@@ -239,7 +239,7 @@ def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]
 # ── ASR agreement: catching a confidently WRONG lookup ────────────────────────────
 #
 # Mirrors agreement / agreementScore / SUSPECT_COVERAGE / SEQUENCE_WEIGHT / MIN_TOKENS_TO_COMPARE in
-# packages/shared/src/lyrics/lyrics.ts, and every number below is cross-checked against that authority by
+# apps/core/src/shared/lyrics/lyrics.ts, and every number below is cross-checked against that authority by
 # tests/test_lyrics_presplit.py's source-scan guard plus the shared-corpus parity guard in
 # tests/test_lyrics_agreement_542.py.
 # Computed HERE, in the worker, because this is the only place both texts exist in memory at once — the
@@ -313,7 +313,7 @@ def lyrics_tokens(text: str) -> list[str]:
     codepoint) and "Beyonce\u0301" (e + combining acute) are distinct tokens on both the intersection
     and the union of `agreement_score`, counting a correct candidate as disagreeing twice. Idempotent
     on ASCII (unicodedata.normalize("NFKC", ascii) == ascii), so it cannot move an all-ASCII score.
-    Mirrors packages/shared/src/lyrics/lyrics.ts:lyricsTokens (kept in one commit) and the established fold in
+    Mirrors apps/core/src/shared/lyrics/lyrics.ts:lyricsTokens (kept in one commit) and the established fold in
     metadata/annotate.py:normalize_for_match.
     """
     folded = unicodedata.normalize("NFKC", text).lower()

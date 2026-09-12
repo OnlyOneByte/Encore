@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
-	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay, soundingKeyLabel } from '@encore/shared';
+	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$shared';
+	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay, soundingKeyLabel } from '$shared';
 	import { GaplessController } from '$lib/tv/gapless';
 	import { telemetryFrame } from '$lib/tv/telemetry';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
@@ -16,7 +16,7 @@
 		loudnessNormalizationGain,
 		type EffectiveSettings,
 		type TvBackgroundStyle
-	} from '@encore/shared';
+	} from '$shared';
 	import { stageBackgroundCss } from '$lib/tv/background';
 	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
 	import { WsClient } from '$lib/ws/client';
@@ -1338,7 +1338,7 @@
 	 * the windowed/dev case where every physical assumption collapses (2.2vh = 20px on a 900px laptop).
 	 *
 	 * --ui-scale is a persisted preference, range 0.8–1.6, default 1. PERSISTENCE IS DEFERRED to a
-	 * follow-up (XR-TV-07's room-setting plumbing lives in packages/shared, out of #821's TV-only scope);
+	 * follow-up (XR-TV-07's room-setting plumbing lives in apps/core/src/shared, out of #821's TV-only scope);
 	 * until then it defaults to 1 here. The clamp() is defensive: whatever a future setting writes into
 	 * --ui-scale, the multiplier can never leave 0.8–1.6, so the floor holds.
 	 */

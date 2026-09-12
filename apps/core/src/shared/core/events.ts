@@ -227,7 +227,7 @@ export interface JobParams {
 	/**
 	 * How the worker should obtain `sourceUri` — DECLARED, never inferred from the URI's shape.
 	 * `ytdlp` means download it; `local` means it is already a path under the media volume. Set on every
-	 * job that touches source audio, so a worker never has to guess (see packages/shared/src/cook/fetchers.ts).
+	 * job that touches source audio, so a worker never has to guess (see apps/core/src/shared/cook/fetchers.ts).
 	 */
 	fetcher?: string;
 	model?: string; // separation model/checkpoint token (stems) — resolved by the worker engine

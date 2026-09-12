@@ -488,7 +488,7 @@ record that is authoritative for it, a parallel table deleted in favour of the r
 a whole module reshaped. Two obligations come with that licence:
 
 - **State the blast radius as a fact**, not an adjective: the files the fix must touch, whether it
-  crosses `packages/shared` (the wire contract), whether it needs a migration or a backfill, and which
+  crosses `apps/core/src/shared` (the wire contract), whether it needs a migration or a backfill, and which
   existing tests will have to change. That list is what the conductor's file-overlap gate reads, and a
   wide fix dispatched blind loses every rebase race against the nine other workers in flight.
 - **Name the cheap fix you rejected and why.** One sentence. It is the reviewer's only way to tell a
@@ -530,7 +530,7 @@ Write a proposal **as a comment**, and nothing else. No branch, no code, no PR.
 Cover, briefly:
 
 - **What it changes for a singer in the room** — the user-visible behaviour, not the implementation.
-- **Where it lands** — the actual files and the seam. Say if it crosses `packages/shared` (the wire
+- **Where it lands** — the actual files and the seam. Say if it crosses `apps/core/src/shared` (the wire
   contract), needs a **migration**, or touches the worker, because each of those changes who can do it.
 - **What it collides with.** Check `docs/ROADMAP.md` and the ratified decisions before proposing:
   several things were *deliberately* cut (the Song/Version split, real-FFT visualizers, scoring,

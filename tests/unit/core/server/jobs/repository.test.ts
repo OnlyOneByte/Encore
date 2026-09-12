@@ -3,7 +3,7 @@
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$server/db/test-db';
 import { JobRepository } from '$server/jobs/repository';
-import type { JobType } from '@encore/shared';
+import type { JobType } from '$shared';
 import { jobs } from '$server/db/schema';
 
 function makeRepo() {

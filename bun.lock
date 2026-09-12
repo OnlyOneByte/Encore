@@ -23,7 +23,6 @@
       "name": "@encore/core",
       "version": "0.0.0",
       "dependencies": {
-        "@encore/shared": "workspace:*",
         "@lucide/svelte": "^1.43.0",
         "bits-ui": "^2.16.3",
         "clsx": "2.1.1",
@@ -48,14 +47,6 @@
         "tailwindcss": "4.3.3",
         "typescript": "^5.6.0",
         "vite": "^8.0.16",
-      },
-    },
-    "packages/shared": {
-      "name": "@encore/shared",
-      "version": "0.0.0",
-      "devDependencies": {
-        "bun-types": "^1.3.14",
-        "typescript": "^5.6.0",
       },
     },
     "tests": {
@@ -83,8 +74,6 @@
     "@emnapi/wasi-threads": ["@emnapi/wasi-threads@1.2.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-c95qOXkHdydNKhscBTebqEC1CVAZpyqOfVfBzQ1qgzyl3gfeldUjIggDbIZgDKsHLgnsM+igH7TJ/eAasaVuMA=="],
 
     "@encore/core": ["@encore/core@workspace:apps/core"],
-
-    "@encore/shared": ["@encore/shared@workspace:packages/shared"],
 
     "@encore/tests": ["@encore/tests@workspace:tests"],
 

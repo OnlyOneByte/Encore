@@ -20,7 +20,7 @@ import {
 	DEFAULT_ROOM_SETTINGS,
 	normalizeGlobalSettings,
 	normalizeRoomSettings
-} from '@encore/shared';
+} from '$shared';
 
 const SINGLETON = 'singleton';
 

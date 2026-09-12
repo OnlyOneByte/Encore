@@ -1,8 +1,8 @@
-// @encore/shared — the single import surface for the realtime contract.
+// $shared — the single import surface for the realtime contract.
 // Imported by BOTH apps/core/src/server (authoritative) and apps/core/src/lib (client).
 //
 // Modules are grouped into domain subdirectories; the barrel is the only public surface, so
-// these re-exports keep every `@encore/shared` import path byte-identical for consumers.
+// these re-exports keep every `$shared` import path byte-identical for consumers.
 export * from './core/registry';
 export * from './core/types';
 export * from './lyrics/guide-level';

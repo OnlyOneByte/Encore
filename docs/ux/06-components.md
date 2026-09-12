@@ -29,7 +29,7 @@ Three findings that came out of reading the code and are load-bearing for the ro
   row that reads as a near-duplicate of an `XR-PH` row is waste rather than coverage.
 
 - **The vendored tree is already a clean leaf, and nothing holds it there.** No file under `ui/`
-  imports an app module, a route, or `@encore/shared` — verified by scan, zero hits. That is the
+  imports an app module, a route, or `$shared` — verified by scan, zero hits. That is the
   precondition for `shadcn-svelte add <x> --overwrite` being safe, which `ui/README.md:119–121` names
   as the reason the deviation headers exist at all. It holds today by care alone.
 
@@ -48,11 +48,11 @@ Three findings that came out of reading the code and are load-bearing for the ro
 
 | | |
 |---|---|
-| **Statement** | No file under `apps/core/src/lib/components/ui/` imports an app-level component, a route, a store, `@encore/shared`, `$app/*` or `$env/*`. Its only permitted imports are `bits-ui` and other third-party packages, `svelte`/`svelte/elements`, `$lib/utils.js`, and other files under `ui/`. |
+| **Statement** | No file under `apps/core/src/lib/components/ui/` imports an app-level component, a route, a store, `$shared`, `$app/*` or `$env/*`. Its only permitted imports are `bits-ui` and other third-party packages, `svelte`/`svelte/elements`, `$lib/utils.js`, and other files under `ui/`. |
 | **Surfaces** | Build |
 | **Rationale** | `shadcn-svelte add <x> --overwrite` overwrites a file wholesale. A vendored component that imports app code cannot be re-vendored without re-deriving that import from a diff, which is exactly the review the deviation headers exist to make possible — and the moment one primitive reaches for `SINGER_COLORS`, the copy-in model stops being a copy-in model. |
-| **Source** | State is a real citation and holds today: a scan of `ui/**` for `$lib/` imports returns `$lib/utils.js` and nothing else, and for `@encore/shared` returns zero. The **rule** is `DERIVED` — model: the `--overwrite` reviewability contract stated at `apps/core/src/lib/components/ui/README.md:119–121` ("record **why** in an `ENCORE DEVIATIONS` HTML comment … They are what makes an `--overwrite` reviewable"), read as a constraint on the import graph rather than only on comments. |
-| **Acceptance** | Given every `.svelte` and `.ts` file under `ui/`, When its import specifiers are collected, Then each is a bare third-party package, `svelte`/`svelte/elements`, `$lib/utils.js`, or a relative path that stays inside `ui/`. Falsified by one primitive importing `@encore/shared`, a store, or a sibling app-level component. |
+| **Source** | State is a real citation and holds today: a scan of `ui/**` for `$lib/` imports returns `$lib/utils.js` and nothing else, and for `$shared` returns zero. The **rule** is `DERIVED` — model: the `--overwrite` reviewability contract stated at `apps/core/src/lib/components/ui/README.md:119–121` ("record **why** in an `ENCORE DEVIATIONS` HTML comment … They are what makes an `--overwrite` reviewable"), read as a constraint on the import graph rather than only on comments. |
+| **Acceptance** | Given every `.svelte` and `.ts` file under `ui/`, When its import specifiers are collected, Then each is a bare third-party package, `svelte`/`svelte/elements`, `$lib/utils.js`, or a relative path that stays inside `ui/`. Falsified by one primitive importing `$shared`, a store, or a sibling app-level component. |
 | **Check** | Source scan over import statements — the parser in `tests/guards/meta/test-tree-deps.test.ts:38–47` already extracts specifiers in exactly this shape and can be reused, but it is pointed at the test tree's external dependencies and does not check direction. **The guard does not exist yet**; it would be a new file, `tests/guards/design-system/ui-layer-imports.test.ts`. Needs a non-vacuity floor on the file count, per `XR-COL-19`. |
 | **Priority** | Must. It is free today — the tree is already clean — and it stops being free the first time someone wants a player colour inside a vendored swatch. |
 

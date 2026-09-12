@@ -15,7 +15,7 @@ import { POST } from '../../../../../../apps/core/src/routes/api/make-karaoke/+s
 import { AuthoritativeState } from '$server/state/store';
 import { JobRepository } from '$server/jobs/repository';
 import { migratedDb } from '$server/db/test-db';
-import type { Media } from '@encore/shared';
+import type { Media } from '$shared';
 
 const APP_KEY = Symbol.for('encore.app');
 const SPOTIFY_TRACK_ID = '4uLU6hMCjMI75M1A2tKUQC';

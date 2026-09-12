@@ -1,7 +1,7 @@
 // done-when (logic): the two-player swap is gapless when the hidden slot is pre-warmed.
 import { test, expect } from 'bun:test';
 import { GaplessController } from '$lib/tv/gapless';
-import type { QueueEntry } from '@encore/shared';
+import type { QueueEntry } from '$shared';
 
 const e = (id: string): QueueEntry => ({
 	id,

@@ -16,7 +16,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
-import { normalizeRoomCodeInput, CODE_LENGTH } from '@encore/shared';
+import { normalizeRoomCodeInput, CODE_LENGTH } from '$shared';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const app = getApp();

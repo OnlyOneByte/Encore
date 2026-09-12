@@ -157,7 +157,7 @@ container for core; a Python **separator + WhisperX** worker joins as container 
 ## Layout
 
 ```
-packages/shared/   ← the realtime contract, made physical (imported by client AND server)
+apps/core/src/shared/   ← the realtime contract, made physical (imported by client AND server)
 apps/core/         ← Container 1: Bun + SvelteKit
   server.ts          Bun.serve entry: HTTP + native WS pub/sub hub (one process)
   src/server/        authoritative backend (state, rotation, playback, jobs, media, db)

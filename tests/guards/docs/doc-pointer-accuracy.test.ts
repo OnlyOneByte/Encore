@@ -21,8 +21,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { repoRoot, sharedSrc } from '@encore/test-support';
 
-// packages/shared/src — the tree this guard scans. The old form was a bare `at('packages/shared/src')`, i.e. "the
-// directory I am in", which was only packages/shared/src while this file sat at that package's root.
+// apps/core/src/shared/src — the tree this guard scans. The old form was a bare `at('apps/core/src/shared/src')`, i.e. "the
+// directory I am in", which was only apps/core/src/shared/src while this file sat at that package's root.
 // A wrong root here is the silent failure this tree exists to close: `walk()` over a missing directory
 // would throw, but a root pointing at some OTHER real directory would scan the wrong tree and the
 // SCANNED / pointer-count sentinels below are what catch that.
@@ -140,7 +140,7 @@ function walkBasenames(dir: string, out: Set<string>): void {
 	}
 }
 const repoTsBasenames = new Set<string>();
-for (const top of ['apps', 'packages']) walkBasenames(join(REPO_ROOT, top), repoTsBasenames);
+for (const top of ['apps']) walkBasenames(join(REPO_ROOT, top), repoTsBasenames);
 
 // Resolve a cited bare filename to its path anywhere in the package, then read its stripped code.
 // Returns null when the cited file is not a scanned PACKAGE module. `resolves()` then decides: a name

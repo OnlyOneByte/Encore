@@ -9,7 +9,7 @@ import {
 	isRoomCodeChar,
 	normalizeRoomCodeInput,
 	CODE_EXCLUDED_NOTE
-} from '@encore/shared';
+} from '$shared';
 
 test('CODE_ALPHABET is exactly the confusable-free set, and CODE_LENGTH is six', () => {
 	// The literal itself — a revert to any other alphabet reds here, which is what keeps the phone's

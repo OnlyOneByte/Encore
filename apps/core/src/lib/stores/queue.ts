@@ -15,7 +15,7 @@ import {
 	type QueueEntry,
 	type ServerEvent,
 	type ClientCommand
-} from '@encore/shared';
+} from '$shared';
 
 interface PendingOp {
 	op: QueueOp;

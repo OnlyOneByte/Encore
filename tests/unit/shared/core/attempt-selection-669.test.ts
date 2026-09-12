@@ -2,7 +2,7 @@
 // It mirrors attemptStages: a corrupt diagnostic must degrade to "no record", never throw inside a
 // dashboard render. RED on base: neither attemptSelection nor SelectionRecord exists there.
 import { expect, it } from 'bun:test';
-import { attemptSelection, type SelectionRecord } from '@encore/shared';
+import { attemptSelection, type SelectionRecord } from '$shared';
 
 const RECORD: SelectionRecord = {
 	baselineFallback: false,

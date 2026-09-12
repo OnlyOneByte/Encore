@@ -17,8 +17,8 @@ import type {
 	MediaStoreConfig,
 	GlobalSettings,
 	EffectiveSettings
-} from '@encore/shared';
-import { sourceUriFor, resolveCookSeparator } from '@encore/shared';
+} from '$shared';
+import { sourceUriFor, resolveCookSeparator } from '$shared';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';

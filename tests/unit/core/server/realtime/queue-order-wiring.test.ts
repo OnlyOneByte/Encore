@@ -15,7 +15,7 @@ import {
 	type QueueOrderId,
 	type ServerEvent,
 	EMPTY_SONG_PROFILE
-} from '@encore/shared';
+} from '$shared';
 
 const media = (id: string): Media => ({
 	id,

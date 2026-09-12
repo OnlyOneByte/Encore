@@ -11,7 +11,7 @@ import { getApp } from '$server/app';
 import { hydrateMediaCatalog } from '$server/media/repository';
 import { readinessOf } from '$server/media/readiness';
 import { mediaStatusFor } from '$server/jobs/media-status';
-import type { MediaStatus } from '@encore/shared';
+import type { MediaStatus } from '$shared';
 
 export const GET: RequestHandler = async ({ url }) => {
 	const app = getApp();

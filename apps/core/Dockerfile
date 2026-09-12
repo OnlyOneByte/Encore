@@ -5,7 +5,7 @@ WORKDIR /app
 
 # install deps first (layer cache). The repo-local .npmrc points at public npm.
 COPY package.json bun.lock .npmrc ./
-COPY packages/shared/package.json packages/shared/
+COPY apps/core/src/shared/package.json apps/core/src/shared/
 COPY apps/core/package.json apps/core/
 RUN bun install --frozen-lockfile
 
@@ -28,7 +28,7 @@ RUN apt-get update \
 	&& chmod a+rx /usr/local/bin/yt-dlp \
 	&& apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-# Recreate the full workspace so Bun's @encore/shared workspace symlink resolves at runtime.
+# Recreate the full workspace so Bun's $shared workspace symlink resolves at runtime.
 # (Copying node_modules from the build stage doesn't preserve the workspace symlink reliably;
 #  a fresh install over the copied sources relinks it. Deps are layer-cached + offline-ish.)
 COPY --from=build /app/package.json /app/bun.lock /app/.npmrc /app/

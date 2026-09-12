@@ -85,7 +85,7 @@ source only**: a Spotify resolver joins the `/api/search` fan-out and surfaces c
 artist/title/duration (where a YouTube upload title has to be reverse-engineered), but its bytes are
 never pulled from Spotify — the audio is still acquired from YouTube, consistent with the annotator
 rule below. There is deliberately no `fetch:spotify` worker capability and no `librespot`; a
-spotify-sourced media is not cookable — `isCookableSource` (`packages/shared/src/cook/fetchers.ts`) is the
+spotify-sourced media is not cookable — `isCookableSource` (`apps/core/src/shared/cook/fetchers.ts`) is the
 one authority that says so, and every layer that decides whether a cook is possible asks it:
 `cookState` answers `not-cookable`, the phone's `canCook` withholds the Sing and Add affordances, and
 `requestMakeKaraoke` declines. (`fetcherFor` does NOT refuse a spotify source — it returns the default

@@ -3,8 +3,8 @@
 Three things are guarded here.
 
 1. **Parity with the TypeScript authority.** `agreement` is implemented twice (here and in
-   `packages/shared/src/lyrics/lyrics.ts`) and the two suites cannot import each other, so both read the same
-   hand-computed corpus — `packages/shared/src/lyrics/lyrics-agreement-corpus.ts`. This file SOURCE-SCANS that
+   `apps/core/src/shared/lyrics/lyrics.ts`) and the two suites cannot import each other, so both read the same
+   hand-computed corpus — `apps/core/src/shared/lyrics/lyrics-agreement-corpus.ts`. This file SOURCE-SCANS that
    module rather than importing it, the same technique `test_lyrics_presplit.py` uses for the constants:
    the production truth is the file it parses, so it cannot be defeated by reverting a hunk.
 

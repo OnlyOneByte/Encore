@@ -16,8 +16,8 @@ import { migratedDb } from '$server/db/test-db';
 import { openDb } from '$server/db/index';
 import { runMigrations } from '$server/db/migrate';
 import { instrumentalKey } from '$server/media/paths';
-import type { Media } from '@encore/shared';
-import { EMPTY_SONG_PROFILE } from '@encore/shared';
+import type { Media } from '$shared';
+import { EMPTY_SONG_PROFILE } from '$shared';
 
 const cooked = (id: string): Media => ({
 	id,

@@ -40,8 +40,8 @@ import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
 import { reconcileOnReady, emitNowPlaying } from '$server/realtime/player';
 import { AuthoritativeState } from '$server/state/store';
-import { EMPTY_SONG_PROFILE } from '@encore/shared';
-import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '@encore/shared';
+import { EMPTY_SONG_PROFILE } from '$shared';
+import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$shared';
 
 /** A finished song: both required gates done (readyToSing → true), so rotation will play it. */
 const readyMedia = (id: string): Media => ({

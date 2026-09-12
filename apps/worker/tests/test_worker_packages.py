@@ -280,7 +280,7 @@ def test_no_docstring_claims_step_timings_reach_the_metrics_page():
     deliver. The runner measures `ctx.out.timings_sec[step.name]` per step (runner.py) and puts it on the
     wire as the `stepTimingsSec` fact (runner.py `setdefault`), but the core drops it: `pickFacts`'s
     allowlist (apps/core/src/server/jobs/attempts.ts) keeps eight keys and `stepTimingsSec` is not among
-    them, and `ResolvedFacts` (packages/shared/src/core/events.ts) does not declare it. So `/metrics` gains no
+    them, and `ResolvedFacts` (apps/core/src/shared/core/events.ts) does not declare it. So `/metrics` gains no
     per-step resolution from it and structurally cannot until the core is wired for it — a separate,
     owner-gated change (a second branch of the same work; another open request wants the same data).
 

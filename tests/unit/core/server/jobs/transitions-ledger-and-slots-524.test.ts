@@ -21,7 +21,7 @@ import { JobRepository } from '$server/jobs/repository';
 import { AttemptLedger } from '$server/jobs/attempts';
 import { attemptsExhausted, sweep } from '$server/jobs/leases';
 import { migratedDb } from '$server/db/test-db';
-import type { Job } from '@encore/shared';
+import type { Job } from '$shared';
 
 const T0 = 1_700_000_000_000;
 

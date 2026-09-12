@@ -36,7 +36,7 @@ the stems. Pillars: **UI-first, wicked-fast/optimistic, as close to one containe
 | Web | **SvelteKit + Svelte 5 runes** + PWA | `svelte-adapter-bun` → `getHandler()` |
 | Bundler | **Vite 8** | `bun --bun` is **required** |
 | DB | **Drizzle + `bun:sqlite`** (WAL) | migrations in `apps/core/drizzle/`, applied at boot |
-| Monorepo | **Bun workspaces** | `packages/shared` = the contract; `apps/core`; `apps/worker` |
+| Monorepo | **Bun workspaces** | `apps/core/src/shared` = the contract; `apps/core`; `apps/worker` |
 | Worker | **Python + Demucs + WhisperX** | container 2, dial-home WS client |
 
 The case for Bun was made and accepted. Do not propose Node/Deno swaps.
@@ -45,7 +45,7 @@ The case for Bun was made and accepted. Do not propose Node/Deno swaps.
 Encore/
 ├─ docker-compose.yml     # core (always) + worker (profile: stems)
 ├─ docs/                  # ARCHITECTURE, HANDOFF, DECISIONS; deploy/, benchmarks/, mocks/, research/
-├─ packages/shared/       # @encore/shared — types, ops, rotation reducer, events, ulid, colors
+├─ apps/core/src/shared/       # $shared — types, ops, rotation reducer, events, ulid, colors
 └─ apps/
     ├─ core/              # @encore/core — SvelteKit app + server
     │   ├─ server.ts        Bun.serve entry: HTTP + WS hub + presence + worker transport
@@ -138,7 +138,7 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
    and `/api/audit/*` are **ungated** by decision (there is no operator identity in Encore; any LAN
    phone can self-join), so treat them as LAN-visible. See ARCHITECTURE §10 (gating this is open work).
    Also: a fresh git worktree has no `node_modules`, so `bun test` reports ~39 phantom failures on
-   `@encore/shared` until you run `bun install`.
+   `$shared` until you run `bun install`.
 1. **`.npmrc` is repo-local and pins PUBLIC npm on purpose.** The *global* npmrc points at
    CodeArtifact and 401s for public packages. Don't delete it; don't `npm config set` globally.
 2. **`bun --bun` is mandatory** for SvelteKit/Vite. Use `bun run <script>`; never call `vite` raw.
@@ -151,7 +151,7 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
 5. **Don't kill processes by broad pattern.** `pkill -f 'bun ...'` can self-match the harness. Use
    `lsof -ti tcp:5180 | xargs -r kill`.
 6. **Stage files explicitly; never `git add .`** — `.kiro/` is local tooling and stays untracked. And
-   **check `git status` after committing**: a commit once shipped without its `packages/shared`
+   **check `git status` after committing**: a commit once shipped without its `apps/core/src/shared`
    contract change and was not buildable in isolation, because local verification ran on a working
    tree the commit didn't describe.
 7. **Pushing works — with a bare `git push origin HEAD:refs/heads/<branch>` from the repo root, no
@@ -259,7 +259,7 @@ three paths have to hold or a restart quietly turns a cited artist back into a g
 Client-minted ULID per op; server holds a monotonic `rev`; client keeps a pending-op Map and applies
 the inverse on reject; server broadcasts `queue:patch{rev, ops, causedBy, entries, media}` with the
 authoritative snapshot **inline**; rev-gap detection triggers resync. The shared reducer
-`packages/shared/src/queue/rotation.ts` (`applyAndReseq`) runs on **both** sides — keep them on the same
+`apps/core/src/shared/queue/rotation.ts` (`applyAndReseq`) runs on **both** sides — keep them on the same
 function or the invariant breaks.
 
 **Validate every field a client sends.** An `add` with a missing `singerId` once reached the

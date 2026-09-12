@@ -14,7 +14,7 @@
 // PURE selector + injected IO, like backfill.ts and retention.ts, so the policy is testable without
 // a disk or a probe.
 
-import type { Media } from '@encore/shared';
+import type { Media } from '$shared';
 import { vocalsKey, legacyVocalsRefs } from './paths';
 
 /**

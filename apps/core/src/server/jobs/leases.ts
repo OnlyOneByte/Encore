@@ -8,7 +8,7 @@
 //   • progress lease — set on `accept`/`progress`; worker must heartbeat before it expires, else
 //                      the worker is assumed dead → attempts++ → requeue, or fail if exhausted.
 
-import type { Job } from '@encore/shared';
+import type { Job } from '$shared';
 
 export interface LeaseConfig {
 	/** Grace for a worker to `job:accept` after dispatch before requeue (§3, default 10s). */

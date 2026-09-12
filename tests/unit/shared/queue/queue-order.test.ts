@@ -8,9 +8,9 @@ import {
 	queueOrderLabel,
 	singHistoryFrom,
 	type QueueOrderId
-} from '@encore/shared';
-import { applyAndReseq, storedOrder } from '@encore/shared';
-import type { QueueEntry } from '@encore/shared';
+} from '$shared';
+import { applyAndReseq, storedOrder } from '$shared';
+import type { QueueEntry } from '$shared';
 
 /** A queued entry at a known STORED position — position is what the model reads now. */
 const e = (id: string, singerId: string, addedAt: number, rotationSeq = addedAt): QueueEntry => ({

@@ -6,7 +6,7 @@
 	// The `card` variant renders inline and is placed INSIDE the now-singing card by the caller; the
 	// other two position themselves against the stage.
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
-	import type { TvProgressStyle } from '@encore/shared';
+	import type { TvProgressStyle } from '$shared';
 
 	interface Props {
 		style: TvProgressStyle;

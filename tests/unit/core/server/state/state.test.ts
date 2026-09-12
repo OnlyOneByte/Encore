@@ -4,7 +4,7 @@ import { migratedDb } from '$server/db/test-db';
 import { AuthoritativeState } from '$server/state/store';
 import { sqlitePersistence } from '$server/state/persistence';
 import { hydrate } from '$server/db/migrate';
-import { ulid, type QueueEntry, type PlaybackState } from '@encore/shared';
+import { ulid, type QueueEntry, type PlaybackState } from '$shared';
 
 const entry = (singerId: string, addedAt: number): QueueEntry => ({
 	id: ulid(addedAt),

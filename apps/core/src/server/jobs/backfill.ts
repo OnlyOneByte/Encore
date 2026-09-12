@@ -8,8 +8,8 @@
 // PURE selector: takes the catalog and returns the media ids that need an align job, so the policy is
 // testable without a DB, a worker, or a clock.
 
-import type { Media } from '@encore/shared';
-import { hasUsableTiming } from '@encore/shared';
+import type { Media } from '$shared';
+import { hasUsableTiming } from '$shared';
 
 /**
  * Priority for backfilled align jobs — the largest possible number, i.e. dead last. Priority mirrors

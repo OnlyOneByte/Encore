@@ -68,7 +68,7 @@ test('every row that can offer a turn also declares whether the song is cookable
 	expect(page).not.toMatch(/cookable=\{[^}]*===\s*'spotify'/);
 	// imported from the shared package — pinned separately from the call sites so reverting only the
 	// import (which would break the build rather than a test) is still caught by a named failure.
-	const imports = page.match(/import\s*\{([^}]*)\}\s*from\s*'@encore\/shared'/g) ?? [];
+	const imports = page.match(/import\s*\{([^}]*)\}\s*from\s*'\$shared'/g) ?? [];
 	expect(imports.join(' ')).toMatch(/\bisCookableSource\b/);
 });
 

@@ -12,6 +12,6 @@
 		"moduleResolution": "bundler",
 		"types": ["bun-types"]
 	}
-	// @encore/shared resolves via the Bun workspace symlink; no tsconfig paths needed
+	// $shared resolves via the Bun workspace symlink; no tsconfig paths needed
 	// (a baseUrl/paths block here would conflict with SvelteKit's generated tsconfig).
 }

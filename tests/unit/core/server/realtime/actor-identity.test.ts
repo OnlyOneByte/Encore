@@ -4,8 +4,8 @@
 import { test, expect } from 'bun:test';
 import { validateCommand, handleQueueCommand, type HubDeps } from '$server/realtime/hub';
 import { AuthoritativeState } from '$server/state/store';
-import { ulid, type ServerEvent, type Media, type ClientCommand } from '@encore/shared';
-import { EMPTY_SONG_PROFILE } from '@encore/shared';
+import { ulid, type ServerEvent, type Media, type ClientCommand } from '$shared';
+import { EMPTY_SONG_PROFILE } from '$shared';
 
 const media = (id: string): Media => ({
 	id,

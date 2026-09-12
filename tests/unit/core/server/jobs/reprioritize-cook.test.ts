@@ -12,7 +12,7 @@ import { reprioritizeCookForMedia } from '$server/jobs/reprioritize-cook';
 import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
 import { AuthoritativeState } from '$server/state/store';
 import { NO_QUEUE_PRIORITY } from '$server/jobs/make-karaoke';
-import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ClientCommand, type ServerEvent } from '@encore/shared';
+import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ClientCommand, type ServerEvent } from '$shared';
 import type { WorkerSession } from '$server/jobs/registry';
 
 const T0 = 1_700_000_000_000;

@@ -5,7 +5,7 @@
 // Testable: inject a WebSocket factory (the `connect` option) so a mock socket can simulate
 // drop/restore without a real server. In the browser, the default factory uses global WebSocket.
 
-import type { ServerEvent, ClientEvent } from '@encore/shared';
+import type { ServerEvent, ClientEvent } from '$shared';
 import { trySend } from './send';
 
 export interface MinimalSocket {

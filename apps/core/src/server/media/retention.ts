@@ -12,7 +12,7 @@
 // The planning half is pure so the policy is testable without a filesystem or a transcoder.
 
 import { existsSync, statSync, rmSync } from 'node:fs';
-import type { Media } from '@encore/shared';
+import type { Media } from '$shared';
 import { safeMediaPath } from './local-files';
 import {
 	instrumentalKey,

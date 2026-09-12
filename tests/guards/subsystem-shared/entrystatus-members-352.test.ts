@@ -15,8 +15,8 @@ const stripComments = (s: string): string =>
 		.replace(/\/\*[\s\S]*?\*\//g, '') // block comments
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1'); // line comments (avoid eating http://)
 
-// `readSrc` was `readFileSync(at('packages/shared/src/queue'))`, so all four subjects were spelled as
-// offsets from this file's old home in packages/shared/src/queue — including a `../../../../apps/core`
+// `readSrc` was `readFileSync(at('apps/core/src/shared/queue'))`, so all four subjects were spelled as
+// offsets from this file's old home in apps/core/src/shared/queue — including a `../../../../apps/core`
 // climb out of the package entirely. They are named from the repo root now, and `read` throws when one
 // is missing: load-bearing here, because every REMOVED-member assertion is an ABSENCE check that an
 // empty read would satisfy while proving nothing.
@@ -26,7 +26,7 @@ const REMOVED = ["'waiting'", "'skipped'"] as const;
 const LIVE = ["'queued'", "'playing'", "'done'"] as const;
 
 test('the EntryStatus union in types.ts holds exactly queued/playing/done', () => {
-	const src = stripComments(readSrc('packages/shared/src/core/types.ts'));
+	const src = stripComments(readSrc('apps/core/src/shared/core/types.ts'));
 	const m = src.match(/export type EntryStatus =[^;]*;/);
 	expect(m).not.toBeNull(); // not-vacuous: the declaration must exist
 	const decl = m![0];
@@ -46,9 +46,9 @@ test('the drizzle queue_entries.status enum mirrors exactly queued/playing/done'
 });
 
 test('the two isTerminal predicates carry no dead "skipped" arm', () => {
-	// The shared canonical predicate. A SIBLING READ before the move — `./rotation.ts`, "the rotation\n	// next to me" — which is packages/shared/src/queue/rotation.ts, the queue module that exports the one
+	// The shared canonical predicate. A SIBLING READ before the move — `./rotation.ts`, "the rotation\n	// next to me" — which is apps/core/src/shared/queue/rotation.ts, the queue module that exports the one
 	// canonical isTerminal. Named explicitly now, since nothing can infer it from tests/guards/.
-	const rot = stripComments(readSrc('packages/shared/src/queue/rotation.ts'));
+	const rot = stripComments(readSrc('apps/core/src/shared/queue/rotation.ts'));
 	const rm = rot.match(/export function isTerminal\([^)]*\)[^{]*\{([^}]*)\}/);
 	expect(rm).not.toBeNull(); // not-vacuous
 	const body = rm![1];
@@ -57,6 +57,6 @@ test('the two isTerminal predicates carry no dead "skipped" arm', () => {
 
 	// leave.ts must NOT re-introduce a hand-duplicated local copy — it imports the shared one.
 	const leave = stripComments(readSrc('apps/core/src/server/singers/leave.ts'));
-	expect(leave).toMatch(/import\s*\{[^}]*\bisTerminal\b[^}]*\}\s*from\s*'@encore\/shared'/); // uses the shared predicate
+	expect(leave).toMatch(/import\s*\{[^}]*\bisTerminal\b[^}]*\}\s*from\s*'\$shared'/); // uses the shared predicate
 	expect(leave).not.toMatch(/const isTerminal\s*=/); // no local re-definition
 });

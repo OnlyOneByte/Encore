@@ -1,5 +1,5 @@
-// — packages/shared/src is grouped into domain subdirectories (core/, queue/, lyrics/, cook/,
-// presentation/), and `index.ts` re-exports each so `@encore/shared` import paths never move. THIS TEST
+// — apps/core/src/shared/src is grouped into domain subdirectories (core/, queue/, lyrics/, cook/,
+// presentation/), and `index.ts` re-exports each so `$shared` import paths never move. THIS TEST
 // IS THE CONTRACT that the move preserved: the barrel's exported-name set is frozen here. A future move
 // that drops a re-export line, points it at the wrong subdir, or renames a symbol changes this set and
 // reds — the barrel is the package's only public surface, so this is where "the surface did not move"
@@ -8,9 +8,9 @@
 // When the surface INTENTIONALLY changes (a new exported symbol, a deliberate removal), update EXPECTED
 // in the same commit — the diff on this list is then the human-readable record of the API change.
 import { test, expect } from 'bun:test';
-import * as barrel from '@encore/shared';
+import * as barrel from '$shared';
 
-// The complete set of names `@encore/shared` exports. Sorted; regenerate with:
+// The complete set of names `$shared` exports. Sorted; regenerate with:
 //   bun -e "import * as b from './src/index.ts'; console.log(Object.keys(b).sort().join('\n'))"
 const EXPECTED = [
 	'ACCENT2', 'ASR_MODELS', 'ATTEMPT_OUTCOMES', 'AXIS_HIGH_MIDI', 'AXIS_LOW_MIDI', 'CODE_ALPHABET',
@@ -55,7 +55,7 @@ const EXPECTED = [
 	'voiceBandSentence', 'voiceBandZones'
 ].sort();
 
-test('the @encore/shared barrel exports exactly the frozen public surface', () => {
+test('the $shared barrel exports exactly the frozen public surface', () => {
 	const actual = Object.keys(barrel).sort();
 	// non-vacuity: the barrel resolves to a real, populated module (not an empty namespace from a
 	// broken re-export path).

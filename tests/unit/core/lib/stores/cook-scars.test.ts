@@ -4,7 +4,7 @@
 // through the same expression the code uses); the I/O layer runs through an injectable in-memory
 // Storage so no DOM is needed.
 import { test, expect } from 'bun:test';
-import type { Media } from '@encore/shared';
+import type { Media } from '$shared';
 import {
 	COOK_SCARS_KEY,
 	COOK_SCAR_TTL_MS,

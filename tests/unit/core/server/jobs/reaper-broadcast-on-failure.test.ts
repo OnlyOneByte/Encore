@@ -17,7 +17,7 @@ import { JobReaper } from '$server/jobs/reaper';
 import { JobRepository } from '$server/jobs/repository';
 import { ackDeadline, progressDeadline } from '$server/jobs/leases';
 import { reportTerminalFailure } from '$server/jobs/make-karaoke';
-import type { Media, ServerEvent } from '@encore/shared';
+import type { Media, ServerEvent } from '$shared';
 
 const T0 = 1_700_000_000_000;
 

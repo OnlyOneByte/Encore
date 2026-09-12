@@ -29,7 +29,7 @@ import {
 	type Job,
 	type Media,
 	type ServerEvent
-} from '@encore/shared';
+} from '$shared';
 
 const T0 = 1_700_000_000_000;
 

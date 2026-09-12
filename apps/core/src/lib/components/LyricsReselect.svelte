@@ -9,7 +9,7 @@
 	// It renders `nowMedia.lyricsCandidates` directly — the phone already receives the full candidate set
 	// with provenance over the wire, so no new read path. `chosenCandidate` marks the current pick and
 	// `hasNewerCandidateThanOverride` decides the hint; both are pure shared helpers.
-	import type { LyricsCandidate } from '@encore/shared';
+	import type { LyricsCandidate } from '$shared';
 	import Icon from '$lib/ui/Icon.svelte';
 
 	interface Props {

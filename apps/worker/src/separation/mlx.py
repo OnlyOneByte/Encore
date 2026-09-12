@@ -43,7 +43,7 @@ from ..retry_policy import BoundaryError
 DEFAULT_MODEL = "htdemucs"
 
 # The demucs-family checkpoints demucs-mlx carries AND this engine will run. Intersection of the
-# torch engine's whitelist (packages/shared/src/lyrics/separators.ts, mirrored in demucs.py DEMUCS_MODELS)
+# torch engine's whitelist (apps/core/src/shared/lyrics/separators.ts, mirrored in demucs.py DEMUCS_MODELS)
 # with the models demucs-mlx ships — the same three, so an mlx cook resolves the exact checkpoint a
 # torch cook would. Defence in depth: the core validates engine+model before enqueue, but a worker
 # must never shell `demucs-mlx -n <arbitrary>` from a job param.

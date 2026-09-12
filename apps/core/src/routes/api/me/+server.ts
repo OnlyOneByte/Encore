@@ -11,7 +11,7 @@ import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
 import { assertNameFree, NameTakenError } from '$server/singers/join';
-import { normalizeSingerColor } from '@encore/shared';
+import { normalizeSingerColor } from '$shared';
 
 export const GET: RequestHandler = async ({ cookies }) => {
 	const token = cookies.get(SESSION_COOKIE);

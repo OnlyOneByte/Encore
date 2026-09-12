@@ -10,7 +10,7 @@ Naming them once here gives three properties the strings did not have:
     argv), so this is additive rather than a migration.
 
 NOT here: the separation quality ladder. A `QUALITY_RANK` table used to live in this module, mirroring
-`packages/shared/src/lyrics/separators.ts` — but the refusal to publish an artifact that does not outrank the
+`apps/core/src/shared/lyrics/separators.ts` — but the refusal to publish an artifact that does not outrank the
 current one is decided CORE-side in `markMediaReady`, so the worker copy had no caller and the two
 tables could drift with nothing comparing them. It is deleted rather than guarded by a parity test,
 because a test would only have kept a dead table faithfully in sync with a live one.
@@ -62,7 +62,7 @@ class Fetcher(_StrEnum):
     parsed at the boundary fails immediately and names the cause.
 
     LOCAL is not a downloader: it means the bytes are already under MEDIA_DIR and `source_uri` is a
-    path to read. Mirrors FetcherId in packages/shared/src/cook/fetchers.ts.
+    path to read. Mirrors FetcherId in apps/core/src/shared/cook/fetchers.ts.
     """
 
     YTDLP = "ytdlp"
@@ -82,7 +82,7 @@ class AsrModel(_StrEnum):
     """Which faster-whisper checkpoint the ASR tier transcribes sung vocals with.
 
     A deployment choice carried in an align job's params, mirroring AsrModelId in
-    packages/shared/src/lyrics/lyrics-engines.ts — which is the source of truth for the whitelist and the
+    apps/core/src/shared/lyrics/lyrics-engines.ts — which is the source of truth for the whitelist and the
     only place a new checkpoint should be added first.
 
     Enumerated rather than passed through as a free string for a specific reason: an unrecognised token
@@ -116,7 +116,7 @@ class SyncMode(_StrEnum):
 
 class TextSource(_StrEnum):
     """Where a lyrics candidate's TEXT came from. Mirrors LyricsTextSource in
-    packages/shared/src/lyrics/lyrics.ts — that union is the authority; keep the two in step.
+    apps/core/src/shared/lyrics/lyrics.ts — that union is the authority; keep the two in step.
 
     These were plain module string constants in lyrics/chain.py (SOURCE_LRCLIB and friends) guarded only
     by a `# must match LyricsTextSource` comment, while the five sibling enums here got a real bilateral
@@ -153,7 +153,7 @@ class Timing(_StrEnum):
 # Promoted here beside TextSource/Timing (from bare module strings in chain.py) so all the lyrics
 # vocabulary lives in one place; chain.py re-exports them under the same names, so its importers are
 # unchanged. Left as plain string constants rather than a _StrEnum: unlike TextSource/Timing these have
-# NO packages/shared mirror to bilaterally parity-check against — role is a worker-internal grading
+# NO apps/core/src/shared mirror to bilaterally parity-check against — role is a worker-internal grading
 # axis the core never sees.
 #
 # UNSPECIFIED is a fail-CLOSED default (see LyricsText.role). It belongs to NEITHER candidates_of nor

@@ -85,7 +85,7 @@
 		type TvProgressStyle,
 		type TvBackgroundStyle,
 		type TvVisualizerId
-	} from '@encore/shared';
+	} from '$shared';
 
 	interface Props {
 		data: {

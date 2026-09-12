@@ -16,7 +16,7 @@
 // upgrade path with no recompute: ASR lands first, and if LRCLIB later becomes reachable (or a human
 // pastes text in) we re-align from the RETAINED audio — no re-download, no re-separation.
 //
-// In @encore/shared because all three tiers touch it: the worker emits candidates (mirroring this
+// In $shared because all three tiers touch it: the worker emits candidates (mirroring this
 // shape in JSON), the core stores them and picks `chosen`, the TV reads provenance to be honest
 // about auto-transcribed words.
 

@@ -4,7 +4,7 @@
 // the soonest queue entry that needs it. worker-hub flips the media to ready on completion.
 // See ARCHITECTURE §6, §7.
 
-import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '@encore/shared';
+import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '$shared';
 import {
 	mergeLyricsCandidate,
 	resolveLyricsRef,
@@ -14,13 +14,13 @@ import {
 	isCookableSource,
 	needsFetch,
 	normalizeSongProfile
-} from '@encore/shared';
+} from '$shared';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
 import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
 import { mediaStatusFor, shouldBroadcastCook } from './media-status';
 import { cleanJobWork } from '../media/migrate-layout';
-import type { ServerEvent } from '@encore/shared';
+import type { ServerEvent } from '$shared';
 
 export interface MakeKaraokeDeps {
 	jobs: JobRepository;
@@ -326,7 +326,7 @@ export function markMediaReady(
  *
  * "Settled", not "succeeded". `ready` here means the step is finished, and a song with no words is a
  * legitimate finished song: requiring a lyrics artifact would leave every genuine instrumental stuck
- * cooking forever on a step that worked correctly. See packages/shared/src/queue/gates.ts.
+ * cooking forever on a step that worked correctly. See apps/core/src/shared/queue/gates.ts.
  */
 export function settleLyricsGate(mediaId: string, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);

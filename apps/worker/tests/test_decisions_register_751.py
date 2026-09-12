@@ -27,7 +27,7 @@ words — that would be satisfied by the very text that shipped the defect. It e
 comment NAMES as recording the ruling and requires each named file to actually contain it, so a
 pointer at a register that does not hold the claim reds no matter how it is worded. Comment stripping
 is INVERTED on purpose (the source side is read as comment text, never stripped) because the defect
-lives IN a comment; precedent is `packages/shared/src/doc-pointer-accuracy.test.ts` and
+lives IN a comment; precedent is `apps/core/src/shared/doc-pointer-accuracy.test.ts` and
 `apps/core/src/routes/api/leave/doc-accuracy.test.ts`.
 
 Every arm carries a non-vacuity sentinel anchored on text that IS in the register, so an emptied,

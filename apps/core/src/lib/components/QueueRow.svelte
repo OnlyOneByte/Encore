@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	// A row in the rotation queue. Ported from docs/mocks.
-	import { SINGER_COLORS } from '@encore/shared';
+	import { SINGER_COLORS } from '$shared';
 	import Icon from '$lib/ui/Icon.svelte';
 	import * as Item from '$lib/components/ui/item';
 	interface Props {

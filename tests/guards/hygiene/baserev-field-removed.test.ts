@@ -24,7 +24,7 @@ function stripComments(src: string): string {
 
 // Anchored on the repo root marker rather than counted up from this file's own location.
 const REPO_ROOT = repoRoot;
-const OPS_PATH = at('packages', 'shared', 'src', 'core', 'ops.ts');
+const OPS_PATH = at('apps', 'core', 'src', 'shared', 'core', 'ops.ts');
 // apps/core/src — the server + client TypeScript that could read the field.
 const CORE_SRC = appSrc;
 const CORE_ENTRY = at('apps/core/server.ts');

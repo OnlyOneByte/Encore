@@ -9,7 +9,7 @@ import { doJoin, assertNameFree, NameTakenError } from '$server/singers/join';
 import { doLeave, removableOnLeave } from '$server/singers/leave';
 import { SingerRepository } from '$server/singers/repository';
 import { RoomRepository } from '$server/rooms/repository';
-import { SINGER_COLORS, type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
+import { SINGER_COLORS, type ServerEvent, type Media, type QueueEntry } from '$shared';
 import { LocalLibrary } from '$server/media/local';
 import { YouTubeResolver } from '$server/media/youtube';
 import { SpotifyResolver } from '$server/media/spotify-resolver';

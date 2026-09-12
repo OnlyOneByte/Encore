@@ -3,7 +3,7 @@
 // decides whether a lyrics lookup is even attempted.
 import { test, expect } from 'bun:test';
 import { assignParams, followUps } from '$server/jobs/dispatch';
-import { DEFAULT_GLOBAL_SETTINGS, type Media } from '@encore/shared';
+import { DEFAULT_GLOBAL_SETTINGS, type Media } from '$shared';
 
 const media = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',

@@ -6,7 +6,7 @@
 //   4. one cook's steps grouped without blending in a re-cook or an upgrade
 
 import { expect, it } from 'bun:test';
-import { realtimeFactor, attemptSelection } from '@encore/shared';
+import { realtimeFactor, attemptSelection } from '$shared';
 import { AttemptLedger } from '$server/jobs/attempts';
 import { JobRepository } from '$server/jobs/repository';
 import { inheritsCook } from '$server/jobs/dispatch';

@@ -9,8 +9,8 @@ import { test, expect } from 'bun:test';
 import { handlePlayerCommand, reconcileOnReady } from '$server/realtime/player';
 import { AuthoritativeState } from '$server/state/store';
 import { type HubDeps } from '$server/realtime/hub';
-import { type Media, type QueueEntry, type ServerEvent } from '@encore/shared';
-import { EMPTY_SONG_PROFILE } from '@encore/shared';
+import { type Media, type QueueEntry, type ServerEvent } from '$shared';
+import { EMPTY_SONG_PROFILE } from '$shared';
 
 let _s = 0;
 const entry = (id: string, mediaId: string): QueueEntry => ({

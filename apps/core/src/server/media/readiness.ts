@@ -4,7 +4,7 @@
 //
 // Pure: no DB, no network, no clock. The route supplies the catalog + resolver results.
 
-import { isCooking, readyToSing, type Media } from '@encore/shared';
+import { isCooking, readyToSing, type Media } from '$shared';
 
 /** Where a song sits on the readiness axis. */
 export type Readiness =

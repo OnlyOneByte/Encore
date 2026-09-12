@@ -31,7 +31,7 @@ from ..retry_policy import BoundaryError
 
 # ── pure helpers (no torch, no session) ──────────────────────────────────────────
 
-#: Our stable whitelist tokens (packages/shared/src/lyrics/separators.ts) → bs-roformer-infer registry
+#: Our stable whitelist tokens (apps/core/src/shared/lyrics/separators.ts) → bs-roformer-infer registry
 #: slugs. Kept here, not in the shared TS, because the slug is a WORKER-side resolution detail the
 #: core never needs to know — the core only validates the token.
 #:
@@ -78,7 +78,7 @@ ROFORMER_REGISTRY_SLUGS = frozenset(
 )
 
 #: Measured execution settings per whitelist token — the worker-side mirror of
-#: `SeparatorCost` in packages/shared/src/lyrics/separators.ts. Benchmarked on the reference box
+#: `SeparatorCost` in apps/core/src/shared/lyrics/separators.ts. Benchmarked on the reference box
 #: (32-core Graviton 3, CPU) on 2026-09-03: 26.59s per 8s window at fp32, 16.55s at bf16.
 #:
 #: `precision` is per-token and NOT globally derivable: bf16 is 1.6× faster than fp32 on this

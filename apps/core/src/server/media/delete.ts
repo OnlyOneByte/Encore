@@ -20,9 +20,9 @@
 //   6. then broadcast — the queue snapshot, the advertised next, and the per-media status — so every
 //      surface drops the song at once instead of one surface at a time (F3)
 //
-// A SERVER op with no QueueOp — packages/shared is untouched — so it lives beside the media modules.
+// A SERVER op with no QueueOp — apps/core/src/shared is untouched — so it lives beside the media modules.
 
-import type { QueueEntry, ServerEvent, Media } from '@encore/shared';
+import type { QueueEntry, ServerEvent, Media } from '$shared';
 import type { HubDeps } from '../realtime/hub';
 import { cancelJobsForMedia, type CancelJobsDeps } from '../jobs/cancel';
 import { reconcileOnReady, emitNowPlaying, publishQueue } from '../realtime/player';
@@ -181,7 +181,7 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 	hub.mediaById.delete(mediaId);
 
 	// 6. broadcast — every surface drops the song at once. media:status canceled (there is no 'deleted'
-	// member and packages/shared is untouched here) tells any surface still
+	// member and apps/core/src/shared is untouched here) tells any surface still
 	// keyed on the live-status map (a search row, a stale cooking chip) that the song is gone.
 	const event: ServerEvent = { type: 'media:status', mediaId, status: 'canceled', pct: 0 };
 	hub.publish(event);

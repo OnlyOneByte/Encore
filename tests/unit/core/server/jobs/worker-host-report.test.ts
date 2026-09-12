@@ -7,7 +7,7 @@ import { migratedDb } from '$server/db/test-db';
 import { WorkerHub } from '$server/jobs/worker-hub';
 import { WorkerRegistry } from '$server/jobs/registry';
 import { JobRepository } from '$server/jobs/repository';
-import type { WorkerCommand, ServerEvent, Media, WorkerHost } from '@encore/shared';
+import type { WorkerCommand, ServerEvent, Media, WorkerHost } from '$shared';
 
 const T0 = 1_700_000_000_000;
 

@@ -10,7 +10,7 @@ import {
 	type Media,
 	type WorkerMessage,
 	type WorkerCommand
-} from '@encore/shared';
+} from '$shared';
 import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady, nowPlayingEvent } from './src/server/realtime/player';
 import { validateWorkerMessage } from './src/server/jobs/worker-hub';

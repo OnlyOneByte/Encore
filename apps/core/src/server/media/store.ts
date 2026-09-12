@@ -8,7 +8,7 @@
 // a custom `endpoint`. Reads/writes are injectable (see ObjectMediaStore) so this unit-tests with
 // no network. The pure config resolver (resolveMediaStoreConfig) is the env→config seam.
 
-import type { MediaStoreConfig } from '@encore/shared';
+import type { MediaStoreConfig } from '$shared';
 import { safeMediaPath } from './local-files';
 
 export type MediaStoreKind = MediaStoreConfig['kind'];

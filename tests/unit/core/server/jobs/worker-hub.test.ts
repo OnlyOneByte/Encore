@@ -7,7 +7,7 @@ import { WorkerHub } from '$server/jobs/worker-hub';
 import { WorkerRegistry } from '$server/jobs/registry';
 import { JobRepository } from '$server/jobs/repository';
 import { AttemptLedger } from '$server/jobs/attempts';
-import { attemptSelection } from '@encore/shared';
+import { attemptSelection } from '$shared';
 import {
 	attemptStages,
 	realtimeFactor,
@@ -16,7 +16,7 @@ import {
 	type WorkerCommand,
 	type ServerEvent,
 	type Media
-} from '@encore/shared';
+} from '$shared';
 
 const T0 = 1_700_000_000_000;
 

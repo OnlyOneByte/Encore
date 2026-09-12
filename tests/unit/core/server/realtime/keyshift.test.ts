@@ -4,7 +4,7 @@ import { test, expect } from 'bun:test';
 import { handlePlayerCommand } from '$server/realtime/player';
 import { AuthoritativeState } from '$server/state/store';
 import { type HubDeps } from '$server/realtime/hub';
-import { MAX_KEY_SHIFT, type Media, type QueueEntry, type ServerEvent, EMPTY_SONG_PROFILE } from '@encore/shared';
+import { MAX_KEY_SHIFT, type Media, type QueueEntry, type ServerEvent, EMPTY_SONG_PROFILE } from '$shared';
 
 let _s = 0;
 const entry = (id: string, mediaId: string): QueueEntry => ({

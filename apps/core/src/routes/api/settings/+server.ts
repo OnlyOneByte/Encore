@@ -11,7 +11,7 @@ import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
 import { can } from '$server/auth/capabilities';
-import type { GlobalSettings } from '@encore/shared';
+import type { GlobalSettings } from '$shared';
 
 export const GET: RequestHandler = async () => {
 	const app = getApp();

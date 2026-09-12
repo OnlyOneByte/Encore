@@ -3,7 +3,7 @@
 // rotationSeq of the soonest queue entry that needs this media; lower = sooner). The I/O wrapper
 // (worker-hub.ts) applies the assignments: marks the job assigned + sends job:assign.
 
-import type { Job, JobParams, JobType, Media, GlobalSettings } from '@encore/shared';
+import type { Job, JobParams, JobType, Media, GlobalSettings } from '$shared';
 import {
 	DEFAULT_ENGINE,
 	DEFAULT_MODEL,
@@ -15,7 +15,7 @@ import {
 	getFetcher,
 	fetcherFor,
 	isQualityUpgrade
-} from '@encore/shared';
+} from '$shared';
 import type { WorkerSession } from './registry';
 import { parseTrackTitle } from '../media/track-title';
 

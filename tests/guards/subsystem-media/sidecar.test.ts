@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it } from 'bun:test';
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Media } from '@encore/shared';
+import type { Media } from '$shared';
 import {
 	backfillSidecars,
 	sidecarFromMedia,

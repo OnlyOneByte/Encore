@@ -11,7 +11,7 @@ WHY ONLY AUTO-TRANSCRIBED. Line structure is a property of the SOURCE, not of ly
 
 So the only tier that needs re-lineating is the one that never had lines to begin with. Running a
 splitter over human-authored text can only damage it, which is why the gate is `is_authoritative_text`
-(mirroring `isAuthoritativeText` in packages/shared/src/lyrics/lyrics.ts) rather than a blanket pass: ASR is
+(mirroring `isAuthoritativeText` in apps/core/src/shared/lyrics/lyrics.ts) rather than a blanket pass: ASR is
 never authoritative, and an AUTO-GENERATED caption track is demoted to `low` text confidence precisely
 so it lands on this side of the same fence.
 

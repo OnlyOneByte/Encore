@@ -4,7 +4,7 @@ import {
 	LOUDNESS_MEASURED_FLOOR,
 	libraryLoudnessMedian,
 	loudnessNormalizationGain
-} from '@encore/shared';
+} from '$shared';
 
 // The owner's ruling (2026-09-09), proved by cases that RED on a flipped rule:
 //   • N = 6 dB, floor = 8 measured songs, pull down to median + N, attenuate-only, gated by the knob.

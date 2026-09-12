@@ -1,7 +1,7 @@
 // done-when: add renders pre-broadcast, reconciles with zero reorder; reject rolls back.
 import { test, expect } from 'bun:test';
 import { QueueStore } from '$lib/stores/queue';
-import type { ClientCommand, QueueEntry } from '@encore/shared';
+import type { ClientCommand, QueueEntry } from '$shared';
 
 // deterministic id minting: first mint = entry id, second = clientOpId, ... (addSong mints 2)
 function makeStore() {

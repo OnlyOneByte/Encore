@@ -1,7 +1,7 @@
 // Reorder MY entries; server re-resolves seq; other clients see canonical order.
 import { test, expect } from 'bun:test';
 import { AuthoritativeState } from '$server/state/store';
-import { type QueueEntry } from '@encore/shared';
+import { type QueueEntry } from '$shared';
 
 const e = (id: string, singerId: string, addedAt: number): QueueEntry => ({
 	id,

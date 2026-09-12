@@ -21,7 +21,7 @@ import { PresenceTracker } from '$server/realtime/presence';
 import { AuthoritativeState } from '$server/state/store';
 import { SettingsRepository } from '$server/state/settings-repository';
 import { migratedDb } from '$server/db/test-db';
-import type { PublicSinger, ServerEvent } from '@encore/shared';
+import type { PublicSinger, ServerEvent } from '$shared';
 
 const APP_KEY = Symbol.for('encore.app');
 

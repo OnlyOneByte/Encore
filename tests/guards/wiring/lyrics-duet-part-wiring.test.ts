@@ -21,7 +21,7 @@
 // deliberately one assertion per production hunk, so reverting any single wiring hunk reds a NAMED
 // test rather than the suite staying green on a half-connected feature. The mutation-STRONG proof
 // that the mapping is correct (two distinct legible colours vs an empty map) is behavioural, on the
-// pure `duetPartColors` in `packages/shared/src/presentation/colors.test.ts`; the RENDERED pixels are the CDP
+// pure `duetPartColors` in `apps/core/src/shared/presentation/colors.test.ts`; the RENDERED pixels are the CDP
 // frames in the PR body.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
@@ -49,7 +49,7 @@ test('the duet-part wiring scan reads a non-empty overlay source', () => {
 });
 
 test('the overlay imports the shared part-colour helper (import hunk)', () => {
-	expect(overlaySrc()).toMatch(/import\s*\{[^}]*\bduetPartColors\b[^}]*\}\s*from\s*['"]@encore\/shared['"]/);
+	expect(overlaySrc()).toMatch(/import\s*\{[^}]*\bduetPartColors\b[^}]*\}\s*from\s*['"]\$shared['"]/);
 });
 
 test('the overlay derives the CURRENT line part colour through the helper (derived hunk)', () => {

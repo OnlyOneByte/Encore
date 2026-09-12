@@ -13,8 +13,8 @@ import {
 	fetcherFor,
 	needsFetch,
 	sourceUriFor
-} from '@encore/shared';
-import { normalizeGlobalSettings, DEFAULT_GLOBAL_SETTINGS } from '@encore/shared';
+} from '$shared';
+import { normalizeGlobalSettings, DEFAULT_GLOBAL_SETTINGS } from '$shared';
 
 test('every fetcher carries a label, and only real downloaders carry a capability', () => {
 	for (const f of FETCHERS) {

@@ -1,4 +1,4 @@
-// @encore/shared — the pluggable stem-separator registry. SINGLE SOURCE OF TRUTH for both the
+// $shared — the pluggable stem-separator registry. SINGLE SOURCE OF TRUTH for both the
 // SERVER (validates an engine+model pairing before enqueueing a cook) and the PHONE UI (renders the
 // engine → model dropdowns). The worker has its own registry that actually RUNS each engine; this
 // module is only the contract — ids, whitelist, rules — so the three sides cannot drift.

@@ -4,7 +4,6 @@
 	"private": true,
 	"description": "Self-hosted karaoke \u2014 mobile-first, wicked fast. Cleaner than any incumbent.",
 	"workspaces": [
-		"packages/*",
 		"apps/core",
 		"tests"
 	],
@@ -16,7 +15,7 @@
 		"test": "bun test",
 		"gate:measured": "bun run tests/e2e/gates/measured-design.mjs",
 		"typecheck": "bun --filter '*' typecheck && bun run typecheck:root && bun run typecheck:e2e",
-		"lint": "eslint --cache --cache-location .eslintcache 'apps/**/*.{ts,mjs,svelte}' 'packages/**/*.{ts,mjs,svelte}' 'tests/**/*.{ts,mjs,svelte}'",
+		"lint": "eslint --cache --cache-location .eslintcache 'apps/**/*.{ts,mjs,svelte}' 'tests/**/*.{ts,mjs,svelte}'",
 		"format": "prettier --write 'apps/**/*.{ts,svelte,mjs}' 'packages/**/*.{ts,svelte}' '*.{json,md}'",
 		"format:check": "prettier --check 'apps/**/*.{ts,svelte,mjs}' 'packages/**/*.{ts,svelte}' '*.{json,md}'",
 		"typecheck:root": "tsc -p apps/core/tsconfig.server.json",

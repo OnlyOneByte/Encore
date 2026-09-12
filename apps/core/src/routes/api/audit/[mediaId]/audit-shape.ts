@@ -1,7 +1,7 @@
 // The shape of the audit response, extracted from +server.ts so it can be exported and unit-tested:
 // a SvelteKit +server.ts may only export HTTP method handlers, so the mapper and its interface live
 // here (imported by the route). No behaviour lives in the route beyond fetching and shaping.
-import { attemptStages, attemptSelection, realtimeFactor, type JobAttempt, type SelectionRecord } from '@encore/shared';
+import { attemptStages, attemptSelection, realtimeFactor, type JobAttempt, type SelectionRecord } from '$shared';
 import { processingMs, queueWaitMs } from '$server/jobs/metrics';
 
 export interface AuditAttempt {

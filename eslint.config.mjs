@@ -1,4 +1,4 @@
-// Flat ESLint config for the Encore monorepo (apps/core + packages/shared).
+// Flat ESLint config for the Encore monorepo (apps/core + apps/core/src/shared).
 //
 // Before this file the repo had NO lint gate — only svelte-check, which is a TYPE gate, not a lint
 // gate. ESLint catches what tsc/svelte-check structurally cannot: floating promises, unused vars

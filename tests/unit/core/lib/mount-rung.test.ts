@@ -337,7 +337,7 @@ test('no test still documents the $app/$env virtual modules as un-aliased', () =
 	 * Anchored on the repo root via `@encore/test-support`, so this arm does not care where a test lives
 	 * and does not need editing again the next time they move.
 	 */
-	const roots = [SRC, join(REPO_ROOT, 'tests'), join(REPO_ROOT, 'packages')].filter((d) => existsSync(d));
+	const roots = [SRC, join(REPO_ROOT, 'tests')].filter((d) => existsSync(d));
 	// This file names itself from the repo root (no-self-anchored-paths bans location-derived paths), so
 	// it is excluded from its own stale-prose scan without deriving a path from where it sits.
 	const SELF = at('tests', 'unit', 'core', 'lib', 'mount-rung.test.ts');

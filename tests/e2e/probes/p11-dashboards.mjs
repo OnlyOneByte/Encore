@@ -451,7 +451,7 @@ async function main() {
 	let addedAt = Date.now();
 	/** @param {string} mediaId @returns {string} */
 	function queueEntry(mediaId) {
-		// A full QueueEntry (packages/shared/src/core/types.ts:185): id + mediaId + singerId + status +
+		// A full QueueEntry (apps/core/src/shared/core/types.ts:185): id + mediaId + singerId + status +
 		// rotationSeq + addedAt. Missing addedAt trips the queue_entries.added_at NOT NULL
 		// constraint on flush, taking the whole process down — the state store applies queue ops
 		// synchronously, so the persistence exception unwinds through the WS handler and crashes
@@ -852,7 +852,7 @@ async function main() {
 		}
 	}
 
-	// fake-separator/e2e-tone is not in the whitelist (packages/shared/src/lyrics/separators.ts), so
+	// fake-separator/e2e-tone is not in the whitelist (apps/core/src/shared/lyrics/separators.ts), so
 	// separatorCost() must return undefined → declared=undefined, ratioToDeclared=null. The API must
 	// still ship the row so the operator sees a measurement was taken.
 	{
@@ -870,7 +870,7 @@ async function main() {
 				'fake-separator/e2e-tone declared cost was fabricated — not in the whitelist',
 				`declared=${JSON.stringify(fake.declared)}. separatorCost() should return undefined for this pair.`,
 				[
-					'packages/shared/src/lyrics/separators.ts:227-230 — separatorCost returns undefined for a pair not in the engine list'
+					'apps/core/src/shared/lyrics/separators.ts:227-230 — separatorCost returns undefined for a pair not in the engine list'
 				]
 			);
 		} else if (fake.ratioToDeclared !== null) {
@@ -892,7 +892,7 @@ async function main() {
 				'cost-per-model degrades correctly when the model has no declared rtFactor',
 				`observed fake-separator/e2e-tone: n=${fake.n}, meanRtFactor=${fake.meanRtFactor.toFixed(4)}×, declared=undefined, ratioToDeclared=null — the /metrics table renders "—" in the benchmark and vs columns for this row, which is the documented degradation`,
 				[
-					'packages/shared/src/lyrics/separators.ts:227-230 — separatorCost undefined for an unknown pair',
+					'apps/core/src/shared/lyrics/separators.ts:227-230 — separatorCost undefined for an unknown pair',
 					'src/routes/metrics/+page.svelte:172-176 — "—" for a null declared, "—" for a null ratioToDeclared'
 				]
 			);

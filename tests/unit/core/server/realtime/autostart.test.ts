@@ -6,8 +6,8 @@ import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
 import { reconcileOnReady } from '$server/realtime/player';
 import { AuthoritativeState } from '$server/state/store';
-import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '@encore/shared';
-import { EMPTY_SONG_PROFILE } from '@encore/shared';
+import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$shared';
+import { EMPTY_SONG_PROFILE } from '$shared';
 
 const media = (id: string): Media => ({
 	id,

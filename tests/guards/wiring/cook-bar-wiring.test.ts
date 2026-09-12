@@ -1,6 +1,6 @@
 // guard: a cook PROGRESS BAR must scale by OVERALL cook completion, not the current step's own pct.
 //
-// THE DEFECT (the second surface). `overallCookPct(status, pct)` in @encore/shared
+// THE DEFECT (the second surface). `overallCookPct(status, pct)` in $shared
 // maps the worker's per-step 0-100 into weighted per-stage bands over MEDIA_STAGES, so a bar reads how
 // far through the whole cook a song is — reaching 100% only at `ready` and never jumping backward when
 // the next step resets its own pct. That function was written and unit-proven for ProcessingCard, but

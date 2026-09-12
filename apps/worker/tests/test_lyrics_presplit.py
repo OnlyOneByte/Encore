@@ -60,7 +60,7 @@ def _ts_is_authoritative(text_source: str, text_confidence: str) -> bool:
         text,
     )
     assert body, (
-        "isAuthoritativeText in packages/shared/src/lyrics/lyrics.ts no longer matches the mirrored shape "
+        "isAuthoritativeText in apps/core/src/shared/lyrics/lyrics.ts no longer matches the mirrored shape "
         "`c.textSource !== '<x>' && c.textConfidence !== '<y>'` — the Python mirror in chain.py must "
         "be updated to match the new definition and this parser taught the new shape"
     )
@@ -101,7 +101,7 @@ def test_is_authoritative_text_mirrors_the_ts_predicate():
 
 
 def test_agreement_thresholds_mirror_the_ts_authority():
-    # MIN_TOKENS_TO_COMPARE / SUSPECT_COVERAGE are declared authoritative in packages/shared/src/
+    # MIN_TOKENS_TO_COMPARE / SUSPECT_COVERAGE are declared authoritative in apps/core/src/shared/
     # lyrics.ts (chain.py calls itself their mirror) but nothing cross-checked them. Read the TS
     # values and assert the Python copies equal them, so a threshold change on the authority side reds.
     # SUSPECT_COVERAGE replaced SUSPECT_AGREEMENT — a different metric on a different axis, so

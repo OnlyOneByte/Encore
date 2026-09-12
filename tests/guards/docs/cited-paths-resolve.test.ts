@@ -99,7 +99,7 @@ test('the citation pattern reads paths and not prose that resembles them', () =>
 	// real citations
 	expect(find('see `apps/core/src/lib/clock.ts` for the derivation')).toEqual(['apps/core/src/lib/clock.ts']);
 	expect(find('`tests/guards/a11y/contrast.test.ts` pins it')).toEqual(['tests/guards/a11y/contrast.test.ts']);
-	expect(find('`packages/shared/src/queue/rotation.ts`')).toEqual(['packages/shared/src/queue/rotation.ts']);
+	expect(find('`apps/core/src/shared/queue/rotation.ts`')).toEqual(['apps/core/src/shared/queue/rotation.ts']);
 	expect(find('`apps/worker/src/separate.py`')).toEqual(['apps/worker/src/separate.py']);
 	// not citations: a bare directory, a glob, and a package name that merely starts the same way
 	expect(find('everything under apps/core/src is in scope')).toEqual([]);

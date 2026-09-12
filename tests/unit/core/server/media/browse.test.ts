@@ -4,8 +4,8 @@
 import { beforeEach, expect, it } from 'bun:test';
 import { migratedDb } from '$server/db/test-db';
 import { MediaRepository } from '$server/media/repository';
-import type { Media } from '@encore/shared';
-import { EMPTY_SONG_PROFILE } from '@encore/shared';
+import type { Media } from '$shared';
+import { EMPTY_SONG_PROFILE } from '$shared';
 import { instrumentalKey } from '$server/media/paths';
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({

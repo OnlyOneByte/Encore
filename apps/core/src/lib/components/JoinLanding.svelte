@@ -19,8 +19,8 @@
 -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import { SINGER_COLORS } from '@encore/shared';
-	import { normalizeRoomCodeInput, CODE_LENGTH } from '@encore/shared';
+	import { SINGER_COLORS } from '$shared';
+	import { normalizeRoomCodeInput, CODE_LENGTH } from '$shared';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import CodeEntry from '$lib/components/CodeEntry.svelte';
 	import Icon from '$lib/ui/Icon.svelte';

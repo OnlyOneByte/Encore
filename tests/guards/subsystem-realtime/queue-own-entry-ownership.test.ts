@@ -23,7 +23,7 @@ import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { validateCommand, type HubDeps } from '$server/realtime/hub';
 import { AuthoritativeState } from '$server/state/store';
-import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ClientCommand } from '@encore/shared';
+import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ClientCommand } from '$shared';
 
 const media = (id: string): Media => ({
 	id,

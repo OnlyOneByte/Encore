@@ -2,7 +2,7 @@
 // A search hit is resolved to a Media record before it can be queued; it becomes playable only
 // once a stems job has produced an instrumental.
 
-import type { Media } from '@encore/shared';
+import type { Media } from '$shared';
 import { parseTrackTitle } from './track-title';
 
 export interface SearchResult {

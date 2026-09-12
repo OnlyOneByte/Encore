@@ -12,7 +12,7 @@
 import { test, expect } from 'bun:test';
 import { applyAnnotation } from '$server/jobs/make-karaoke';
 import { publishesInstrumental } from '$server/jobs/dispatch';
-import type { Media } from '@encore/shared';
+import type { Media } from '$shared';
 
 const media = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',

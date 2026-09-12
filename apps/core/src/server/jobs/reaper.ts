@@ -3,7 +3,7 @@
 // `JobRepository`. A requeue here makes the job eligible for redispatch. See
 // docs/ARCHITECTURE.md.
 
-import type { Job } from '@encore/shared';
+import type { Job } from '$shared';
 import type { JobRepository } from './repository';
 import { sweep, inflightToRecover } from './leases';
 

@@ -50,7 +50,7 @@ from ..retry_policy import BoundaryError
 
 # ── pure helpers (no torch, no subprocess) ───────────────────────────────────────
 
-#: Our stable whitelist tokens (packages/shared/src/lyrics/separators.ts) → audio-separator
+#: Our stable whitelist tokens (apps/core/src/shared/lyrics/separators.ts) → audio-separator
 #: `--model_filename` checkpoint filenames. Kept here, not in the shared TS, because the checkpoint
 #: filename is a WORKER-side resolution detail the core never needs to know — the core only validates
 #: the token. The filename is the exact string audio-separator resolves and downloads; it is the one the

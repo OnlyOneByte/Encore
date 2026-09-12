@@ -10,7 +10,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SINGER_COLORS } from '@encore/shared';
+import { SINGER_COLORS } from '$shared';
 import { appSrc, read } from '@encore/test-support';
 import { svelteFiles } from '$lib/test-helpers';
 

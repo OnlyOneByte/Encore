@@ -4,7 +4,7 @@
 // the client holds the guide exactly as today. Keeping the default here — not at each TvPlayer call site —
 // is what lets guide-sync.ts receive `masterSec + guideOffsetSec` without ever branching on presence.
 import { test, expect } from 'bun:test';
-import { guideOffsetSec, type Media } from '@encore/shared';
+import { guideOffsetSec, type Media } from '$shared';
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',

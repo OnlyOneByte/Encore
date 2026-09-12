@@ -10,7 +10,7 @@ import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { resultToMedia, type MediaResolver, type SearchResult } from '$server/media/resolver';
 import { partitionSearch } from '$server/media/readiness';
-import { ulid, type Media } from '@encore/shared';
+import { ulid, type Media } from '$shared';
 
 const PER_SOURCE_LIMIT = 12;
 

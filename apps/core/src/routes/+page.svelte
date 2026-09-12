@@ -12,7 +12,7 @@
 		songDisplay,
 		chosenCandidate,
 		hasNewerCandidateThanOverride
-	} from '@encore/shared';
+	} from '$shared';
 	import { onMount, tick } from 'svelte';
 	import type {
 		ServerEvent,
@@ -22,7 +22,7 @@
 		PlaybackState,
 		PlayerCommand,
 		EffectiveSettings
-	} from '@encore/shared';
+	} from '$shared';
 	import { QueueStore } from '$lib/stores/queue';
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
@@ -49,8 +49,8 @@
 	} from '$lib/readiness';
 	import { activeScars, recordScar, clearScar } from '$lib/stores/cook-scars';
 	import { positionWords } from '$lib/position-sentence';
-	import type { MediaStatus } from '@encore/shared';
-	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '@encore/shared';
+	import type { MediaStatus } from '$shared';
+	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '$shared';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import * as Collapsible from '$lib/components/ui/collapsible';

@@ -14,10 +14,10 @@
 
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Media, LyricsCandidate } from '@encore/shared';
-import { resolveLyricsRef } from '@encore/shared';
-import type { SongProfile } from '@encore/shared';
-import { normalizeSongProfile } from '@encore/shared';
+import type { Media, LyricsCandidate } from '$shared';
+import { resolveLyricsRef } from '$shared';
+import type { SongProfile } from '$shared';
+import { normalizeSongProfile } from '$shared';
 import { metaDir } from './paths';
 import { parseTrackTitle, type TrackParseRule } from './track-title';
 

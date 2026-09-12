@@ -17,15 +17,15 @@
 // behavioural test.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { isLikelyWrongSong, lyricsRank, SUSPECT_COVERAGE } from '@encore/shared';
+import { isLikelyWrongSong, lyricsRank, SUSPECT_COVERAGE } from '$shared';
 
 // The two documented files were already named repo-relative here; what was derived from this test's own
 // location was the ROOT they were joined to (`at('.')`, four levels
-// up from packages/shared/src/lyrics). `read` supplies that root and throws if a site moves, so a renamed
+// up from apps/core/src/shared/lyrics). `read` supplies that root and throws if a site moves, so a renamed
 // file is a path failure rather than a silently empty prose scan.
 const SITES = {
-	lyrics: 'packages/shared/src/lyrics/lyrics.ts',
-	types: 'packages/shared/src/core/types.ts'
+	lyrics: 'apps/core/src/shared/lyrics/lyrics.ts',
+	types: 'apps/core/src/shared/core/types.ts'
 } as const;
 
 const sources = new Map<string, string>(Object.values(SITES).map((rel) => [rel, read(rel)] as const));

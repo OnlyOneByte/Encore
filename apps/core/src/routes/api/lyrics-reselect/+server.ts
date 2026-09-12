@@ -11,7 +11,7 @@ import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
 import { mediaStatusFor } from '$server/jobs/media-status';
 import { requestLyricsReselect, type ReselectRefusal } from '$server/jobs/make-karaoke';
-import type { MediaStatus } from '@encore/shared';
+import type { MediaStatus } from '$shared';
 
 // The honest status code for each refusal — a 409 (conflict with the song's current state) except an
 // unknown media (404) and an empty/absent body field (400), so the phone can tell them apart.

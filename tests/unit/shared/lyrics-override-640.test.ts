@@ -13,7 +13,7 @@ import {
 	resolveLyricsRef,
 	hasNewerCandidateThanOverride,
 	pickBestLyrics
-} from '@encore/shared';
+} from '$shared';
 
 let _t = 0;
 const cand = (

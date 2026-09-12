@@ -15,7 +15,7 @@ services:
   core:
     <<: *hardening
     build:
-      context: . # repo root — the Dockerfile copies packages/shared + apps/core
+      context: . # repo root — the Dockerfile copies apps/core/src/shared + apps/core
       dockerfile: apps/core/Dockerfile
     ports:
       - "3000:3000"

@@ -13,8 +13,8 @@ import type {
 	EffectiveSettings,
 	Ordering,
 	QueueOp
-} from '@encore/shared';
-import { singHistoryFrom } from '@encore/shared';
+} from '$shared';
+import { singHistoryFrom } from '$shared';
 import type { AuthoritativeState } from '../state/store';
 import { can } from '../auth/capabilities';
 import { queueEntries } from '../db/schema';

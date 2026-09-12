@@ -10,7 +10,7 @@ import type { PageServerLoad } from './$types';
 import QRCode from 'qrcode';
 import { getApp } from '$server/app';
 import { joinOrigin, fallbackJoinOrigin } from '$server/public-origin';
-import { DEFAULT_EFFECTIVE_SETTINGS, type EffectiveSettings } from '@encore/shared';
+import { DEFAULT_EFFECTIVE_SETTINGS, type EffectiveSettings } from '$shared';
 
 export const load: PageServerLoad = async ({ url, request }) => {
 	const origin = joinOrigin(request, url);

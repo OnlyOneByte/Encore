@@ -651,7 +651,7 @@ test('every @media width literal in source is a declared breakpoint', () => {
 	// acceptance's scope. styleFiles walks .svelte + .css (the widths live in component <style> blocks
 	// AND in app.css), and *.test.* files are excluded — the 5000px in motion.test.ts and the 380px in
 	// song-row-sparkle-sibling.test.ts are guard prose about queries, not queries.
-	const roots = [join(REPO, 'apps'), join(REPO, 'packages')].filter((d) => existsSync(d));
+	const roots = [join(REPO, 'apps')].filter((d) => existsSync(d));
 	const WIDTH_RE = /@media[^{]*?\b(?:min|max)-width\s*:\s*(\d+)px/g;
 	const offences: string[] = [];
 	let literalsFound = 0;
@@ -692,7 +692,7 @@ test('the colour picker has exactly one name per shared preset colour', () => {
 	// announces `blue`.) Length parity plus the contract's name check bound the blast radius to a
 	// same-length reorder, which a human reading either file can still see.
 	const picker = readFileSync(join(SRC, 'lib/components/ColourPicker.svelte'), 'utf8');
-	const shared = readFileSync(at('packages/shared/src/presentation/colors.ts'), 'utf8');
+	const shared = readFileSync(at('apps/core/src/shared/presentation/colors.ts'), 'utf8');
 
 	const names = /PRESET_NAMES\s*=\s*\[([^\]]*)\]/.exec(picker)?.[1];
 	expect(names).toBeDefined();
@@ -707,7 +707,7 @@ test('the colour picker has exactly one name per shared preset colour', () => {
 
 test('the colour picker wires its swatch tabindex to presetTabStopIndex', () => {
 	// THE BUG THIS BOUNDS (pr-bot BLOCKED verdict on the first cut). The tab-stop DECISION was
-	// extracted to the pure, unit-tested presetTabStopIndex in @encore/shared so a guard could exercise
+	// extracted to the pure, unit-tested presetTabStopIndex in $shared so a guard could exercise
 	// production logic instead of a reconstructed predicate -- but that closed only the *reconstruction*
 	// hazard. It left the *reversion* hazard open: the one line that actually READS the function is a
 	// Svelte template expression, and reverting it to the pre-fix `tabindex={value === c ? 0 : -1}`
@@ -725,14 +725,14 @@ test('the colour picker anchors arrow movement on nextSwatchIndex, not a bare in
 	// wheel value), but the arrow-key handler used to compute its base from a bare
 	// `(SINGER_COLORS as ...).indexOf(value)`, which is -1 for any wheel hex. After a hue pick the two
 	// disagreed: focus sat on swatch 0 while movement started from -1, so the first ArrowRight did not
-	// move and ArrowLeft skipped mint. nextSwatchIndex in @encore/shared shares presetTabStopIndex's
+	// move and ArrowLeft skipped mint. nextSwatchIndex in $shared shares presetTabStopIndex's
 	// anchor and is unit-tested there -- but that closes only the helper; the handler is a Svelte
 	// script line the helper tests never exercise. This pins the call site so it cannot revert to the
 	// bare-indexOf base while the helper stays correct, mirroring the tab-stop wiring guard above.
 	const picker = stripComments(readFileSync(join(SRC, 'lib/components/ColourPicker.svelte'), 'utf8'));
 	// It must IMPORT the shared helper (reverting the import alone leaves a call to an unimported
 	// symbol — a build break bun test does not see, so the import must be pinned here too)...
-	expect(picker).toMatch(/import \{[^}]*\bnextSwatchIndex\b[^}]*\} from '@encore\/shared';/);
+	expect(picker).toMatch(/import \{[^}]*\bnextSwatchIndex\b[^}]*\} from '\$shared';/);
 	// ...and the arrow handler must derive `next` from that helper...
 	expect(picker).toMatch(/const next = nextSwatchIndex\(value, step\);/);
 	// ...and must NOT reintroduce the divergent bare-indexOf arrow base (the original defect). Comments are

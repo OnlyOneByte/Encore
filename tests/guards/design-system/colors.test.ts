@@ -28,7 +28,7 @@ import {
 	ACCENT2,
 	oklchToRgb,
 	duetPartColors
-} from '@encore/shared';
+} from '$shared';
 
 // Every colour the wheel can emit. Derived here, not exported from `colors.ts`: production picks a
 // colour with `hueToHex(hue)` for an arbitrary hue (the wheel is free-hue), so a precomputed array
@@ -45,7 +45,7 @@ const appCss = read('apps/core/src/app.css');
  * instead of leaving it measuring a value nothing declares.
  *
  * A local ~4-line reader rather than an import of `contrast.test.ts`'s `token()`: that helper lives
- * in `apps/core`, which `packages/shared` cannot import across the package boundary.
+ * in `apps/core`, which `apps/core/src/shared` cannot import across the package boundary.
  */
 function token(name: string): string {
 	const m = appCss.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})\\s*;`));

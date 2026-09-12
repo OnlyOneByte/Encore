@@ -36,7 +36,7 @@ import {
 	type Media,
 	type MediaStage,
 	type MediaStatus
-} from '@encore/shared';
+} from '$shared';
 
 /**
  * Where on the media's line a job of this type sits WHILE IT RUNS — its floor.

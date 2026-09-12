@@ -4,8 +4,8 @@ import { read } from '@encore/test-support';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from '$server/realtime/player';
 import { AuthoritativeState } from '$server/state/store';
 import { type HubDeps } from '$server/realtime/hub';
-import { type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
-import { EMPTY_SONG_PROFILE } from '@encore/shared';
+import { type ServerEvent, type Media, type QueueEntry } from '$shared';
+import { EMPTY_SONG_PROFILE } from '$shared';
 
 const media = (id: string): Media => ({
 	id,

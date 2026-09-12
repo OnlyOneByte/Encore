@@ -9,7 +9,7 @@ import { SESSION_COOKIE } from '$server/singers/repository';
 import { can } from '$server/auth/capabilities';
 import { mediaFor } from '$server/realtime/hub';
 import { emitNowPlaying } from '$server/realtime/player';
-import type { RoomSettings } from '@encore/shared';
+import type { RoomSettings } from '$shared';
 
 export const PUT: RequestHandler = async ({ request, cookies, url }) => {
 	const app = getApp();

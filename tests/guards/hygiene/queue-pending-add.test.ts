@@ -14,7 +14,7 @@
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 import { QueueStore } from '$lib/stores/queue';
-import type { ClientCommand } from '@encore/shared';
+import type { ClientCommand } from '$shared';
 
 // deterministic id minting: addSong mints entryId THEN clientOpId (id0/id1, id2/id3, ...).
 function makeStore() {

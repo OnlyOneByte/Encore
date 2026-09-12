@@ -13,7 +13,7 @@
 // The incentive was inverted — the incomplete edit was silent, the complete one punished. For (2)
 // `deps.publish` is typed `(event: ServerEvent) => void` (hub.ts) but the resync writes through
 // `ws.send(JSON.stringify(...))`, which accepts anything: adding one required field to the
-// nowplaying:changed variant (packages/shared/src/core/events.ts) produced exactly ONE tsc error, at
+// nowplaying:changed variant (apps/core/src/shared/core/events.ts) produced exactly ONE tsc error, at
 // player.ts, and ZERO at server.ts. So a reconnecting TV or a reloading phone would be served the
 // old projection while every live client got the new one — the same class as an advertised next that
 // disagrees with the truth, reached from the resync seam.
@@ -48,6 +48,17 @@ function collectNonTestSources(): string[] {
 	const walk = (dir: string) => {
 		for (const name of readdirSync(dir)) {
 			if (['node_modules', '.svelte-kit', 'build', 'dist'].includes(name)) continue;
+			// `src/shared` is the ISOMORPHIC CONTRACT, and it is excluded from this census on purpose.
+			//
+			// Every arm here asks "how many production files BUILD this frame". The contract DECLARES the
+			// frame's shape — `{ type: 'nowplaying:changed'; … }` in a type union — which the same pattern
+			// matches while being the opposite of a duplicate: a declaration naming the event exactly once
+			// is the thing the single build site is checked against.
+			//
+			// It became reachable only when the shared package was folded into `apps/core/src`. Before that
+			// it sat outside this walk's root, so the exclusion is restoring the census's original scope
+			// rather than narrowing it — the arms counted 1 before the fold and count 1 now.
+			if (name === 'shared' && dir === SRC_ROOT) continue;
 			const p = join(dir, name);
 			if (statSync(p).isDirectory()) walk(p);
 			else if (/\.(ts|svelte)$/.test(name) && !/\.test\.ts$/.test(name)) out.push(p);
@@ -120,7 +131,7 @@ test('ARM 1 cannot be satisfied by deleting the invariant — the resolution tes
 // ── PROSE ARM: the comment that tells the next developer the predicate is single-sourced ────────────
 // This pins the comment-only hunk of this fix, which by construction cannot red a behavioural test —
 // `docs/loop/CODING-BOT.md` §3 sanctions exactly this shape, and the in-repo precedents are
-// packages/shared/src/pin-base-prose-790.test.ts and spotify-enforcement-prose-742.test.ts. Read RAW
+// apps/core/src/shared/pin-base-prose-790.test.ts and spotify-enforcement-prose-742.test.ts. Read RAW
 // (not stripComments), because the comment text IS the subject: blanking comments would make every
 // assertion below vacuous.
 //

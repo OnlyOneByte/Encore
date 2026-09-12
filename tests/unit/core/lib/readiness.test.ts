@@ -4,8 +4,8 @@
 import { test, expect } from 'bun:test';
 import { readinessOf, displayReadiness, canCook, readyEmptyState, queueCardKind } from '$lib/readiness';
 import { readinessOf as serverReadinessOf } from '$server/media/readiness';
-import type { Media } from '@encore/shared';
-import { EMPTY_SONG_PROFILE } from '@encore/shared';
+import type { Media } from '$shared';
+import { EMPTY_SONG_PROFILE } from '$shared';
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',

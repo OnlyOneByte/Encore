@@ -10,7 +10,7 @@ import {
 	type QueueEntry,
 	type PlaybackState,
 	type ServerEvent
-} from '@encore/shared';
+} from '$shared';
 import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
 import { entryResolves } from '../state/store';
 import { mediaFor, orderingOf, type HubDeps } from './hub';

@@ -19,8 +19,8 @@ import { at, read } from '@encore/test-support';
 import { sqlitePersistence } from '$server/state/persistence';
 import { SingerRepository } from '$server/singers/repository';
 import { SettingsRepository } from '$server/state/settings-repository';
-import { DEFAULT_STAGE_COLOR, STAGE_BG_C, STAGE_BG_L, hueToHex, stageHueToHex } from '@encore/shared';
-import type { PlaybackState, QueueEntry } from '@encore/shared';
+import { DEFAULT_STAGE_COLOR, STAGE_BG_C, STAGE_BG_L, hueToHex, stageHueToHex } from '$shared';
+import type { PlaybackState, QueueEntry } from '$shared';
 
 /**
  * The real migration folder. Was `at('apps/core/drizzle')` at seven sites,

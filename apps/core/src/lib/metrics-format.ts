@@ -4,7 +4,7 @@
 // worker stage being taught to one page's label map and silently showing the raw DB name on the
 // other. One source, imported twice, cannot disagree with itself.
 //
-// This vocabulary is deliberately SEPARATE from the guest-facing labels in @encore/shared: the
+// This vocabulary is deliberately SEPARATE from the guest-facing labels in $shared: the
 // operator page says "removing vocals", the phone says "Separating vocals". They serve different
 // readers (an operator debugging throughput vs a singer waiting on their song), so they are kept
 // apart on purpose rather than forced into one table.
@@ -56,7 +56,7 @@ export const stepLabel = (jobType: string): string => STEP_LABELS[jobType] ?? jo
 
 /**
  * The worker's own sub-step names. `separating`/`aligning` describe the code, not the work. Operator
- * wording ("removing vocals"); the guest-facing equivalent lives in @encore/shared and reads
+ * wording ("removing vocals"); the guest-facing equivalent lives in $shared and reads
  * differently on purpose (see the module note above).
  */
 export const STAGE_LABELS: Record<string, string> = {

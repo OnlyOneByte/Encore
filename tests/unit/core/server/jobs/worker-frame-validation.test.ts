@@ -16,7 +16,7 @@ import { migratedDb } from '$server/db/test-db';
 import { WorkerHub, validateWorkerMessage } from '$server/jobs/worker-hub';
 import { WorkerRegistry } from '$server/jobs/registry';
 import { JobRepository } from '$server/jobs/repository';
-import type { WorkerMessage } from '@encore/shared';
+import type { WorkerMessage } from '$shared';
 
 function harness() {
 	const db = migratedDb();

@@ -3,7 +3,7 @@
 import { test, expect } from 'bun:test';
 import { planAssignments, hasCapableWorker, eligible } from '$server/jobs/dispatch';
 import type { WorkerSession } from '$server/jobs/registry';
-import type { Job, JobType } from '@encore/shared';
+import type { Job, JobType } from '$shared';
 
 const T0 = 1_700_000_000_000;
 

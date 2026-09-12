@@ -14,7 +14,7 @@ import {
 	type JobAttempt,
 	type JobType,
 	type SeparatorCost
-} from '@encore/shared';
+} from '$shared';
 
 /** An attempt that ran to completion and can therefore be measured. */
 function measurable(a: JobAttempt): boolean {

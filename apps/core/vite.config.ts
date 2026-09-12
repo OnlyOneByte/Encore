@@ -29,8 +29,17 @@ export default defineConfig({
 			},
 			adapter: adapter(),
 			alias: {
-				// the shared realtime contract — imported by both client and server code
-				'@encore/shared': '../../packages/shared/src/index.ts',
+				// The isomorphic contract — imported by BOTH `src/lib` (client) and `src/server`
+				// (authoritative), which is what "shared" means here. It was the `$shared` workspace
+				// package until the fold; the name is now `$shared`, matching this repo's own `$lib` /
+				// `$server` convention for an internal alias rather than advertising a package that no
+				// longer exists.
+				//
+				// Pointing at the DIRECTORY, not at `index.ts`. The old package's `exports` map carried only
+				// `"."`, so a subpath import did not resolve and tests reached the palette registry through
+				// `'../../../../packages/shared/…json'`. SvelteKit generates both `$shared` and `$shared/*`
+				// from a directory, so those relative reaches can go.
+				$shared: 'src/shared',
 				// server-only modules (authoritative state, repos) reachable from +server.ts routes
 				$server: 'src/server'
 			}

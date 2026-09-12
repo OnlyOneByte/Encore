@@ -2,8 +2,8 @@
 // Plus the held-slot rule (not-ready media is skipped but keeps its position).
 import { test, expect } from 'bun:test';
 import { reseq, nextPlayable, upNextAfter, isEntryReady } from '$server/rotation/index';
-import type { QueueEntry, Media } from '@encore/shared';
-import { EMPTY_SONG_PROFILE, applyAndReseq } from '@encore/shared';
+import type { QueueEntry, Media } from '$shared';
+import { EMPTY_SONG_PROFILE, applyAndReseq } from '$shared';
 
 const e = (id: string, singerId: string, addedAt: number, mediaId = 'm-' + id): QueueEntry => ({
 	id,

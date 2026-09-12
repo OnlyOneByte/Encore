@@ -25,7 +25,7 @@ function externalImports(src: string): string[] {
 	 *
 	 * Scanning the whole file for `from '…'` does not work here, because these guards contain import-shaped
 	 * text as DATA: mutation arms hold `import { sql } from 'drizzle-orm';` as a fixture, and other guards
-	 * carry regex literals like `/from '@encore\/shared'/` as patterns. The first version reported
+	 * carry regex literals like `/from '\$shared'/` as patterns. The first version reported
 	 * `${wanted}`, `$lib\`, and a fragment of another guard's test body as packages.
 	 *
 	 * An import is a STATEMENT, so a line that is one begins with `import` or `export`. A fixture never
@@ -37,7 +37,7 @@ function externalImports(src: string): string[] {
 	const push = (spec: string): void => {
 		if (/^[./]/.test(spec)) return; // relative
 		if (/^(node:|bun:)/.test(spec)) return; // builtin
-		if (/^(\$lib|\$server|\$app|\$env)/.test(spec)) return; // tsconfig path alias
+		if (/^(\$lib|\$server|\$shared|\$app|\$env)/.test(spec)) return; // tsconfig path alias
 		if (/^@encore\//.test(spec)) return; // workspace sibling, resolved by alias
 		out.push(spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]!);
 	};
@@ -126,7 +126,7 @@ test('the scan reads import STATEMENTS and not import-shaped fixtures', () => {
 	// the exclusions
 	expect(externalImports(stmt('bun:test'))).toEqual([]);
 	expect(externalImports(stmt('$lib/foo'))).toEqual([]);
-	expect(externalImports(stmt('@encore/shared'))).toEqual([]);
+	expect(externalImports(stmt('$shared'))).toEqual([]);
 	expect(externalImports(stmt('./sibling'))).toEqual([]);
 
 	// import-shaped text that is NOT a statement — the cases that broke two earlier versions

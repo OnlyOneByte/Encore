@@ -2,7 +2,7 @@
 import { test, expect } from 'bun:test';
 import { LocalLibrary } from '$server/media/local';
 import { resultToMedia } from '$server/media/resolver';
-import { isPlayable } from '@encore/shared';
+import { isPlayable } from '$shared';
 
 function lib() {
 	const l = new LocalLibrary();

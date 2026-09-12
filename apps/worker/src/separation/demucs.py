@@ -30,7 +30,7 @@ from ..retry_policy import BoundaryError, permanent_by_message
 DEFAULT_MODEL = "htdemucs"
 
 # The demucs-family checkpoints this engine will run. Mirrors the `demucs` engine's model
-# whitelist in packages/shared/src/lyrics/separators.ts — defence in depth: the core already validates the
+# whitelist in apps/core/src/shared/lyrics/separators.ts — defence in depth: the core already validates the
 # engine+model pairing before enqueueing, but a worker must never shell `demucs -n <arbitrary>` from
 # a job param, so an unknown model is rejected here too rather than silently falling back.
 DEMUCS_MODELS = ("htdemucs", "htdemucs_ft", "htdemucs_6s")

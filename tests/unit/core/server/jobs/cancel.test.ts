@@ -11,8 +11,8 @@ import { handleQueueCommand, type HubDeps } from '$server/realtime/hub';
 import { AuthoritativeState } from '$server/state/store';
 import { WorkerHub } from '$server/jobs/worker-hub';
 import { WorkerRegistry } from '$server/jobs/registry';
-import type { WorkerCommand, QueueEntry, Media, ClientCommand, ServerEvent } from '@encore/shared';
-import { readyToSing } from '@encore/shared';
+import type { WorkerCommand, QueueEntry, Media, ClientCommand, ServerEvent } from '$shared';
+import { readyToSing } from '$shared';
 
 const T0 = 1_700_000_000_000;
 

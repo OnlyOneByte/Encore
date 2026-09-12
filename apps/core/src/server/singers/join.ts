@@ -1,7 +1,7 @@
 // Join logic — pure-ish handler so it unit-tests without HTTP. The +server.ts route is a thin
 // wrapper that parses the request, calls this, sets the session cookie, and returns JSON.
 
-import { normalizeSingerColor, graceMsOf, type Singer } from '@encore/shared';
+import { normalizeSingerColor, graceMsOf, type Singer } from '$shared';
 import type { EncoreApp } from '../app';
 
 export interface JoinInput {

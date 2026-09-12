@@ -8,7 +8,7 @@ import {
 	DEFAULT_MODEL,
 	separatorCost,
 	qualityRank
-} from '@encore/shared';
+} from '$shared';
 import {
 	normalizeGlobalSettings,
 	DEFAULT_GLOBAL_SETTINGS,
@@ -26,8 +26,8 @@ import {
 	resolveLyricsPresentation,
 	normalizeJoinOrigin,
 	type RoomSettings
-} from '@encore/shared';
-import { DEFAULT_STAGE_COLOR, stageHueToHex } from '@encore/shared';
+} from '$shared';
+import { DEFAULT_STAGE_COLOR, stageHueToHex } from '$shared';
 import {
 	LYRICS_BALL_STYLES,
 	LYRICS_HIGHLIGHTS,
@@ -47,8 +47,8 @@ import {
 	DEFAULT_LYRICS_LINES_AFTER,
 	MAX_LYRICS_LINES_BEFORE,
 	MAX_LYRICS_LINES_AFTER
-} from '@encore/shared';
-import type { LyricsCandidate } from '@encore/shared';
+} from '$shared';
+import type { LyricsCandidate } from '$shared';
 
 it('separator registry: the live default is a real, live-selectable pairing', () => {
 	expect(isValidSeparator(DEFAULT_ENGINE, DEFAULT_MODEL)).toBe(true);

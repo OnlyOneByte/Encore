@@ -12,7 +12,8 @@
 		"allowImportingTsExtensions": true,
 		"noEmit": true,
 		"paths": {
-			"@encore/shared": ["./packages/shared/src/index.ts"]
+			"$shared": ["./apps/core/src/shared/index.ts"],
+			"$shared/*": ["./apps/core/src/shared/*.ts"]
 		}
 	},
 	"include": ["packages", "apps/core/server.ts", "apps/core/src"]

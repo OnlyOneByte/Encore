@@ -17,11 +17,11 @@ import {
 	MAX_CONCURRENT_COOKS_PER_SINGER,
 	type MakeKaraokeDeps
 } from '$server/jobs/make-karaoke';
-import { pendingGates, EMPTY_SONG_PROFILE } from '@encore/shared';
+import { pendingGates, EMPTY_SONG_PROFILE } from '$shared';
 import { JobRepository } from '$server/jobs/repository';
 import { AuthoritativeState } from '$server/state/store';
 import { nextPlayable, isEntryReady } from '$server/rotation/index';
-import { playbackRef, type Media, type QueueEntry } from '@encore/shared';
+import { playbackRef, type Media, type QueueEntry } from '$shared';
 
 const T0 = 1_700_000_000_000;
 const media = (id: string, over: Partial<Media> = {}): Media => ({

@@ -1,6 +1,6 @@
 import { expect, it } from 'bun:test';
-import { MEDIA_STAGES, type MediaStatus } from '@encore/shared';
-import { overallCookPct } from '@encore/shared';
+import { MEDIA_STAGES, type MediaStatus } from '$shared';
+import { overallCookPct } from '$shared';
 
 // The processing bar scaled the WHOLE bar by the current step's own 0-100, so every step
 // reaching 100% filled the bar while three of five milestones had not started. overallCookPct maps

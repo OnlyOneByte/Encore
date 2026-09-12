@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
-import { storedOrder, assignSeqs, insertEntry, applyAndReseq, isTerminal, reorderWithinSinger, moveToIndex } from '@encore/shared';
-import type { QueueEntry } from '@encore/shared';
+import { storedOrder, assignSeqs, insertEntry, applyAndReseq, isTerminal, reorderWithinSinger, moveToIndex } from '$shared';
+import type { QueueEntry } from '$shared';
 
 // `rotationSeq` is the STORED position and is what every read goes through. `addedAt` no longer
 // decides a position; it only breaks a tie for a row the server has not numbered yet.

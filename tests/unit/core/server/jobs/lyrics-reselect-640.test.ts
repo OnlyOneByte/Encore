@@ -11,7 +11,7 @@ import { requestLyricsReselect, manualLyricsRef, type MakeKaraokeDeps } from '$s
 import { assignParams } from '$server/jobs/dispatch';
 import { JobRepository } from '$server/jobs/repository';
 import { AuthoritativeState } from '$server/state/store';
-import type { LyricsCandidate, Media } from '@encore/shared';
+import type { LyricsCandidate, Media } from '$shared';
 
 const T0 = 1_700_000_000_000;
 const media = (over: Partial<Media> = {}): Media => ({

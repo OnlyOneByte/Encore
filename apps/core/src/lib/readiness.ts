@@ -1,7 +1,7 @@
 // Client-side mirror of the server's readiness axis (src/server/media/readiness.ts). Duplicated
-// rather than imported because @encore/shared is the client/server contract and this is a derived
+// rather than imported because $shared is the client/server contract and this is a derived
 // view concern — but the classification MUST agree with the server's, so it is unit-tested here too.
-import { isCooking, isCookableSource, readyToSing, type Media, type MediaStatus } from '@encore/shared';
+import { isCooking, isCookableSource, readyToSing, type Media, type MediaStatus } from '$shared';
 
 export type Readiness = 'ready' | 'cooking' | 'failed' | 'unacquired';
 

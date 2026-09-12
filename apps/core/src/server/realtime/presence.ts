@@ -7,7 +7,7 @@
 // This started as a pure socket ref-count, and that was the bug: a singer was "present" iff their live
 // socket count was > 0, so locking a phone removed its owner from the party in ~30 seconds (Bun's
 // `idleTimeout` is the only liveness signal in the WS path). Sockets are still the input, but they are
-// no longer the answer — see packages/shared/src/queue/membership.ts for the three-state policy and why the
+// no longer the answer — see apps/core/src/shared/queue/membership.ts for the three-state policy and why the
 // grace clock starts on an empty song queue rather than on the socket drop.
 //
 // Ref-counted because a singer legitimately holds several sockets at once (two tabs, a phone that
@@ -16,7 +16,7 @@
 //
 // Socket-free so it unit-tests without a server; server.ts owns the wiring and drives the sweep.
 
-import { memberState, shouldStartClock, shouldClearClock, type MemberFacts, type MemberState } from '@encore/shared';
+import { memberState, shouldStartClock, shouldClearClock, type MemberFacts, type MemberState } from '$shared';
 
 interface Record_ {
 	sockets: number;

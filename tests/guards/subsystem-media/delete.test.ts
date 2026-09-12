@@ -14,8 +14,8 @@ import { test, expect } from 'bun:test';
 import { deleteMediaEntirely, type DeleteMediaDeps } from '$server/media/delete';
 import { AuthoritativeState } from '$server/state/store';
 import type { HubDeps } from '$server/realtime/hub';
-import { type Media, type QueueEntry, type ServerEvent, type LyricsCandidate } from '@encore/shared';
-import { EMPTY_SONG_PROFILE } from '@encore/shared';
+import { type Media, type QueueEntry, type ServerEvent, type LyricsCandidate } from '$shared';
+import { EMPTY_SONG_PROFILE } from '$shared';
 import { metaKey, audioKey } from '$server/media/paths';
 import { read } from '@encore/test-support';
 

@@ -12,7 +12,7 @@ import {
 	assertEvent,
 	JOB_TRANSITIONS
 } from '$server/jobs/transitions';
-import { TERMINAL_JOB_STATUSES, JOB_EVENTS, type JobStatus, type JobEvent } from '@encore/shared';
+import { TERMINAL_JOB_STATUSES, JOB_EVENTS, type JobStatus, type JobEvent } from '$shared';
 
 // — status-pair view (the lossy projection kept for callers that only ask "is A→B legal?") —
 

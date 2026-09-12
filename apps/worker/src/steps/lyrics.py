@@ -709,7 +709,7 @@ class PublishLyrics(Step):
     """Point the CompleteResult at an artifact and report the resolved engines.
 
     `uri` is the FIRST candidate, not the best. Ranking lives in exactly one place — pickBestLyrics in
-    packages/shared/src/lyrics/lyrics.ts — and the core re-picks from `candidates` on every write and restore.
+    apps/core/src/shared/lyrics/lyrics.ts — and the core re-picks from `candidates` on every write and restore.
     A second ranking here would drift silently.
     """
 

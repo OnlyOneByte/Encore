@@ -2,10 +2,10 @@
 """
 Encore 48-stop player palette, where a guest's identity colour IS their UI accent.
 
-This is the generator behind `packages/shared/src/presentation/player-palette-48.json`, the one machine-readable
+This is the generator behind `apps/core/src/shared/presentation/player-palette-48.json`, the one machine-readable
 source of truth for the 48 stops (`XR-COL-01`). Run it from anywhere; paths are repo-relative:
 
-    python3 packages/shared/scripts/_player_palette.py
+    python3 apps/core/src/shared/scripts/_player_palette.py
 
 The surfaces every figure is measured against are READ from `apps/core/src/app.css`, never restated
 here (`XR-COL-04`) -- see `css_token` below for what that cost when they were restated. Regenerating
@@ -39,12 +39,32 @@ import colorsys
 import pathlib
 
 HERE = pathlib.Path(__file__).parent
-REPO = HERE.parents[2]                      # packages/shared/scripts -> repo root
+
+
+def _repo_root() -> pathlib.Path:
+    """The repo root, found by walking up for `bunfig.toml`.
+
+    This was `HERE.parents[2]`, a hop count that encoded the script's distance from the root while it
+    lived at `apps/core/src/shared/scripts/`. Folding the shared package into `apps/core/src/shared/` moved
+    it two levels deeper, so that expression resolved to `apps/core/src` and the script tried to open
+    `apps/core/apps/core/src/app.css`.
+
+    `bunfig.toml` is the marker because it is what the test harness uses to find the same root, so the
+    guard that regenerates this file and the script itself agree by construction — and a hop count
+    cannot silently survive the next move.
+    """
+    for candidate in [HERE, *HERE.parents]:
+        if (candidate / "bunfig.toml").is_file():
+            return candidate
+    raise SystemExit(f"_player_palette: no bunfig.toml above {HERE}")
+
+
+REPO = _repo_root()
 APP_CSS = REPO / "apps" / "core" / "src" / "app.css"
 # The committed registry, unless a caller redirects it. `PLAYER_PALETTE_OUT` is how the freshness
 # guard regenerates into a temp file without dirtying the working tree.
 OUT = pathlib.Path(os.environ.get("PLAYER_PALETTE_OUT")
-                   or REPO / "packages" / "shared" / "src" / "presentation" / "player-palette-48.json")
+                   or REPO / "apps" / "core" / "src" / "shared" / "presentation" / "player-palette-48.json")
 
 N_STOPS = 48
 START_HUE = 29.0            # red, so the wheel reads red -> ... -> magenta -> red

@@ -13,7 +13,6 @@
 		"typecheck": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json"
 	},
 	"dependencies": {
-		"@encore/shared": "workspace:*",
 		"@lucide/svelte": "^1.43.0",
 		"bits-ui": "^2.16.3",
 		"clsx": "2.1.1",

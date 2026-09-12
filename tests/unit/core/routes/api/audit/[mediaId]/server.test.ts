@@ -4,7 +4,7 @@
 // not exist), so a reverted mapper drops it.
 import { expect, it } from 'bun:test';
 import { toAudit } from '../../../../../../../apps/core/src/routes/api/audit/[mediaId]/audit-shape';
-import type { JobAttempt } from '@encore/shared';
+import type { JobAttempt } from '$shared';
 
 function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 	return {

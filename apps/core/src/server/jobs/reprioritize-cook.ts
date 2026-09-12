@@ -24,7 +24,7 @@
 // the reconnect case has a real starvation consequence; a general "recompute on every applyQueueOp"
 // would naturally land on this same add hook later.
 
-import type { QueueEntry } from '@encore/shared';
+import type { QueueEntry } from '$shared';
 import type { JobRepository } from './repository';
 import { soonestSeqFor } from './make-karaoke';
 

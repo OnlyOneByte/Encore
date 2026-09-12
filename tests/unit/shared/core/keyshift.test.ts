@@ -3,7 +3,7 @@
 // `keyedMediaRef` used to live beside this and is deliberately gone: transposition happens in the
 // browser now, so there is no pre-rendered per-key file to name. See the note in its place in types.ts.
 import { test, expect } from 'bun:test';
-import { clampKeyShift, MAX_KEY_SHIFT } from '@encore/shared';
+import { clampKeyShift, MAX_KEY_SHIFT } from '$shared';
 
 test('clampKeyShift bounds to ±MAX_KEY_SHIFT and truncates to an integer', () => {
 	expect(clampKeyShift(0)).toBe(0);

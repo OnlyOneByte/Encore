@@ -101,7 +101,7 @@ it after `bun run build`; it drives the real bundle.
   can print "0 errors" while the chained leg fails — confirm the whole chain exits 0.
 
 **The old baseline is dead.** Any brief claiming `bun run typecheck` exits 2 with exactly 9 known
-`@encore/shared` `song-profile` errors and that this counts as green is stale — that was issue #56,
+`$shared` `song-profile` errors and that this counts as green is stale — that was issue #56,
 closed by PR #73. Any error is now a regression, and fixing it outranks the assignment.
 
 ## Proof — a fix is not done until the test bites

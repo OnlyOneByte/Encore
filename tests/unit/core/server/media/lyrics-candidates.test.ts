@@ -2,8 +2,8 @@
 // chosen one. The property that matters is that storage can never regress — a coarser source arriving
 // later must not displace existing word timings, which a "last write wins" ref would have done.
 import { test, expect } from 'bun:test';
-import type { LyricsCandidate, Media } from '@encore/shared';
-import { chosenCandidate } from '@encore/shared';
+import type { LyricsCandidate, Media } from '$shared';
+import { chosenCandidate } from '$shared';
 import { setMediaLyrics } from '$server/jobs/make-karaoke';
 
 // toRelativeKey strips the REAL MEDIA_DIR, so the absolute paths a worker reports only relativize
