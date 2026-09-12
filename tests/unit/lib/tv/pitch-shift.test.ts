@@ -330,7 +330,10 @@ const BLOCK = 128; // what a browser hands an AudioWorkletProcessor
 /** Evaluate the worklet source in a stub scope and return the registered processor class. */
 function loadProcessor(): new () => {
 	ratio: number;
-	chan: { readPos: number; writePos: number; anchored: boolean }[];
+	readPos: number;
+	writePos: number;
+	anchored: boolean;
+	chan: { hist: Float32Array; outAcc: Float32Array; outNorm: Float32Array }[];
 	port: { onmessage: ((e: { data: unknown }) => void) | null };
 	process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean;
 } {
@@ -364,7 +367,7 @@ function run(semitones: number, hz: number, seconds: number) {
 		const outCh = new Float32Array(BLOCK);
 		p.process([[inCh]], [[outCh]]);
 		out.set(outCh, b * BLOCK);
-		if (p.chan[0]) lags.push(p.chan[0].writePos - p.chan[0].readPos);
+		if (p.chan[0]) lags.push(p.writePos - p.readPos);
 	}
 	return { out, lags, proc: p };
 }
@@ -490,7 +493,7 @@ test('a shift applied then removed returns to passthrough without a stale pointe
 		for (let b = 0; b < 400; b++) {
 			const i2 = new Float32Array(BLOCK).fill(0.25);
 			p.process([[i2]], [[new Float32Array(BLOCK)]]);
-			l.push(p.chan[0].writePos - p.chan[0].readPos);
+			l.push(p.writePos - p.readPos);
 		}
 		return { lags: l };
 	})();
@@ -579,11 +582,39 @@ function peakHz(sig: Float32Array, from = 100, to = 4000): number {
 	return bestHz;
 }
 
-test('4 channels: per-channel state exists for every channel, so the pairs cannot share a pointer', () => {
+test('4 channels: content state is per-channel, but the timeline is ONE shared pointer', () => {
 	const { proc } = run4(0, [200, 200, 900, 900]);
-	// `ensure(output.length)` must have grown the state array to 4. Sharing one channel's read/write
-	// pointers across the pairs is the cross-talk failure.
+	// `ensure(output.length)` grows the CONTENT state (history ring + output accumulator) to 4, because
+	// sharing THAT is the cross-talk failure — the guide pair carrying the instrumental's audio.
 	expect(proc.chan.length).toBeGreaterThanOrEqual(4);
+	// The TIMELINE, by contrast, is deliberately shared: one read pointer, one write head, one grain
+	// schedule live on the processor, not on any channel. That is what keeps the four channels of a mix
+	// sample-locked. It must NOT be duplicated onto the per-channel content state, or a per-channel SOLA
+	// search could pick a different read offset per channel and the guide would drift from the
+	// instrumental — the exact defect this node exists to prevent.
+	expect(typeof proc.readPos).toBe('number');
+	expect(typeof proc.writePos).toBe('number');
+	const s = proc.chan[0] as unknown as Record<string, unknown>;
+	expect(s.readPos).toBeUndefined();
+	expect(s.writePos).toBeUndefined();
+});
+
+test('4 channels shifted: identical inputs on two channels stay SAMPLE-LOCKED at every output sample', () => {
+	// THE FIX (guide-vs-instrumental drift on transpose). The SOLA alignment search used to run per
+	// channel off per-channel state, so at a non-unity ratio each channel picked its own read offset in
+	// +/-256 samples and the four channels of a mix wandered apart by up to ~5 ms — the guiding vocals
+	// drifting from the instrumental, invisible to everything downstream of one playhead.
+	//
+	// Feed the SAME content to channel 0 (instrumental pair) and channel 2 (guide pair) and shift. If the
+	// alignment offset is shared, both channels read from an identical input position at every grain, so
+	// their outputs are BIT-IDENTICAL. A per-channel search would let them diverge. This is the assertion
+	// that a regression to per-channel alignment breaks.
+	const { out } = run4(-3, [440, 660, 440, 990]); // ch0 == ch2 content (440 Hz); ch1/ch3 differ
+	expect(Array.from(out[2])).toEqual(Array.from(out[0]));
+	// And a channel with DIFFERENT content is a different waveform (guards against the trivial pass of
+	// every channel emitting silence or a copy).
+	expect(Array.from(out[1])).not.toEqual(Array.from(out[0]));
+	expect(out[0].some((v) => v !== 0)).toBe(true);
 });
 
 test('4 channels at ratio 1: every channel is a bit-exact passthrough of ITS OWN input', () => {
