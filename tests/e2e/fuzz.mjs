@@ -1424,7 +1424,7 @@ try {
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
 	await tv
-		.waitFor(`document.querySelector(${JSON.stringify(SEL.tvConnected)}) !== null`, { timeout: 15000 })
+		.waitForSelector(SEL.tvConnected , { timeout: 15000 })
 		.catch(() => {});
 
 	// The room starts empty; seed it with one add so the first input has something to act on. Recorded

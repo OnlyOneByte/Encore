@@ -121,7 +121,7 @@ try {
 	 * reporting `computed 0px`, which is the ORIGINAL false-failure symptom wearing a different hat. So
 	 * wait for the socket, let the sync land, and re-check the screen at the moment of measurement.
 	 */
-	const socketUp = await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.tvConnected)}) !== null`, { timeout: 8000 }).catch(() => false);
+	const socketUp = await tv.waitForSelector(SEL.tvConnected , { timeout: 8000 }).catch(() => false);
 	if (!socketUp) {
 		console.error(`\nThe TV never opened its WebSocket to ${base}. Is the server still running?`);
 		browser0.close();
@@ -133,7 +133,7 @@ try {
 	// flake that reads as a product defect.
 	await sleep(SYNC_SETTLE_MS);
 
-	const onAttract = await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.attract)}) !== null`, { timeout: 4000 }).catch(() => false);
+	const onAttract = await tv.waitForSelector(SEL.attract , { timeout: 4000 }).catch(() => false);
 	if (!onAttract) {
 		console.error(
 			'\nThis flow needs an empty room — the attract screen only renders before anyone joins,\n' +

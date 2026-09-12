@@ -234,7 +234,7 @@ try {
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
 	// Guard: the TV route must render its own DOM.
-	await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.tvRoot)}) !== null`);
+	await tv.waitForSelector(SEL.tvRoot);
 
 	// Now the two singers on their own contexts — a fresh browser context is fresh cookies, which is
 	// the whole reason they land as distinct sessions. We ALREADY joined them via /api/join above

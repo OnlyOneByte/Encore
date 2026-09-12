@@ -140,7 +140,7 @@ try {
 			await tv.viewport(w, h, 1);
 			await tv.goto(`${base}/tv`);
 			const rendered = await tv
-				.waitFor(`document.querySelector(${JSON.stringify(SEL.lobbyUrl)}) !== null`, { timeout: 8000 })
+				.waitForSelector(SEL.lobbyUrl, { timeout: 8000 })
 				.catch(() => false);
 			if (!rendered) {
 				check(`${label} @ ${w}x${h} rendered the lobby`, false, 'no .lobby .url — roster did not sync');

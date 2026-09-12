@@ -160,6 +160,23 @@ function wrap(page, context) {
 		},
 
 		/**
+		 * Wait for an element to EXIST, via a real locator rather than a polled `querySelector(x) !== null`.
+		 *
+		 * This is the verb the flows were missing, and why 24 of them spelled an element-wait as
+		 * `waitFor(\`document.querySelector(x) !== null\`)`: the CDP driver had no locator, so existence was
+		 * the only shape it could express. `page.locator(x).waitFor()` re-queries on Playwright's own
+		 * schedule and reports the selector on timeout, so the flow says what it is waiting FOR instead of
+		 * describing a DOM predicate. `state: 'attached'` matches the old semantics exactly — present in the
+		 * DOM, not necessarily visible — so a conversion changes the spelling and not the behaviour.
+		 * @param {string} selector
+		 * @param {{ timeout?: number }} [opts]
+		 */
+		async waitForSelector(selector, { timeout = DEFAULT_TIMEOUT } = {}) {
+			await page.locator(selector).first().waitFor({ state: 'attached', timeout });
+			return true;
+		},
+
+		/**
 		 * Click by accessible role + name — the way a screen reader, and therefore a user, finds a control.
 		 * Preferred over CSS deliberately: the labels ARE the contract, and a flow that clicks by class
 		 * silently keeps working when a control loses its accessible name.

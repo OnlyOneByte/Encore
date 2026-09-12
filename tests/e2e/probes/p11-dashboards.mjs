@@ -913,7 +913,7 @@ async function main() {
 			await page.viewport(w, h, 1);
 			await page.goto(url);
 			// Wait for the h1 heading to exist so a shot of a still-loading spinner is impossible.
-			await page.waitFor(`document.querySelector('h1') !== null`, { timeout: 8000 }).catch(() => null);
+			await page.waitForSelector('h1' , { timeout: 8000 }).catch(() => null);
 			// Give client-side fetch()es an extra beat to resolve.
 			await sleep(600);
 			await page.screenshot(path, { fullPage: true });
@@ -954,7 +954,7 @@ async function main() {
 		const dompage = await browser.newPage();
 		await dompage.viewport(1440, 900, 1);
 		await dompage.goto(`${BASE}/metrics`);
-		await dompage.waitFor(`document.querySelector('h1') !== null`, { timeout: 8000 });
+		await dompage.waitForSelector('h1' , { timeout: 8000 });
 		await sleep(400);
 		// Column headers on the "each step" table.
 		const headerRow = await dompage.texts('table th');
@@ -1141,7 +1141,7 @@ async function main() {
 				const p = await browser2.newPage();
 				await p.viewport(1440, 900, 1);
 				await p.goto(`${BASE}/stats`);
-				await p.waitFor(`document.querySelector(${JSON.stringify(SEL.dashTileNumber)}) !== null`, { timeout: 8000 });
+				await p.waitForSelector(SEL.dashTileNumber , { timeout: 8000 });
 				await sleep(400);
 				const tiles = await p.texts(SEL.dashTileNumber);
 				// Order in DOM: songs sung, ready to sing, different songs (see /stats markup).

@@ -246,7 +246,7 @@ try {
 	 * it moves far less often than the presentational class beside it. It is also registered in
 	 * contract.ts, so if it does move, `bun test` says so before a capture run does.
 	 */
-	await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.qrImage)}) !== null`);
+	await tv.waitForSelector(SEL.qrImage);
 	await frame('tv-attract', () => shoot(tv, 'tv-attract', 'nobody here yet — the QR owns the screen'));
 
 	// ── join, both ways of picking a colour ──────────────────────────────────
@@ -357,13 +357,13 @@ try {
 			 * best-effort by design: a miss costs one frame and is reported, never the run.
 			 */
 			await frame('tv-song-intro', async () => {
-				await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.stateNext)}) !== null`, {
+				await tv.waitForSelector(SEL.stateNext , {
 					timeout: 20_000
 				});
 				await shoot(tv, 'tv-song-intro', 'the song-intro card names who is up before the music starts');
 			});
 			// the TV naming a singer means a song is CURRENT — not that it is moving
-			await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.lowerThird)}) !== null`, {
+			await tv.waitForSelector(SEL.lowerThird , {
 				timeout: 25_000
 			});
 			const moving = await ensurePlaying(tv, maya);
@@ -407,7 +407,7 @@ try {
 		 * frozen-playback bug also looks like. Waiting for `.word.active` proves the words are moving.
 		 */
 		await frame('tv-lyrics-word', async () => {
-			await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.activeWord)}) !== null`, {
+			await tv.waitForSelector(SEL.activeWord , {
 				timeout: 60_000
 			});
 			await shoot(tv, 'tv-lyrics-word', 'word-timed lyrics: the ball sits on the word being sung');
@@ -656,7 +656,7 @@ try {
 	// ── the dashboards ───────────────────────────────────────────────────────
 	await frame('stats-public', async () => {
 		await ada.goto(`${base}/stats`);
-		await ada.waitFor(`document.querySelector(${JSON.stringify(SEL.pageHeading)}) !== null`);
+		await ada.waitForSelector(SEL.pageHeading);
 		await sleep(900);
 		await fitViewport(ada, 1280);
 		await shoot(ada, 'stats-public', 'the public page: library size, most-sung, top artists, sings per day');
@@ -664,7 +664,7 @@ try {
 
 	await frame('metrics-internal', async () => {
 		await ada.goto(`${base}/metrics`);
-		await ada.waitFor(`document.querySelector(${JSON.stringify(SEL.pageHeading)}) !== null`);
+		await ada.waitForSelector(SEL.pageHeading);
 		await sleep(900);
 		await fitViewport(ada, 1280);
 		await shoot(ada, 'metrics-internal', 'the internal page: time per step, cost per model against its own claim');

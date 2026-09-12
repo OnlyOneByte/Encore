@@ -394,7 +394,7 @@ try {
 		 */
 		await surface('/', async () => {
 			await page.goto(base + '/');
-			await page.waitFor(`document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`, { timeout: 15000 });
+			await page.waitForSelector(SEL.homeReady , { timeout: 15000 });
 		});
 		await surface('/ (searched)', async () => {
 			await openBrowseFromHome(page, { timeout: 15000 });
@@ -454,7 +454,7 @@ try {
 	 */
 	await page.viewport(390, 844);
 	await page.goto(base + '/');
-	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`, { timeout: 15000 });
+	await page.waitForSelector(SEL.homeReady , { timeout: 15000 });
 	await sleep(600); // let the measured --dock-h write land
 
 	const dockProbe = `(() => {
@@ -624,7 +624,7 @@ try {
 	 */
 	await page.fill(SEL.search, 'zzzzznotasongzzzzz');
 	await page
-		.waitFor(`document.querySelector(${JSON.stringify(SEL.empty)}) !== null`, { timeout: 15000 })
+		.waitForSelector(SEL.empty , { timeout: 15000 })
 		.catch(() => {});
 	await sleep(900);
 	const shortProbe = `(() => {
@@ -746,7 +746,7 @@ try {
 	 */
 	await page.viewport(1920, 1080);
 	await page.goto(base + '/tv');
-	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.tvRoot)}) !== null`, { timeout: 15000 });
+	await page.waitForSelector(SEL.tvRoot , { timeout: 15000 });
 	await sleep(500);
 
 	// The eight TV type tiers, read as the ENGINE resolves them off the root (a rem tier * the root px).
@@ -874,7 +874,7 @@ try {
 	 */
 	await page.viewport(1920, 1080);
 	await page.goto(base + '/tv');
-	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.tvRoot)}) !== null`, { timeout: 15000 });
+	await page.waitForSelector(SEL.tvRoot , { timeout: 15000 });
 	await sleep(300);
 
 	const overlapProbe = `(() => {
@@ -1063,7 +1063,7 @@ try {
 			}
 			await sleep(700);
 			await page.goto(base + '/tv');
-			await page.waitFor(`document.querySelector(${JSON.stringify(SEL.lobbyStripPerson)}) !== null`, {
+			await page.waitForSelector(SEL.lobbyStripPerson , {
 				timeout: 15000
 			});
 			await sleep(900);
