@@ -24,14 +24,14 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * earlier changes pattern). Browser/Page are derived from cdp.mjs's own return types
+ * earlier changes pattern). Browser/Page are derived from driver.mjs's own return types
  * so they cannot drift from the driver. page.evaluate()/fetch().json() come back Promise<any>, so
  * DOM/API-shaped results are cast at the call site via the domain typedefs below.
  *
@@ -42,7 +42,7 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
  * One finding row: a pass/fail check with its id, severity and evidence.
  * @typedef {{ id: string, sev: Severity, ok: boolean, name: string, detail: string }} Finding
  *
- * The raw-CDP surface openRawCdp() returns — a second connection kept alongside cdp.mjs's own.
+ * The raw-CDP surface openRawCdp() returns — a second connection kept alongside driver.mjs's own.
  * @typedef {{
  *   send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<any>,
  *   attachToUrlContaining: (urlSubstring: string) => Promise<string | null>,
@@ -70,7 +70,7 @@ const base = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9426);
 const MEDIA_DIR = resolve(process.env.MEDIA_DIR ?? './media');
 
-/** A tiny second CDP connection, kept alongside the one cdp.mjs owns. Needed because cdp.mjs
+/** A tiny second CDP connection, kept alongside the one driver.mjs owns. Needed because driver.mjs
  * intentionally keeps its surface small (newPage/close/evaluate/goto/waitFor) and does NOT expose
  * raw `send`, so cache-affecting commands (Network.setCacheDisabled) live here in the probe. Same
  * debugger port, independent socket. */
@@ -80,7 +80,7 @@ async function openRawCdp(port) {
 	const ws = new WebSocket(v.webSocketDebuggerUrl);
 	await new Promise((r) => ws.addEventListener('open', r, { once: true }));
 	const pending = new Map();
-	let nextId = 10_000; // stay clear of cdp.mjs's own ids (which start at 1)
+	let nextId = 10_000; // stay clear of driver.mjs's own ids (which start at 1)
 	ws.addEventListener('message', (ev) => {
 		const m = JSON.parse(String(ev.data));
 		if (m.id && pending.has(m.id)) {

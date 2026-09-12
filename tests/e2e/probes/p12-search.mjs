@@ -43,14 +43,14 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * earlier changes pattern). Browser/Page are derived from cdp.mjs's own return types.
+ * earlier changes pattern). Browser/Page are derived from driver.mjs's own return types.
  * fetch().json() and page.evaluate() are Promise<any>, so API-shaped results are typed via the Media
  * row shape and the SearchBody/LibraryBody response shapes below, cast at the call site.
  *

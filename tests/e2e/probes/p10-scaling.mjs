@@ -27,15 +27,15 @@
  * WRITES SCREENSHOTS TO $SCRATCH/shots/p10/. Changes NO other file in the tree.
  */
 
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SEL } from '../contract.ts';
 
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
- * the fuzz.mjs pattern). Browser/Page derive from cdp.mjs's own return types; every
- * page.evaluate() result is protocol-shaped and stays loose (cdp.mjs types evaluate as Promise<any>),
+ * the fuzz.mjs pattern). Browser/Page derive from driver.mjs's own return types; every
+ * page.evaluate() result is protocol-shaped and stays loose (driver.mjs types evaluate as Promise<any>),
  * cast at the call site.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser

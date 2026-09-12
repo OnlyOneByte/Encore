@@ -66,7 +66,7 @@ import { spawn as spawnChild } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 // The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver

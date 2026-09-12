@@ -26,7 +26,7 @@ None of those are appearance bugs, and none of them can be caught by a rule abou
 - **The mount rung deliberately has no geometry, and that constrains what these rows may promise.**
   All six geometry APIs — `getBoundingClientRect`, `getClientRects`, `offsetWidth/Height`,
   `clientWidth/Height`, `scrollWidth/Height` — **throw** on rung M with a message naming the rung and
-  `tests/e2e/cdp.mjs`, and `ResizeObserver` is **not installed**, with a live guard asserting its
+  `tests/e2e/driver.mjs`, and `ResizeObserver` is **not installed**, with a live guard asserting its
   absence (`tests/guards/meta/mount-rung.test.ts`, tests 5 and 6). That is a design decision: a zero
   is a silent green, so a component that measures is kept off this rung by making the measurement loud.
   Consequently **any row whose observation is a measured pixel is `EXEMPT` on rung M and belongs to rung

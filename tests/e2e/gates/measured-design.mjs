@@ -41,7 +41,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 import { findChromium } from '../lib/chromium.mjs';

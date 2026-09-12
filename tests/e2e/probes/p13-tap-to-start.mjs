@@ -5,7 +5,7 @@
  * pointerdown/keydown listener and routes/tv/+page.svelte renders a full-screen .autoplay-hint
  * card telling the viewer to tap. That listener is the ONLY path from a fresh TV to audible sound.
  * HARNESS.md and fuzz.mjs are both correct that granting --autoplay-policy=no-user-gesture-required
- * measures an environment no television is in. Every click verb in cdp.mjs is a synthetic el.click()
+ * measures an environment no television is in. Every click verb in driver.mjs is a synthetic el.click()
  * via Runtime.evaluate, an UNTRUSTED event granting NO user activation, so it cannot unblock autoplay.
  *
  *   EPORT=5213 bun tests/e2e/probes/p13-tap-to-start.mjs
@@ -14,14 +14,14 @@
  */
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver. Browser/Page derive from
- * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * driver.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check

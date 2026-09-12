@@ -25,13 +25,13 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { connect, sleep } from '../cdp.mjs';
+import { connect, sleep } from '../driver.mjs';
 import { findChromium } from '../lib/chromium.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * /pattern). Browser/Page are derived from cdp.mjs's own return types so they cannot
- * drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped results
+ * /pattern). Browser/Page are derived from driver.mjs's own return types so they cannot
+ * drift from the driver. page.evaluate() is typed Promise<any> by driver.mjs, so DOM/API-shaped results
  * are cast at the call site.
  *
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser

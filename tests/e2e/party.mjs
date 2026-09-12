@@ -23,21 +23,21 @@
  *   - Every selector comes from ./contract.ts, which contract.test.ts verifies against the source on
  *     every `bun test` run. The script and the guard cannot drift apart, and rot fails in CI without
  *     needing a browser at all.
- *   - The driver is ./cdp.mjs, which speaks the protocol Chromium already understands. No install.
+ *   - The driver is ./driver.mjs, which speaks the protocol Chromium already understands. No install.
  *
  * Controls are driven by ACCESSIBLE NAME wherever one exists, not by class. If a control loses its
  * accessible name, this flow should break — that is a real regression, and a class-based flow would
  * have hidden it.
  */
 import { spawn } from 'node:child_process';
-import { connect, sleep } from './cdp.mjs';
+import { connect, sleep } from './driver.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver (earlier changes–an earlier change pattern). Browser/Page derive from
- * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * driver.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {{ name: string, ok: boolean }} Check

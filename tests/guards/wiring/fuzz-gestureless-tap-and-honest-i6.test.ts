@@ -66,7 +66,7 @@ test('A · autoplayRefused no longer keys on currentTime === 0 (a seek defeated 
 
 test('B · the driver delivers the real gesture the CDP tap helper made available (realClick was absent)', () => {
 	// On base realClick appears 0 times in fuzz.mjs, so a gestureless TV never started. The fix calls
-	// the trusted CDP gesture (cdp.mjs realClick, proven 7/7 by p13-tap-to-start.mjs).
+	// the trusted CDP gesture (driver.mjs realClick, proven 7/7 by p13-tap-to-start.mjs).
 	expect(PROBE).toMatch(/\brealClick\(/);
 	// It is delivered through the dedicated helper, recorded as a real-tap step so a replay is faithful.
 	expect(PROBE).toMatch(/maybeDeliverTap/);

@@ -32,11 +32,11 @@ import { findChromium } from '../lib/chromium.mjs';
 
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
- * the an earlier change fuzz.mjs pattern). The Browser/Page shapes are derived from cdp.mjs's own return types
+ * the an earlier change fuzz.mjs pattern). The Browser/Page shapes are derived from driver.mjs's own return types
  * so they cannot drift from the driver; every JSON endpoint and page.evaluate() result is
- * protocol-/API-shaped and stays loose (cdp.mjs types evaluate as Promise<any>), cast at the call site.
+ * protocol-/API-shaped and stays loose (driver.mjs types evaluate as Promise<any>), cast at the call site.
  *
- * @typedef {Awaited<ReturnType<typeof import('../cdp.mjs').connect>>} Browser
+ * @typedef {Awaited<ReturnType<typeof import('../driver.mjs').connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
  *
@@ -919,7 +919,7 @@ async function main() {
 	}
 	if (!cdpReady) bail('Chromium CDP port never came up — cannot screenshot the dashboards');
 
-	const { connect } = await import('../cdp.mjs');
+	const { connect } = await import('../driver.mjs');
 	const browser = await connect(CDP_PORT);
 	try {
 		/**

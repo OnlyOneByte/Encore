@@ -8,7 +8,7 @@
  * a leave that abandons queued songs — is visible with that count.
  *
  * WHAT THIS FILE OWNS. This probe is the only file the task allowed to change (`change NO other
- * file`). Everything the tests need beyond `cdp.mjs`'s tiny driver — Target-level CDP sends,
+ * file`). Everything the tests need beyond `driver.mjs`'s tiny driver — Target-level CDP sends,
  * per-target script injection to instrument WebSocket, network emulation to sever a socket without
  * closing it politely — lives inline here. The probe file is the domain that was widened.
  *
@@ -33,7 +33,7 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
  * /pattern). This probe grows its OWN thin CDP client (Cdp/CdpPage)
- * rather than reusing cdp.mjs's Page, so the types are declared on those classes directly. page.evaluate()
+ * rather than reusing driver.mjs's Page, so the types are declared on those classes directly. page.evaluate()
  * returns Promise<any>, so DOM-shaped reads are cast at the call site via the domain typedefs below.
  *
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ENV' | 'PASS'} Level
@@ -83,11 +83,11 @@ function report(level, title, detail, evidence) {
 
 // ── minimal raw CDP client ────────────────────────────────────────────────
 /*
- * cdp.mjs's newPage is deliberately small: goto, evaluate, click, screenshot. We need more:
+ * driver.mjs's newPage is deliberately small: goto, evaluate, click, screenshot. We need more:
  * Page.addScriptToEvaluateOnNewDocument to instrument WebSocket BEFORE the app opens it, and
  * Network.emulateNetworkConditions to sever a socket without closing it (a phone that lost signal
  * looks nothing like a phone that closed politely). Both are per-session CDP methods, so the probe
- * grows its own thin driver instead of a passthrough on top of cdp.mjs.
+ * grows its own thin driver instead of a passthrough on top of driver.mjs.
  */
 class Cdp {
 	/** @param {number} cdpPort */

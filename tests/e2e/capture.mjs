@@ -27,7 +27,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { connect, sleep } from './cdp.mjs';
+import { connect, sleep } from './driver.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
@@ -51,7 +51,7 @@ const at = (...parts) => __join(repoRoot, ...parts);
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * same pattern as the other e2e drivers). Browser/Page are derived from cdp.mjs's own return types so they
+ * same pattern as the other e2e drivers). Browser/Page are derived from driver.mjs's own return types so they
  * cannot drift from the driver. page.evaluate() comes back Promise<any>, so DOM-shaped results are
  * cast at the call site.
  *

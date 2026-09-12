@@ -17,7 +17,7 @@
 //    it — `expect(w).toBeGreaterThan(0)` is a permanent red nobody trusts, and
 //    `if (w > 0) expect(w).toBeGreaterThanOrEqual(44)` is a permanent SILENT GREEN. So the harness
 //    throws instead, naming the rung and where the measurement can actually be taken (rung L,
-//    `tests/e2e/cdp.mjs`). Test 5 pins that, and test 6 pins the same discipline for the no-op
+//    `tests/e2e/driver.mjs`). Test 5 pins that, and test 6 pins the same discipline for the no-op
 //    `ResizeObserver` that `bind:clientHeight` needs, which is deliberately NOT installed.
 //
 // The tension is the point: making zeros loud is what keeps a component that MEASURES off this rung,
@@ -243,7 +243,7 @@ test('the preload documents the mount rung and where measurement is decidable (X
 		'$env',
 		'NO LAYOUT ENGINE', // why measurement is undecidable here
 		'XR-VER-03',
-		'cdp.mjs', // where it IS decidable
+		'driver.mjs', // where it IS decidable
 		'docs/ux/04-verification.md' // the checked-in capability document
 	]) {
 		expect(header, `the preload header no longer names ${needle}`).toContain(needle);
@@ -273,7 +273,7 @@ test('all six geometry APIs fail loudly on the mount rung (XR-VER-03)', () => {
 			// The message must name the rung and where the measurement IS decidable, so the reader of a
 			// red suite knows the guard belongs on rung L rather than that the element is missing.
 			expect(() => (el as unknown as Record<string, () => unknown>)[method]!()).toThrow(/MOUNT rung/);
-			expect(() => (el as unknown as Record<string, () => unknown>)[method]!()).toThrow(/cdp\.mjs/);
+			expect(() => (el as unknown as Record<string, () => unknown>)[method]!()).toThrow(/driver\.mjs/);
 		}
 		for (const prop of GEOMETRY_PROPS) {
 			// A property read, not a call — `el.offsetHeight` is the shape a guard actually writes.

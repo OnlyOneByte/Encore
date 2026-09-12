@@ -1,6 +1,6 @@
 // Ambient types for the ONE `playwright-core` API surface scripts/shot.mjs touches.
 //
-// playwright-core is intentionally NOT a dependency of this package (see e2e/cdp.mjs's header:
+// playwright-core is intentionally NOT a dependency of this package (see e2e/driver.mjs's header:
 // the e2e flow speaks CDP directly precisely to avoid an undeclared playwright-core). shot.mjs
 // is a standalone eyes-on screenshot helper that drives the cached toolbox chromium; it is never
 // imported by the app or the test suite. This declaration lets the type gate cover shot.mjs

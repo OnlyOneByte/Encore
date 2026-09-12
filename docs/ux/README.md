@@ -52,7 +52,7 @@ implementation`, `return new DOMRect()` — all zeros). It has **no layout engin
 preload there is no box geometry, no clipping, no `env()` resolution, no `dvh`/`vh` resolution and
 no painted contrast. The prerequisite is therefore **two rungs**: **rung M** (mount — cascade,
 computed declared values, effects) and **rung L** (layout — real headless Chromium, already
-in-repo at `tests/e2e/cdp.mjs`). The four measurement claims land on **rung L**. A plan that
+in-repo at `tests/e2e/driver.mjs`). The four measurement claims land on **rung L**. A plan that
 stops at rung M has made none of them checkable. See `XR-VER-01`.
 
 **3. Four concurrency premises were stale.** A host **mechanism** already exists and is
