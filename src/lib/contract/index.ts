@@ -19,6 +19,7 @@ export * from './queue/membership';
 export * from './queue/queue-order';
 export * from './lyrics/lyrics';
 export * from './process/song-profile';
+export * from './process/readiness';
 export * from './lyrics/loudness-normalization';
 export * from './core/events';
 // `overallProcessPct` is NOT re-exported here, deliberately. It lives at `$lib/process-progress`

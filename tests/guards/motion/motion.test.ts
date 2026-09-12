@@ -5,7 +5,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
-import { styleFiles, svelteFiles } from '$lib/test-helpers';
+import { styleFiles, svelteFiles } from '@encore/test-support/scan';
 import { at, srcDir } from '@encore/test-support';
 
 // ALLOWLIST, not a denylist: the file header states the rule positively —
@@ -24,7 +24,7 @@ const COMPOSITED_PROPS = new Set([
 
 // every .svelte AND .css file under a directory — the CSS lives in both component <style> blocks
 // and the shared design system (src/app.css), so a scan restricted to .svelte is blind to app.css.
-// The walk itself is `styleFiles` in $lib/test-helpers (XR-VER-14): it was a private copy here,
+// The walk itself is `styleFiles` in @encore/test-support/scan (XR-VER-14): it was a private copy here,
 // which is why widening this guard's scope left every other guard's scope untouched.
 function assertScanIntact(files: string[]): void {
 	expect(files.some((f) => f.endsWith('app.css'))).toBe(true);

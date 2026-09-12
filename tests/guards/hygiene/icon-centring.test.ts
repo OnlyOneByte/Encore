@@ -16,7 +16,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
-import { svelteFiles } from '$lib/test-helpers';
+import { svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir; // src
 

@@ -1,4 +1,8 @@
-// Shared helpers for the source-scanning guard tests under src/lib and e2e/.
+// Shared helpers for the source-scanning guard tests.
+//
+// Lives in the test-support package, not in `src/`. It is test-only — it has never had a production
+// importer — and it reads the filesystem with `node:fs`, which has no business sitting inside the
+// browser-bundled tree where nothing but luck kept a client module from importing it.
 //
 // Dedup batch: the recursive `.svelte` walker below was hand-copied
 // verbatim into every guard that scans the component tree (motion, contrast, design-system,
@@ -7,7 +11,8 @@
 // it is READ FROM `app.css` rather than hand-written, so the guards and the components
 // resolve the same token instead of two numbers that merely agreed.
 import { join } from 'node:path';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
+import { read } from './tree.ts';
 //
 // SCOPE IS THE POINT (XR-VER-14). Four of the five named scan helpers were still per-file
 // copies: `styleFiles` in components/motion.test.ts, `markupControls` in touch-targets.test.ts,
@@ -98,7 +103,11 @@ export const TAP_FLOOR = 44;
 export const TAP = readTapToken();
 
 function readTapToken(): number {
-	const css = readFileSync(join(import.meta.dir, '..', 'app.css'), 'utf8');
+	// Anchored at the repo root, not at this file. The previous form was
+	// `readFileSync(join(import.meta.dir, '..', 'app.css'))`, which only worked because this module sat
+	// in `src/lib/`; moving it into the test tree would have silently re-pointed that one hop at
+	// `tests/support/`. `read()` throws on a miss, so a wrong path is loud rather than empty.
+	const css = read('src', 'app.css');
 	const m = css.match(/--tap:\s*([0-9.]+)px\s*;/);
 	// not a soft fallback to 44: a missing declaration means the token layer moved and every touch
 	// guard downstream would silently measure against a number nothing declares any more.

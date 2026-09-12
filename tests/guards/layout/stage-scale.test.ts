@@ -12,7 +12,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
-import { svelteFiles, TAP, TAP_FLOOR } from '$lib/test-helpers';
+import { svelteFiles, TAP, TAP_FLOOR } from '@encore/test-support/scan';
 
 // `srcDir` (src), replacing `at('src')`. Every `join(SRC, …)` below
 // is unchanged, and so is the `f.replace(SRC, 'src')` that turns an absolute hit into an offender

@@ -21,7 +21,7 @@ import { test, expect } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { at, repoRoot, srcDir } from '@encore/test-support';
-import { svelteFiles, styleFiles } from '$lib/test-helpers';
+import { svelteFiles, styleFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir;
 // Repo root, for the breakpoint scan which must reach packages/*/src as well as apps/*/src.

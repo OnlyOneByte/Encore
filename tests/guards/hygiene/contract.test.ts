@@ -16,7 +16,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { e2eDir, repoRoot } from '@encore/test-support';
 import { HOOKS, PRESET_COLOUR_NAMES, SEL } from '$e2e/contract';
-import { classPresent, svelteFiles } from '$lib/test-helpers';
+import { classPresent, svelteFiles } from '@encore/test-support/scan';
 
 // . and tests/e2e, anchored at the repo root. `E2E` is what this guard's own location used
 // to supply as `at('tests/e2e')`: the e2e directory holding the drivers, party.mjs and probes/.
@@ -152,7 +152,7 @@ test('the contract exposes a hook for each surface the flow has to reach', () =>
 
 /*
  * Every .svelte source file under src — the whole surface the flow can drive — comes from
- * `svelteFiles` in ../src/lib/test-helpers (XR-VER-14). This file used to carry a local walker
+ * `svelteFiles` in @encore/test-support/scan (XR-VER-14). This file used to carry a local walker
  * that was a VERBATIM copy of it under a different name, so the two could disagree about what the
  * flow's surface even is while the design guards under src/lib kept the other answer.
  */
@@ -160,7 +160,7 @@ test('the contract exposes a hook for each surface the flow has to reach', () =>
 /*
  * `classPresent` — does a token appear as a CLASS in a Svelte source, via `class="…"`, a
  * `class:token` directive, or a `.token` rule in <style>? — is imported from
- * ../src/lib/test-helpers (XR-VER-14), where its exact-token semantics are documented.
+ * @encore/test-support/scan (XR-VER-14), where its exact-token semantics are documented.
  * The `G2` case below exercises the shared function directly, so a regression there reds here.
  */
 

@@ -1,6 +1,5 @@
 import { EMPTY_SONG_PROFILE, Media, MediaStatus } from '$lib/contract';
 import { canProcess, displayReadiness, entryPlayable, nextPlayableEntryId, processingGroupIds, queueCardKind, readinessOf, readyEmptyState } from '$lib/readiness';
-import { readinessOf as serverReadinessOf } from '$lib/server/media/readiness';
 import { isEntryReady } from '$lib/server/rotation/index';
 import { expect, test } from 'bun:test';
 // The client's readiness view must agree with the server's classification, and must let a live
@@ -42,9 +41,16 @@ const cases: Media[] = [
 	})
 ];
 
-test('client and server classify readiness identically for every media shape', () => {
-	for (const c of cases) expect(readinessOf(c)).toBe(serverReadinessOf(c));
-});
+// RETIRED: 'client and server classify readiness identically for every media shape'.
+//
+// It asserted `readinessOf(c) === serverReadinessOf(c)` across the shapes above, and it was the right
+// test for as long as there were two hand-maintained copies to compare. There is now one function, in
+// $lib/contract/process/readiness, which both sides import — so the assertion could only ever compare a
+// value with itself. Deleted rather than kept as a tautology, because a test that cannot fail is worse
+// than no test: it reads like coverage.
+//
+// What replaced it is structural, not behavioural: the barrel-surface ledger records `readinessOf` as
+// part of the contract's public surface, so removing or renaming it is a visible edit there.
 
 test('THE BUG: a separated song mid-align reads as processing, not unacquired', () => {
 	// stems ready + lyrics queued is past the stems gate but not finished. Before the gate-driven fix
@@ -59,7 +65,6 @@ test('THE BUG: a separated song mid-align reads as processing, not unacquired', 
 		songProfile: EMPTY_SONG_PROFILE
 	});
 	expect(readinessOf(midAlign)).toBe('processing');
-	expect(serverReadinessOf(midAlign)).toBe('processing');
 	expect(canProcess(midAlign, readinessOf(midAlign))).toBe(false); // no Sing/process button on a separated song
 });
 

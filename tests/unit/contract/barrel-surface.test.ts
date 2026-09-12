@@ -197,6 +197,12 @@ const EXPECTED = [
 	'rangeBarFractions',
 	'rangeLabel',
 	'rangeOctaves',
+	// ONE SYMBOL JOINED THE LIST. `readinessOf` was maintained by hand in src/lib/readiness.ts and in
+	// src/lib/server/media/readiness.ts, both pure, both importing only from here, each carrying a comment
+	// naming the other, and held equal by a parity test across six media shapes. That is one function with
+	// two copies, so it moved to process/readiness.ts and both sides now import it. The parity test is
+	// retired: there is nothing left to compare.
+	'readinessOf',
 	'readyToSing',
 	'realtimeFactor',
 	'reorderWithinSinger',

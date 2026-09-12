@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SINGER_COLORS } from '$lib/contract';
 import { read, srcDir } from '@encore/test-support';
-import { svelteFiles } from '$lib/test-helpers';
+import { svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir;
 const css = read('src/app.css');

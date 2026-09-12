@@ -35,7 +35,7 @@ import { read, srcDir } from '@encore/test-support';
 // through `at()` (that returns a runtime string, not a module), so this stays relative — but it is a
 // relative IMPORT, which fails loudly with `Cannot find module` rather than silently reading nothing.
 import registry from '$lib/contract/presentation/player-palette-48.json';
-import { svelteFiles } from '$lib/test-helpers';
+import { svelteFiles } from '@encore/test-support/scan';
 
 // Anchored on `srcDir` (src) instead of `at('src')`, which meant the same
 // directory only while this file sat in src/lib.
