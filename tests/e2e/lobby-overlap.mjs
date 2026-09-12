@@ -23,7 +23,6 @@
  * UI through CDP does not update Svelte 5's bound $state reliably in headless. The TV is a real
  * browser page so the CSS cascade and layout are the real ones.
  */
-import { spawn } from 'node:child_process';
 import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
@@ -93,25 +92,14 @@ if (!chromium) {
 	process.exit(2);
 }
 
-const proc = spawn(
-	chromium,
-	[
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--remote-allow-origins=*',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @type {Browser | undefined} */
 let browser;
 /** @type {WebSocket[]} */
 const sockets = [];
 try {
-	const browser0 = await connect(CDP_PORT);
+	const browser0 = await connect();
 	browser = browser0;
 	for (const [label, names, overflowExtra] of CASES) {
 		// seed presence: join each name, then hold a phone socket per singer
@@ -218,7 +206,6 @@ try {
 	try {
 		browser?.close();
 	} catch {}
-	proc.kill();
 	for (const s of sockets) {
 		try {
 			s.close();

@@ -1,7 +1,6 @@
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
-import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -15,18 +14,11 @@ if (!chromium) {
 	process.exit(2);
 }
 const CDP_PORT = 9639;
-const args = [
-	'--headless=new',
-	'--remote-debugging-port=' + CDP_PORT,
-	'--no-sandbox',
-	'--hide-scrollbars',
-	'--force-color-profile=srgb'
-];
-const proc = spawn(chromium, args, { stdio: 'ignore' });
+
 await sleep(1200);
 let code = 0;
 try {
-	const browser = await connect(CDP_PORT);
+	const browser = await connect();
 	const page = await browser.newPage();
 	await page.viewport(900, 1100, 1);
 	await page.goto(base + '/admin');
@@ -42,6 +34,5 @@ try {
 	console.error('probe error', e?.message || e);
 	code = 1;
 } finally {
-	proc.kill();
 }
 process.exit(code);

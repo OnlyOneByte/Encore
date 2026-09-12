@@ -35,7 +35,6 @@
  *   0 all passed · 1 a real failure · 2 the environment could not host the test (no server,
  *   no Chromium, no processed song).
  */
-import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
@@ -149,21 +148,7 @@ async function readServerPlayback(timeoutMs = 2500) {
 }
 
 // ── browser boot ──────────────────────────────────────────────────────────────────────────────────
-const proc = spawn(
-	chromium,
-	[
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		'--user-data-dir=' + join(process.env.KIROCREW_SCRATCH ?? '/tmp', `encore-p4-${process.pid}`),
-		// The real /tv has nobody to tap it. The app also must not DEPEND on a gesture; asserted below.
-		'--autoplay-policy=no-user-gesture-required',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 // The TV probes the master element by looking for the audio element inside the VISIBLE slot. The
 // gapless controller mounts TWO slots (A and B); the hidden slot pre-warms the upNext song and
@@ -241,7 +226,7 @@ function parseClock(text) {
 /** @type {Browser | undefined} */
 let browser;
 try {
-	const b = await connect(CDP_PORT);
+	const b = await connect();
 	browser = b;
 
 	// ── two phones, each its own singer ───────────────────────────────────────────
@@ -711,7 +696,6 @@ try {
 		browser?.close();
 	} catch {}
 	try {
-		proc.kill();
 	} catch {}
 }
 

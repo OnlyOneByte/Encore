@@ -28,7 +28,6 @@
  * Exit codes:  0 = all findings collected AND no CRITICAL/HIGH  ·  1 = at least one HIGH+ defect  ·
  *              2 = the environment could not host the test (no server, no library, no Chromium)
  */
-import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
@@ -213,22 +212,7 @@ console.log(`processed: ${readied1.title} → ${readied1.instrumentalRef}`);
 console.log(`processed: ${readied2.title} → ${readied2.instrumentalRef}`);
 
 // ── launch Chromium; open TV so we can observe from t=0 of the first song ──────────────────────
-const proc = spawn(
-	chromium,
-	[
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		'--user-data-dir=' + join(SCRATCH, `p1-gapless-cdp-${process.pid}`),
-		// The real TV has nobody to tap it. The app must still not DEPEND on a gesture; this only
-		// removes the browser's gating so autoplay policy stops masquerading as a defect.
-		'--autoplay-policy=no-user-gesture-required',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @type {Browser | undefined} */
 let browser;
@@ -242,7 +226,7 @@ let tv;
 const timeline = []; // per-sample rows: {t, elems:[{tag,src,decoded,currentTime,paused,muted,volume,readyState,ended,error}], lowerThird, upName, upSong, transientKind, tvClass, screenClass}
 
 try {
-	browser = await connect(CDP_PORT);
+	browser = await connect();
 
 	// TV first. That way our observation starts BEFORE any queue mutation, so we can see the
 	// attract → loading → playing entry too.
@@ -397,7 +381,6 @@ try {
 	);
 } finally {
 	browser?.close();
-	proc.kill();
 }
 
 // ── analysis helpers ───────────────────────────────────────────────────────────────────────────

@@ -541,19 +541,11 @@ async function lyricsFor(ref) {
 // ── the browser ──────────────────────────────────────────────────────────────────────────────────
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM to an existing browser binary.');
-const chromeArgs = [
-	`--remote-debugging-port=${CDP_PORT}`,
-	'--headless=new',
-	'--no-sandbox',
-	'--disable-gpu',
-	'--no-first-run',
-	'--user-data-dir=' + join(process.env.KIROCREW_SCRATCH ?? '/tmp', `encore-fuzz-chrome-${process.pid}`)
-];
-// Deliberately CONDITIONAL. Without the flag this is a television; with it, it is not.
-if (AUTOPLAY) chromeArgs.push('--autoplay-policy=no-user-gesture-required');
-chromeArgs.push('about:blank');
-const chrome = spawn(chromium, chromeArgs, { stdio: 'ignore' });
-owned.procs.push(chrome);
+// The flags this flow needs are passed to the DRIVER, which launches the browser. Only one of them is
+// interesting: the autoplay policy is CONDITIONAL and is the experiment itself — without the flag this is a
+// television, with it, it is not. It must stay a per-run choice rather than a driver default, or the negative
+// half of the fuzz stops being runnable while still reporting a pass.
+const chromeArgs = AUTOPLAY ? ['--autoplay-policy=no-user-gesture-required'] : [];
 
 /**
  * The TV's on-stage master element.
@@ -1404,7 +1396,7 @@ async function maybeDeliverTap(world) {
 // ── run ──────────────────────────────────────────────────────────────────────────────────────────
 let exitCode = 0;
 try {
-	browser = await connect(CDP_PORT);
+	browser = await connect(undefined, { args: chromeArgs });
 
 	// Two phones, each its own isolated context and therefore its own session — two genuinely
 	// different guests, not one guest in two tabs. That is the whole point of the topology: a

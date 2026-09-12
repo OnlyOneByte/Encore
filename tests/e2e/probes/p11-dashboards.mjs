@@ -896,31 +896,11 @@ async function main() {
 
 	// ── (6) SSR + screenshots at 390 & 1440 ──────────────────────────────
 	console.log('\n[step 7] screenshot the three dashboards at 390 and 1440');
-	const chromiumProc = launch(
-		chromium,
-		[
-			'--headless=new',
-			'--no-sandbox',
-			'--disable-gpu',
-			`--remote-debugging-port=${CDP_PORT}`,
-			'--remote-allow-origins=*',
-			'about:blank'
-		],
-		{ stdio: 'ignore' }
-	);
-	// Poll for CDP readiness.
-	let cdpReady = false;
-	for (let i = 0; i < 40 && !cdpReady; i++) {
-		try {
-			const r = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
-			if (r.ok) cdpReady = true;
-		} catch {}
-		if (!cdpReady) await sleep(200);
-	}
-	if (!cdpReady) bail('Chromium CDP port never came up — cannot screenshot the dashboards');
-
+	// The driver launches its own browser, so there is no child to start and no CDP port to poll for.
+	// This used to spawn Chromium here and then wait up to 8s for `/json/version` to answer before
+	// attaching; `connect()` does its own waiting internally.
 	const { connect } = await import('../driver.mjs');
-	const browser = await connect(CDP_PORT);
+	const browser = await connect();
 	try {
 		/**
 		 * @param {string} path
@@ -1082,7 +1062,6 @@ async function main() {
 		);
 	} finally {
 		browser.close();
-		killProc(chromiumProc);
 	}
 
 	// ── (7) documented security posture ──────────────────────────────────
@@ -1153,28 +1132,11 @@ async function main() {
 	// ── (8) UI parity — the numbers in the page match the API ────────────
 	// Re-open a phone-sized viewport and pull the rendered text; compare it against the API.
 	{
-		const chromium2 = launch(
-			chromium,
-			[
-				'--headless=new',
-				'--no-sandbox',
-				'--disable-gpu',
-				`--remote-debugging-port=${CDP_PORT + 1}`,
-				'--remote-allow-origins=*',
-				'about:blank'
-			],
-			{ stdio: 'ignore' }
-		);
-		let cdpReady2 = false;
-		for (let i = 0; i < 40 && !cdpReady2; i++) {
-			try {
-				const r = await fetch(`http://127.0.0.1:${CDP_PORT + 1}/json/version`);
-				if (r.ok) cdpReady2 = true;
-			} catch {}
-			if (!cdpReady2) await sleep(200);
-		}
-		if (cdpReady2) {
-			const browser2 = await connect(CDP_PORT + 1);
+		// A second browser for the parity pass. No spawn and no readiness poll: the driver launches its
+		// own, so `cdpReady2` had nothing to wait for and the `if (cdpReady2)` guard would have skipped
+		// this whole check silently if the poll ever failed.
+		const browser2 = await connect();
+		{
 			try {
 				const p = await browser2.newPage();
 				await p.viewport(1440, 900, 1);
@@ -1205,7 +1167,6 @@ async function main() {
 				}
 			} finally {
 				browser2.close();
-				killProc(chromium2);
 			}
 		}
 	}

@@ -12,7 +12,6 @@
  *
  * Exit 0 all passed / 1 a real failure / 2 the environment could not host the test.
  */
-import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
@@ -61,26 +60,12 @@ if (!ready.length) {
 }
 console.log('fixture: "' + ready[0].title + '" -> ' + ready[0].instrumentalRef + '\n');
 
-const proc = spawn(
-	chromium,
-	[
-		'--remote-debugging-port=' + CDP_PORT,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		'--user-data-dir=' + join(SCRATCH, 'encore-tap2start-' + process.pid),
-		// DELIBERATELY NO --autoplay-policy flag: this is a real TV, with the restriction the living
-		// room actually has. The point is that the room stays silent until a trusted gesture arrives.
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @type {Browser | undefined} */
 let browser;
 try {
-	browser = await connect(CDP_PORT);
+	browser = await connect();
 
 	// -- a singer joins and queues the processed song, through the real UI --
 	const phone = await browser.newPage();
@@ -182,7 +167,6 @@ try {
 	check('the flow ran to completion', false, String(err instanceof Error ? err.stack : err));
 } finally {
 	browser?.close();
-	proc.kill();
 }
 
 const failed = checks.filter((c) => !c.ok);

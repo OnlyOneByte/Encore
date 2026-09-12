@@ -22,7 +22,6 @@
  * under `ENV` and never inflate a real number.
  */
 
-import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -492,19 +491,7 @@ async function main() {
 		process.exit(2);
 	}
 
-	const proc = spawn(
-		chromium,
-		[
-			'--headless=new',
-			'--no-sandbox',
-			'--disable-gpu',
-			`--remote-debugging-port=${CDP_PORT}`,
-			'--remote-allow-origins=*',
-			'--autoplay-policy=no-user-gesture-required',
-			'about:blank'
-		],
-		{ stdio: 'ignore' }
-	);
+
 
 	const cdp = new Cdp(CDP_PORT);
 	let phones = [];
@@ -1134,7 +1121,6 @@ async function main() {
 			if (tv) await tv.close();
 		} catch {}
 		cdp.close();
-		proc.kill();
 	}
 
 	// ── Report ────────────────────────────────────────────────────────────

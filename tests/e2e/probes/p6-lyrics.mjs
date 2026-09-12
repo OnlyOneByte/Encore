@@ -222,23 +222,6 @@ try {
 console.log(`processed: "${processed.row.title}" id=${processed.id} lyricsRef=${processed.row.lyricsRef}\n`);
 
 // ── Boot Chromium once, drive two contexts (phone + TV) ─────────────────────
-const proc = spawn(
-	chromium,
-	[
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		'--user-data-dir=' + join(process.env.KIROCREW_SCRATCH ?? '/tmp', `p6-lyrics-${process.pid}`),
-		// The real TV has nobody to tap. The app must not DEPEND on a gesture; other findings
-		// assert that separately.
-		'--autoplay-policy=no-user-gesture-required',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
-
 /** Kick the media element once — headless refuses unmuted autoplay without either a gesture
  * or the CLI flag above, and this is the same one-shot the capture flow uses. */
 /** @param {Page} tv */
@@ -289,7 +272,7 @@ async function seekToStart(tv, phone) {
 let browser;
 let rawCdp;
 try {
-	browser = await connect(CDP_PORT);
+	browser = await connect(undefined, { args: ['--autoplay-policy=no-user-gesture-required'] });
 	rawCdp = await openRawCdp(CDP_PORT);
 
 	// ── phone joins and queues the processed song ────────────────────────────
@@ -970,7 +953,6 @@ try {
 } finally {
 	browser?.close();
 	rawCdp?.close();
-	proc.kill();
 }
 
 // ── Summary ────────────────────────────────────────────────────────────────

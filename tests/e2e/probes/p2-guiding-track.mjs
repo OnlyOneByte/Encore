@@ -97,7 +97,6 @@ const childProcs = [];
 /** @type {Browser | undefined} */
 let browser;
 /** @type {Child | undefined} */
-let chromiumProc;
 
 /**
  * @param {string} cmd
@@ -127,7 +126,6 @@ function cleanup() {
 		browser?.close();
 	} catch {}
 	try {
-		chromiumProc?.kill('SIGTERM');
 	} catch {}
 	for (const p of childProcs) {
 		try {
@@ -440,19 +438,10 @@ async function main() {
 	await killChild(worker, 1500);
 
 	// 3. Chromium.
-	chromiumProc = spawnChild(chromium, [
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		'--user-data-dir=' + join(RUN_DIR, 'chrome-profile'),
-		'--autoplay-policy=no-user-gesture-required',
-		'about:blank'
-	]);
+
 	// give it a beat to open the CDP port
 	await sleep(600);
-	browser = await connect(CDP_PORT);
+	browser = await connect();
 
 	// Phone page joins THROUGH the UI so the singer is real and its cookie is bound to the browser
 	// context — the WS ensureProbeWs relies on that. The phone doesn't need to be visible for anything;

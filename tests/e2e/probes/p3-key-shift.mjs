@@ -38,7 +38,6 @@
  * Exit codes: 0 all findings clean · 1 a real defect · 2 environment could not host the test.
  */
 
-import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
@@ -178,20 +177,7 @@ if (secondReady) {
 	console.log(`no second processable song available — song-change advance check will be an env limit\n`);
 }
 
-const proc = spawn(
-	chromium,
-	[
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		'--user-data-dir=' + join(SCRATCH, `encore-p3-${process.pid}`),
-		'--autoplay-policy=no-user-gesture-required',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 // The probe harness itself lives in a template literal so both the CDP driver
 // and the in-page tap read from a single source. Wraps `window.AudioContext`
@@ -394,7 +380,7 @@ let phone;
 /** @type {Page | undefined} */
 let tv;
 try {
-	browser = await connect(CDP_PORT);
+	browser = await connect();
 
 	// ── phone: join and queue ───────────────────────────────────────────────
 	phone = await browser.newPage();
@@ -892,7 +878,6 @@ try {
 	record('CRITICAL', 'the flow ran to completion', false, String(err?.stack ?? err));
 } finally {
 	browser?.close();
-	proc.kill();
 }
 
 // ── summary ───────────────────────────────────────────────────────────────

@@ -20,7 +20,6 @@
  * Exit codes follow the harness contract (HARNESS.md): 0 measured, 1 a real failure, 2 the
  * environment could not host the probe.
  */
-import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
@@ -163,20 +162,7 @@ const SURFACES = [
 	{ name: 'tv', url: '/tv', vp: TV }
 ];
 
-const proc = spawn(
-	chromium,
-	[
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--hide-scrollbars',
-		'--mute-audio',
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--remote-allow-origins=*',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @type {Record<string, unknown>} */
 const result = { port: PORT, surfaces: {} };
@@ -184,7 +170,7 @@ let failed = 0;
 
 try {
 	await sleep(1500);
-	const browser = await connect(CDP_PORT);
+	const browser = await connect();
 	for (const s of SURFACES) {
 		try {
 			const page = await browser.newPage();
@@ -217,7 +203,6 @@ try {
 	}
 	await browser.close?.();
 } finally {
-	proc.kill();
 }
 
 mkdirSync(dirname(OUT), { recursive: true });

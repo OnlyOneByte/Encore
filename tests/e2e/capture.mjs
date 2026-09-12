@@ -24,7 +24,6 @@
  * The TV is captured at 1920x1080 because its type scale is vh-relative: a frame taken at the wrong
  * height is measuring a different design.
  */
-import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect, sleep } from './driver.mjs';
@@ -90,22 +89,7 @@ const shots = [];
 /** @type {{ name: string, why: string }[]} */
 const skipped = [];
 
-const proc = spawn(
-	chromium,
-	[
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--hide-scrollbars',
-		// see the header note — without these the playing frames capture the lobby instead
-		'--autoplay-policy=no-user-gesture-required',
-		'--mute-audio',
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--remote-allow-origins=*',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @param {Page} page @param {string} name @param {string} note */
 async function shoot(page, name, note) {
@@ -245,7 +229,10 @@ async function ensurePlaying(tv, phone, { attempts = 3 } = {}) {
 /** @type {Browser | undefined} */
 let browser;
 try {
-	const browser0 = await connect(CDP_PORT);
+	// `--autoplay-policy=no-user-gesture-required` is NECESSARY here, per this file's own header: without
+	// it the <video> never starts and every captured frame is the poster. The driver does not grant it by
+	// default — a flow that needs it says so, because `fuzz.mjs` and the gestureless probes need it ABSENT.
+	const browser0 = await connect(undefined, { args: ['--autoplay-policy=no-user-gesture-required'] });
 	browser = browser0;
 
 	// ── TV first: attract only exists while the room is empty ─────────────────
@@ -705,7 +692,6 @@ try {
 	process.exitCode = 1;
 } finally {
 	browser?.close();
-	proc.kill();
 }
 
 console.log(`\n${shots.length} frames written to ${OUT}`);

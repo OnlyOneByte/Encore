@@ -29,7 +29,6 @@
  * accessible name, this flow should break — that is a real regression, and a class-based flow would
  * have hidden it.
  */
-import { spawn } from 'node:child_process';
 import { connect, sleep } from './driver.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
@@ -76,23 +75,12 @@ if (!res?.ok) {
 	process.exit(2);
 }
 
-const proc = spawn(
-	chromium,
-	[
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		`--remote-debugging-port=${CDP_PORT}`,
-		'--remote-allow-origins=*',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @type {Browser | undefined} */
 let browser;
 try {
-	const browser0 = await connect(CDP_PORT);
+	const browser0 = await connect();
 	browser = browser0;
 
 	// ── the TV, BEFORE anyone joins ───────────────────────────────────────────
@@ -137,7 +125,6 @@ try {
 	if (!socketUp) {
 		console.error(`\nThe TV never opened its WebSocket to ${base}. Is the server still running?`);
 		browser0.close();
-		proc.kill();
 		process.exit(2);
 	}
 	// `connected` flips on `onopen`, and the roster arrives one `hello`→`queue:sync` round trip later, so
@@ -154,7 +141,6 @@ try {
 				`  ENCORE_EPHEMERAL=1 PORT=${PORT} MEDIA_DIR=<seeded dir> ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:${PORT} bun run start`
 		);
 		browser0.close();
-		proc.kill();
 		process.exit(2);
 	}
 	const unreachableOrigin = (await tv.count(SEL.badQr)) > 0;
@@ -167,7 +153,6 @@ try {
 				`  ENCORE_EPHEMERAL=1 PORT=${PORT} MEDIA_DIR=<seeded dir> ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:${PORT} bun run start`
 		);
 		browser0.close();
-		proc.kill();
 		process.exit(2);
 	}
 
@@ -190,7 +175,6 @@ try {
 				'and re-run.'
 		);
 		browser0.close();
-		proc.kill();
 		process.exit(2);
 	}
 	check(
@@ -381,7 +365,6 @@ try {
 	check(`the flow ran to completion`, false, String(err));
 } finally {
 	browser?.close();
-	proc.kill();
 }
 
 const failed = checks.filter((c) => !c.ok);

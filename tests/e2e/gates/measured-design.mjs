@@ -286,23 +286,11 @@ if (!healthy) {
 	);
 }
 
-const browserProc = spawn(
-	chromium,
-	[
-		`--remote-debugging-port=${await freePort()}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		`--user-data-dir=${join(SCRATCH, 'chrome')}`,
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
-// The port the child was told is the one we must connect to; re-read it from the flag we passed.
-const cdpPort = Number(
-	(browserProc.spawnargs.find((a) => a.startsWith('--remote-debugging-port=')) ?? '=0').split('=')[1]
-);
+
+// No CDP port to re-read any more. This used to spawn its own Chromium and recover the port from the
+// child's own argv, because the port was chosen with `await freePort()` and only the child knew it. The
+// driver launches its own browser and takes no port, so `connect()` needs no argument and there is nothing
+// to derive.
 
 let controlsMeasured = 0;
 let fieldsMeasured = 0;
@@ -324,7 +312,7 @@ const occludedControls = [];
 /** @type {Browser | undefined} */
 let browser;
 try {
-	browser = await connect(cdpPort);
+	browser = await connect();
 	const page = await browser.newPage();
 	await page.viewport(VIEWPORTS[0].w, VIEWPORTS[0].h);
 
@@ -1130,7 +1118,6 @@ try {
 	check('the measured-design drive ran to completion', false, String(err instanceof Error ? err.stack : err));
 } finally {
 	browser?.close();
-	browserProc.kill();
 	server.kill();
 	rmSync(SCRATCH, { recursive: true, force: true });
 }

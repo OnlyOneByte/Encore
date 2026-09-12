@@ -66,17 +66,24 @@ const DEFAULT_TIMEOUT = 10_000;
  * blocks are removed one at a time rather than in a single 25-file change.
  *
  * @param {number} [port] ignored — retained so existing entry points keep their call shape
+ * @param {{ args?: string[] }} [opts] extra Chromium flags, for a flow whose FLAGS ARE THE EXPERIMENT
  */
-export async function connect(port) {
+export async function connect(port, opts = {}) {
 	void port;
 	const executablePath = findChromium();
 	if (!executablePath) {
 		throw new Error('No Chromium found. Set PW_CHROMIUM, or run `npx playwright install chromium`.');
 	}
+	// NO `--autoplay-policy` BY DEFAULT, deliberately. An earlier draft of this driver hardcoded
+	// `--autoplay-policy=no-user-gesture-required` for every flow, which would have silently broken
+	// `fuzz.mjs`: it passes that flag CONDITIONALLY and its own comment says why — "without the flag this
+	// is a television; with it, it is not." A driver that always grants autoplay makes the negative half of
+	// that experiment unrunnable while still reporting a pass. Flags a flow depends on are the flow's to
+	// pass, so they come through `opts.args`.
 	const browser = await chromium.launch({
 		headless: true,
 		executablePath,
-		args: ['--no-sandbox', '--disable-gpu', '--autoplay-policy=no-user-gesture-required']
+		args: ['--no-sandbox', '--disable-gpu', ...(opts.args ?? [])]
 	});
 	return browserApi(browser);
 }

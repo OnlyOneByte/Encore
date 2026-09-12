@@ -919,21 +919,10 @@ if (!chromium) {
 	);
 } else {
 	const CDP_PORT = Number(process.env.CDP_PORT ?? 9433);
-	const proc = spawn(
-		chromium,
-		[
-			'--headless=new',
-			'--no-sandbox',
-			'--disable-gpu',
-			`--remote-debugging-port=${CDP_PORT}`,
-			'--remote-allow-origins=*',
-			'about:blank'
-		],
-		{ stdio: 'ignore' }
-	);
+
 	let browser;
 	try {
-		browser = await connect(CDP_PORT);
+		browser = await connect();
 		const phone = await browser.newPage();
 
 		// Join first (the phone route redirects to /join when no session cookie).
@@ -1018,7 +1007,6 @@ if (!chromium) {
 		record('MEDIUM', 'S9-ui-checks', false, `browser flow crashed: ${String(err).slice(0, 200)}`);
 	} finally {
 		browser?.close();
-		proc.kill();
 	}
 }
 

@@ -11,7 +11,6 @@
  *
  *   EPORT=<port> CDP_PORT=<port> bun e2e/probes/lower-third.mjs
  */
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -62,20 +61,7 @@ if (ready.length < 2) {
 const a = await joinSinger(`LT-A-${Date.now() % 100000}`);
 const b = await joinSinger(`LT-B-${(Date.now() + 1) % 100000}`);
 
-const proc = spawn(
-	chrome,
-	[
-		`--remote-debugging-port=${CDP}`,
-		'--headless=new',
-		'--no-sandbox',
-		'--disable-gpu',
-		'--no-first-run',
-		`--user-data-dir=${process.env.KIROCREW_SCRATCH ?? '/tmp'}/lt-${process.pid}`,
-		'--autoplay-policy=no-user-gesture-required',
-		'about:blank'
-	],
-	{ stdio: 'ignore' }
-);
+
 
 /** @type {Browser | undefined} */
 let browser;
@@ -160,7 +146,6 @@ try {
 	check('the flow ran', false, String(e instanceof Error ? e.stack : e));
 } finally {
 	browser?.close();
-	proc.kill();
 }
 const bad = checks.filter((c) => !c.ok);
 console.log(`\n${checks.length - bad.length}/${checks.length} passed`);
