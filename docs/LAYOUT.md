@@ -85,38 +85,46 @@ file is worth more than any move in §4.
 
 ## 4. Justified moves
 
-Ranked by value per file moved. Everything here is small on purpose.
+Ranked by value per file moved. Everything here is small on purpose. The first
+three are **done**; the last is still optional.
 
-**Zero moves, highest value — write the rules down.** The complaint that
-started this review was that the layout made no sense. §1 is the fix. Add a
-README to the authored `ui` directory, since the vendored one has an excellent
-one and the authored one has none.
+**Zero moves, highest value — write the rules down. DONE.** The complaint that
+started this review was that the layout made no sense. §1 is the fix. Still
+outstanding: a README in the authored `ui` directory, since the vendored one has
+an excellent one and the authored one has none.
 
-**Test infrastructure out of the production tree.** One module under `src/lib/`
-is test-only: it imports `node:fs`, has zero production importers, and all 16
-of its importers are guards. It sits inside the browser-bundled zone and
-survives only because nothing happens to import it. A test-support package
-already exists under `tests/support/`, so there are two test-helper homes and
-the wrong one ships inside the app. Moving it also unblocks reconciling four
-competing directory walkers.
+**Test infrastructure out of the production tree. DONE.** One module under
+`src/lib/` was test-only: it imported `node:fs`, had zero production importers,
+and all 16 of its importers were guards. It sat inside the browser-bundled zone
+and survived only because nothing happened to import it. It now lives in the
+test-support package beside the other scanning helpers, reached by alias.
 
-**Collapse the readiness duplicate.** A pure function is maintained by hand in
-two places, one client-side and one under `src/lib/server/media/`, held in
-agreement by a parity test asserting the two copies match across six inputs.
-A function whose two copies must agree is the definition of an isomorphic
-module: it belongs in `src/lib/contract/`, and the parity test then retires.
-Its stated justification — that this is "a derived view concern" and so not
-contract — is contradicted by the contract tree, which already holds three
-derived view concerns.
+Its `app.css` read was anchored one hop above its own location, so the move would
+have silently re-pointed it — it now reads from the repo root, which throws on a
+miss.
+
+Still open, deliberately: that module keeps its own directory walker alongside the
+test-support package's. Reconciling two walkers with different skip semantics
+changes what every consuming guard can SEE, and a guard that silently narrows its
+population still passes. That is its own measured change, not a rider on a move.
+
+**Collapse the readiness duplicate. DONE.** A pure function was maintained by
+hand on both sides, held in agreement by a parity test across six media shapes.
+It now lives in the contract's process folder, and both sides import it. The two
+readiness unions were never identical and that is now explicit rather than
+coincidental: the contract names the three members a catalog can describe, and
+the client widens it with the one member only a live event can produce. The
+parity test is retired — with one implementation it could only compare a value
+with itself.
 
 **Flatten two one-file directories** under `src/lib/server/`, one of which uses
-an `index.ts` where every sibling module is a named file. Cheap; do it only
-when already touching those files.
+an `index.ts` where every sibling module is a named file. Cheap; do it when
+already touching those files. NOT done.
 
 **Optional, one honest axis:** three pure guest-facing phrase builders in the
 `src/lib/` root form a real group. A `phrasing/` folder would state something
 true. It must **not** absorb the operator-facing formatters — the operator and
-guest vocabularies are kept separate deliberately.
+guest vocabularies are kept separate deliberately. NOT done.
 
 ---
 
@@ -157,19 +165,22 @@ source paths.
 walking up to it — if it moves, every guard and the worker's Python tests
 break at once.
 
-### Before any move
+### Before any move — all three now done
 
 1. **Fix the already-stale paths in a standalone commit** so the move's diff
-   contains only the move. Several are broken right now (§7).
+   contains only the move. Done; see §7.
 2. **Widen the self-anchored-path guard** to `.ts` and `.mjs`, with a named
-   exemption list for the legitimate root-walkers. It currently scans only
-   `*.test.ts`, which is precisely why the live breakage in §7 went unseen.
-3. **Add the missing aliases.** Thirty files navigate by counting `..` hops in
-   an import specifier, because only `src/lib` has an alias — routes and the
-   test kit have none. Adding those two aliases deletes all thirty hop counts
-   and removes the most fragile spelling in the repo. Note that the test-tree
-   dependency guard keeps an alias allowlist; a new alias must be added there
-   too or it reports an undeclared package.
+   exemption list for the legitimate root-walkers. Done. It read only
+   `*.test.ts`, which is exactly why the six probes in §7 went unseen. Three
+   files are exempted, each because it defines an anchor and so cannot use one,
+   and each is asserted to still need its exemption. `createRequire` of a module
+   URL is excluded as module resolution rather than path arithmetic.
+3. **Add the missing aliases.** Done: 36 specifiers across 30 files navigated by
+   counting `..` hops, because only `src/lib` had an alias. Routes, the test
+   setup and the e2e tree now have their own, declared in the tests-only context
+   so production source cannot reach them. Note that the test-tree dependency
+   guard keeps an alias allowlist; a new alias must be added there too or it
+   reports an undeclared package.
 
 ### Then, in the same commit as the move
 
@@ -180,7 +191,7 @@ move must update the landmark list and the derived anchor together.
 
 Update together: the test-support anchors → the test tsconfig alias block →
 three path-keyed registries in the non-vacuity floor guard **plus its two
-coupled literals, currently 66** → the task-number exemption list → the e2e
+coupled literals, currently 71** → the task-number exemption list → the e2e
 unrun list → the test-helper consumer list → the doc-citation prefix allowlist
 if a new top-level tree appears → four hand-listed file arrays that a walk
 cannot discover → the doc citations themselves (328 across 21 documents).
@@ -203,38 +214,57 @@ paths that do not exist yet would fail it, which is why §4 names target
 
 ---
 
-## 7. Broken right now, independent of any move
+## 7. What the review found broken, and what is left
 
-Found during the review, all verified, none caused by it.
+All of these were verified, and none was caused by the review. **Fixed:**
 
-- **The container image cannot build.** Two `COPY` directives name directories
-  that no longer exist, and one is a single-argument `COPY`, which is a parse
-  error. Nothing downstream of it has ever executed.
-- **The browser tab shows the Svelte logo.** The imported favicon is the stock
-  SvelteKit template file. Encore's own app mark sits under `static/`
-  referenced by nothing — and precached by the service worker on every client.
-- **The Bun entry point mixes alias and relative imports.** One import uses the
-  `$lib` alias while the rest are relative. That alias resolves only through a
-  generated, gitignored config that the container never copies. There is no
-  committed Svelte config in the repo at all, so this is the only definition
-  that exists.
-- **Six e2e probes resolve their repo-root anchor one hop short**, landing in
-  `tests/` instead of the repo root. One then checks for a build directory that
-  can never exist under that anchor, so it always bails. All six are on the
-  unrun list, so nothing executes them and no guard reads them — the repo's
-  documented failure mode, live.
-- **The screenshot script's driver import** resolves outside the test tree, to
-  a path that does not exist.
-- **An e2e gate spawns a seed script** at a path that does not exist.
-- **The dev script cites the pre-flatten `apps/` tree** on 14 lines.
-- **`scripts/` is outside every gate** — not linted, not formatted, and its
-  entries in the e2e tsconfig are resolved relative to the tests directory, so
-  they match nothing and check nothing.
-- **A dev-only route has no dev gate.** It says it is not a product surface,
-  and it builds and serves in production. It is also load-bearing test
-  infrastructure for five guards, so it cannot simply be removed.
-- **Worker prose cites a pre-flatten shared path** in three modules. The
-  citation guard walks only `docs/`, so worker comments are unchecked.
+- **The container image could not build.** Two `COPY` directives named
+  directories that no longer exist, and one was a single-argument `COPY`, a parse
+  error — so nothing downstream of it had ever run. With that fixed the image
+  booted and immediately died on an unresolvable alias: the runtime-loaded server
+  tree used `$lib`, which is declared only in a generated, gitignored config the
+  image never copies. That was 51 specifiers across 38 files, now relative. The
+  fix is verified by building and running the container, not by reading the file.
+- **The browser tab showed the Svelte logo.** The imported favicon was the stock
+  SvelteKit template file, while Encore's own mark sat unreferenced under
+  `static/` and precached by the service worker. The icon family now has one home.
+- **Six e2e probes resolved their repo-root anchor one hop short**, and the fault
+  was paired: their spawn arguments were cwd-relative in a way that only worked
+  *because* the anchor was wrong, so fixing either alone would have broken them.
+  Both moved together. The hop-count spelling is gone from the e2e tree — one
+  shared module walks up for the root marker, replacing six inlined copies.
+- **A helper called in two drivers was defined in neither**, lost with a batch of
+  removed spawn blocks; they would have thrown on first boot. Extracted to a
+  shared module.
+- **The lint gate was hiding 36 real errors.** Not a broken cache — the mechanism
+  works — but the default cache strategy keys on modification time and size,
+  which a checkout or stash can defeat. It now keys on content, which was
+  demonstrated to catch a same-size edit with the timestamp restored. Cold and
+  warm run times are unchanged.
+- **`scripts/` was outside every gate** — not linted, not formatted, and its
+  entries in the e2e type config resolved relative to the wrong directory, so
+  they matched nothing. Its one live file moved beside the driver it imports; its
+  companion type stub declared a module nothing imports any more and is deleted.
+- **The dev script, `.gitignore`, `.dockerignore`, the base type config and four
+  worker modules** all still described the pre-flatten layout. The `.gitignore`
+  case had teeth: it ignored a wheelhouse path under the old tree, so the real
+  one had no rule at all.
+- **25 usage strings** named a script path that has not existed since the
+  flatten, several of them printed to the operator as help text.
+
+**Still open, each needing a decision rather than a fix:**
+
+- A dev-only route has no dev gate. It says it is not a product surface, and it
+  builds and serves in production. It is also load-bearing fixture infrastructure
+  for five guards, so it cannot simply be removed or gated without deciding what
+  those guards read instead.
+- `GET` on the settings endpoint is ungated while `PUT` is capability-gated.
+- The worker WebSocket role accepts unauthenticated upgrades when no token is
+  set. The app warns loudly at boot, which is the right behaviour for a
+  self-hosted default, but it is worth an explicit decision rather than a warning.
+- 19 of 38 e2e drivers remain reachable from no command. That list is what let
+  every defect above sit unnoticed, and it is the largest remaining hole in the
+  verification surface.
 
 ---
 
