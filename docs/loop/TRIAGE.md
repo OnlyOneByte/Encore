@@ -68,7 +68,7 @@ matter how correct it is.
 - **One idea per sentence. One subject per paragraph.** Three short sentences beat one long one with
   two clauses and a dash.
 - **Plain words over insider words.** Say what a thing *does*. Not "the invariant is violated at the
-  seam" — "`dispatch.ts:218` accepts a job for an engine that is not installed, so the cook dies at
+  seam" — "`dispatch.ts:218` accepts a job for an engine that is not installed, so the process dies at
   0%". Not "non-vacuous" — "the test fails when I delete the fix".
 - **Ban a word the moment it could mean two things.** These are the repeat offenders and each has a
   plain replacement: *durable / robust* → say what breaks without it. *Leverage* → use. *Surface* →
@@ -454,7 +454,7 @@ anything.
      itself works here is **unverified**; check `node --version` in your own worktree before accepting
      either premise. The repo's own CDP driver above stays the preferred path. Either way, do not
      report a browser as unavailable.
-   - A worker is a **separate process**; without one a cook sits at `queued` forever, which is not a
+   - A worker is a **separate process**; without one a process sits at `queued` forever, which is not a
      bug. `ENCORE_PROCESSOR=stub` exercises the plumbing with no ML.
 3. Write a unit or integration test that fails **only** because of the defect, if you can do it
    cheaply. That is the single most useful thing you can hand the fix loop.
@@ -472,7 +472,7 @@ Then comment on the issue with, in this order: **what you ran**, **what you saw*
 "cannot reproduce":** no audio hardware, so
 nothing audible is checkable; `lrclib.net` fails DNS on this box while `youtube.com` resolves; host
 `ffmpeg` is a stripped build with no AAC encoder, no mp4 muxer and no `ffprobe` (use the container's);
-there is **no `media/` directory here**, so anything needing a real cooked song with real lyrics data
+there is **no `media/` directory here**, so anything needing a real processed song with real lyrics data
 cannot be checked — the owner's party runs on a different machine. **YouTube download is NOT a
 ceiling** — `deno 2.4.0` is globally pinned (`mise use -g deno@2.3.0`) on the mise shims PATH and
 verified solving yt-dlp's JS challenges end to end, so an acquisition failure you observe is a real

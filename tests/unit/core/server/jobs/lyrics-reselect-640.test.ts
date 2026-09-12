@@ -1,4 +1,4 @@
-// — requestLyricsReselect makes a finished align RE-RUNNABLE and pins the human pick.
+// requestLyricsReselect makes a finished align RE-RUNNABLE and pins the human pick.
 //
 // The load-bearing property: a completed `align` occupies the dedup slot (`ready` is not slot-freeing),
 // so a bare enqueue would hand back the OLD job and nothing would run. requestLyricsReselect must
@@ -7,7 +7,7 @@
 // cancel-then-enqueue is reverted (the enqueue returns the old ready job), or the pin is dropped.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '$lib/server/db/test-db';
-import { requestLyricsReselect, manualLyricsRef, type MakeKaraokeDeps } from '$lib/server/jobs/make-karaoke';
+import { requestLyricsReselect, manualLyricsRef, type ProcessDeps } from '$lib/server/jobs/process';
 import { assignParams } from '$lib/server/jobs/dispatch';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AuthoritativeState } from '$lib/server/state/store';
@@ -32,7 +32,7 @@ const media = (over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-function deps(): MakeKaraokeDeps & { mediaById: Map<string, Media>; jobs: JobRepository; tick: () => void } {
+function deps(): ProcessDeps & { mediaById: Map<string, Media>; jobs: JobRepository; tick: () => void } {
 	const db = migratedDb();
 	let t = T0;
 	return {
@@ -92,7 +92,7 @@ test('dispatch sends the pinned ref to the worker as pinnedRef for an align job'
 	const m = media({ lyricsOverrideRef: 'derived/lyrics/m1-lrclib.json' });
 	const params = assignParams('align', m);
 	expect(params.pinnedRef).toBe('derived/lyrics/m1-lrclib.json');
-	// A media with no override sends none — the ordinary cook is unchanged.
+	// A media with no override sends none — the ordinary process is unchanged.
 	expect(assignParams('align', media()).pinnedRef).toBeUndefined();
 });
 
@@ -140,12 +140,12 @@ test('supersedeForRerun frees the SLOT OCCUPANT, not an arbitrary terminal sibli
 	expect(fresh.status).toBe('queued');
 });
 
-test('refusals: unknown media, uncooked song, and a ref not in the set', () => {
+test('refusals: unknown media, unprocessed song, and a ref not in the set', () => {
 	const d = deps();
 	expect(requestLyricsReselect('nope', { ref: 'x' }, d, 's1')).toBe('unknown-media');
 
 	d.mediaById.set('raw', media({ id: 'raw', vocalsRef: undefined }));
-	expect(requestLyricsReselect('raw', { ref: 'derived/lyrics/m1-asr.json' }, d, 's1')).toBe('not-cooked');
+	expect(requestLyricsReselect('raw', { ref: 'derived/lyrics/m1-asr.json' }, d, 's1')).toBe('not-processed');
 
 	d.mediaById.set('m1', media());
 	expect(requestLyricsReselect('m1', { ref: 'derived/lyrics/m1-nope.json' }, d, 's1')).toBe('unknown-candidate');

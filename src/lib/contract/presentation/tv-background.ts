@@ -23,7 +23,7 @@ import { makeRegistry } from '../core/registry';
 /**
  * What the TV paints BEHIND the video.
  *
- * Worth knowing why this matters more than it sounds: a make-karaoke song plays a separated
+ * Worth knowing why this matters more than it sounds: a process song plays a separated
  * instrumental, which has no video track, so the `<video>` renders nothing and this background is
  * the ENTIRE visual field for the song — sitting directly behind the word-timed lyric reel. It is
  * not decoration around letterbox bars.

@@ -1,5 +1,5 @@
 /*
- * ── RETIRED BY #913'S RESTRUCTURE (XR-VER-07) ────────────────────────────────────────────────────────
+ * ── RETIRED BY'S RESTRUCTURE (XR-VER-07) ────────────────────────────────────────────────────────
  *
  * This file asserted that a copied-in component references NO shadcn theme name — `bg-primary`,
  * `text-muted-foreground`, `border-ring` — because `app.css` defined none of them, so such a class

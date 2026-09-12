@@ -26,6 +26,7 @@
 // BOTH SPELLINGS ARE CLOSED. An alias ban alone is trivially defeated by `../lib/x`, which resolves to
 // exactly the same module, so relative escapes out of this directory are refused too.
 
+
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { sharedSrc, filesUnder, relative } from '@encore/test-support';
@@ -37,8 +38,20 @@ import { sharedSrc, filesUnder, relative } from '@encore/test-support';
  * build time and transitively, so naming it here would duplicate a stronger check and rot quietly if the
  * framework's rule ever changed. (`$lib` matches it as a prefix anyway — a harmless overlap, not the
  * load-bearing part.)
+ *
+ * `$lib/contract/…` IS CARVED OUT, and that carve-out is the whole reason this pattern needed rewriting.
+ * While the contract was `packages/shared`, `$lib` named app code and nothing else, so banning the prefix
+ * wholesale was exactly the rule. Folding the contract in as `src/lib/contract` made `$lib` the contract's
+ * OWN parent, and a blanket prefix ban then reads a module reaching its own sibling as a boundary
+ * violation — which is what it did to `core/events.ts`, `core/types.ts` and `core/settings.ts`. The
+ * negative lookahead is therefore the rule getting NARROWER in the one direction where it was over-broad,
+ * not weaker: every `$lib` path that is not inside this tree is still refused.
+ *
+ * The BARE barrel stays banned, and deliberately: `$lib/contract` with no subpath is a module importing
+ * the index that re-exports it, which is a cycle rather than a boundary crossing. The lookahead requires a
+ * trailing slash precisely so `'$lib/contract'` still matches while `'$lib/contract/core/types'` does not.
  */
-const FORBIDDEN_ALIAS = /(?:from|import)\s*\(?\s*['"](\$lib|\$app|\$env)(?:\/[^'"]*)?['"]/;
+const FORBIDDEN_ALIAS = /(?:from|import)\s*\(?\s*['"]((?:\$app|\$env|\$lib(?!\/contract\/))(?:\/[^'"]*)?)['"]/;
 /** A relative path that climbs out of `src/lib/contract` — the way round an alias ban. */
 const ESCAPING_RELATIVE = /(?:from|import)\s*\(?\s*['"](\.\.\/(?:\.\.\/)*)(lib|routes)\//;
 
@@ -63,10 +76,11 @@ test('no file in the isomorphic contract imports server, lib, app or env code', 
 		const alias = FORBIDDEN_ALIAS.exec(src);
 		if (alias) {
 			offenders.push(
-				`${relative(abs)} imports \`${alias[1]}\`. This tree is browser-bundled: reaching ${alias[1]} ` +
-					`ships app — and in the \`$server\` case, database — code to every phone. It was impossible ` +
-					`while this was a separate package with no aliases and no dependency on .; this test ` +
-					`is what replaced that guarantee.`
+				`${relative(abs)} imports \`${alias[1]}\`. This tree is browser-bundled and is imported by ` +
+					`BOTH halves of the app, so depending on \`${alias[1]}\` makes the authoritative side ` +
+					`depend on the UI (or, for \`$app\`/\`$env\`, on a runtime the server half does not have). ` +
+					`It was impossible while this was a separate package with no aliases and no dependency on ` +
+					`the app; this test is what replaced that guarantee.`
 			);
 		}
 		const rel = ESCAPING_RELATIVE.exec(src);
@@ -95,14 +109,22 @@ test('the ban catches both spellings, and does not catch a legitimate import', (
 	expect(ESCAPING_RELATIVE.test("import { db } from '../../lib/server/db';")).toBe(true);
 
 	// …and the things this tree legitimately does.
-	expect(FORBIDDEN_ALIAS.test("import { rotation } from './queue/rotation';")).toBe(false);
+	expect(FORBIDDEN_ALIAS.test("import { rotation } from '$lib/contract/queue/rotation';")).toBe(false);
 	expect(FORBIDDEN_ALIAS.test("import { test } from 'bun:test';")).toBe(false);
 	// A contract module importing its OWN barrel is forbidden too, and that is not an accident of banning
 	// `$lib` wholesale — it is a circular import. Sibling modules here reach each other relatively.
 	expect(FORBIDDEN_ALIAS.test("import type { Media } from '$lib/contract';")).toBe(true);
-	expect(FORBIDDEN_ALIAS.test("import type { Media } from './core/types';")).toBe(false);
-	expect(ESCAPING_RELATIVE.test("import { x } from './presentation/colors';")).toBe(false);
-	expect(ESCAPING_RELATIVE.test("import { y } from '../core/types';")).toBe(false);
+	expect(FORBIDDEN_ALIAS.test("import type { Media } from '$lib/contract/core/types';")).toBe(false);
+	// …and the carve-out is a SLASH-BOUNDED prefix, not a substring, or `$lib/contract`-lookalike
+	// directories would be a hole straight through the rule. This is the arm that fails if the lookahead is
+	// ever loosened to `(?!\/contract)`.
+	expect(FORBIDDEN_ALIAS.test("import { x } from '$lib/contract-helpers/x';")).toBe(true);
+	expect(FORBIDDEN_ALIAS.test("import { x } from '$lib/contractual/x';")).toBe(true);
+	// The carve-out is also exactly one level deep in the alias namespace: nothing else under `$lib` is
+	// this tree, so every other subpath is still refused however contract-ish it reads.
+	expect(FORBIDDEN_ALIAS.test("import { overallProcessPct } from '$lib/process-progress';")).toBe(true);
+	expect(ESCAPING_RELATIVE.test("import { x } from '$lib/contract/presentation/colors';")).toBe(false);
+	expect(ESCAPING_RELATIVE.test("import { y } from '$lib/contract/core/types';")).toBe(false);
 	// …and `$lib/server` is NOT this guard's business any more: the build refuses it. Pinned as a
 	// deliberate non-assertion so nobody re-adds it thinking it was an oversight.
 	expect(
@@ -121,7 +143,7 @@ test('the comment stripper does not blind the scan', () => {
 	const withRealImport = strip(
 		[
 			"// This module must never import from '$lib/server/db' — it is browser-bundled.",
-			"import { rotation } from './queue/rotation';",
+			"import { rotation } from '$lib/contract/queue/rotation';",
 			"/* nor '../lib/server/state' by the relative route */",
 			"import { db } from '$lib/server/db';"
 		].join('\n')

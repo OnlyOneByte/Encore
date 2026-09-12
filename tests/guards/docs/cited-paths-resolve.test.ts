@@ -14,6 +14,7 @@
 // EXEMPTIONS ARE KEYED ON CONTENT, NOT ON `path:line`. An earlier registry in this suite was keyed on
 // line numbers and broke within the hour when a sibling edit shifted two entries by one line.
 
+
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';

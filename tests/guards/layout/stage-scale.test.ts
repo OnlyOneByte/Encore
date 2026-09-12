@@ -167,7 +167,7 @@ test('nothing on the stage is docked to an edge with a fixed pixel offset', () =
 });
 
 /**
- * The three transient states — next-up, a skip failure, and "still cooking" — shared one CSS block and
+ * The three transient states — next-up, a skip failure, and "still processing" — shared one CSS block and
  * one pink colour, so a viewer could not tell a failure from a normal song change. Each must keep its
  * own treatment.
  */
@@ -378,19 +378,19 @@ test('the measured card height overrides --tv-chrome-h on the stage', () => {
 });
 
 /*
- * FIX 4 — the TV speaks the shared cook vocabulary, not its own.
+ * FIX 4 — the TV speaks the shared process vocabulary, not its own.
  *
  * The waiting state and the lobby hand-wrote "Making the karaoke" / "Separating" / "Stripping the
- * vocals". Both now call cookStageLabel (cook-phrasing.ts), the ONE guest-facing cook vocabulary the
+ * vocals". Both now call processStageLabel (process-phrasing.ts), the ONE guest-facing process vocabulary the
  * phone already uses, so phone and TV describe the same pipeline state identically.
  */
-test('the TV cook wording comes from cook-phrasing, not a hand-written string', () => {
+test('the TV process wording comes from process-phrasing, not a hand-written string', () => {
 	for (const [, src] of [
 		['routes/tv/+page.svelte', TV_ROUTE],
 		['lib/tv/TvLobby.svelte', TV_LOBBY]
 	] as const) {
-		expect(src).toContain("from '$lib/cook-phrasing'");
-		expect(src.includes('cookStageLabel')).toBe(true);
+		expect(src).toContain("from '$lib/process-phrasing'");
+		expect(src.includes('processStageLabel')).toBe(true);
 	}
 	// and the retired musician's-word phrasings must be gone from the TV surfaces
 	const clean = stripComments(TV_ROUTE) + stripComments(TV_LOBBY);

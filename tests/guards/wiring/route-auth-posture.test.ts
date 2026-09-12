@@ -18,6 +18,7 @@
 // gate being removed, it is a new endpoint arriving ungated and nobody noticing, which is how seven of the
 // eight current `none` postures came to be.
 
+
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { filesUnder, relative } from '@encore/test-support';
@@ -35,7 +36,7 @@ type Posture = 'session' | 'capability' | 'none';
 const POSTURE: Record<string, { gate: Posture; why: string }> = {
 	'audit/[mediaId] GET': {
 		gate: 'none',
-		why: 'self-admittedly ungated: "there is no admin identity in Encore". The payload is one song\'s cook history. OPEN: it also carries worker hostnames and raw error strings, which XR-API-11 argues exceeds what the room can already see.'
+		why: 'self-admittedly ungated: "there is no admin identity in Encore". The payload is one song\'s process history. OPEN: it also carries worker hostnames and raw error strings, which XR-API-11 argues exceeds what the room can already see.'
 	},
 	'delete-media POST': {
 		gate: 'session',
@@ -52,7 +53,7 @@ const POSTURE: Record<string, { gate: Posture; why: string }> = {
 		why: 'the durable catalog for a just-loaded client that has received no broadcasts yet. Everything in it is already on the TV.'
 	},
 	'lyrics-reselect POST': { gate: 'session', why: 'queues work and attributes it to a singer.' },
-	'make-karaoke POST': { gate: 'session', why: 'queues a cook, which is the most expensive work an actor can cause.' },
+	'process POST': { gate: 'session', why: 'queues a process, which is the most expensive work an actor can cause.' },
 	'me GET': { gate: 'session', why: 'answers "who am I", which is meaningless without a session.' },
 	'me PATCH': { gate: 'session', why: 'mutates the caller\'s own singer record.' },
 	'metrics GET': {

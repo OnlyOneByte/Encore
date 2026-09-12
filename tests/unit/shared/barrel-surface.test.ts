@@ -1,4 +1,4 @@
-// — src/lib/contract/src is grouped into domain subdirectories (core/, queue/, lyrics/, cook/,
+// packages/shared/src is grouped into domain subdirectories (core/, queue/, lyrics/, process/,
 // presentation/), and `index.ts` re-exports each so `$lib/contract` import paths never move. THIS TEST
 // IS THE CONTRACT that the move preserved: the barrel's exported-name set is frozen here. A future move
 // that drops a re-export line, points it at the wrong subdir, or renames a symbol changes this set and
@@ -7,22 +7,18 @@
 //
 // When the surface INTENTIONALLY changes (a new exported symbol, a deliberate removal), update EXPECTED
 // in the same commit — the diff on this list is then the human-readable record of the API change.
+//
+// ONE SYMBOL LEFT THE LIST, and here is why, so nobody re-adds it as an oversight. `overallProcessPct`
+// is imported by the client and by nothing else, so it lives at `$lib/process-progress` rather than in
+// this tree; the barrel re-exported it anyway, which made the contract depend on the UI consuming it and
+// was caught by tests/guards/meta/shared-contract-boundary.test.ts. Its two call sites
+// (ProcessingCard.svelte, SongRow.svelte) now import the module directly, and
+// tests/unit/shared/process/process-progress.test.ts already exercised it through that path.
 import { test, expect } from 'bun:test';
-import * as barrel from '$lib/contract';
+import * as barrel from '$lib/contract/index';
 
 // The complete set of names `$lib/contract` exports. Sorted; regenerate with:
-//   bun -e "import * as b from './src/index.ts'; console.log(Object.keys(b).sort().join('\n'))"
-// THE SURFACE SHRANK BY ONE. `overallCookPct` left because its module is genuinely client-only.
-//
-// It was nearly three, and the two that came back are the more instructive part. My first measurement
-// classified everything under `routes/` as client, which is wrong: a `+server.ts` runs on the SERVER.
-// `clampDays` is used by `api/metrics/+server.ts` and `api/stats/+server.ts`, and `songDisplay` by
-// `api/metrics/+server.ts` — so both are isomorphic and belong here. The build caught it, because the
-// barrel stopped exporting a symbol a server route still imported.
-//
-// The 18 modules that remain are imported by BOTH sides and have nowhere else to go: putting them in
-// `lib` would make the server depend on client code, and putting them in `lib/server` would place them
-// where SvelteKit forbids the browser from reaching. That is what earns this directory its place.
+//   bun -e "import * as b from '$lib/contract/src/index.ts'; console.log(Object.keys(b).sort().join('\n'))"
 const EXPECTED = [
 	'ACCENT2', 'ASR_MODELS', 'ATTEMPT_OUTCOMES', 'AXIS_HIGH_MIDI', 'AXIS_LOW_MIDI', 'CODE_ALPHABET',
 	'CODE_EXCLUDED_NOTE', 'CODE_LENGTH', 'DEFAULT_ASR_MODEL',
@@ -48,7 +44,7 @@ const EXPECTED = [
 	'getLyricsHighlight', 'getQueueOrder', 'getSyncMode', 'getTvBackgroundStyle', 'getTvProgressStyle',
 	'getTvVisualizer', 'graceMsOf', 'guideOffsetSec', 'hasGuidingTrack', 'hasKey', 'hasNewerCandidateThanOverride', 'hasUsableTiming',
 	'hasVocalRange', 'hueOfColor', 'hueToHex', 'insertEntry', 'insertIndexFor', 'isAuthoritativeText',
-	'isCookableSource', 'isCooking', 'isLegibleSingerColor', 'isLikelyWrongSong', 'isLiveSelectable',
+	'isProcessableSource', 'isProcessing', 'isLegibleSingerColor', 'isLikelyWrongSong', 'isLiveSelectable',
 	'isPlayable', 'isQualityUpgrade', 'isQueueOrder', 'isRoomCodeChar', 'isTerminal', 'isTerminalJob', 'isTvBackgroundStyle',
 	'isTvProgressStyle', 'isTvVisualizer', 'isValidAsrModel', 'isValidFetcher', 'isValidLyricsBall',
 	'isValidLyricsCase', 'isValidLyricsFont', 'isValidLyricsHighlight', 'isValidSeparator',
@@ -60,7 +56,7 @@ const EXPECTED = [
 	'oklchToRgb', 'originalKeyLabel', 'parseHex', 'pendingGates', 'pickBestLyrics',
 	'playbackRef', 'presetTabStopIndex', 'qualityRank', 'queueOrderLabel', 'rangeBarFractions',
 	'rangeLabel', 'rangeOctaves', 'readyToSing', 'realtimeFactor', 'reorderWithinSinger',
-	'resolveCookSeparator', 'resolveLyricsPresentation', 'resolveLyricsRef', 'roomTopic', 'separatorCost', 'shouldClearClock',
+	'resolveProcessSeparator', 'resolveLyricsPresentation', 'resolveLyricsRef', 'roomTopic', 'separatorCost', 'shouldClearClock',
 	'shouldStartClock', 'singHistoryFrom', 'songDisplay', 'soundingKeyLabel', 'sourceUriFor',
 	'stageHueToHex', 'stageLightnessForHue', 'storedOrder', 'transposePitchClass', 'ulid', 'voiceBandFor',
 	'voiceBandSentence', 'voiceBandZones'

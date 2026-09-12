@@ -1,9 +1,9 @@
-// guard: the p4-transport probe's SINGLE-COOKED-SONG arm must DRAIN every queued turn before it
+// guard: the p4-transport probe's SINGLE-PROCESSED-SONG arm must DRAIN every queued turn before it
 // asserts "no current entry", not issue one skip and assert.
 //
-// THE DEFECT: p4-transport.mjs takes its `else` arm when only ONE song was COOKED
-// (secondReadyId === null). The count of COOKED media and the count of QUEUED turns are different
-// things — a room can hold one cooked song yet several waiting turns on it (a second singer's turn,
+// THE DEFECT: p4-transport.mjs takes its `else` arm when only ONE song was PROCESSED
+// (secondReadyId === null). The count of PROCESSED media and the count of QUEUED turns are different
+// things — a room can hold one processed song yet several waiting turns on it (a second singer's turn,
 // or an entry left behind by an interrupted earlier run). The old arm issued exactly ONE
 // clickByLabel('skip') and then asserted currentEntryId === null (T6a, CRITICAL) plus, downstream,
 // that the transport controls are disabled (T5a/b/c, HIGH). With an extra queued turn, one skip
@@ -11,7 +11,7 @@
 // so currentEntryId stays set and isPlaying stays true. All four assertions then fire as PHANTOMS
 // against a room that behaved correctly, and the CRITICAL costs a maintainer a full triage cycle.
 //
-// THE FIX: the arm now runs the same drain loop the multi-cooked arm already uses — repeatedly read
+// THE FIX: the arm now runs the same drain loop the multi-processed arm already uses — repeatedly read
 // currentEntryId, break when it is null, else skip — so "skip the LAST song" is genuinely the last
 // song regardless of how many turns are queued, and the T5 precondition (queue empty, nothing
 // playing) is actually established. A genuinely stuck room (advance that never reaches null) still
@@ -22,20 +22,19 @@
 // explanatory prose above the arm (which describes both the OLD single-skip mistake and the NEW
 // drain) can neither satisfy nor trip the check. Reverting the arm to a single skip reds this guard.
 import { test, expect } from 'bun:test';
-import { read } from '@encore/test-support';
+import { readFileSync } from 'node:fs';
+import { at } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Was `at('tests/e2e/probes/p4-transport.mjs')`, counted up three
-// from src/lib/server/realtime to .. Named from the repo root now; `read` throws if the
-// probe moves, so this cannot degrade into scanning an empty string.
-const PROBE_PATH = 'tests/e2e/probes/p4-transport.mjs';
-const PROBE = stripComments(read(PROBE_PATH));
+// Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
+const PROBE_PATH = at('tests/e2e/probes/p4-transport.mjs');
+const PROBE = stripComments(readFileSync(PROBE_PATH, 'utf8'));
 
-// Capture the `else` arm body: from the `} else {` that opens the single-cooked-song branch up to
+// Capture the `else` arm body: from the `} else {` that opens the single-processed-song branch up to
 // the matching close `}` that precedes the T5 section. We locate the branch by its unique T6a record
 // text ("skip on the sole (last) song"), then walk back to the `} else {` and forward with a brace
 // depth counter to the matching close so the slice is exactly the arm, not the whole file.
@@ -61,16 +60,16 @@ function elseArmBody(src: string): string {
 
 const ARM = elseArmBody(PROBE);
 
-test('the single-cooked-song arm exists and contains the T6a no-current assertion (not vacuous)', () => {
+test('the single-processed-song arm exists and contains the T6a no-current assertion (not vacuous)', () => {
 	expect(ARM).toContain('skip on the sole (last) song');
 	expect(ARM).toMatch(/currentEntryId\s*===\s*null/);
 });
 
-// Resolve the code that ACTUALLY drains the queue in the single-cooked arm, wherever it lives.
+// Resolve the code that ACTUALLY drains the queue in the single-processed arm, wherever it lives.
 // The drain may be written inline as a `for` loop in the arm, OR hoisted into a helper the arm
-// calls (a legal refactor — the multi-cooked arm runs the same drain, so factoring it out is the
+// calls (a legal refactor — the multi-processed arm runs the same drain, so factoring it out is the
 // obvious next edit and changes no behaviour). Pinning "a for-loop token sits in the arm" is wrong
-// on both faces: it survives a loop whose break is inverted so it drains NOTHING (the defect verbatim,
+// on both faces: it survives a loop whose break is inverted so it drains NOTHING (verbatim,
 // reached by a one-character edit), and it falsely reds a correct helper extraction. So we find the
 // drain body by structure — the arm's own loop if it has one, else the body of the single helper it
 // awaits — and assert the DRAIN SEMANTICS: it reads currentEntryId, clicks skip, and breaks on the
@@ -122,25 +121,25 @@ function drainBody(arm: string, whole: string): string {
 			}
 		}
 	}
-	throw new Error('single-cooked arm has neither an inline drain loop nor a resolvable drain helper');
+	throw new Error('single-processed arm has neither an inline drain loop nor a resolvable drain helper');
 }
 
 const DRAIN = drainBody(ARM, PROBE);
 
-test('the single-cooked-song arm DRAINS the queue: reads currentEntryId, skips, breaks when empty', () => {
+test('the single-processed-song arm DRAINS the queue: reads currentEntryId, skips, breaks when empty', () => {
 	// Not vacuous: the drain body we resolved must actually skip and read the playhead.
 	expect(DRAIN).toMatch(/clickByLabel\(\s*['"]skip['"]\s*\)/);
 	expect(DRAIN).toMatch(/currentEntryId/);
 	// The loop must break on the EXHAUSTED condition — `if (!<id>) break` — so it keeps skipping
-	// until the room is empty. This is the invariant the fix requires: "skip the LAST song" means the
+	// until the room is empty. This is the invariant requires: "skip the LAST song" means the
 	// queue is genuinely drained, not one skip issued.
 	expect(DRAIN).toMatch(/if\s*\(\s*!\s*[A-Za-z_$][\w$]*\s*\)\s*break/);
 });
 
-test('the single-cooked-song drain does NOT break while an entry is still current (the false-safety trap)', () => {
+test('the single-processed-song drain does NOT break while an entry is still current (false-safety trap)', () => {
 	// M5: inverting the break to `if (<id>) break` keeps the loop's SHAPE but drains NOTHING — it
 	// exits on the first iteration whenever an entry is current, which is exactly the state the loop
-	// exists to clear. currentEntryId is then still set at the T6a assertion and the defect fires verbatim.
+	// exists to clear. currentEntryId is then still set at the T6a assertion and fires verbatim.
 	// A break guarded by the bare (present) condition, with no negation, is the defect; ban it.
 	expect(DRAIN).not.toMatch(/if\s*\(\s*[A-Za-z_$][\w$]*\s*\)\s*break/);
 });
@@ -148,9 +147,9 @@ test('the single-cooked-song drain does NOT break while an entry is still curren
 // Resolve WHERE the drain sits inside the arm, so we can pin its ORDER relative to the T6a assert.
 // Mirrors drainBody()'s Case 1 / Case 2 split, but returns the drain's start index WITHIN the arm
 // (Case 1: the inline `for`; Case 2: the arm's call-site of the drain helper) rather than its body.
-// This is a distinct property from "a drain exists": the defect is produced by the compare that FOLLOWS
+// This is a distinct property from "a drain exists": is produced by the compare that FOLLOWS
 // the drain, so a real drain placed AFTER the T6a assertion still asserts against an undrained room
-// and ships the defect back green (the direction left unpinned earlier). Precedent: earlier guards pinned the
+// and ships back green (the direction PR left unpinned). Precedent: / pinned the
 // skip's index < the measurement's index as a separate property from the skip existing.
 function drainStartInArm(arm: string): number {
 	// Case 1: inline `for` loop lives in the arm — its position IS the drain's position.
@@ -183,10 +182,10 @@ function drainStartInArm(arm: string): number {
 			}
 		}
 	}
-	throw new Error('could not locate the drain in the single-cooked arm to pin its order');
+	throw new Error('could not locate the drain in the single-processed arm to pin its order');
 }
 
-test('the single-cooked-song arm DRAINS BEFORE it asserts no-current (drain order — the ship-a-bug direction)', () => {
+test('the single-processed-song arm DRAINS BEFORE it asserts no-current (order — the ship-a-bug direction)', () => {
 	const drainIdx = drainStartInArm(ARM);
 	const t6aIdx = ARM.indexOf('skip on the sole (last) song');
 	// Not vacuous: both anchors must resolve inside the arm.
@@ -194,6 +193,6 @@ test('the single-cooked-song arm DRAINS BEFORE it asserts no-current (drain orde
 	expect(t6aIdx).toBeGreaterThanOrEqual(0);
 	// The drain MUST run before the T6a assertion. A real drain placed AFTER T6a leaves every
 	// earlier test green (a drain still exists, still breaks on empty) yet asserts currentEntryId
-	// against an UNDRAINED room — the defect verbatim. This assertion is the one that reds that move.
+	// against an UNDRAINED room — verbatim. This assertion is the one that reds that move.
 	expect(drainIdx).toBeLessThan(t6aIdx);
 });

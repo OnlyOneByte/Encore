@@ -110,7 +110,7 @@ async def test_a_slow_lookup_emits_keepalive_progress_so_the_lease_is_renewed(mo
     """Annotate is a BLOCKING step (the MusicBrainz gate serialises calls and SLEEPS to hold one request
     per second). Before the progress change it used a raw asyncio.to_thread and emitted NOTHING for the whole wait, so a
     throttled/slow service ran the fetch job past the core's 30 s progress lease (leases.ts) with no
-    job:progress to renew it — the reaper requeued a healthy cook (progress-lease-expired), each retry a
+    job:progress to renew it — the reaper requeued a healthy process (progress-lease-expired), each retry a
     full re-acquire. Routing it through run_blocking (as lyrics/analysis already do) makes it yield a
     keepalive ProgressEvent every LEASE_KEEPALIVE_SEC. Monkeypatch that interval tiny and sleep past
     several of them, exactly like test_align_plan.py's keepalive test."""

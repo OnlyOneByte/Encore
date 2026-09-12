@@ -151,6 +151,15 @@ const FLOORS: Record<string, Floor[]> = {
 				'the per-method splitter actually parsing handlers. This is the sharper of the two: a splitter that returned nothing would leave the walk finding every file and the guard reporting every gate correct while checking none. Per-method granularity is the whole point, because settings/+server.ts gates PUT and leaves GET open.'
 		}
 	],
+	'tests/guards/docs/doc-pointer-accuracy.test.ts': [
+		{
+			subject: 'repoTsBasenames.size',
+			min: 200,
+			count: 1,
+			guards:
+				'the repo-wide .ts basename walk that tells a real cross-tree pointer apart from a stale or misspelled one. This floor exists because the walk has already failed silently once: it enumerated `[\'apps\', \'packages\']`, the flatten deleted both names, `walkBasenames` swallows a missing directory, and the set went EMPTY — at which point every cross-tree citation reads as "exists nowhere" and the guard convicts correct comments. The paired known-true/known-false citations either side of this line are the mutation arm; the floor is what names the cause instead of the symptom. ~460 basenames at the time of writing.'
+		}
+	],
 	'tests/guards/docs/cited-paths-resolve.test.ts': [
 		{
 			subject: 'docs.length',
@@ -689,7 +698,7 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// to the new test-tree-deps guard, one is direction C's own `filesWalked`, and one is a floor on
 	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
 	// surfaced it. Both literals were re-measured, not incremented.
-	expect(located).toBeGreaterThanOrEqual(64);
+	expect(located).toBeGreaterThanOrEqual(65);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -780,7 +789,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(64);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(65);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

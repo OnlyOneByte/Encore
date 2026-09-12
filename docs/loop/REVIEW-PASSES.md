@@ -289,7 +289,7 @@ server."* Everything here stays inside that sentence. You still never change cod
 `--autoplay-policy=no-user-gesture-required` hands the page a permission the TV will never have, and it
 is already granted in `capture.mjs:81`, `playback.mjs`, and **8 of the 13 probes** — so a probe copied
 from any of those inherits the grant silently. `party.mjs` does not grant it. Measured on one real
-cooked song, same build, same page, only the flag differing:
+processed song, same build, same page, only the flag differing:
 
 | Launch | `paused` | `currentTime` | `webkitAudioDecodedByteCount` |
 |---|---|---|---|
@@ -329,7 +329,7 @@ defect sets**. Hand-picked cases find hand-picked bugs. So drive a **randomised 
 sequence in anything you file — a failure you cannot re-drive is a hypothesis (§3.2), and the seed is
 what makes it a trigger. Keep sequences replayable by hand, tens of inputs not thousands. **Weight
 adjacency**: every defect found this way so far lived in the seam between two inputs, not in one —
-**restart-during-cook**, **skip-at-last-entry**, **back-then-pause**. Interleave both phones; a
+**restart-during-process**, **skip-at-last-entry**, **back-then-pause**. Interleave both phones; a
 single-client sequence cannot produce a cross-surface disagreement, which is half this territory.
 
 **D. §2's skip mechanism does not transfer.** A flow has no file path, so keying on one either freezes
@@ -344,11 +344,11 @@ this reviewer or re-files the same finding 6 times a day. Replacement, both halv
    been driven at that sha.
 
 Flow rotation, one per pass, in order: `pause/resume mid-song` · `skip mid-song` · `back` · `restart` ·
-`skip at last entry` · `transport during cook` · `queue mutation while playing (add + remove, both
+`skip at last entry` · `transport during process` · `queue mutation while playing (add + remove, both
 phones)` · `key-shift + guide-level while playing` · `lyrics timing across an entry change`
 
 **E. Environment limits — never file against these.** No `torch`, `demucs` or `whisperx` on this box,
-so separation and alignment **quality** are untestable and a cook-quality finding is **never filable
+so separation and alignment **quality** are untestable and a process-quality finding is **never filable
 from this charter**. The fixture always publishes per-word lyric timings, so a line-only lyrics source
 cannot be reproduced here and a green lyrics run is **not** evidence a per-song granularity clamp
 works. **YouTube download works** — `deno` is pinned (`mise use -g deno@2.3.0`, binary 2.4.0, meeting
@@ -442,7 +442,7 @@ For `rev:e2e-behavior` specifically:
 - Never make a playback claim from an autoplay-granted run.
 - Never treat `paused === false` as evidence audio is playing.
 - Never file a fuzz finding without its RNG seed and input sequence.
-- Never file a cook-quality, separation- or alignment-quality finding from this box.
+- Never file a process-quality, separation- or alignment-quality finding from this box.
 - Never present a green lyrics run as evidence a per-song granularity clamp works.
 - Never key this charter's skip on a per-flow file path (§7 D).
 

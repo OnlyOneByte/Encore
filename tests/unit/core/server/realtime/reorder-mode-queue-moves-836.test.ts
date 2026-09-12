@@ -1,4 +1,5 @@
-// XR-PH-19 — the reorder mode against the REAL server, not a fixture.
+// XR-PH-19 (drag rewired to the whole queue in) — the reorder mode against the REAL
+// server, not a fixture.
 //
 // The requirement names this mechanism explicitly: "a harness test drives real ops through
 // `handleQueueCommand` to produce the invalidating states (the `AuthoritativeState` + `HubDeps` idiom
@@ -12,7 +13,7 @@ import { reconcileOnReady } from '$lib/server/realtime/player';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$lib/contract';
 import { EMPTY_SONG_PROFILE } from '$lib/contract';
-import { modeInvalidation, ownSlots, gripVisible } from '$lib/reorder-mode';
+import { modeInvalidation, queueSlots, gripVisible } from '$lib/reorder-mode';
 
 const media = (id: string): Media => ({
 	id,
@@ -35,6 +36,10 @@ const addCmd = (id: string, mediaId: string, singerId: string): ClientCommand =>
 	}
 });
 const removeCmd = (id: string): ClientCommand => ({ clientOpId: 'op-rm-' + id, op: { op: 'remove', id } });
+const moveToIndexCmd = (id: string, toIdx: number): ClientCommand => ({
+	clientOpId: 'op-mvi-' + id + '-' + toIdx,
+	op: { op: 'move-to-index', id, toIdx }
+});
 
 function harness(actor = 's1') {
 	const published: ServerEvent[] = [];
@@ -52,60 +57,54 @@ function harness(actor = 's1') {
 	return { published, state, deps };
 }
 
-/** What the phone derives for the mode: the actor's own QUEUED picks, in the order it renders them. */
-function myPicks(state: AuthoritativeState, singerId: string) {
-	return state.entries
-		.filter((e) => e.status === 'queued' && e.singerId === singerId)
-		.sort((a, b) => a.rotationSeq - b.rotationSeq);
+/** The whole queued list, in the order the phone renders it — the collection the mode now reads. */
+function queuedList(state: AuthoritativeState) {
+	return state.entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
 }
 
-test('XR-PH-19 · another guest queueing mid-drag re-orders the list but not the mode', () => {
+test('XR-PH-19 · another guest queueing mid-drag re-orders the list, and the mode tracks the new length', () => {
 	const { state, deps } = harness('s1');
 	handleQueueCommand(addCmd('a', 'm1', 's1'), deps);
 	handleQueueCommand(addCmd('b', 'm2', 's1'), deps);
 
-	const before = myPicks(state, 's1').map((e) => e.id);
-	const slotsBefore = ownSlots(before.length);
+	const before = queuedList(state).map((e) => e.id);
 	expect(before).toHaveLength(2);
-	expect(modeInvalidation(myPicks(state, 's1'), 'a', 'queued')).toBeNull();
+	expect(modeInvalidation(queuedList(state), 'a', 'queued')).toBeNull();
+	expect(queueSlots(queuedList(state).length)).toHaveLength(2);
 
 	// A DIFFERENT guest queues a song while my drag is open. This is the real op through the real hub,
 	// so the re-derivation is the server's own.
-	const other = harness('s2');
-	other.deps.state = state;
-	handleQueueCommand(addCmd('x', 'm3', 's2'), { ...deps, actorSingerId: 's2' });
+	handleQueueCommand(addCmd('x', 'm3', 's2'), {...deps, actorSingerId: 's2' });
 
 	// The flat list genuinely changed underneath: a third entry is in it, and fair rotation interleaves
 	// s2 between my two picks — so this is not a no-op dressed as a test.
-	const flat = state.entries.filter((e) => e.status === 'queued').map((e) => e.id);
+	const flat = queuedList(state).map((e) => e.id);
 	expect(flat).toHaveLength(3);
 	expect(flat).toContain('x');
 	expect(flat.indexOf('x')).toBeLessThan(flat.indexOf('b'));
 
-	// …and the mode is untouched: same picks, same slot count, same commit indices, no reason to close.
-	expect(myPicks(state, 's1').map((e) => e.id)).toEqual(before);
-	expect(ownSlots(myPicks(state, 's1').length)).toEqual(slotsBefore);
-	expect(modeInvalidation(myPicks(state, 's1'), 'a', 'queued')).toBeNull();
+	// …and the mode stays open, now spanning the WHOLE queue: the moving song 'a' is still queued and
+	// three songs remain, so there is a third legal slot to drop into.
+	expect(modeInvalidation(queuedList(state), 'a', 'queued')).toBeNull();
+	expect(queueSlots(queuedList(state).length)).toHaveLength(3);
 });
 
-test('XR-PH-19 · my second pick removed elsewhere closes the mode with a reason', () => {
+test('XR-PH-19 · the queue dropping below two songs closes the mode with a reason', () => {
 	const { state, deps } = harness('s1');
 	handleQueueCommand(addCmd('a', 'm1', 's1'), deps);
 	handleQueueCommand(addCmd('b', 'm2', 's1'), deps);
-	expect(modeInvalidation(myPicks(state, 's1'), 'a', 'queued')).toBeNull();
+	expect(modeInvalidation(queuedList(state), 'a', 'queued')).toBeNull();
 
 	handleQueueCommand(removeCmd('b'), deps);
 
-	const picks = myPicks(state, 's1');
-	expect(picks).toHaveLength(1);
+	const queued = queuedList(state);
+	expect(queued).toHaveLength(1);
 	const movingStatus = state.entries.find((e) => e.id === 'a')?.status;
-	expect(modeInvalidation(picks, 'a', movingStatus)).toBe(
-		'You have one song queued now — there is nothing to reorder.'
+	expect(modeInvalidation(queued, 'a', movingStatus)).toBe(
+		'Only one song is queued now — there is nothing to reorder.'
 	);
 	// And the grip is gone for the next render, so the mode cannot be re-entered into the same lie.
-	expect(
-		gripVisible({ mine: true, ownQueuedCount: picks.length, reorderMeaningful: true })
-	).toBe(false);
+	expect(gripVisible({ queuedCount: queued.length, reorderMeaningful: true })).toBe(false);
 });
 
 test('XR-PH-19 · the moving song being removed elsewhere closes the mode with its own reason', () => {
@@ -116,7 +115,7 @@ test('XR-PH-19 · the moving song being removed elsewhere closes the mode with i
 	handleQueueCommand(removeCmd('a'), deps); // the row under the finger
 
 	expect(state.entries.find((e) => e.id === 'a')).toBeUndefined();
-	expect(modeInvalidation(myPicks(state, 's1'), 'a', undefined)).toBe(
+	expect(modeInvalidation(queuedList(state), 'a', undefined)).toBe(
 		'That song left the queue — nothing was moved.'
 	);
 });
@@ -136,9 +135,33 @@ test('XR-PH-19 · the moving song starting playback closes the mode with its own
 	const moving = state.entries.find((e) => e.id === 'a');
 	expect(state.playback.currentEntryId).toBe('a'); // sentinel: the song really did start
 	expect(moving?.status).toBe('playing');
-	// `reorderWithinSinger` no-ops for a non-queued entry, so a drag left open here could only ever
-	// commit nothing — which is exactly why the mode has to say so rather than appear to work.
-	expect(modeInvalidation(myPicks(state, 's1'), 'a', moving?.status)).toBe(
+	expect(modeInvalidation(queuedList(state), 'a', moving?.status)).toBe(
 		'That song started playing — nothing was moved.'
 	);
+});
+
+// ── · a whole-queue drop actually crosses singers through the real hub ───────────────────────
+
+test('· committing a drag as move-to-index moves a song to a GLOBAL slot, jumping another singer', () => {
+	// The drag now commits `store.moveToIndex(id, dropTarget)`, which sends a `move-to-index` op. This
+	// is the drive-through-the-real-hub proof that a drop at a global index reorders across singers —
+	// what the old own-picks `move` could never do. The actor owns the moving entry here, so no
+	// capability gate is in the way.
+	const { state, deps } = harness('s1');
+	handleQueueCommand(addCmd('a', 'm1', 's1'), deps); // s1
+	handleQueueCommand(addCmd('x', 'm2', 's2'), {...deps, actorSingerId: 's2' }); // s2
+	handleQueueCommand(addCmd('b', 'm3', 's1'), deps); // s1
+
+	// Fair rotation interleaves the two singers; the exact order is the server's, so read it rather than
+	// assume it. The drag drops 'b' (an s1 song) at the FRONT of the whole queue — index 0.
+	const before = queuedList(state).map((e) => e.id);
+	expect(before).toHaveLength(3);
+	expect(before[0]).not.toBe('b'); // sentinel: the move is a real change, not a no-op at its own slot
+
+	handleQueueCommand(moveToIndexCmd('b', 0), deps);
+
+	const after = queuedList(state).map((e) => e.id);
+	expect(after[0]).toBe('b'); // landed at the global front, ahead of the other singer's 'x'
+	expect(after).toHaveLength(3);
+	expect(new Set(after)).toEqual(new Set(before)); // nothing added or dropped, only reordered
 });

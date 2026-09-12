@@ -91,7 +91,7 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 // so the PAUSES between words are exactly where the lyric lines break.
 //
 // Done in the display layer rather than in the worker on purpose: it fixes every artifact that already
-// exists, with no re-cook and no second ML pass. The artifact keeps whisper's raw segmentation, which
+// exists, with no re-process and no second ML pass. The artifact keeps whisper's raw segmentation, which
 // is honest provenance; how it reads on a TV is a presentation concern.
 
 /**
@@ -150,7 +150,7 @@ function lineFromWords(words: LyricWord[]): LyricLine {
  * flashing rows (`coalesceOrphans` existed largely to undo that). The blob case is now handled
  * UPSTREAM in the worker (lyrics_presplit.py), so this stays the safety net it should always have
  * been: it catches artifacts written before that change and any over-long line that slips through,
- * and leaves a line that already fits a row alone — still fixing existing artifacts with no re-cook.
+ * and leaves a line that already fits a row alone — still fixing existing artifacts with no re-process.
  *
  * REFUSES to split when the timed words don't cover the line's own text (`COVERAGE_MIN`).
  * `normalize_lyrics` drops words the aligner left un-timed, so a poorly-aligned line can have words[]

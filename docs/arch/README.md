@@ -36,10 +36,10 @@ Two areas deliberately did **not** get a namespace here:
 Recorded here because each was verified against source and each is open. A reader who assumes this
 tree is descriptive will otherwise mistake these for settled behaviour.
 
-**1. A permanently failed cook settles its readiness gate in memory only — NOW FIXED for new failures.** `stem_status` and
-`lyrics_status` are stored columns and the *cooking* flip is persisted, but the terminal-failure path
+**1. A permanently failed process settles its readiness gate in memory only — NOW FIXED for new failures.** `stem_status` and
+`lyrics_status` are stored columns and the *processing* flip is persisted, but the terminal-failure path
 carries no persistence sink and no boot pass reconciles the value against the job ledger. After a
-restart the song reads as still cooking, with a terminal job row and no Sing button. `XR-JOB-04`. The epilogue now persists a settled gate at all three terminal paths; what remains open is
+restart the song reads as still processing, with a terminal job row and no Sing button. `XR-JOB-04`. The epilogue now persists a settled gate at all three terminal paths; what remains open is
 reconciling rows written BEFORE the fix, which is a migration question rather than a code one.
 
 **2. The unservable-job TTL was not a timer — NOW FIXED.** Both the stamp and the check live inside `dispatch()`,

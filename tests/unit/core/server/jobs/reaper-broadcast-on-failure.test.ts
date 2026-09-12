@@ -1,13 +1,13 @@
-// Done-when: a reaper-killed cook is REPORTED, not silent, and every terminal-fail path
-// runs the SAME four-step epilogue. An earlier change wired the reaper's onFailed hook to settle the
+// Done-when: a reaper-killed process is REPORTED, not silent, and every terminal-fail path
+// runs the SAME four-step epilogue. an earlier change wired the reaper's onFailed hook to settle the
 // readiness gate, but the hook did nothing else — no media:status broadcast, no operator log, no
-// scratch reclaim — so the phone that watched the cook stayed pinned on "Making karaoke… N%" with no
+// scratch reclaim — so the phone that watched the process stayed pinned on "Making karaoke… N%" with no
 // Sing button forever.
 //
 // This test drives a REAL JobReaper + JobRepository (in-memory sqlite) to attempts-exhaustion with
 // the PRODUCTION `reportTerminalFailure` wired as the onFailed hook — the same function app.ts and
-// both worker-hub paths call. It used to reconstruct that hook inline (the "fourth copy" hazard);
-// asserting the real function instead means a site that diverges from it can no longer pass.
+// both worker-hub paths call. It used to reconstruct that hook inline (the "fourth copy"
+// names); asserting the real function instead means a site that diverges from it can no longer pass.
 // A `media:status: failed` must reach the broadcast sink and the scratch must be reclaimed.
 // reaper.test.ts asserts the media STATE after the settle, but nothing about a broadcast — there was
 // no broadcast seam before this fix.
@@ -16,7 +16,7 @@ import { migratedDb } from '$lib/server/db/test-db';
 import { JobReaper } from '$lib/server/jobs/reaper';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { ackDeadline, progressDeadline } from '$lib/server/jobs/leases';
-import { reportTerminalFailure } from '$lib/server/jobs/make-karaoke';
+import { reportTerminalFailure } from '$lib/server/jobs/process';
 import type { Media, ServerEvent } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
@@ -55,13 +55,13 @@ function exhaust(jobType: 'stems' | 'align' | 'stems-upgrade', over: Partial<Med
 	return { jobs, mediaById, job, broadcasts };
 }
 
-test('reaper-killed stems cook broadcasts media:status failed + logs uniformly (the room is told)', () => {
+test('reaper-killed stems process broadcasts media:status failed + logs uniformly (the room is told)', () => {
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
 		const { jobs, job, broadcasts } = exhaust('stems', { stemStatus: 'queued' });
 		// Reaper path reached terminal failed (not #onFailed).
 		expect(jobs.byId(job.id)!.status).toBe('failed');
-		// The regression: before this fix broadcasts was []. Now exactly one media:status: failed reaches the sink.
+ // The regression: before broadcasts was []. Now exactly one media:status: failed reaches the sink.
 		const statusEvents = broadcasts.filter((e) => e.type === 'media:status');
 		expect(statusEvents.length).toBe(1);
 		const ev = statusEvents[0] as Extract<ServerEvent, { type: 'media:status' }>;
@@ -80,7 +80,7 @@ test('reaper-killed stems cook broadcasts media:status failed + logs uniformly (
 	}
 });
 
-test('reaper-killed align cook (playable song) still broadcasts failed', () => {
+test('reaper-killed align process (playable song) still broadcasts failed', () => {
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
 		// align dies on an already-playable song; the lyrics gate settles but the room must still hear failed.
@@ -100,7 +100,7 @@ test('reaper-killed align cook (playable song) still broadcasts failed', () => {
 test('a dead stems-upgrade on an ALREADY-singable song is NOT broadcast (no ready-row regress)', () => {
 	const warn = spyOn(console, 'warn').mockImplementation(() => {});
 	try {
-		// shouldBroadcastCook returns false for a stems-upgrade on a readyToSing song — broadcasting failed
+		// shouldBroadcastProcess returns false for a stems-upgrade on a readyToSing song — broadcasting failed
 		// would flip a happy ready row back to a failure chip for a background job the singer never saw.
 		const { jobs, job, broadcasts } = exhaust('stems-upgrade', {
 			stemStatus: 'ready',

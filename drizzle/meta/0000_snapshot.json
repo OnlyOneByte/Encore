@@ -118,8 +118,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "cook_id": {
-          "name": "cook_id",
+        "processing_id": {
+          "name": "processing_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -255,10 +255,10 @@
           ],
           "isUnique": false
         },
-        "job_attempts_cook_idx": {
-          "name": "job_attempts_cook_idx",
+        "job_attempts_processing_idx": {
+          "name": "job_attempts_processing_idx",
           "columns": [
-            "cook_id"
+            "processing_id"
           ],
           "isUnique": false
         },
@@ -300,8 +300,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "cook_id": {
-          "name": "cook_id",
+        "processing_id": {
+          "name": "processing_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,

@@ -15,10 +15,10 @@ import type { TvState } from './gapless';
  * - `attract`  — nobody is here. The QR is the only thing to do, so it owns the screen.
  * - `lobby`    — people are here, or something is queued, but nothing can play yet. Note this covers
  *                TWO situations the caller must word differently: nothing picked at all, and something
- *                picked that is still cooking. It previously claimed "nothing is queued", which was
+ *                picked that is still processing. It previously claimed "nothing is queued", which was
  *                wrong — a queued-but-unplayable entry lands here too, and the lobby told guests to
  *                pick a song when one was already separating.
- * - `waiting`  — the PLAYER is actively holding for media that is still cooking (mid-set), which is a
+ * - `waiting`  — the PLAYER is actively holding for media that is still processing (mid-set), which is a
  *                narrower thing than "something queued is not ready".
  * - `playing`  — a song is up; the video owns the screen and the QR retreats to a corner.
  */
@@ -42,7 +42,7 @@ export interface TvScreenInput {
 /**
  * Decide the screen. Precedence, highest first:
  *  1. `playing` — if a song is actually current, nothing else matters.
- *  2. `waiting` — the player says it is holding for media that is still cooking.
+ *  2. `waiting` — the player says it is holding for media that is still processing.
  *  3. `lobby`   — somebody is present (or something is queued) but nothing can play yet.
  *  4. `attract` — an empty, idle room.
  *
@@ -113,11 +113,8 @@ export function lobbyRoster(
 	// A membership id with no directory entry yet (presence arrived before queue:sync) is skipped
 	// rather than rendered as "Someone" — a nameless chip is worse than one fewer chip.
 	const resolve = (ids: string[], state: 'here' | 'away'): RosterMember[] =>
-		ids
-			.map((id) => singers.get(id))
-			.filter((s): s is { id: string; displayName: string; color: string } => !!s)
-			.map((s) => ({ ...s, state }));
-	const known = [...resolve(here, 'here'), ...resolve(away, 'away')];
+		ids.map((id) => singers.get(id)).filter((s): s is { id: string; displayName: string; color: string } => !!s).map((s) => ({...s, state }));
+	const known = [...resolve(here, 'here'),...resolve(away, 'away')];
 	return { shown: known.slice(0, max), overflow: Math.max(0, known.length - max) };
 }
 
@@ -161,27 +158,27 @@ export function isUnreachableJoinOrigin(origin: string | null | undefined): bool
 }
 
 /**
- * The three guest-facing steps of the still-cooking takeover (XR-TV-15).
+ * The three guest-facing steps of the still-processing takeover (XR-TV-15).
  *
  * The media model has FIVE stages (`MEDIA_STAGES`) but the takeover shows THREE, so the collapse is a
  * real mapping — and if the TV hand-wrote it, the wall and the phone could describe the same song
  * differently. The labels here are guest words (what the guest is waiting for), not worker stages.
  */
-export const COOK_STEPS = ['Downloaded', 'Removing vocals', 'Timing the lyrics'] as const;
+export const PROCESS_STEPS = ['Downloaded', 'Removing vocals', 'Timing the lyrics'] as const;
 
 /**
- * Map a `MediaStatus` onto the three displayed cook steps (XR-TV-15). TOTAL over every status: exactly
+ * Map a `MediaStatus` onto the three displayed process steps (XR-TV-15). TOTAL over every status: exactly
  * one step is current for any value, so the takeover never renders with no step marked. Returns the
- * current step `index` (0-based into `COOK_STEPS`) and a `fraction` for the bounded progress bar.
+ * current step `index` (0-based into `PROCESS_STEPS`) and a `fraction` for the bounded progress bar.
  *
  *   queued / downloading → step 0 (getting the audio)
  *   separating           → step 1 (removing the vocals)
  *   aligning             → step 2 (timing the lyrics)
  *   ready                → step 2, complete (the takeover is normally gone by now, but total is total)
- *   failed / canceled    → step 0 (off the happy line; the takeover shows only while cooking, so this
+ *   failed / canceled    → step 0 (off the happy line; the takeover shows only while processing, so this
  *                          is a defensive floor rather than a state the guest sees)
  */
-export function cookStep(status: import('$lib/contract').MediaStatus | undefined): {
+export function processStep(status: import('$lib/contract').MediaStatus | undefined): {
 	index: number;
 	fraction: string;
 } {

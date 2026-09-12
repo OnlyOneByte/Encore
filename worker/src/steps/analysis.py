@@ -27,7 +27,7 @@ class KeyAndRange(Step):
 
     Uses the vocals WAV EVEN WHEN the silence probe measured it silent (and so it was not published). The
     summarizer then finds no voiced frames and returns nulls, which is exactly the "present but empty"
-    profile the core needs to see: an ABSENT profile reads as "still cooking", so omitting it would strand
+    profile the core needs to see: an ABSENT profile reads as "still processing", so omitting it would strand
     a silent-vocals song forever.
 
     ALWAYS writes a profile, even on total analysis failure, for the same reason.

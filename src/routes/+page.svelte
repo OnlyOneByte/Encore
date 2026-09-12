@@ -6,10 +6,10 @@
 		singHistoryFrom,
 		originalKeyLabel,
 		soundingKeyLabel,
-		songDisplay,
 		rangeLabel,
 		rangeOctaves,
 		voiceBandSentence,
+		songDisplay,
 		chosenCandidate,
 		hasNewerCandidateThanOverride
 	} from '$lib/contract';
@@ -35,22 +35,22 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
-	import { cookAndQueue } from '$lib/cook-and-queue';
-	import { gripVisible, ownSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
+	import { processAndQueue } from '$lib/process-and-queue';
+	import { gripVisible, queueSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
 	import {
 		displayReadiness,
-		canCook,
+		canProcess,
 		readyEmptyState,
 		nextPlayableEntryId,
 		entryPlayable,
-		cookingGroupIds,
+		processingGroupIds,
 		queueCardKind,
 		type Readiness
 	} from '$lib/readiness';
-	import { activeScars, recordScar, clearScar } from '$lib/stores/cook-scars';
+	import { activeScars, recordScar, clearScar } from '$lib/stores/process-scars';
 	import { positionWords } from '$lib/position-sentence';
 	import type { MediaStatus } from '$lib/contract';
-	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '$lib/contract';
+	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isProcessableSource } from '$lib/contract';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import * as Collapsible from '$lib/components/ui/collapsible';
@@ -63,7 +63,7 @@
 	// What each row is still waiting on ('add' | 'move'), republished on every store emit so the
 	// QueueRow/ProcessingCard `pending` affordance reflects the real pending map instead of the
 	// placeholder rotationSeq that applyAndReseq overwrites in the same frame. A KIND
-	// rather than a set of ids: a pending REORDER is marked too (XR-PH-10), and it must not
+	// rather than a set of ids since an earlier change: a pending REORDER is marked too (XR-PH-10), and it must not
 	// borrow the add path's "adding…" word.
 	let pendingKind = $state<Map<string, 'add' | 'move'>>(new Map());
 	let singers = $state<Map<string, PublicSinger>>(new Map());
@@ -84,16 +84,16 @@
 		background: null,
 		guideLevel: null
 	});
-	// live make-karaoke progress per mediaId — driven by media:status broadcasts AND seeded
-	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
+	// live process progress per mediaId — driven by media:status broadcasts AND seeded
+	// from /api/library on load, so a reload mid-process doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
-	// Failed-cook scars captured once on mount from localStorage. Held so they can be re-merged
+	// Failed-process scars captured once on mount from localStorage. Held so they can be re-merged
 	// into the catalog after a queue:sync REPLACES it — otherwise the room's first sync wipes the
 	// scarred (failed, so server-unknown) media and its row vanishes again on the very reload the
 	// scar exists to survive.
 	let scarredMedia: Media[] = [];
 	/*
-	 * DIRECTION A + the 2026-09-09 owner correction (docs/DECISIONS.md): the room's
+	 * DIRECTION A + the 2026-09-09 owner correction (docs/DECISIONS.md, issues earlier changes): the room's
 	 * queue IS the home screen, and the search box is docked at the bottom of it AT ALL TIMES for a
 	 * joined singer — it is the add affordance, so there is no `+ Add a turn` push and no browse MODE.
 	 * Typing expands the results UPWARD IN PLACE over the queue (direction B's layout), so there is no
@@ -113,7 +113,7 @@
 	/**
 	 * THE BAND CONTRACT. The docked search band's REAL rendered height, published to documentElement so
 	 * the scrolling column can reserve its band in normal flow (XR-PH-12) instead of having the band
-	 * float over the last queue row. the search dock IS this band — docked on home for a
+	 * float over the last queue row. Since an earlier change the search dock IS this band — docked on home for a
 	 * joined singer at all times, the `+ Add a turn` button it replaced is gone — so there is exactly
 	 * one band, present in both the queue and results views.
 	 *
@@ -126,7 +126,7 @@
 	 * --dock-h — so nothing above may add a second env() term or the gap doubles. One env(), on the one
 	 * element that actually sits at the bottom edge of the screen.
 	 *
-	 * THE TEARDOWN IS PART OF THE CONTRACT, not tidiness — leak class §14. A custom property
+	 * THE TEARDOWN IS PART OF THE CONTRACT, not tidiness — leak class an earlier change §14. A custom property
 	 * written to documentElement OUTLIVES the component that wrote it, so a stale --dock-h keeps
 	 * padding every later page the app navigates to, and (because an inline property on :root outranks
 	 * a stylesheet rule) it silently defeats any media query that tries to set the same token. Hence
@@ -137,7 +137,7 @@
 	$effect(() => {
 		document.documentElement.style.setProperty('--dock-h', `${dockH}px`);
 		// Tear the inline property down on unmount, or it OUTLIVES the route on documentElement and a
-		// stale --dock-h keeps padding every later page — the leak class §14.
+		// stale --dock-h keeps padding every later page — the leak class an earlier change §14.
 		return () => {
 			document.documentElement.style.removeProperty('--dock-h');
 		};
@@ -177,14 +177,14 @@
 	}
 	/** Merge media into the client catalog. The catalog is otherwise fed ONLY by queue:sync/patch, so
 	 *  a song that came from search or the library — and is not (yet) in anyone's queue — has no
-	 *  resolvable title: a cooking card would render a raw ULID. */
+	 *  resolvable title: a processing card would render a raw ULID. */
 	function mergeMedia(list: Media[]) {
 		if (!list.length) return;
 		const next = new Map(mediaCatalog);
 		for (const m of list) next.set(m.id, m);
 		mediaCatalog = next;
 	}
-	/** Merge media but only for ids the catalog does NOT already hold — used to re-apply failed-cook
+	/** Merge media but only for ids the catalog does NOT already hold — used to re-apply failed-process
 	 *  scars after a queue:sync without clobbering a fresher server copy of the same song. */
 	function mergeMissingMedia(list: Media[]) {
 		if (!list.length) return;
@@ -233,8 +233,8 @@
 						if (e.settings) settings = e.settings;
 						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 						if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
-						// Re-apply failed-cook scars: a queue:sync REPLACES the catalog, and a failed song is
-						// not in the room's media (it settled to un-cooked server-side), so without this the
+						// Re-apply failed-process scars: a queue:sync REPLACES the catalog, and a failed song is
+						// not in the room's media (it settled to un-processed server-side), so without this the
 						// scarred row is wiped by the very first sync. A real entry for the id (already added
 						// above) wins; this only fills a gap.
 						if (scarredMedia.length) mergeMissingMedia(scarredMedia);
@@ -274,29 +274,29 @@
 						next.set(e.mediaId, { status: e.status, pct: e.pct, etaSec: e.etaSec });
 						mediaStatus = next;
 						// reflect the flip on the catalog copy so readiness agrees without a full sync.
-						// A `failed` cook must NOT be written back as 'queued' — that pins the row in the
-						// Cooking group at 0% forever with no failure signal (the singer never learns the
-						// cook died). Preserve the existing stemStatus on failure, matching the TV route.
+						// A `failed` process must NOT be written back as 'queued' — that pins the row in the
+						// Processing group at 0% forever with no failure signal (the singer never learns the
+						// process died). Preserve the existing stemStatus on failure, matching the TV route.
 						const m = mediaCatalog.get(e.mediaId);
 						if (m) {
 							const nm = new Map(mediaCatalog);
 							nm.set(e.mediaId, {
 								...m,
 								stemStatus:
-									// A failed OR canceled cook settles back to un-cooked server-side (settleStemsGate),
+									// A failed OR canceled process settles back to un-processed server-side (settleStemsGate),
 									// so the optimistic copy follows it. This used to preserve the mid-flight status,
-									// which is what kept the row reading as cooking after the job had already died.
+									// which is what kept the row reading as processing after the job had already died.
 									e.status === 'ready' ? 'ready' : e.status === 'failed' || e.status === 'canceled' ? 'none' : 'queued'
 							});
 							mediaCatalog = nm;
 						}
-						// a song that just finished cooking belongs in the saved library now, and a successful
-						// re-cook clears any failed-cook scar so the row never lingers as failed while it is ready.
+						// a song that just finished processing belongs in the saved library now, and a successful
+						// re-process clears any failed-process scar so the row never lingers as failed while it is ready.
 						if (e.status === 'ready') {
 							clearScar(e.mediaId);
 							loadLibrary();
 						}
-						// Surface a died cook to the singer instead of leaving the row silently stuck, and
+						// Surface a died process to the singer instead of leaving the row silently stuck, and
 						// persist a per-device scar so the failure survives a reload (the live map does not).
 						if (e.status === 'failed') {
 							const failedMedia = mediaCatalog.get(e.mediaId);
@@ -307,14 +307,14 @@
 					store.onServerEvent(e);
 				}
 			});
-			// Re-surface failed cooks that a reload would otherwise have erased: the live `mediaStatus`
-			// map is in-memory only, so a persisted scar is seeded back as a synthetic
-			// `failed` live status. This flows through liveOf -> displayReadiness -> cookingRows to the
+			// Re-surface failed processes that a reload would otherwise have erased: the live `mediaStatus`
+			// map is in-memory only, so a persisted scar (Encore an earlier change) is seeded back as a synthetic
+			// `failed` live status. This flows through liveOf -> displayReadiness -> processingRows to the
 			// same red-chip + Sing row a live failure renders, with no extra UI. A fresher live broadcast
 			// always wins (checked below), and any scar cleared by a later `ready` is already gone.
 			scarredMedia = activeScars();
 			if (scarredMedia.length) {
-				// GET /api/library returns only ready + cooking media, so a failed song is not in the
+				// GET /api/library returns only ready + processing media, so a failed song is not in the
 				// catalog — merge the scar's snapshot in so its row can render, then mark it failed. The
 				// captured list is re-applied on every queue:sync (which replaces the catalog), so the
 				// row survives the room's first sync.
@@ -340,34 +340,34 @@
 	}
 
 	/**
-	 * "✨ Sing" — the raw row's ONE action: take the turn, then start the cook.
+	 * "✨ Sing" — the raw row's ONE action: take the turn, then start the proc.
 	 *
-	 * Order is load-bearing, not stylistic: the core derives the cook's job priority from the rotation
-	 * position of the turns pointing at that media, so cooking first files the job at
+	 * Order is load-bearing, not stylistic: the core derives the process's job priority from the rotation
+	 * position of the turns pointing at that media, so processing first files the job at
 	 * NO_QUEUE_PRIORITY — behind the lyrics backfill — while a singer stands there waiting. See
-	 * $lib/cook-and-queue.ts for the full reasoning and its test.
+	 * $lib/process-and-queue.ts for the full reasoning and its test.
 	 *
-	 * `hasQueuedTurn` is the RETRY case and it is not an optimisation: a dead cook keeps
+	 * `hasQueuedTurn` is the RETRY case and it is not an optimisation: a dead process keeps
 	 * offering Sing (the group header literally says "tap Sing to try again"), so without it the second
 	 * tap booked the singer a second turn of the same song and the room played it twice in a row. The
-	 * cook step still runs — the retry must stay reachable, per readiness.ts's `canCook('failed')`.
+	 * process step still runs — the retry must stay reachable, per readiness.ts's `canProcess('failed')`.
 	 */
 	function singThis(mediaId: string) {
-		cookAndQueue({
+		processAndQueue({
 			queue: () => addSong(mediaId),
-			cook: () => void makeKaraoke(mediaId),
+			process: () => void processMedia(mediaId),
 			hasQueuedTurn: inMyQueue(mediaId)
 		});
 	}
 
-	/** Request stem-separation ("make karaoke") — flips the song to a cooking file server-side; the
+	/** Request stem-separation ("make karaoke") — flips the song to a processing file server-side; the
 	 *  live media:status broadcasts then drive the row's progress bar. */
-	async function makeKaraoke(mediaId: string) {
+	async function processMedia(mediaId: string) {
 		if (navigator.vibrate) navigator.vibrate(12);
-		// optimistic: the row reads as cooking immediately, before the request lands
+		// optimistic: the row reads as processing immediately, before the request lands
 		mediaStatus = new Map(mediaStatus).set(mediaId, { status: 'queued', pct: 0 });
 		try {
-			const res = await fetch('/api/make-karaoke', {
+			const res = await fetch('/api/process', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ mediaId })
@@ -375,27 +375,27 @@
 			const body = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
-				showError(body.error ?? 'Could not start make-karaoke');
+				showError(body.error ?? 'Could not start process');
 				return;
 			}
-			// the stems were already on disk (cooked on an earlier night) — nothing to wait for
+			// the stems were already on disk (processed on an earlier night) — nothing to wait for
 			if (body.alreadyReady) loadLibrary();
 		} catch {
 			mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
-			showError('Could not start make-karaoke — check your connection');
+			showError('Could not start process — check your connection');
 		}
 	}
 
 	/** Re-pick a song's lyrics: pick a stored candidate by ref, or paste new words. Either way
 	 *  the server pins the choice and re-times it; the live media:status broadcasts drive the row. Like
-	 *  makeKaraoke, the network call lives here and the LyricsReselect control just reports the choice. */
+	 *  proc, the network call lives here and the LyricsReselect control just reports the choice. */
 	async function reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }) {
 		if (navigator.vibrate) navigator.vibrate(12);
 		try {
 			const res = await fetch('/api/lyrics-reselect', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ mediaId, ...choice })
+				body: JSON.stringify({ mediaId,...choice })
 			});
 			const body = await res.json().catch(() => ({}));
 			if (!res.ok) {
@@ -407,13 +407,13 @@
 	}
 
 	// ── readiness ────────────────────────────────────────────────────────────
-	// One axis, three states: ready (stems on disk, sing now), cooking (stems in flight, still
+	// One axis, three states: ready (stems on disk, sing now), processing (stems in flight, still
 	// queueable because rotation holds its slot), raw (plays with the original vocals).
 	//
 	// It is no longer a FILTER. Direction B deleted the four concurrent ways to narrow
 	// one list — the three readiness chips, the artist rail, the genre rail, and the group headings
 	// that re-announced this axis in prose — leaving typing in the docked search box as the only one.
-	// So there is no `filter` state and no `showReady`/`showCooking`/`showRaw` gate: every group
+	// So there is no `filter` state and no `showReady`/`showProcessing`/`showRaw` gate: every group
 	// renders, every time, and the reader narrows the list by saying what they want.
 
 	function liveOf(id: string) {
@@ -425,7 +425,7 @@
 	/**
 	 * Everything a SongRow displays about a song, in ONE place.
 	 *
-	 * Spread rather than written out at each call site because there are five of them (ready, cooking,
+	 * Spread rather than written out at each call site because there are five of them (ready, processing,
 	 * raw, popular, recently-queued) and they had already drifted: the ready group read
 	 * `artistCanonical ?? artist` while the other four read the raw `artist`, so one song showed a
 	 * different name depending on which group it happened to be in. Both canonical fields are passed
@@ -441,10 +441,10 @@
 		viewCount: m.viewCount,
 		// The original detected key, spelled and confidence-gated by the shared helper (null below the
 		// floor). Added to the FIXED rowMeta shape so it reaches every SongRow call site — SongRow itself
-		// only paints the chip on a ready row, so a null here (raw/cooking song, or no key) is harmless.
+		// only paints the chip on a ready row, so a null here (raw/processing song, or no key) is harmless.
 		keyName: originalKeyLabel(m.songProfile) ?? undefined,
 		// The song's descriptive tags, threaded through the ONE shared row shape so every call site
-		// gets them; SongRow paints them on a READY row only, so a raw/cooking row's undefined is
+		// gets them; SongRow paints them on a READY row only, so a raw/processing row's undefined is
 		// harmless. Reads the map by id — a song with no tags is simply absent from it.
 		tags: libraryTags[m.id]
 	});
@@ -454,26 +454,23 @@
 	}
 
 	/**
-	 * Every song cooking right now. WHEN NOT SEARCHING this is the full union — the live status map
-	 * plus anything the catalog says is cooking — because this is the one place a cook you started is
+	 * Every song processing right now. WHEN NOT SEARCHING this is the full union — the live status map
+	 * plus anything the catalog says is processing — because this is the one place a process you started is
 	 * guaranteed to be visible, so a song you kicked off then went idle from must not disappear while
-	 * it works. WHEN SEARCHING it is scoped to the query via `cookingResults`, the server's
-	 * query-matched cooking group: a song someone else is cooking that does not match your search must
-	 * NOT appear under it. The id-selection lives in the pure `cookingGroupIds` helper so it is
+	 * it works. WHEN SEARCHING it is scoped to the query via `processingResults`, the server's
+	 * query-matched processing group: a song someone else is processing that does not match your search must
+	 * NOT appear under it. The id-selection lives in the pure `processingGroupIds` helper so it is
 	 * unit-testable; `failed` is included and `ready`/`canceled` excluded, all inside that helper.
 	 */
-	const cookingRows = $derived.by(() => {
-		const ids = cookingGroupIds({
+	const processingRows = $derived.by(() => {
+		const ids = processingGroupIds({
 			searchActive,
-			cookingResults,
+			processingResults,
 			mediaStatus,
 			mediaCatalog,
 			readiness: readinessFor
 		});
-		return [...ids]
-			.map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) }))
-			.filter((r) => r.media)
-			.map((r) => ({
+		return [...ids].map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) })).filter((r) => r.media).map((r) => ({
 				id: r.id,
 				media: r.media!,
 				pct: r.live?.pct ?? 0,
@@ -485,16 +482,16 @@
 	/**
 	 * The songs the readiness groups above already account for. The whole point of the readiness axis
 	 * is that a song appears EXACTLY ONCE, so the zero-query shortcut lists (popular / recently
-	 * queued) must subtract it — otherwise a cooked song shows up three times on one screen, once per
+	 * queued) must subtract it — otherwise a processed song shows up three times on one screen, once per
 	 * list, which is precisely the confusion the source tabs used to cause.
 	 *
-	 * Unconditional: with the readiness chips gone, the ready and cooking groups always
+	 * Unconditional since an earlier change: with the readiness chips gone, the ready and processing groups always
 	 * render, so they always account for their songs.
 	 */
 	const accountedFor = $derived.by(() => {
 		const ids = new Set<string>();
 		for (const m of searchActive ? readyResults : library) ids.add(m.id);
-		for (const c of cookingRows) ids.add(c.id);
+		for (const c of processingRows) ids.add(c.id);
 		return ids;
 	});
 	function unaccounted(list: Media[]): Media[] {
@@ -505,9 +502,9 @@
 	let query = $state('');
 	let readyResults = $state<Media[]>([]);
 	let rawResults = $state<Media[]>([]);
-	// The server's query-matched cooking group. Held so `cookingRows` can scope to the query while a
+	// The server's query-matched processing group. Held so `processingRows` can scope to the query while a
 	// search is active instead of re-deriving from the whole catalog. Cleared with the box.
-	let cookingResults = $state<Media[]>([]);
+	let processingResults = $state<Media[]>([]);
 	let searching = $state(false);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let inflight: AbortController | undefined;
@@ -519,7 +516,7 @@
 		if (!q) {
 			readyResults = [];
 			rawResults = [];
-			cookingResults = [];
+			processingResults = [];
 			searching = false;
 			inflight?.abort();
 			loadShortcuts();
@@ -545,13 +542,13 @@
 			const j = await res.json();
 			readyResults = j.ready ?? [];
 			rawResults = j.results ?? [];
-			cookingResults = j.cooking ?? [];
-			mergeMedia([...readyResults, ...rawResults, ...cookingResults]);
+			processingResults = j.processing ?? [];
+			mergeMedia([...readyResults,...rawResults,...processingResults]);
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
 				readyResults = [];
 				rawResults = [];
-				cookingResults = [];
+				processingResults = [];
 				showError('Search failed — check your connection');
 			}
 		} finally {
@@ -560,11 +557,11 @@
 	}
 
 	/*
-	 * TOASTS ARE SONNER'S NOW (S5).
+	 * TOASTS ARE SONNER'S NOW.
 	 *
 	 * What this replaced: two hand-rolled fixed-position surfaces, two `setTimeout` timers, a
 	 * `bind:clientHeight` measurement of the undo toast, and an `$effect` publishing `--undo-h` to
-	 * `documentElement` with a teardown against the §14 leak class. The error toast's offset had to
+	 * `documentElement` with a teardown against the an earlier change §14 leak class. The error toast's offset had to
 	 * track that MEASURED height because a real “title — artist” wraps to an unpredictable number of
 	 * lines, and the two surfaces had already collided once — "both sat at the same bottom and z-index,
 	 * so one drew over the other and a guest saw only whichever rendered last".
@@ -601,13 +598,13 @@
 			const j = await (await fetch('/api/search?q=')).json();
 			recent = j.recent ?? [];
 			popular = j.popular ?? [];
-			mergeMedia([...recent, ...popular]);
+			mergeMedia([...recent,...popular]);
 		} catch {
 			/* ignore */
 		}
 	}
 
-	// the saved-karaoke library + whatever is cooking, for a client that just loaded
+	// the saved-karaoke library + whatever is processing, for a client that just loaded
 	let library = $state<Media[]>([]);
 	// A song's descriptive tags, mediaId → its 'tag'-kind values, arriving beside `library` from
 	// /api/library. A parallel map rather than a field on Media because tags live in their own
@@ -620,7 +617,7 @@
 	 * concurrent ways to narrow one list, and the ruling was to delete them rather than tidy them.
 	 *
 	 * The SERVER half stays: /api/library still computes the facets and still honours ?artist= and
-	 * ?tag= (`lib/server/media/repository.ts`, guarded by browse-ready-parity.test.ts and
+	 * ?tag= (`server/media/repository.ts`, guarded by browse-ready-parity.test.ts and
 	 * library-tag-filter.test.ts). Nothing on the phone asks for them any more, which is the point;
 	 * removing a working, tested endpoint capability is a separate decision nobody has made.
 	 */
@@ -631,12 +628,12 @@
 			library = j.library ?? [];
 			libraryTags = j.tags ?? {};
 			mergeMedia(library);
-			const cooking: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.cooking ?? [];
-			if (cooking.length) {
-				mergeMedia(cooking.map((c) => c.media));
+			const processing: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.processing ?? [];
+			if (processing.length) {
+				mergeMedia(processing.map((c) => c.media));
 				const next = new Map(mediaStatus);
 				// a live broadcast is fresher than this snapshot — never overwrite one
-				for (const c of cooking)
+				for (const c of processing)
 					if (!next.has(c.media.id)) next.set(c.media.id, { status: c.status, pct: c.pct, etaSec: c.etaSec });
 				mediaStatus = next;
 			}
@@ -646,10 +643,9 @@
 	}
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
-	const myPicks = $derived(queued.filter((e) => e.singerId === me?.id));
 
 	/*
-	 * DIRECTION B (docs/DECISIONS.md): on the browse screen the search box is docked in the
+	 * DIRECTION B (docs/DECISIONS.md, issue an earlier change): on the browse screen the search box is docked in the
 	 * thumb zone and the results stack UPWARD from it, so the highest-ranked row is the one nearest the
 	 * thumb — which is the whole reason to dock the box at the bottom rather than the top. Every list
 	 * below is therefore emitted in reverse, and the column is bottom-anchored in CSS.
@@ -662,8 +658,7 @@
 	 */
 	const resultShape = $derived(
 		!searchActive
-			? ''
-			: [query.trim(), readyResults.length, cookingRows.length, rawResults.length, library.length, popular.length, recent.length].join(
+			? '': [query.trim(), readyResults.length, processingRows.length, rawResults.length, library.length, popular.length, recent.length].join(
 					'|'
 				)
 	);
@@ -720,20 +715,16 @@
 		lastQueueIds = ids;
 	});
 
-	function myIdx(id: string): number {
-		return myPicks.findIndex((e) => e.id === id);
-	}
 	/** The entry's index in the WHOLE queued list — the index space `move-to-index` uses. */
 	function queuedIdx(id: string): number {
 		return queued.findIndex((e) => e.id === id);
 	}
 	/**
-	 * Cross-singer reorder (step 4, ruling Q4-A): shift the entry one slot up/down across the WHOLE
+	 * Cross-singer reorder (an earlier change step 4, an earlier change Q4-A): shift the entry one slot up/down across the WHOLE
 	 * queue, jumping other singers — which the own-picks `move` op cannot express. Emits `move-to-index`,
 	 * which rewrites the stored list, so the move sticks with no pin. Every joined singer may do it; the
-	 * server gates a NON-owner entry on `queue:reorder-any`. (The reorder-mode drag below still commits
-	 * an own-picks `move` via exitReorder — wiring the drag to `move-to-index` too is the tracked
-	 * follow-up, the drag half of Q4-A.)
+	 * server gates a NON-owner entry on `queue:reorder-any`. The reorder-mode drag now commits through
+	 * the same op (via exitReorder → store.moveToIndex), so both affordances share one wire path.
 	 */
 	function moveGlobal(id: string, delta: number) {
 		const i = queuedIdx(id);
@@ -742,13 +733,13 @@
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
 
-	/* ── THE OWN-PICKS REORDER MODE (XR-PH-17 … XR-PH-20) ──────────────────────────────
+	/* ── THE OWN-PICKS REORDER MODE (XR-PH-17 … XR-PH-20, issue an earlier change) ──────────────────────────────
 	 *
-	 * A drag, not a list sort. `move`'s toSeq indexes the singer's OWN queued picks, so the op cannot
-	 * express "above someone else's song" — and the guest's picks are not adjacent in this flat list.
-	 * So the mode DRAWS its legal positions (one per own pick) instead of letting the list imply them,
-	 * dims the rows that cannot accept a drop, and declines a release anywhere else. Every predicate is
-	 * in $lib/reorder-mode so it is unit-testable without mounting this route (XR-PH-21).
+	 * A drag, not a list sort. Under `move-to-index` the drop commits a GLOBAL queued index, so a
+	 * drag can place a song above ANY other — but the guest's picks are not adjacent in this flat list,
+	 * and neither is any target position implied by proximity. So the mode DRAWS its legal positions (one
+	 * per queued row) instead of letting the list imply them, and declines a release anywhere else. Every
+	 * predicate is in $lib/reorder-mode so it is unit-testable without mounting this route (XR-PH-21).
 	 */
 	/**
 	 * Travel below which a press-and-release is a TAP rather than a drop, in px. 6px is the reorder
@@ -760,7 +751,7 @@
 	 * name and the comparison, not this number.
 	 */
 	const TAP_SLOP_PX = 6;
-	const mySlots = $derived(ownSlots(myPicks.length));
+	const slots = $derived(queueSlots(queued.length));
 	// The row being dragged, the slot currently under the pointer, and the live pointer offset.
 	let movingId = $state<string | null>(null);
 	/**
@@ -786,38 +777,37 @@
 	let dragTeardown: (() => void) | null = null;
 
 	function gripFor(e: QueueEntry): boolean {
+		// Any queued row is draggable now: `move-to-index` can place a song at any global slot, so
+		// the grip is legitimate on every row, not just the actor's own. `e` is kept in the signature so
+		// the template still asks the predicate per-row (a hard-coded literal on every row is the recorded
+		// regression) and so a later per-row rule has somewhere to read from.
+		void e;
 		return gripVisible({
-			mine: e.singerId === me?.id,
-			ownQueuedCount: myPicks.length,
+			queuedCount: queued.length,
 			reorderMeaningful: canReorder
 		});
 	}
 
 	/*
-	 * XR-PH-18's second half: while the mode is open, another guest's row must expose NO pointer or
-	 * keyboard interaction — it is not a legal drop target, so without this the mode could leave a
-	 * control live on exactly the rows it has just dimmed. The row's controls are dropped for the life
-	 * of the mode, rather than the row being marked `inert`: `inert` also takes the row out of the
-	 * accessibility tree, and XR-PH-03 turns on those rows staying INFORMATIONAL while dimmed — they
-	 * are who the guest is being ordered around.
+	 * an earlier change widened every queued row into a legal drop target, so there are no longer rows the mode must
+	 * de-emphasise or take controls from: the single-pointer alternative (up/down) stays live on EVERY
+	 * row, which is XR-PH-20 satisfied for the whole list rather than just the actor's own row. Under the
+	 * old own-picks `move`, another guest's row could not accept a drop, so the mode froze its controls
+	 * and dimmed it; that reasoning is gone now that any row is droppable.
 	 *
-	 * It never matches the guest's OWN rows, which is what keeps XR-PH-20 true: the single-pointer
-	 * alternative stays present and operable on the row being dragged, while the mode is open.
-	 *
-	 * Applied as an added clause on the EXISTING `reorderable` expression at both row call sites rather
-	 * than by extracting that expression into a helper. The extraction was written first and reverted:
-	 * `global-reorder-client-638.test.ts:32` counts the inline ternary twice on purpose, so that
-	 * reverting either row kind's wiring reds it, and collapsing the two into one helper silently
-	 * removed a guard belonging to another issue. A duplicated expression is the cheaper cost.
+	 * The helper is kept (returning a constant `false`) so the two call sites keep one named, greppable
+	 * suppression point — a later mode that DOES need to freeze a row (a host-only drag, say) has an
+	 * obvious place to express it, and the source guard has a stable symbol to scan.
 	 */
 	function rowFrozen(e: QueueEntry): boolean {
-		return reorderOpen && e.singerId !== me?.id;
+		void e;
+		return false;
 	}
 
 	function enterReorder(id: string, opener: HTMLElement | null) {
 		if (movingId === id) return;
 		movingId = id;
-		hoverSlot = myIdx(id) >= 0 ? myIdx(id) : null;
+		hoverSlot = queuedIdx(id) >= 0 ? queuedIdx(id): null;
 		dragY = 0;
 		reorderNote = '';
 		openerEl = opener;
@@ -833,9 +823,9 @@
 		const id = movingId;
 		dragTeardown?.();
 		dragTeardown = null;
-		const target = dropTarget(commitSlot, myPicks.length);
-		if (id && target !== null && target !== myIdx(id)) {
-			store?.moveEntry(id, target);
+		const target = dropTarget(commitSlot, queued.length);
+		if (id && target !== null && target !== queuedIdx(id)) {
+			store?.moveToIndex(id, target);
 			if (navigator.vibrate) navigator.vibrate(8);
 		}
 		movingId = null;
@@ -869,7 +859,7 @@
 	 *
 	 * The slot under the finger is read by hit-testing rather than computed from row heights: rows can
 	 * change height while the mode is open (a byline gains an `away` badge, another guest queues a
-	 * cooking card), and a cached geometry table would then point at the wrong slot — the precise class
+	 * processing card), and a cached geometry table would then point at the wrong slot — the precise class
 	 * of "commits somewhere the guest did not choose" that XR-PH-18 exists to prevent.
 	 */
 	function onGripPointerDown(entry: QueueEntry, e: PointerEvent) {
@@ -936,10 +926,10 @@
 	 * lie. Then the mode closes itself, says why, and returns focus.
 	 */
 	$effect(() => {
-		const reason = modeInvalidation(myPicks, movingId, entries.find((e) => e.id === movingId)?.status);
+		const reason = modeInvalidation(queued, movingId, entries.find((e) => e.id === movingId)?.status);
 		if (reason) exitReorder(null, reason);
 	});
-	// The entry that will ACTUALLY play next (skipping any still cooking), matching the server's
+	// The entry that will ACTUALLY play next (skipping any still processing), matching the server's
 	// nextPlayable(). Pure + unit-tested in $lib/readiness.
 	const nextPlayableId = $derived(
 		nextPlayableEntryId(
@@ -1072,12 +1062,10 @@
 	});
 	const nowDurationSec = $derived(nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0);
 
-	// ── the guest's own place in the rotation, in WORDS (XR-PH-09) ──────────────
+	// ── the guest's own place in the rotation, in WORDS (XR-PH-09, issue an earlier change) ──────────────
 	// My soonest queued pick, and where it sits in the room's order.
 	const myNextEntry = $derived(
-		entries
-			.filter((e) => e.singerId === me?.id && e.status === 'queued')
-			.sort((a, b) => a.rotationSeq - b.rotationSeq)[0]
+		entries.filter((e) => e.singerId === me?.id && e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq)[0]
 	);
 	/**
 	 * Seconds still to run on the song playing now: 0 when nothing is playing, and NULL when something
@@ -1105,7 +1093,7 @@
 			beforeName: before ? (singers.get(before.singerId)?.displayName ?? null) : null,
 			nowRemainingSec,
 			aheadDurationsSec: queued.slice(0, idx).map((e) => mediaCatalog.get(e.mediaId)?.durationSec ?? null),
-			// Only claim "up next" when the song can actually play next: a still-cooking song is skipped
+			// Only claim "up next" when the song can actually play next: a still-processing song is skipped
 			// by the TV, which contradicted the playable-aware badge in the queue list below.
 			playable: entryPlayable(mediaCatalog.get(myNextEntry.mediaId), liveOf(myNextEntry.mediaId))
 		});
@@ -1150,9 +1138,9 @@
 	});
 
 	/**
-	 * XR-PH-15's honest degradation, as ruled Q1-D: when the playing song has no isolated
+	 * XR-PH-15's honest degradation, as ruled on an earlier change Q1-D: when the playing song has no isolated
 	 * vocals stem the guide control renders DISABLED rather than vanishing, and this sentence — on the
-	 * hero, beside the control group — says why and what still works. An earlier change deleted the equivalent line
+	 * hero, beside the control group — says why and what still works. an earlier change deleted the equivalent line
 	 * from inside `GuidingTrack.svelte` and `drawer-ui-cleanup-253.test.ts` pins its absence there, so
 	 * arm D is what satisfies both rulings: the component and its guard stay untouched.
 	 *
@@ -1215,7 +1203,7 @@
 	{#if me}
 	{#if !searchActive}
 		<!--
-			HOME IS THE QUEUE (direction A). The playing song is the one thing on this screen
+			HOME IS THE QUEUE (direction A, issue an earlier change). The playing song is the one thing on this screen
 			that is not a list item, so it gets a HERO rather than the docked peek row it used to share with
 			the rotation; the bottom of the screen belongs to the one primary button instead.
 
@@ -1295,7 +1283,7 @@
 				-->
 				{#if hasRange}
 					<div class="range">
-						<!-- S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> stays
+						<!-- an earlier change: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> stays
 							here via Bits UI's `child` snippet, so its scoped class in this file still applies. -->
 						<Collapsible.Root bind:open={rangeOpen}>
 							<Collapsible.Trigger>
@@ -1364,7 +1352,7 @@
 		-->
 		{#if reorderOpen}
 			<div class="reorder-bar card" role="group" aria-label="Reordering your songs">
-				<p class="reorder-hint">Drag to one of your own positions. Other guests' songs stay put.</p>
+				<p class="reorder-hint">Drag to any position in the queue.</p>
 				<div class="reorder-acts">
 					<button class="chip" onclick={() => exitReorder(hoverSlot)}>Done</button>
 					<button class="chip" onclick={() => exitReorder(null)}>Cancel</button>
@@ -1386,21 +1374,18 @@
 			{#each queued as e, i (e.id)}
 				{@const s = singerOf(e.singerId)}
 				{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
-				{@const isMine = e.singerId === me?.id}
-				{@const ownIdx = myIdx(e.id)}
 				<!--
-					XR-PH-18 — ONE legal drop target per own queued pick, drawn immediately above the pick whose
-					position it represents, and rendered ONLY while the mode is open. The count therefore equals
-					`myPicks.length` by construction and can never equal the visible list length: `mySlots` is
-					derived from my own picks, so another guest queueing a song mid-drag changes the flat list
-					around these and changes neither their number nor what each one commits.
+					XR-PH-18 — ONE legal drop target per queued row, drawn immediately above the row whose
+					position it represents, and rendered ONLY while the mode is open. The count equals
+					`queued.length` by construction — `slots` is derived from the queued list — so the slot at
+					index `i` commits the global queued index `i`, which is the `toIdx` `move-to-index` uses.
 
 					`data-slot` carries the index the release commits. The pointer path reads it by hit-testing
 					(see onGripPointerDown) instead of from a geometry table, and the same index is what the
 					button's own click commits — so the keyboard path and the pointer path cannot drift apart.
 				-->
-				{#if reorderOpen && isMine && ownIdx >= 0 && mySlots[ownIdx]}
-					{@const slot = mySlots[ownIdx]}
+				{#if reorderOpen && slots[i]}
+					{@const slot = slots[i]}
 					<button
 						class="dropslot"
 						class:hot={hoverSlot === slot.index}
@@ -1409,7 +1394,7 @@
 						onclick={() => exitReorder(slot.index)}>{slot.ordinal}</button
 					>
 				{/if}
-				{#if card === 'cooking' || card === 'failed'}
+				{#if card === 'processing' || card === 'failed'}
 					{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
 					<ProcessingCard
 						seq={i + 1}
@@ -1425,7 +1410,7 @@
 							(canReorder && !!me?.id && queued.length > 1)}
 						canUp={queuedIdx(e.id) > 0}
 						canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
-						dimmed={reorderOpen && !isMine}
+						dimmed={false}
 						onup={() => moveGlobal(e.id, -1)}
 						ondown={() => moveGlobal(e.id, 1)}
 					/>
@@ -1450,7 +1435,7 @@
 						canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
 						grip={gripFor(e)}
 						gripId={e.id}
-						dimmed={reorderOpen && !isMine}
+						dimmed={false}
 						moving={movingId === e.id && dragging}
 						dragY={movingId === e.id && dragging ? dragY : 0}
 						ongripdown={(ev) => onGripPointerDown(e, ev)}
@@ -1499,7 +1484,7 @@
 
 	<!--
 		FURTHEST FROM THE THUMB: songs that still need karaoke made. Recently queued sits above Popular
-		tonight — but only ever as search results now; the empty-box shortcut lists were dropped
+		tonight — but only ever as search results now; the empty-box shortcut lists were dropped in an earlier change
 		in favour of showing the live queue.
 	-->
 	{#if searchActive}
@@ -1534,24 +1519,24 @@
 					pct={liveOf(m.id)?.pct ?? 0}
 					status={liveOf(m.id)?.status}
 					inQueue={inMyQueue(m.id)}
-					cookable={isCookableSource(m.source)}
+					processable={isProcessableSource(m.source)}
 					onadd={() => addSong(m.id)}
-					onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
+					onmake={canProcess(m, r) ? () => singThis(m.id): undefined}
 				/>
 			{/each}
 		{/if}
 	{/if}
 
 	<!--
-		Cooking, immediately above the ready rows: rotation HOLDS a cooking song's slot, so it keeps its
-		fair position and plays when the stems land. Cooking is not a blocked state, which is why these
+		Processing, immediately above the ready rows: rotation HOLDS a processing song's slot, so it keeps its
+		fair position and plays when the stems land. Processing is not a blocked state, which is why these
 		rows sit with the singable ones rather than behind a chip. The heading that said so in prose was
 		mechanism 4 and is deleted — SongRow's own readiness chip already says it per row, and a failed
-		cook says so on its own row rather than in a heading covering the whole group.
+		process says so on its own row rather than in a heading covering the whole group.
 	-->
-	{#if searchActive && cookingRows.length}
-		{@const cookingStack = [...cookingRows].reverse()}
-		{#each cookingStack as c (c.id)}
+	{#if searchActive && processingRows.length}
+		{@const processingStack = [...processingRows].reverse()}
+		{#each processingStack as c (c.id)}
 			{@const r = displayReadiness(c.media, liveOf(c.id))}
 			<SongRow
 				{...rowMeta(c.media)}
@@ -1559,9 +1544,9 @@
 				pct={c.pct}
 				status={c.status}
 				inQueue={inMyQueue(c.id)}
-				cookable={isCookableSource(c.media.source)}
+				processable={isProcessableSource(c.media.source)}
 				onadd={() => addSong(c.id)}
-				onmake={canCook(c.media, r) ? () => singThis(c.id) : undefined}
+				onmake={canProcess(c.media, r) ? () => singThis(c.id): undefined}
 			/>
 		{/each}
 	{/if}
@@ -1606,7 +1591,7 @@
 </main>
 
 <!--
-	THE SEARCH DOCK (direction B, made the sole home dock by the owner correction). ONE box
+	THE SEARCH DOCK (direction B an earlier change, made the sole home dock by the owner correction an earlier change). ONE box
 	across every source: a singer picks by readiness ("can I sing this now?"), never by which index the
 	song came from — so there is no source switch, no readiness chips, no artist rail and no genre rail.
 	Typing is the only filter.
@@ -1668,7 +1653,7 @@
 	 * (XR-PH-12): the padding reserves the band's MEASURED height (--dock-h), which is what keeps the
 	 * last queue row (empty box) or the top-ranked result (searching) reachable at every scroll position
 	 * instead of parked under the band. The fallback covers the first frame before the effect publishes
-	 * a measurement. there is exactly ONE band on this route — the search dock, present in
+	 * a measurement. Since an earlier change there is exactly ONE band on this route — the search dock, present in
 	 * both views — so this one rule reserves the only band there is.
 	 */
 	main {
@@ -1676,7 +1661,7 @@
 		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	/*
-	 * THE BOTTOM-ANCHORED RESULTS STACK (direction B). Results grow UPWARD from the docked
+	 * THE BOTTOM-ANCHORED RESULTS STACK (direction B, issue an earlier change). Results grow UPWARD from the docked
 	 * search box, so the column's content sits at its bottom edge rather than its top: with one line of
 	 * content, that line is beside the thumb instead of stranded at the top of an empty screen.
 	 *
@@ -1849,7 +1834,7 @@
 	   min-content width equal to its full rendered width, so with automatic minimum sizing flex-shrink
 	   cannot take it below that and the row grows the document — carrying the settings gear off the
 	   viewport. Truncate it instead: text-overflow only fires on a block box, so this is a
-	   styled span (block), and min-width:0 must exist up the whole chain (.me-cluster, .me-btn) for it
+	   styled span (block), and min-width:0 must exist up the whole chain (.me-cluster,.me-btn) for it
 	   to actually shrink. The dot (flex:0 0 auto) and the gear (min-width:44px) stay unshrinkable so
 	   the 44px target survives. */
 	.me-name {
@@ -1908,7 +1893,7 @@
 		}
 	}
 	/*
-	 * THE SEARCH DOCK (direction B; the SOLE home dock). `position: fixed` is what keeps
+	 * THE SEARCH DOCK (direction B an earlier change; the SOLE home dock since an earlier change). `position: fixed` is what keeps
 	 * the box reachable with one thumb wherever the stack is scrolled to, and it does not overlap content
 	 * because `main` pads by this element's own measured height (--dock-h) rather than by a guess. The
 	 * safe-area inset lives HERE, on the band that actually sits at the bottom of the screen, and reaches
@@ -1927,7 +1912,7 @@
 		border-top: 1px solid var(--line);
 	}
 	/*
-	 * S4: the dock carries the card SURFACE itself rather than the global `.card` class, and is
+	 * the dock carries the card SURFACE itself rather than the global `.card` class, and is
 	 * deliberately NOT a <Card.Root>. It is a composed control — mark, input, spinner in a row — and its
 	 * children are styled from this file by descendant selectors like `.searchbox input`. Moving the
 	 * container into a component would leave those selectors with no matching ancestor, because Svelte
@@ -1957,7 +1942,7 @@
 		 * from its character size, so as a flex item with the default `min-width: auto` it refuses to
 		 * shrink below roughly 20 characters — which at 200% text on a 320px viewport pushes the row
 		 * wider than the screen and forces horizontal scrolling (SC 1.4.10). That is the exact shape
-		 * measured at 436px against 320px on the chip row this dock replaces.
+		 * an earlier change measured at 436px against 320px on the chip row this dock replaces.
 		 */
 		flex: 1;
 		min-width: 0;
@@ -2020,9 +2005,7 @@
 		color: var(--ink-dim);
 		padding: 0 var(--space-2xs);
 		font-size: var(--ph-text-md);
-	}
-
-	.key {
+	}.key {
 		display: flex;
 		flex-wrap: wrap;
 		gap: var(--space-xs);
@@ -2031,14 +2014,12 @@
 	}
 	.key.disabled {
 		opacity: 0.5;
-	}
-	.key .lab {
+	}.key.lab {
 		font-size: 0.7rem;
 		color: var(--ink-dim);
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
-	}
-	.key.shifted .lab {
+	}.key.shifted.lab {
 		color: var(--warn);
 	}
 	.key button {
@@ -2086,7 +2067,7 @@
 
 	/*
 	 * The key head line. Sits ABOVE the ± buttons (see the markup comment for why it cannot be inline).
-	 * Same label idiom as .gt-head / .key .lab. The original→sounding pair reads left to right; the
+	 * Same label idiom as.gt-head /.key.lab. The original→sounding pair reads left to right; the
 	 * sounding key takes the warn colour to echo `.key.shifted .lab`, so "you have changed the key" is
 	 * signalled the same way in both places.
 	 */
@@ -2183,9 +2164,7 @@
 		font-size: 0.72rem;
 		color: var(--ink-dim);
 		margin: var(--space-2xs) 0 0;
-	}
-
-	.skel-row {
+	}.skel-row {
 		display: flex;
 		align-items: center;
 		gap: var(--space-lg);
@@ -2284,7 +2263,7 @@
 	}
 
 	/*
-	 * S7: this file's reduce arm is GONE, because the two animations it covered left with their
+	 * this file's reduce arm is GONE, because the two animations it covered left with their
 	 * elements — the search spinner to ui/spinner and the skeleton shimmer to ui/skeleton. Both are
 	 * now declared inside a `prefers-reduced-motion: no-preference` block in those components, which
 	 * makes motion OPT-IN rather than declared-then-reset: there is no reset left to lose the cascade
@@ -2309,7 +2288,7 @@
 			padding-top: var(--space-3xs);
 		}
 		.searchbox {
-			/* rise to hold the 44px input added — 42px would clip its tap target */
+			/* rise to hold the 44px input added in an earlier change — 42px would clip its tap target */
 			min-height: var(--tap);
 			padding: var(--space-sm) var(--space-xl);
 		}

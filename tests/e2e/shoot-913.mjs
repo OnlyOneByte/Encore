@@ -2,7 +2,7 @@
  * SHOOT THE SURFACES THE SHADCN MIGRATION CHANGES, on a real render.
  *
  * Not a probe and not a gate: this exists to produce the before/after evidence a reviewer needs for a
- * visual change that was accepted deliberately. It boots the BUILT app with a cooked song, joins in a
+ * visual change that was accepted deliberately. It boots the BUILT app with a processed song, joins in a
  * phone viewport, and shoots the four surfaces whose components this PR replaced.
  *
  * Run it once per tree and diff the pairs:
@@ -116,13 +116,13 @@ async function worker() {
 }
 
 /** @param {string} q */
-async function cook(q) {
+async function processMedia(q) {
 	const d = await api(`/api/search?q=${encodeURIComponent(q)}`).then((r) => r.json());
-	const all = [...(d.ready ?? []), ...(d.results ?? []), ...(d.cooking ?? [])];
+	const all = [...(d.ready ?? []), ...(d.results ?? []), ...(d.processing ?? [])];
 	const m = all.find((x) => x.source === 'local') ?? all[0];
 	if (!m) throw new Error(`no song for "${q}"`);
-	const r = await api('/api/make-karaoke', { method: 'POST', body: JSON.stringify({ mediaId: m.id }) });
-	if (!r.ok && r.status !== 409) throw new Error(`make-karaoke ${r.status}`);
+	const r = await api('/api/process', { method: 'POST', body: JSON.stringify({ mediaId: m.id }) });
+	if (!r.ok && r.status !== 409) throw new Error(`process ${r.status}`);
 	return await waitFor(
 		async () => {
 			const lib = (await api('/api/library').then((x) => x.json())).library ?? [];
@@ -155,8 +155,8 @@ async function main() {
 	server = await boot();
 	await api('/api/join', { method: 'POST', body: JSON.stringify({ displayName: 'Api', color: '#ff5cae' }) });
 	wk = await worker();
-	const song = await cook('caroline');
-	await cook('bohemian');
+	const song = await processMedia('caroline');
+	await processMedia('bohemian');
 	console.log(`fixture: "${song.title}" ready`);
 
 	chrome = spawnChild(

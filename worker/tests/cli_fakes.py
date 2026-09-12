@@ -33,7 +33,7 @@ def fake_cli_runner(
     handlers: dict[str, Handler] | None = None,
     record: list[list[str]] | None = None,
 ):
-    """Build an async runner that fakes the CLI seam of a real cook.
+    """Build an async runner that fakes the CLI seam of a real process.
 
     Shared branches (single source of truth):
 

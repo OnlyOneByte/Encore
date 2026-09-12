@@ -29,7 +29,7 @@ export const DEFAULT_LEASE_CONFIG: LeaseConfig = {
  * to stay in lockstep by hand — the reaper's progress-lease-expiry branch (`sweep`, below) and the
  * worker-hub's `job:failed` handler — with the second spelling it as the complement
  * (`attempts < job.maxAttempts`), so a change to the policy (say, a per-job-type cap) had to be
- * mirrored across both sites or they would silently disagree about when a cook is dead. Named once,
+ * mirrored across both sites or they would silently disagree about when a process is dead. Named once,
  * shared, so the retry ceiling cannot drift between the reaper path and the worker-reported path.
  */
 export function attemptsExhausted(attempts: number, maxAttempts: number): boolean {

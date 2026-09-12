@@ -313,7 +313,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Rationale** | A frame over 2000px on either axis is silently unreadable to the tooling that reviews it — costing the review rather than erroring — and a frame taken against an unseeded room shows the pre-sync default for every room regardless of who is present. |
 | **Source** | `DERIVED` — model: the 2000px ceiling is a tooling limit recorded in the shared brief; 390×844 at DPR 2 is 780×1688 and fits. Seeding via `POST /api/join` per singer plus one held `ws://…?role=phone` socket each is the production path, because roster presence is per-socket and a bare fetch is not enough. |
 | **Acceptance** | Given the frame set, When each image is measured, Then both axes are < 2000px; When the widths are compared against XR-PH-07's canonical list, Then every width has a frame; and each frame shows non-empty room state rather than the pre-sync default. |
-| **Check** | A capture script plus an image-dimension assertion. Encode the practical traps: a duplicate display name 409s and rooms persist between runs, so seed unique names; `/api/library` lists only ready songs, so a seeded-but-uncooked catalogue correctly returns empty and is not a seeding bug. |
+| **Check** | A capture script plus an image-dimension assertion. Encode the practical traps: a duplicate display name 409s and rooms persist between runs, so seed unique names; `/api/library` lists only ready songs, so a seeded-but-unprocessed catalogue correctly returns empty and is not a seeding bug. |
 | **Priority** | Should — the frames *are* the review, so the ceiling matters more than the count. |
 
 ---

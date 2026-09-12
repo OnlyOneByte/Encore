@@ -35,7 +35,7 @@ export function queueWaitMs(a: JobAttempt): number | null {
 
 /**
  * Nearest-rank percentile on a sorted copy. Nearest-rank rather than interpolated because these
- * samples are tiny — a self-hosted box may have eight cooks total — and an interpolated p95 over
+ * samples are tiny — a self-hosted box may have eight processes total — and an interpolated p95 over
  * eight points invents a value that lies between two real measurements and equals neither.
  */
 export function percentile(values: number[], p: number): number | null {
@@ -53,7 +53,7 @@ export function mean(values: number[]): number | null {
 /** How one pipeline step performs. `n` is carried so a reader can see how much to trust the rest. */
 export interface StepStats {
 	jobType: JobType;
-	/** Attempts that completed. The sample size — 3 cooks is an anecdote, not an average. */
+	/** Attempts that completed. The sample size — 3 processes is an anecdote, not an average. */
 	n: number;
 	/** Attempts that failed or were abandoned, for the failure rate beside the timings. */
 	failed: number;
@@ -99,9 +99,9 @@ export function perStep(attempts: JobAttempt[]): StepStats[] {
 	return out;
 }
 
-/** How long a whole cook took, from the moment it was requested to a singable song. */
-export interface CookStats {
-	cookId: string;
+/** How long a whole process took, from the moment it was requested to a singable song. */
+export interface ProcessStats {
+	processingId: string;
 	mediaId: string;
 	/** Enqueue of the first step → finish of the last. What a singer actually waited. */
 	totalMs: number;
@@ -110,7 +110,7 @@ export interface CookStats {
 	steps: number;
 	complete: boolean;
 	/**
-	 * TRUE when this cook straddles the older edge of the read window, so some earlier steps may
+	 * TRUE when this process straddles the older edge of the read window, so some earlier steps may
 	 * have finished before the window opened and were never fetched. Its span is then UNDER-counted
 	 * (measured from the earliest surviving step) and its completeness cannot be trusted, so it is
 	 * never reported as complete and the aggregate refuses to count it.
@@ -119,29 +119,29 @@ export interface CookStats {
 }
 
 /**
- * One row per cook. Only cooks whose every attempt is sealed are reported: a cook still in flight has
+ * One row per process. Only processes whose every attempt is sealed are reported: a process still in flight has
  * no end, and treating "now" as its end would report a falling duration as it runs.
  */
-export function perCook(attempts: JobAttempt[], windowStartMs: number | null = null): CookStats[] {
-	const byCook = new Map<string, JobAttempt[]>();
+export function perProcess(attempts: JobAttempt[], windowStartMs: number | null = null): ProcessStats[] {
+	const byProcess = new Map<string, JobAttempt[]>();
 	for (const a of attempts) {
-		if (!a.cookId) continue; // rows written before cook ids existed cannot be grouped
-		const list = byCook.get(a.cookId) ?? [];
+		if (!a.processingId) continue; // rows written before process ids existed cannot be grouped
+		const list = byProcess.get(a.processingId) ?? [];
 		list.push(a);
-		byCook.set(a.cookId, list);
+		byProcess.set(a.processingId, list);
 	}
-	const out: CookStats[] = [];
-	for (const [cookId, list] of byCook) {
+	const out: ProcessStats[] = [];
+	for (const [processingId, list] of byProcess) {
 		const sealed = list.filter((a) => a.finishedAt !== null);
 		if (sealed.length === 0) continue;
 		const start = Math.min(...sealed.map((a) => a.enqueuedAt));
 		const end = Math.max(...sealed.map((a) => a.finishedAt!));
-		// A cook enqueued before the window opened may be missing its earliest steps: its span is then
+		// A process enqueued before the window opened may be missing its earliest steps: its span is then
 		// measured from the wrong start and its completeness cannot be trusted. Flag it, never complete.
 		const clipped = windowStartMs !== null && start < windowStartMs;
 		const complete = !clipped && sealed.length === list.length && sealed.every((a) => a.outcome === 'ready');
 		out.push({
-			cookId,
+			processingId,
 			mediaId: sealed[0].mediaId,
 			totalMs: Math.max(0, end - start),
 			workMs: sealed.reduce((s, a) => s + (processingMs(a) ?? 0), 0),
@@ -153,15 +153,13 @@ export function perCook(attempts: JobAttempt[], windowStartMs: number | null = n
 	return out.sort((a, b) => b.totalMs - a.totalMs);
 }
 
-/** Aggregate end-to-end, over COMPLETE cooks only. */
+/** Aggregate end-to-end, over COMPLETE processes only. */
 export function e2e(
 	attempts: JobAttempt[],
 	windowStartMs: number | null = null
 ): { n: number; meanMs: number | null; p50Ms: number | null; p95Ms: number | null } {
-	// A clipped boundary cook is not complete, so it never enters this aggregate.
-	const totals = perCook(attempts, windowStartMs)
-		.filter((c) => c.complete)
-		.map((c) => c.totalMs);
+	// A clipped boundary process is not complete, so it never enters this aggregate.
+	const totals = perProcess(attempts, windowStartMs).filter((c) => c.complete).map((c) => c.totalMs);
 	return { n: totals.length, meanMs: mean(totals), p50Ms: percentile(totals, 50), p95Ms: percentile(totals, 95) };
 }
 
@@ -259,16 +257,14 @@ export function perStage(attempts: JobAttempt[]): { stage: string; n: number; me
 			groups.set(s.stage, list);
 		}
 	}
-	return [...groups.entries()]
-		.map(([stage, ms]) => ({ stage, n: ms.length, meanMs: mean(ms) }))
-		.sort((a, b) => (b.meanMs ?? 0) - (a.meanMs ?? 0));
+	return [...groups.entries()].map(([stage, ms]) => ({ stage, n: ms.length, meanMs: mean(ms) })).sort((a, b) => (b.meanMs ?? 0) - (a.meanMs ?? 0));
 }
 
 /**
  * Whether a set of measurements is worth quoting as an average.
  *
  * Stated as data rather than left to the reader because the failure mode is specific and likely: this
- * runs on a box with a handful of cooked songs, where a "mean" over two samples reads with exactly the
+ * runs on a box with a handful of processed songs, where a "mean" over two samples reads with exactly the
  * same authority as one over two hundred. The UI uses this to label a number as provisional.
  */
 export const CONFIDENT_SAMPLE = 10;

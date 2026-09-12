@@ -1,7 +1,7 @@
-"""AcquireAudio must find a pre-change legacy vocals stem.
+"""AcquireAudio must find a pre-an earlier change legacy vocals stem.
 
-The lossless change switched VOCALS_EXT from `m4a` to `flac` for NEW cooks, but the worker never receives the stored
-vocals ref — it re-derives the path from the CURRENT VOCALS_EXT on every align job. Every song cooked in
+an earlier change switched VOCALS_EXT from `m4a` to `flac` for NEW processes, but the worker never receives the stored
+vocals ref — it re-derives the path from the CURRENT VOCALS_EXT on every align job. Every song processed in
 the interim era has its vocals stem on disk as `<id>-vocals.m4a`, so a lookup that only tries the current
 extension loses it and align silently degrades to aligning against the mix.
 
@@ -41,10 +41,8 @@ def _drive_acquire(tmp_path) -> Ctx:
             job_type="align",
             source_uri="lib/m1.flac",
             params={"fetcher": "local"},
-            media_dir=str(tmp_path),
-        ),
-        work=str(tmp_path),
-    )
+            media_dir=str(tmp_path)),
+        work=str(tmp_path))
 
     async def _run():
         async for _ in AcquireAudio().run(ctx):
@@ -55,7 +53,7 @@ def _drive_acquire(tmp_path) -> Ctx:
 
 
 def _legacy_m4a_path(tmp_path) -> str:
-    # The pre-change name for the same key: <media_dir>/derived/stems/<id>-vocals.m4a
+    # The pre-an earlier change name for the same key: <media_dir>/derived/stems/<id>-vocals.m4a
     canonical = vocals_path(str(tmp_path), "m1")
     return canonical[: -(len(VOCALS_EXT) + 1)] + ".m4a"
 
@@ -74,7 +72,7 @@ def test_acquire_finds_legacy_m4a_vocals_stem(tmp_path):
 def test_acquire_prefers_current_flac_over_legacy_m4a(tmp_path):
     """When BOTH extensions are present, the current VOCALS_EXT (.flac) wins.
 
-    Pins the preference so a fresh re-cook's stem is chosen over a stale legacy sibling, rather than the
+    Pins the preference so a fresh re-process's stem is chosen over a stale legacy sibling, rather than the
     choice being incidental to glob/sort ordering.
     """
     _write(_legacy_m4a_path(tmp_path))

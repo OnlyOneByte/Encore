@@ -20,8 +20,8 @@ export interface StatePersistence {
 const NOOP_PERSIST: StatePersistence = { persist() {} };
 
 /**
- * The resolution predicate: does `currentEntryId` name a live entry? This is the SINGLE
- * production statement of it. It was stated twice before (an earlier fix removed server.ts's copy but left
+ * The an earlier change resolution predicate: does `currentEntryId` name a live entry? This is the SINGLE
+ * production statement of it. It was stated twice before (an earlier change removed server.ts's copy but left
  * this store boot-heal and player.ts's runtime recovery as two byte-identical copies modulo the
  * receiver), and a developer narrowing one and not the other left boot and runtime disagreeing
  * about whether the room is idle. Both askers — `hydrate`'s boot self-heal and
@@ -80,10 +80,10 @@ export class AuthoritativeState {
 	}
 	/** Defensive copy — callers must not mutate authoritative arrays. */
 	get entries(): QueueEntry[] {
-		return this.#entries.map((e) => ({ ...e }));
+		return this.#entries.map((e) => ({...e }));
 	}
 	get playback(): PlaybackState {
-		return { ...this.#playback };
+		return {...this.#playback };
 	}
 
 	/** Seed from durable storage on boot (does NOT bump rev or schedule a flush). */
@@ -99,18 +99,18 @@ export class AuthoritativeState {
 			if (Number.isFinite(e.addedAt) && e.addedAt > this.#lastAddedAt) this.#lastAddedAt = e.addedAt;
 		}
 		if (playback) {
-			this.#playback = { ...playback };
+			this.#playback = {...playback };
 			// Self-heal a persisted DANGLING currentEntryId: persist() snapshots entries and
 			// playback independently, so a room saved while the playing entry was already pruned stores an
 			// id that names no live entry. Left as-is it survives the reboot and keeps the `!currentEntryId`
 			// auto-start gates jammed. Drop it here to UNJAM those gates — there is no boot resync or boot
 			// reconcile, so nothing starts a singer at hydrate time. The room is left genuinely idle with a
 			// ready queue, and recovery happens on the next real event that runs reconcileOnReady: the next
-			// queue:command (server.ts, on a dangling/absent current), a cook completing
+			// queue:command (server.ts, on a dangling/absent current), a process completing
 			// (reconcileOnReady in onMediaReady, src/lib/server/app.ts), or a manual play — the play
 			// control stays enabled because a non-empty queue satisfies its gate (routes/+page.svelte).
 			if (this.#playback.currentEntryId !== null && !entryResolves(this.#entries, this.#playback.currentEntryId)) {
-				this.#playback = { ...this.#playback, currentEntryId: null, isPlaying: false };
+				this.#playback = {...this.#playback, currentEntryId: null, isPlaying: false };
 			}
 		}
 	}
@@ -153,7 +153,7 @@ export class AuthoritativeState {
 	 * Mint the next server-owned `addedAt` for an add op. MONOTONIC: `Math.max(Date.now(), last + 1)`
 	 * so two adds in the same millisecond still get distinct, strictly increasing stamps — the
 	 * ordering ranks singers by this value and the move-as-addedAt-permute reorder needs it total
-	 * (the original Finding #4 the client store records at stores/queue.ts). Owned
+	 * (and the original Finding an earlier change the client store records at stores/queue.ts). Owned
 	 * here rather than as a module global so it is per-room and seeded from persisted state on hydrate.
 	 */
 	nextAddedAt(): number {
@@ -174,14 +174,14 @@ export class AuthoritativeState {
 		const defined = Object.fromEntries(
 			Object.entries(patch).filter(([, v]) => v !== undefined && !(typeof v === 'number' && !Number.isFinite(v)))
 		) as Partial<PlaybackState>;
-		this.#playback = { ...this.#playback, ...defined };
+		this.#playback = {...this.#playback,...defined };
 		this.#rev++;
 		this.#scheduleFlush();
 		return { rev: this.#rev, playback: this.playback };
 	}
 
 	/**
-	 * Update ONLY the playback position WITHOUT bumping rev (Finding #1). TV `ontimeupdate` fires
+	 * Update ONLY the playback position WITHOUT bumping rev (Finding an earlier change). TV `ontimeupdate` fires
 	 * ~4×/sec; routing it through setPlayback would advance rev with no broadcast, freezing every
 	 * client's localRev and triggering a full resync on the next real patch (gap detector fires).
 	 * Position is ephemeral telemetry, not authoritative queue state — never gates reconciliation.
@@ -198,7 +198,7 @@ export class AuthoritativeState {
 		// that window (key/guide/pause) re-seeked the master and guide back to 0. The `integer`
 		// `position_sec` column still needs a whole number, so the floor moves to the persistence
 		// boundary (persistence.ts); the negative clamp stays here (a negative playhead is nonsense).
-		this.#playback = { ...this.#playback, positionSec: Math.max(0, positionSec) };
+		this.#playback = {...this.#playback, positionSec: Math.max(0, positionSec) };
 		this.#scheduleFlush(); // still persisted (write-behind) so a resumed session is roughly correct
 	}
 

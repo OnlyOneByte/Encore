@@ -2,42 +2,39 @@
 // validateCommand add arm requires — { id, mediaId, singerId, status, rotationSeq, addedAt } — so a
 // future contract move REDS this guard instead of silently killing a probe at setup.
 //
-// THE SYSTEMIC DEFECT (from the rotted-probe repair). Nothing in `bun test` invokes tests/e2e/ — the probes
-// are live-server scripts run by hand. So when the add contract moved (addedAt made finite, then
-// status narrowed to 'queued'), a probe whose add frame predated the move kept sending a
+// THE SYSTEMIC DEFECT (from). Nothing in `bun test` invokes tests/e2e/ — the probes
+// are live-server scripts run by hand. So when the add contract moved (addedAt made finite in,
+// status narrowed to 'queued' in), a probe whose add frame predated the move kept sending a
 // stale frame that validateCommand now REJECTS: queueViaWs threw at setup and EVERY scenario in the
-// probe died, loudly, to an audience of nobody. That repair fixed the one probe (p5-cook-lifecycle) that
+// probe died, loudly, to an audience of nobody. fixed the one probe (p5-process-lifecycle) that
 // had rotted that far and guarded it by NAME. This guard is the systemic version: it does not name a
 // probe, so a probe added tomorrow, or a contract field added tomorrow, is covered without a human
 // remembering to widen a hand-maintained list.
 //
 // AUDIT AT AUTHORING. Driving every current probe's add frame through the real validateCommand
 // (a throwaway harness, since deleted) returned null (ACCEPTED) for all three probes that mint one —
-// p2-guiding-track, p11-dashboards, and p5-cook-lifecycle (the one that repair named). fuzz.mjs drives the
+// p2-guiding-track, p11-dashboards, and p5-process-lifecycle (the reference). fuzz.mjs drives the
 // real UI (page.click) so the client's own addSong builds the frame — no raw add literal. p8 and p9
-// construct no add op at all. So NO probe was rotted at authoring; the repair half of this work was a
+// construct no add op at all. So NO probe was rotted at authoring; the repair half of was a
 // no-op and the lasting deliverable is this guard.
 //
 // WHY A SOURCE SCAN. The probes have no unit harness and no runner in bun test — there is no pure
 // function to exercise — so the honest guard is a scan of the probes' own source text. Established
-// idiom for this repo (no CI): earlier guards widened source-scan coverage to .mjs; that repair isolated an add
+// idiom for this repo (no CI):/ widened source-scan guards to .mjs; isolated an add
 // entry literal by structure. Comments are blanked first (stripComments) so the prose above — which
 // names all six fields — can neither satisfy nor trip the scan.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { appE2e } from '@encore/test-support';
 import { queueEntries } from '$lib/server/db/schema';
+import { appE2e } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// Was `at('tests/e2e')`, counted up three from
-// src/lib/server/realtime to .. `appE2e` is that same tests/e2e directory named
-// directly. The walk below keeps its own exclusion list, so it is not replaced by `filesUnder`; a
-// missing root still throws out of readdirSync, and the >10 floor at the bottom is the vacuity trap.
+// Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
 const E2E_DIR = appE2e;
 
 function collectMjs(root: string): string[] {

@@ -1,7 +1,7 @@
 // unit: the one place a test says WHERE a file is, so no test has to say where it ITSELF is.
 //
 // THE PROBLEM THIS EXISTS TO DELETE. 130 test files reach their subject by counting `../` from their own
-// location — `join(import.meta.dir, '..', '..', 'routes', 'tv', '+page.svelte')` and 207 siblings like it,
+// location — `at('src/routes/tv/+page.svelte')` and 207 siblings like it,
 // at depths from 0 to 5. Every one of those is a statement about where the TEST lives, embedded in a
 // statement about where the SOURCE lives. Move the test and the arithmetic is wrong.
 //
@@ -23,7 +23,8 @@
 // where a reviewer can see the decision, and it must carry a non-vacuity floor (XR-VER-05).
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
+import { at } from '@encore/test-support';
 
 /**
  * The repo root, found by walking up for `bunfig.toml`.

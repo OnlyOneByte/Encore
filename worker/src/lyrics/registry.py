@@ -43,7 +43,7 @@ from .chain import (
 #: Confident artist AND track. Without them an authoritative lookup is not possible — a query on a
 #: guessed title returns another song's words, which is worse than a miss.
 NEEDS_METADATA = "metadata"
-#: The isolated vocals stem. ASR wants this; a full mix transcribes badly. Absent until stems are cooked,
+#: The isolated vocals stem. ASR wants this; a full mix transcribes badly. Absent until stems are processed,
 #: which is exactly why align is CHAINED after stems rather than enqueued alongside it.
 NEEDS_VOCALS_STEM = "vocals_stem"
 #: The retained original. Present for any job that got past acquisition.

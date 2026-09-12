@@ -18,7 +18,7 @@ import type {
 	GlobalSettings,
 	EffectiveSettings
 } from '$lib/contract';
-import { sourceUriFor, resolveCookSeparator } from '$lib/contract';
+import { sourceUriFor, resolveProcessSeparator } from '$lib/contract';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';
@@ -29,7 +29,7 @@ import {
 	requiredCapability,
 	separatorFor,
 	publishesInstrumental,
-	inheritsCook,
+	inheritsProcess,
 	hasCapableWorker
 } from './dispatch';
 import {
@@ -42,10 +42,10 @@ import {
 	settleLyricsGate,
 	reportTerminalFailure,
 	markLyricsQueued
-} from './make-karaoke';
+} from './process';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, attemptsExhausted, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
-import { completedStatusFor, mediaStatusFor, shouldBroadcastCook } from './media-status';
+import { completedStatusFor, mediaStatusFor, shouldBroadcastProcess } from './media-status';
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
 export type Broadcast = (event: ServerEvent) => void;
@@ -54,7 +54,7 @@ export type Broadcast = (event: ServerEvent) => void;
  * How long a job may sit continuously unservable (no connected worker advertises its capability)
  * before it is moved to a terminal `failed` state. Without a ceiling such a job parks `queued`
  * forever: it never reaches a terminal state, so the TV and phone wait indefinitely on a song that
- * can never cook. Two minutes is long enough to ride out a worker restart or a fleet that is still
+ * can never process. Two minutes is long enough to ride out a worker restart or a fleet that is still
  * coming up, short enough that a genuinely unservable job surfaces as failed rather than hanging.
  */
 const UNSERVABLE_TTL_MS = 120_000;
@@ -69,13 +69,13 @@ export interface WorkerHubDeps {
 	toWorker: ToWorker; // send a WorkerCommand to ONE worker session
 	broadcast: Broadcast; // media:status to the whole room
 	/** Fired AFTER a media flips to ready (stems done): lets the core reconcile playback so a held
-	 *  song plays at its fair slot if the room idled while it cooked. Optional. */
+	 *  song plays at its fair slot if the room idled while it processed. Optional. */
 	onMediaReady?: (mediaId: string) => void;
 	/** Persist a media after its artifacts change (durable catalog). Optional so the hub still
 	 *  unit-tests with no DB; app.ts wires it to MediaRepository.upsert. */
 	persistMedia?: (mediaId: string) => void;
 	/** Room+global separator settings, read live at assign time. EFFECTIVE, not just global: the room
-	 *  can lower the cook quality below the global default (a downward-only ceiling), and that ceiling
+	 *  can lower the process quality below the global default (a downward-only ceiling), and that ceiling
 	 *  has to reach the engine a stems job is dispatched with AND the capability it is routed by.
 	 *  Optional so the hub still unit-tests without settings (dispatch falls back to shared defaults). */
 	getSettings?: () => EffectiveSettings;
@@ -160,7 +160,7 @@ export class WorkerHub {
 	constructor(deps: WorkerHubDeps) {
 		this.#d = deps;
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
-		// Slot accounting rides the job machine. The hub owns the registry, so it wires
+		// Slot accounting rides the job machine (an earlier change step 3). The hub owns the registry, so it wires
 		// the repository's slot-release action here: a job leaving a worker's hands via a worker-reported
 		// event (REJECT/COMPLETE/FAIL) frees that worker's concurrency slot from ONE place inside
 		// `transition`, retiring the three hand-paired registry.releaseSlot() calls the handlers used to
@@ -172,24 +172,24 @@ export class WorkerHub {
 	 * The GlobalSettings the pure dispatch layer should see, with the ROOM'S downward-only quality
 	 * ceiling folded into the default stems pairing.
 	 *
-	 * `dispatch.ts` reasons in terms of `GlobalSettings.defaultEngine/defaultModel` for a stems cook —
+	 * `dispatch.ts` reasons in terms of `GlobalSettings.defaultEngine/defaultModel` for a stems process —
 	 * its assignParams, separatorFor, and (crucially) requiredCapability all read those two fields. The
-	 * room's cap does not live there, so before this the ceiling `resolveCookSeparator` computes was
+	 * room's cap does not live there, so before this the ceiling `resolveProcessSeparator` computes was
 	 * built, tested, and never called: a room set to a lower quality was ignored, and the box always
-	 * cooked at the global default. We resolve the effective pairing HERE and hand dispatch a global
+	 * processed at the global default. We resolve the effective pairing HERE and hand dispatch a global
 	 * whose defaults ARE that pairing, so the lowered engine flows through the params the worker gets
-	 * AND the capability it is routed by (a demucs-capped cook must not be sent to a roformer worker).
+	 * AND the capability it is routed by (a demucs-capped process must not be sent to a roformer worker).
 	 *
 	 * ONLY the default (stems) pairing is rewritten. The upgrade axis, fetcher, and lyrics engines are
-	 * left as the global set them — the room ceiling is a floor-lowering on the base cook, nothing else.
+	 * left as the global set them — the room ceiling is a floor-lowering on the base process, nothing else.
 	 * Returns undefined when no settings are wired (unit tests), so dispatch keeps its shared-default
 	 * behaviour unchanged.
 	 */
-	#cookSettings(): GlobalSettings | undefined {
+	#processSettings(): GlobalSettings | undefined {
 		const effective = this.#d.getSettings?.();
 		if (!effective) return undefined;
-		const { engine, model } = resolveCookSeparator(effective);
-		return { ...effective.global, defaultEngine: engine, defaultModel: model };
+		const { engine, model } = resolveProcessSeparator(effective);
+		return {...effective.global, defaultEngine: engine, defaultModel: model };
 	}
 
 	/** Handle one inbound worker message. Returns nothing — effects go through the injected sinks. */
@@ -215,12 +215,11 @@ export class WorkerHub {
 	/** Worker (re)connected: register, send welcome handshake, then dispatch any waiting work. */
 	#onHello(msg: Extract<WorkerMessage, { type: 'worker:hello' }>): void {
 		this.#d.registry.hello(msg.workerId, msg.capabilities, msg.concurrency, msg.version, this.#d.now(), msg.host);
-		// Log what joined, hardware included. On a heterogeneous fleet this is how "why was that cook
+		// Log what joined, hardware included. On a heterogeneous fleet this is how "why was that process
 		// slow" gets answered from the core's log without shelling into the worker. `cpuCount` is the
 		// worker's EFFECTIVE count, so `(contained)` marks a box that was given a slice of a bigger one.
 		const hw = msg.host
-			? `${msg.host.accelerator ?? (msg.host.cuda ? 'cuda' : 'cpu')}/${msg.host.cpuCount ?? '?'}cpu${msg.host.contained ? ' (contained)' : ''}`
-			: 'hardware unreported';
+			? `${msg.host.accelerator ?? (msg.host.cuda ? 'cuda': 'cpu')}/${msg.host.cpuCount ?? '?'}cpu${msg.host.contained ? ' (contained)': ''}`: 'hardware unreported';
 		console.log(
 			`[hub] worker ${msg.workerId} joined: ${hw}, caps=[${msg.capabilities.join(',')}], slots=${msg.concurrency}`
 		);
@@ -229,8 +228,8 @@ export class WorkerHub {
 			// Advertise HALF the progress lease, not the full lease. The worker's next `job:progress`
 			// refreshes this lease (leases.ts progressLeaseMs), so a worker honouring the advertised
 			// interval must have room for a dropped/late tick: at the full lease one missed tick breaches
-			// the deadline and the reaper requeues a healthy cook as `progress-lease-expired`. This is the
-			// same margin the worker side pins (LEASE_KEEPALIVE_SEC < progressLeaseMs / 2).
+			// the deadline and the reaper requeues a healthy process as `progress-lease-expired`. This is the
+			// same margin PR an earlier change pins on the worker side (LEASE_KEEPALIVE_SEC < progressLeaseMs / 2).
 			heartbeatIntervalSec: Math.floor(this.#config.progressLeaseMs / 1000 / 2),
 			ackTimeoutSec: Math.floor(this.#config.ackTimeoutMs / 1000),
 			mediaStore: this.#d.mediaStore ?? { kind: 'local' }
@@ -291,7 +290,7 @@ export class WorkerHub {
 			selection: msg.selection ? JSON.stringify(msg.selection) : undefined
 		});
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
-		const settings = this.#cookSettings();
+		const settings = this.#processSettings();
 		// Flip the media to ready (instrumentalRef→what the worker wrote, stemStatus→
 		// ready) so rotation's isEntryReady returns true and the held entry becomes playable.
 		// Separation jobs report WHICH engine+model produced the artifact, so an upgrade can be refused
@@ -310,14 +309,14 @@ export class WorkerHub {
 			const accepted = markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental, separator);
 			if (accepted) {
 				// The same separation also isolated the vocals — the guiding track. This artifact was
-				// arriving on the wire and being dropped, which is why a cooked song had no guide even
+				// arriving on the wire and being dropped, which is why a processed song had no guide even
 				// though the file was sitting on disk next to the instrumental. Additive and independent:
 				// a worker that could not encode vocals, or measured them as silence, reports none and the
 				// song simply offers no guide.
 				setMediaVocals(job.mediaId, msg.artifacts?.stems?.vocals, this.#d.mediaById);
 				// The SAME separation also analysed the two stems for key + range and reported it as a third
 				// artifact, a SIBLING of `stems` rather than a member of it (a profile is not a file). Persisted
-				// here, at the boundary, because its PRESENCE completes the stems cook gate (gates.ts) — so
+				// here, at the boundary, because its PRESENCE completes the stems process gate (gates.ts) — so
 				// unlike the vocals ref this is written even when the worker found nothing, and
 				// setMediaSongProfile normalizes the untrusted frame to a valid profile.
 				//
@@ -348,8 +347,8 @@ export class WorkerHub {
 		// instrumental completes with no artifact and is still a finished song. Set after setMediaLyrics
 		// so the artifact (when there is one) is already attached.
 		if (job.jobType === 'align') settleLyricsGate(job.mediaId, this.#d.mediaById);
-		// Persist the cooked media NOW (stems key + lyrics) so a restart finds the separated
-		// song in the library instead of re-cooking it.
+		// Persist the processed media NOW (stems key + lyrics) so a restart finds the separated
+		// song in the library instead of re-processing it.
 		this.#d.persistMedia?.(job.mediaId);
 		// The worker's slot is freed by the machine's slot-release hook off the COMPLETE event.
 		// Job scratch is transient by contract — the intermediate WAVs in work/<jobId> are large
@@ -358,22 +357,22 @@ export class WorkerHub {
 		cleanJobWork(msg.jobId);
 		// Enqueue whatever this job unblocks (stems → align + score, and optionally a quality upgrade),
 		// AFTER cleanJobWork so the follow-up gets its own scratch dir. Dedup on (mediaId, jobType) means
-		// a re-cooked song cannot stack duplicate align jobs; it inherits the completed job's priority so
+		// a re-processed song cannot stack duplicate align jobs; it inherits the completed job's priority so
 		// it stays as urgent as the song that needed it.
 		for (const next of followUps(job.jobType, settings)) {
-			// A chained step continues THIS cook so the song's end-to-end duration spans the whole run;
-			// `stems-upgrade` deliberately starts its own (see inheritsCook).
-			// Inherit the requester too: a follow-up of the SAME cook keeps its attribution; a new-cook
+			// A chained step continues THIS process so the song's end-to-end duration spans the whole run;
+			// `stems-upgrade` deliberately starts its own (see inheritsProcess).
+			// Inherit the requester too: a follow-up of the SAME process keeps its attribution; a new-process
 			// step (stems-upgrade) is background work and stays unattributed, imposing no per-singer cap.
 			this.#d.jobs.enqueue(
 				job.mediaId,
 				next,
 				job.priority,
 				this.#d.now(),
-				inheritsCook(next) ? job.cookId : undefined,
-				inheritsCook(next) ? (job.singerId ?? undefined) : undefined
+				inheritsProcess(next) ? job.processingId: undefined,
+				inheritsProcess(next) ? (job.singerId ?? undefined): undefined
 			);
-			// Name the step the song is now waiting on, so the phone's cooking line can say "Timing
+			// Name the step the song is now waiting on, so the phone's processing line can say "Timing
 			// lyrics" instead of leaving a finished separation looking idle.
 			if (next === 'align') markLyricsQueued(job.mediaId, this.#d.mediaById);
 		}
@@ -407,13 +406,13 @@ export class WorkerHub {
 			// `workerId === msg.workerId` guard proves this failure IS the live owner's own report.
 			this.#d.registry.releaseSlot(msg.workerId);
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
-			// A permanently failed cook must not hold the song hostage. Now that singing waits for the
+			// A permanently failed process must not hold the song hostage. Now that singing waits for the
 			// stems/lyrics gates, leaving one unsettled means a single broken step — a worker OOM, a
 			// model that will not load — makes the song unsingable forever, with no way out but a manual
 			// DB edit. The terminal-failure epilogue (settle the right gate, tell the room, log one line,
 			// reclaim scratch) is the SAME on all three fail paths (this one, the unservable-TTL branch,
-			// and the reaper hook in app.ts), so it lives in ONE place — reportTerminalFailure.
-			// settleGatesForFailedJob is step 1 of it; a fourth fail path cannot reopen the
+			// and the reaper hook in app.ts), so it lives in ONE place — reportTerminalFailure (issue
+			// an earlier change). settleGatesForFailedJob is step 1 of it; a fourth fail path cannot reopen the
 			// hole because there is no longer a fourth copy to drift.
 			reportTerminalFailure(updated, 'worker', {
 				broadcast: (e) => this.#d.broadcast(e),
@@ -434,10 +433,10 @@ export class WorkerHub {
 		const workers = this.#d.registry.list();
 		const now = this.#d.now();
 
-		// A job's required capability is engine-derived (a roformer cook needs stems:roformer),
+		// A job's required capability is engine-derived (a roformer process needs stems:roformer),
 		// so route by the SETTINGS-resolved capability, not the bare job type. Uses the room-capped
-		// settings so a lowered cook quality routes to the matching (lower) engine's workers.
-		const settings = this.#cookSettings();
+		// settings so a lowered process quality routes to the matching (lower) engine's workers.
+		const settings = this.#processSettings();
 		const capabilityFor = (j: { jobType: JobType }) => requiredCapability(j.jobType, settings);
 
 		// Separate "waiting for a free slot" from "no connected worker can EVER run this". Both leave
@@ -449,7 +448,7 @@ export class WorkerHub {
 			if (hasCapableWorker(job, workers, capabilityFor)) continue;
 			// First time we've seen this job unservable: stamp when, warn once. On a later pass, if it has
 			// been continuously unservable past the TTL, move it to terminal `failed` so #emitStatus
-			// broadcasts `failed` and the TV/phone can stop waiting on a song that can never cook.
+			// broadcasts `failed` and the TV/phone can stop waiting on a song that can never process.
 			const since = this.#unservableSince.get(job.id);
 			if (since !== undefined) {
 				if (now - since >= UNSERVABLE_TTL_MS) {
@@ -481,7 +480,7 @@ export class WorkerHub {
 			);
 			// Only tell the ROOM when the stalled job is one that blocks singing. An `align` follow-up
 			// on an already-published song is genuinely unservable, but the song is playable and
-			// broadcasting a 'queued' status for it would regress a ready song to cooking on every
+			// broadcasting a 'queued' status for it would regress a ready song to processing on every
 			// phone — a worse bug than the one being reported. Missing lyrics is not missing audio.
 			const media = this.#d.mediaById.get(job.mediaId);
 			if (media?.instrumentalRef) continue;
@@ -514,10 +513,10 @@ export class WorkerHub {
 			this.#d.toWorker(workerId, {
 				type: 'job:assign',
 				jobId: job.id,
-				// The cook this job belongs to, so the worker can tag its own logs and notes with the
+				// The process this job belongs to, so the worker can tag its own logs and notes with the
 				// same trace id the operator sees on /metrics/<mediaId>. jobId is the span id;
-				// cookId is the trace id across a chained fetch->stems->align run.
-				cookId: job.cookId,
+				// processingId is the trace id across a chained fetch->stems->align run.
+				processingId: job.processingId,
 				mediaId: job.mediaId,
 				jobType: job.jobType,
 				sourceUri: media ? sourceUriFor(media, this.#d.getSettings?.()?.global.defaultFetcher) : '',
@@ -529,18 +528,18 @@ export class WorkerHub {
 	/**
 	 * Broadcast where the SONG is, for a job that just changed state.
 	 *
-	 * `status` is deliberately not the job's own status: a cook is three jobs walking one five-stop
+	 * `status` is deliberately not the job's own status: a process is three jobs walking one five-stop
 	 * line the phone renders, and forwarding each job's private view of itself is what made the strip
-	 * jump backwards twice per cook. media-status.ts owns that translation and carries the full account.
+	 * jump backwards twice per process. media-status.ts owns that translation and carries the full account.
 	 *
-	 * A terminal completion passes through `completedStatusFor`, which asks the MEDIA's cook gates
+	 * A terminal completion passes through `completedStatusFor`, which asks the MEDIA's process gates
 	 * whether the song is finished — the only thing entitled to say 'ready'.
 	 */
 	#emitStatus(job: Job, stage?: MediaStatus): void {
 		const media = this.#d.mediaById.get(job.mediaId);
 		// A background upgrade on an already-singable song says nothing to the room; broadcasting would
 		// flip every ready row back to "Making karaoke" for the length of the re-separation.
-		if (!shouldBroadcastCook(job, media)) return;
+		if (!shouldBroadcastProcess(job, media)) return;
 		this.#d.broadcast({
 			type: 'media:status',
 			mediaId: job.mediaId,

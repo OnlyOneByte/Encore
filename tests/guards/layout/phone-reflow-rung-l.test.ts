@@ -122,9 +122,9 @@ test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender'
 	expect(PROBE).toMatch(/\.fill\(SEL\.search,\s*'caroline'\)/);
 	expect(PROBE).toMatch(/SEL\.songRow/);
 	expect(PROBE).toMatch(/the browse search returned no rows/);
-	// It must NOT depend on cooking a song: the earlier cooking-seed approach measured a chip that
+	// It must NOT depend on processing a song: the earlier processing-seed approach measured a chip that
 	// wraps on its own, so it never overflowed and never discriminated.
-	expect(PROBE).not.toMatch(/make-karaoke/);
+	expect(PROBE).not.toMatch(/\/api\/process\b|requestProcess/);
 });
 
 // ---------------------------------------------------------------------------------------------------

@@ -1,8 +1,8 @@
 import { instrumentalKey } from '$lib/server/media/paths';
 import { migratedDb } from '$lib/server/db/test-db';
-// The durable media catalog. Search results and cooked songs are persisted so the catalog
+// The durable media catalog. Search results and processed songs are persisted so the catalog
 // survives a restart — which is what lets the saved-karaoke library exist and what stops
-// requestMakeKaraoke from re-cooking an instrumental that's already on disk.
+// requestProcess from re-processing an instrumental that's already on disk.
 import { test, expect } from 'bun:test';
 import { MediaRepository, hydrateMediaCatalog } from '$lib/server/media/repository';
 import type { Media } from '$lib/contract';
@@ -18,10 +18,10 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-// A fully cooked song now carries a song profile too (the stems gate keys on its presence). EMPTY is
+// A fully processed song now carries a song profile too (the stems gate keys on its presence). EMPTY is
 // the "ran, found nothing" value and is enough to satisfy the gate; tests probing persistence pass a
 // populated profile explicitly.
-const cooked = (id: string, over: Partial<Media> = {}): Media =>
+const processed = (id: string, over: Partial<Media> = {}): Media =>
 	media(id, {
 		stemStatus: 'ready',
 		lyricsStatus: 'ready',
@@ -38,7 +38,7 @@ function repo(): MediaRepository {
 test('upsert → byId round-trips every field, optional ones included', () => {
 	const r = repo();
 	r.upsert(
-		cooked('m1', {
+		processed('m1', {
 			artist: 'A-ha',
 			thumbnail: 'https://i.ytimg.com/vi/x/hq.jpg',
 			lyricsRef: 'lyrics/m1-aligned.json',
@@ -63,14 +63,14 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 	expect(got.thumbnail).toBe('https://i.ytimg.com/vi/x/hq.jpg');
 	expect(got.stemStatus).toBe('ready');
 	expect(got.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
-	expect(got.sourceRef).toBe('vid-m1'); // ORIGIN identity survives the cook (search dedupe key)
+	expect(got.sourceRef).toBe('vid-m1'); // ORIGIN identity survives the process (search dedupe key)
 	// the derived artifacts must survive too, or a library song replays with no lyrics
 	expect(got.lyricsRef).toBe('lyrics/m1-aligned.json');
 	// the human's lyrics override is an index column that must survive the round trip — reverting
 	// either the toRow persist or the fromRow hydrate leaves this undefined and reds here.
 	expect(got.lyricsOverrideRef).toBe('derived/lyrics/m1-manual-word.json');
 	// the key/range/level profile is the third derived artifact — it must survive the JSON round-trip
-	// intact, INCLUDING the measured level: this column is the whole persistence path for the measured song profile, and a
+	// intact, INCLUDING the measured level: this column is the whole persistence path for, and a
 	// field dropped at this boundary is a measurement the room can never act on.
 	expect(got.songProfile).toEqual({
 		keyTonic: 7,
@@ -99,18 +99,18 @@ test('absent optionals come back as undefined, not null (domain shape, not DB sh
 	expect(got.songProfile).toBeUndefined();
 });
 
-test('upsert is idempotent on id and updates in place (the cook flip overwrites the iframe row)', () => {
+test('upsert is idempotent on id and updates in place (the process flip overwrites the iframe row)', () => {
 	const r = repo();
 	r.upsert(media('m1')); // materialized from search: iframe, no stems
 	r.upsert(media('m1')); // seen again in a later search — must not duplicate
 	expect(r.all()).toHaveLength(1);
 
-	r.upsert(cooked('m1', { lyricsRef: 'lyrics/m1.json' })); // stems finished
+	r.upsert(processed('m1', { lyricsRef: 'lyrics/m1.json' })); // stems finished
 	expect(r.all()).toHaveLength(1);
 	const got = r.byId('m1')!;
 	expect(got.stemStatus).toBe('ready');
 	expect(got.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
-	expect(got.sourceRef).toBe('vid-m1'); // the cook did not fork the song's identity
+	expect(got.sourceRef).toBe('vid-m1'); // the process did not fork the song's identity
 	expect(got.lyricsRef).toBe('lyrics/m1.json');
 });
 
@@ -123,10 +123,10 @@ test('durationSec is rounded — yt-dlp reports fractional seconds, the column i
 test('listReady is the library: only stems-ready file media, newest id first', () => {
 	const r = repo();
 	r.upsert(media('m1')); // plain iframe → not in the library
-	r.upsert(media('m2', { stemStatus: 'queued' })); // still cooking → not yet
-	r.upsert(cooked('m3'));
-	r.upsert(cooked('m5'));
-	r.upsert(cooked('m4'));
+	r.upsert(media('m2', { stemStatus: 'queued' })); // still processing → not yet
+	r.upsert(processed('m3'));
+	r.upsert(processed('m5'));
+	r.upsert(processed('m4'));
 
 	const ids = r.listReady().map((m) => m.id);
 	expect(ids).toEqual(['m5', 'm4', 'm3']); // ULIDs are monotonic → newest first
@@ -142,7 +142,7 @@ test('listReady excludes a ready STATUS with no instrumental on disk', () => {
 
 test('hydrateMediaCatalog seeds the runtime map and reports how many it added', () => {
 	const map = new Map<string, Media>();
-	expect(hydrateMediaCatalog([cooked('m1'), cooked('m2')], map)).toBe(2);
+	expect(hydrateMediaCatalog([processed('m1'), processed('m2')], map)).toBe(2);
 	expect(map.get('m1')!.stemStatus).toBe('ready');
 	expect(map.size).toBe(2);
 });
@@ -150,19 +150,19 @@ test('hydrateMediaCatalog seeds the runtime map and reports how many it added', 
 test('hydrateMediaCatalog never clobbers a live runtime object other code holds a reference to', () => {
 	const live = media('m1', { title: 'the live one' });
 	const map = new Map<string, Media>([['m1', live]]);
-	expect(hydrateMediaCatalog([cooked('m1', { title: 'the stale row' }), cooked('m2')], map)).toBe(1);
+	expect(hydrateMediaCatalog([processed('m1', { title: 'the stale row' }), processed('m2')], map)).toBe(1);
 	expect(map.get('m1')).toBe(live); // same object identity, untouched
 	expect(map.get('m1')!.title).toBe('the live one');
 	expect(map.has('m2')).toBe(true);
 });
 
-test('BOOT ROUND TRIP: a song cooked last night is in the catalog + library after a restart', () => {
+test('BOOT ROUND TRIP: a song processed last night is in the catalog + library after a restart', () => {
 	const db = migratedDb(); // one DB, two "processes"
 
-	// last night: searched (iframe), then cooked → both writes land
+	// last night: searched (iframe), then processed → both writes land
 	const before = new MediaRepository(db);
 	before.upsert(media('m1', { title: 'Take On Me' }));
-	before.upsert(cooked('m1', { title: 'Take On Me' }));
+	before.upsert(processed('m1', { title: 'Take On Me' }));
 
 	// tonight: fresh process, empty runtime catalog, hydrate from disk
 	const after = new MediaRepository(db);
@@ -207,7 +207,7 @@ test('setTags is atomic: a throw between delete and insert leaves the ORIGINAL t
 	// silent, unbounded tag loss. Wrapping both in one transaction makes it all-or-nothing.
 	const db = migratedDb();
 	const r = new MediaRepository(db);
-	r.upsert(cooked('m1'));
+	r.upsert(processed('m1'));
 	r.setTags('m1', 'genre', ['rock', 'pop']);
 	expect(r.tagsOf('m1', 'genre').sort()).toEqual(['pop', 'rock']);
 
@@ -234,8 +234,8 @@ test('setTags is atomic: a throw between delete and insert leaves the ORIGINAL t
 
 test('remove() hard-deletes the media row AND its tags in one transaction', () => {
 	const r = repo();
-	r.upsert(cooked('m1'));
-	r.upsert(cooked('m2'));
+	r.upsert(processed('m1'));
+	r.upsert(processed('m2'));
 	r.setTags('m1', 'genre', ['rock', 'pop']);
 	r.setTags('m1', 'mood', ['upbeat']);
 	r.setTags('m2', 'genre', ['jazz']);

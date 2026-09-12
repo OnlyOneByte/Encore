@@ -119,31 +119,31 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 	bail(`no Encore server on ${base}. Start one and re-run.`);
 }
 
-// A cooked, playable song is a hard precondition for anything below.
+// A processed, playable song is a hard precondition for anything below.
 const ready = await fetch(`${base}/api/search?q=caroline`)
 	.then((r) => r.json())
 	.then((d) => d.ready ?? []);
 if (!ready.length) {
 	bail(
 		'no READY song in the library — nothing to play.\n' +
-			'  Seed + cook one first:  bun run e2e/seed-media.mjs  &&  bun e2e/fake-stems-worker.mjs  (then POST /api/make-karaoke)'
+			'  Seed + process one first:  bun run e2e/seed-media.mjs  &&  bun e2e/fake-stems-worker.mjs  (then POST /api/process)'
 	);
 }
 console.log(`fixture: "${ready[0].title}" → ${ready[0].instrumentalRef}\n`);
 
-// A second cooked song, so the song-change sub-check has somewhere to advance TO. Cooked before the
+// A second processed song, so the song-change sub-check has somewhere to advance TO. Processed before the
 // browser is even launched: the fake worker takes ~1s per song and this keeps the probe's own tests
 // out of that critical path. If a second raw title is not present the sub-check is downgraded to an
 // environment limit, not a defect.
 async function ensureSecondReady() {
-	// Cast a wide net: "caroline" only matches the fixture cook. "a" matches any track with an 'a' in
+	// Cast a wide net: "caroline" only matches the fixture process. "a" matches any track with an 'a' in
 	// its metadata — which every seeded song does.
 	const list = await fetch(`${base}/api/search?q=a`)
 		.then((r) => r.json())
 		.catch(() => null);
 	if (!list) return null;
 	const already = list.ready ?? [];
-	// Pick a NON-cooked LOCAL track other than the first fixture as the second cook target.
+	// Pick a NON-processed LOCAL track other than the first fixture as the second process target.
 	const raw = /** @type {any[]} */ (list.results ?? []).find(
 		(/** @type {any} */ r) =>
 			r.source === 'local' && !(/** @type {any[]} */ (already).some((/** @type {any} */ a) => a.id === r.id))
@@ -153,10 +153,10 @@ async function ensureSecondReady() {
 	const jr = await fetch(`${base}/api/join`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ displayName: `P3Cooker${Date.now() % 100000}`, color: '#77ccff' })
+		body: JSON.stringify({ displayName: `P3Processer${Date.now() % 100000}`, color: '#77ccff' })
 	});
 	const cookie = jr.headers.get('set-cookie') ?? '';
-	await fetch(`${base}/api/make-karaoke`, {
+	await fetch(`${base}/api/process`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json', cookie },
 		body: JSON.stringify({ mediaId: raw.id })
@@ -175,7 +175,7 @@ const secondReady = await ensureSecondReady();
 if (secondReady) {
 	console.log(`second fixture: "${secondReady.title}" → ${secondReady.id}\n`);
 } else {
-	console.log(`no second cookable song available — song-change advance check will be an env limit\n`);
+	console.log(`no second processable song available — song-change advance check will be an env limit\n`);
 }
 
 const proc = spawn(
@@ -408,7 +408,7 @@ try {
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const hasAdd = await phone.count(SEL.addTurn);
 	if (hasAdd === 0)
-		bail(`cooked song offered no ${SEL.addTurn} action — the seeder+worker sequence probably did not finish`);
+		bail(`processed song offered no ${SEL.addTurn} action — the seeder+worker sequence probably did not finish`);
 	await phone.click(SEL.addTurn);
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
@@ -793,13 +793,13 @@ try {
 	}
 
 	// ── song change: reset ────────────────────────────────────────────────
-	// Advance the queue. If a second cooked song is available, add it and skip; the media.id changes,
+	// Advance the queue. If a second processed song is available, add it and skip; the media.id changes,
 	// TvPlayer's reset effect detaches the graphs, and the server resets keyShift to 0 on advance. If
 	// no second song is available, we can still verify the graph teardown (context.state === 'closed')
 	// and the keyShift reset, but not "the fresh song keeps decoding" — that becomes an env limit.
 	{
 		if (secondReady) {
-			// The second song is already ready-cooked (see ensureSecondReady above). The phone's search
+			// The second song is already ready-processed (see ensureSecondReady above). The phone's search
 			// field still has 'caroline' from earlier, so first change it to a term that finds the second
 			// song. Then click .add on its row.
 			await openBrowseFromHome(phone); // search lives behind the browse push
@@ -851,7 +851,7 @@ try {
 			);
 			console.log(`  post-advance hook state: ${JSON.stringify(stateAfterChange)}`);
 		} else {
-			// Only one song cookable — do a "reset without an advance target": skip past the song and
+			// Only one song processable — do a "reset without an advance target": skip past the song and
 			// verify (a) label resets, (b) the shift graph tore down (context.state === 'closed').
 			await phone.clickByLabel('skip');
 			await sleep(2000);
@@ -871,9 +871,9 @@ try {
 			);
 			record(
 				'LOW',
-				'song-change advance to a fresh cooking song',
+				'song-change advance to a fresh processing song',
 				false,
-				'no second cookable song was available in the fixture library — advance target check is an env limit',
+				'no second processable song was available in the fixture library — advance target check is an env limit',
 				true /* env */
 			);
 			console.log(`  post-advance hook state: ${JSON.stringify(stateAfterChange)}`);

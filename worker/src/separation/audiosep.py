@@ -11,8 +11,8 @@ that `bs-roformer-infer` cannot. `bs_roformer`'s `get_model_from_config` impleme
 through that package (see roformer.py's `#: KNOWN MISMATCH` note). audio-separator runs them as a
 first-class MDXC path. The measured win is large: `mel instrumental_becruily` benchmarks at rt 1.28 on
 the reference box (32-core Graviton 3, CPU) versus `bs_roformer-1297` at rt 13.29 — a 10.4x
-RoFormer-family instrumental cook, no GPU (docs/benchmarks/SUMMARY.md §4). Adopted ALONGSIDE
-`bs-roformer-infer`, not replacing it — both engines, owner ruling Q1(b) (docs/DECISIONS.md).
+RoFormer-family instrumental process, no GPU (docs/benchmarks/SUMMARY.md §4). Adopted ALONGSIDE
+`bs-roformer-infer`, not replacing it — both engines, issue an earlier change owner ruling Q1(b) (docs/DECISIONS.md).
 
 INTEGRATION: audio-separator exposes a CLI (`audio-separator <input> --model_filename <ckpt>
 --model_file_dir <dir> --output_dir <dir> --output_format FLAC`), confirmed against the repo's own
@@ -27,11 +27,11 @@ this engine differs from demucs (its input is a single named FILE, and its outpu
 globbing the output dir rather than derived from the model name) are the same shape roformer already
 carries, stated in `engines.py`.
 
-⚠️ A REAL COOK IS UNVERIFIED IN THIS ENVIRONMENT — the identical caveat roformer.py carries. audio-separator
-is not installed on the dev/CI box (aarch64), and a real cook plus the first-run checkpoint download need a
+⚠️ A REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT — the identical caveat roformer.py carries. audio-separator
+is not installed on the dev/CI box (aarch64), and a real process plus the first-run checkpoint download need a
 network-enabled worker. The package's CLI contract and the checkpoint filename are confirmed against the
-repo's committed benchmark scripts; the end-to-end cook does not run here. Until a network-enabled worker
-confirms the exact output-stem filenames, an audiosep cook only runs where an operator has set the
+repo's committed benchmark scripts; the end-to-end process does not run here. Until a network-enabled worker
+confirms the exact output-stem filenames, an audiosep process only runs where an operator has set the
 `stems:audiosep` capability (which is advertised only when the dep is present — capabilities.py).
 
 ⚠️ The `instrumental_becruily` checkpoint ships as a LIVE-SELECTABLE model with TWO caveats the owner
@@ -50,7 +50,7 @@ from ..retry_policy import BoundaryError
 
 # ── pure helpers (no torch, no subprocess) ───────────────────────────────────────
 
-#: Our stable whitelist tokens (src/shared/lyrics/separators.ts) → audio-separator
+#: Our stable whitelist tokens (src/lib/contract/lyrics/separators.ts) → audio-separator
 #: `--model_filename` checkpoint filenames. Kept here, not in the shared TS, because the checkpoint
 #: filename is a WORKER-side resolution detail the core never needs to know — the core only validates
 #: the token. The filename is the exact string audio-separator resolves and downloads; it is the one the
@@ -72,7 +72,7 @@ def resolve_audiosep_checkpoint(params: dict, default: str = DEFAULT_AUDIOSEP_MO
     if checkpoint is None:
         # BoundaryError subclasses ValueError (drop-in for pytest.raises(ValueError)) but carries the
         # shared structured retryable = False, so an unknown token fails fast via retry_policy instead of
-        # burning three cook attempts on a token that can never resolve — the same fast failure demucs already gives.
+        # burning three process attempts on a token that can never resolve — same as an earlier change gave demucs.
         raise BoundaryError(
             f"unknown audiosep model {token!r}; expected one of {sorted(AUDIOSEP_MODELS)}"
         )
@@ -89,7 +89,7 @@ def _find_audiosep_stem(out_dir: str, marker: str) -> str | None:
     the model name and is unaffected by it. Listing is sorted so the pick is deterministic (os.listdir
     order is unspecified), matching roformer.py and acquisition/fetch.py:find_downloaded. Matched
     case-insensitively so an upstream output-naming tweak does not silently break the pickup (the exact
-    template is confirmed by a real cook)."""
+    template is confirmed by a real process)."""
     if not os.path.isdir(out_dir):
         return None
     needle = marker.lower()
@@ -118,8 +118,7 @@ def audiosep_argv(
     checkpoint: str,
     *,
     model_file_dir: str | None = None,
-    bin: str = "audio-separator",
-) -> list[str]:
+    bin: str = "audio-separator") -> list[str]:
     """audio-separator CLI argv. Confirmed against docs/benchmarks/scripts/family_bench.sh:
 
         audio-separator <input> --model_filename <ckpt> --model_file_dir <dir> \\
@@ -130,7 +129,7 @@ def audiosep_argv(
     the checkpoint on first use. `--output_format FLAC` matches the lossless stem the pipeline publishes;
     the stems still pass through the pipeline's own FLAC encode (PublishStems) for a uniform container.
     `--model_file_dir` points at the shared host-side checkpoint cache when set, so the ~hundreds-of-MB
-    download happens once per box, not once per cook."""
+    download happens once per box, not once per process."""
     argv = [
         bin,
         input_wav,

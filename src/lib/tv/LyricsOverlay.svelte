@@ -351,7 +351,7 @@
 
 <style>
 	.lyrics {
-		/* CENTRED, not bottom-anchored. A cooked song plays an instrumental with no picture to avoid
+		/* CENTRED, not bottom-anchored. A processed song plays an instrumental with no picture to avoid
 		   covering, so lyrics belong in the middle of the screen where they read from across a room;
 		   `bottom: 14%` left them crowding the lower-third and the join card. `inset` + flex centering
 		   keeps a wrapped 2-line lyric visually centred instead of growing downward off-balance. */

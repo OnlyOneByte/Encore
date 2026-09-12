@@ -1,6 +1,6 @@
 // Settings persistence across two scopes.
 //
-// GLOBAL is a singleton: separator and cook policy belong to the deployment and its worker fleet.
+// GLOBAL is a singleton: separator and process policy belong to the deployment and its worker fleet.
 // ROOM is keyed by room id: pacing and a downward-only quality ceiling belong to one party, so
 // multi-room needs a row per room rather than a schema change.
 //

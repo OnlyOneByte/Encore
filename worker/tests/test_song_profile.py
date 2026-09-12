@@ -1,5 +1,5 @@
 """songProfile builder + engine wiring — the always-publish contract. Core reads a PRESENT profile as
-'the analysis step ran' and an ABSENT one as 'still cooking', so the load-bearing assertion is that a
+'the analysis step ran' and an ABSENT one as 'still processing', so the load-bearing assertion is that a
 songProfile object is ALWAYS in the completion artifacts, with null inner fields when analysis found
 or produced nothing. A profile failure must NEVER fail the job."""
 
@@ -107,7 +107,7 @@ def test_silent_vocals_yield_null_range_not_a_failure(tmp_path):
 
 # ── engine wiring: demucs always publishes songProfile ────────────────────────────────
 def _demucs_fake_runner(tmp_path):
-    """A demucs cook fake that writes both stems and emits nothing useful. The acquisition / volumedetect
+    """A demucs process fake that writes both stems and emits nothing useful. The acquisition / volumedetect
     / encode branches live in the shared `fake_cli_runner` — including the volumedetect
     branch that makes the silence probe real; only the demucs stem writes are here."""
 
@@ -134,8 +134,7 @@ async def test_demucs_publishes_songprofile_even_when_analysis_fails(tmp_path):
         job_type="stems",
         source_uri="https://youtube.com/watch?v=x",
         params={},
-        media_dir=str(tmp_path),
-    )
+        media_dir=str(tmp_path))
     proc = plans.stems_runner(runner=_demucs_fake_runner(tmp_path))  # default (real) profiler
     events = await _drain(proc, job)
     complete = [e for e in events if isinstance(e, CompleteResult)][0]
@@ -162,8 +161,7 @@ async def test_demucs_passes_the_raw_wavs_to_the_profiler(tmp_path):
         job_type="stems",
         source_uri="https://youtube.com/watch?v=x",
         params={},
-        media_dir=str(tmp_path),
-    )
+        media_dir=str(tmp_path))
     proc = plans.stems_runner(runner=_demucs_fake_runner(tmp_path), profiler=spy_profiler)
     await _drain(proc, job)
     assert seen["inst"].endswith("no_vocals.wav")

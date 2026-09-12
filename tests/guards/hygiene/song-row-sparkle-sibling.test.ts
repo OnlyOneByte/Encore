@@ -1,14 +1,15 @@
-// guard: the cooking sparkle must be a SIBLING of the title text, not a child of it.
+// guard: the processing sparkle must be a SIBLING of the title text, not a child of it.
 //
 // SongRow's `.t` is a two-line clamp: `display: -webkit-box; -webkit-line-clamp: 2; overflow: hidden`.
 // A mark rendered INSIDE `.t` is laid out on the discarded third line of a two-line-clamped title, so
-// on a phone (where a real YouTube title routinely needs both lines) the cooking mark never paints —
+// on a phone (where a real YouTube title routinely needs both lines) the processing mark never paints —
 // it renders correctly only when the title is short or the column is wide (>=820px). The fix wraps the
 // title text and the mark in a `.title-line` flex row so `.sparkle` is a `flex: 0 0 auto` sibling of
 // the clamped `.t` and always paints. This guard pins that structure so a future edit cannot re-nest
 // the mark inside the clamp. Source-decidable, always-on (no live server), comment-stripped.
 import { test, expect } from 'bun:test';
-import { read } from '@encore/test-support';
+import { readFileSync } from 'node:fs';
+import { at } from '@encore/test-support';
 
 // blank out /* */, <!-- --> and // comments so prose describing the old (nested) layout can neither
 // satisfy nor trip the structural checks below.
@@ -19,9 +20,7 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
-// The subject is named explicitly rather than read as "the .svelte next to me" — this guard used to sit
-// in src/lib/components beside SongRow.svelte, and `read` throws if the path is wrong.
-const src = stripComments(read('src/lib/components/SongRow.svelte'));
+const src = stripComments(readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8'));
 
 // Collect EVERY rule for a class selector, matching the selector repeatedly and brace-matching each
 // body — the same read tests 2 and 3 rely on. Returns one entry per rule with its declaration body.
@@ -62,7 +61,7 @@ function flexOf(body: string): { grow: string | null; shrink: string | null; dec
 	return { grow, shrink, declares };
 }
 
-test('the cooking sparkle is a sibling of .t inside .title-line, never nested in the clamped .t', () => {
+test('the processing sparkle is a sibling of .t inside .title-line, never nested in the clamped .t', () => {
 	// not-vacuous: the elements the invariant is about must actually exist.
 	const titleLineOpen = src.indexOf('class="title-line"');
 	expect(titleLineOpen).toBeGreaterThanOrEqual(0);
@@ -118,15 +117,15 @@ test('the cooking sparkle is a sibling of .t inside .title-line, never nested in
 test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item, on EVERY rule', () => {
 	// The layout contract that keeps the mark off the clamped line: a flex ROW whose mark cannot grow.
 	//
-	// The hole was named earlier and closed for `.t` only (see test 3): every `.t` rule is now read.
+	// named the hole and closed it for `.t` only (see test 3): every `.t` rule is now read.
 	// The other two selectors in the SAME contract were left on any-match `toMatch`, satisfied forever
 	// by the base rules at `.title-line`/`.sparkle`. So a redeclaration inside `@media (max-width: 380px)`
 	// — this file's established idiom, the block already redeclares six selectors — was invisible:
 	//   • `.title-line { flex-direction: column }` (or `display: block`/`grid`) drops the mark onto its
-	//     OWN line, reading as a metadata bullet rather than a mark on the title — the same loss by another
+	// OWN line, reading as a metadata bullet rather than a mark on the title —'s loss by another
 	//     route.
 	//   • `.sparkle { flex: 1 1 auto }` lets the inline-grid box grow and floats the centred glyph into
-	//     the empty tail — the floated-mark defect's exact symptom.
+	// the empty tail —'s exact symptom.
 	// Both left the old test at 3 pass / 0 fail. Read EVERY rule (collectRules) and hold each to its
 	// contract, mirroring test 3's `.t` widening.
 
@@ -162,7 +161,7 @@ test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item,
 		const { grow } = flexOf(r.body);
 		// grow MUST be 0: `.sparkle` is `display: inline-grid; place-items: center`, so any grow lets the
 		// box swell and centres the glyph out in the empty tail, separating it from the title (Finding 2,
-		// the floated-mark symptom). `flex: 1 1 auto` => grow "1" reds here where the any-match guard let it pass.
+ // 's symptom). `flex: 1 1 auto` => grow "1" reds here where the any-match guard let it pass.
 		expect(grow).toBe('0');
 	}
 });
@@ -170,19 +169,19 @@ test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item,
 test('.t does not grow and always shrinks — the clamp box hugs its text so the mark stays adjacent, on EVERY .t rule', () => {
 	// With flex-grow:1 (flex: 1) the two-line clamp box grew to fill the whole .title-line, pushing the
 	// flex:0 0 auto mark to the metadata column's right edge — up to 116px from a short title.
-	// The mark's meaning is "this title is cooking", so it must sit beside the title, not float in the
+	// The mark's meaning is "this title is processing", so it must sit beside the title, not float in the
 	// empty tail. .t must be flex: 0 1 auto — grow 0 AND shrink 1: grow 0 stops the clamp box filling the
 	// row and floating the mark out to the column's right edge, and shrink > 0 lets the box shrink to hug
 	// its (clamped) text so the mark still sits adjacent. Pinning grow alone left a hole: setting
 	// flex-shrink:0 / flex: 0 0 auto keeps grow 0 and passes, but the box stops shrinking and the mark is
-	// pushed back to the column right edge (title-length-independent) — the floated-mark defect reopened, gate green.
+	// pushed back to the column right edge (title-length-independent) — reopened, gate green.
 	//
 	// SongRow declares .t TWICE — the base rule AND a redeclaration inside @media (max-width: 380px).
 	// The old guard used String.prototype.search, which returns only the FIRST match, so a `flex` written
 	// into that media-query rule (which WINS the cascade at <=380px, same specificity + later in source)
 	// was invisible. Read EVERY .t rule by matching the selector repeatedly, brace-match each body, and
 	// hold every rule that declares a flex axis to the same grow-0 / shrink->0 contract. A rule that
-	// declares no flex is fine — it inherits the base rule's flex, so it cannot reopen the defect on its own.
+	// declares no flex is fine — it inherits the base rule's flex, so it cannot reopen on its own.
 	const bodies = collectRules('.t');
 	// not-vacuous: SongRow declares .t at least TWICE today (base + @media). A floor on the count means a
 	// future edit that stops one rule matching (renamed selector, merged rules) cannot silently shrink the
@@ -195,14 +194,14 @@ test('.t does not grow and always shrinks — the clamp box hugs its text so the
 	expect(declaring.length).toBeGreaterThanOrEqual(1);
 
 	// EVERY .t rule that declares a flex axis must satisfy the contract: grow 0 AND shrink > 0. This is
-	// the every-rule widening — `.t { …; flex: 1 }` inside @media (max-width: 380px) now reds here, where the
+	// the widening — `.t { …; flex: 1 }` inside @media (max-width: 380px) now reds here, where the
 	// first-rule-only guard let it survive.
 	for (const b of declaring) {
 		const { grow, shrink } = flexOf(b.body);
-		// grow: `flex: 1` => "1" (the floated-mark defect); `flex: 0 1 auto` => "0" (the fix). Anything > 0 reds.
+ // grow: `flex: 1` => "1" (the defect); `flex: 0 1 auto` => "0" (the fix). Anything > 0 reds.
 		expect(grow).toBe('0');
 		// shrink MUST be > 0 so the two-line clamp box shrinks to hug its text. `flex: 0 0 auto`
-		// (shrink 0) is the defect-reopening edit the grow-only guard misses; it must red here.
+ // (shrink 0) is the-reopening edit the grow-only guard misses; it must red here.
 		expect(shrink).not.toBeNull();
 		expect(Number(shrink)).toBeGreaterThan(0);
 	}

@@ -77,7 +77,7 @@ def stems_plan(
     """The stems action: acquire, decode, separate, probe, analyse, publish.
 
     `ProbeSilence` is a step rather than a line inside publishing, and that is a fix as well as a tidy-up:
-    only demucs used to probe, so a roformer cook could publish a silent guiding track. As a step both
+    only demucs used to probe, so a roformer process could publish a silent guiding track. As a step both
     engines get it and it is testable with no ffmpeg.
 
     `KeyAndRange` likewise: it was called inline from both engines through two separate injectable
@@ -139,7 +139,7 @@ def resolve_engines(params: dict[str, Any], defaults: ResolvedEngines | None = N
 
     `defaults` is the worker's own env fallback (ENCORE_ASR_MODEL / ENCORE_SYNC_MODE), which is only
     consulted for a job that carries neither — the core normally sends its global settings on every align
-    job so an operator changing the model takes effect on the next cook with no restart. Every field is
+    job so an operator changing the model takes effect on the next process with no restart. Every field is
     parsed at this boundary (asrModel, syncMode, engine): an unknown or de-whitelisted value RAISES a
     BoundaryError here rather than reaching a step and failing opaquely deeper in — the same fail-at-the-
     edge contract every parse_* enforces. A field the job omits keeps the worker's own configured default.
@@ -178,7 +178,7 @@ def align_runner(
     already the module that knows both the runtime and the steps.
 
     `model` / `sync_mode` / `device` are this WORKER's fallbacks (its env config), not the job's. A job
-    carrying `asrModel` overrides them, which is how a settings change reaches the next cook.
+    carrying `asrModel` overrides them, which is how a settings change reaches the next process.
     """
     from .runtime.runner import PlanRunner
 
@@ -226,7 +226,7 @@ def stems_runner(
     """A PlanRunner for both separation actions, with this worker's separator configuration.
 
     The engine is chosen per JOB from `params.engine` (plan selection, §5.2c), so one runner serves both
-    demucs and roformer cooks — `EngineRouter`'s dispatch collapsed into `engine_for` inside the Separate
+    demucs and roformer processes — `EngineRouter`'s dispatch collapsed into `engine_for` inside the Separate
     step. Passing `engine` overrides that entirely, which is how a test drives a fake separator.
 
     `backend` is the hardware backend `backends.resolve_backend` resolved for this worker (torch/mlx),

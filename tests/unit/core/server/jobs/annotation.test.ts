@@ -10,7 +10,7 @@
 // is a plausible guess. A re-fetch or a backfill that let a `medium` overwrite a `high` would quietly
 // turn a known-good artist back into a guess — and that field is what the LRCLIB query matches on.
 import { test, expect } from 'bun:test';
-import { applyAnnotation } from '$lib/server/jobs/make-karaoke';
+import { applyAnnotation } from '$lib/server/jobs/process';
 import { publishesInstrumental } from '$lib/server/jobs/dispatch';
 import type { Media } from '$lib/contract';
 

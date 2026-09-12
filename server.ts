@@ -64,9 +64,9 @@ const seenOps = new Set<string>();
 // MVP/harness media catalog. Real media is resolved via /api/search + persisted on demand.
 // Seed a few youtube demos so the dev harness can add songs that validate even without yt-dlp.
 // IMPORTANT: seed only what is MISSING. getApp() has already hydrated the durable catalog, so
-// an unconditional set would overwrite a demo song that was cooked on a previous night with this
+// an unconditional set would overwrite a demo song that was processed on a previous night with this
 // pristine iframe stub — the DB would still say "stems ready" while the runtime said "plain iframe",
-// which re-cooks the song and plays the vocal YouTube embed instead of the instrumental.
+// which re-processes the song and plays the vocal YouTube embed instead of the instrumental.
 const mediaById = app.mediaById;
 for (const m of [
 	{
@@ -106,8 +106,8 @@ for (const m of [
 // Only index what is REALLY THERE (checked against the same path resolution the /media route uses).
 // These four are aspirational placeholders — drop an actual file at MEDIA_DIR/library/<name>.mp4 and
 // it appears in the Library tab. Without the filter they were searchable, queueable songs that could
-// never play: cooking one burned three attempts on `ffmpeg exited 254: No such file or directory` and
-// then left the song stuck in the phone's "cooking" list for the rest of the night.
+// never play: processing one burned three attempts on `ffmpeg exited 254: No such file or directory` and
+// then left the song stuck in the phone's "processing" list for the rest of the night.
 const seededLibrary: LocalTrack[] = [
 	{ sourceRef: 'library/dont-stop-believin.mp4', title: "Don't Stop Believin'", artist: 'Journey', durationSec: 250 },
 	{ sourceRef: 'library/sweet-caroline.mp4', title: 'Sweet Caroline', artist: 'Neil Diamond', durationSec: 201 },
@@ -200,12 +200,11 @@ const server = Bun.serve<SocketData>({
 			// the browser sends on the WS handshake (same-origin, so it is there). Without this the
 			// socket is anonymous and presence is impossible. A TV or a not-yet-joined phone simply
 			// has no singerId and is tracked as a spectator.
-			// resolve the WHOLE singer, not just the id — its `roomId` (NOT NULL since the room-scoping
-			// change) is the
+			// resolve the WHOLE singer, not just the id — its `roomId` (NOT NULL since an earlier change) is the
 			// scope this socket is bound to. The session token is the scope token: it maps to exactly one
 			// room, so a socket cannot present a token for room A and then act on room B.
 			const me = app.singers.bySessionToken(readSessionToken(req.headers.get('cookie')));
-			// one-TV-per-room: a TV carries no cookie/singer, so it cannot get a room from the
+			// an earlier change one-TV-per-room: a TV carries no cookie/singer, so it cannot get a room from the
 			// session token like a phone does. It carries the join CODE instead (?room=<code>, the same
 			// handle the QR encodes) — tvRoomId turns that into the room id the TV binds to, falling back
 			// to the served room for a bare or unknown code. A bound TV is then IN-ROOM via
@@ -289,9 +288,9 @@ const server = Bun.serve<SocketData>({
 			}
 			// The hub bag is assembled by app.ts's buildHubDeps factory: every app-derived hook
 			// (listSingers, getSettings, onNowPlaying, onSang, recordAdd, onEntryRemoved -> cancelJobsForMedia,
-			// onEntryAdded -> reprioritizeCookForMedia) is wired there in ONE place. Only what genuinely
+			// onEntryAdded -> reprioritizeProcessForMedia) is wired there in ONE place. Only what genuinely
 			// varies per socket/frame is passed here — the broadcast sink, the authenticated singer on this
-			// socket, the live membership snapshot, and the idempotency ledger.
+			// socket, the live membership snapshot, and the idempotency ledger (§3).
 			const deps: HubDeps = buildHubDeps(app, {
 				broadcast,
 				actorSingerId: ws.data.singerId,
@@ -309,15 +308,15 @@ const server = Bun.serve<SocketData>({
 			});
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
 
-			// ROOM ISOLATION. Every frame below reads or mutates the room this core is serving
+			// an earlier change ROOM ISOLATION. Every frame below reads or mutates the room this core is serving
 			// (app.activeRoomId): `hello` replies with this room's whole state, and queue/player/telemetry
 			// mutate it. Isolation is BETWEEN rooms: a socket bound to a DIFFERENT party (its session token
 			// scoped it to another room) is refused the whole family, so a room-B phone can neither resync
 			// room A's queue nor pause room A's song. A spectator with NO room — a TV watching the one room
 			// this box serves, a phone that has not joined — is NOT foreign and passes this gate; its
 			// MUTATIONS are still refused by the per-command `join the room first` / `player:control` checks
-			// below, exactly as before the session-token scoping landed, while its `hello` read of the served room stays allowed.
-			// binds a TV to a specific room later.
+			// below, exactly as before an earlier change, while its `hello` read of the served room stays allowed.
+			// an earlier change binds a TV to a specific room later.
 			if (isForeignRoom(ws.data.roomId, app.activeRoomId)) return; // drop the frame, reply nothing
 
 			switch (evt.type) {
@@ -338,13 +337,13 @@ const server = Bun.serve<SocketData>({
 				case 'queue:command':
 					handleQueueCommand(evt.command, deps, sendToOrigin);
 					// Reconcile after EVERY queue mutation. reconcileOnReady owns the whole decision and
-					// there is nothing left to decide here — the gate this line used to
-					// carry was deleted, because it was a second hand-written copy of the recovery predicate that
+					// there is nothing left to decide here — an earlier change deleted the gate this line used to
+					// carry, because it was a second hand-written copy of the recovery predicate that
 					// reconcileOnReady already evaluates at player.ts.
 					//
 					// What it does, per case:
 					//  • Room IDLE and a song was just queued → auto-start it. Without this a plain
-					//    (non-make-karaoke) add never triggers play: the TV sits on the attract screen
+					//    (non-process) add never triggers play: the TV sits on the attract screen
 					//    forever and the phone shows no play control (no "current" entry to hang one on).
 					//  • currentEntryId DANGLING → recover. A client `remove`/`status` on the PLAYING
 					//    entry prunes it here and leaves the id pointing at nothing, which
@@ -359,14 +358,14 @@ const server = Bun.serve<SocketData>({
 					//    reordering pushed behind another singer, with `syncSlots` pre-warming the gapless
 					//    slot from that same stale entry (routes/tv/+page.svelte). reconcileOnReady's
 					//    recovery block is skipped and its tail emitNowPlaying re-derives both values
-					//    (`upNextAfter` applies the held-slot rule, so a still-cooking entry is never
+					//    (`upNextAfter` applies the held-slot rule, so a still-processing entry is never
 					//    advertised).
 					//
 					// EXACTLY ONE nowplaying:changed per command, on all three paths: the single
 					// emitNowPlaying sits OUTSIDE reconcileOnReady's `if (!currentResolves)` block
 					// (player.ts), which is why an unconditional call cannot double-broadcast. An
-					// unconditional `emitNowPlaying` here WOULD, which is the shape an earlier fix
-					// correctly rejected — a different call, not this one.
+					// unconditional `emitNowPlaying` here WOULD, which is the shape an earlier change correctly
+					// rejected — a different call, not this one.
 					reconcileOnReady(deps);
 					// A grace clock starts when someone's last pending song leaves the queue and clears when
 					// they queue another, so a queue change can move membership exactly as a socket can.
@@ -404,10 +403,10 @@ const server = Bun.serve<SocketData>({
 // The room broadcast sink: publish one ServerEvent to every subscribed socket over Bun's native
 // pub/sub. Defined ONCE here (server is in scope) and wired into the shared app a single time at
 // boot, rather than reassigned inside websocket.open on every connect. handleQueueCommand and the
-// cook-cancel path reuse this same reference through `deps`.
+// process-cancel path reuse this same reference through `deps`.
 // publish a served-room event ONLY to that room's topic, which only that room's sockets
 // subscribed to (see websocket.open) — the delivery half of isolation. The single AuthoritativeState
-// this core holds is bound to app.activeRoomId, so that is the room every broadcast names.
+// this core holds is bound to app.activeRoomId (earlier changes), so that is the room every broadcast names.
 const broadcast = (e: ServerEvent) => server.publish(broadcastTopicFor(app.activeRoomId), JSON.stringify(e));
 // Route the shared app's broadcasts (e.g. singer:joined from the /api/join route) through pub/sub.
 setPublish(broadcast);

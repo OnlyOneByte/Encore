@@ -27,7 +27,7 @@ import { at, read, relative } from '@encore/test-support';
  * as one number rather than discovering it nineteen times.
  *
  * WHY THEY ARE KEPT. Every one is a written investigation of a real defect — the tap-to-start recovery,
- * the gapless seam, the playhead-versus-cook interaction — and each is runnable by hand with
+ * the gapless seam, the playhead-versus-process interaction — and each is runnable by hand with
  * `bun run <path>`. Deleting them would discard the analysis; wiring them all into a command would add
  * ~12,000 lines of browser-driving to a gate that currently takes 30 seconds. Neither is obviously right,
  * so the decision stays open and visible instead of being made by accident.
@@ -37,13 +37,13 @@ const UNRUN = [
 	'tests/e2e/probes/admin-delete-639.mjs',
 	'tests/e2e/probes/p1-gapless.mjs',
 	'tests/e2e/probes/p10-scaling.mjs',
-	'tests/e2e/probes/p14-playhead-vs-cook.mjs',
+	'tests/e2e/probes/p14-playhead-vs-process.mjs',
 	'tests/e2e/probes/p15-phone-reflow.mjs',
 	'tests/e2e/probes/p15-reload-resume.mjs',
 	'tests/e2e/probes/p16-hero-live-controls.mjs',
 	'tests/e2e/probes/p2-guiding-track.mjs',
 	'tests/e2e/probes/p3-key-shift.mjs',
-	'tests/e2e/probes/p5-cook-lifecycle.mjs',
+	'tests/e2e/probes/p5-process-lifecycle.mjs',
 	'tests/e2e/probes/p6-lyrics.mjs',
 	'tests/e2e/probes/p8-presence-resilience.mjs',
 	'tests/e2e/probes/p9-settings.mjs',

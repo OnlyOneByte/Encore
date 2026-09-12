@@ -97,7 +97,7 @@ def validate_plan(plan: Plan) -> None:
 
     This is what a declared plan buys. A reordered step, or one dropped into the wrong slot, is a
     mistake that otherwise shows up as a confusing `None` several steps later — on the deploy box, in
-    the middle of a cook. Here it is a test failure with the step and the key named.
+    the middle of a process. Here it is a test failure with the step and the key named.
 
     Deliberately ignores `applies()`: a plan must be well-formed for the case where every step runs.
     A step whose input is only *sometimes* produced should declare it in `reads` and handle absence, which

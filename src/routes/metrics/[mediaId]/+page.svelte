@@ -2,9 +2,9 @@
   /metrics/[mediaId] — the per-song audit log. The thing the feature was actually asked for: click into
   a song and read how it came to be.
 
-  Organised by COOK, not as a flat attempt list, because "the first time we made this, then the
+  Organised by PROCESS, not as a flat attempt list, because "the first time we made this, then the
   upgrade" is how a reader thinks about it — and because a flat list on one media id blends distinct
-  runs together, which is exactly the confusion cookId exists to remove.
+  runs together, which is exactly the confusion processingId exists to remove.
 -->
 <script lang="ts">
 	import { page } from '$app/state';
@@ -34,8 +34,8 @@
 		// WHY the published lyric won, when the align attempt recorded it. Null otherwise.
 		selection: SelectionRecord | null;
 	}
-	interface Cook {
-		cookId: string;
+	interface Process {
+		processingId: string;
 		startedAt: number;
 		endedAt: number | null;
 		totalMs: number | null;
@@ -54,7 +54,7 @@
 			vocalsRef?: string;
 			guideOffsetMs?: number;
 		} | null;
-		cooks: Cook[];
+		processes: Process[];
 		plays: { at: number; entryId: string }[];
 		hasHistory: boolean;
 	}
@@ -143,7 +143,7 @@
 			<!--
 				The MEASURED guide/instrumental offset, so a wrong alignment is diagnosable here rather
 				than only by ear on the party box. Shown only when this song has a guiding track (a vocals
-				stem) — the only case an offset means anything. `undefined` ⇔ never measured (an older cook);
+				stem) — the only case an offset means anything. `undefined` ⇔ never measured (an older process);
 				a number, 0 included, ⇔ measured, so the two read differently.
 			-->
 			<p class="note">
@@ -152,7 +152,7 @@
 					<strong>{audit.media.guideOffsetMs} ms</strong>
 					{audit.media.guideOffsetMs === 0 ? '(vocals aligned with instrumental)' : '(vocals vs instrumental)'}
 				{:else}
-					<strong>not measured</strong> (cooked before this was recorded)
+					<strong>not measured</strong> (processed before this was recorded)
 				{/if}
 			</p>
 		{/if}
@@ -172,7 +172,7 @@
 			</p>
 		{/if}
 
-		{#each audit.cooks as cook, i (cook.cookId)}
+		{#each audit.processes as process, i (process.processingId)}
 			<Card.Root>
 	<Card.Header>
 		<Card.Title>Run {i + 1}</Card.Title>
@@ -180,16 +180,16 @@
 	<Card.Content>
 				<header>
 					
-					<Badge variant={cook.outcome === 'ready' ? 'ok' : cook.outcome === 'failed' || cook.outcome === 'abandoned' ? 'bad' : 'warn'}>{outcomeLabel(cook.outcome)}</Badge>
+					<Badge variant={process.outcome === 'ready' ? 'ok' : process.outcome === 'failed' || process.outcome === 'abandoned' ? 'bad' : 'warn'}>{outcomeLabel(process.outcome)}</Badge>
 				</header>
 				<p class="note">
-					{stamp(cook.startedAt)}{#if cook.totalMs !== null}{' · took '}{dur(
-							cook.totalMs
+					{stamp(process.startedAt)}{#if process.totalMs !== null}{' · took '}{dur(
+							process.totalMs
 						)}{:else}{' · still going'}{/if}
 				</p>
 
 				<ol class="steps">
-					{#each cook.attempts as a (a.id)}
+					{#each process.attempts as a (a.id)}
 						<li class:failed={a.outcome === 'failed'} class:abandoned={a.outcome === 'abandoned'}>
 							<div class="row">
 								<strong>{stepLabel(a.jobType)}</strong>
@@ -287,7 +287,7 @@
 	 * own scale). Layout classes that must apply to the GRID ITEM stay on a wrapper element, because a
 	 * scoped rule cannot reach an element a child component renders.
 	 */
-	/* The cook owns the attempts beneath it, so its header takes full ink and a dividing rule. At
+	/* The process owns the attempts beneath it, so its header takes full ink and a dividing rule. At
 	   --ink-dim it was the same grey as the timestamp under it and barely out-ranked a step name. */
 	/*
 	 * S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
@@ -317,9 +317,9 @@
 		gap: 0.6rem;
 	}
 	/*
-	 * Each attempt is a NESTED PANEL on the cook's card, not a floating stripe. A 2px left border was
-	 * the only thing marking one level of nesting, so cook and attempt read as the same depth — which
-	 * is precisely the parent/child relationship cookId exists to express.
+	 * Each attempt is a NESTED PANEL on the process's card, not a floating stripe. A 2px left border was
+	 * the only thing marking one level of nesting, so process and attempt read as the same depth — which
+	 * is precisely the parent/child relationship processingId exists to express.
 	 */
 	.steps li {
 		background: var(--bg2);

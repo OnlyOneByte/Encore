@@ -1,4 +1,4 @@
-// Guard for the pending-affordance defect: the QueueRow/ProcessingCard "adding…" pending affordance must read the
+// Guard: the QueueRow/ProcessingCard "adding…" pending affordance must read the
 // store's REAL pending map, not the placeholder rotationSeq (Number.MAX_SAFE_INTEGER) that
 // applyAndReseq overwrites in the same synchronous frame as the add.
 //
@@ -97,9 +97,12 @@ test('a pending REORDER marks its row as move — not as an add, and not as noth
 // Source-scan guards for the two call-site wirings the store test cannot exercise (they are Svelte
 // markup, not store behaviour). These red on base: base passes the dead MAX_SAFE_INTEGER comparison
 // and ProcessingCard has no pending prop at all.
-// Were `at('src/routes/+page.svelte')` and three siblings like it, resolved from
-// src/lib/stores. Each is now a repo-root-anchored path; `read` throws on a missing file, so
-// the non-vacuity floors below cannot be satisfied by an empty read.
+//
+// Named from the repo root rather than as `new URL('../../routes/…', import.meta.url)`. That spelling is
+// the same self-anchoring defect as `join(import.meta.dir, '..')` wearing a different hat — it resolves
+// against THIS file's address, so it silently re-pointed when the test left `src/lib/stores/` — and it is
+// the worse of the two, because a `new URL` miss surfaces as a bare ENOENT from readFileSync rather than
+// naming the guard whose subject went missing (XR-VER-05).
 const PAGE = read('src/routes/+page.svelte');
 const ROW = read('src/lib/components/QueueRow.svelte');
 const PROC = read('src/lib/components/ProcessingCard.svelte');
@@ -136,10 +139,10 @@ test('QueueRow takes the pending KIND, defaults it, and derives one label from i
 	expect(ROW).not.toMatch(/<span class="adding">adding…<\/span>/);
 });
 
-test('ProcessingCard accepts a pending prop so the "adding…" state survives the cooking case', () => {
-	// The primary ✨ Sing flow produces a cooking entry, so ProcessingCard is what renders during an
+test('ProcessingCard accepts a pending prop so the "adding…" state survives the processing case', () => {
+	// The primary ✨ Sing flow produces a processing entry, so ProcessingCard is what renders during an
 	// add. On base it had no pending prop; the fix must give it one, default it, and wire the visuals.
-	// Since the direction-A phone home shell the prop is the op KIND rather than a boolean, so a pending reorder of a cooking entry
+	// Since the prop is the op KIND rather than a boolean, so a pending reorder of a processing entry
 	// does not announce that it is "adding".
 	expect(PROC).toMatch(/pending\?:\s*'add' \| 'move' \| null/); // interface field
 	expect(PROC).toMatch(/pending\s*=\s*null,/); // destructuring default
@@ -156,7 +159,7 @@ test('ProcessingCard renders the "adding…" marker gated on pending, and styles
 	// saying the same thing.
 	expect(PROC).toMatch(/pendingLabel\s*=\s*\$derived\(pending === 'move' \? 'moving…' : 'adding…'\)/);
 	// And the two CSS rules that make the state visible: the card's warn-tinted surface and the
-	// warn-tinted marker. This pinned `opacity: 0.55` until the legibility fix -- what it pinned was the
+	// warn-tinted marker. This pinned `opacity: 0.55` until -- what it pinned was the
 	// declaration's PRESENCE, and the declaration turned out to be the defect: an ancestor opacity
 	// flattened the whole card and dropped the stage line to 3.76:1 and the singer dot to 2.57:1. The
 	// state signal is the SURFACE now, so this pins the surface. The legibility invariant itself lives
@@ -169,8 +172,8 @@ test('ProcessingCard renders the "adding…" marker gated on pending, and styles
 
 /*
  * §D: the component gallery must carry a PENDING ProcessingCard, and a source scan is the only
- * thing that can hold it. Both `pending` rules shipped unreadable (the cook readout at
- * 3.76:1, the singer dot at 2.57:1) specifically BECAUSE nothing ever rendered a pending cooking
+ * thing that can hold it. Both `pending` rules shipped in unreadable (the process readout at
+ * 3.76:1, the singer dot at 2.57:1) specifically BECAUSE nothing ever rendered a pending processing
  * card: the gallery's only pending fixture was a QueueRow, so the reviewer who found the defect had
  * to inject the class into the page by hand to measure it. A fixture's whole purpose is being looked
  * at, so its absence is invisible to every runtime assertion in the suite -- which is exactly what
@@ -179,15 +182,15 @@ test('ProcessingCard renders the "adding…" marker gated on pending, and styles
  */
 test('the component gallery renders a pending ProcessingCard so the state is eyes-on', () => {
 	const cards = [...GALLERY.matchAll(/<ProcessingCard\b([\s\S]*?)\/>/g)].map((m) => m[1]!);
-	expect(cards.length).toBeGreaterThan(0); // non-vacuity: the gallery still has cooking cards at all
-	// A real `pending` ATTRIBUTE, not the word inside a title string or a comment. Since the direction-A phone home shell it carries
+	expect(cards.length).toBeGreaterThan(0); // non-vacuity: the gallery still has processing cards at all
+	// A real `pending` ATTRIBUTE, not the word inside a title string or a comment. Since it carries
 	// the op kind, so `pending="add"` is the shape; a bare `pending` would now type as `true`.
 	const pendingCards = cards.filter((attrs) => /(?:^|\s)pending="(add|move)"(?=\s|$)/.test(attrs));
 	expect(pendingCards.length).toBeGreaterThanOrEqual(1);
 });
 
 test('the component gallery renders a pending REORDER row, so the new state is eyes-on', () => {
-	// Same reasoning as the fixture above, which the legibility fix had to add after both `pending` rules shipped
+	// Same reasoning as the fixture above, which had to add after both `pending` rules shipped
 	// unreadable BECAUSE nothing ever rendered that state: a state with no fixture is judged by nobody.
 	// `moving…` vs `adding…` is a one-word difference on an identical surface, which is exactly the kind
 	// of thing that regresses silently, so the gallery carries both and they sit next to each other.

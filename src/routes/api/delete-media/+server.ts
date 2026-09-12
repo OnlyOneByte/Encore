@@ -1,10 +1,10 @@
 // POST /api/delete-media — { mediaId } -> hard-delete a song from the library ENTIRELY.
-// The destructive admin action: cancels any in-flight cook, removes every queue entry for the song
+// The destructive admin action: cancels any in-flight process, removes every queue entry for the song
 // (skipping to the next singer if it was playing), unlinks the sidecar FIRST then audio + derived,
 // drops the index row + tags, and broadcasts. The order is enforced in deleteMediaEntirely; this route
-// is the thin HTTP seam beside /api/make-karaoke that the admin dashboard page calls.
+// is the thin HTTP seam beside /api/process that the admin dashboard page calls.
 //
-// AUTH: gated to a joined singer, which is every guest today (owner ruling 2: admin/host only, but
+// AUTH: gated to a joined singer, which is every guest today (owner ruling an earlier change: admin/host only, but
 // everyone is host now). Structured so a real host gate slots in at the marked line without touching
 // the delete itself — swap the joined-singer check for a can(actor, "admin:delete") once a host role
 // exists (auth/capabilities.ts).

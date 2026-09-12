@@ -1,5 +1,5 @@
 // $lib/contract — the pluggable stem-separator registry. SINGLE SOURCE OF TRUTH for both the
-// SERVER (validates an engine+model pairing before enqueueing a cook) and the PHONE UI (renders the
+// SERVER (validates an engine+model pairing before enqueueing a process) and the PHONE UI (renders the
 // engine → model dropdowns). The worker has its own registry that actually RUNS each engine; this
 // module is only the contract — ids, whitelist, rules — so the three sides cannot drift.
 //
@@ -77,9 +77,9 @@ export interface SeparatorModel {
 	/**
 	 * Relative separation quality, low to high — this model's rung on the upgrade ladder. Lives on the
 	 * model beside `cost` so the registry is the single source of truth: a new whitelisted model cannot
-	 * typecheck without one, which is what makes the "silently ranks 0 and drops off the cook ladder"
+	 * typecheck without one, which is what makes the "silently ranks 0 and drops off the process ladder"
 	 * failure structurally impossible rather than a thing a separate table has to remember. Compared
-	 * ACROSS engines (an htdemucs_ft cook beats plain htdemucs; a roformer cook beats both), so the
+	 * ACROSS engines (an htdemucs_ft process beats plain htdemucs; a roformer process beats both), so the
 	 * numbers are globally ordered, not per-engine. Positive by construction here; `qualityRank`
 	 * returns 0 only for a pairing that is not in the registry at all (unknown or de-whitelisted),
 	 * which is what keeps such a pairing from ever displacing a known-good artifact.
@@ -91,7 +91,7 @@ export interface SeparatorEngine {
 	id: SeparatorEngineId;
 	label: string;
 	/** The worker CAPABILITY a worker must advertise to run this engine; dispatch routes a stems job
-	 *  via capabilities.includes(capability). A `demucs`-only worker never receives a `roformer` cook,
+	 *  via capabilities.includes(capability). A `demucs`-only worker never receives a `roformer` process,
 	 *  so engines can live on different boxes or images. */
 	capability: string;
 	/** Whitelisted, ordered best-effort by quality. First entry is the engine's default model. */
@@ -168,7 +168,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 		id: 'audiosep',
 		label: 'Mel-Band RoFormer',
 		capability: 'stems:audiosep', // a distinct capability — only an audio-separator-equipped worker takes it
-		liveSelectable: true, // owner ruling Option A: live-selectable, medium speed on CPU
+		liveSelectable: true, // owner ruling an earlier change Option A: live-selectable, medium speed on CPU
 		speed: 'medium',
 		models: [
 			{
@@ -205,7 +205,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				note: 'Two-model ensemble, minimal vocal bleed.',
 				rank: 45,
 				// NOT benchmarked, and no ensemble worker exists yet: two roformer-class passes plus a
-				// blend, so at least twice a single roformer cook.
+				// blend, so at least twice a single roformer process.
 				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' }
 			},
 			{
@@ -219,7 +219,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 	}
 ] as const;
 
-/** The live default a fresh room cooks with until someone changes the setting. */
+/** The live default a fresh room processes with until someone changes the setting. */
 export const DEFAULT_ENGINE: SeparatorEngineId = 'demucs';
 export const DEFAULT_MODEL = 'htdemucs';
 
@@ -228,7 +228,7 @@ export function getEngine(id: string): SeparatorEngine | undefined {
 }
 
 /** Is this a real, whitelisted engine+model pairing? The server calls this before enqueueing so a
- *  malformed or spoofed setting is rejected rather than reaching a worker that would fail mid-cook. */
+ *  malformed or spoofed setting is rejected rather than reaching a worker that would fail mid-process. */
 export function isValidSeparator(engineId: string, modelId: string): boolean {
 	const engine = getEngine(engineId);
 	return !!engine && engine.models.some((m) => m.id === modelId);
@@ -242,7 +242,7 @@ export function isLiveSelectable(engineId: string, modelId: string): boolean {
 
 /**
  * Relative separation quality, low to high — the declared upgrade ladder, read straight off the
- * registry (`SeparatorModel.rank`). The checkpoint matters as much as the engine (an htdemucs_ft cook
+ * registry (`SeparatorModel.rank`). The checkpoint matters as much as the engine (an htdemucs_ft process
  * beats plain htdemucs on the same engine), and ranks are globally ordered across engines.
  *
  * Returns 0 for a pairing that is not in the registry — an unknown or de-whitelisted model — and a
@@ -250,7 +250,7 @@ export function isLiveSelectable(engineId: string, modelId: string): boolean {
  * artifact. Crucially it can no longer return 0 for a *whitelisted* model: `rank` is a required field
  * on `SeparatorModel`, so a new whitelist entry cannot compile without one. The former hand-maintained
  * `QUALITY_RANK` parallel table is gone precisely because it let a whitelisted model silently rank 0
- * and drop off the cook ladder.
+ * and drop off the process ladder.
  *
  * The former `roformer:mel-roformer-inst-v2` rung (rank 30) is likewise gone: its worker-side token
  * resolved to a registry slug that does not exist, and the engine backing `roformer` today implements
@@ -272,7 +272,7 @@ export function separatorCost(engineId: string, modelId: string): SeparatorCost 
  * swaps a published instrumental.
  *
  * A missing `current` counts as an upgrade (nothing to regress). Equal or lower rank does NOT, so a
- * re-cook at the same quality is a no-op and a worse engine can never replace a better artifact.
+ * re-process at the same quality is a no-op and a worse engine can never replace a better artifact.
  */
 export function isQualityUpgrade(
 	current: { engine: string; model: string } | null | undefined,

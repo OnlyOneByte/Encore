@@ -34,9 +34,9 @@ import { backfillVocalsRefs } from './media/vocals-backfill';
 import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
 import { existsSync } from 'node:fs';
-import { markLyricsQueued, reportTerminalFailure } from './jobs/make-karaoke';
+import { markLyricsQueued, reportTerminalFailure } from './jobs/process';
 import { cancelJobsForMedia } from './jobs/cancel';
-import { reprioritizeCookForMedia } from './jobs/reprioritize-cook';
+import { reprioritizeProcessForMedia } from './jobs/reprioritize-process';
 import {
 	readSidecar,
 	writeSidecar,
@@ -71,7 +71,7 @@ export interface EncoreApp {
 	/** Room lifecycle: create a party (mint id + join code) and look one up by code. */
 	rooms: RoomRepository;
 	/**
-	 * The id of the party a join lands in when no room code is given — the single room minted at boot.
+	 * The id of the party a join lands in when no room code is given — the single room an earlier change mints.
 	 * The join path resolves an explicit code against {@link rooms}; this is the fallback identity
 	 * for a bare `/join`, and the room whose code the TV QR advertises.
 	 */
@@ -88,7 +88,7 @@ export interface EncoreApp {
 	attempts: AttemptLedger;
 	/** One row per performance — the time axis the sidecar's play COUNTER cannot provide. */
 	playLog: PlayLog;
-	/** Room-level separator settings: the engine/model a cook uses + the upgrade policy. */
+	/** Room-level separator settings: the engine/model a process uses + the upgrade policy. */
 	settings: SettingsRepository;
 	reaper: JobReaper;
 	workers: WorkerRegistry;
@@ -174,7 +174,7 @@ export function getApp(): EncoreApp {
 	const settings = new SettingsRepository(db);
 	const singers = new SingerRepository(db);
 	const rooms = new RoomRepository(db);
-	// Mint the party's identity on first boot (reuse it on every boot after). Until this minting landed nothing wrote
+	// Mint the party's identity on first boot (reuse it on every boot after). Until an earlier change nothing wrote
 	// the rooms table, so a fresh box had a real singers/queue/playback state but no room to name it;
 	// this gives the QR a code to advertise and the join path a room to land an unqualified join in.
 	const activeRoomId = rooms.ensureActive(Date.now()).id;
@@ -213,7 +213,7 @@ export function getApp(): EncoreApp {
 	const { store: mediaStore, config: mediaStoreConfig } = buildMediaStore();
 
 	// Hydrate the runtime catalog from the durable store BEFORE anything reads it. Without this
-	// a restart forgot every song title (a hydrated queue entry rendered as a raw id) and re-cooked
+	// a restart forgot every song title (a hydrated queue entry rendered as a raw id) and re-processed
 	// songs whose stems were already sitting on disk.
 	// The DB is an INDEX over the sidecars, so every persist refreshes meta/<id>.json, and a
 	// sidecar present on disk but missing from the index is restored below. Together those give the
@@ -294,12 +294,12 @@ export function getApp(): EncoreApp {
 						album: sc.canonical.album,
 						year: sc.canonical.year
 					});
-					// ...and into the RUNTIME map, not just the index. hydrateMediaCatalog above ran
+					//...and into the RUNTIME map, not just the index. hydrateMediaCatalog above ran
 					// synchronously at boot while this pass is async, so mirroring only to the DB left every
 					// in-memory Media without its canonicals for the whole process lifetime — invisible to
 					// browse (which queries the index) but not to anything reading mediaById. It surfaced as an
 					// align job dispatched with `artist` but no `track`. Patch only these fields: a live entry
-					// may have flipped to cooking since hydrate, and a wholesale replace would undo that.
+					// may have flipped to processing since hydrate, and a wholesale replace would undo that.
 					const live = mediaById.get(sc.id);
 					if (live) {
 						const artist = browseArtist(sc);
@@ -317,9 +317,9 @@ export function getApp(): EncoreApp {
 			// Set ENCORE_VOCALS_BACKFILL=0 to skip.
 			enabled: () => process.env.ENCORE_VOCALS_BACKFILL !== '0',
 			run: async () => {
-				// Link the vocals stem for songs cooked while the core was dropping that artifact. Pure
+				// Link the vocals stem for songs processed while the core was dropping that artifact. Pure
 				// filesystem work — no job, no worker, no cpu — so unlike the lyrics backfill there is nothing
-				// to queue and nothing for a singer's live cook to compete with. A silent stem is counted and
+				// to queue and nothing for a singer's live process to compete with. A silent stem is counted and
 				// deliberately NOT linked: see media/loudness.ts.
 				const probe = ffmpegLoudnessProbe();
 				const res = await backfillVocalsRefs(mediaById.values(), {
@@ -355,12 +355,12 @@ export function getApp(): EncoreApp {
 				}
 				if (res.silent > 0) {
 					console.log(
-						`[core] guiding track: ${res.silent} song(s) have a SILENT vocals stem — not linked, re-cook to fix`
+						`[core] guiding track: ${res.silent} song(s) have a SILENT vocals stem — not linked, re-process to fix`
 					);
 				}
 				if (res.missing > 0) {
 					console.log(
-						`[core] guiding track: ${res.missing} cooked song(s) have no vocals stem on disk (re-cook to add one)`
+						`[core] guiding track: ${res.missing} processed song(s) have no vocals stem on disk (re-process to add one)`
 					);
 				}
 			}
@@ -370,9 +370,9 @@ export function getApp(): EncoreApp {
 			// Set ENCORE_LYRICS_BACKFILL=0 to skip (e.g. mid-party on a slow box).
 			enabled: () => process.env.ENCORE_LYRICS_BACKFILL !== '0',
 			run: async () => {
-				// Songs cooked before the align pipeline existed have no align job and no way to get one, so
+				// Songs processed before the align pipeline existed have no align job and no way to get one, so
 				// the library's existing catalog would never gain lyrics. Enqueued at the LOWEST priority so a
-				// singer's live cook always jumps the whole backfill queue, and dedup on (mediaId, jobType)
+				// singer's live process always jumps the whole backfill queue, and dedup on (mediaId, jobType)
 				// makes a restart idempotent.
 				const need = needsLyricsBackfill(mediaById.values());
 				for (const id of need) {
@@ -381,7 +381,7 @@ export function getApp(): EncoreApp {
 				}
 				if (need.length > 0) {
 					console.log(
-						`[core] lyrics backfill: queued ${need.length} align job(s) for already-cooked songs` +
+						`[core] lyrics backfill: queued ${need.length} align job(s) for already-processed songs` +
 							' (lowest priority; ENCORE_LYRICS_BACKFILL=0 to skip)'
 					);
 					app.workerHub.dispatch();
@@ -391,10 +391,10 @@ export function getApp(): EncoreApp {
 		{
 			name: 'recompress legacy stems',
 			run: async () => {
-				// Recompress legacy stems in place. Songs cooked before the audio policy carry WAV stems ~8x
-				// larger than a cook produces today; the bytes are already here, so this needs no download and
+				// Recompress legacy stems in place. Songs processed before the audio policy carry WAV stems ~8x
+				// larger than a process produces today; the bytes are already here, so this needs no download and
 				// no Demucs run, and the song never leaves the library. Eviction would have been the wrong
-				// tool: it would drop those songs until re-cooked.
+				// tool: it would drop those songs until re-processed.
 				const targets = planRecompress(mediaRepo.all());
 				if (targets.length === 0) return;
 				const rc = await recompressLegacyStems(targets, ffmpegTranscoder());
@@ -432,7 +432,7 @@ export function getApp(): EncoreApp {
 					const side = await readSidecar(c.mediaId);
 					c.lastUsedAt = side?.library.lastPlayedAt ?? side?.library.addedAt ?? 0;
 				}
-				// Never strip a cook out from under a live or queued entry. hydrate() (above) restored the
+				// Never strip a process out from under a live or queued entry. hydrate() (above) restored the
 				// queue and playback BEFORE this pass, so a restart mid-party with the cap set could otherwise
 				// evict the playing/queued song. Protect every queued media id plus the currently-playing one.
 				const protectedIds = new Set<string>(entries.map((e) => e.mediaId));
@@ -444,7 +444,7 @@ export function getApp(): EncoreApp {
 					const live = mediaById.get(id);
 					if (!live) continue;
 					freed += evictDerived(live).bytes;
-					// back to un-cooked: rotation stops treating it as playable, a re-request re-cooks it
+					// back to un-processed: rotation stops treating it as playable, a re-request re-processes it
 					live.instrumentalRef = undefined;
 					live.vocalsRef = undefined;
 					live.guideOffsetMs = undefined;
@@ -466,7 +466,7 @@ export function getApp(): EncoreApp {
 	];
 
 	// Detached: boot must not wait on it. Per-pass isolation lives in runBootMaintenance — one pass's
-	// failure is named and does not skip the rest.
+	// failure is named and does not skip the rest (issue an earlier change defect 1).
 	void runBootMaintenance(bootTasks, (msg) => console.warn(`[core] ${msg}`));
 
 	// The app object is built below; the hub's sinks (toWorker/broadcast) read THROUGH the app so
@@ -497,7 +497,7 @@ export function getApp(): EncoreApp {
 			try {
 				const side = await readSidecar(mediaId);
 				if (!side) return; // not in the library (a plain search result) — nothing to record against
-				side.library = { ...side.library, ...bumpPlay(side.library, app.now()) };
+				side.library = {...side.library,...bumpPlay(side.library, app.now()) };
 				await writeSidecar(side);
 			} catch {
 				/* a lost play count is not worth a failed playback */
@@ -516,19 +516,19 @@ export function getApp(): EncoreApp {
 		mediaStore: mediaStoreConfig,
 		// A stems/upgrade job carries the room's chosen engine+model, read live at assign time. EFFECTIVE
 		// (global+room) so the room's downward-only quality ceiling actually reaches dispatch — the hub
-		// folds resolveCookSeparator over this before handing the pure dispatch layer its settings.
+		// folds resolveProcessSeparator over this before handing the pure dispatch layer its settings.
 		getSettings: () => app.settings.getEffective(app.activeRoomId),
-		// A cooked song is durable — persist the ready flip (instrumental key + lyrics + pitch)
-		// so the next boot lists it in the karaoke library instead of re-cooking it.
+		// A processed song is durable — persist the ready flip (instrumental key + lyrics + pitch)
+		// so the next boot lists it in the karaoke library instead of re-processing it.
 		persistMedia: (mediaId) => {
 			const m = mediaById.get(mediaId);
 			if (m) mediaRepo.upsert(m);
 		},
-		// When a cooked song flips to ready, reconcile playback (start if the room idled / preload) —
+		// When a processed song flips to ready, reconcile playback (start if the room idled / preload) —
 		// the held entry slots back at its fair position. Broadcast a fresh queue:sync FIRST
 		// so every client updates its media catalog with the now-ready song's new sourceRef (the
 		// instrumental key) + ready status — otherwise the TV's cached media stays 'queued' and sits
-		// on the WAITING screen (the "big gap" between cook-finish and playback) until a later sync.
+		// on the WAITING screen (the "big gap" between process-finish and playback) until a later sync.
 		onMediaReady: () => {
 			app.publish(
 				syncEvent(state, {
@@ -557,36 +557,25 @@ export function getApp(): EncoreApp {
 	// When the reaper requeues/fails a job (lease expiry), capacity may have changed → redispatch.
 	const reaper = new JobReaper(jobs, {
 		onReaped: () => workerHub.dispatch(),
-		// And on EVERY tick, changed or not — the reaper is the only clock this system has. The
-		// unservable-TTL check lives inside dispatch(), which is otherwise event-driven, and an unservable
-		// job is never assigned or running: sweep() found no actions, onReaped never fired, dispatch() was
-		// never called again, and a job whose capability nothing advertises parked queued forever. That is
-		// precisely the hang the TTL exists to end, reproduced in the quietest case.
+		// EVERY TICK, not only when sweep() found something to reap. The unservable-job TTL is evaluated
+		// inside dispatch(), which is event-driven, so on an EMPTY fleet nothing ever calls it: sweep()
+		// finds no actions, onReaped never fires, dispatch() is never called again, and a job whose
+		// capability nothing advertises parks queued forever. That is precisely the hang the TTL exists to
+		// end, reproduced in the quietest case.
 		onTick: () => workerHub.dispatch(),
-		// A reaper-killed cook (worker box died, attempts exhausted) reaches terminal `failed` without
+		// A reaper-killed process (worker box died, attempts exhausted) reaches terminal `failed` without
 		// the worker reporting it, so it never hits #onFailed. The reaper has no catalog, so it hands
 		// the job up and we do here EXACTLY what the reported (#onFailed) and unservable-TTL paths do —
-		// otherwise a reaper-killed cook is completely silent: the gate settles but the
-		// room is told nothing, so every phone that watched it cook stays pinned on "Making karaoke… N%"
+		// otherwise a reaper-killed process is completely silent: the gate settles but the
+		// room is told nothing, so every phone that watched it process stays pinned on "Making karaoke… N%"
 		// with no Sing button, for the life of the page (displayReadiness lets the last live event win,
 		// and no user action — not removing the song, not queue:sync — ever clears it).
 		// The reaper has no catalog and no #emitStatus, which is why this hook used to hand-reimplement
-		// the whole epilogue and drift from the two worker-hub copies (that reimplementation shipped it SILENT).
+		// the whole epilogue and drift from the two worker-hub copies (issue an earlier change shipped it SILENT).
 		// It now calls the one shared epilogue directly — settle the gate, tell the room, log one
 		// uniform line, reclaim scratch — with `cause: 'reaper'` so the operator can still grep this
 		// path apart.
-		onFailed: (job) =>
-			reportTerminalFailure(job, 'reaper', {
-				broadcast: (e) => app.publish(e),
-				mediaById,
-				// The reaper path needs the durable half as much as the other two — arguably more, since a
-				// reaper kill means the worker box died, which is exactly the kind of incident a core
-				// restart tends to follow.
-				persist: (mediaId) => {
-					const m = mediaById.get(mediaId);
-					if (m) mediaRepo.upsert(m);
-				}
-			})
+		onFailed: (job) => reportTerminalFailure(job, 'reaper', { broadcast: (e) => app.publish(e), mediaById })
 	});
 
 	app = {
@@ -650,7 +639,7 @@ export interface HubDepsPerFrame {
 	listAway: () => string[];
 	/** Idempotency ledger, RECORD-ON-CHECK — true if already applied, else records it. */
 	seenOp: (clientOpId: string) => boolean;
-	/** NON-RECORDING peek at the same ledger (the validation-failure re-ack path). */
+	/** NON-RECORDING peek at the same ledger (validation-failure re-ack path). */
 	hasOp: (clientOpId: string) => boolean;
 }
 
@@ -658,10 +647,10 @@ export interface HubDepsPerFrame {
  * Assemble a complete {@link HubDeps} for one WS frame from the shared app plus the per-frame inputs.
  *
  * This is the SINGLE place the hub's optional hooks are wired to their live services, replacing the
- * hand-assembled bag that server.ts spelled out per frame. The app-derived hooks —
+ * hand-assembled bag that server.ts spelled out per frame (§3). The app-derived hooks —
  * listSingers -> app.singers, getSettings -> app.settings, onNowPlaying -> app.plays, onSang ->
  * app.singers, recordAdd -> app.popularity, onEntryRemoved -> cancelJobsForMedia, onEntryAdded ->
- * reprioritizeCookForMedia — are filled HERE, so a new optional hook is wired in one place instead of
+ * reprioritizeProcessForMedia — are filled HERE, so a new optional hook is wired in one place instead of
  * at every composition site. The optionality that genuinely varies per call (actorSingerId, the
  * membership snapshot, the ledger) is passed in via {@link HubDepsPerFrame}. The hubdeps-composition-
  * parity guard now asserts THIS literal fills every optional HubDeps key, so a dropped hook still reds.
@@ -678,9 +667,9 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 		onNowPlaying: (e) => app.plays.onNowPlaying(e),
 		onSang: (singerId) => app.singers.markSang(singerId, app.now()),
 		recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),
-		// An explicit remove of a cooking song stops the cook (subprocess kill + slot release + dedup-slot
-		// free). Settles the media back to un-cooked and tells the room so a search row stops showing a
-		// cook that is no longer running. No-ops when a shared cook is still needed by another entry.
+		// An explicit remove of a processing song stops the process (subprocess kill + slot release + dedup-slot
+		// free). Settles the media back to un-processed and tells the room so a search row stops showing a
+		// process that is no longer running. No-ops when a shared process is still needed by another entry.
 		onEntryRemoved: (mediaId: string, remainingEntries: QueueEntry[]) =>
 			cancelJobsForMedia(mediaId, {
 				jobs: app.jobs,
@@ -690,11 +679,11 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 				mediaById: app.mediaById,
 				broadcast: perFrame.broadcast
 			}),
-		// The add-side mirror: a cook filed at NO_QUEUE_PRIORITY (make-karaoke POST beat the queue add over
+		// The add-side mirror: a process filed at NO_QUEUE_PRIORITY (process POST beat the queue add over
 		// a reconnecting socket) is pulled to the turn's rotation position and dispatch kicked, so it stops
-		// sorting behind the lyrics backfill forever. No-ops with no cook in flight (the starvation half).
+		// sorting behind the lyrics backfill forever. No-ops with no process in flight (starvation half).
 		onEntryAdded: (mediaId: string, entries: QueueEntry[]) =>
-			reprioritizeCookForMedia(mediaId, {
+			reprioritizeProcessForMedia(mediaId, {
 				jobs: app.jobs,
 				entries,
 				now: app.now,

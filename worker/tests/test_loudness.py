@@ -2,7 +2,7 @@
 
 The measure is BS.1770-4 via pyloudnorm; these tests pin the TRI-STATE contract (a real negative
 float for a real signal, None for silence / too-short / missing / unreadable), that the value is
-PERSISTED into the songProfile on every cook, and that the level half degrades independently of the
+PERSISTED into the songProfile on every process, and that the level half degrades independently of the
 key and range halves. Expected values are asserted against INDEPENDENTLY-REASONED bands, never by
 re-running the meter the code under test uses (section 3)."""
 
@@ -73,7 +73,7 @@ def test_unreadable_file_degrades_to_none_never_raises(tmp_path):
     assert loudness.measure_lufs(str(bad)) is None
 
 
-# -- wiring: build_song_profile measures and reports the instrumental loudness on every cook --
+# -- wiring: build_song_profile measures and reports the instrumental loudness on every process --
 def test_build_song_profile_logs_the_measured_lufs(tmp_path):
     _write_wav(tmp_path / "inst.wav", _tone(44100, 3.0, 1000.0, 0.5))
     logs = []

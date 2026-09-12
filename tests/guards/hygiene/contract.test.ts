@@ -563,7 +563,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		' + JSON.stringify(SEL.songRow) + ',
 		'video,audio'
 	],
-	'probes/p14-playhead-vs-cook.mjs': ['#ff5cae', 'audio'],
+	'probes/p14-playhead-vs-process.mjs': ['#ff5cae', 'audio'],
 	/*
 	 * `shoot-913.mjs` is a CAPTURE script, not a driver: it produces the before/after evidence for an
 	 * accepted visual change and asserts nothing. It still goes through this guard because the guard

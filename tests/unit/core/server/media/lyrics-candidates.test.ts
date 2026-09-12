@@ -4,7 +4,7 @@
 import { test, expect } from 'bun:test';
 import type { LyricsCandidate, Media } from '$lib/contract';
 import { chosenCandidate } from '$lib/contract';
-import { setMediaLyrics } from '$lib/server/jobs/make-karaoke';
+import { setMediaLyrics } from '$lib/server/jobs/process';
 
 // toRelativeKey strips the REAL MEDIA_DIR, so the absolute paths a worker reports only relativize
 // against the configured root (see paths.ts). Pin it, as the other media tests do.
@@ -117,7 +117,7 @@ test('a sidecar rewrite from an index-only Media does not lose the candidate set
 	expect(rewritten.artifacts.lyricsCandidates).toHaveLength(1);
 });
 
-// ── a human override outranks the ranker, everywhere the chosen candidate is resolved ────────
+// ──: a human override outranks the ranker, everywhere the chosen candidate is resolved ──
 
 test('setMediaLyrics HONORS a human override over pickBestLyrics on a later align completion', () => {
 	// The song already has a pinned override on the ASR candidate; a re-time completes reporting both.

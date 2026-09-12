@@ -8,15 +8,15 @@ text first-class and pre-timed `.lrc` a bonus rather than a requirement.
 This module owns "where does text come from". A `LyricsSource` yields text plus its provenance; the
 timing layer in whisperx.py then force-aligns whatever arrived. Sources are collected into a list and
 run INDEPENDENTLY — not first-hit — because text quality and timing fidelity are independent axes and
-ASR runs on every cook regardless (it is also the only signal that catches a confidently WRONG
-LRCLIB match; see agreementScore in src/shared/lyrics/lyrics.ts).
+ASR runs on every process regardless (it is also the only signal that catches a confidently WRONG
+LRCLIB match; see agreementScore in src/lib/contract/lyrics/lyrics.ts).
 
 New module rather than an addition to lyrics/source.py: the LRCLIB adapter needs
 `whisperx.lrclib_to_segments`, and whisperx.py already imports the lyrics package — putting the adapter
 there would close an import cycle.
 
 PURE of network/ML by construction: every source is injectable, so the whole chain tests with fakes.
-Candidate metadata mirrors `LyricsCandidate` in src/shared/lyrics/lyrics.ts — that TS module is the
+Candidate metadata mirrors `LyricsCandidate` in src/lib/contract/lyrics/lyrics.ts — that TS module is the
 authority on RANKING; this side only reports what it produced and how trustworthy it is.
 """
 
@@ -30,12 +30,12 @@ from typing import Any, NamedTuple
 
 from ..vocabulary import ROLE_BASELINE, ROLE_CANDIDATE, ROLE_UNSPECIFIED, TextSource, Timing
 from .artifact import (
-    candidate_key as candidate_key,  # noqa: F401 — re-export: moved to artifact.py, kept importable from chain
+    candidate_key as candidate_key,  # noqa: F401 — re-export: moved to artifact.py in an earlier change, kept importable from chain
 )
 from .source import LyricsFetchError
 
 # Text-source ids and timing tiers. Promoted to enums in src/vocabulary.py (TextSource, Timing) so the
-# TS↔Python guard in src/server/jobs/vocabulary-parity.test.ts covers them — a comment saying
+# TS↔Python guard in src/lib/server/jobs/vocabulary-parity.test.ts covers them — a comment saying
 # "must match LyricsTextSource" cannot fail a build; the enum can. Re-exported under the original names
 # so every importer of chain.py is unchanged, and `.value` keeps them plain strings for JSON/argv/keys.
 SOURCE_LRCLIB = TextSource.LRCLIB.value
@@ -65,7 +65,7 @@ TIMING_NONE = Timing.NONE.value
 # that produced a silent vocals stem, an upload YouTube captioned badly, a passage no model hears.
 # Averaging over independent errors is what makes the ruler steadier than any of its parts.
 #
-# The role constants themselves now live in src/vocabulary.py beside TextSource/Timing
+# The role constants themselves now live in src/vocabulary.py beside TextSource/Timing (moved in an earlier change)
 # and are re-exported here — imported above — so every importer of chain.py is unchanged. ROLE_UNSPECIFIED
 # is the fail-closed default for a hand-built text: see LyricsText.role and vocabulary.py's ROLES note.
 
@@ -87,7 +87,7 @@ BASELINE_CAPTIONS_AUTO = 2
 
 def is_authoritative_text(text_source: str, text_confidence: str) -> bool:
     """Is this text trustworthy enough to be the song's real words? Mirror of `isAuthoritativeText`
-    in src/shared/lyrics/lyrics.ts — that module is the authority; keep the two in step.
+    in src/lib/contract/lyrics/lyrics.ts — that module is the authority; keep the two in step.
 
     Mirrored rather than re-derived because it is now load-bearing on BOTH sides of the seam: the TV
     uses it to decide whether to caption the overlay "auto-transcribed", and the worker uses the same
@@ -117,7 +117,7 @@ class LyricsRequest:
     #: The raw mixed audio (retained original). Fine for forced alignment.
     audio_path: str = ""
     #: The isolated vocals stem, when a stems job has already produced it. ASR wants THIS — a full mix
-    #: transcribes badly — so it may be absent for a song whose stems have not been cooked.
+    #: transcribes badly — so it may be absent for a song whose stems have not been processed.
     vocals_path: str | None = None
     #: Cues from the upload's own human-authored caption track, already fetched and parsed by the
     #: processor's async stage. None/[] means the upload has no manual track. Passed in rather than
@@ -239,14 +239,14 @@ def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]
 # ── ASR agreement: catching a confidently WRONG lookup ────────────────────────────
 #
 # Mirrors agreement / agreementScore / SUSPECT_COVERAGE / SEQUENCE_WEIGHT / MIN_TOKENS_TO_COMPARE in
-# src/shared/lyrics/lyrics.ts, and every number below is cross-checked against that authority by
+# src/lib/contract/lyrics/lyrics.ts, and every number below is cross-checked against that authority by
 # tests/test_lyrics_presplit.py's source-scan guard plus the shared-corpus parity guard in
 # tests/test_lyrics_agreement_542.py.
 # Computed HERE, in the worker, because this is the only place both texts exist in memory at once — the
 # core holds refs, and reading two artifacts back off disk inside the realtime hub to compare them would
 # be I/O on the wrong side of the seam.
 #
-# This is what makes "ASR on every cook" pay for itself beyond being a fallback: LRCLIB's dangerous
+# This is what makes "ASR on every process" pay for itself beyond being a fallback: LRCLIB's dangerous
 # failure is not a miss but a confident MISMATCH (fuzzy metadata returns another song's words), and
 # comparing the lookup against a transcript of what is actually being sung is the only signal we have.
 
@@ -279,9 +279,9 @@ MIN_TOKENS_TO_COMPARE = 12
 #: lyrics is the failure this whole tier exists to avoid.
 #:
 #: NOT A CORPUS CALIBRATION. The corpus is synthetic (original text, an explicit ASR-degradation model)
-#: because committing a real lyrics corpus from the prod snapshot is still open. What it measures
+#: because an earlier change — commit a real lyrics corpus from the prod snapshot — is still open. What it measures
 #: is the metric's own systematic behaviour, which is what choosing between two axes needs; it is not
-#: evidence about the real distribution of songs. Re-derive this number once that corpus lands.
+#: evidence about the real distribution of songs. Re-derive this number once an earlier change lands.
 SUSPECT_COVERAGE = 0.40
 
 #: How much of the ranking score is the POSITION-aware term. Equal weight with the count-aware
@@ -297,7 +297,7 @@ SEQUENCE_WEIGHT = 0.5
 #: wrong-version cases overshoot by +39% (Total Eclipse, 268s->374s) and +27% (Friends in Low
 #: Places, 281s->357s), so 10% clears both with margin while leaving room for the owner's stated
 #: trap — a legitimate LRC for the SAME recording carrying a short trailing artefact cue, which is
-#: seconds, not tens of percent. PROPOSED FOR REVIEW: Q2 was ruled "a percentage, proposed
+#: seconds, not tens of percent. PROPOSED FOR REVIEW: Q2 of an earlier change was ruled "a percentage, proposed
 #: by the implementer" — 0.10 is that proposal. Raise it if a same-recording false positive appears.
 OVERSHOOT_FRACTION_MAX = 0.10
 
@@ -313,7 +313,7 @@ def lyrics_tokens(text: str) -> list[str]:
     codepoint) and "Beyonce\u0301" (e + combining acute) are distinct tokens on both the intersection
     and the union of `agreement_score`, counting a correct candidate as disagreeing twice. Idempotent
     on ASCII (unicodedata.normalize("NFKC", ascii) == ascii), so it cannot move an all-ASCII score.
-    Mirrors src/shared/lyrics/lyrics.ts:lyricsTokens (kept in one commit) and the established fold in
+    Mirrors src/lib/contract/lyrics/lyrics.ts:lyricsTokens (kept in one commit) and the established fold in
     metadata/annotate.py:normalize_for_match.
     """
     folded = unicodedata.normalize("NFKC", text).lower()
@@ -407,14 +407,13 @@ def agreement(candidate: str, baseline: str) -> Agreement | None:
     return Agreement(
         coverage=shared / len(tokens_b),
         fidelity=shared / len(tokens_c),
-        sequence=sequence,
-    )
+        sequence=sequence)
 
 
 def agreement_score(candidate: str, baseline: str) -> float | None:
     """The 0..1 ranking score for one candidate against one baseline, or None when not comparable.
 
-    Count- and position-aware; it was symmetric Jaccard over token SETS, which scored the
+    Count- and position-aware since an earlier change; it was symmetric Jaccard over token SETS, which scored the
     reported wrong-version mis-pick at 0.448 — above the old 0.25 threshold, so it was accepted. See
     `Agreement` for why the three numbers are kept apart and `SUSPECT_COVERAGE` for which of them the
     absolute judgement reads.
@@ -478,8 +477,7 @@ def composite_score(candidate: LyricsText, baselines: list[LyricsText]) -> Compo
     return Composite(
         score=sum(votes) / len(votes),
         coverage=sum(got.coverage for got in spoke) / len(spoke),
-        votes=votes,
-    )
+        votes=votes)
 
 
 def candidate_last_end(candidate: LyricsText) -> float | None:
@@ -489,7 +487,7 @@ def candidate_last_end(candidate: LyricsText) -> float | None:
     `segments`; a text-only source does not. Overshoot is only defined for the former — a text without
     its own timings cannot be "timed past the audio" until it is force-aligned, which happens after
     selection. Reads `end` off segments directly (not the flattened word list) because at SELECTION time
-    the line timing is what a wrong-version LRC carries, and #667's two real cases are `lrclib-word`.
+    the line timing is what a wrong-version LRC carries, and an earlier change's two real cases are `lrclib-word`.
     """
     ends = [float(seg["end"]) for seg in candidate.segments if isinstance(seg.get("end"), (int, float))]
     return max(ends) if ends else None
@@ -536,7 +534,7 @@ def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float
 # it (measured: baseline coverage 0.857 for the reported wrong-version mis-pick). What separates them is
 # not an absolute score but the COMPARISON. Argmax needs no threshold at all — only a difference.
 #
-# So the two mechanisms are complementary, both run, and they read DIFFERENT AXES of the same
+# So the two mechanisms are complementary, both run, and since an earlier change they read DIFFERENT AXES of the same
 # comparison rather than sharing one averaged number:
 #   SELECT   comparative, no threshold — `Composite.score`, the weaker count direction blended with the
 #            adjacent-pair term. Harsh and discriminating on purpose: the wrong-version fingerprint is
@@ -582,10 +580,10 @@ class VariantChoice:
     def to_record(self) -> dict[str, object]:
         """The durable, wire-safe form of this pick — the same facts as `summary()`, as data.
 
-        `summary()` renders these for the cook log, which rotates and is per-container; this crosses
+        `summary()` renders these for the process log, which rotates and is per-container; this crosses
         the wire and lands in the job_attempts audit trail so a mis-pick is diagnosable from state
         weeks later. Deliberately NOT the lyric bodies — label + composite score is enough to
-        say which of #542's three arms fired (metadata fallback vs a real disagreement), and storing
+        say which of an earlier change's three arms fired (metadata fallback vs a real disagreement), and storing
         four rejected full texts per song would multiply the lyrics footprint for triage-only data.
         """
         return {
@@ -625,7 +623,7 @@ class Selection:
         None when no source offered a choice among versions (`choices` empty): there is no pick to
         explain, so nothing is persisted rather than an empty shell that reads as a lost record. When
         a decision happened this carries every source's `VariantChoice` plus the two facts that tell
-        #542's arm (b) from arm (c) at a glance: whether a baseline actually voted, and on what basis.
+        an earlier change's arm (b) from arm (c) at a glance: whether a baseline actually voted, and on what basis.
         """
         if not self.choices:
             return None
@@ -712,7 +710,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
         # The choice is made; the winner should no longer carry the losers. Rebind via replace rather
         # than assigning `winner.alternates = []`: `winner` is a caller-owned object (an element of the
         # candidate list passed in, or one of its `alternates`), and mutating it in place reaches across
-        # the module boundary into the step layer's data — the same class of cross-object write the role stamp fixes
+        # the module boundary into the step layer's data — the same class of cross-object write an earlier change fixes
         # at steps/lyrics.py. See presplit.py's replace() note on why copy-with-replacement is the rule here.
         winner = replace(winner, alternates=[])
         if len(pool) > 1:
@@ -728,8 +726,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
                         if i != pick
                     ],
                     decided_by=decided_by,
-                    votes=len(votes),
-                )
+                    votes=len(votes))
             )
         # Across sources, the same comparison decides — on the PENALISED rank of the pick, so a source
         # whose only version overshoots audio-end loses to a source that fits. An unjudged
@@ -766,7 +763,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
 # ── sources: re-exported from lyrics/sources.py ────────────────────────────────────
 #
 # The four source adapters, the ``LyricsSource`` protocol and ``_source_name`` were extracted to
-# lyrics/sources.py (the ``sources/*`` seam of the declared split). They are imported here at
+# lyrics/sources.py in an earlier change (the ``sources/*`` seam of the declared split). They are imported here at
 # the foot of the module -- AFTER LyricsRequest / LyricsText and the SOURCE_* / TIMING_* vocabulary are
 # defined above -- so that ``from .chain import AsrSource``, lyrics/registry.py's import group and the
 # package surface keep resolving unchanged, and there is no import cycle. ``acquire_with_notes`` above
@@ -778,5 +775,4 @@ from .sources import (  # noqa: E402, F401 — deliberate re-export of the extra
     LrclibSource,
     LyricsSource,
     _CaptionsSource,
-    _source_name,
-)
+    _source_name)

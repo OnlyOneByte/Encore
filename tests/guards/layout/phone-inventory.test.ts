@@ -277,8 +277,8 @@ const LIVE_REGIONS: { file: string; purpose: string }[] = [
 	{ file: 'routes/+page.svelte', purpose: 'XR-PH-13 announcement region (`sr-live`) — queue changes under the guest' },
 	{ file: 'routes/+page.svelte', purpose: 'connection loss/restore (`offline-pill`)' },
 	{ file: 'lib/components/SongRow.svelte', purpose: "a row's readiness chip changing while the guest looks at it" },
-	{ file: 'lib/components/ProcessingCard.svelte', purpose: 'a cook that failed, and why it stopped' },
-	{ file: 'lib/components/ProcessingCard.svelte', purpose: 'cook stage progress while the guest waits' },
+	{ file: 'lib/components/ProcessingCard.svelte', purpose: 'a process that failed, and why it stopped' },
+	{ file: 'lib/components/ProcessingCard.svelte', purpose: 'process stage progress while the guest waits' },
 	{
 		file: 'lib/components/CodeEntry.svelte',
 		purpose: 'XR-PH-14 join-code entry — a rejected keystroke names the excluded characters (SC 3.3.1) and the disabled-Continue reason (SC 3.3.2), without interrupting typing'

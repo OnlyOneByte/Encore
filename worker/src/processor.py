@@ -66,18 +66,18 @@ class JobSpec:
     params: dict
     # where the worker writes outputs (the shared /media volume in single-box mode)
     media_dir: str
-    # The cook this job belongs to: the trace id the core mints (repository.ts) and threads through a
-    # chained run, so the worker can correlate its own logs to the cook the operator sees on
+    # The process this job belongs to: the trace id the core mints (repository.ts) and threads through a
+    # chained run, so the worker can correlate its own logs to the process the operator sees on
     # /metrics/<mediaId>. Empty for a core that predates carrying it on the assign frame; a
     # trailing default so it does not disturb the positional constructors in the test suite.
-    cook_id: str = ""
+    processing_id: str = ""
 
 
 class Processor(Protocol):
     """Process one job, yielding ProgressEvents and finally a CompleteResult. Raising signals a
     failure to the caller, which decides retryable-or-not."""
 
-    def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]: ...
+    def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:...
 
 
 class StubProcessor:
@@ -128,12 +128,12 @@ def source_audio_path(media_dir: str, media_id: str, ext: str = "wav") -> str:
 def vocals_path(media_dir: str, media_id: str) -> str:
     """Deterministic MediaStore key for a media's ISOLATED VOCALS stem. Feeds pitch
     extraction and the vocal-guide mix (docs/ARCHITECTURE.md §7). Parallels the core's
-    make-karaoke `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
+    process `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
     return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.{VOCALS_EXT}")
 
 
 def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt") -> str:
-    """Deterministic key for a media's RAW caption track, retained for post-cook diagnosis.
+    """Deterministic key for a media's RAW caption track, retained for post-process diagnosis.
 
     Under the `derived/` storage class so it is "safe to delete, regenerable, first to evict" -- a
     `.vtt` is tens of kilobytes of text, unlike the hundreds of megabytes of decoded audio that made
@@ -141,7 +141,7 @@ def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt")
     file is only bounded by the `ENCORE_MEDIA_MAX_GB` cap once its key is enumerated in the core's
     `derivedRefsOf`; an earlier change added that enumeration (this path is keyed per media id, so `derivedRefsOf`
     reconstructs it from CAPTION_KINDS x KNOWN_CAPTION_EXTS via `rawCaptionKey` in paths.ts). Before
-    Before the durable-caption change it inherited none of that and was orphaned on eviction. It is NOT a lyrics candidate and is
+    an earlier change it inherited none of that and was orphaned on eviction. It is NOT a lyrics candidate and is
     never recorded in the sidecar; it is debugging evidence of what the parser was handed, which is
     otherwise destroyed with the job scratch and cannot be re-fetched reliably (the upload may be gone
     or the box rate-limited).

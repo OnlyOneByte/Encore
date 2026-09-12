@@ -5,7 +5,7 @@
  * where the room is, and the reloaded TV's own telemetry then dragged the server's position backwards,
  * so every phone's progress bar jumped back with it.
  *
- * METHOD. Cook song A, get it genuinely playing and past the seek threshold, record the room position
+ * METHOD. Process song A, get it genuinely playing and past the seek threshold, record the room position
  * from the phone socket's `playback:state`. Then RELOAD the TV page — a cold mount, the exact repro —
  * and watch the fresh master's playhead. On a cold mount the room's position rides `playback:state`,
  * which the server sends before the `nowplaying:changed` that mounts the <audio>, so the fix has to
@@ -117,7 +117,7 @@ launch('bun', ['e2e/fake-stems-worker.mjs'], {
 });
 await sleep(1500);
 
-// ── join, cook one song ────────────────────────────────────────────────────
+// ── join, process one song ────────────────────────────────────────────────────
 const QUERIES = ['caroline', 'believin', 'rhapsody', 'prayer'];
 /** @type {Map<string, Media>} */
 const found = new Map();
@@ -227,14 +227,14 @@ async function queueAdd(mediaId) {
 	await sleep(300);
 }
 /** @param {string} mediaId @returns {Promise<number>} */
-const cook = (mediaId) =>
-	phone.evaluate(`fetch('/api/make-karaoke', {
+const processMedia = (mediaId) =>
+	phone.evaluate(`fetch('/api/process', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ mediaId: ${JSON.stringify(mediaId)} })
   }).then(r => r.status)`);
 
-await cook(songA.id);
+await processMedia(songA.id);
 let readyA = false;
 for (let i = 0; i < 120; i++) {
 	if (await isReady(songA.id, qA)) {
@@ -243,7 +243,7 @@ for (let i = 0; i < 120; i++) {
 	}
 	await sleep(500);
 }
-if (!readyA) bail('song A never cooked');
+if (!readyA) bail('song A never processed');
 await queueAdd(songA.id);
 
 const page = await browser.newPage();

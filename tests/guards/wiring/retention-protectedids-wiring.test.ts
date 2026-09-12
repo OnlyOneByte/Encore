@@ -1,6 +1,6 @@
 // guard: planEviction's protectedIds parameter is only real once app.ts WIRES it.
 //
-// planEviction(candidates, cap, protectedIds) enforces "never strip a cook out from under a live or
+// planEviction(candidates, cap, protectedIds) enforces "never strip a process out from under a live or
 // queued entry" HERE, in the pure function — retention.test.ts covers the parameter. But the ONLY
 // production caller, app.ts's boot maintenance pass, passed just two arguments, so the default
 // `new Set()` protected nothing: hydrate() restores the queue and playback BEFORE the pass, so a

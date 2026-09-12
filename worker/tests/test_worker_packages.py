@@ -102,13 +102,13 @@ def test_the_domain_packages_are_exactly_the_ones_declared():
 
 
 def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed():
-    """The separation domain's audio policy is the rule that stops a reader re-encoding a stem
+    """Issue an earlier change. The separation domain's audio policy is the rule that stops a reader re-encoding a stem
     badly, and its load-bearing clauses were false in the direction that RELAXES the rule.
 
-    Part (1) is the original finding: "nothing plays [the vocals stem]" — false, the vocals stem is
+    Part (1) is the original an earlier change finding: "nothing plays [the vocals stem]" — false, the vocals stem is
     the guiding track, a second <audio> the TV mixes under the instrumental at up to full gain and pitch-
-    shifts with the key (src/lib/tv/TvPlayer.svelte). Part (2) is the tail-cleanup that followed:
-    once PublishStems was pointed at encode_flac_argv, the AAC vocals path (STEM_BITRATE + encode_stem_argv
+    shifts with the key (src/lib/tv/TvPlayer.svelte). Part (2) is an earlier change's tail-cleanup of an earlier change:
+    once an earlier change pointed PublishStems at encode_flac_argv, the AAC vocals path (STEM_BITRATE + encode_stem_argv
     + the ENCORE_STEM_BITRATE knob) reached no argv, so it was deleted. There is no behaviour to test, so
     this pins the prose and the delete: the guiding-track reason stays named, and the dead AAC names must
     not reappear in worker/src."""
@@ -129,8 +129,8 @@ def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed(
         "steps/separate.py must name the guiding track as the reason"
     )
 
-    # (2) The AAC vocals path is dead. STEM_BITRATE and encode_stem_argv reached
-    # no argv once PublishStems was pointed at encode_flac_argv, so both were removed. Guard that
+    # (2) an earlier change (tail of an earlier change): the AAC vocals path is dead. STEM_BITRATE and encode_stem_argv reached
+    # no argv once an earlier change pointed PublishStems at encode_flac_argv, so both were removed. Guard that
     # neither name reappears anywhere in worker/src, with line comments and docstrings stripped
     # so the retired-policy prose in demucs.py can neither satisfy nor trip this. A sentinel proves the
     # strip did not silently blank the corpus.
@@ -147,22 +147,22 @@ def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed(
     )
     for dead in ("STEM_BITRATE", "encode_stem_argv"):
         assert dead not in code_only, (
-            f"{dead} still reaches code in worker/src — pointing PublishStems at encode_flac_argv "
-            "made the AAC vocals path dead and it was removed; nothing consumes the AAC bitrate knob now"
+            f"{dead} still reaches code in worker/src — an earlier change made the AAC vocals path dead and "
+            "an earlier change removed it; nothing consumes the AAC bitrate knob now"
         )
 
     # And the current reality must be positively stated where the policy lives: both stems are FLAC.
     demucs_src = (src / "separation" / "demucs.py").read_text(encoding="utf-8")
     assert "Used for BOTH stems" in demucs_src, (
-        "encode_flac_argv must state it encodes BOTH stems"
+        "encode_flac_argv must state it encodes BOTH stems since an earlier change"
     )
 
 
 def test_the_key_detect_band_floor_comment_does_not_misstate_the_rfft_resolution_limit():
-    """The _MIN_MIDI band-floor comment justified the floor with arithmetic that was wrong
+    """Issue an earlier change. The _MIN_MIDI band-floor comment justified the floor with arithmetic that was wrong
     by 18 semitones and is exactly the kind of reasoning the next person to touch the chromagram trusts.
 
-    The constant (_MIN_MIDI = 24, C1, 32.7Hz) is CORRECT and measured. What was false:
+    The constant (_MIN_MIDI = 24, C1, 32.7Hz) is CORRECT and measured — see the issue. What was false:
     (1) that below C1 the rfft bin spacing is coarser than a semitone (the crossover is actually ~90Hz /
     MIDI ~42 at frame=8192, so the band's lowest 18 semitones are BELOW the limit, not above it); and
     (2) that the floor keeps sub-bass rumble out (the band starts at 32.7Hz, which IS sub-bass). There is
@@ -204,7 +204,7 @@ def test_the_key_detect_band_floor_comment_does_not_misstate_the_rfft_resolution
     # crossover freq where a semitone (f*(2**(1/12)-1)) first equals one bin, in MIDI
     f_cross = bin_hz / (2 ** (1 / 12) - 1)
     midi_cross = 69.0 + 12.0 * np.log2(f_cross / 440.0)
-    assert _MIN_MIDI == 24, "this floor was measured as correct; do not change the constant"
+    assert _MIN_MIDI == 24, "issue an earlier change measured this floor as correct; do not change the constant"
     assert 41.0 < midi_cross < 42.5, (
         f"resolution crossover moved to MIDI {midi_cross:.2f}; the band-floor comment "
         "quotes ~MIDI 42 at frame=8192 and must be re-derived if `frame` changed"
@@ -216,7 +216,7 @@ def test_the_key_detect_band_floor_comment_does_not_misstate_the_rfft_resolution
 
 
 def test_the_separation_seam_note_points_at_the_real_current_sites():
-    """The separation domain header's KNOWN SEAM PROBLEM paragraph recorded the seam at
+    """Issue an earlier change. The separation domain header's KNOWN SEAM PROBLEM paragraph recorded the seam at
     three sites that no longer exist and said the fixing refactor was still pending.
 
     Every claim was false at HEAD: (1) "`roformer` does `from . import demucs as d`" — roformer.py imports
@@ -261,7 +261,7 @@ def test_the_separation_seam_note_points_at_the_real_current_sites():
     # The ffmpeg half is what remains, consumed engine-agnostically at the two real current sites.
     assert "steps/separate.py" in init_doc, (
         "separation/__init__.py must name steps/separate.py as a real consumer of the demucs.py ffmpeg "
-        "builders on a roformer cook"
+        "builders on a roformer process"
     )
     assert "dial_home.py" in init_doc, (
         "separation/__init__.py must name dial_home.py as a real consumer of demucs.py's subprocess_runner "
@@ -276,13 +276,13 @@ def test_the_separation_seam_note_points_at_the_real_current_sites():
 
 
 def test_no_docstring_claims_step_timings_reach_the_metrics_page():
-    """Three docstrings justified structural decisions with observability the code does not
+    """Issue an earlier change. Three docstrings justified structural decisions with observability the code does not
     deliver. The runner measures `ctx.out.timings_sec[step.name]` per step (runner.py) and puts it on the
     wire as the `stepTimingsSec` fact (runner.py `setdefault`), but the core drops it: `pickFacts`'s
-    allowlist (src/server/jobs/attempts.ts) keeps eight keys and `stepTimingsSec` is not among
-    them, and `ResolvedFacts` (src/shared/core/events.ts) does not declare it. So `/metrics` gains no
+    allowlist (src/lib/server/jobs/attempts.ts) keeps eight keys and `stepTimingsSec` is not among
+    them, and `ResolvedFacts` (src/lib/contract/core/events.ts) does not declare it. So `/metrics` gains no
     per-step resolution from it and structurally cannot until the core is wired for it — a separate,
-    owner-gated change (a second branch of the same work; another open request wants the same data).
+    owner-gated change (issue an earlier change's branch two; an earlier change wants the same data).
 
     Production behaviour is correct; only the three claims were false, so this pins the prose. The false
     `/metrics`-resolution clauses stay gone and the corrected framing (measured for the worker's own log /

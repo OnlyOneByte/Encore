@@ -15,8 +15,8 @@ because a reader who trusts the brief will write the wrong requirement.
 | Brief says | `main` actually has | Consequence |
 |---|---|---|
 | "There is no host concept in the product yet, so introducing one is itself a product decision" | `src/lib/server/auth/capabilities.ts` — a five-member `Capability` union, an `Actor` type, and `can(actor, cap)` as "the ONE place that answers *is this actor allowed to do that?*" | The **mechanism** exists and is centralised. What is open is only the **policy content** per capability. Introducing a host is now an edit to one function, which is much cheaper than the brief assumes. |
-| "reorder is within-singer only … not to be reopened" | The queue is a single **stored ordered list** and a reorder rewrites it in place (`rotation.ts` `storedOrder`/`assignSeqs`); pinning was deleted (`move-global`, `unpin`, `pinnedSeq`, `placePins`) | A **cross-singer reorder is expressible without a pin** — it rewrites the stored list directly, durable by construction, gated on `queue:reorder-any`. The within-singer rule still holds for the `move` op, but the product is no longer within-singer only; wiring the arrows/drag to a "move to index" op is still unshipped. |
-| "Rate limits — none exist" | `MAX_CONCURRENT_COOKS_PER_SINGER = 3` (`src/lib/server/jobs/make-karaoke.ts:53`), refused as `over-limit` and answered **HTTP 429** with a phone-showable reason (`routes/api/make-karaoke/+server.ts:45-53`) | One limit exists, on the **expensive** axis (worker fleet). The **cheap** axis — queue depth per singer — is uncapped: `validateCommand`'s `add` arm has no depth check. |
+| "reorder is within-singer only … not to be reopened" | The queue is a single **stored ordered list** and a reorder rewrites it in place (`rotation.ts` `storedOrder`/`assignSeqs`); an earlier change step 3 deleted pinning (`move-global`, `unpin`, `pinnedSeq`, `placePins`) | A **cross-singer reorder is expressible without a pin** — it rewrites the stored list directly, durable by construction, gated on `queue:reorder-any`. The within-singer rule still holds for the `move` op, but the product is no longer within-singer only; wiring the arrows/drag to a "move to index" op is an earlier change step 4. |
+| "Rate limits — none exist" | `MAX_CONCURRENT_PROCESSES_PER_SINGER = 3` (`src/lib/server/jobs/process.ts:53`), refused as `over-limit` and answered **HTTP 429** with a phone-showable reason (`routes/api/process/+server.ts:45-53`) | One limit exists, on the **expensive** axis (worker fleet). The **cheap** axis — queue depth per singer — is uncapped: `validateCommand`'s `add` arm has no depth check. |
 | "whether a guest whose optimistic action lost a race is **told**, or the UI silently reverts" | It is told. `hub.ts:335` emits `op:reject`; `lib/stores/queue.ts:280` rolls back to the pre-op snapshot and calls `onReject`; `routes/+page.svelte:177` wires that to `showError`, rendered as `.error-toast` with `role="alert"` (`+page.svelte:1294`) | The **channel is built**. What is undecided is the **policy**: which rejects deserve disclosure, in whose words, and on which surface. |
 
 The owner's actual ruling is recorded in `capabilities.ts:9-11`, dated: *"Today every joined singer
@@ -53,11 +53,11 @@ enforces it, so this document and `can()` disagree detectably if either drifts.
 | Q1 | Skip a currently-playing song | **A — any joined singer** (status quo; no change to who can skip) | Any joined singer | `player:control` — `server.ts:379` gates the `player:command {cmd:'skip'}` frame | Angelo, 2026-09-09 |
 | Q2 | Live singing controls (guide level, pitch ±, range viz on the now-playing hero) | **A — any joined singer** (ratify; status quo by inheritance, no new capability) | Any joined singer | `player:control` — the same gate; `handlePlayerCommand`'s `key` / `guide` arms | Angelo, 2026-09-09 |
 | Q3 | Deployment-scoped settings (`PUT /api/settings`) | **A — ratify open, accepted** (no split, no gate; consistent with the 2026-09-04 ruling; and fix the stale source comment to match — `src/lib/contract/core/settings.ts`) | Any joined singer | `settings:write-global` — `routes/api/settings/+server.ts:24`; room-scoped stays `settings:write-room` | Angelo, 2026-09-09 |
-| Q4 | Cross-singer reorder | **A — keep open to everyone** (status quo). This ruling covers only the policy: `queue:reorder-any` stays open to any joined singer. Pinning-removal (so `queue:reorder-any` effectively becomes "anyone") is a separate ruling (**Q1-B, 2026-09-09T02:58Z**), superseded by the insert-only stored-list re-scope (2026-09-09) | Any joined singer | `queue:reorder-any` — `hub.ts` `move` arm (the `move-global`/`unpin` arms were deleted with pinning). Stored-list reorder mechanics live elsewhere; this doc + `capabilities.ts` own only the policy side | Angelo, 2026-09-09 |
-| Q5 | Per-singer queue-depth limit | **A — no cap** (status quo). `validateCommand`'s `add` arm stays uncapped | Any joined singer | Not a capability. The unrelated cook cap `MAX_CONCURRENT_COOKS_PER_SINGER = 3` is kept | Angelo, 2026-09-09 |
+| Q4 | Cross-singer reorder | **A — keep open to everyone** (status quo). an earlier change rules only the policy: `queue:reorder-any` stays open to any joined singer. Pinning-removal (so `queue:reorder-any` effectively becomes "anyone") is a separate ruling attributed to **an earlier change (Q1-B, 2026-09-09T02:58Z)**, superseded by the insert-only stored-list re-scope (2026-09-09) | Any joined singer | `queue:reorder-any` — `hub.ts` `move` arm (the `move-global`/`unpin` arms were deleted with pinning in an earlier change step 3). Stored-list reorder mechanics are an earlier change; this doc + `capabilities.ts` own only the policy side | Angelo, 2026-09-09 |
+| Q5 | Per-singer queue-depth limit | **A — no cap** (status quo). `validateCommand`'s `add` arm stays uncapped | Any joined singer | Not a capability. The unrelated process cap `MAX_CONCURRENT_PROCESSES_PER_SINGER = 3` is kept | Angelo, 2026-09-09 |
 
 **Every `Capability` union member is covered above.** `queue:remove-any` (removing someone else's
-entry) is not one of the five questions ruled on above and is unchanged: it stays open to any joined singer.
+entry) is not one of the five an earlier change questions and is unchanged: it stays open to any joined singer.
 
 ### Reorder contention: last-write-wins is not a refusal
 
@@ -67,7 +67,7 @@ last writer. A reorder that loses the race is **superseded, not rejected**: ther
 reorder contention, so nothing is refused and nothing is announced. Because `XR-CON-13` governs
 **refusals** of a guest's action, it does not apply here — a superseded reorder is not a refusal, so it
 is not a carve-out from that rule and nothing is exempted from it. **Every actual `op:reject`
-disclosure is unchanged** — an `add` over a limit, a `cook` over `MAX_CONCURRENT_COOKS_PER_SINGER`, and
+disclosure is unchanged** — an `add` over a limit, a `process` over `MAX_CONCURRENT_PROCESSES_PER_SINGER`, and
 any other refusal a guest caused are still surfaced on that guest's phone in the room's words.
 
 ---
@@ -119,11 +119,11 @@ any other refusal a guest caused are still surfaced on that guest's phone in the
 |---|---|
 | **Statement** | The product's authority rule for **deployment-scoped** settings (`GlobalSettings`) is stated in one place and the enforced gate agrees with it; where the two currently disagree, one of them changes. |
 | **Surfaces** | Phone (`/settings` writes both scopes); operator dashboards; TV (renders consequences of a separator or lyrics-engine change). |
-| **Rationale** | `src/lib/contract/core/settings.ts` documents `GlobalSettings` as *"Deployment-wide separator and cook policy. **Owned by the operator.**"* while `routes/api/settings/+server.ts:24` admits any joined singer — so the product currently ships a stated owner it does not enforce. |
+| **Rationale** | `src/lib/contract/core/settings.ts` documents `GlobalSettings` as *"Deployment-wide separator and process policy. **Owned by the operator.**"* while `routes/api/settings/+server.ts:24` admits any joined singer — so the product currently ships a stated owner it does not enforce. |
 | **Source** | `UNSOURCED` for the policy. The **inconsistency** is documented: `settings.ts` scope comment ("GLOBAL — a property of this deployment and its worker fleet … Owned by the operator") vs `api/settings/+server.ts:24` (`settings:write-global` → `can()` → any joined singer). The two-endpoint split itself is already correct and deliberate (`api/settings/room/+server.ts:1-5`) — do not re-specify it. |
 | **Acceptance** | **Given** the `GlobalSettings` doc comment and the `PUT /api/settings` gate, **when** both are read, **then** they name the same class of actor; **and given** an actor the policy excludes, **when** they `PUT /api/settings`, **then** the response is a refusal with a reason, not a 200. |
 | **Check** | A parity test asserting the scope comment's stated owner and the endpoint's capability agree — the same "a test that duplicates a value it could read" hazard applies, so read both from source rather than hard-coding either. The room endpoint is explicitly **out of scope**: room-scoped writes are safe for anyone and already correct. |
-| **Priority** | **Ship-blocking.** The concrete exposure is real and cheap to trigger: a guest switching the deployment to a slow separator engine mid-party degrades every subsequent cook for everyone. |
+| **Priority** | **Ship-blocking.** The concrete exposure is real and cheap to trigger: a guest switching the deployment to a slow separator engine mid-party degrades every subsequent process for everyone. |
 
 > **Recommendation (not decided).** Do not introduce a host role for this. Move the **narrow**
 > deployment-scoped fields that change cost or latency for everyone (`defaultEngine`, `defaultModel`,
@@ -140,7 +140,7 @@ any other refusal a guest caused are still surfaced on that guest's phone in the
 | **Statement** | The product has a **stated policy** for who may reorder the queue **across** singers, documented at a location outside source comments, distinguishing it from the within-singer reorder that every guest holds over their own picks. |
 | **Surfaces** | Phone (the only reorder surface); TV (renders the resulting order). |
 | **Rationale** | A cross-singer reorder overrides the fairness policy the room chose, so it is a different act from permuting one's own picks and cannot inherit the same permission by default. |
-| **Source** | `UNSOURCED` for the policy. The **model** is documented: the queue is a single **stored ordered list** and *is* the source of truth (`rotation.ts` `storedOrder`/`assignSeqs` renumber the stored positions; nothing re-derives the order from entry fields). A reorder rewrites that list in place, so it is durable by construction — there is no durable pin. Pinning was deleted outright: `move-global`, `unpin`, the `pinnedSeq` column/field, and `rotation.ts:placePins` are gone. `queue:reorder-any` survives and gates a `move` on an entry the actor does not own (`hub.ts` `move` arm). `routes/+page.svelte` records the client-side mirror: *"Every joined singer is a host today."* Wiring the phone arrows and drag to one "move to index" op that rewrites the stored list is **not yet shipped**, so today's cross-singer reorder is the own-picks `move` path only. |
+| **Source** | `UNSOURCED` for the policy. The **model** is documented: the queue is a single **stored ordered list** and *is* the source of truth (`rotation.ts` `storedOrder`/`assignSeqs` renumber the stored positions; nothing re-derives the order from entry fields). A reorder rewrites that list in place, so it is durable by construction — there is no durable pin. an earlier change step 3 deleted pinning outright: `move-global`, `unpin`, the `pinnedSeq` column/field, and `rotation.ts:placePins` are gone. `queue:reorder-any` survives and gates a `move` on an entry the actor does not own (`hub.ts` `move` arm). `routes/+page.svelte` records the client-side mirror: *"Every joined singer is a host today."* Wiring the phone arrows and drag to one "move to index" op that rewrites the stored list is **an earlier change step 4** and is not yet shipped, so today's cross-singer reorder is the own-picks `move` path only. |
 | **Acceptance** | **Given** the policy document, **when** a reader asks whether a guest may move another guest's song across singers, **then** they find one unambiguous answer; **and given** an actor the policy excludes, **when** they send a cross-singer `move` (once step 4 wires it), **then** it is refused with a reason and the stored order is unchanged. |
 | **Check** | Arm-scoped `capability-wiring` assertion on the `move` arm's `queue:reorder-any` gate. Behavioural: a cross-singer reorder by an excluded actor leaves the stored order unchanged after the op. |
 | **Priority** | **Ship-blocking.** A reorder rewrites the authoritative stored list, so an unauthorised one silently distorts the rest of the party. |
@@ -159,12 +159,12 @@ any other refusal a guest caused are still surfaced on that guest's phone in the
 | **Statement** | The product has a **stated policy** for how many songs one guest may hold in the queue at once — including "no limit" as a legitimate stated answer — documented at a location outside source comments, with any limit enforced server-side and surfaced to the guest as a reason rather than a silent refusal. |
 | **Surfaces** | Phone (add path and the resulting refusal); TV (unaffected — no add path). |
 | **Rationale** | Round-robin already prevents one guest **monopolising the order**, but not from occupying an unbounded share of the queue's length, which is what every surface renders and what the position-in-words label counts against. |
-| **Source** | `UNSOURCED` for the number. Grounding: the expensive axis is already capped — `MAX_CONCURRENT_COOKS_PER_SINGER = 3` (`server/jobs/make-karaoke.ts:53`), refused as `over-limit` and answered **429** with `"you already have 3 songs cooking — wait for one to finish"` (`routes/api/make-karaoke/+server.ts:45-53`). The **cheap** axis is uncapped: `hub.ts:validateCommand`'s `add` arm validates identity, media existence and id collision, and never counts the actor's existing entries. |
+| **Source** | `UNSOURCED` for the number. Grounding: the expensive axis is already capped — `MAX_CONCURRENT_PROCESSES_PER_SINGER = 3` (`server/jobs/process.ts:53`), refused as `over-limit` and answered **429** with `"you already have 3 songs processing — wait for one to finish"` (`routes/api/process/+server.ts:45-53`). The **cheap** axis is uncapped: `hub.ts:validateCommand`'s `add` arm validates identity, media existence and id collision, and never counts the actor's existing entries. |
 | **Acceptance** | **Given** a stated limit of N, **when** a guest with N queued entries adds another, **then** the server refuses it and the phone shows a reason naming the limit — **and** the guest's optimistic row rolls back rather than persisting as a row the server does not have. **Given** a stated policy of "no limit", **then** no add is refused on depth grounds and the policy document says so explicitly. |
-| **Check** | A server test adding N+1 entries as one actor and asserting the documented outcome. A source-level assertion that the cook cap and the queue-depth policy are stated in the same place, so a future reader does not find one and assume it is both. |
+| **Check** | A server test adding N+1 entries as one actor and asserting the documented outcome. A source-level assertion that the process cap and the queue-depth policy are stated in the same place, so a future reader does not find one and assume it is both. |
 | **Priority** | **Should ship.** Not blocking: round-robin already bounds the *harm* to queue length rather than turn order, and the expensive axis is already protected. |
 
-> **Recommendation (not decided).** State "no queue-depth limit" and keep the cook cap as the only
+> **Recommendation (not decided).** State "no queue-depth limit" and keep the process cap as the only
 > limit. A depth cap costs a refusal a guest will read as the product rejecting them, in exchange for
 > protecting a resource — list length — that round-robin has already made cheap. If a limit is
 > wanted anyway, express it as **queued entries not yet started**, so a prolific guest is throttled
@@ -193,9 +193,9 @@ any other refusal a guest caused are still surfaced on that guest's phone in the
 | **Statement** | Every member of the `Capability` union has at least one enforcement call site, and each call site is pinned by a guard scoped to **that** site — so narrowing `can()` cannot silently leave an operation open. Named exemptions: none. |
 | **Surfaces** | None (project artefact). |
 | **Rationale** | `capabilities.ts:9-11` promises that gating a capability later is "an edit HERE and nowhere else"; that promise was already found false once for two capabilities, and it is currently false again for three. |
-| **Source** | `DERIVED` by enumeration against `main`. **Model:** the union has five members; `tests/guards/wiring/capability-wiring.test.ts` asserts arm-scoped gates for exactly two (`remove`→`queue:remove-any`, `move`→`queue:reorder-any`) and scans `hub.ts` only. Unguarded: **`player:control`** (real site `server.ts:379`, a different file the guard never reads), **`settings:write-room`** (`routes/api/settings/room/+server.ts:19`), and **`settings:write-global`** (`routes/api/settings/+server.ts:24`). (The `move-global` and `unpin` arms this row previously named were deleted with pinning; `queue:reorder-any` is now reached only through the `move` arm.) |
+| **Source** | `DERIVED` by enumeration against `main`. **Model:** the union has five members; `tests/guards/wiring/capability-wiring.test.ts` asserts arm-scoped gates for exactly two (`remove`→`queue:remove-any`, `move`→`queue:reorder-any`) and scans `hub.ts` only. Unguarded: **`player:control`** (real site `server.ts:379`, a different file the guard never reads), **`settings:write-room`** (`routes/api/settings/room/+server.ts:19`), and **`settings:write-global`** (`routes/api/settings/+server.ts:24`). (The `move-global` and `unpin` arms this row previously named were deleted with pinning in an earlier change step 3; `queue:reorder-any` is now reached only through the `move` arm.) |
 | **Acceptance** | **Given** each capability, **when** its gate is deleted, inverted, moved to a sibling arm, or given a `return null` consequent, **then** a test fails naming that capability. **Given** a new capability added to the union, **then** a test fails until it has a pinned call site. |
-| **Check** | Extend `capability-wiring.test.ts` with the same four mutations it already defends against (the existing M1/M2/M3 plus the `return null` consequent), applied per capability rather than per `hub.ts` arm — and drive it off the union so a sixth capability cannot be added silently. |
+| **Check** | Extend `capability-wiring.test.ts` with the same four mutations it already defends against (an earlier change's M1/M2/M3 plus the `return null` consequent), applied per capability rather than per `hub.ts` arm — and drive it off the union so a sixth capability cannot be added silently. |
 | **Priority** | **Ship-blocking.** Every row in Group A resolves to *narrow one capability*, and this is the guard that makes such a narrowing actually hold. |
 
 ---
@@ -216,9 +216,9 @@ any other refusal a guest caused are still surfaced on that guest's phone in the
 
 > Two existing behaviours already serve this and should be **referenced, not rewritten**: the
 > `queueOrder` write re-derives the queue and re-emits `nowplaying:changed` because a stored
-> `rotationSeq` would otherwise leave the TV naming the pre-reorder next (`api/settings/room/+server.ts`);
-> and `routes/+page.svelte:116-131` deliberately withholds "You're up next!" for a
-> still-cooking song *"contradicting the playable-aware badge"* — i.e. the phone is already built to
+> `rotationSeq` would otherwise leave the TV naming the pre-reorder next (`api/settings/room/+server.ts`,
+> issue an earlier change); and `routes/+page.svelte:116-131` deliberately withholds "You're up next!" for a
+> still-processing song *"contradicting the playable-aware badge"* — i.e. the phone is already built to
 > avoid contradicting the TV. This row generalises those two fixes into the rule they are instances of.
 
 ---
@@ -230,9 +230,9 @@ any other refusal a guest caused are still surfaced on that guest's phone in the
 | **Statement** | If the product states a guest's wait in time ("roughly 11 minutes"), that estimate is computed by **one** shared function consumed by every surface that displays it, and its stated precision matches what its inputs support. |
 | **Surfaces** | Phone (position-in-words label). TV **only if** it ever displays a time; today it does not, and that is a legitimate answer. |
 | **Rationale** | An estimate shown to many people at once becomes a claim the room can check against reality, so two surfaces computing it separately produce a visible contradiction rather than a rounding difference. |
-| **Source** | `UNSOURCED` for the precision. Grounding: **no wait-time ETA exists in the product today.** `myPositionLabel` (`routes/+page.svelte:116-131`) states position and the preceding singer's name only — `"You're #3 · after Sam"` — with no time term. The `etaSec` field that exists (`events.ts:80`, `events.ts:134`) is **cook progress**, a different quantity. The "roughly 11 minutes" phrasing comes from `encore-design-handoff.md` §1 direction A and is **unbuilt**. |
+| **Source** | `UNSOURCED` for the precision. Grounding: **no wait-time ETA exists in the product today.** `myPositionLabel` (`routes/+page.svelte:116-131`) states position and the preceding singer's name only — `"You're an earlier change · after Sam"` — with no time term. The `etaSec` field that exists (`events.ts:80`, `events.ts:134`) is **process progress**, a different quantity. The "roughly 11 minutes" phrasing comes from `encore-design-handoff.md` §1 direction A and is **unbuilt**. |
 | **Acceptance** | **Given** a wait estimate rendered anywhere, **when** its value is traced, **then** it resolves to one shared function and not a per-surface computation; **and when** the queue changes, **then** every surface showing it updates from the same broadcast. **Given** no shared function exists, **then** no surface displays a time. |
-| **Check** | A source-scan asserting a single exported estimator and no second arithmetic site — the same single-source shape `lib/server/ordering-single-source.test.ts` already applies to ordering. |
+| **Check** | A source-scan asserting a single exported estimator and no second arithmetic site — the same single-source shape `server/ordering-single-source.test.ts` already applies to ordering. |
 | **Priority** | **Should ship.** Blocking only for the estimate itself, not for the position label, which already works without one. |
 
 > **Recommendation (not decided).** State the estimate in **songs, not minutes**, until real song
@@ -311,7 +311,7 @@ changes its severity independently of its technical impact.
 | **Statement** | Every refusal a guest can see states what the product will not do and what they can do instead, in the product's own vocabulary; no server validator string reaches a guest-facing surface verbatim. |
 | **Surfaces** | Phone. TV exempt per `XR-CON-13`. |
 | **Rationale** | A witnessed failure is read as the product's competence, and an internal string read aloud in a living room is worse than a plain refusal because it also broadcasts that nobody expected it to be seen. |
-| **Source** | WCAG 2.2 **SC 3.3.3 Error Suggestion** (AA) — https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html — for the "what to do instead" half. The no-verbatim-passthrough half is `DERIVED`. **Model:** `hub.ts:335` sends `{type:'op:reject', reason: err}` where `err` is `validateCommand`'s return value, whose vocabulary is `'malformed command'`, `'missing clientOpId'`, `'unknown entry'`, `'entry id already taken'`, `'singerId does not match this session'`. `routes/+page.svelte:177` renders it as `` `Couldn't do that: ${reason}` ``, so those strings **are** guest-facing today. The contrast case is already correct: the 429 cook refusal says *"you already have 3 songs cooking — wait for one to finish"* (`api/make-karaoke/+server.ts:49`) — the product's words, with the remedy attached. |
+| **Source** | WCAG 2.2 **SC 3.3.3 Error Suggestion** (AA) — https://www.w3.org/WAI/WCAG22/Understanding/error-suggestion.html — for the "what to do instead" half. The no-verbatim-passthrough half is `DERIVED`. **Model:** `hub.ts:335` sends `{type:'op:reject', reason: err}` where `err` is `validateCommand`'s return value, whose vocabulary is `'malformed command'`, `'missing clientOpId'`, `'unknown entry'`, `'entry id already taken'`, `'singerId does not match this session'`. `routes/+page.svelte:177` renders it as `` `Couldn't do that: ${reason}` ``, so those strings **are** guest-facing today. The contrast case is already correct: the 429 process refusal says *"you already have 3 songs processing — wait for one to finish"* (`api/process/+server.ts:49`) — the product's words, with the remedy attached. |
 | **Acceptance** | **Given** each string `validateCommand` can return, **when** it is rendered on the phone, **then** the displayed text is a mapped message naming the constraint and a next action, and no raw validator token appears. |
 | **Check** | A source-scan asserting every `validateCommand` return literal has an entry in the guest-facing message map, and that the reject renderer interpolates the mapped value rather than `reason`. Enumerable, so the instance nobody thought of is caught. |
 | **Priority** | **Should ship.** The behaviour is correct; the wording is not. |
@@ -374,7 +374,7 @@ changes its severity independently of its technical impact.
    `src/lib/contract/queue/queue-order.ts`, and a test named literally *"round-robin: everyone's 1st
    pick before anyone's 2nd"*. Restating it would pad the document with a rule that was never at risk.
 2. **Self-only removal and within-singer reorder.** Enforced server-side —
-   `lib/server/realtime/queue-own-entry-ownership.test.ts`, and `hub.ts:240` records the deliberate
+   `server/realtime/queue-own-entry-ownership.test.ts`, and `hub.ts:240` records the deliberate
    subtlety that `can()` is consulted **only** for someone else's entry so a narrowing never blocks a
    guest from their own song. Referenced by `XR-CON-04`, not rewritten.
 3. **Host-only media deletion.** Enforced at `routes/api/delete-media/+server.ts`, which already
@@ -384,15 +384,15 @@ changes its severity independently of its technical impact.
 4. **A specific skip-authority policy, a specific rate limit, a specific latency budget, a specific
    contention rule.** No source supports any of them and inventing one would present a choice as a
    finding. They are named-decision rows above and enumerated options below.
-5. **Multi-room concurrency.** `lib/server/realtime/room-scope.ts` already centralises tenancy *"like
+5. **Multi-room concurrency.** `server/realtime/room-scope.ts` already centralises tenancy *"like
    `can()` for capability"*, and `isForeignRoom` drops foreign frames at `server.ts:320`.
    The product's concurrency problem is many guests in **one** room; a second room is a different
    spec.
-6. **Departure settling.** `lib/server/singers/leave.ts` already routes one `remove` op per entry through
+6. **Departure settling.** `server/singers/leave.ts` already routes one `remove` op per entry through
    the authoritative path *"so every client converges the same way it would on a hand-tapped remove"*,
    special-cases the playing entry via `keptPlaying`, and exposes `removableOnLeave` explicitly *"so
    the phone can name the cost before asking"*. Stated, enforced, and better than a new row.
-7. **Idempotency and reconnect resend.** The ledger-before-reject rule and `resendPending` are
+7. **Idempotency and reconnect resend.** `an earlier change`'s ledger-before-reject rule and `resendPending` are
    both implemented and carry unusually complete rationale, including the non-obvious requirement to
    use the non-recording `hasOp` rather than `seenOp`. Nothing here is at risk.
 8. **Presence grace windows.** `DEFAULT/MIN/MAX_PRESENCE_GRACE_MINUTES` exist in
@@ -482,7 +482,7 @@ Current behaviour: disclosed. Rolled back to a pre-op snapshot, then `showError(
 
 ### Q5 — Is there a queue-depth limit per guest?
 
-Current behaviour: none on queue depth. Cook concurrency is capped at 3 with a 429 and real copy.
+Current behaviour: none on queue depth. Process concurrency is capped at 3 with a 429 and real copy.
 
 - **A — No depth limit; state that explicitly.** *Cost:* one line of documentation. Round-robin already
   bounds the harm to list length rather than turn order. **Recommended in `XR-CON-05`.**

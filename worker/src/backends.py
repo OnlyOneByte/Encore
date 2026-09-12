@@ -10,7 +10,7 @@ Two rules make this safe to deploy on hardware nobody has tested yet:
   * AUTO probes. `resolve_backend(None, ...)` picks the best backend that is genuinely importable and
     whose device is genuinely present, falling back to TORCH/cpu which works everywhere.
   * EXPLICIT never downgrades. An operator who asks for MLX on a box without MLX gets a raise, not a
-    silent CPU cook that looks fine and takes 50x longer. A misconfiguration should be loud.
+    silent CPU process that looks fine and takes 50x longer. A misconfiguration should be loud.
 
 Availability is probed, never assumed from the platform string: an aarch64 Linux box and an Apple
 Silicon Mac both report `arm64`-ish machines, and an x86_64 box may or may not have an Intel GPU.
@@ -155,7 +155,7 @@ def resolve_backend(
     """Pick the backend for `engine` on this worker.
 
     `configured` None/empty means AUTO. An explicit backend that is unavailable raises, so a
-    deployment misconfiguration surfaces at worker startup rather than as mysteriously slow cooks.
+    deployment misconfiguration surfaces at worker startup rather than as mysteriously slow processes.
     """
     if configured:
         # Through vocabulary.parse_backend, not a hand-rolled copy of it: this coercion existed twice,

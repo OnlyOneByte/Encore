@@ -1,8 +1,8 @@
-// — the audit endpoint must surface the variant-pick provenance so /metrics/<mediaId> can
+// the audit endpoint must surface the variant-pick provenance so /metrics/<mediaId> can
 // answer a mis-pick from state. toAudit is the mapper the GET handler runs per attempt; this pins that
 // it carries selection through. RED on base: toAudit has no selection field (and attemptSelection does
 // not exist), so a reverted mapper drops it.
-import { expect, it } from 'bun:test';
+import { describe, expect, it } from 'bun:test';
 import { toAudit } from '../../../../../../../src/routes/api/audit/[mediaId]/audit-shape';
 import type { JobAttempt } from '$lib/contract';
 
@@ -11,7 +11,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		id: 'a1',
 		jobId: 'j1',
 		mediaId: 'm1',
-		cookId: 'c1',
+		processingId: 'c1',
 		jobType: 'align',
 		attempt: 1,
 		workerId: 'w1',
@@ -34,30 +34,32 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 	};
 }
 
-it('toAudit surfaces the parsed selection record when the attempt recorded one — selection provenance', () => {
-	const selection = JSON.stringify({
-		baselineFallback: false,
-		winnerSuspect: false,
-		winnerScore: 0.94,
-		choices: [
-			{
-				textSource: 'lrclib',
-				considered: 2,
-				chosen: 'lrclib-synced',
-				chosenScore: 0.94,
-				decidedBy: 'agreement',
-				votes: 2,
-				rejected: [{ label: 'lrclib-plain', score: 0.61 }]
-			}
-		]
+describe('toAudit — selection provenance', () => {
+	it('surfaces the parsed selection record when the attempt recorded one', () => {
+		const selection = JSON.stringify({
+			baselineFallback: false,
+			winnerSuspect: false,
+			winnerScore: 0.94,
+			choices: [
+				{
+					textSource: 'lrclib',
+					considered: 2,
+					chosen: 'lrclib-synced',
+					chosenScore: 0.94,
+					decidedBy: 'agreement',
+					votes: 2,
+					rejected: [{ label: 'lrclib-plain', score: 0.61 }]
+				}
+			]
+		});
+		const out = toAudit(attempt({ selection }));
+		expect(out.selection).not.toBeNull();
+		const c = out.selection!.choices[0]!;
+		expect(c.rejected).toEqual([{ label: 'lrclib-plain', score: 0.61 }]);
+		expect(c.decidedBy).toBe('agreement');
 	});
-	const out = toAudit(attempt({ selection }));
-	expect(out.selection).not.toBeNull();
-	const c = out.selection!.choices[0]!;
-	expect(c.rejected).toEqual([{ label: 'lrclib-plain', score: 0.61 }]);
-	expect(c.decidedBy).toBe('agreement');
-});
 
-it('toAudit is null when the attempt recorded no selection — selection provenance', () => {
-	expect(toAudit(attempt({ selection: null })).selection).toBeNull();
+	it('is null when the attempt recorded no selection', () => {
+		expect(toAudit(attempt({ selection: null })).selection).toBeNull();
+	});
 });

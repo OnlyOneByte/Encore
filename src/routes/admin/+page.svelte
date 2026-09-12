@@ -102,7 +102,7 @@
 		{:else if failed}
 			<p class="muted">Could not load the library. <button class="link" onclick={load}>Retry</button></p>
 		{:else if songs.length === 0}
-			<p class="muted">No cooked songs in the library.</p>
+			<p class="muted">No processed songs in the library.</p>
 		{:else}
 			<ul class="songlist">
 				{#each songs as song (song.id)}

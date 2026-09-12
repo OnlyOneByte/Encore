@@ -3,7 +3,7 @@
 // WHY THIS IS ITS OWN PURE FUNCTION. Assigning `HTMLMediaElement.src` RELOADS the resource and resets
 // `currentTime` to 0 EVEN when the new URL string is byte-identical to the old one. So the src must be
 // written only when the resolved string actually changes. The bug this closes (Bug A): an unrelated
-// cook finishing rebroadcasts a full `queue:sync`, the TV rebuilt its media catalog into fresh object
+// process finishing rebroadcasts a full `queue:sync`, the TV rebuilt its media catalog into fresh object
 // identities, `syncSlots` wrote a NEW Media object with identical field values into the slot, and a
 // markup binding `src={fileSrc(media)}` re-evaluated and reassigned the identical string — restarting
 // the playing song from 0.

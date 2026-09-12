@@ -1,4 +1,4 @@
-// The `key` player command transposes a make-karaoke (file) song, clamped to ±MAX_KEY_SHIFT,
+// The `key` player command transposes a process (file) song, clamped to ±MAX_KEY_SHIFT,
 // and resets to 0 on every song change. No-op on a YouTube iframe or a not-yet-ready file.
 import { test, expect } from 'bun:test';
 import { handlePlayerCommand } from '$lib/server/realtime/player';
@@ -31,7 +31,7 @@ function harness() {
 	const deps: HubDeps = {
 		state,
 		publish: (e) => published.push(e),
-		// m-file is a cooked song; m-uncooked has no instrumental; m-cooking is still separating
+		// m-file is a processed song; m-unprocessed has no instrumental; m-processing is still separating
 		mediaById: new Map<string, Media>([
 			[
 				'm-file',
@@ -43,7 +43,7 @@ function harness() {
 				})
 			],
 			['m-iframe', media('m-iframe')],
-			['m-cooking', media('m-cooking', { stemStatus: 'queued' })]
+			['m-processing', media('m-processing', { stemStatus: 'queued' })]
 		])
 	};
 	return { published, state, deps };
@@ -84,7 +84,7 @@ test('key is a no-op on a YouTube iframe song (cannot re-pitch)', () => {
 
 test('key is a no-op on a file song whose stems are not ready yet', () => {
 	const { state, deps } = harness();
-	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm-cooking') });
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm-processing') });
 	// force it current even though not ready (held-slot edge)
 	state.setPlayback({ currentEntryId: 'q1' });
 	handlePlayerCommand({ cmd: 'key', semitones: 4 }, deps);

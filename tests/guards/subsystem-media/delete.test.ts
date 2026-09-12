@@ -46,7 +46,7 @@ function fakeMediaRepo() {
 	return { removed, repo: { remove: (id: string) => removed.push(id) } as unknown as DeleteMediaDeps['media'] };
 }
 
-/** A jobs stub with no live cook — cancel becomes a no-op, isolating the queue/file/skip behaviour. */
+/** A jobs stub with no live process — cancel becomes a no-op, isolating the queue/file/skip behaviour. */
 const noJobs = { findLive: () => undefined } as unknown as DeleteMediaDeps['cancel']['jobs'];
 
 function harness(mediaIds: string[]) {
@@ -168,7 +168,7 @@ function cand(
 	return { ref, textSource, timing, textConfidence: 'high', createdAt: 1 };
 }
 
-// F1. `audioKey`'s default ext is `wav`, the LEGACY mislabelled name. Every song cooked since 2981662
+// F1. `audioKey`'s default ext is `wav`, the LEGACY mislabelled name. Every song processed since 2981662
 // has `audio/<id>.m4a` or `.webm` on disk, because the worker downloads to `audio/<id>.%(ext)s` and
 // discovers the real name with a `<id>.*` glob. So the single `unlink(audioKey(id))` named a path that
 // does not exist and the ONE UNRECOVERABLE class survived — permanently, since the sidecar and the row
@@ -183,7 +183,7 @@ test('unlinks the raw original at EVERY extension it could be under, not just .w
 	const res = deleteMediaEntirely('m1', deps);
 	expect(res.deleted).toBe(true);
 
-	// The modern names first — these are what a real cook actually wrote.
+	// The modern names first — these are what a real process actually wrote.
 	expect(unlinked).toContain('audio/m1.m4a');
 	expect(unlinked).toContain('audio/m1.webm');
 	// Every candidate, so a partial widening (e.g. adding only m4a) does not satisfy this.

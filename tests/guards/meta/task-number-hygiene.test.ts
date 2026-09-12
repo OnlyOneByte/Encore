@@ -24,14 +24,14 @@
 // "or docs/" is honoured by exactly one documented carve-out — see EXEMPT_PREFIXES below, which is
 // docs/loop/ and nothing else, and which has its own non-vacuity sentinel at the bottom of this file.
 import { test, expect } from 'bun:test';
-import { repoRoot, at } from '@encore/test-support';
+import { at, repoRoot } from '@encore/test-support';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, basename } from 'node:path';
+import { basename, join } from 'node:path';
 
-// import.meta.dir === src/lib. Two roots up is .; four up is the repo root, which is
+// Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
 // how the worker (Python) source is reached — CWD-independent, since `bun test` runs from ..
-// import.meta.dir === src/lib; four levels up is the repo root.
+// Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
 // Repo-root anchored; `git ls-files` is run with -C REPO, so this must be the real root.
 const REPO = repoRoot;
 
@@ -63,9 +63,9 @@ const REPO = repoRoot;
 // Both are excluded by pattern rather than by an exemption list, because they are shapes rather than sites:
 // a new `Finding #7` or `slot #3` should be allowed without anyone editing this file.
 //
-// DISCRIMINATING AN ISSUE FROM A COLOUR. There is no syntactic difference between the issue `#913` and
-// the three-digit hex colour `#913`, so the only signal is the CLOSING quote: a colour is written as a
-// string literal (`'#000'`), while an issue reference in prose is followed by space or punctuation.
+// DISCRIMINATING AN ISSUE FROM A COLOUR. There is no syntactic difference between the issue `` and
+// the three-digit hex colour ``, so the only signal is the CLOSING quote: a colour is written as a
+// string literal (`''`), while an issue reference in prose is followed by space or punctuation.
 // A six-digit colour matters too — `#7254e6` opens with four digits — which is what the trailing
 // `[0-9a-fA-F]` exclusion covers.
 //
@@ -84,7 +84,7 @@ const PATTERNS: { re: RegExp; family: string; only?: (rel: string) => boolean }[
 			`(?<![0-9a-fA-F#])(?<!\\bFinding )(?<!\\bFinding #[0-9]{1,4}/)(?<!\\b(?:${ORDINAL_NOUNS}) )` +
 				// …one to four decimal digits…
 				// A LEADING ZERO makes it a colour, not an issue. Issue numbers start at 1 and never carry one,
-				// while `#000` in prose (`both are >4.5:1 vs #000 by construction`) is a three-digit hex value
+ // while `` in prose (`both are >4.5:1 vs by construction`) is a three-digit hex value
 				// written unquoted — which the trailing-quote exclusion below cannot see. This is the
 				// discriminator that covers the unquoted case.
 				`#(?!0)[0-9]{1,4}` +

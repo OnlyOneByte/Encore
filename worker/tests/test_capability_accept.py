@@ -77,7 +77,7 @@ def test_no_free_slots_still_refuses_a_supported_action():
 
 
 def test_a_demucs_stems_worker_accepts_a_stems_upgrade_job():
-    # The common deployment: a plain demucs box advertises `stems`. With Re-cook on and HT-Demucs FT
+    # The common deployment: a plain demucs box advertises `stems`. With Re-process on and HT-Demucs FT
     # picked, the core demands `stems` for the upgrade, so this worker must accept it.
     s = state("fetch:ytdlp", "stems", "align")
     assert s.supports("stems-upgrade") is True

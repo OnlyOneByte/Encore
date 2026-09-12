@@ -1,4 +1,4 @@
-// Guard for the cooking-status UI cleanup: it had redundant elements the owner asked to remove. Each
+// Guard: the processing-status UI had redundant elements the owner asked to remove. Each
 // was a pure-markup deletion, so nothing BEHAVIOURAL reds if it comes
 // back - this source-scan guard is the load-bearing regression trap. It reads each component source,
 // strips comments (so the explanatory prose that NAMES the removed elements can neither satisfy nor
@@ -9,7 +9,7 @@
 //      "Making karaoke" stage line remain.
 // Each removal is paired with a not-vacuous sentinel that reds if the whole component vanished.
 //
-// RETIRED WITH THE DRAWER DELETION: a third arm pinned QueueSheet.svelte's chevron removal, and a loop pinned the
+// RETIRED IN: a third arm pinned QueueSheet.svelte's chevron removal, and a loop pinned the
 // pinned-pane/scrolling-list split on QueueSheet.svelte + QueueSheetDrawer.svelte. Both components were
 // deleted with the drawer surface, so those arms had no subject left and no successor to re-point at —
 // nothing else in the tree renders a pull-up sheet. The two arms that remain here are untouched, and
@@ -21,7 +21,8 @@
 // removal now ALSO carries a STRUCTURAL, name-independent assertion; the literal matchers are kept.
 
 import { test, expect } from 'bun:test';
-import { read as readRepoFile } from '@encore/test-support';
+import { readFileSync } from 'node:fs';
+import { at } from '@encore/test-support';
 
 function strip(s: string): string {
 	return s
@@ -29,23 +30,19 @@ function strip(s: string): string {
 		.replace(/\/\*[\s\S]*?\*\//g, '') // css/js block comments
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1'); // line comments (avoid eating http://)
 }
-// Was `at('src/lib/components')` — the two subjects were this guard's own SIBLINGS in
-// src/lib/components. That spelling said "next to me", which stops meaning anything once the
-// guard does not live there, so the directory is now named explicitly and anchored on the repo root.
-// `read` throws on a missing file, so a wrong subject reds as a path failure rather than passing vacuously.
 function read(rel: string): string {
-	return strip(readRepoFile('src/lib/components', rel));
+	return strip(readFileSync(at(rel), 'utf8'));
 }
 
 test('GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the control', () => {
-	const code = read('GuidingTrack.svelte');
+	const code = read('src/lib/components/GuidingTrack.svelte');
 	// was `class="gt-slider"`. The control is <Slider variant="guiding"> now, whose geometry
 	// lives in ui/slider. This arm cares that the CONTROL is still present, not how it is spelled.
 	expect(code).toContain('<Slider');
 	expect(code).toContain('variant="guiding"');
 	expect(code).toContain('disabled={!available}');
 	expect(code).not.toMatch(/no isolated vocals/i);
-	expect(code).not.toMatch(/re-?cook it to get a guiding track/i);
+	expect(code).not.toMatch(/re-?process it to get a guiding track/i);
 	const derived = code.match(/const hint\s*=\s*\$derived\(([\s\S]*?)\);/);
 	expect(derived).not.toBeNull();
 	const body = derived![1].replace(/\s+/g, ' ').trim();
@@ -54,9 +51,9 @@ test('GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the c
 });
 
 test('ProcessingCard drops the per-stage status pills, keeps bar + stage line', () => {
-	const code = read('ProcessingCard.svelte');
+	const code = read('src/lib/components/ProcessingCard.svelte');
 	expect(code).toContain('class="progress"');
-	// S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
+	// the bar is <Progress> now — same idiom, consolidated out of two components, and it
 	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged.
 	expect(code).toContain('<Progress');
 	expect(code).toContain('class="stage"');
@@ -67,5 +64,5 @@ test('ProcessingCard drops the per-stage status pills, keeps bar + stage line', 
 	expect(code).not.toMatch(/\{#each\b/);
 	expect(code).not.toContain('MEDIA_STAGES');
 	expect(code).not.toContain('mediaStagePosition');
-	expect(code).not.toContain('cookStageChipLabel');
+	expect(code).not.toContain('processStageChipLabel');
 });

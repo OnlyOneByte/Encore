@@ -457,7 +457,7 @@ async def test_a_youtube_credit_survives_a_musicbrainz_decline(tmp_path):
 
 @pytest.mark.asyncio
 async def test_a_retained_original_still_captures_the_youtube_credit_without_re_downloading(tmp_path):
-    # The self-corrects-one-song-at-a-time promise: a re-cook of an already-downloaded song reads the
+    # The self-corrects-one-song-at-a-time promise: a re-process of an already-downloaded song reads the
     # credit from the info.json ALREADY on disk, on the `found is not None` early-return branch — no
     # fetch. Drives AcquireAudio directly because the branch is the retained-original path.
     from src.runtime.ctx import Ctx

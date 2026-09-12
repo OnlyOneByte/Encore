@@ -12,7 +12,7 @@ Correlation, not raw dot product, so the score is scale-invariant — a loud son
 the same key score the same, which is what makes `confidence` comparable ACROSS songs.
 
 numpy + stdlib only. No torch, no librosa: the chromagram is a plain rfft with a log-frequency→
-pitch-class bin map. This is deliberately not real-time; it runs once per cook on a stem already on
+pitch-class bin map. This is deliberately not real-time; it runs once per process on a stem already on
 disk, so clarity beats speed.
 """
 

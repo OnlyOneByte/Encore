@@ -4,7 +4,7 @@
 to declare `reads = {"lyrics.texts"}`. Overshoot needs the duration, so the step must (1) DECLARE the
 new read (runtime/plan.py fails a plan for a step reading a key nothing produced, and it must not read a
 key it did not declare either) and (2) actually PASS it through, so an over-covered candidate is demoted
-and the overshoot is reported in the cook log.
+and the overshoot is reported in the process log.
 
 MECHANISM: on base the step neither declares nor reads the duration, so this whole file fails — the
 import of the note wording is moot because the over-covered candidate wins and no overshoot note exists.
@@ -110,9 +110,9 @@ def test_step_passes_duration_through_so_overcovered_candidate_is_demoted(tmp_pa
     assert ctx.lyrics.selection.publish[0].variant == "fits-the-audio"
 
 
-def test_step_reports_overshoot_in_the_cook_log_when_the_published_pick_overshoots(tmp_path):
+def test_step_reports_overshoot_in_the_process_log_when_the_published_pick_overshoots(tmp_path):
     """No rival: the over-covered candidate is the only claim, so it still publishes (B fixes some cases,
-    not all — owner's stated cost) — but the overshoot MUST be surfaced in the cook log. This is piece 2
+    not all — owner's stated cost) — but the overshoot MUST be surfaced in the process log. This is piece 2
     (report it), and it proves the duration reached the step: on base there is no overshoot note at all."""
     over = _timed(SOURCE_LRCLIB, f"{SHARED} {GUEST}", "wrong-longer-master", per_word_end=180.0)
     baseline = _timed(SOURCE_ASR, SHARED, "whisper/vocals", per_word_end=90.0, role=ROLE_BASELINE)

@@ -176,7 +176,7 @@ export function mergeLyricsCandidate(
 // LRCLIB's dangerous failure is not a miss but a confident MISMATCH: fuzzy metadata returns another
 // song's lyrics and nothing downstream would notice. Comparing authoritative text against an ASR
 // transcript of what is actually being sung is our only same-song signal — a large part of why ASR
-// runs on every cook, not only as a fallback.
+// runs on every process, not only as a fallback.
 
 /** Words, lowercased, punctuation stripped. Deliberately crude — this compares CONTENT, not form. */
 export function lyricsTokens(text: string): string[] {

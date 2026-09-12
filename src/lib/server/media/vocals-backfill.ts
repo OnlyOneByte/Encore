@@ -1,10 +1,10 @@
-// Guiding-track backfill — give ALREADY-COOKED songs their vocals ref.
+// Guiding-track backfill — give ALREADY-PROCESSED songs their vocals ref.
 //
 // WHY THIS EXISTS. Separation has been writing a vocals stem next to the instrumental for a long
-// time, but the core dropped the ref on the floor, so every song cooked before that was fixed has a
-// perfectly good file on disk that nothing can find. Re-cooking is the only other route and nobody
-// re-cooks a working song — the same trap the lyrics backfill was written for. On the owner's live
-// library that is seven of nine cooked songs gaining a guiding track for ZERO cpu, zero downloads,
+// time, but the core dropped the ref on the floor, so every song processed before that was fixed has a
+// perfectly good file on disk that nothing can find. Re-processing is the only other route and nobody
+// re-processes a working song — the same trap the lyrics backfill was written for. On the owner's live
+// library that is seven of nine processed songs gaining a guiding track for ZERO cpu, zero downloads,
 // and no worker at all: this pass only looks at the filesystem.
 //
 // It also refuses to link a SILENT stem. Two of those nine songs are the silent-stem defect (both
@@ -18,10 +18,10 @@ import type { Media } from '$lib/contract';
 import { vocalsKey, legacyVocalsRefs } from './paths';
 
 /**
- * Cooked songs that could have a guiding track but have no ref for it yet.
+ * Processed songs that could have a guiding track but have no ref for it yet.
  *
- * Only cooked songs: the vocals stem is a product of separation, and an uncooked song will get its
- * ref through the normal `job:complete` path when someone cooks it. A song that already has a ref is
+ * Only processed songs: the vocals stem is a product of separation, and an unprocessed song will get its
+ * ref through the normal `job:complete` path when someone processes it. A song that already has a ref is
  * skipped — this pass never re-probes settled work.
  */
 export function needsVocalsBackfill(catalog: Iterable<Media>): string[] {
@@ -37,7 +37,7 @@ export function needsVocalsBackfill(catalog: Iterable<Media>): string[] {
 /**
  * Every ref a media's vocals stem might live at, best guess first.
  *
- * The legacy shape matters: songs cooked under the older layout have an instrumental ref whose
+ * The legacy shape matters: songs processed under the older layout have an instrumental ref whose
  * sibling vocals file follows the same name, and retention.ts already carries this exact
  * `-instrumental.` → `-vocals.` substitution for the same reason. Deriving only the modern key would
  * silently miss those songs.
@@ -69,7 +69,7 @@ export interface VocalsBackfillResult {
 	linked: number;
 	/** Songs whose vocals stem exists but is digital silence — deliberately NOT linked. */
 	silent: number;
-	/** Songs with no vocals file at all (cooked before the stem was published). */
+	/** Songs with no vocals file at all (processed before the stem was published). */
 	missing: number;
 	/**
 	 * Linked WITHOUT being measured, because no probe was available.
@@ -83,7 +83,7 @@ export interface VocalsBackfillResult {
 }
 
 /**
- * Link the vocals stem for every cooked song missing one. Existence AND loudness, in that order —
+ * Link the vocals stem for every processed song missing one. Existence AND loudness, in that order —
  * the probe is the expensive half, so it only runs on a file that is actually there.
  */
 export async function backfillVocalsRefs(

@@ -116,7 +116,7 @@ test('SelectionRecord documents winnerSuspect on coverage and winnerScore as ran
 	const coverage = docAbove(types, 'winnerCoverage?: number | null;');
 	expect(coverage).toMatch(/thresholded/);
 	// Why the field is optional: an older attempt row has no key, which must read as "not recorded".
-	// This one was NOT a bare label — the number dated the schema change ("written before #806"), which is
+	// This one was NOT a bare label — the number dated the schema change ("written before"), which is
 	// real information. The source now states it in words, so the guard pins the words instead of the
 	// number, and the fact still cannot be deleted unnoticed.
 	expect(coverage).toMatch(/before the coverage axis landed/);

@@ -1,7 +1,7 @@
 """Enumerated worker vocabulary: what a job asks for, how it progresses, and what runs it.
 
 These were bare strings compared at call sites, so a typo or a value the core invented was only
-discoverable at runtime — usually as a job that failed mid-cook or, worse, silently took a default.
+discoverable at runtime — usually as a job that failed mid-process or, worse, silently took a default.
 Naming them once here gives three properties the strings did not have:
 
   * `parse_*` turns an untrusted wire value into a member or raises at the BOUNDARY, so an unknown
@@ -10,7 +10,7 @@ Naming them once here gives three properties the strings did not have:
     argv), so this is additive rather than a migration.
 
 NOT here: the separation quality ladder. A `QUALITY_RANK` table used to live in this module, mirroring
-`src/shared/lyrics/separators.ts` — but the refusal to publish an artifact that does not outrank the
+`src/lib/contract/lyrics/separators.ts` — but the refusal to publish an artifact that does not outrank the
 current one is decided CORE-side in `markMediaReady`, so the worker copy had no caller and the two
 tables could drift with nothing comparing them. It is deleted rather than guarded by a parity test,
 because a test would only have kept a dead table faithfully in sync with a live one.
@@ -62,7 +62,7 @@ class Fetcher(_StrEnum):
     parsed at the boundary fails immediately and names the cause.
 
     LOCAL is not a downloader: it means the bytes are already under MEDIA_DIR and `source_uri` is a
-    path to read. Mirrors FetcherId in src/shared/cook/fetchers.ts.
+    path to read. Mirrors FetcherId in src/lib/contract/process/fetchers.ts.
     """
 
     YTDLP = "ytdlp"
@@ -82,12 +82,12 @@ class AsrModel(_StrEnum):
     """Which faster-whisper checkpoint the ASR tier transcribes sung vocals with.
 
     A deployment choice carried in an align job's params, mirroring AsrModelId in
-    src/shared/lyrics/lyrics-engines.ts — which is the source of truth for the whitelist and the
+    src/lib/contract/lyrics/lyrics-engines.ts — which is the source of truth for the whitelist and the
     only place a new checkpoint should be added first.
 
     Enumerated rather than passed through as a free string for a specific reason: an unrecognised token
     reaches `whisperx.load_model()`, which tries to resolve it as a HuggingFace repo, fails, and is
-    swallowed by AsrSource's `except` — so the tier quietly DECLINES and the song finishes cooking with
+    swallowed by AsrSource's `except` — so the tier quietly DECLINES and the song finishes processing with
     no words and nothing in the log naming why. Parsing at the boundary turns that into an immediate,
     named failure.
     """
@@ -104,7 +104,7 @@ class SyncMode(_StrEnum):
 
     FORCED runs wav2vec2 forced alignment against the isolated vocals stem and yields per-word
     timings — the bouncing ball. LINES skips alignment entirely and keeps each source's own line
-    timings, which costs one fewer ML pass per cook but cannot highlight individual words.
+    timings, which costs one fewer ML pass per process but cannot highlight individual words.
 
     Both were always code paths; LINES was only ever reachable as the landing spot of an `except` in
     whisperx.py's `_time_one`. Naming it makes it a choice instead of a consolation prize.
@@ -116,7 +116,7 @@ class SyncMode(_StrEnum):
 
 class TextSource(_StrEnum):
     """Where a lyrics candidate's TEXT came from. Mirrors LyricsTextSource in
-    src/shared/lyrics/lyrics.ts — that union is the authority; keep the two in step.
+    src/lib/contract/lyrics/lyrics.ts — that union is the authority; keep the two in step.
 
     These were plain module string constants in lyrics/chain.py (SOURCE_LRCLIB and friends) guarded only
     by a `# must match LyricsTextSource` comment, while the five sibling enums here got a real bilateral
@@ -153,7 +153,7 @@ class Timing(_StrEnum):
 # Promoted here beside TextSource/Timing (from bare module strings in chain.py) so all the lyrics
 # vocabulary lives in one place; chain.py re-exports them under the same names, so its importers are
 # unchanged. Left as plain string constants rather than a _StrEnum: unlike TextSource/Timing these have
-# NO src/shared mirror to bilaterally parity-check against — role is a worker-internal grading
+# NO packages/shared mirror to bilaterally parity-check against — role is a worker-internal grading
 # axis the core never sees.
 #
 # UNSPECIFIED is a fail-CLOSED default (see LyricsText.role). It belongs to NEITHER candidates_of nor

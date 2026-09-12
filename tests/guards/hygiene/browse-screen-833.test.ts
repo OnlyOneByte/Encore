@@ -17,20 +17,13 @@
 // `browseFilter` that could hold a tag, `setBrowse('tag', …)`, the `?tag=` query and the tag rail
 // itself — every one of which is a mechanism direction B removes. Its premise was "the tag filter is
 // wired through the phone page"; the ruling is that the phone page has no tag filter. The SERVER half
-// of the tag filter is untouched and still guarded (`lib/server/media/library-tag-filter.test.ts`,
+// of is untouched and still guarded (`server/media/library-tag-filter.test.ts`,
 // `routes/api/library/library-tag-filter-wiring.test.ts`), which is why only one of the three
 // similarly-named files retires. The absence is pinned below so it cannot creep back in unnoticed.
-import { test, expect } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
-import { at } from '@encore/test-support';
 
-/*
- * Every subject below is named absolutely. This file used to derive them from
- * `dirname(fileURLToPath(import.meta.url))` — the routes directory it sat in — which is a statement
- * about where the TEST lived embedded in a statement about where each SUBJECT lives. That is
- * especially dangerous for the four `existsSync` arms: a wrong root makes a present file read as
- * absent, so the retirement arm below would have started passing for the wrong reason.
- */
+import { test, expect } from 'bun:test';
+import { existsSync } from 'node:fs';
+import { at, read, filesUnder, relative } from '@encore/test-support';
 
 /*
  * Comments are stripped for the ABSENCE arms and kept for the presence arms. A deletion guard that
@@ -40,12 +33,9 @@ import { at } from '@encore/test-support';
  */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/<!--[\s\S]*?-->/g, blank)
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank).replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
 }
-const RAW = readFileSync(at('src/routes/+page.svelte'), 'utf8');
+const RAW = read('src/routes/+page.svelte');
 const PAGE = stripComments(RAW);
 
 // ── mechanism 1: the three readiness chips ───────────────────────────────────────────────────────
@@ -54,11 +44,11 @@ test('mechanism 1 — the readiness chip row is gone, and so is the state behind
 	expect(PAGE).not.toContain('Filter by readiness');
 	expect(PAGE).not.toMatch(/class="chips"/);
 	// …and the state, or the chips could be restored without re-deriving anything. `filter` was the
-	// single source of the axis; `showReady`/`showCooking`/`showRaw` gated the three groups on it, and
+	// single source of the axis; `showReady`/`showProcessing`/`showRaw` gated the three groups on it, and
 	// `libraryCount` existed only to put a number on the Ready chip.
 	expect(PAGE).not.toMatch(/\blet filter\b/);
 	expect(PAGE).not.toMatch(/\bshowReady\b/);
-	expect(PAGE).not.toMatch(/\bshowCooking\b/);
+	expect(PAGE).not.toMatch(/\bshowProcessing\b/);
 	expect(PAGE).not.toMatch(/\bshowRaw\b/);
 	// `libraryCount` as a DERIVED is gone; the identically-named PARAMETER of readyEmptyState() is not
 	// this mechanism and must survive — the empty state below still names how many songs the library has.
@@ -67,13 +57,13 @@ test('mechanism 1 — the readiness chip row is gone, and so is the state behind
 });
 
 test('mechanism 1 — every group renders unconditionally, so nothing is hidden behind a chip', () => {
-	// The ready and cooking groups are gated on `searchActive` and on having rows — never on a
+	// The ready and processing groups are gated on `searchActive` and on having rows — never on a
 	// filter. This is the arm that fails if a "quick" reinstatement re-adds a gate without the chips.
-	expect(PAGE).toContain('{#if searchActive && cookingRows.length}');
+	expect(PAGE).toContain('{#if searchActive && processingRows.length}');
 	// `accountedFor` subtracts BOTH groups from the shortcut lists unconditionally: with a filter, a
 	// hidden group stopped accounting for its songs and they reappeared under Popular/Recently queued.
 	expect(PAGE).toMatch(/for \(const m of searchActive \? readyResults : library\) ids\.add\(m\.id\);/);
-	expect(PAGE).toMatch(/for \(const c of cookingRows\) ids\.add\(c\.id\);/);
+	expect(PAGE).toMatch(/for \(const c of processingRows\) ids\.add\(c\.id\);/);
 });
 
 // ── mechanisms 2 and 3: the artist rail and the genre/tag rail ───────────────────────────────────
@@ -81,7 +71,7 @@ test('mechanisms 2+3 — the browse disclosure and both facet rails are gone fro
 	expect(PAGE).not.toContain('browse-toggle');
 	expect(PAGE).not.toContain('Browse by artist');
 	expect(PAGE).not.toContain('Browse by tag');
-	expect(PAGE).not.toContain('Browse by genre'); // the earlier ruling against genre browsing still holds; this does not revive it
+	expect(PAGE).not.toContain('Browse by genre'); // an earlier change's ruling still holds; this does not revive it
 	expect(PAGE).not.toMatch(/\bbrowseFilter\b/);
 	expect(PAGE).not.toMatch(/\bbrowseOpen\b/);
 	expect(PAGE).not.toMatch(/\bsetBrowse\b/);
@@ -96,20 +86,26 @@ test('mechanisms 2+3 — the phone asks the library endpoint for the whole libra
 	expect(PAGE).not.toMatch(/\?tag=/);
 });
 
-test('— the retired tag-filter wiring guard is deleted, and its server sibling is not', () => {
+test('the retired tag-filter wiring guard is deleted, and its server sibling is not', () => {
 	// A retired guard left in the suite is indistinguishable from one that is working (XR-VER-07).
 	//
-	// EVERY PATH HERE IS NOW IN THE tests/ TREE, because the reorganisation moved all of them. That matters
-	// for the NEGATIVE assertion in particular: asserting a file is absent from `src/routes/` is
-	// trivially true of every test file now, so it would have become a check that passes for the wrong
-	// reason. A deleted guard and a moved guard have to stay distinguishable, which means naming the place
-	// it would live if it existed.
-	expect(existsSync(at('tests/guards/wiring/library-tag-filter-wiring-retired.test.ts'))).toBe(false);
-	// Its `library-tags-wiring` sibling pins PER-ROW tag chips, which this change does not touch, and the
-	// server halves of the tag filter still hold. Deleting any of the three under cover of this ruling
-	// would be wrong. Two files carry that name after the split — the guard half and the unit half — and
-	// both must survive.
-	expect(existsSync(at('tests/guards/wiring/library-tags-wiring.test.ts'))).toBe(true);
+	// The three paths below MOVED in the test reorganisation and are now named from the repo root, which
+	// is also what makes this arm honest: the retirement claim is about one guard among three that share
+	// a name, and colocation used to be the only thing telling them apart. It no longer is, so the
+	// absence is stated twice — at the address the phone-page guard would occupy, and as a sweep proving
+	// it has not reappeared at any OTHER address under tests/.
+	const RETIRED = 'tests/unit/core/routes/library-tag-filter-wiring.test.ts';
+	expect(existsSync(at(RETIRED))).toBe(false);
+	const sameName = filesUnder('tests', ['.test.ts'])
+		.map((f) => relative(f))
+		.filter((r) => r.endsWith('library-tag-filter-wiring.test.ts'));
+	expect(
+		sameName,
+		'exactly one guard may carry this basename — the API half. A second one is the retired phone-page ' +
+			'guard come back under a new address, which is what this ruling forbids.'
+	).toEqual(['tests/guards/wiring/library-tag-filter-wiring.test.ts']);
+	// Its sibling pins PER-ROW tag chips, which this change does not touch, and the server halves
+	// of still hold. Deleting any of the three under cover of this ruling would be wrong.
 	expect(existsSync(at('tests/unit/core/routes/library-tags-wiring.test.ts'))).toBe(true);
 	expect(existsSync(at('tests/guards/wiring/library-tag-filter-wiring.test.ts'))).toBe(true);
 	expect(existsSync(at('tests/guards/subsystem-media/library-tag-filter.test.ts'))).toBe(true);
@@ -120,7 +116,7 @@ test('mechanism 4 — the readiness group headings are gone; the rows say it the
 	// These two restated, in prose, the chip directly above them. SongRow paints a readiness chip per
 	// row, so the axis is still visible — it is just not announced twice.
 	expect(PAGE).not.toContain('Ready to sing');
-	expect(PAGE).not.toContain('Cooking · queue it anyway');
+	expect(PAGE).not.toContain('Processing · queue it anyway');
 	expect(PAGE).not.toMatch(/\bshowGroupHeads\b/);
 	expect(PAGE).not.toMatch(/class="grouphead ok"/);
 	expect(PAGE).not.toMatch(/class="grouphead warn"/);
@@ -137,19 +133,19 @@ test('mechanism 4 — the readiness group headings are gone; the rows say it the
 });
 
 // ── what replaced them: one docked box, one stack, growing upward ────────────────────────────────
-test('— search is a docked band in the thumb zone, publishing the measured --dock-h', () => {
+test('search is a docked band in the thumb zone, publishing the measured --dock-h', () => {
 	// After </main>, so it sits below the content it docks under and the tab sequence follows the visual
-	// order (XR-PH-12). Since the search-dock rework it is gated on `{#if me}` — docked for a joined singer at all times,
+	// order (XR-PH-12). Since it is gated on `{#if me}` — docked for a joined singer at all times,
 	// the sole band on this route.
 	expect(PAGE.indexOf('class="search-dock"')).toBeGreaterThan(PAGE.indexOf('</main>'));
 	expect(PAGE).toMatch(/\{#if me\}\s*<div class="search-dock" bind:clientHeight=\{dockH\}>/);
-	// ONE token, measured, and now ONE band (the `+ Add a turn` CTA that used to be home's band went
-	// with that rework). A second `--search-dock-h`, or a hardcoded height, forks the geometry the measurement exists
+	// ONE token, measured, and now ONE band (the `+ Add a turn` CTA that used to be home's band is gone,
+	// ). A second `--search-dock-h`, or a hardcoded height, forks the geometry the measurement exists
 	// to keep single — and `main`'s padding, `--undo-dock` and `--error-dock` all read this one.
 	expect(PAGE).not.toContain('--search-dock-h');
 	const docks = PAGE.match(/bind:clientHeight=\{dockH\}/g) ?? [];
-	expect(docks.length).toBe(1); // the search dock, the only fixed band on this route since that rework
-	// Re-anchored by the spacing-scale migration: `6px`/`18px` are now `var(--space-xs)`/`var(--space-3xl)`, the same two values
+	expect(docks.length).toBe(1); // the search dock, the only fixed band on this route since an earlier change
+	// Re-anchored by: `6px`/`18px` are now `var(--space-xs)`/`var(--space-3xl)`, the same two values
 	// read from the spacing scale in app.css. The claim is unchanged — main's padding is what consumes the
 	// measured --dock-h — so only its spelling moves. The `+ 28px` term stays a literal: 28 is not a scale
 	// step, so nothing owns it and there is nothing to name it.
@@ -159,12 +155,12 @@ test('— search is a docked band in the thumb zone, publishing the measured --d
 	expect(PAGE).toContain('aria-label="Search a song or artist"');
 });
 
-test('— the results stack UPWARD: every result list is emitted with its best match last', () => {
+test('the results stack UPWARD: every result list is emitted with its best match last', () => {
 	// The ranking is reversed in the DOM, which is what keeps DOM order equal to visual order
 	// (XR-PH-12). A `column-reverse` container would paint the column against its DOM order and invert
 	// the focus sequence with it, so the ban is part of the claim.
 	expect(PAGE).toMatch(/\{@const readyStack = \[\.\.\.readyResults\]\.reverse\(\)\}/);
-	expect(PAGE).toMatch(/\{@const cookingStack = \[\.\.\.cookingRows\]\.reverse\(\)\}/);
+	expect(PAGE).toMatch(/\{@const processingStack = \[\.\.\.processingRows\]\.reverse\(\)\}/);
 	expect(PAGE).toMatch(/\{@const rawRows = unaccounted\(rawResults\)\.reverse\(\)\}/);
 	// The zero-query shortcut stacks (popularRows / recentRows) were dropped with the browse mode.
 	expect(PAGE).not.toContain('popularRows');
@@ -172,13 +168,13 @@ test('— the results stack UPWARD: every result list is emitted with its best m
 	expect(PAGE).not.toContain('column-reverse');
 
 	// Section order is the same claim at the block level: the most relevant section is the LAST one, so
-	// it is the one beside the thumb. Ready is nearest, then cooking, then what still needs karaoke.
+	// it is the one beside the thumb. Ready is nearest, then processing, then what still needs karaoke.
 	const main = PAGE.slice(PAGE.indexOf('<main>'), PAGE.indexOf('</main>'));
-	expect(main.indexOf('rawRows')).toBeLessThan(main.indexOf('cookingStack'));
-	expect(main.indexOf('cookingStack')).toBeLessThan(main.indexOf('readyStack'));
+	expect(main.indexOf('rawRows')).toBeLessThan(main.indexOf('processingStack'));
+	expect(main.indexOf('processingStack')).toBeLessThan(main.indexOf('readyStack'));
 });
 
-test('— the bottom-anchored column reserves the top for the back control', () => {
+test('the bottom-anchored column reserves the top for the back control', () => {
 	// Bottom-anchored, or one line of content sits at the top of an empty screen instead of beside the
 	// thumb. The MECHANISM is the auto bottom margin on the back control: in a flex column it both keeps
 	// that control at the top and pushes every later sibling to the bottom. A `justify-content: flex-end`
@@ -192,7 +188,7 @@ test('— the bottom-anchored column reserves the top for the back control', () 
 	expect(PAGE).toMatch(/main:has\(> \.backrow\) \{\s*display: grid;\s*align-content: end;/);
 });
 
-test('— a stack that grows upward is scrolled to, instantly and only when the set changes', () => {
+test('a stack that grows upward is scrolled to, instantly and only when the set changes', () => {
 	// Bottom-anchored content longer than the viewport starts at its TOP, which is the far end of the
 	// ranking: without this the best match renders below the fold. Keyed on the shape of the rendered
 	// set, so scrolling up to read further is not fought on every frame.
@@ -205,7 +201,7 @@ test('— a stack that grows upward is scrolled to, instantly and only when the 
 	expect(PAGE).not.toMatch(/behavior:\s*'smooth'/);
 });
 
-test('— the empty state that named the library count survives the chip that used to reach it', () => {
+test('the empty state that named the library count survives the chip that used to reach it', () => {
 	// `readyEmptyState` said "None of your N karaoke songs match X" plus a way back. It was the Ready
 	// CHIP's empty state; the chip is gone and the condition it was really about — a query the ready
 	// library cannot answer — is now stated directly. Deleting it instead would have taken the only
@@ -216,21 +212,21 @@ test('— the empty state that named the library count survives the chip that us
 });
 
 test('/ — no empty-state copy points at a search box above, or at a now-deleted shortcut list', () => {
-	// The box moved to the bottom, so "Search for a song above" became false. That rework then dropped
+	// The box moved to the bottom, so "Search for a song above" became false. then dropped
 	// the empty-box shortcut list entirely — an empty box shows the live queue — so its "in the box
 	// below" prompt is gone too: neither direction is stated any more.
 	expect(PAGE).not.toContain('Search for a song above');
 	expect(PAGE).not.toContain('Search for a song in the box below');
 });
 
-test('— the docked box survives the on-screen keyboard, by the one mechanism that can say so', () => {
+test('the docked box survives the on-screen keyboard, by the one mechanism that can say so', () => {
 	// The acceptance bullet is "the input remains visible and no result row is occluded with the keyboard
 	// up". A `position: fixed; bottom: 0` band cannot satisfy it under the DEFAULT viewport behaviour
 	// (`resizes-visual`): the layout viewport keeps its full height, so the band sits under the keyboard.
 	// `interactive-widget=resizes-content` shrinks the layout viewport instead, which is what lifts the
 	// dock. Pinned here because it is a one-attribute claim that reads as cosmetic and is not: the gate
 	// cannot check it (headless Chromium has no soft keyboard), so this scan is the only thing that does.
-	const html = readFileSync(at('src/app.html'), 'utf8');
+	const html = read('src/app.html');
 	expect(html).toMatch(/name="viewport"/);
 	expect(html).toContain('interactive-widget=resizes-content');
 	// And the band really is fixed to the bottom, or the attribute is lifting nothing.
@@ -238,7 +234,7 @@ test('— the docked box survives the on-screen keyboard, by the one mechanism t
 });
 
 // ── non-vacuity ─────────────────────────────────────────────────────────────────────────────────
-test('— this guard really read the route, and really stripped its comments', () => {
+test('this guard really read the route, and really stripped its comments', () => {
 	// Every arm above is an absence, and an absence is what an empty string is full of. Two floors: the
 	// file was read, and the stripper did not blank it.
 	expect(RAW.length).toBeGreaterThan(40000);
@@ -248,8 +244,6 @@ test('— this guard really read the route, and really stripped its comments', (
 	expect(PAGE.split('\n').length).toBe(RAW.split('\n').length);
 	// And it must really strip: the route explains this deletion where it happened, so its comments name
 	// the very mechanisms the arms above ban. A no-op stripper would red every one of them.
-	// The issue number left this marker when production source was cleared; `direction B` is the part
-	// that identifies WHICH deletion was ruled, so that is what the guard pins.
 	expect(RAW).toContain('DELETED HERE (direction B)');
 	expect(PAGE).not.toContain('DELETED HERE (direction B)');
 });

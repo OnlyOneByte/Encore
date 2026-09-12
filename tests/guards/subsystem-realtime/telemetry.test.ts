@@ -90,7 +90,7 @@ test('position-only telemetry updates position without advancing', () => {
 
 test('held-slot: ended skips a not-ready file entry, plays the ready one', () => {
 	const { state, deps } = harness();
-	// q1 ready iframe (playing), q2 is a cooking file, q3 ready
+	// q1 ready iframe (playing), q2 is a processing file, q3 ready
 	deps.mediaById.set('m2', { ...media('m2'), stemStatus: 'queued' });
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
@@ -101,9 +101,9 @@ test('held-slot: ended skips a not-ready file entry, plays the ready one', () =>
 	expect(state.playback.currentEntryId).toBe('q3');
 });
 
-test('reconcileOnReady: room idled while cooking → the freshly-ready song starts playing', () => {
+test('reconcileOnReady: room idled while processing → the freshly-ready song starts playing', () => {
 	const { state, deps, published } = harness();
-	// the only queued song is a cooking file — nothing plays yet (room idle)
+	// the only queued song is a processing file — nothing plays yet (room idle)
 	deps.mediaById.set('m1', { ...media('m1'), stemStatus: 'queued' });
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	expect(state.playback.currentEntryId).toBeNull();
@@ -126,7 +126,7 @@ test('reconcileOnReady: something already playing → only re-emits nowplaying (
 	const { state, deps, published } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') }); // ready iframe
 	deps.mediaById.set('m2', { ...media('m2'), stemStatus: 'queued' });
-	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') }); // cooking
+	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') }); // processing
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1 playing
 	const before = state.playback.currentEntryId;
 	published.length = 0;

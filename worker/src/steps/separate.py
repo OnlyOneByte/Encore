@@ -116,7 +116,7 @@ class Separate(Step):
 class ProbeSilence(Step):
     """Measure whether either separated stem is digital silence, before paying to encode it.
 
-    Applies to BOTH engines now. Only demucs used to check, so a roformer cook could publish a silent
+    Applies to BOTH engines now. Only demucs used to check, so a roformer process could publish a silent
     guiding track — the failure the probe exists to catch.
 
     Probes the RAW separated WAV rather than the encoded stem, which is where demucs used to do it. Same
@@ -127,13 +127,13 @@ class ProbeSilence(Step):
 
     * A silent VOCALS stem costs the room a guide track nobody hears at volume. Recorded, not fatal, and
       the stem is NOT deleted: the profile analysis in the next step reads the raw vocals WAV regardless,
-      so a silent-vocals song still gets a present-but-empty songProfile and reads as cooked rather
+      so a silent-vocals song still gets a present-but-empty songProfile and reads as processed rather
       than stuck.
     * A silent INSTRUMENTAL is the file that plays at volume, so publishing it means the room plays
       four minutes of nothing while every surface says Ready and the TV reports advancing telemetry.
       There is no honest way to serve that, so it fails the job like any other unusable separation
       (compare Separate.run, which raises when no instrumental is produced at all). Failing puts the
-      song in the operator's ledger and leaves it re-cookable — possibly on the other engine — instead
+      song in the operator's ledger and leaves it re-processable — possibly on the other engine — instead
       of silently poisoning the rotation.
     """
 
@@ -146,7 +146,7 @@ class ProbeSilence(Step):
         self._ffmpeg = ffmpeg_bin
 
     def applies(self, ctx: Ctx) -> bool:
-        # Either stem is worth probing. Gating on vocals alone skipped the whole step for a cook that
+        # Either stem is worth probing. Gating on vocals alone skipped the whole step for a process that
         # produced only an instrumental — the one stem whose silence is fatal.
         return bool(ctx.stems.raw.get("vocals") or ctx.stems.raw.get("instrumental"))
 
@@ -234,7 +234,7 @@ class PublishStems(Step):
         # ones: they are the same PCM measure_guide_offset_ms reads, and doing it here means no re-decode.
         # BEST-EFFORT and TRI-STATE, exactly like the vocals encode above: only measured when a vocals stem
         # was actually published (a silent/absent guide has nothing to align), never fatal, and a decline
-        # reports None → the core stores null → the client holds the guide exactly as today. A freshly-cooked
+        # reports None → the core stores null → the client holds the guide exactly as today. A freshly-processed
         # song's two FLAC stems decode to a common start, so this is ~0 for the whole library; the non-zero
         # case is a legacy pre-change .m4a vocals stem or a deliberately shifted one.
         guide_offset_ms: int | None = None
@@ -251,8 +251,8 @@ class PublishStems(Step):
             )
 
         # songProfile sits at the TOP level, a SIBLING of stems. The core reads it there; publishing it
-        # nested inside `stems` is a shape mismatch that would stall every cook at "Separating vocals"
-        # forever, because the cook gate requires the profile to be present and the re-cook check reads
+        # nested inside `stems` is a shape mismatch that would stall every process at "Separating vocals"
+        # forever, because the process gate requires the profile to be present and the re-process check reads
         # hasInstrumental rather than the gate. Pinned from the other side of the wire by
         # src/server/jobs/vocabulary-parity.test.ts.
         ctx.out.artifacts["stems"] = dict(ctx.stems.published)

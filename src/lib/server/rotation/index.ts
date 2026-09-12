@@ -1,6 +1,6 @@
 // Server-side rotation policy. Wraps the shared ordering registry (`assignSeqs` → queue-order.ts)
 // and adds the server-only concerns: which entry plays NEXT, with the held-slot rule (skip an entry
-// that isn't ready yet — e.g. a make-karaoke song still being processed — without burning its fair
+// that isn't ready yet — e.g. a process song still being processed — without burning its fair
 // position). See docs/ARCHITECTURE.md.
 //
 // WHICH ordering applies is the room's `queueOrder` setting, passed in as `Ordering`. It is optional
@@ -39,7 +39,7 @@ export function nextPlayable(
 	const held: QueueEntry[] = [];
 	for (const e of ordered) {
 		if (isEntryReady(e, mediaById)) return { next: e, held };
-		held.push(e); // cooking — hold its slot, try the next singer
+		held.push(e); // processing — hold its slot, try the next singer
 	}
 	return { next: null, held };
 }

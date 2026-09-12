@@ -31,9 +31,9 @@ test('a spotify result materializes and appears in the merged, deduped search ou
 	const sp = materialized.find((m) => m.sourceRef === '4uLU6hMCjMI75M1A2tKUQC')!;
 	expect(sp.source).toBe('spotify');
 
-	const { ready, cooking, unacquired } = partitionSearch(q, materialized, materialized);
+	const { ready, processing, unacquired } = partitionSearch(q, materialized, materialized);
 	expect(ready).toHaveLength(0);
-	expect(cooking).toHaveLength(0);
+	expect(processing).toHaveLength(0);
 	// Both hits surface as unacquired candidates — the spotify one IS in the merged output.
 	expect(unacquired.some((m) => m.source === 'spotify' && m.sourceRef === '4uLU6hMCjMI75M1A2tKUQC')).toBe(true);
 	expect(unacquired.some((m) => m.source === 'youtube' && m.sourceRef === 'dQw4w9WgXcQ')).toBe(true);

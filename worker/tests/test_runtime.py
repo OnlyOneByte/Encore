@@ -28,8 +28,7 @@ from src.runtime import (  # noqa: E402
     StepResult,
     scratch_for,
     stages_of,
-    validate_plan,
-)
+    validate_plan)
 from src.runtime import runner as runner_mod  # noqa: E402
 from src.vocabulary import Stage  # noqa: E402
 from tests.conftest import drain  # noqa: E402
@@ -42,8 +41,7 @@ def job(tmp_path, job_type="align") -> JobSpec:
         job_type=job_type,
         source_uri="https://yt/x",
         params={},
-        media_dir=str(tmp_path),
-    )
+        media_dir=str(tmp_path))
 
 
 async def noop_runner(argv):  # pragma: no cover - most toy steps never shell out
@@ -76,7 +74,7 @@ def test_a_step_reading_what_no_earlier_step_writes_is_REFUSED():
     """The whole point of declaring reads and writes.
 
     A reordered step, or one dropped into the wrong slot, otherwise surfaces as a confusing `None` several
-    steps later — on the deploy box, mid-cook. Here it is a validation error naming the step and the key.
+    steps later — on the deploy box, mid-process. Here it is a validation error naming the step and the key.
     """
     plan = LinearPlan("broken", [Writes("second", writes=set(), reads={"lyrics.texts"})])
     with pytest.raises(PlanError, match="lyrics.texts"):
@@ -89,8 +87,7 @@ def test_the_same_plan_in_the_RIGHT_order_validates():
         [
             Writes("first", writes={"lyrics.texts"}),
             Writes("second", writes=set(), reads={"lyrics.texts"}),
-        ],
-    )
+        ])
     validate_plan(plan)  # must not raise
 
 
@@ -138,7 +135,7 @@ async def test_the_RUNNER_refuses_a_malformed_plan_before_any_step_runs(tmp_path
 
     `validate_plan` is exercised directly above, but the promise `plan.py`'s docstring makes — a
     reordered step is a validation error naming the step and the key, NOT a confusing `None` several
-    steps later on the deploy box mid-cook — is only kept because `PlanRunner.process` calls it before
+    steps later on the deploy box mid-process — is only kept because `PlanRunner.process` calls it before
     the first step. Drive a malformed plan (a step reading a key nothing earlier writes) through the
     runner via the `plans=` injection seam and assert it is refused BEFORE execution: the step's `ran`
     flag must stay False. Deleting the runner's `validate_plan` call reds this — the step runs, reads an
@@ -161,8 +158,7 @@ def test_stages_are_DERIVED_from_the_plan():
             Writes("a", writes=set()),
             Writes("b", writes=set()),
             _Aligning("c"),
-        ],
-    )
+        ])
     assert stages_of(plan) == [Stage.DOWNLOADING, Stage.ALIGNING]
 
 
@@ -200,7 +196,7 @@ class Marks(Step):
 async def test_STOP_ends_the_plan_and_still_COMPLETES(tmp_path):
     """STOP means the job is DONE, not failed. The one real case is an instrumental: no source produced
     any text, so the remaining lyrics steps have nothing to operate on. Raising instead would leave that
-    song stuck cooking forever on a step that is working correctly, because readiness waits on align."""
+    song stuck processing forever on a step that is working correctly, because readiness waits on align."""
     plan = LinearPlan("stopping", [Stops(), Marks("after")])
     proc = PlanRunner(runner=noop_runner, plans=lambda j, e: plan)
     events = await drain(proc, job(tmp_path))
@@ -359,8 +355,7 @@ async def test_a_step_publishing_to_ctx_out_without_declaring_it_is_caught(tmp_p
 async def test_a_step_publishing_ctx_out_facts_without_declaring_it_is_caught(tmp_path, monkeypatch):
     """`facts` is watched with the same field granularity as `artifacts`. A step that resolves an
     engine/model/device onto `ctx.out.facts` without declaring `out` must be caught: `facts` is what
-    the per-attempt audit page shows, and letting it slip is the exact undeclared-publisher defect
-    this pin exists for. Companion to the `artifacts` case; every wire-shaped `Outputs` field has one such pin.
+    the per-attempt audit page shows, and letting it slip is the exact undeclared-publisher defect an earlier change was filed for. Companion to the `artifacts` case; every wire-shaped `Outputs` field has one such pin.
     """
     monkeypatch.setattr(runner_mod, "STRICT_WRITES", True)
 
@@ -403,11 +398,11 @@ async def test_a_step_publishing_ctx_out_media_uri_without_declaring_it_is_caugh
 
 @pytest.mark.asyncio
 async def test_a_step_publishing_ctx_out_selection_without_declaring_it_is_caught(tmp_path, monkeypatch):
-    """`selection` is the fourth wire-shaped field: it crosses to the `job_attempts` audit
+    """`selection` is the fourth wire-shaped field (earlier changes): it crosses to the `job_attempts` audit
     trail as the durable account of WHY a lyric variant won. It was added to `Outputs` after `_snapshot`
     was written, and the guard's `out` snapshot listed `artifacts`, `facts`, `media_uri` explicitly, so
     `selection` was outside the watch — an undeclared second writer could silently decide what
-    the per-attempt audit page reports about the variant pick, the same failure mode seen
+    the per-attempt audit page reports about the variant pick, the same failure mode two earlier changes hit
     on the earlier fields. It must be caught like any other wire-shaped publish; the guard now derives
     the watched set from the dataclass fields so this cannot recur when a fifth field lands.
     """
@@ -491,13 +486,13 @@ def test_a_valid_action_with_no_registered_plan_raises_plan_error(tmp_path, monk
 
 @pytest.mark.asyncio
 async def test_run_blocking_awaits_its_thread_before_the_generator_finishes(tmp_path, monkeypatch):
-    """A cancelled ML cook must not free its concurrency slot while the thread is still running.
+    """A cancelled ML process must not free its concurrency slot while the thread is still running.
 
     run_blocking offloads a synchronous ML call to a thread and yields keepalives. When the job is
     cancelled, dial_home cancels the consuming task, which throws GeneratorExit into this generator's
     suspended `yield`. The slot is freed the instant run_blocking returns (_run_job's finally). If the
     generator returned while the thread was still executing, the worker would advertise capacity it did
-    not have and a cancelled cook would keep burning CPU/VRAM off the books.
+    not have and a cancelled process would keep burning CPU/VRAM off the books.
 
     The thread here cannot be killed — it sleeps a fixed span and sets `finished` only when it truly
     ends. We consume one keepalive, then `aclose()` the generator (the GeneratorExit path). With the
@@ -569,7 +564,7 @@ async def test_run_blocking_survives_a_second_cancel_during_the_shielded_await(m
     # aclose() -> GeneratorExit -> finally -> suspends on `await asyncio.shield(asyncio.wait({task}))`.
     close_task = asyncio.ensure_future(gen.aclose())
     await asyncio.sleep(0.05)  # let the unwind reach the shielded await
-    assert not finished.is_set(), "thread finished too soon — the shield window closed before cancel #2"
+    assert not finished.is_set(), "thread finished too soon — the shield window closed before cancel an earlier change"
     assert not close_task.done(), "aclose settled before the second cancel — cannot exercise the path"
 
     # Second cancel lands on the shielded await inside the finally.
@@ -609,7 +604,7 @@ def test_scratch_for_produces_the_documented_media_volume_layout(tmp_path):
     in a two-container deploy a core-side rmtree gets EACCES, so the worker's own delete is the ONLY
     reclaim path. It had zero test callers, so a producer edit that changed the path shape — grouping
     scratch under the media id, a per-attempt subdir, moving off the media volume — sailed past the
-    whole suite (579 green) while every cooked song leaked its decoded source + both WAV stems until
+    whole suite (579 green) while every processed song leaked its decoded source + both WAV stems until
     the volume filled, silently (`ignore_errors=True`).
 
     Pin the producer's contract HERE, independent of any hand-rebuilt copy: the expectation is written
@@ -634,7 +629,7 @@ def test_the_cleanup_derives_its_delete_target_FROM_scratch_for_not_a_hand_rebui
     `test_dial_home.py` cleanup tests hardcode the literal a THIRD time, so they pin the consumer and
     are blind to producer drift — the asymmetry is the whole finding. The durable fix is to
     delete the duplication: have the consumer consume the producer. This guard reads dial_home's source
-    and fails if the finally-block rmtree reverts to a hand-built `os.path.join(..., "work", ...)`
+    and fails if the finally-block rmtree reverts to a hand-built `os.path.join(..., "work",...)`
     instead of `scratch_for(job)`.
     """
     src = Path(__file__).resolve().parents[1] / "src" / "dial_home.py"
@@ -659,7 +654,7 @@ def test_the_cleanup_derives_its_delete_target_FROM_scratch_for_not_a_hand_rebui
 async def test_run_stage_emits_a_time_based_keepalive_while_the_child_is_quiet(monkeypatch):
     """A subprocess stage whose child makes no NEW percentage for longer than the progress lease must
     still renew the lease with a TIME-BASED keepalive, or the core's 30 s progressLeaseMs expires and a
-    HEALTHY cook is reaped and retried as a fresh pass.
+    HEALTHY process is reaped and retried as a fresh pass.
 
     This is the roformer shape exactly: `parse` returns None unconditionally (roformer's
     parse_progress does), so NOT ONE line parses to a percentage, and the child stays quiet for a long

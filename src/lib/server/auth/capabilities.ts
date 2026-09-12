@@ -21,7 +21,7 @@
 //   - settings:write-room   — room-scoped settings stay open (safe for anyone by construction).
 //   - queue:remove-any      — removing someone else's entry stays open.
 // Q5 (queue-depth cap) ruled A: no per-singer depth cap; validateCommand's add arm stays uncapped. The
-// unrelated cook cap MAX_CONCURRENT_COOKS_PER_SINGER = 3 is kept.
+// unrelated process cap MAX_CONCURRENT_PROCESSES_PER_SINGER = 3 is kept.
 //
 // The one thing it does enforce now: you must be a person in the room. That is not a host gate, it is
 // the difference between a guest and a stranger's script.
@@ -35,7 +35,7 @@ export type Capability =
 	| 'queue:reorder-any'
 	/** Change this room's own policy (pacing, quality ceiling, grace window). */
 	| 'settings:write-room'
-	/** Change deployment-wide separator and cook policy. */
+	/** Change deployment-wide separator and process policy. */
 	| 'settings:write-global';
 
 export interface Actor {

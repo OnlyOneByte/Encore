@@ -14,7 +14,7 @@
 //
 // What it deliberately does NOT do is stop the music. A playing entry is not a queued one, and yanking
 // the video out from under a room that is watching it is worse than letting it finish — anyone can skip.
-// An in-flight cook also runs to completion: the output is a durable library asset reusable by anyone,
+// An in-flight process also runs to completion: the output is a durable library asset reusable by anyone,
 // so cancelling mid-Demucs would mean partial artifacts and lease cleanup for no gain.
 
 import type { EncoreApp } from '../app';

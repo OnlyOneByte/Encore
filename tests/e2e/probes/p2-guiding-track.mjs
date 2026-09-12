@@ -15,7 +15,7 @@
  * being lower — not as an audibility judgement. Whether the mix sounds right can only be judged live.
  *
  * WORKER OWNERSHIP. This probe owns the entire server + worker lifecycle for its port. It refuses to
- * run if anything is already listening on the port, to keep dispatch deterministic across cook cycles
+ * run if anything is already listening on the port, to keep dispatch deterministic across process cycles
  * (in particular the audible→silent worker swap needed for FAKE_SILENT_VOCALS).
  *
  *   EPORT=5222 bun tests/e2e/probes/p2-guiding-track.mjs
@@ -216,8 +216,8 @@ async function bootServer() {
 /**
  * Spawn a fake worker and RESOLVE only once it has been welcomed. The welcome is emitted by the
  * worker on its stdout ("welcomed; …"), so waiting for that line means the server has this worker on
- * its registry and can dispatch to it. Not waiting produced a race where make-karaoke enqueued a job
- * before ANY worker was live, and cookState was 'queued' forever with nothing to work it.
+ * its registry and can dispatch to it. Not waiting produced a race where process enqueued a job
+ * before ANY worker was live, and processState was 'queued' forever with nothing to work it.
  */
 /** @param {'audible' | 'silent'} kind */
 async function spawnWorker(kind) {
@@ -284,14 +284,14 @@ async function searchFor(q) {
 	const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
 	const d = await r.json();
 	// Prefer a local hit — those are decodable on this box.
-	const all = [...(d.ready ?? []), ...(d.results ?? []), ...(d.cooking ?? [])];
+	const all = [...(d.ready ?? []), ...(d.results ?? []), ...(d.processing ?? [])];
 	return /** @type {Media[]} */ (all).find((x) => x.source === 'local') ?? all[0] ?? null;
 }
 
 /** @param {string} mediaId @returns {Promise<any>} */
-async function makeKaraoke(mediaId) {
-	const r = await api('/api/make-karaoke', { method: 'POST', body: JSON.stringify({ mediaId }) });
-	if (!r.ok && r.status !== 409) throw new Error(`make-karaoke ${r.status} ${await r.text()}`);
+async function processMedia(mediaId) {
+	const r = await api('/api/process', { method: 'POST', body: JSON.stringify({ mediaId }) });
+	if (!r.ok && r.status !== 409) throw new Error(`process ${r.status} ${await r.text()}`);
 	return r.json();
 }
 
@@ -411,7 +411,7 @@ async function main() {
 
 	await bootServer();
 
-	// 1. Cook three audible songs, so the room has enough content for reset + default tests.
+	// 1. Process three audible songs, so the room has enough content for reset + default tests.
 	let worker = await spawnWorker('audible');
 	await apiJoin(`Probe${Date.now() % 100000}`);
 	const AUDIBLE_QUERIES = ['caroline', 'believin', 'bohemian'];
@@ -420,23 +420,23 @@ async function main() {
 	for (const q of AUDIBLE_QUERIES) {
 		const hit = await searchFor(q);
 		if (!hit) bail(`no library hit for "${q}" — did seed-media.mjs run?`);
-		await makeKaraoke(hit.id);
+		await processMedia(hit.id);
 		const ready = await waitReady(hit.id);
 		audibleMedia.push(ready);
 		if (!ready.vocalsRef)
-			bail(`audible cook of "${q}" produced no vocalsRef — the fake worker must always publish one`);
+			bail(`audible process of "${q}" produced no vocalsRef — the fake worker must always publish one`);
 	}
-	console.log(`[cook] 3 audible songs ready:`, audibleMedia.map((m) => m.id).join(', '));
+	console.log(`[process] 3 audible songs ready:`, audibleMedia.map((m) => m.id).join(', '));
 
-	// 2. Swap workers: kill audible, spawn silent — so the fourth cook goes to a silent producer with
+	// 2. Swap workers: kill audible, spawn silent — so the fourth process goes to a silent producer with
 	//    no chance of race.
 	await killChild(worker, 1500);
 	worker = await spawnWorker('silent');
 	const silentHit = await searchFor('prayer');
 	if (!silentHit) bail('no library hit for "prayer"');
-	await makeKaraoke(silentHit.id);
+	await processMedia(silentHit.id);
 	const silentMedia = await waitReady(silentHit.id);
-	console.log(`[cook] silent-vocals song ready: ${silentMedia.id} vocalsRef=${silentMedia.vocalsRef}`);
+	console.log(`[process] silent-vocals song ready: ${silentMedia.id} vocalsRef=${silentMedia.vocalsRef}`);
 	await killChild(worker, 1500);
 
 	// 3. Chromium.
@@ -718,7 +718,7 @@ async function main() {
 		`vocals decoded byte count climbs within 8s of mount`
 	);
 
-	// ── Finding 7: FAKE_SILENT_VOCALS — the cook produces a media whose vocalsRef IS set, so the
+	// ── Finding 7: FAKE_SILENT_VOCALS — the process produces a media whose vocalsRef IS set, so the
 	//               control is offered and the guide element does mount. What we can and cannot judge:
 	//               we cannot judge how it sounds; we CAN check that the element decodes, and that
 	//               hasGuidingTrack(media) returns true even though the file is at the digital floor.
@@ -748,7 +748,7 @@ async function main() {
 		`);
 		record(
 			'MEDIUM',
-			'silent vocals: media.vocalsRef IS set (cook must not fail on silent guide — HARNESS.md)',
+			'silent vocals: media.vocalsRef IS set (process must not fail on silent guide — HARNESS.md)',
 			!!silentMedia.vocalsRef,
 			`vocalsRef=${silentMedia.vocalsRef}`,
 			`a non-empty ref string`

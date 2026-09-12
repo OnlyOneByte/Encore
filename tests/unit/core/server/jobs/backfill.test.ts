@@ -1,6 +1,6 @@
-// The upgrade path's entry point. Measured on the live library before this existed: 13 cooked
+// The upgrade path's entry point. Measured on the live library before this existed: 13 processed
 // songs, 3 with lyrics — 10 that could never get them, because only a stems COMPLETION enqueues align
-// and nobody re-cooks a working song.
+// and nobody re-processes a working song.
 import { test, expect } from 'bun:test';
 import type { LyricsCandidate, Media } from '$lib/contract';
 import { needsLyricsBackfill, BACKFILL_PRIORITY } from '$lib/server/jobs/backfill';
@@ -25,7 +25,7 @@ const cand = (timing: LyricsCandidate['timing'], source: LyricsCandidate['textSo
 	createdAt: 1
 });
 
-test('a cooked song with NO lyrics needs a backfill', () => {
+test('a processed song with NO lyrics needs a backfill', () => {
 	const m = media();
 	expect(needsLyricsBackfill([m])).toEqual([m.id]);
 });
@@ -39,7 +39,7 @@ test('a song stuck at LINE timings IS re-aligned (line is the floor, word is the
 	expect(needsLyricsBackfill([m])).toEqual([m.id]);
 });
 
-test('an UNCOOKED song is skipped — ASR needs the vocals stem, which does not exist yet', () => {
+test('an UNPROCESSED song is skipped — ASR needs the vocals stem, which does not exist yet', () => {
 	expect(needsLyricsBackfill([media({ stemStatus: 'none' })])).toEqual([]);
 	expect(needsLyricsBackfill([media({ stemStatus: 'queued' })])).toEqual([]);
 });
@@ -54,7 +54,7 @@ test('candidates with no usable timing do not count as having lyrics', () => {
 	expect(needsLyricsBackfill([m])).toEqual([m.id]);
 });
 
-test('the backfill never outranks a live cook', () => {
+test('the backfill never outranks a live process', () => {
 	// job priority mirrors rotationSeq (lower = sooner), so dead last is the largest value
 	expect(BACKFILL_PRIORITY).toBe(Number.MAX_SAFE_INTEGER);
 });

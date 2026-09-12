@@ -1,6 +1,6 @@
 // Guard for F2 — five sites described an enforcement that did not exist.
 //
-// With the not-cookable rule enforced in exactly ONE place, five other sites explained it. Four named
+// With the not-processable rule enforced in exactly ONE place, five other sites explained it. Four named
 // `fetcherFor` as the refusal, and `fetcherFor` does not refuse: measured against the real helpers,
 // `fetcherFor('spotify')` returns `'ytdlp'`, `needsFetch('spotify')` is `true`, and
 // `sourceUriFor({ source: 'spotify', sourceRef: '4uLU…' })` forms
@@ -17,24 +17,23 @@
 // A comment-STRIPPED scan is the wrong shape here, because the subject IS the comments. So this asserts
 // the prose, anchored on the mechanism it names.
 import { test, expect } from 'bun:test';
-import { read } from '@encore/test-support';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fetcherFor, needsFetch, sourceUriFor, DEFAULT_FETCHER } from '$lib/contract';
+import { at } from '@encore/test-support';
 
-// The old `const REPO = at('.')` is gone: SITES below are already
-// repo-relative, so `read` takes them directly off the repo-root anchor. It also THROWS on a missing
-// site, which reinforces the non-vacuity sentinel this file already carries — a moved or renamed file
-// now reds as a path failure instead of reaching that sentinel at all.
+const REPO = at('.');
 
 /** The five sites the finding names, each read from the real tree. */
 const SITES = [
-	'src/lib/contract/cook/fetchers.ts',
+	'src/lib/contract/process/fetchers.ts',
 	'src/lib/contract/core/types.ts',
 	'src/lib/server/media/spotify.ts',
 	'src/routes/api/search/+server.ts',
 	'docs/DECISIONS.md'
 ] as const;
 
-const sources = new Map(SITES.map((rel) => [rel, read(rel)]));
+const sources = new Map(SITES.map((rel) => [rel, readFileSync(join(REPO, rel), 'utf8')]));
 
 test('F2 non-vacuous: all five named sites exist, are non-empty, and still discuss spotify', () => {
 	// Without this sentinel a moved or renamed file passes every scan below on an empty read, and the
@@ -71,11 +70,11 @@ function refusalWindows(src: string): string[] {
  * the mechanism it refutes:
  *  - the pairing is explicitly DENIED ("`fetcherFor` does NOT refuse it"), or
  *  - the refusal is ATTRIBUTED to the real authority inside the same window, which is what a sentence
- *    like "`isCookableSource` … refuses it … (`fetcherFor` does not)" does — the verb has a different
+ *    like "`isProcessableSource` … refuses it … (`fetcherFor` does not)" does — the verb has a different
  *    subject, and adjacency alone is not a claim about fetcherFor.
  */
 function isInnocent(window: string): boolean {
-	return isDenial(window) || /isCookableSource/.test(window);
+	return isDenial(window) || /isProcessableSource/.test(window);
 }
 
 /** An explicit denial that the refusal belongs to `fetcherFor`. */
@@ -105,10 +104,10 @@ test('F2 the guard DISCRIMINATES — it still flags the exact prose that shipped
 	const materializationClaim =
 		'in practice a spotify SearchResult is not materialised into a queueable media (see /api/search)';
 	const fetcherForClaims = [
-		'so a spotify-sourced media is not directly cookable - `fetcherFor` refuses it.',
+		'so a spotify-sourced media is not directly processable - `fetcherFor` refuses it.',
 		'`sourceRef` is the Spotify track id, which is NEVER fetched (fetcherFor refuses a spotify source).',
-		'a spotify-sourced media is not cookable (see requestMakeKaraoke, and fetcherFor which refuses it)',
-		'a spotify-sourced media is not cookable (`fetcherFor` refuses it, `requestMakeKaraoke` declines it).'
+		'a spotify-sourced media is not processable (see requestProcess, and fetcherFor which refuses it)',
+		'a spotify-sourced media is not processable (`fetcherFor` refuses it, `requestProcess` declines it).'
 	];
 	// four of the five are fetcherFor-attribution claims and must be flagged
 	for (const s of fetcherForClaims) {
@@ -123,7 +122,7 @@ test('F2 the denial is PRESENT where the false claim did the most damage', () =>
 	// free to re-derive the same wrong conclusion from the `if (source === 'spotify') return
 	// DEFAULT_FETCHER` line, which reads as a refusal until something says otherwise. fetchers.ts owns
 	// that line, so fetchers.ts has to carry the denial — and in the explicit form, not by attribution.
-	const fetchers = sources.get('src/lib/contract/cook/fetchers.ts')!;
+	const fetchers = sources.get('src/lib/contract/process/fetchers.ts')!;
 	expect(refusalWindows(fetchers).filter(isDenial).length).toBeGreaterThan(0);
 	// and it must say what the floor IS, not merely what it is not
 	expect(fetchers).toMatch(/floor/i);
@@ -144,7 +143,7 @@ test('F2 the sites name the real authority instead', () => {
 	// The positive half: correcting the prose to say nothing at all would pass the two bans above while
 	// leaving a reader with no pointer to where the rule actually lives. Every site must name it.
 	for (const rel of SITES) {
-		expect(sources.get(rel)!).toContain('isCookableSource');
+		expect(sources.get(rel)!).toContain('isProcessableSource');
 	}
 });
 
@@ -161,7 +160,7 @@ test('F2 the measurements the false claims contradicted still hold', () => {
 });
 
 test('F2 the ratified DECISION itself is untouched', () => {
-	// The issue upholds the ratified decision and must not reopen it. Only the sentence describing HOW the rule is
+	// The issue upholds and must not reopen it. Only the sentence describing HOW the rule is
 	// enforced was wrong. If a later edit weakens the decision, this reds.
 	const decisions = sources.get('docs/DECISIONS.md')!;
 	expect(decisions).toMatch(/Spotify as a SEARCH \/ METADATA\s*source only|SEARCH \/ metadata\s*source only/i);

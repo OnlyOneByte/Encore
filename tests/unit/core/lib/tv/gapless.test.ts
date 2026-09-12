@@ -113,7 +113,7 @@ test('enterInterstitial refuses states where an intro would be a lie', () => {
 	c.enterInterstitial();
 	expect(c.state).toBe('attract');
 
-	// waiting: the media is still cooking, so announcing it as up would contradict the waiting screen
+	// waiting: the media is still processing, so announcing it as up would contradict the waiting screen
 	c.onNowPlaying(e('q1'), null);
 	c.enterWaiting();
 	c.enterInterstitial();

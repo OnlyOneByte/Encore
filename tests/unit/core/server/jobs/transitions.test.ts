@@ -4,14 +4,7 @@
 // pair cannot express — a REJECT vs a LEASE_EXPIRED that both land on `queued`, and REPRIORITIZE as
 // a legal in-machine self-loop rather than an escape hatch.
 import { test, expect } from 'bun:test';
-import {
-	canTransition,
-	assertTransition,
-	canFire,
-	nextStatus,
-	assertEvent,
-	JOB_TRANSITIONS
-} from '$lib/server/jobs/transitions';
+import { canTransition, assertTransition, canFire, nextStatus, assertEvent, JOB_TRANSITIONS } from '$lib/server/jobs/transitions';
 import { TERMINAL_JOB_STATUSES, JOB_EVENTS, type JobStatus, type JobEvent } from '$lib/contract';
 
 // — status-pair view (the lossy projection kept for callers that only ask "is A→B legal?") —
@@ -35,7 +28,7 @@ test('cancel is legal from every non-terminal state', () => {
 	expect(canTransition('running', 'canceled')).toBe(true);
 });
 
-test('every non-terminal status self-loops via REPRIORITIZE; running also via PROGRESS', () => {
+test('every non-terminal status self-loops via REPRIORITIZE; running also via PROGRESS (/)', () => {
 	expect(canTransition('running', 'running')).toBe(true); // PROGRESS and/or REPRIORITIZE
 	expect(canTransition('queued', 'queued')).toBe(true); // REPRIORITIZE — now a legal internal edge
 	expect(canTransition('assigned', 'assigned')).toBe(true); // REPRIORITIZE during the ack window
@@ -65,7 +58,7 @@ test('assertTransition throws with a precise reason', () => {
 // — event-typed machine: the distinctions a status pair could not express —
 
 test('REJECT and LEASE_EXPIRED are DISTINGUISHABLE events that both land on queued', () => {
-	// The whole point of the event-typed machine: pre-fix, both of these were the single status pair `assigned → queued`
+	// The whole point of: pre-fix, both of these were the single status pair `assigned → queued`
 	// and the machine could not tell them apart. Now they are separate legal edges from `assigned`.
 	expect(nextStatus('assigned', 'REJECT')).toBe('queued');
 	expect(nextStatus('assigned', 'LEASE_EXPIRED')).toBe('queued');
@@ -79,16 +72,16 @@ test('REJECT and LEASE_EXPIRED are DISTINGUISHABLE events that both land on queu
 	expect(canFire('running', 'RECOVER')).toBe(true);
 });
 
-test('REPRIORITIZE is a legal in-machine self-loop on EVERY non-terminal status', () => {
-	// Retires repository.ts:176's raw write: a starved cook is rescheduled THROUGH the machine.
+test('REPRIORITIZE is a legal in-machine self-loop on EVERY non-terminal status (/)', () => {
+	// Retires repository.ts:176's raw write: a starved process is rescheduled THROUGH the machine.
 	// Every non-terminal status carries the self-loop, matching reprioritize()'s terminal-only guard.
-	// `assigned` is load-bearing: reprioritizeCookForMedia fires on the onEntryAdded path and
+	// `assigned` is load-bearing: reprioritizeProcessForMedia fires on the onEntryAdded path and
 	// findOutstandingForMedia returns assigned jobs, so a missing assigned edge throws and drops the
-	// queue:patch broadcast (the reprioritize regression).
+	// queue:patch broadcast (the regression).
 	expect(nextStatus('queued', 'REPRIORITIZE')).toBe('queued');
 	expect(nextStatus('assigned', 'REPRIORITIZE')).toBe('assigned'); // the reconnect add during the ack window
 	expect(nextStatus('running', 'REPRIORITIZE')).toBe('running');
-	// but never on a terminal job — a finished cook has no scheduling future and no REPRIORITIZE edge
+	// but never on a terminal job — a finished process has no scheduling future and no REPRIORITIZE edge
 	for (const term of TERMINAL_JOB_STATUSES) {
 		expect(canFire(term, 'REPRIORITIZE')).toBe(false);
 	}

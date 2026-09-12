@@ -4,25 +4,25 @@
 //
 // Pure: no DB, no network, no clock. The route supplies the catalog + resolver results.
 
-import { isCooking, readyToSing, type Media } from '$lib/contract';
+import { isProcessing, readyToSing, type Media } from '$lib/contract';
 
 /** Where a song sits on the readiness axis. */
 export type Readiness =
 	| 'ready' // stems separated and on disk — queue it and sing with no vocals, no wait
-	| 'cooking' // a stems job is in flight; rotation HOLDS its slot, so it is still queueable
-	| 'unacquired'; // no instrumental yet, so nothing to play — a candidate to cook, not a song to sing
+	| 'processing' // a stems job is in flight; rotation HOLDS its slot, so it is still queueable
+	| 'unacquired'; // no instrumental yet, so nothing to play — a candidate to process, not a song to sing
 
 export function readinessOf(m: Media): Readiness {
 	// Gate-driven, and this FUNCTION must agree with the client's copy (src/lib/readiness.ts)
 	// for every catalog media — asserted by the parity test there. The client's Readiness union carries
 	// one extra member, 'failed', which is deliberately absent here: nothing in the catalog records a
-	// failure (a dead cook settles back to un-cooked via settleStemsGate), so 'failed' arrives only from
+	// failure (a dead process settles back to un-processed via settleStemsGate), so 'failed' arrives only from
 	// a live media:status event and lives in the client's displayReadiness. Adding it here would create
 	// a value this function can never return.
-	// `isCooking` reads the cook gates rather than a single `stemStatus === 'queued'` check, so a song
-	// mid-align (stems ready, lyrics queued) reads as cooking instead of falling through to unacquired.
+	// `isProcessing` reads the process gates rather than a single `stemStatus === 'queued'` check, so a song
+	// mid-align (stems ready, lyrics queued) reads as processing instead of falling through to unacquired.
 	if (readyToSing(m)) return 'ready';
-	if (isCooking(m)) return 'cooking';
+	if (isProcessing(m)) return 'processing';
 	return 'unacquired';
 }
 
@@ -35,14 +35,14 @@ export function matchesQuery(m: Media, query: string): boolean {
 
 export interface SearchPartition {
 	ready: Media[];
-	cooking: Media[];
+	processing: Media[];
 	unacquired: Media[];
 }
 
 /**
  * Merge the durable catalog with fresh resolver results into one deduped, readiness-partitioned set.
  *
- * Catalog entries come FIRST so a song we already cooked is never missed because the resolver ranked
+ * Catalog entries come FIRST so a song we already processed is never missed because the resolver ranked
  * it low, titled it differently, or is unreachable (yt-dlp down). Resolver results fill in the rest.
  * Dedupe is by media id, which is exact: the route materializes a result onto the EXISTING catalog
  * media when it recognises the song by origin identity (`source` + `sourceRef`), so one song can't
@@ -59,7 +59,7 @@ export function partitionSearch(query: string, catalog: Media[], results: Media[
 
 	return {
 		ready: all.filter((m) => readinessOf(m) === 'ready'),
-		cooking: all.filter((m) => readinessOf(m) === 'cooking'),
+		processing: all.filter((m) => readinessOf(m) === 'processing'),
 		unacquired: all.filter((m) => readinessOf(m) === 'unacquired').sort((a, b) => rank(a) - rank(b))
 	};
 }

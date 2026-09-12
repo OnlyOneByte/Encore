@@ -1,14 +1,14 @@
 // A JOB's state → the phone-facing `media:status`. Pure, and shared by the three places that need it:
-// the worker hub broadcasting live lifecycle changes, and /api/library answering "what is cooking
+// the worker hub broadcasting live lifecycle changes, and /api/library answering "what is processing
 // right now?" for a client that just loaded and has received no broadcast yet.
 //
-// WHY THIS IS NOT A 1:1 MAP, which it used to claim to be. A cook is THREE jobs — fetch → stems →
+// WHY THIS IS NOT A 1:1 MAP, which it used to claim to be. A process is THREE jobs — fetch → stems →
 // align — and each one reports its OWN stages: `vocabulary.py`'s STAGE_PLANS gives fetch
 // [downloading], stems [downloading, separating] and align [downloading, aligning]. The phone renders
 // a single five-stop line (ProcessingCard's chip strip: queued → downloading → separating → aligning
-// → ready), so forwarding each job's stage verbatim walked that line BACKWARDS twice per cook: a song
+// → ready), so forwarding each job's stage verbatim walked that line BACKWARDS twice per process: a song
 // on "Making karaoke" jumped back to "Fetched" the moment stems began decoding, and again when align
-// pulled its captions. Measured on the real hub, one cook broadcast this:
+// pulled its captions. Measured on the real hub, one process broadcast this:
 //
 //   separating@0 → downloading@0 → downloading@100 → ready@100      (fetch)
 //   separating@0 → downloading@10 → separating@68 → ready@100       (stems)
@@ -54,7 +54,7 @@ const JOB_STAGE_FLOOR: Record<JobType, MediaStage> = {
 	stems: 'separating',
 	// Background re-separation of an already-finished song. Its floor matches `stems` for the rare case
 	// where it IS the separation the song is waiting on; the hub suppresses its broadcasts entirely for
-	// a song that is already singable (see shouldBroadcastCook).
+	// a song that is already singable (see shouldBroadcastProcess).
 	'stems-upgrade': 'separating',
 	align: 'aligning'
 };
@@ -70,7 +70,7 @@ export function jobStageFloor(jobType: JobType): MediaStage {
  *
  * A running job reports the later of its floor and its own reported stage. A job that has not started
  * reports its floor too — "waiting on separation" — with ONE exception: a queued `fetch` reports
- * 'queued', because it is the first step of the cook and claiming 'downloading' would tick the Queued
+ * 'queued', because it is the first step of the process and claiming 'downloading' would tick the Queued
  * chip for a song no worker has picked up yet. Every later step is only ever queued BECAUSE its
  * predecessor completed, so its floor is already earned.
  */
@@ -100,12 +100,12 @@ export function mediaStatusFor(job: Job, stage?: MediaStatus): MediaStatus {
 /**
  * The status to broadcast when a job COMPLETES — cause 3's fix.
  *
- * Only the media's own cook gates decide 'ready'. Anything short of that is still cooking, and the
+ * Only the media's own process gates decide 'ready'. Anything short of that is still processing, and the
  * honest position is the step it is now WAITING on: `pendingGates` gives the first outstanding one in
  * pipeline order, so a finished fetch reports 'separating' ("Making karaoke") and a finished
  * separation reports 'aligning' ("Adding lyrics") rather than briefly claiming the song is done.
  *
- * The stage comes off the GATE ITSELF (`CookGate.stage`) rather than a lookup table here. A table
+ * The stage comes off the GATE ITSELF (`ProcessGate.stage`) rather than a lookup table here. A table
  * keyed by gate id was the obvious shape and it was wrong: gates.ts promises that adding a step is one
  * entry in GATES and nothing else moves, and a second registration site here would have made that
  * false for the one surface a guest actually watches.
@@ -126,7 +126,7 @@ export function completedStatusFor(job: Job, media: Media | undefined): MediaSta
 }
 
 /**
- * Should a cook broadcast for this job reach the ROOM at all?
+ * Should a process broadcast for this job reach the ROOM at all?
  *
  * A `stems-upgrade` runs on a song that is ALREADY singable, and its accept would otherwise flip every
  * phone's ready row back to "Making karaoke" for the length of a background re-separation — the exact
@@ -134,7 +134,7 @@ export function completedStatusFor(job: Job, media: Media | undefined): MediaSta
  * door. Silence is right here: the song plays throughout, and `markMediaReady` refuses the upgrade
  * outright unless it outranks what is published.
  */
-export function shouldBroadcastCook(job: Job, media: Media | undefined): boolean {
+export function shouldBroadcastProcess(job: Job, media: Media | undefined): boolean {
 	if (job.jobType !== 'stems-upgrade') return true;
 	return !media || !readyToSing(media);
 }

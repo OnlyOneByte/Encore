@@ -4,7 +4,7 @@
     confidence rather than an answer.
 
 An ANNOTATOR, not a catalog. It runs as the final step of a fetch, because it needs a real title and an
-exact duration to match on, and it never fails a cook: a declined match, an unreachable service or
+exact duration to match on, and it never fails a process: a declined match, an unreachable service or
 `ENCORE_ANNOTATE=0` all leave the title-parser's values standing.
 
 Three things measured against the real service that are easy to get wrong: a query returns many

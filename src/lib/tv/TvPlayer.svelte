@@ -25,7 +25,7 @@
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
 	interface Props {
 		// A `PlaybackSnapshot`, not a live `Media`. The brand makes this a compiler boundary: the
-		// page cannot hand this slot a catalog record that a cook can still change underneath it, so the
+		// page cannot hand this slot a catalog record that a process can still change underneath it, so the
 		// player observes a song's fields as they were when the slot was assigned and at no other time.
 		media: PlaybackSnapshot | null;
 		// The id of the QUEUE ENTRY this slot is playing — NOT the media/song id. A song queued
@@ -47,7 +47,7 @@
 		seekRev?: number;
 		keyShift?: number; // ± semitones for a file song — selects the keyed instrumental
 		guideLevel?: number; // 0..1 — how loud the original vocals sit under the instrumental
-		// The MASTER instrumental level (0..1), the loudness-normalization pulldown. Resolved by
+		// The MASTER instrumental level (0..1), the loudness-normalization pulldown for an earlier change. Resolved by
 		// the TV route from the room's `loudnessNormalization` toggle, this song's measured loudness, and
 		// the library median (see loudness-normalization.ts). 1 = untouched, which is the whole existing
 		// library and every song when the feature is off / below floor / unmeasured. Attenuate-only:
@@ -178,7 +178,7 @@
 	 */
 	const guideOffsetSecValue = $derived(media ? guideOffsetSec(media) : 0);
 	/**
-	 * Mount-worthiness, split from level-gating. The guide <audio> stays mounted
+	 * Mount-worthiness, split from level-gating (§3 of an earlier change). The guide <audio> stays mounted
 	 * whenever THIS song CAN have a guide — a guide ref exists and the song is playable — regardless of
 	 * the current level. It deliberately does NOT read `effectiveGuide`: the guide-level slider is
 	 * `step="1"` from `min="0"`, so dragging it through the left end used to flip a level-gated mount
@@ -189,8 +189,8 @@
 	 */
 	const guideMountable = $derived(!!guideRef && !!media && isPlayable(media));
 	/**
-	 * Level-gating for READINESS, kept on the ORIGINAL condition (`effectiveGuide > 0`) — trap 1 of
-	 * that split. This is what keeps the default free: the feature ships at 0, and a room that never turns it
+	 * Level-gating for READINESS, kept on the ORIGINAL condition (`effectiveGuide > 0`) — trap an earlier change of
+	 * an earlier change. This is what keeps the default free: the feature ships at 0, and a room that never turns it
 	 * on must NOT wait on `guideSettled` before announcing ready, i.e. must not pay to decode a second
 	 * stream in silence just to leave `loading`. So the ready-report effects below gate on `wantsGuide`
 	 * (level > 0), NOT on `guideMountable`. A room that DOES set a default pays one extra preload per
@@ -211,7 +211,7 @@
 	// seek effect. What keeps a STALE target off the next song is NOT clearing this variable — it is the
 	// server: a song advance publishes `positionSec: 0` with a fresh `rev` (EPHEMERAL_RESET, player.ts)
 	// BEFORE `emitNowPlaying`, so the incoming song re-stashes a target of 0, not the outgoing position
-	// (the stale-playhead protection lives there, at the source).
+	// (the earlier changes protection lives there, at the source).
 	let resumeTarget: number | undefined;
 	let guideSettled = $state(false);
 	// Two independent latches, because the two reports mean different things and fire on different
@@ -273,7 +273,7 @@
 		//
 		//   • MASTER lives as long as `media && isPlayable(media)` — the <audio bind:this={master}> below
 		//     sits behind that {#if} (NOT mounted unconditionally: a drained room UNMOUNTS it, which is what
-		//     that {#if} exists to do). Detaching its graph on a song change left the persistent, already-captured
+		//     an earlier change turns on). Detaching its graph on a song change left the persistent, already-captured
 		//     element feeding a disconnected node: the instrumental went silent and stayed silent until a
 		//     keyShift rebuilt a graph on it. We must NOT detach it. Instead reset it to
 		//     ratio 1 via setShift(0): on a routed graph that keeps source→node→gain→destination intact
@@ -285,19 +285,19 @@
 		//     CHANGE keeps the element mounted, so it must NOT detach here.
 		//   • GUIDE lives as long as its <audio> element is MOUNTED — which is exactly as long as
 		//     `guideMountable` holds ({#if guideMountable && guideRef} below; mount-worthiness is a
-		//     playable song WITH a guide ref, INDEPENDENT of the level). The earlier model here
+		//     playable song WITH a guide ref, INDEPENDENT of the level — an earlier change). The earlier model here
 		//     said the guide is "remounted for the NEW song" and so detached its graph on every song
 		//     change. That is FALSE for the common case: a SKIP changes the song IN PLACE in
 		//     the visible slot (gapless.ts onNowPlaying keeps the same slot and only its src changes), and
 		//     `guideMountable` is true for both the skipped and the next song, so Svelte keeps the SAME
 		//     <audio> element. Its MediaElementSource is a PERMANENT capture, so detach() there left the
 		//     still-captured element feeding a released, disconnected context = SILENT guide until a
-		//     keyShift built a fresh graph on it (the same shape as the master's own rebuild defect). So the guide
+		//     keyShift built a fresh graph on it (the same shape as an earlier change on the master). So the guide
 		//     gets the master's treatment on a song change: reset IN PLACE with setShift(0) (transparent on
 		//     a routed graph, a no-op on an un-built one) and re-apply the room level with
 		//     setGain(effectiveGuide) — the re-apply is NOT optional, a graph defaults its gain to 1
-		//     (pitch-shift.ts) which is the gain-reset defect. We do NOT detach and do NOT drop the reference
-		//     here, so we keep the pre-roll lock-on the mount split protects. detach() moves to where the element
+		//     (pitch-shift.ts) which is the an earlier change defect. We do NOT detach and do NOT drop the reference
+		//     here, so we keep the pre-roll lock-on earlier changes protect. detach() moves to where the element
 		//     GENUINELY dies: the destroy effect below, PLUS a dedicated effect that releases the graph
 		//     when `guideMountable` goes false (a ref-less or non-playable next song unmounts the <audio>).
 		void masterGraph?.setShift(0);
@@ -340,7 +340,7 @@
 	// where the guide graph's permanent MediaElementSource is actually gone and its context must be
 	// released, so detach() lives here rather than on every song change (see the per-song reset above:
 	// a song-to-song skip keeps `guideMountable` true and the SAME element, so detaching there was the
-	// silence bug). Guarded on the mount-worthiness VALUE, not the media signal, so identity
+	// an earlier change silence bug). Guarded on the mount-worthiness VALUE, not the media signal, so identity
 	// churn on the same mounted state is a no-op; runs once more on destroy via cleanup order, which
 	// the destroy effect above already handles idempotently (detach() is best-effort).
 	let guideDetachedForUnmount = false;
@@ -400,12 +400,12 @@
 	 */
 	const transport = $derived(
 		transportFor({
-			// + The element must be holding THIS ENTRY's src, not merely SOME src, and not merely
+			// an earlier change + an earlier change: the element must be holding THIS ENTRY's src, not merely SOME src, and not merely
 			// SOME turn of this song. `currentSrc`/`currentEntryId` shadow the previous entry across a change
 			// (never cleared, only rewritten on a playable pass by the assign effect below), so the OLD
 			// `!!currentSrc` stayed stale-true and the transport kept the same `'play'` value — a memoized
 			// derived whose value does not change never re-runs the effect, so nothing replayed play() after
-			// the new src landed. An earlier fix handled the two-DIFFERENT-songs case by comparing the resolved src; this
+			// the new src landed. an earlier change fixed the two-DIFFERENT-songs case by comparing the resolved src; an earlier change
 			// is the two-turns-of-the-SAME-song case, where the resolved src is byte-identical, so the src
 			// comparison alone still reads stale-true. Comparing the entry-scoped `songToken` gives an
 			// `idle -> play` value edge exactly when the assign effect records the new entry — without
@@ -456,7 +456,7 @@
 	// that write aborts the pending play(); since the derived value never changed, the effect never re-ran
 	// and the room stayed silent while every surface said it was playing. Clear the shadow on the unmount
 	// so a remounted element reads `hasSrc:false` and the transport takes a genuine `idle -> play` edge
-	// once the assign effect lands the new src. This is NOT the not-playable churn pass (the element
+	// once the assign effect lands the new src. This is NOT the an earlier change not-playable churn pass (the element
 	// is still bound there and the current song must be kept) — this fires only when the element is GONE.
 	// A bare `master` attribute read would register no reactive dependency, which is why the shadow exists;
 	// tracking the binding's presence is the reactive signal that a remount happened.
@@ -469,7 +469,7 @@
 			// it AND drop the reference: detach() alone frees the context but leaves `masterGraph` truthy, so the
 			// build site's `!masterGraph` guard stays false forever and the NEXT song's fresh element is never
 			// captured — the instrumental transposes on song 1, then stops for the rest of the page's life while
-			// the phones still read `Key · +N` (the master counterpart of the guide's own release). This is
+			// the phones still read `Key · +N` (the master counterpart of the guide's an earlier change release). This is
 			// the element's own death, NOT the per-song reset: a song CHANGE keeps the element and must NOT
 			// detach, which is why this lives here and not in the reset effect above.
 			masterGraph?.detach();
@@ -579,10 +579,10 @@
 
 	// The guide mirrors the master's transport exactly — the SAME `transport` value, computed once by the
 	// derived above, so both effects take the same edge at the same time. This is only literally true once
-	// that value actually MOVES on a real transport change: before the transport was keyed per ENTRY a same-song advance produced no
+	// that value actually MOVES on a real transport change: before an earlier change a same-song advance produced no
 	// value edge for the master (its `hasSrc` stayed stale-true), so the master effect did not re-run while
 	// the guide's own start path (its `canplay` / preroll) still could, and the guide could run while the
-	// master sat paused at 0 — the mismatch that motivated the change. With the transport now re-armed per ENTRY the
+	// master sat paused at 0 — the mismatch an earlier change measured. With the transport now re-armed per ENTRY the
 	// value takes a genuine `idle -> play` edge and both effects re-run together, so the shared-`transport`
 	// claim holds. A rejected play() is swallowed the same way the master's is: an autoplay refusal on the
 	// guide must degrade to a silent guide, never to a stalled song.
@@ -610,7 +610,7 @@
 	});
 
 	/**
-	 * Lock the guide onto the master CURRENT playhead -- the pre-roll alignment.
+	 * Lock the guide onto the master CURRENT playhead -- the pre-roll alignment, and the fix for an earlier change.
 	 *
 	 * Called at the moment the guide can actually play (its canplay) and on a transport arm, never at
 	 * effect time before the buffer exists. The decision is prerollSeekTarget in guide-sync.ts: it reads
@@ -643,7 +643,7 @@
 	// dual-site shape and for the same reason: `.volume` governs the native path, and once a transpose
 	// routes the master through WebAudio its `.volume` is bypassed so `masterGraph.setGain` must carry
 	// the same level. The shift-wiring effect below re-applies it after (re)building the graph, because
-	// a freshly built PitchShiftGraph defaults desiredGain to 1 (the gain carry lands the value at
+	// a freshly built PitchShiftGraph defaults desiredGain to 1 (the an earlier change carry lands the value at
 	// construction, but a level set BEFORE the graph existed still needs this effect's write).
 	$effect(() => {
 		if (master) master.volume = effectiveMasterLevel;
@@ -651,7 +651,7 @@
 	});
 
 	// Reposition on a real JUMP — a restart, a scrub, a skip, or a reconnect whose position has moved on.
-	// ONE-LINE DEPENDENCY SET, ON PURPOSE (read this before adding a read to it).
+	// ONE-LINE DEPENDENCY SET, ON PURPOSE (— read this before adding a read to it).
 	//
 	// The whole body is a named function so that this effect's tracked reads are the two lines you can
 	// see, and auditable at a glance rather than by tracing which of a dozen reads happens to be
@@ -662,7 +662,7 @@
 	// a tracked dependency (`if (!master || !media || !isPlayable(media) ...)`), so ANY fresh Media
 	// identity re-ran this effect and re-applied `seekSec` — the position from the last playback
 	// COMMAND, which is stale by design (position telemetry deliberately does not broadcast). When a
-	// cook for an unrelated song churned the catalog, the playing song's playhead was yanked back to
+	// process for an unrelated song churned the catalog, the playing song's playhead was yanked back to
 	// wherever the last pause/seek/restart had left it. Not to 0 — to an earlier part, which is why four
 	// fixes aimed at the src-assignment path (whose signature is "restarts from 0") all missed it.
 	//
@@ -695,7 +695,7 @@
 	 * Every read in here is `untrack`ed. That is not incidental tidiness — it is the invariant: an
 	 * input to the decision must never become a trigger for it. `vocals` is the original case (the guide
 	 * MOUNTING would otherwise re-run the seek and yank the master to a stale position); `media`,
-	 * `master` and `active` are the same argument, and `media` is the one that caused the stale-position seek.
+	 * `master` and `active` are the same argument, and `media` is the one that caused an earlier change.
 	 *
 	 * BOTH ELEMENTS MOVE, FROM ONE PLAN. This used to reposition the master alone. The guide then kept
 	 * playing from wherever it already was, and recovery fell to `syncGuide`'s governor — which is built
@@ -737,7 +737,7 @@
 	}
 
 	/**
-	 * Resume the master to the room's position on a COLD MOUNT — the fix for a reload mid-song, and the master's
+	 * Resume the master to the room's position on a COLD MOUNT — the fix for an earlier change, and the master's
 	 * counterpart to `alignGuidePreroll`.
 	 *
 	 * Called at the moment the master can actually play (its `canplay`), never at effect time before
@@ -755,7 +755,7 @@
 	 * GUARDED LIKE `applySeek`, and consumed only on the path that applies. The prewarming (hidden)
 	 * slot reaches `canplay` too, so without the `active`/playable guard it would park the NEXT song's
 	 * element at the outgoing song's position — and on advance `setPosition` writes that back as the
-	 * incoming song's room position, the stale-playhead shape. The guard makes the inactive slot a no-op
+	 * incoming song's room position, the earlier changes shape. The guard makes the inactive slot a no-op
 	 * WITHOUT consuming the target, so the slot can still resume when it legitimately becomes active.
 	 * What keeps a stale target off the next song is not this function clearing the variable — it is the
 	 * server publishing `positionSec: 0` on advance (EPHEMERAL_RESET, player.ts) before `emitNowPlaying`,
@@ -771,7 +771,7 @@
 		// so a playback command carrying a non-zero position (a guest scrub, a pause/resume) is stashed
 		// in BOTH slots. applySeek early-returns on the inactive slot; applyResume must too, or it parks
 		// the NEXT song's element at the outgoing song's position, and on advance setPosition writes that
-		// stale playhead as the incoming song's room position on every phone — the stale-playhead shape. Do
+		// stale playhead as the incoming song's room position on every phone — the earlier changes shape. Do
 		// NOT consume resumeTarget here: the slot may legitimately become active later (it advances into
 		// the visible role), and its real element load must still be able to take the position.
 		const snap = untrack(() => media);
@@ -812,7 +812,7 @@
 		// un-built graph is a documented no-op.
 		if (needsShift(shift) && !masterGraph) masterGraph = new PitchShiftGraph(v);
 		masterGraph?.setShift(shift);
-		// Re-apply the master's normalization level, same shape as the guide's own gain re-apply
+		// Re-apply the master's normalization level, same shape as the guide's an earlier change re-apply
 		// below: the level effect above owns it, but its tracked deps are `master`/`effectiveMasterLevel`
 		// only — `masterGraph` is a plain variable, so that effect does NOT re-run when a transpose
 		// builds the graph here. Without this, an attenuated song jumps to FULL volume the first time
@@ -826,7 +826,7 @@
 			guideGraph?.setShift(shift);
 			// Re-apply the room's guide level. The gain effect above owns the level, but its
 			// tracked deps are `vocals` and `effectiveGuide` only — `guideGraph` is a plain variable, so
-			// that effect does NOT re-run when a transpose builds (or, after the graph-rebuild change, rebuilds) the graph here.
+			// that effect does NOT re-run when a transpose builds (or, post-an earlier change, rebuilds) the graph here.
 			// A freshly built PitchShiftGraph defaults desiredGain to 1 (pitch-shift.ts), so without this
 			// the isolated vocals jump to FULL volume the first time anyone transposes and stay there.
 			// Reading `effectiveGuide` here also makes this effect re-run on a level change, so the graph's
@@ -847,7 +847,7 @@
 	 * The src the element currently holds, tracked so we assign it ONLY when the resolved string
 	 * actually changes.
 	 *
-	 * Bug A: an unrelated cook finishing rebroadcasts a full `queue:sync`, and the TV route rebuilds
+	 * Bug A: an unrelated process finishing rebroadcasts a full `queue:sync`, and the TV route rebuilds
 	 * its media catalog into fresh object identities — including the one currently playing. A markup
 	 * binding `src={fileSrc(media)}` re-evaluates on that identity change and reassigns the element's
 	 * src, and assigning `HTMLMediaElement.src` RELOADS the resource and resets `currentTime` to 0 even
@@ -859,7 +859,7 @@
 	$effect(() => {
 		if (!master) return;
 		// `playable` is the WHOLE condition the {#if} around the <audio> gates on. It is the pivot of
-		// a next-up cook reaching a stage rebroadcasts `queue:sync`, the TV rebuilds its media
+		// a next-up process reaching a stage rebroadcasts `queue:sync`, the TV rebuilds its media
 		// catalog, and for a churn pass or two the PLAYING slot's `media` prop can read momentarily null
 		// (a `mediaOf(current)` miss) or not-yet-`isPlayable`. The element only EXISTS while `media &&
 		// isPlayable(media)`, so a song that genuinely leaves UNMOUNTS it and this effect short-circuits
@@ -880,7 +880,7 @@
 		// A NOT-PLAYABLE pass must leave BOTH the element's src AND `currentSrc` untouched. Clearing
 		// `currentSrc` to '' here would tell the transport effect the still-playing song has no src and
 		// stop it (`hasSrc:false`); rewriting the src via the old '' -> removeAttribute -> reassign dance
-		// reloaded it to 0. Both are the not-playable reset. When nothing is playable we keep the current song
+		// reloaded it to 0. Both are the an earlier change reset. When nothing is playable we keep the current song
 		// exactly as the element holds it; the genuine clear on a real song departure is the {#if}
 		// unmount, not this effect.
 		// Write the entry shadow in LOCKSTEP with the src shadow: the transport reader compares an
@@ -917,8 +917,7 @@
 
 <!--
 	The two crossfading slots share one box, so which of them is on top IS the crossfade. Written as the
-	named tiers rather than 2 and 1 so the pair reads against the rest of the stage ladder in app.css
-	— a bare integer here says nothing about what it sits above.
+	named tiers rather than 2 and 1 so the pair reads against the rest of the stage ladder in app.css — a bare integer here says nothing about what it sits above.
 -->
 <div class="slot" class:visible={visible} style="z-index:{visible ? 'var(--z-tv-video-active)' : 'var(--z-tv-video)'}">
 	{#if media && isPlayable(media)}

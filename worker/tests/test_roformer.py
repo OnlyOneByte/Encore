@@ -1,4 +1,4 @@
-"""Roformer engine pure helpers + engine routing. The real BSRoformerSession cook is
+"""Roformer engine pure helpers + engine routing. The real BSRoformerSession process is
 REAL-ML/NET and unverified in this environment (see roformer.py's module warning), so these cover the
 argv-free logic: model-token→slug resolution, output-stem discovery, and engine selection.
 """
@@ -119,7 +119,7 @@ def test_engine_selection_reads_the_job_param_and_defaults_to_demucs():
 
 
 def test_engine_selection_raises_for_an_engine_that_does_not_exist():
-    """The CORE only routes a roformer cook to a worker advertising `stems:roformer`, so an unknown engine
+    """The CORE only routes a roformer process to a worker advertising `stems:roformer`, so an unknown engine
     here is a routing bug rather than a user choice — it should be loud."""
     from src.separation.engines import engine_for
 
@@ -139,10 +139,10 @@ def test_a_None_config_value_does_not_override_an_engine_default():
 
 
 def test_the_demucs_default_cannot_reach_the_roformer_engine():
-    """Regression pin. `plans.stems_runner` forwards this worker's `demucs_model` (default
-    "htdemucs") into `engine_for` on EVERY cook, roformer included (plans.py: the lone production caller).
+    """Issue an earlier change regression. `plans.stems_runner` forwards this worker's `demucs_model` (default
+    "htdemucs") into `engine_for` on EVERY process, roformer included (plans.py: the lone production caller).
     While the model slot was ONE engine-agnostic `default_model`, that demucs checkpoint reached
-    `RoformerEngine` and replaced `DEFAULT_ROFORMER_MODEL` — a roformer cook carrying no `model` then
+    `RoformerEngine` and replaced `DEFAULT_ROFORMER_MODEL` — a roformer process carrying no `model` then
     raised `unknown roformer model 'htdemucs'` (a demucs name on a roformer engine) and the engine's
     declared default was unreachable.
 
@@ -176,15 +176,15 @@ def test_the_demucs_default_cannot_reach_the_roformer_engine():
     assert eng2.resolve_model({}) == roformer_default_slug
 
 
-# ── end-to-end roformer cook (fake bs-roformer-infer runner) ──────────────────────
+# ── end-to-end roformer process (fake bs-roformer-infer runner) ──────────────────────
 #
-# every test above is a pure-helper test — none constructs a stems job with
+# Issue an earlier change: every test above is a pure-helper test — none constructs a stems job with
 # `engine == "roformer"` and drives it through `plans.stems_runner`. So the four documented
 # demucs/roformer differences (engines.py:1-20) and the resolved-slug `facts["model"]` were
 # UNASSERTED, and a regression in the RoformerEngine seam (input handed the file not its dir,
 # store_dir == input_folder, an output derived-not-discovered, facts recording the token) would
 # ship on green. This drives the real engine (no `engine=` override on stems_runner → `pick`
-# calls `engine_for("roformer", ...)` → a genuine RoformerEngine, NOT a demucs stand-in) with a
+# calls `engine_for("roformer",...)` → a genuine RoformerEngine, NOT a demucs stand-in) with a
 # fake `bs-roformer-infer` subprocess, and pins each difference.
 import os as _os  # noqa: E402
 
@@ -197,7 +197,7 @@ from tests.cli_fakes import fake_cli_runner  # noqa: E402
 def _roformer_fake_runner(
     store_writes: bool = True, write_vocals: bool = True, model_in_name: str = "sw-by-jarredou"
 ):
-    """A fake runner scripting the real roformer cook shape: yt-dlp → ffmpeg decode → bs-roformer-infer
+    """A fake runner scripting the real roformer process shape: yt-dlp → ffmpeg decode → bs-roformer-infer
     → ffmpeg volumedetect probe → ffmpeg encode. It records every argv so the test can assert the seam
     (input WAV alone in its own dir, --store_dir a DIFFERENT dir from --input_folder), and writes the
     stems bs-roformer-infer would into --store_dir under names the engine could NOT have derived from the
@@ -238,14 +238,13 @@ def _rspec(tmp_path, **params):
         job_type="stems",
         source_uri="https://www.youtube.com/watch?v=rof",
         params=params,
-        media_dir=str(tmp_path),
-    )
+        media_dir=str(tmp_path))
 
 
 @pytest.mark.asyncio
-async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path):
+async def test_a_roformer_process_runs_the_real_roformer_engine_end_to_end(tmp_path):
     """Drives a stems job with engine=roformer through plans.stems_runner and asserts the four
-    documented demucs/roformer differences plus the resolved-slug fact — the coverage this pin is about.
+    documented demucs/roformer differences plus the resolved-slug fact — the coverage an earlier change is about.
 
     No `engine=` override, so stems_runner resolves the REAL RoformerEngine from params.engine; the
     fake runner only stands in for the bs-roformer-infer SUBPROCESS, not the engine."""
@@ -254,7 +253,7 @@ async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path
     events = await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))
 
     completes = [e for e in events if isinstance(e, CompleteResult)]
-    assert len(completes) == 1, "the roformer cook must publish"
+    assert len(completes) == 1, "the roformer process must publish"
     facts = completes[0].facts
 
     # (fact) the engine that ran is roformer, its backend is the CLI, not torch
@@ -295,8 +294,8 @@ async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path
     assert inst.endswith("mr-instrumental.flac")
     assert Path(inst).exists()
     # the isolated vocals stem — the guiding track the TV mixes under the instrumental — is ALSO
-    # published (mirrors the demucs cook test); without this the engine can map find_roformer_vocals
-    # onto None and every roformer cook silently drops its guiding track with the suite still green.
+    # published (mirrors the demucs process test); without this the engine can map find_roformer_vocals
+    # onto None and every roformer process silently drops its guiding track with the suite still green.
     vox = completes[0].artifacts["stems"]["vocals"]
     assert vox.endswith("mr-vocals.flac")  # vocals stem is lossless FLAC
     assert Path(vox).exists()
@@ -313,9 +312,9 @@ async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_a_roformer_cook_that_produces_no_instrumental_fails_loudly(tmp_path):
+async def test_a_roformer_process_that_produces_no_instrumental_fails_loudly(tmp_path):
     """The find_outputs discovery contract, from the failure side: if bs-roformer-infer writes nothing
-    into --store_dir, the Separate step must raise rather than publish a phantom cook — the same guard
+    into --store_dir, the Separate step must raise rather than publish a phantom process — the same guard
     demucs has, now proven to fire on the roformer path too."""
     runner, _ = _roformer_fake_runner(store_writes=False)
     proc = plans.stems_runner(runner=runner)
@@ -325,7 +324,7 @@ async def test_a_roformer_cook_that_produces_no_instrumental_fails_loudly(tmp_pa
 
 @pytest.mark.asyncio
 async def test_a_roformer_no_instrumental_failure_is_classified_non_retryable(tmp_path):
-    """Reaching Separate's "produced no instrumental" raise means the CLI exited 0 and its
+    """reaching Separate's "produced no instrumental" raise means the CLI exited 0 and its
     output-filename contract is wrong — deterministic for that engine build, so every retry re-runs the
     same 2h11m pass and fails identically. The raise must be non-retryable so the core stops after one
     pass. Asserts the classification (PermanentError IS-A RuntimeError); reds on base where the bare
@@ -338,15 +337,15 @@ async def test_a_roformer_no_instrumental_failure_is_classified_non_retryable(tm
 
 
 @pytest.mark.asyncio
-async def test_a_roformer_cook_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_path):
+async def test_a_roformer_process_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_path):
     """The vocals-LESS half of the discovery contract — the roformer analogue of demucs's
     test_missing_vocals_is_best_effort_still_publishes_instrumental (test_demucs.py). When
     bs-roformer-infer writes the instrumental but no vocals output, find_roformer_vocals returns None
     (roformer.py:131,136 — a real production state, exactly as find_roformer_instrumental does), so
     RoformerEngine.find_outputs maps the `vocals` key onto None and the publish step drops null stems.
-    The cook must still complete best-effort and publish the load-bearing instrumental, with the vocals
-    key simply ABSENT — not a None value. Without this, a roformer cook could silently drop its guiding
-    track on the best-effort path and every worker test stayed green (the half that
+    The process must still complete best-effort and publish the load-bearing instrumental, with the vocals
+    key simply ABSENT — not a None value. Without this, a roformer process could silently drop its guiding
+    track on the best-effort path and every worker test stayed green (the half of an earlier change that
     an earlier change left open). Mirrors the demucs sibling's `"vocals" not in stems` shape, NOT
     `stems["vocals"] is None`."""
     runner, _ = _roformer_fake_runner(write_vocals=False)  # instrumental written, vocals output absent
@@ -354,7 +353,7 @@ async def test_a_roformer_cook_missing_vocals_is_best_effort_still_publishes_ins
     events = await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))
 
     completes = [e for e in events if isinstance(e, CompleteResult)]
-    assert len(completes) == 1, "the roformer cook must still complete best-effort"
+    assert len(completes) == 1, "the roformer process must still complete best-effort"
     stems = completes[0].artifacts["stems"]
     # the load-bearing output is published
     assert stems["instrumental"].endswith("mr-instrumental.flac")

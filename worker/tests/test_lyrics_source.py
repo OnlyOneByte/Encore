@@ -186,7 +186,7 @@ def test_client_search_404_and_empty_array_are_both_just_a_miss():
 
 def test_client_search_tolerates_a_shape_it_does_not_recognise():
     """An object where an array was expected is a miss, not a job failure — a provider changing its
-    response shape must not stop songs cooking."""
+    response shape must not stop songs processing."""
     assert ls.LrclibClient(fetcher=fetcher_returning(200, '{"id":1}')).search("x", "y") == []
     assert ls.LrclibClient(fetcher=fetcher_returning(200, "[1,2,null]")).search("x", "y") == []
 

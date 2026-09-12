@@ -1,12 +1,12 @@
 /*
  * Capture every UI surface, driven into each state rather than photographed as it happens to load.
  *
- *   bun run e2e:seed                                   # or point MEDIA_DIR at a real cooked library
+ *   bun run e2e:seed                                   # or point MEDIA_DIR at a real processed library
  *   ENCORE_EPHEMERAL=1 PORT=3500 MEDIA_DIR=<media> bun run start
  *   EPORT=3500 bun run e2e/capture.mjs [outDir]
  *
  * This exists because a screenshot of a default page proves almost nothing: the states worth looking
- * at are the ones a guest actually hits — a queue with a song cooking in it, the sheet pulled up, the
+ * at are the ones a guest actually hits — a queue with a song processing in it, the sheet pulled up, the
  * TV once someone has joined, the words moving under the ball. Each frame below is reached by driving
  * the real app through the real controls, so what you see is what a guest would see.
  *
@@ -15,10 +15,10 @@
  *   1. `--autoplay-policy=no-user-gesture-required`. Without it the <video> never starts, so every
  *      playing-state frame silently degrades to the lobby and the whole lyrics section captures
  *      nothing. There is no error — you just get the wrong screen 20 times.
- *   2. A media volume with REAL cooked songs (stems + lyrics + songProfile). `e2e:seed` writes
+ *   2. A media volume with REAL processed songs (stems + lyrics + songProfile). `e2e:seed` writes
  *      undecodable placeholders, which is enough for search/queue/rotation but NOT for playback: the
  *      song will queue, fail to decode, and the TV will correctly show its cannot-play state. Point
- *      MEDIA_DIR at a genuinely cooked library for the playing frames, and expect this script to skip
+ *      MEDIA_DIR at a genuinely processed library for the playing frames, and expect this script to skip
  *      them (loudly) when nothing is ready to sing.
  *
  * The TV is captured at 1920x1080 because its type scale is vh-relative: a frame taken at the wrong
@@ -31,6 +31,23 @@ import { connect, sleep } from './cdp.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
+import { existsSync as __exists } from 'node:fs';
+import { join as __join, dirname as __dirname } from 'node:path';
+// INLINED, not imported: this driver runs under plain node with no bundler, so the
+// '@encore/test-support' alias does not exist at runtime. Walking up for bunfig.toml is the
+// same root derivation the harness uses, and unlike a hop count it survives a move.
+function __repoRoot() {
+	let d = __dirname(new URL(import.meta.url).pathname);
+	for (let i = 0; i < 12; i += 1) {
+		if (__exists(__join(d, 'bunfig.toml'))) return d;
+		d = __dirname(d);
+	}
+	throw new Error('no bunfig.toml above ' + import.meta.url);
+}
+const repoRoot = __repoRoot();
+/** @param {...string} parts @returns {string} */
+const at = (...parts) => __join(repoRoot, ...parts);
+
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -44,7 +61,7 @@ import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
-const OUT = process.argv[2] ?? join(import.meta.dir, '..', '..', '..', 'docs', 'mocks');
+const OUT = process.argv[2] ?? at('docs/mocks');
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9500);
 /*
  * The id half of `<id>-<what>-eyeson.png`. `tour` = this full-surface tour, as opposed to the older
@@ -280,7 +297,7 @@ try {
 	});
 
 	await frame('phone-library', () =>
-		shoot(maya, 'phone-library', 'the library as it opens — cooked songs, newest first')
+		shoot(maya, 'phone-library', 'the library as it opens — processed songs, newest first')
 	);
 
 	/*
@@ -623,22 +640,22 @@ try {
 		await setSetting(ada, 'tv-background', 'off');
 	}
 
-	// ── cook something raw, for the cooking state and the job ledger ─────────
+	// ── process something raw, for the processing state and the job ledger ─────────
 	/*
-	 * Deliberately AFTER the playing frames. Cooking is what a fresh install actually does first, and
+	 * Deliberately AFTER the playing frames. Processing is what a fresh install actually does first, and
 	 * it is also the only way `/metrics` and the per-song audit page have anything to show: those read
 	 * the append-only job_attempts ledger, which only gets rows when a job is really assigned to a
 	 * worker. No worker connected means both pages are structurally empty and their frames are skipped.
 	 */
-	await frame('phone-cooking', async () => {
+	await frame('phone-processing', async () => {
 		await maya.goto(`${base}/`);
 		await openBrowseFromHome(maya);
 		await maya.fill(SEL.search, 'believin');
 		/*
-		 * Wait for the COOK ACTION, not for `.row`. The library is already on screen when the search box
+		 * Wait for the PROCESS ACTION, not for `.row`. The library is already on screen when the search box
 		 * is typed into, so `.row` matches instantly against rows that are not the search results yet —
 		 * and the count of `.sing` a moment later is then 0 for timing reasons rather than because
-		 * nothing is cookable. Waiting on the thing about to be clicked removes the race.
+		 * nothing is processable. Waiting on the thing about to be clicked removes the race.
 		 */
 		await maya.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.sing)}).length > 0`, {
 			timeout: 20_000
@@ -646,7 +663,7 @@ try {
 		await sleep(300);
 		await maya.click(SEL.sing);
 		await sleep(2500);
-		await shoot(maya, 'phone-cooking', 'the song is cooking and HOLDS its rotation slot');
+		await shoot(maya, 'phone-processing', 'the song is processing and HOLDS its rotation slot');
 	});
 
 	// ── the dashboards ───────────────────────────────────────────────────────
@@ -668,11 +685,11 @@ try {
 
 	await frame('metrics-per-song', async () => {
 		const first = await ada.evaluate(`(document.querySelector('a[href^="/metrics/"]')?.getAttribute('href') ?? '')`);
-		if (!first) throw new Error('no per-song audit link on /metrics (no cooks recorded yet)');
+		if (!first) throw new Error('no per-song audit link on /metrics (no processes recorded yet)');
 		await ada.goto(`${base}${first}`);
 		await sleep(800);
 		await fitViewport(ada, 1280);
-		await shoot(ada, 'metrics-per-song', 'one song audited: every cook, every retry, which model, why it failed');
+		await shoot(ada, 'metrics-per-song', 'one song audited: every process, every retry, which model, why it failed');
 	});
 
 	// ── the component gallery ────────────────────────────────────────────────

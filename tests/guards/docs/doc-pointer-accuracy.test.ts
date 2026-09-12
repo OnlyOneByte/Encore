@@ -1,32 +1,24 @@
-// — a comment can point a reader to another file for a symbol ("`X` in `foo.ts`") and rot when
+// a comment can point a reader to another file for a symbol ("`X` in `foo.ts`") and rot when
 // that symbol MOVES file. Symbol naming does not protect a cross-file pointer: `lyrics-engines.ts`
 // named `tvProgressStyle` and `resolveLyricsPresentation` "in separators.ts" by symbol, and both rotted
-// when `0addb65` moved the config layer into `settings.ts`. Same class as pitch-shift.ts's
-// rotted citations.
+// when `0addb65` moved the config layer into `settings.ts`. Same class as's rotted citations.
 //
 // Comment stripping is INVERTED on purpose: the defect lives IN the source comments, so the SOURCE side
 // is read as comment text (never stripped) while the TARGET side is comment-STRIPPED, so a target's own
 // prose about a symbol it no longer owns cannot satisfy a claim about its code. Precedent for the
 // inversion: .../leave/doc-accuracy.test.ts; for the SCANNED + length sentinel shape:
-// src/lib/tv/pitch-shift-doc-accuracy.test.ts.
+// src/lib/tv/pitch-shift-doc-accuracy.test.ts (PR).
 //
-// The package's production modules now live in domain subdirectories (core/, queue/, lyrics/,
-// cook/, presentation/). The scan RECURSES so a subdir module is still covered, and a comment that
+// the contract's production modules live in domain subdirectories (core/, queue/, lyrics/,
+// process/, presentation/). The scan RECURSES so a subdir module is still covered, and a comment that
 // cites a bare filename ("in separators.ts") resolves against a filename → path index so a pointer
-// keeps resolving after its target moved subdir. This guard itself now lives under tests/guards/docs and
-// reaches the package through the `sharedSrc` anchor, so it is outside the tree it scans — which it
-// always effectively was, since the walk excludes `.test.ts`.
+// keeps resolving after its target moved subdir.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { repoRoot, sharedSrc } from '@encore/test-support';
+import { at, repoRoot } from '@encore/test-support';
 
-// src/lib/contract/src — the tree this guard scans. The old form was a bare `at('src/lib/contract/src')`, i.e. "the
-// directory I am in", which was only src/lib/contract/src while this file sat at that package's root.
-// A wrong root here is the silent failure this tree exists to close: `walk()` over a missing directory
-// would throw, but a root pointing at some OTHER real directory would scan the wrong tree and the
-// SCANNED / pointer-count sentinels below are what catch that.
-const SRC = sharedSrc;
+const SRC = at('src/lib/contract');
 
 // Every production .ts in this package, recursively (exclude tests and this guard's own subtree of
 // nothing). Paths are relative to SRC (e.g. 'core/types.ts') so a new file — flat or nested — is
@@ -113,18 +105,23 @@ function allPointers(): Pointer[] {
 	return all;
 }
 
-// The repo root, from the repo-root marker rather than by counting `../` off SRC. Used only to tell a
-// REAL cross-package citation (e.g. `hub.ts`, which lives at src/lib/server/realtime/hub.ts) apart
-// from a stale or MISSPELLED in-package citation (e.g. `rotaton.ts`, a typo of rotation.ts, which exists
-// nowhere). The domain regrouping moved modules into subdirs, so a citation that no longer resolves must
-// still be caught — the earlier
-// blanket "not a package module -> skip" arm let a misspelled package filename pass silently.
+// Used only to tell a REAL cross-tree citation (e.g. `hub.ts`, which lives at
+// src/lib/server/realtime/hub.ts) apart from a stale or MISSPELLED in-contract citation (e.g.
+// `rotaton.ts`, a typo of rotation.ts, which exists nowhere). Domain subdirs mean a citation that no
+// longer resolves must still be caught — the earlier blanket "not a contract module -> skip" arm let a
+// misspelled filename pass silently.
+//
+// WHY THE WHOLE ROOT AND NOT A LIST OF TOP-LEVEL DIRS. This walk used to enumerate `['apps', 'packages']`,
+// which was every code-bearing tree in the old layout. Flattening the `apps/` layer away left both names
+// pointing at nothing, and `walkBasenames` swallows a missing directory — so the set went silently EMPTY
+// and every cross-tree pointer read as "exists nowhere" and failed. A hardcoded list of tree names is the
+// defect; walking the root has no list to go stale, so the next move cannot reintroduce this.
 const REPO_ROOT = repoRoot;
 
-// Every .ts basename anywhere under apps/ and packages/ (excluding build output and node_modules).
-// A cited filename present here is a real file somewhere in the repo — out of THIS guard's remit
-// (it only checks in-package pointers) — so it is skipped. A cited filename present NOWHERE is a
-// stale or misspelled citation and fails.
+// Every .ts basename anywhere in the repo (excluding build output and node_modules). A cited filename
+// present here is a real file somewhere in the repo — out of THIS guard's remit (it only checks pointers
+// INSIDE the contract) — so it is skipped. A cited filename present NOWHERE is a stale or misspelled
+// citation and fails.
 function walkBasenames(dir: string, out: Set<string>): void {
 	let ents;
 	try {
@@ -140,12 +137,12 @@ function walkBasenames(dir: string, out: Set<string>): void {
 	}
 }
 const repoTsBasenames = new Set<string>();
-for (const top of ['src']) walkBasenames(join(REPO_ROOT, top), repoTsBasenames);
+walkBasenames(REPO_ROOT, repoTsBasenames);
 
-// Resolve a cited bare filename to its path anywhere in the package, then read its stripped code.
-// Returns null when the cited file is not a scanned PACKAGE module. `resolves()` then decides: a name
-// that exists elsewhere in the repo is a genuine cross-package pointer (skip); a name that exists
-// nowhere is a stale/misspelled in-package citation (fail).
+// Resolve a cited bare filename to its path anywhere in the contract, then read its stripped code.
+// Returns null when the cited file is not a scanned CONTRACT module. `resolves()` then decides: a name
+// that exists elsewhere in the repo is a genuine cross-tree pointer (skip); a name that exists
+// nowhere is a stale/misspelled in-contract citation (fail).
 function targetCode(target: string): string | null {
 	const rel = byBasename.get(target);
 	if (rel === undefined) return null;
@@ -155,9 +152,9 @@ function targetCode(target: string): string | null {
 function resolves(p: Pointer): boolean {
 	const code = targetCode(p.target);
 	if (code === null) {
-		// Not a package module. If the cited filename exists somewhere in the repo (e.g. `hub.ts` in
-		// .), it is a real cross-package reference and out of this guard's remit — skip. If it
-		// exists nowhere, it is a stale or misspelled citation of the exact kind this guard exists for — fail.
+		// Not a contract module. If the cited filename exists somewhere in the repo (e.g. `hub.ts` under
+		// src/lib/server), it is a real cross-tree reference and out of this guard's remit — skip. If it
+		// exists nowhere, it is a stale or misspelled citation of the exact kind this guard catches — fail.
 		return repoTsBasenames.has(p.target);
 	}
 	return new RegExp(`\\b${p.ident.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(code);
@@ -189,12 +186,17 @@ test('every in-file symbol pointer in a comment names the file whose CODE holds 
 	//     must NOT resolve.
 	const planted = '// nonexistent __PLANTED_PROOF_SYMBOL__ appears only here in prose\n';
 	expect(new RegExp('\\b__PLANTED_PROOF_SYMBOL__\\b').test(stripComments(planted))).toBe(false);
-	// (5) the missing-in-package arm discriminates: a citation of a MISSPELLED package module
-	//     (a name that exists nowhere in the repo) must FAIL, while a citation of a real cross-package
-	//     file (`hub.ts`, in .) is out of remit and must PASS. Without this the recursion's
+	// (5) the missing-in-contract arm discriminates: a citation of a MISSPELLED contract module
+	//     (a name that exists nowhere in the repo) must FAIL, while a citation of a real cross-tree
+	//     file (`hub.ts`, under src/lib/server) is out of remit and must PASS. Without this the recursion's
 	//     basename resolver would let `rotaton.ts` (a typo of rotation.ts) pass silently.
-	expect(resolves({ file: 'core/ops.ts', ident: 'applyOp', target: 'rotaton.ts' }), 'a misspelled in-package citation must be caught, not skipped').toBe(false);
-	expect(resolves({ file: 'core/ops.ts', ident: 'HubState', target: 'hub.ts' }), 'a real cross-package citation is out of remit and must be skipped').toBe(true);
+	//
+	//     This pair is also the mutation arm for the repo-wide basename walk, in BOTH directions: an empty
+	//     walk fails the `hub.ts` line, and a walk so wide it matched anything fails the `rotaton.ts` line.
+	//     An empty walk is what a hardcoded list of top-level tree names produced once already.
+	expect(repoTsBasenames.size, 'the repo-wide basename walk found almost nothing, so every cross-tree citation would read as stale').toBeGreaterThan(200); // @nvf-floor repoTsBasenames.size
+	expect(resolves({ file: 'core/ops.ts', ident: 'applyOp', target: 'rotaton.ts' }), 'a misspelled in-contract citation must be caught, not skipped').toBe(false);
+	expect(resolves({ file: 'core/ops.ts', ident: 'HubState', target: 'hub.ts' }), 'a real cross-tree citation is out of remit and must be skipped').toBe(true);
 
 	// ── the guard itself: no pointer may name a file whose code lacks the symbol. ──
 	const offenders = pointers.filter((p) => !resolves(p)).map((p) => `${p.file}: \`${p.ident}\` claimed in ${p.target}`);

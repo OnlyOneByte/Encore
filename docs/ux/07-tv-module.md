@@ -9,7 +9,7 @@ is kept, where lyric and pitch data may be read from, and what the TV must never
 
 The distinction is not cosmetic. Every defect this section is derived from was **invisible to a green
 suite and invisible on screen** — an element at `readyState 4` with correct duration and no error, sitting
-paused at 0; a playhead yanked back by a cook for an unrelated song; a reel scrolling over a silent room.
+paused at 0; a playhead yanked back by a process for an unrelated song; a reel scrolling over a silent room.
 None of those are appearance bugs, and none of them can be caught by a rule about type size.
 
 **Provenance notes that apply to every row below.**
@@ -37,7 +37,7 @@ None of those are appearance bugs, and none of them can be caught by a rule abou
   and the guide-ready timeout are all repo-local values with recorded reasoning and no external source.
   `UNSOURCED` below always means *no evidence was found*, never *no evidence was sought*.
 - **These rows do not restate `01-tv.md`.** The section that overlaps most is XR-TV-12 (the state
-  enumeration) and XR-TV-15 (the cook-step mapping); XR-TVM-04 and XR-TVM-05 constrain the *mechanism*
+  enumeration) and XR-TV-15 (the process-step mapping); XR-TVM-04 and XR-TVM-05 constrain the *mechanism*
   those two rows assume rather than the frames they specify, and each says which half is already covered.
 
 ---
@@ -108,9 +108,9 @@ None of those are appearance bugs, and none of them can be caught by a rule abou
 |---|---|
 | **Statement** | Server catalog truth enters through exactly one writer; what a slot is handed is an immutable branded snapshot taken at an explicit playback transition, never a live catalog record; and no effect that repositions or reloads a playing element may take that snapshot as a *tracked dependency*. All three hold independently. |
 | **Surfaces** | TV (the route as catalog owner, both player slots as consumers) |
-| **Rationale** | The reported defect — an unrelated song finishing its cook yanks the playing song's playhead back to an earlier part — was fixed four times and returned four times, because each fix hardened one consumer against one churn path while the invariant stayed prose. Redundancy is the point: two independent reasons the class stays shut, so the *next* consumer wired into the player cannot reopen it. |
+| **Rationale** | The reported defect — an unrelated song finishing its process yanks the playing song's playhead back to an earlier part — was fixed four times and returned four times, because each fix hardened one consumer against one churn path while the invariant stayed prose. Redundancy is the point: two independent reasons the class stays shut, so the *next* consumer wired into the player cannot reopen it. |
 | **Source** | Repo, verified: `src/lib/tv/catalog.ts:38` (`mergeCatalog`, the sole writer, taking a full server list so it cannot express a partial local edit), `catalog.ts:61` (the branded `PlaybackSnapshot` — a compiler boundary, so a live record is not assignable to a slot), `catalog.ts:73` (`snapshot`, frozen top-level copy). The single call site is `src/routes/tv/+page.svelte:198-199`, inside `syncSlots`. The consumer half is the seek effect in `TvPlayer.svelte`, whose whole body is a named function so its tracked reads are two visible lines and everything else is read through `untrack`. |
-| **Acceptance** | *Given* a `media:status` tick for a song **other** than the one playing, *when* it is delivered, *then* the playing element's `currentTime` is unchanged and its `src` is not reassigned; *and given* the tree, *when* every write to the catalog is collected, *then* there is exactly one and it goes through `mergeCatalog`; *and given* the seek effect, *when* its tracked reads are collected, *then* they are the seek target and the server revision, and **not** the media snapshot. The single falsifying observation is a `currentTime` that moves on a foreign cook tick. |
+| **Acceptance** | *Given* a `media:status` tick for a song **other** than the one playing, *when* it is delivered, *then* the playing element's `currentTime` is unchanged and its `src` is not reassigned; *and given* the tree, *when* every write to the catalog is collected, *then* there is exactly one and it goes through `mergeCatalog`; *and given* the seek effect, *when* its tracked reads are collected, *then* they are the seek target and the server revision, and **not** the media snapshot. The single falsifying observation is a `currentTime` that moves on a foreign process tick. |
 | **Check** | `tests/guards/subsystem-tv/playhead-isolation.test.ts` — exists, and drives `mergeCatalog`/`snapshot`/`cookIsTerminal` directly plus a source scan of the effect's dependency set. The type boundary needs no test: it is a compile error. |
 | **Priority** | **Must.** Four regressions is the evidence that a single mechanism here is not enough. |
 
@@ -118,18 +118,18 @@ None of those are appearance bugs, and none of them can be caught by a rule abou
 
 | Field | Content |
 |---|---|
-| **Statement** | Entering `waiting` for media that is still cooking arms a client-side ceiling. The room leaves `waiting` on whichever comes first: the server's explicit playback event, a terminal cook signal, or that ceiling elapsing — and the ceiling's expiry renders a stated frame rather than falling back to a blank or a stale one. |
-| **Surfaces** | TV (the gapless controller and the route's cook handler) |
-| **Rationale** | A hold with no timer has exactly as many exits as it has *delivered messages*, so a single dropped frame is indistinguishable from a cook that is still running — and the observable result is a party staring at "Making the karaoke" for the rest of the evening with no way to tell whether waiting is the right thing to do. |
-| **Source** | Repo, verified — this is a present gap, not a hardening: `src/lib/tv/gapless.ts:134-136` is the whole of `enterWaiting()`, a single state assignment with no timer, and its own callers say so (`catalog.ts:89`'s docstring: "`enterWaiting()` sets no timer — so without this the party stares at 'Making the karaoke' forever"). The two exits that exist are the server's `queue:sync` + `nowplaying:changed` pair, and `src/routes/tv/+page.svelte:391`, which fires only when `cookIsTerminal(e)` **and** the frame's `mediaId` equals the held entry's. The **ceiling's value** is `UNSOURCED`: no measurement of real cook duration was taken in this session, so the number is a decision nobody has made, not a figure to copy from here. |
-| **Acceptance** | *Given* the room in `waiting`, *when* no further `media:status` for the held entry is delivered (a reconnect that drops the terminal frame), *then* the room leaves `waiting` within the stated ceiling and renders the stated frame; *and given* a cook that completes normally inside the ceiling, *then* the ceiling never fires. Falsified by a `waiting` state that persists indefinitely with no inbound frame — which is what happens today. |
+| **Statement** | Entering `waiting` for media that is still processing arms a client-side ceiling. The room leaves `waiting` on whichever comes first: the server's explicit playback event, a terminal process signal, or that ceiling elapsing — and the ceiling's expiry renders a stated frame rather than falling back to a blank or a stale one. |
+| **Surfaces** | TV (the gapless controller and the route's process handler) |
+| **Rationale** | A hold with no timer has exactly as many exits as it has *delivered messages*, so a single dropped frame is indistinguishable from a process that is still running — and the observable result is a party staring at "Making the karaoke" for the rest of the evening with no way to tell whether waiting is the right thing to do. |
+| **Source** | Repo, verified — this is a present gap, not a hardening: `src/lib/tv/gapless.ts:134-136` is the whole of `enterWaiting()`, a single state assignment with no timer, and its own callers say so (`catalog.ts:89`'s docstring: "`enterWaiting()` sets no timer — so without this the party stares at 'Making the karaoke' forever"). The two exits that exist are the server's `queue:sync` + `nowplaying:changed` pair, and `src/routes/tv/+page.svelte:391`, which fires only when `cookIsTerminal(e)` **and** the frame's `mediaId` equals the held entry's. The **ceiling's value** is `UNSOURCED`: no measurement of real process duration was taken in this session, so the number is a decision nobody has made, not a figure to copy from here. |
+| **Acceptance** | *Given* the room in `waiting`, *when* no further `media:status` for the held entry is delivered (a reconnect that drops the terminal frame), *then* the room leaves `waiting` within the stated ceiling and renders the stated frame; *and given* a process that completes normally inside the ceiling, *then* the ceiling never fires. Falsified by a `waiting` state that persists indefinitely with no inbound frame — which is what happens today. |
 | **Check** | A unit test on `GaplessController` driving the clock: enter `waiting`, advance past the ceiling with no event, assert the state left. `tests/unit/core/lib/tv/gapless.test.ts` exists and is the right home; **the timeout arm does not exist yet, because the timeout does not exist yet.** The controller is pure and clock-free today, so the ceiling must be injected as an input rather than read from a global — otherwise the test needs fake timers and the module stops satisfying XR-TVM-01. |
 | **Priority** | **Must.** It is the only enumerated TV state (XR-TV-12) whose exit depends on a message that can be lost, and the failure is silent and permanent. |
 
 > **Recommendation (not decided).** Put the ceiling on `GaplessController` as an injected deadline
 > rather than a `setTimeout` in the route, and have expiry route to the **existing** error treatment
 > (the `danger` family XR-TV-11 already assigns to skipping) with wording that says the wait was
-> abandoned rather than that the cook failed — the TV does not know which. Two things that argue
+> abandoned rather than that the process failed — the TV does not know which. Two things that argue
 > against a route-level timer: the route already owns the interstitial timer, and a second timer there
 > would put the exit condition for a controller state outside the controller that owns it.
 
@@ -192,7 +192,7 @@ None of those are appearance bugs, and none of them can be caught by a rule abou
 1. **Which frame each TV state renders.** XR-TV-12 enumerates all ten and XR-TV-13/14 specify the
    chrome and the lobby. XR-TVM-06 constrains only the *exit mechanism* for one of them, and XR-TVM-08
    only which inputs may select one.
-2. **The three-step cook mapping's totality.** XR-TV-15 already requires it and
+2. **The three-step process mapping's totality.** XR-TV-15 already requires it and
    `tests/guards/subsystem-tv/screen.test.ts:193-219` already enforces it across all seven statuses. Not
    restated — but see the finding immediately below, which is about the *caller*, not the mapping.
 3. **The gapless A/B swap itself.** `tests/unit/core/lib/tv/gapless.test.ts` covers the controller's
@@ -209,12 +209,12 @@ None of those are appearance bugs, and none of them can be caught by a rule abou
    it does **not** ratify a value. Every one is a repo-local design constant with recorded reasoning and
    no external source, so specifying a number here would dress a judgment as a finding.
 8. **A ceiling value for the `waiting` hold.** XR-TVM-06 requires the ceiling to exist; the duration is
-   left open because no measurement of real cook duration was taken in this session. Inventing one would
+   left open because no measurement of real process duration was taken in this session. Inventing one would
    be exactly the plausible-unmarked-number this document exists to refuse.
-9. **Whether the still-cooking takeover should show real per-media progress.** The route feeds a
+9. **Whether the still-processing takeover should show real per-media progress.** The route feeds a
    **constant** representative stage (`src/routes/tv/+page.svelte:1173` is
-   `cookStep('separating')`), and its own comment records why: per-media cook tracking was deliberately
-   stripped from the TV because a cook for one song was reaching another's playhead. So the bounded
+   `cookStep('separating')`), and its own comment records why: per-media process tracking was deliberately
+   stripped from the TV because a process for one song was reaching another's playhead. So the bounded
    3-step indicator is honest about *what* the room is waiting for and **static** about how far along it
    is — the bar is always 62 %. Reinstating real progress means reintroducing the coupling that
    XR-TVM-05 exists to forbid, and that trade is a ruling nobody has made. A requirement either way

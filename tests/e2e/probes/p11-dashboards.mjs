@@ -9,8 +9,8 @@
  *
  * The point of this probe is that a dashboard that quietly shows zeros, NaN, "Infinity", or a stale
  * count is exactly the class of defect a green unit-test suite cannot catch — so we drive a real
- * server through a shape it will actually see: several successful cooks, at least one FAILED cook
- * (FAKE_FAIL=stems), and at least one RETRIED cook (kill worker mid-stems, wait for the progress
+ * server through a shape it will actually see: several successful processes, at least one FAILED process
+ * (FAKE_FAIL=stems), and at least one RETRIED process (kill worker mid-stems, wait for the progress
  * lease to expire, second worker completes). We PLAY some songs so the play log has non-zero content.
  * Then we count each thing ourselves and compare to what the dashboards say.
  *
@@ -32,7 +32,7 @@ import { findChromium } from '../lib/chromium.mjs';
 
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
- * the fuzz.mjs pattern). The Browser/Page shapes are derived from cdp.mjs's own return types
+ * the an earlier change fuzz.mjs pattern). The Browser/Page shapes are derived from cdp.mjs's own return types
  * so they cannot drift from the driver; every JSON endpoint and page.evaluate() result is
  * protocol-/API-shaped and stays loose (cdp.mjs types evaluate as Promise<any>), cast at the call site.
  *
@@ -57,7 +57,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.SCRATCH ?? join(process.env.KIROCREW_SCRATCH ?? '/tmp', `e2e-${PORT}`);
 const MEDIA_DIR = join(SCRATCH, 'media');
 const SHOTS_DIR = join(SCRATCH, 'shots');
-const REPO = resolve(new URL('../..', import.meta.url).pathname); // .
+const REPO = resolve(new URL('../..', import.meta.url).pathname); // apps/core
 
 // ── finding recorder ───────────────────────────────────────────────────────
 /** @type {Finding[]} */
@@ -89,7 +89,7 @@ const spawned = [];
  * @param {import('node:child_process').SpawnOptions} [opts]
  */
 function launch(cmd, args, opts = {}) {
-	const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...opts });
+	const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'],...opts });
 	spawned.push(p);
 	return p;
 }
@@ -153,7 +153,7 @@ async function joinRoom(name, color = 'violet') {
 async function searchLocal(q) {
 	const r = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`);
 	const d = await r.json();
-	const hit = [...d.ready, ...d.cooking, ...d.results].find((/** @type {any} */ x) => x.source === 'local');
+	const hit = [...d.ready,...d.processing,...d.results].find((/** @type {any} */ x) => x.source === 'local');
 	if (!hit) throw new Error(`no local match for "${q}"`);
 	return hit;
 }
@@ -162,8 +162,8 @@ async function searchLocal(q) {
  * @param {string} cookie
  * @param {string} mediaId
  */
-async function requestCook(cookie, mediaId) {
-	return fetch(`${BASE}/api/make-karaoke`, {
+async function requestProcess(cookie, mediaId) {
+	return fetch(`${BASE}/api/process`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json', cookie },
 		body: JSON.stringify({ mediaId })
@@ -230,10 +230,7 @@ async function waitForStatus(phone, mediaId, predicate, timeoutMs, label) {
 		if (last && predicate(last)) return last;
 		await sleep(100);
 	}
-	const seen = phone
-		.statusOf(mediaId)
-		.map((/** @type {any} */ e) => `${e.status}@${e.pct ?? '?'}%`)
-		.join(' → ');
+	const seen = phone.statusOf(mediaId).map((/** @type {any} */ e) => `${e.status}@${e.pct ?? '?'}%`).join(' → ');
 	throw new Error(`waitForStatus timeout (${label ?? ''}): media=${mediaId} seen=[${seen}]`);
 }
 
@@ -248,7 +245,7 @@ async function bootServer() {
 
 	const seed = launch('bun', ['run', 'e2e/seed-media.mjs'], {
 		cwd: REPO,
-		env: { ...process.env, MEDIA_DIR }
+		env: {...process.env, MEDIA_DIR }
 	});
 	await new Promise((r) => seed.on('exit', r));
 
@@ -280,7 +277,7 @@ function bootWorker(env, tag) {
 	const w = Bun.file(workerLog).writer();
 	const p = launch('bun', ['e2e/fake-stems-worker.mjs'], {
 		cwd: REPO,
-		env: { ...process.env, EPORT: String(PORT), MEDIA_DIR, FAKE_WORKER_ID: tag, ...env }
+		env: {...process.env, EPORT: String(PORT), MEDIA_DIR, FAKE_WORKER_ID: tag,...env }
 	});
 	p.stdout?.on('data', (/** @type {Buffer} */ d) => w.write(d));
 	p.stderr?.on('data', (/** @type {Buffer} */ d) => w.write(d));
@@ -295,9 +292,7 @@ function bootWorker(env, tag) {
 async function waitForWorkerCapabilities(capsPredicate, timeoutMs = 5000, label = 'worker caps') {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		const r = await fetch(`${BASE}/api/metrics`)
-			.then((r) => r.json())
-			.catch(() => null);
+		const r = await fetch(`${BASE}/api/metrics`).then((r) => r.json()).catch(() => null);
 		if (r?.workers?.length && capsPredicate(r.workers)) return r.workers;
 		await sleep(150);
 	}
@@ -331,10 +326,10 @@ async function main() {
 	console.log(`  media: caroline=${caroline.id} dontstop=${dontstop.id} bohemian=${bohemian.id} prayer=${prayer.id}`);
 
 	// ─────────────────────────────────────────────────────────────────────
-	// STEP 1. Two normal cooks — used for the play log and as the happy-path
+	// STEP 1. Two normal processes — used for the play log and as the happy-path
 	// reference the audit page must show as three-attempts-all-ready.
 	// ─────────────────────────────────────────────────────────────────────
-	console.log('\n[step 1] two normal cooks');
+	console.log('\n[step 1] two normal processes');
 	let normal = bootWorker({ FAKE_SLOW_MS: '100' }, 'normal-1');
 	await waitForWorkerCapabilities(
 		(ws) => ws.some((/** @type {any} */ w) => w.workerId === 'normal-1'),
@@ -342,25 +337,25 @@ async function main() {
 		'normal-1'
 	);
 
-	const c1 = await requestCook(cookie, caroline.id);
-	if (!c1.ok) throw new Error(`caroline cook failed: ${c1.status} ${await c1.text()}`);
+	const c1 = await requestProcess(cookie, caroline.id);
+	if (!c1.ok) throw new Error(`caroline process failed: ${c1.status} ${await c1.text()}`);
 	await waitForStatus(phone, caroline.id, (/** @type {any} */ e) => e.status === 'ready', 10000, 'caroline ready');
 
-	const c2 = await requestCook(cookie, dontstop.id);
-	if (!c2.ok) throw new Error(`dontstop cook failed: ${c2.status} ${await c2.text()}`);
+	const c2 = await requestProcess(cookie, dontstop.id);
+	if (!c2.ok) throw new Error(`dontstop process failed: ${c2.status} ${await c2.text()}`);
 	await waitForStatus(phone, dontstop.id, (/** @type {any} */ e) => e.status === 'ready', 10000, 'dontstop ready');
 
 	// Stop the normal worker before starting the failing one so dispatch does not race the FAKE_FAIL
-	// worker into taking a normal-cook job we did not ask it to fail.
+	// worker into taking a normal-process job we did not ask it to fail.
 	killProc(normal.proc);
 	await sleep(600);
 
 	// ─────────────────────────────────────────────────────────────────────
-	// STEP 2. One FAILED cook — FAKE_FAIL=stems, retryable:false → terminal
+	// STEP 2. One FAILED process — FAKE_FAIL=stems, retryable:false → terminal
 	// after the fetch step succeeds. Two attempts total (fetch ready + stems
-	// failed). Cook outcome must be 'failed'.
+	// failed). Process outcome must be 'failed'.
 	// ─────────────────────────────────────────────────────────────────────
-	console.log('\n[step 2] one FAILED cook via FAKE_FAIL=stems');
+	console.log('\n[step 2] one FAILED process via FAKE_FAIL=stems');
 	const failer = bootWorker({ FAKE_FAIL: 'stems', FAKE_SLOW_MS: '100' }, 'fail-stems-2');
 	await waitForWorkerCapabilities(
 		(ws) => ws.some((/** @type {any} */ w) => w.workerId === 'fail-stems-2'),
@@ -368,8 +363,8 @@ async function main() {
 		'fail-stems-2'
 	);
 
-	const c3 = await requestCook(cookie, bohemian.id);
-	if (!c3.ok) throw new Error(`bohemian cook failed: ${c3.status} ${await c3.text()}`);
+	const c3 = await requestProcess(cookie, bohemian.id);
+	if (!c3.ok) throw new Error(`bohemian process failed: ${c3.status} ${await c3.text()}`);
 	await waitForStatus(
 		phone,
 		bohemian.id,
@@ -382,22 +377,22 @@ async function main() {
 	await sleep(600);
 
 	// ─────────────────────────────────────────────────────────────────────
-	// STEP 3. One RETRIED cook — kill the worker mid-stems, wait for the
+	// STEP 3. One RETRIED process — kill the worker mid-stems, wait for the
 	// progress lease to expire (30s), then a fresh worker picks up the
 	// requeued job. Attempts: fetch ready, stems abandoned, stems ready, align
-	// ready. Cook outcome: ready.
+	// ready. Process outcome: ready.
 	//
 	// Sequence:
 	//   • start a slow-progress worker so the stems dwell is long enough that
 	//     the first progress frame lands before we can SIGKILL it — kills
 	//     without a running attempt yield ack-timeout, which is a REQUEUE with
 	//     attempts unchanged (no 'abandoned' row), so we would not see a retry.
-	//   • kick off prayer's cook; wait for a 'separating' progress frame.
+	//   • kick off prayer's proc; wait for a 'separating' progress frame.
 	//   • SIGKILL the worker. The progress lease expires 30s later, the reaper
 	//     bumps attempts and requeues, closing the open attempt as 'abandoned'.
 	//   • bring up a normal-speed worker, wait until prayer reaches 'ready'.
 	// ─────────────────────────────────────────────────────────────────────
-	console.log('\n[step 3] one RETRIED cook via kill-mid-cook + progress-lease expiry (~30s)');
+	console.log('\n[step 3] one RETRIED process via kill-mid-process + progress-lease expiry (~30s)');
 	const doomed = bootWorker({ FAKE_SLOW_MS: '45000' }, 'doomed-3');
 	await waitForWorkerCapabilities(
 		(ws) => ws.some((/** @type {any} */ w) => w.workerId === 'doomed-3'),
@@ -405,8 +400,8 @@ async function main() {
 		'doomed-3'
 	);
 
-	const c4 = await requestCook(cookie, prayer.id);
-	if (!c4.ok) throw new Error(`prayer cook failed: ${c4.status} ${await c4.text()}`);
+	const c4 = await requestProcess(cookie, prayer.id);
+	if (!c4.ok) throw new Error(`prayer process failed: ${c4.status} ${await c4.text()}`);
 	// Wait for the FIRST 'separating' progress frame — that is when the job is truly RUNNING under
 	// the doomed worker. Without this, killing during 'downloading' produces an ack-timeout for the
 	// STEMS handoff (queued → assigned to a worker that never gets there because it's gone), and the
@@ -543,7 +538,7 @@ async function main() {
 				'/api/stats reports the correct library size, total plays and distinct-song count',
 				`library.ready=${libReady}, sings.total=${total}, distinctSongs=${distinct}, window=${window}`,
 				[
-					`we cooked 4 songs — 3 succeeded (caroline, dontstop, prayer) and 1 failed (bohemian) — so library.ready must be 3`,
+					`we processed 4 songs — 3 succeeded (caroline, dontstop, prayer) and 1 failed (bohemian) — so library.ready must be 3`,
 					`we queued 4 entries across 3 distinct medias (caroline twice, dontstop once, prayer once); dedup is on entryId, so total plays = 4`
 				]
 			);
@@ -554,7 +549,7 @@ async function main() {
 				`observed library.ready=${libReady} (want 3), sings.total=${total} (want 4), distinctSongs=${distinct} (want 3), window=${window} (want 4)`,
 				[
 					'src/routes/api/stats/+server.ts:22-51 — library.ready reads listReady, sings.* read PlayLog',
-					'src/lib/server/media/plays.ts:24-49 — PlayTracker dedupes on entryId, sink fires once per fresh currentEntryId'
+					'src/server/media/plays.ts:24-49 — PlayTracker dedupes on entryId, sink fires once per fresh currentEntryId'
 				]
 			);
 		}
@@ -608,7 +603,7 @@ async function main() {
 				'the /stats trend line has exactly one bar today with 4 plays',
 				`perDay=[${stats.perDay.map((/** @type {any} */ d) => `${d.day}:${d.plays}`).join(', ')}] — the log has no zero-fill (an absent day = "we can't tell if it was quiet or the server was off"), so a fresh install shows one bar and honest copy`,
 				[
-					'src/lib/server/media/play-log.ts:75-88 — perDay omits days with no plays rather than 0-filling',
+					'src/server/media/play-log.ts:75-88 — perDay omits days with no plays rather than 0-filling',
 					'src/routes/stats/+page.svelte:95-100 — footnote makes the ambiguity explicit'
 				]
 			);
@@ -631,7 +626,7 @@ async function main() {
 		// is usually SMALLER than processing time, but occasionally can be similar. What matters is
 		// that the FIELDS exist as distinct columns in the payload, and the audit endpoint splits them
 		// per-attempt (queueWaitMs vs processingMs). Assert both.
-		const oneAttempt = auditCaroline.cooks[0]?.attempts?.[0];
+		const oneAttempt = auditCaroline.processes[0]?.attempts?.[0];
 		const perAttemptSplit =
 			oneAttempt &&
 			'queueWaitMs' in oneAttempt &&
@@ -654,23 +649,23 @@ async function main() {
 	}
 
 	// ── (3) audit shows every attempt including failed & retried ─────────
-	// Expected shapes (LOCAL media — see src/server/jobs/make-karaoke.ts:154:
-	// `needsFetch(media.source)` is false for source:'local', so a local cook DOES NOT enqueue a
+	// Expected shapes (LOCAL media — see src/server/jobs/proc.ts:154:
+	// `needsFetch(media.source)` is false for source:'local', so a local process DOES NOT enqueue a
 	// fetch step. Every count below excludes it):
-	//   caroline: 1 cook, 2 attempts (stems ready, align ready)
-	//   dontstop: 1 cook, 2 attempts (stems ready, align ready)
-	//   bohemian: 1 cook, 1 attempt  (stems failed) — cook outcome=failed, no align chain
-	//   prayer:   1 cook, 3 attempts (stems abandoned, stems ready, align ready) — cook outcome=ready
+	//   caroline: 1 proc, 2 attempts (stems ready, align ready)
+	//   dontstop: 1 proc, 2 attempts (stems ready, align ready)
+	//   bohemian: 1 proc, 1 attempt  (stems failed) — process outcome=failed, no align chain
+	//   prayer:   1 proc, 3 attempts (stems abandoned, stems ready, align ready) — process outcome=ready
 	/** @param {any} audit */
 	function summarizeAudit(audit) {
-		const cook = audit.cooks[0];
-		if (!cook) return { cookOutcome: null, byType: {} };
+		const proc = audit.processes[0];
+		if (!proc) return { processOutcome: null, byType: {} };
 		/** @type {Record<string, string[]>} */
 		const byType = {};
-		for (const a of cook.attempts) {
+		for (const a of proc.attempts) {
 			(byType[a.jobType] ??= []).push(a.outcome);
 		}
-		return { cookOutcome: cook.outcome, byType, attempts: cook.attempts.length };
+		return { processOutcome: proc.outcome, byType, attempts: proc.attempts.length };
 	}
 
 	const carA = summarizeAudit(auditCaroline);
@@ -679,24 +674,24 @@ async function main() {
 	const prA = summarizeAudit(auditPrayer);
 
 	// Record the LOCAL-MEDIA optimisation as its own finding — the shape of every audit assertion
-	// below depends on it, and a reader looking at 2-attempt cooks in the screenshots should know
+	// below depends on it, and a reader looking at 2-attempt processes in the screenshots should know
 	// why they are 2 rather than 3.
 	{
 		const noFetchAnywhere = ![carA, dsA, boA, prA].some((a) => Object.keys(a.byType).includes('fetch'));
 		if (noFetchAnywhere) {
 			record(
 				'LOW',
-				'LOCAL-source cooks correctly skip the fetch step',
-				`every audit log for a demo-library song shows 0 fetch attempts. make-karaoke.ts:154 branches on needsFetch(media.source) and starts a local cook directly at the stems step, saving a redundant download of a file that already exists.`,
+				'LOCAL-source processes correctly skip the fetch step',
+				`every audit log for a demo-library song shows 0 fetch attempts. proc.ts:154 branches on needsFetch(media.source) and starts a local process directly at the stems step, saving a redundant download of a file that already exists.`,
 				[
-					'src/lib/server/jobs/make-karaoke.ts:154-155 — needsFetch(source) is false for source:"local"',
-					'src/lib/server/jobs/dispatch.ts:53-88 — assignParams still fills fetcher=local for chained stems, without a separate fetch step'
+					'src/server/jobs/proc.ts:154-155 — needsFetch(source) is false for source:"local"',
+					'src/server/jobs/dispatch.ts:53-88 — assignParams still fills fetcher=local for chained stems, without a separate fetch step'
 				]
 			);
 		} else {
 			record(
 				'MEDIUM',
-				'a fetch step ran for a LOCAL-source cook — unexpected',
+				'a fetch step ran for a LOCAL-source process — unexpected',
 				`byType per song: caroline=${JSON.stringify(carA.byType)} dontstop=${JSON.stringify(dsA.byType)} bohemian=${JSON.stringify(boA.byType)} prayer=${JSON.stringify(prA.byType)}`
 			);
 		}
@@ -704,59 +699,59 @@ async function main() {
 
 	{
 		const carOk =
-			carA.cookOutcome === 'ready' &&
+			carA.processOutcome === 'ready' &&
 			carA.attempts === 2 &&
 			JSON.stringify(carA.byType) === JSON.stringify({ stems: ['ready'], align: ['ready'] });
 		const dsOk =
-			dsA.cookOutcome === 'ready' &&
+			dsA.processOutcome === 'ready' &&
 			dsA.attempts === 2 &&
 			JSON.stringify(dsA.byType) === JSON.stringify({ stems: ['ready'], align: ['ready'] });
 		if (carOk && dsOk) {
 			record(
 				'LOW',
-				'audit shows 2 attempts / cook for a happy-path LOCAL cook, all outcomes = ready',
-				`caroline ${carA.attempts}× outcome=${carA.cookOutcome}, dontstop ${dsA.attempts}× outcome=${dsA.cookOutcome}. Local sources skip the fetch step (make-karaoke.ts:154 uses needsFetch), which is the correct optimisation but MUST be reflected in every audit expectation.`
+				'audit shows 2 attempts / process for a happy-path LOCAL proc, all outcomes = ready',
+				`caroline ${carA.attempts}× outcome=${carA.processOutcome}, dontstop ${dsA.attempts}× outcome=${dsA.processOutcome}. Local sources skip the fetch step (proc.ts:154 uses needsFetch), which is the correct optimisation but MUST be reflected in every audit expectation.`
 			);
 		} else {
 			record(
 				'HIGH',
-				'audit disagrees with the actual happy-path cook shape',
+				'audit disagrees with the actual happy-path process shape',
 				`caroline=${JSON.stringify(carA)}\n         dontstop=${JSON.stringify(dsA)}`
 			);
 		}
 	}
 	{
 		const boOk =
-			boA.cookOutcome === 'failed' &&
+			boA.processOutcome === 'failed' &&
 			boA.attempts === 1 &&
 			JSON.stringify(boA.byType) === JSON.stringify({ stems: ['failed'] });
 		// The error message on the failed stems attempt must survive the round trip — the audit
 		// page shows it in the `.err` block. An empty string here would silently drop the reason
 		// the operator opens the page for.
-		const stemsFailed = auditBohemian.cooks[0]?.attempts?.find((/** @type {any} */ a) => a.jobType === 'stems');
+		const stemsFailed = auditBohemian.processes[0]?.attempts?.find((/** @type {any} */ a) => a.jobType === 'stems');
 		const hasReason = typeof stemsFailed?.error === 'string' && stemsFailed.error.length > 0;
 		if (boOk && hasReason) {
 			record(
 				'LOW',
-				'audit records a FAILED cook with per-attempt outcomes and the terminal error string',
-				`bohemian: stems=failed, cook.outcome=failed, error="${stemsFailed.error}"`
+				'audit records a FAILED process with per-attempt outcomes and the terminal error string',
+				`bohemian: stems=failed, proc.outcome=failed, error="${stemsFailed.error}"`
 			);
 		} else {
 			record(
 				'HIGH',
-				'audit for a FAILED cook is missing outcomes or the error string',
+				'audit for a FAILED process is missing outcomes or the error string',
 				`observed=${JSON.stringify(boA)}, stems.error=${JSON.stringify(stemsFailed?.error)}`
 			);
 		}
 	}
 	{
-		// The retried cook: 2 stems attempts (abandoned then ready), then align ready.
-		const stemsAttempts = auditPrayer.cooks[0]?.attempts?.filter((/** @type {any} */ a) => a.jobType === 'stems') ?? [];
+		// The retried process: 2 stems attempts (abandoned then ready), then align ready.
+		const stemsAttempts = auditPrayer.processes[0]?.attempts?.filter((/** @type {any} */ a) => a.jobType === 'stems') ?? [];
 		const outcomes = stemsAttempts.map((/** @type {any} */ a) => a.outcome);
 		// Also: the retried stems attempt must have attempt=2 (1-based, from AttemptLedger.open).
 		const attemptNumbers = stemsAttempts.map((/** @type {any} */ a) => a.attempt);
 		const retryOk =
-			prA.cookOutcome === 'ready' &&
+			prA.processOutcome === 'ready' &&
 			prA.attempts === 3 &&
 			outcomes.includes('abandoned') &&
 			outcomes.includes('ready') &&
@@ -764,64 +759,64 @@ async function main() {
 		if (retryOk) {
 			record(
 				'LOW',
-				'audit records a RETRIED cook with the abandoned attempt preserved as its own row',
-				`prayer: total=${prA.attempts} attempts, stems outcomes=[${outcomes.join(', ')}], attempt numbers=[${attemptNumbers.join(', ')}], cook.outcome=${prA.cookOutcome}`
+				'audit records a RETRIED process with the abandoned attempt preserved as its own row',
+				`prayer: total=${prA.attempts} attempts, stems outcomes=[${outcomes.join(', ')}], attempt numbers=[${attemptNumbers.join(', ')}], proc.outcome=${prA.processOutcome}`
 			);
 		} else {
 			record(
 				'HIGH',
-				'audit for the RETRIED cook is missing the abandoned attempt or the retry lineage',
+				'audit for the RETRIED process is missing the abandoned attempt or the retry lineage',
 				`observed=${JSON.stringify(prA)}, stems outcomes=[${outcomes.join(', ')}], attempts=[${attemptNumbers.join(', ')}]`
 			);
 		}
 	}
 
 	// ── (4) audit endpoint agrees with metrics ────────────────────────────
-	// Cross-check: metrics.slowestCooks lists the same cookIds as audit knows about, and each
+	// Cross-check: metrics.slowestProcesses lists the same processingIds as audit knows about, and each
 	// per-attempt processingMs the audit reports adds up to a positive number.
 	{
-		const cooksInMetrics = new Set(metrics.slowestCooks.map((/** @type {any} */ c) => c.cookId));
-		const auditPrayerCookId = auditPrayer.cooks[0]?.cookId;
-		const auditCarolineCookId = auditCaroline.cooks[0]?.cookId;
-		const auditDontstopCookId = auditDontstop.cooks[0]?.cookId;
-		const carolineInMetrics = cooksInMetrics.has(auditCarolineCookId);
-		const dontstopInMetrics = cooksInMetrics.has(auditDontstopCookId);
-		const prayerInMetrics = cooksInMetrics.has(auditPrayerCookId);
+		const processesInMetrics = new Set(metrics.slowestProcesses.map((/** @type {any} */ c) => c.processingId));
+		const auditPrayerProcessingId = auditPrayer.processes[0]?.processingId;
+		const auditCarolineProcessingId = auditCaroline.processes[0]?.processingId;
+		const auditDontstopProcessingId = auditDontstop.processes[0]?.processingId;
+		const carolineInMetrics = processesInMetrics.has(auditCarolineProcessingId);
+		const dontstopInMetrics = processesInMetrics.has(auditDontstopProcessingId);
+		const prayerInMetrics = processesInMetrics.has(auditPrayerProcessingId);
 		// Semantic mismatch between the two endpoints:
-		//   audit.cookOutcome (src/routes/api/audit/[mediaId]/+server.ts:70-75) IGNORES 'abandoned'
+		//   audit.processOutcome (src/routes/api/audit/[mediaId]/+server.ts:70-75) IGNORES 'abandoned'
 		//     and returns 'ready' whenever every attempt sealed to a non-null, non-failed, non-canceled
-		//     outcome. So a retried-then-completed cook reads as READY on its own audit page.
-		//   metrics.perCook (src/server/jobs/metrics.ts:127-146) sets complete = every
-		//     attempt.outcome === 'ready'. An 'abandoned' step makes complete=false, and slowestCooks
-		//     + e2e both filter to complete cooks.
-		// The two disagree on what a retried cook IS. Metrics excludes it from the totals a reader
+		//     outcome. So a retried-then-completed process reads as READY on its own audit page.
+		//   metrics.perProcess (src/server/jobs/metrics.ts:127-146) sets complete = every
+		//     attempt.outcome === 'ready'. An 'abandoned' step makes complete=false, and slowestProcesses
+		//     + e2e both filter to complete processes.
+		// The two disagree on what a retried process IS. Metrics excludes it from the totals a reader
 		// uses to judge sizing, so a fleet that succeeds by retrying looks slower + smaller than it is.
 		if (carolineInMetrics && dontstopInMetrics && !prayerInMetrics) {
 			record(
 				'HIGH',
-				'metrics.perCook treats a retried-then-completed cook as INCOMPLETE — /api/audit disagrees with itself',
-				`the prayer cookId=${auditPrayerCookId} completed successfully after one abandoned attempt (audit.cookOutcome="ready"), but it is ABSENT from metrics.slowestCooks and NOT counted in metrics.e2e (e2e.n=${metrics.e2e.n} vs 3 completed cooks). The audit page reports it as done; the operator dashboard silently drops it from every average and top-10 list, biasing the fleet's reported end-to-end downward.`,
+				'metrics.perProcess treats a retried-then-completed process as INCOMPLETE — /api/audit disagrees with itself',
+				`the prayer processingId=${auditPrayerProcessingId} completed successfully after one abandoned attempt (audit.processOutcome="ready"), but it is ABSENT from metrics.slowestProcesses and NOT counted in metrics.e2e (e2e.n=${metrics.e2e.n} vs 3 completed processes). The audit page reports it as done; the operator dashboard silently drops it from every average and top-10 list, biasing the fleet's reported end-to-end downward.`,
 				[
-					`observed: /api/audit/${prayer.id}.cooks[0].outcome = "${prA.cookOutcome}"`,
-					`observed: /api/metrics.slowestCooks[].cookId = [${[...cooksInMetrics].join(', ')}] (${cooksInMetrics.size} cooks, prayer absent)`,
+					`observed: /api/audit/${prayer.id}.processes[0].outcome = "${prA.processOutcome}"`,
+					`observed: /api/metrics.slowestProcesses[].processingId = [${[...processesInMetrics].join(', ')}] (${processesInMetrics.size} processes, prayer absent)`,
 					`observed: /api/metrics.e2e.n = ${metrics.e2e.n} (expected 3 including prayer)`,
-					'src/lib/server/jobs/metrics.ts:127-146 — perCook: `complete = sealed.length === list.length && sealed.every(a => a.outcome === "ready")` — abandoned makes complete=false',
-					'src/routes/api/audit/[mediaId]/+server.ts:71-76 — cookOutcome ignores "abandoned"; a retried cook reads "ready"',
-					'consequence: /metrics "Start to finish" tile understates n by one cook per retried song; slowestCooks omits the retried outliers a person specifically wants to see'
+					'src/server/jobs/metrics.ts:127-146 — perProcess: `complete = sealed.length === list.length && sealed.every(a => a.outcome === "ready")` — abandoned makes complete=false',
+					'src/routes/api/audit/[mediaId]/+server.ts:71-76 — processOutcome ignores "abandoned"; a retried process reads "ready"',
+					'consequence: /metrics "Start to finish" tile understates n by one process per retried song; slowestProcesses omits the retried outliers a person specifically wants to see'
 				]
 			);
 		} else if (carolineInMetrics && dontstopInMetrics && prayerInMetrics) {
 			record(
 				'LOW',
-				'metrics.slowestCooks and /api/audit agree on which cooks completed, including retried ones',
-				`overlap=3 cookIds — the retried cook (prayer) is counted alongside the two happy-path ones`
+				'metrics.slowestProcesses and /api/audit agree on which processes completed, including retried ones',
+				`overlap=3 processingIds — the retried process (prayer) is counted alongside the two happy-path ones`
 			);
 		} else {
 			record(
 				'MEDIUM',
-				'metrics.slowestCooks and audit endpoint disagree on which cooks completed (unexpected pattern)',
+				'metrics.slowestProcesses and audit endpoint disagree on which processes completed (unexpected pattern)',
 				`caroline in metrics=${carolineInMetrics}, dontstop=${dontstopInMetrics}, prayer=${prayerInMetrics}`,
-				['src/lib/server/jobs/metrics.ts:127-146 — perCook filters to complete=every attempt.outcome===ready']
+				['src/server/jobs/metrics.ts:127-146 — perProcess filters to complete=every attempt.outcome===ready']
 			);
 		}
 	}
@@ -832,7 +827,7 @@ async function main() {
 	// `Math.round((s.meanMs ?? 0) / 1000)`). At meanMs=100 the rounded value is 0, which reads
 	// as "took no time". Every table on this page reports its durations with dur() (metrics-format.ts),
 	// which honours sub-second values and formats them as "100ms" / "3.5s". Only the bar chart
-	// carries the rounding — worth flagging because a fast-worker or a small-fake-cook fleet WILL
+	// carries the rounding — worth flagging because a fast-worker or a small-fake-process fleet WILL
 	// hit this floor and misread the entire "where the time goes" section as broken.
 	{
 		const anyStageSubSecond = metrics.stages.some(
@@ -882,9 +877,9 @@ async function main() {
 		} else if (fake.meanRtFactor === null || !Number.isFinite(fake.meanRtFactor)) {
 			record(
 				'MEDIUM',
-				'fake-separator/e2e-tone measured rtFactor is null despite a completed cook',
+				'fake-separator/e2e-tone measured rtFactor is null despite a completed process',
 				`meanRtFactor=${fake.meanRtFactor}. audioSec is snapshotted from media.durationSec (250 for caroline); this should have been a real number.`,
-				['src/lib/server/jobs/worker-hub.ts:390-401 — audioSec is captured at assign time from media.durationSec']
+				['src/server/jobs/worker-hub.ts:390-401 — audioSec is captured at assign time from media.durationSec']
 			);
 		} else {
 			record(
@@ -1009,7 +1004,7 @@ async function main() {
 			// The "Where the time goes" chart pulls its labels from stageLabel(). The fake worker
 			// emits stages "separate" and "align" (see fake-stems-worker.mjs), but STAGE_LABELS
 			// only maps "separating" / "aligning" / "downloading" — so these fall through to their
-			// raw names on the chart. That IS a UI defect (not a probe artefact): a real cook has
+			// raw names on the chart. That IS a UI defect (not a probe artefact): a real process has
 			// no such stage names either, so this leak simply had never surfaced.
 			const leaksStageInBar = /\bseparate\b|\balign\b/.test(stagesLabelsText);
 			const speaksHuman = /remove vocals|time lyrics|typical|worst/i.test(bodyText);
@@ -1023,13 +1018,13 @@ async function main() {
 				// The fake worker emits stages "separate"/"align" (short) while the real Python worker's
 				// vocabulary is Stage.SEPARATING/ALIGNING (long, per worker/src/vocabulary.py:48).
 				// STAGE_LABELS is designed against the long names, so this leak is a HARNESS artefact
-				// rather than a real UI defect — a genuine cook feeds the map correctly. Flagged at LOW
+				// rather than a real UI defect — a genuine process feeds the map correctly. Flagged at LOW
 				// as an environment note so the operator eyeballing the screenshot knows why the bars
 				// read "separate" and "align" instead of "removing vocals" and "timing lyrics".
 				record(
 					'LOW',
 					'"Where the time goes" bar labels read "separate"/"align" — harness artefact, not a UI defect',
-					`the fake-stems-worker emits short stage tokens in its job:complete stages array, while the real Python worker uses the long forms (worker/src/vocabulary.py:48). STAGE_LABELS is keyed on the long forms, so a real cook renders "removing vocals" / "timing lyrics" as intended. The leak in this probe's screenshots is expected.`,
+					`the fake-stems-worker emits short stage tokens in its job:complete stages array, while the real Python worker uses the long forms (worker/src/vocabulary.py:48). STAGE_LABELS is keyed on the long forms, so a real process renders "removing vocals" / "timing lyrics" as intended. The leak in this probe's screenshots is expected.`,
 					[
 						`observed rollup: /api/metrics.stages = ${JSON.stringify(metrics.stages)}`,
 						'src/lib/metrics-format.ts:52-56 — STAGE_LABELS: downloading / separating / aligning',
@@ -1104,7 +1099,7 @@ async function main() {
 				'/api/stats is aggregate-only — no singer keys in the payload',
 				`response contains no singer / singerId / displayName / color / sessionToken keys`,
 				[
-					'src/lib/server/db/schema.ts — plays table has no singer column',
+					'src/server/db/schema.ts — plays table has no singer column',
 					'src/routes/api/stats/+server.ts — endpoint only reads library, playLog, and popularity'
 				]
 			);
@@ -1130,9 +1125,7 @@ async function main() {
 			const m = await mRes.json();
 			const a = await aRes.json();
 			const workerIds = m.workers.map((/** @type {any} */ w) => w.workerId);
-			const errStrings = a.cooks
-				.flatMap((/** @type {any} */ c) => c.attempts.map((/** @type {any} */ att) => att.error))
-				.filter(Boolean);
+			const errStrings = a.processes.flatMap((/** @type {any} */ c) => c.attempts.map((/** @type {any} */ att) => att.error)).filter(Boolean);
 			record(
 				'MEDIUM',
 				'/api/metrics and /api/audit/<id> are UNGATED, as documented',
@@ -1142,10 +1135,7 @@ async function main() {
 					`observed: /api/audit/${caroline.id} → 200 without cookie`,
 					`what is exposed: worker ids, model/backend names, host details, per-attempt terminal error strings`,
 					`example error strings on the box: ${
-						errStrings
-							.slice(0, 2)
-							.map((/** @type {any} */ e) => JSON.stringify(e))
-							.join(', ') || '(none on this run)'
+						errStrings.slice(0, 2).map((/** @type {any} */ e) => JSON.stringify(e)).join(', ') || '(none on this run)'
 					}`,
 					'src/routes/api/metrics/+server.ts:1-13 — decision to bind the server to a trusted interface or add a token',
 					'src/routes/api/audit/[mediaId]/+server.ts:11-14 — same posture, one song at a time'

@@ -76,7 +76,7 @@ class PlanRunner:
         ctx.runner = self._runner  # steps run subprocesses through this
 
         plan = self._plan_for(job, ctx.engines)
-        validate_plan(plan)  # cheap, and a malformed plan must never reach a real cook
+        validate_plan(plan)  # cheap, and a malformed plan must never reach a real process
 
         # The notes buffer is the worker's own diagnosis of a job (baseline scores, caption-fetch
         # misses, the "aligning against the MIX" warning, the silent-instrumental refusal). A step
@@ -139,7 +139,7 @@ async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> Asy
     A stage whose child emits no NEW percentage for a long stretch (roformer's `parse_progress` returns
     None unconditionally, so a 45-minute separation parses nothing at all) used to go silent between its
     opening 0 and closing 100 — long past the core's 30 s progressLeaseMs, so the reaper requeued a
-    HEALTHY cook and each retry re-ran the whole pass. So we race each line against `LEASE_KEEPALIVE_SEC`
+    HEALTHY process and each retry re-ran the whole pass. So we race each line against `LEASE_KEEPALIVE_SEC`
     and, when the child is quiet, emit a TIME-BASED keepalive at the last-known pct (the same cadence and
     hold-the-bar convention `run_blocking` uses for in-process ML). The keepalive never moves the bar
     backward and never above 100.
@@ -213,7 +213,7 @@ async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIter
     ("result", value) exactly once.
 
     MOVED INTACT from whisperx.py. Both halves matter, and both were real failures observed on a live
-    cook — this is not defensive coding:
+    process — this is not defensive coding:
 
       1. torch/whisper calls are synchronous. Awaiting them inline froze the asyncio event loop for the
          whole ML pass, so the worker could not answer the websocket keepalive ping and the server closed
@@ -229,7 +229,7 @@ async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIter
     calls task.cancel()), a GeneratorExit / CancelledError is thrown into the `yield` below and this
     generator unwinds. Without the `finally` the `to_thread` future was simply dropped: the worker's
     slot was freed by _run_job's finally while the native ML call kept running, so the box believed it
-    had a capacity it did not — a cancelled cook went on burning CPU/VRAM and a concurrency>1 worker
+    had a capacity it did not — a cancelled process went on burning CPU/VRAM and a concurrency>1 worker
     over-committed.
 
     A thread executing native torch code CANNOT be forcibly killed — Python has no such primitive, and
@@ -238,7 +238,7 @@ async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIter
     AWAIT the still-running future on the way out, shielded from the very cancellation that is unwinding
     us, so this generator does not finish until the thread genuinely has. The caller frees its slot only
     when run_blocking returns, so the slot now stays held for exactly as long as real work is in flight.
-    The cost is that a cancelled ML cook does not free its slot instantly — it frees it when the current
+    The cost is that a cancelled ML process does not free its slot instantly — it frees it when the current
     pass ends — which is the truthful behaviour, not the lie that capacity is already back.
     """
     task = asyncio.ensure_future(asyncio.to_thread(fn))

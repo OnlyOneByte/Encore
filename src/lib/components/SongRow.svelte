@@ -1,7 +1,7 @@
 <script lang="ts">
 	// A search row. ONE row shape for all three readiness states, because they are one kind of thing
 	// (a song) at three points on one axis — not three kinds of thing. The state decides the badge
-	// line and which actions appear; the layout never changes, so a row that finishes cooking morphs
+	// line and which actions appear; the layout never changes, so a row that finishes processing morphs
 	// in place instead of jumping between lists.
 	//
 	// WHAT THIS ROW IS FOR. A YouTube search for one song returns the official video, three lyric
@@ -19,9 +19,9 @@
 	//      cannot be cut off, and the title gets two lines besides.
 	//   4. THE VIEW COUNT. The tiebreaker between two lyric uploads of one song (2.1B vs 266K).
 	import type { Readiness } from '$lib/readiness';
-	import { cookStageLabel } from '$lib/cook-phrasing';
+	import { processStageLabel } from '$lib/process-phrasing';
 	import { type MediaStatus } from '$lib/contract';
-	import { overallCookPct } from '$lib/cook-progress';
+	import { overallProcessPct } from '$lib/process-progress';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Progress } from '$lib/components/ui/progress';
@@ -70,7 +70,7 @@
 		 * whole SongProfile: the row only ever shows the original key text, so passing the profile would
 		 * hand it data it must not render and re-derive the label the parent already has. Gated at the
 		 * chip (readiness ready AND present), matching the omit-when-null convention of every sibling
-		 * chip — a missing key is honest, and a detected key is only meaningful once the song is cooked.
+		 * chip — a missing key is honest, and a detected key is only meaningful once the song is processed.
 		 * MUST stay ASCII (helper returns 'G#'/'Ab'); a typographic sharp/flat trips icons.test.ts.
 		 */
 		keyName?: string;
@@ -81,25 +81,25 @@
 		 * showing. Absent/empty → no chips, so a song with no tags looks exactly as it did before.
 		 */
 		tags?: string[];
-		pct?: number; // cooking progress, 0..100
+		pct?: number; // processing progress, 0..100
 		/**
-		 * The live cook STATUS (queued/downloading/separating/aligning/ready). Present, the row
-		 * shows how far through the whole cook it is via `overallCookPct(status, pct)` instead of
+		 * The live process STATUS (queued/downloading/separating/aligning/ready). Present, the row
+		 * shows how far through the whole process it is via `overallProcessPct(status, pct)` instead of
 		 * the raw per-step `pct` — a per-step number filled the bar to 100% at the end of each
-		 * step and even jumped backward when the next step reset it. Absent (a raw
-		 * search row that is not cooking), the raw `pct` is used unchanged.
+		 * step and even jumped backward when the next step reset it (see an earlier change). Absent (a raw
+		 * search row that is not processing), the raw `pct` is used unchanged.
 		 */
 		status?: MediaStatus;
 		/** Already in the rotation — the add action becomes a confirmation instead of a repeat. */
 		inQueue?: boolean;
 		/**
-		 * Can this song be cooked AT ALL — i.e. can its audio be acquired (`isCookableSource`)?
+		 * Can this song be processed AT ALL — i.e. can its audio be acquired (`isProcessableSource`)?
 		 *
 		 * Defaults true, so every row that CAN be sung is unaffected. False is the metadata-only case: a
 		 * Spotify search hit, which exists to sharpen the query but whose bytes are never pulled, so no
-		 * cook can ever run for it. Both actions have to go, not just Sing: the two branches below
+		 * process can ever run for it. Both actions have to go, not just Sing: the two branches below
 		 * are an either/or, so dropping `onmake` alone fell straight through to a live `＋ Turn` — and a
-		 * turn on a song that can never be cooked is exactly the dead end this row's one-primary-action
+		 * turn on a song that can never be processed is exactly the dead end this row's one-primary-action
 		 * design exists to remove. It is held in the rotation and skipped on every pass, silently, for
 		 * the rest of the night.
 		 *
@@ -107,9 +107,9 @@
 		 * just stops offering an action it cannot honour, and says why in the chip line rather than only
 		 * in a `title` a phone can never hover.
 		 */
-		cookable?: boolean;
+		processable?: boolean;
 		onadd?: () => void;
-		/** Request stem separation. Absent when it makes no sense (already ready / already cooking). */
+		/** Request stem separation. Absent when it makes no sense (already ready / already processing). */
 		onmake?: () => void;
 	}
 	let {
@@ -125,7 +125,7 @@
 		pct = 0,
 		status,
 		inQueue = false,
-		cookable = true,
+		processable = true,
 		onadd,
 		onmake
 	}: Props = $props();
@@ -134,7 +134,7 @@
 	 * The byline answers a DIFFERENT question in each half of the list, and readiness is exactly the
 	 * axis that separates them:
 	 *
-	 *  • A raw or cooking row is a CANDIDATE UPLOAD, and what distinguishes two uploads of one song is
+	 *  • A raw or processing row is a CANDIDATE UPLOAD, and what distinguishes two uploads of one song is
 	 *    the channel — "Queen Official" vs "Vibe Tracks" vs "Richie Lyrics". So the channel wins there.
 	 *    It is also raw source data, so unlike the canonical it cannot be wrong.
 	 *  • A ready row is a song in YOUR LIBRARY, where the channel is meaningless ("7clouds") and the
@@ -169,7 +169,7 @@
 	const views = $derived(formatViewCount(viewCount));
 
 	/*
-	 * The key chip is shown ONLY on a READY row with a detected key. Cooking/raw rows have no analysed
+	 * The key chip is shown ONLY on a READY row with a detected key. Processing/raw rows have no analysed
 	 * key yet (it comes out of the stems job), so a key here would be a phantom; and the omit-when-null
 	 * convention means a falsy guard makes both the chip and — if it is the last one — the whole .chips
 	 * wrapper disappear. `keyName` is already the confidence-gated ASCII label from the parent.
@@ -178,7 +178,7 @@
 
 	/*
 	 * Tags are shown ONLY on a READY (library) row, and only when there are any. Same reasoning as the
-	 * key chip: a raw/cooking row is a candidate upload, where a tag would be noise; a ready row is a
+	 * key chip: a raw/processing row is a candidate upload, where a tag would be noise; a ready row is a
 	 * song in the library, where "acoustic · 80s" is exactly the kind of thing you scan the list for.
 	 * The array is normalised at its source (tagsOf de-dupes + lower-cases), so the row renders it as-is.
 	 */
@@ -199,58 +199,58 @@
 	 * review called those the honest part.
 	 */
 	// The percentage the bar and its readout show. When the live `status` is known, this is how far
-	// through the WHOLE cook the song is (`overallCookPct` maps the worker's per-step pct into weighted
+	// through the WHOLE process the song is (`overallProcessPct` maps the worker's per-step pct into weighted
 	// per-stage bands over the shared MEDIA_STAGES vocabulary), so it reaches 100% only at `ready` and
-	// never jumps backward when a step resets its own pct — the two defects the cook-bar rule names. Without a status
-	// (a non-cooking raw row) it falls back to the raw pct so nothing changes for those rows.
-	const barPct = $derived(status ? overallCookPct(status, pct) : pct);
+	// never jumps backward when a step resets its own pct — the two defects an earlier change names. Without a status
+	// (a non-processing raw row) it falls back to the raw pct so nothing changes for those rows.
+	const barPct = $derived(status ? overallProcessPct(status, pct): pct);
 
 	const stateChip = $derived.by(() => {
-		if (readiness === 'ready') return cookStageLabel('ready');
-		// A dead cook says so. This branch is why `readiness` grew a fourth value: the row had three
-		// states and none of them could mean "failed", so a died cook kept rendering the in-flight line
-		// below — "Making karaoke… 0%", forever, on a job that had stopped. cookStageLabel already owned
+		if (readiness === 'ready') return processStageLabel('ready');
+		// A dead process says so. This branch is why `readiness` grew a fourth value: the row had three
+		// states and none of them could mean "failed", so a died process kept rendering the in-flight line
+		// below — "Making karaoke… 0%", forever, on a job that had stopped. processStageLabel already owned
 		// the wording; nothing reached it.
-		if (readiness === 'failed') return cookStageLabel('failed');
-		// The row still has no worker sub-status, so cookStageLabel is coarse for exactly that reason —
+		if (readiness === 'failed') return processStageLabel('failed');
+		// The row still has no worker sub-status, so processStageLabel is coarse for exactly that reason —
 		// every in-flight status collapses to one "Making karaoke…" line. This passes 'queued' as the
 		// least-committal in-flight value rather than naming a specific step (e.g. 'separating') the row
 		// has no way to know. Naming a step here would print a guess as fact: an aligning song would
 		// read as if it were still separating.
 		// Round only the READOUT, matching ProcessingCard's convention (its :62 comment): the bar keeps
 		// the unrounded barPct so its transition stays smooth, but the guest-facing "Making karaoke… N%"
-		// line must be an integer — overallCookPct returns a band-interpolated float (e.g. 67.6), and an
+		// line must be an integer — overallProcessPct returns a band-interpolated float (e.g. 67.6), and an
 		// unrounded readout prints "67.6%" or "31.200000000000003%".
-		if (readiness === 'cooking') return cookStageLabel('queued', { pct: Math.round(barPct) });
+		if (readiness === 'processing') return processStageLabel('queued', { pct: Math.round(barPct) });
 		// Metadata-only: the actions are gone, so the row MUST say why. A disabled button with a
 		// `title` is not enough — this is a phone, there is no hover — and an unexplained dead control
 		// reads as the app being broken. Last, after the three readiness branches, so it can never mask
-		// a real cook state (a song that can't be cooked never reaches ready/cooking anyway).
+		// a real process state (a song that can't be processed never reaches ready/processing anyway).
 		// PARTY ENGLISH, per the note above: no "metadata", no "source", no "fetcher".
-		if (!cookable) return 'Name match only — search to sing it';
+		if (!processable) return 'Name match only — search to sing it';
 		return null;
 	});
 
-	// Spelled out for a screen reader even though the button is a bare mark. The cook label names its
+	// Spelled out for a screen reader even though the button is a bare mark. The process label names its
 	// COST ("about a minute") because that is the difference between the two actions, and it is the one
 	// thing an icon cannot say.
 	//
 	// The RETRY case is a third label, not a variant of the first. `onmake` with `inQueue` means
-	// the singer already holds a queued turn for this song and its cook died — the only state that
-	// reaches it, because a cook in flight renders `.add` instead. Announcing "Sing this" there
-	// promised a turn the action deliberately no longer takes (it re-cooks the turn already held), so
-	// the words have to say re-cook. NOT disabled: the retry is the whole point of showing the failed
-	// state at all (readiness.ts `canCook('failed')`).
-	const retryCook = $derived(!!onmake && inQueue);
+	// the singer already holds a queued turn for this song and its process died — the only state that
+	// reaches it, because a process in flight renders `.add` instead. Announcing "Sing this" there
+	// promised a turn the action deliberately no longer takes (it re-processes the turn already held), so
+	// the words have to say re-process. NOT disabled: the retry is the whole point of showing the failed
+	// state at all (readiness.ts `canProcess('failed')`).
+	const retryProcess = $derived(!!onmake && inQueue);
 	const actionLabel = $derived(
-		retryCook
+		retryProcess
 			? 'Try making the karaoke again — you already have a turn for this song'
 			: onmake
 				? 'Sing this — strips the vocals first, takes about a minute'
 				: // Metadata-only. Announced BEFORE the inQueue branch because it is the stronger fact:
 					// this song can never be sung here, so "Already in the queue" would be both wrong and
 					// beside the point. A screen reader gets the reason, not just a disabled control.
-					!cookable
+					!processable
 					? 'Can’t sing this one — it’s a name match only. Search for the song to make karaoke.'
 					: inQueue
 						? 'Already in the queue'
@@ -264,7 +264,7 @@
 	same song twice (Enter on the row, then Tab-Enter on the button). The two buttons carry the actions.
 -->
 <!--
-	S8: <Item.Root> supplies the row grammar via Item's own `child` snippet, so this file keeps the
+	an earlier change: <Item.Root> supplies the row grammar via Item's own `child` snippet, so this file keeps the
 	row element and its readiness state classes — a `class:` directive is not valid on a component. The
 	class attribute stays STATIC, because contrast.test.ts splits it on whitespace to derive the row's
 	classes. `bare`: `.card` paints the row, `.list-row` lays it out.
@@ -275,7 +275,7 @@
 			{...props}
 			class="row card list-row"
 			class:ready={readiness === 'ready'}
-			class:cooking={readiness === 'cooking'}
+			class:processing={readiness === 'processing'}
 		>
 			<Item.Media data-media="thumb"><div class="thumb">
 		{#if thumbSrc}
@@ -296,14 +296,13 @@
 
 			<Item.Content>
 		<!--
-			The title and the cooking mark share a flex line so the mark is a SIBLING of .t, not a child of it.
-			.t clamps to two lines with overflow:hidden; a mark rendered INSIDE that box is laid out on the
+			The title and the processing mark share a flex line so the mark is a SIBLING of.t, not a child of it..t clamps to two lines with overflow:hidden; a mark rendered INSIDE that box is laid out on the
 			discarded third line and never paints on a phone. As a flex:0 0 auto sibling it always
 			paints and no longer competes with the title for the last line's characters.
 		-->
 		<div class="title-line">
 			<span class="t">{title}</span>
-			{#if readiness === 'cooking'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
+			{#if readiness === 'processing'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
 		</div>
 		{#if byline}<div class="byline">{byline}</div>{/if}
 		{#if kindLabel || stateChip || views || durationNote || showKey || showTags}
@@ -315,7 +314,7 @@
 						separately. `wrap` because this chip carries a phrase rather than a token.
 					-->
 					<Badge
-						variant={readiness === 'ready' ? 'ok' : readiness === 'cooking' ? 'warn' : readiness === 'failed' ? 'bad' : 'neutral'}
+						variant={readiness === 'ready' ? 'ok': readiness === 'processing' ? 'warn': readiness === 'failed' ? 'bad': 'neutral'}
 						wrap
 						aria-live="polite">{stateChip}</Badge
 					>
@@ -335,20 +334,20 @@
 				{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
 			</div>
 		{/if}
-		{#if readiness === 'cooking'}
+		{#if readiness === 'processing'}
 			<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
-			<div class="bar-slot"><Progress value={barPct} size="sm" aria-label="Cook progress" /></div>
+			<div class="bar-slot"><Progress value={barPct} size="sm" aria-label="Process progress" /></div>
 		{/if}
 				</Item.Content>
 
 	{#if onmake}
 		<!--
 			ONE action, not two. A raw row used to offer `Karaoke` and `Turn` side by side at equal
-			weight, and either one alone was a dead end: queueing without cooking held a rotation slot
-			that could never become ready (silently skipped every pass, forever), and cooking without
+			weight, and either one alone was a dead end: queueing without processing held a rotation slot
+			that could never become ready (silently skipped every pass, forever), and processing without
 			queueing filled the library but gave the singer no turn. The primary action is the whole
-			intent — take a turn AND start the cook — and the held-slot rule keeps the singer's fair
-			position while it separates. See $lib/cook-and-queue.ts.
+			intent — take a turn AND start the process — and the held-slot rule keeps the singer's fair
+			position while it separates. See $lib/process-and-queue.ts.
 
 			ICON-ONLY, and the mark is load-bearing. Dropping the words gave ~30px back to the title, but
 			it is only safe because the two actions still differ on THREE axes: `sparkle` on an accent
@@ -359,25 +358,24 @@
 		-->
 		<button
 			class="sing"
-			class:retry={retryCook}
+			class:retry={retryProcess}
 			aria-label={actionLabel}
-			title={retryCook
-				? 'Try the karaoke again — you keep the turn you already have'
-				: 'Take a turn now and strip the vocals — you keep your place in line while it cooks'}
+			title={retryProcess
+				? 'Try the karaoke again — you keep the turn you already have': 'Take a turn now and strip the vocals — you keep your place in line while it processes'}
 			onclick={() => onmake?.()}><Icon name="sparkle" /></button
 		>
 	{:else}
 		<button
 			class="add"
 			class:queued={inQueue}
-			class:unavailable={!cookable}
+			class:unavailable={!processable}
 			aria-label={actionLabel}
-			title={!cookable
+			title={!processable
 				? 'Can’t sing this one — it’s a name match only. Search for the song to make karaoke.'
 				: inQueue
 					? 'Already in the queue'
 					: 'Add a turn'}
-			disabled={inQueue || !cookable}
+			disabled={inQueue || !processable}
 			onclick={() => onadd?.()}
 			>{#if inQueue}<Icon name="check" />{:else}<Icon name="plus" />{/if}</button
 		>
@@ -388,7 +386,7 @@
 
 <style>
 	/*
-	 * S8: `.meta` moved to ui/item as Encore's shared row grammar (`min-width: 0; flex: 1`), which
+	 * `.meta` moved to ui/item as Encore's shared row grammar (`min-width: 0; flex: 1`), which
 	 * all three rows carried identically. `.thumb` STAYS: it declares a background, and contrast.test.ts
 	 * reasons about this row's surfaces from the rules in this file.
 	 */
@@ -400,8 +398,7 @@
 	/* readiness is legible at a glance from the border alone, before any text is read */
 	.row.ready {
 		border-color: var(--ok);
-	}
-	.row.cooking {
+	}.row.processing {
 		background: linear-gradient(var(--card), var(--card-tint));
 		border-color: var(--line-tint);
 	}
@@ -465,15 +462,14 @@
 	/* Dark ink on the danger fill, not white. White on #ff6b6b is 2.78:1 — below AA for this
 	   0.62rem/700 badge (normal-size, needs 4.5:1). --danger-bg (#2a1b22) is the danger family's
 	   dark surface and measures 5.92:1 here, AA with margin. It reuses a token rather than
-	   inventing a hex, and pairs the badge with the same ink the sibling .chip.odd-dur uses. */
-	.dur.odd {
+	   inventing a hex, and pairs the badge with the same ink the sibling.chip.odd-dur uses. */.dur.odd {
 		background: var(--danger);
 		color: var(--danger-bg);
 	}
 
 	/*
 	 * TWO lines, not one. A single ellipsised line is what hid "(Official Music Video)". The title text
-	 * shares .title-line with the cooking mark; min-width:0 + the two-line clamp bound ONLY the title
+	 * shares.title-line with the processing mark; min-width:0 + the two-line clamp bound ONLY the title
 	 * text, so the mark beside it is never pushed onto the discarded third line.
 	 * flex-grow MUST stay 0 (flex: 0 1 auto, the initial value): with flex-grow:1 the clamp box grew to
 	 * fill the whole line and pushed the flex:0 0 auto mark to the column's right edge, up to 116px from
@@ -497,7 +493,7 @@
 		overflow: hidden;
 	}
 	/*
-	 * The cooking marker, a flex:0 0 auto SIBLING of .t on .title-line — so it always paints and never
+	 * The processing marker, a flex:0 0 auto SIBLING of.t on.title-line — so it always paints and never
 	 * competes with the title for the last line's characters. The margin is still
 	 * load-bearing: it separates the mark from the clamped title box, and a space in the markup would be
 	 * collapsed away by the flex layout, so the gap has to be a margin. margin-top nudges the mark down to
@@ -520,16 +516,14 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-
-	.chips {
+	}.chips {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 5px;
 		margin-top: var(--space-xs);
 	}
 	/*
-	 * S6: `.chip` and its ten tone rules moved to ui/badge. The tones went with them verbatim —
+	 * `.chip` and its ten tone rules moved to ui/badge. The tones went with them verbatim —
 	 * each is a certified surface+border+ink triple — so no chip changes colour; only the element does.
 	 * `.chips` stays here because it is this row's LAYOUT, which a scoped rule can still reach.
 	 */
@@ -538,7 +532,7 @@
 	 * narrow row nowrap would clip the trailing percent — the one moving part a singer standing there
 	 * waiting is watching. Letting it wrap keeps the whole line, and the percent, visible.
 	 */
-	/* A dead cook, not a slow one. `warn` already means "in flight" on this chip, so reusing it would
+	/* A dead process, not a slow one. `warn` already means "in flight" on this chip, so reusing it would
 	   have made a failure look like progress — the whole defect this state exists to end. */
 	/*
 	 * One colour per kind, and they are semantic rather than decorative: green = the studio recording
@@ -549,9 +543,9 @@
 	/* Same treatment as the badge it explains, so the two read as one signal rather than two. */
 
 	/*
-	 * S6: `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
+	 * `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
 	 * so this consolidated a duplicate. The swap also buys what neither hand-rolled bar had:
-	 * `role="progressbar"` with aria-valuenow, so a cook's progress is finally visible to assistive
+	 * `role="progressbar"` with aria-valuenow, so a process's progress is finally visible to assistive
 	 * tech. Spacing from the element above stays HERE, because that is this component's layout rather
 	 * than the bar's own metric.
 	 */
@@ -569,9 +563,7 @@
 	 * carry those words: they are the anchors `e2e/contract.ts` addresses these controls by, and its
 	 * selector-rot guard fires if they move. Renaming them to match the new marks would be churn in a
 	 * browser test that cannot run in this environment — so the geometry changed and the hooks did not.
-	 */
-	.sing,
-	.add {
+	 */.sing,.add {
 		width: var(--tap);
 		height: var(--tap);
 		flex: 0 0 auto;
@@ -581,19 +573,17 @@
 		display: grid;
 		place-items: center;
 		font-size: 20px; /* Icon defaults to 1em */
-	}
-	.sing:active,
-	.add:active {
+	}.sing:active,.add:active {
 		transform: scale(0.94);
 	}
 	/*
 	 * The raw row's single primary action takes the accent fill because it IS the primary intent on this
 	 * row — and because the weight used to sit on the wrong button: `.add` was the dead end (a turn that
-	 * could never become ready) while the cook was styled as a secondary outline. The hierarchy was not
+	 * could never become ready) while the process was styled as a secondary outline. The hierarchy was not
 	 * missing, it was inverted.
 	 *
 	 * Now that both are icon-only, that distinction rests on the MARK as much as the fill: `sparkle` on
-	 * accent means "this cooks for a minute", `plus` outlined in green means "queue it now". Giving both
+	 * accent means "this processes for a minute", `plus` outlined in green means "queue it now". Giving both
 	 * the same glyph would re-create the inversion in a new form.
 	 */
 	.sing {
@@ -620,7 +610,7 @@
 		opacity: 0.7;
 	}
 	/*
-	 * The song can never be cooked, so the control must not wear the "go" clothes. `disabled`
+	 * The song can never be processed, so the control must not wear the "go" clothes. `disabled`
 	 * alone was not enough: `.add`'s green border and green mark are the app's actionable signal, and a
 	 * full-strength green `＋` that does nothing when tapped reads as the app being broken rather than as
 	 * an action that is unavailable. This drops the accent entirely — hairline border, dim ink — so the

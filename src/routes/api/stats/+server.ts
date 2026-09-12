@@ -35,7 +35,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		library: {
 			// Songs you can actually sing, which is the number a guest means by "how many songs".
 			ready: ready.length,
-			// Every row ever materialised by a search, most of which are not cooked. Reported alongside
+			// Every row ever materialised by a search, most of which are not processed. Reported alongside
 			// rather than instead: on the live box this was 271 rows behind 7 singable songs, so quoting
 			// it alone would badly overstate the library.
 			catalog: app.media.all().length

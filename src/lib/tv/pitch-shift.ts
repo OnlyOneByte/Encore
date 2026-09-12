@@ -4,7 +4,7 @@
 // used to honour it by loading a pre-rendered per-key FILE (`keyedMediaRef`). Nothing ever produced
 // those files, so honouring the shift 404'd mid-song and the TV was forced to ignore it. Rendering
 // per-key variants server-side was rejected (N files per song, a worker stage nobody built); shifting
-// in the browser needs zero files and works on every already-cooked song. `keyedMediaRef` is gone
+// in the browser needs zero files and works on every already-processed song. `keyedMediaRef` is gone
 // from $lib/contract; this module is its replacement.
 //
 // WHY A HAND-WRITTEN SHIFTER. soundtouchjs is LGPL and rubberband is GPL/commercial — both are
@@ -375,7 +375,7 @@ export class PitchShiftGraph {
 	 * rather than each opening its own AudioContext and each calling the irreversible
 	 * createMediaElementSource on the same element — the second of which throws, is swallowed, and
 	 * strands a second context. Cleared once the build settles so a FINISHED failed attempt is still
-	 * retryable (the degraded-retry property).
+	 * retryable (the an earlier change degraded-retry property).
 	 */
 	#building: Promise<void> | null = null;
 

@@ -81,7 +81,7 @@ export function nowPlayingEvent(deps: HubDeps): Extract<ServerEvent, { type: 'no
 export function emitNowPlaying(deps: HubDeps): void {
 	const evt = nowPlayingEvent(deps);
 	// Play tracking hooks in HERE because every playback transition funnels through this one emit.
-	// The tracker itself dedupes, since this is also re-emitted without a change (a cook finishing
+	// The tracker itself dedupes, since this is also re-emitted without a change (a process finishing
 	// re-broadcasts nowplaying so the TV preloads the newly-ready song).
 	deps.onNowPlaying?.(evt.current ? { id: evt.current.id, mediaId: evt.current.mediaId } : null);
 	deps.publish(evt);
@@ -107,7 +107,7 @@ function beginSinging(deps: HubDeps, entry: QueueEntry): void {
 }
 
 /**
- * React to a make-karaoke song becoming ready (held-slot completion) OR to the current entry being
+ * React to a process song becoming ready (held-slot completion) OR to the current entry being
  * retired out from under playback. Three cases, all keyed on "currentEntryId does not resolve to a
  * live entry" — the room is effectively idle whether the id is null (never started, or advanced to
  * null) or DANGLING (a client `remove`/`status` pruned the playing entry without touching playback,
@@ -142,8 +142,8 @@ export function reconcileOnReady(deps: HubDeps): void {
 		if (next) {
 			beginSinging(deps, next);
 			// A SONG START: reset every ephemeral field (EPHEMERAL_RESET). keyShift was historically the
-			// one THIS site forgot — a song that began this way (the room idled while it cooked, then the
-			// cook finished) silently inherited the previous singer's transpose; the shared const closes it.
+			// one THIS site forgot — a song that began this way (the room idled while it processed, then the
+			// process finished) silently inherited the previous singer's transpose; the shared const closes it.
 			state.setPlayback({ ...EPHEMERAL_RESET, currentEntryId: next.id, isPlaying: true });
 			publishQueue(deps); // the entry left `queued` — tell clients now, not on the next resync
 			deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });

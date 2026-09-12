@@ -1,14 +1,14 @@
-// unit: a permanently failed cook stays failed across a restart, and an unservable job dies on a clock.
+// unit: a permanently failed process stays failed across a restart, and an unservable job dies on a clock.
 //
 // TWO DEFECTS, found while writing the XR-JOB requirement rows. They share one shape: the fix that was
 // applied worked in memory, and the durable or periodic half was never wired.
 //
-// 1. THE READINESS GATE SETTLED IN MEMORY ONLY. `settleStemsGate` puts a dead cook's song back to
-//    `stemStatus: 'none'` so `isCooking` stops reading it as in-flight — its own comment describes the
-//    "cooking FOREVER" bug it was written to end. But `stem_status` is a STORED column, the *queued* flip
-//    IS persisted (the make-karaoke route upserts right after enqueue), and the terminal-failure epilogue
+// 1. THE READINESS GATE SETTLED IN MEMORY ONLY. `settleStemsGate` puts a dead process's song back to
+//    `stemStatus: 'none'` so `isProcessing` stops reading it as in-flight — its own comment describes the
+//    "processing FOREVER" bug it was written to end. But `stem_status` is a STORED column, the *queued* flip
+//    IS persisted (the process route upserts right after enqueue), and the terminal-failure epilogue
 //    carried no persistence sink at all. `hydrateMediaCatalog` wins at boot, so a restart resurrected
-//    exactly the stranding the settle exists to prevent: terminal job row, song reads as cooking, no Sing
+//    exactly the stranding the settle exists to prevent: terminal job row, song reads as processing, no Sing
 //    button, and nothing a guest can do about it.
 //
 // 2. THE UNSERVABLE TTL WAS NOT ON A CLOCK. Both the stamp and the expiry check live inside `dispatch()`,
@@ -29,7 +29,7 @@ import { WorkerHub } from '$lib/server/jobs/worker-hub';
 import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AttemptLedger } from '$lib/server/jobs/attempts';
-import { reportTerminalFailure, settleStemsGate } from '$lib/server/jobs/make-karaoke';
+import { reportTerminalFailure, settleStemsGate } from '$lib/server/jobs/process';
 import type { Media, ServerEvent } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;
@@ -86,7 +86,7 @@ test('a terminal stems failure persists the settled gate, not only the in-memory
 	// the durable half — without it the next boot re-reads 'queued' from the row and strands the song
 	expect(
 		persisted,
-		'the settled gate was never handed to a persistence sink, so a restart resurrects the dead cook'
+		'the settled gate was never handed to a persistence sink, so a restart resurrects the dead process'
 	).toEqual(['m1']);
 });
 

@@ -20,7 +20,7 @@ class Annotate(Step):
     """Identify the song against MusicBrainz, best-effort.
 
     Swallows everything: a declined match, an unreachable service or `ENCORE_ANNOTATE=0` all leave the
-    title-parser's values standing. A cook must never fail over metadata.
+    title-parser's values standing. A process must never fail over metadata.
 
     Runs OFF the event loop. The MusicBrainz gate serialises calls and SLEEPS to hold one request per
     second, and a blocking sleep here would stall the whole worker — with concurrency > 1 that means the
@@ -70,7 +70,7 @@ class Annotate(Step):
         # analysis SongProfile). A raw asyncio.to_thread here emitted NOTHING for the whole MusicBrainz wait,
         # and that wait can be long: the gate serialises calls and SLEEPS to hold one request per second, so a
         # throttled/slow service holds this thread well past the core's 30 s progress lease — the ONLY emitter
-        # of job:progress during the wait is gone, the reaper requeues a healthy cook
+        # of job:progress during the wait is gone, the reaper requeues a healthy process
         # (progress-lease-expired),
         # and each retry is a full re-acquire. run_blocking yields a keepalive ProgressEvent every
         # LEASE_KEEPALIVE_SEC so the lease is renewed. pct=100 matches analysis: acquisition has

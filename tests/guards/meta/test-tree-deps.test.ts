@@ -15,6 +15,7 @@
 // tree but declared nowhere. That resolves today only by accident of hoisting, and stops resolving the
 // moment the dependency graph shifts.
 
+
 import { test, expect } from 'bun:test';
 import { read, filesUnder, relative } from '@encore/test-support';
 

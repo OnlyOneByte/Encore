@@ -28,7 +28,7 @@ test('loadLibrary stores the wire tags map (stops discarding j.tags)', () => {
 
 test('rowMeta threads the song tags through the shared row shape', () => {
 	// The single place SongRow props are assembled. tags must be read by the song's id so every call
-	// site (ready/cooking/raw/popular/recent) gets it — SongRow itself only paints them on a ready row.
+	// site (ready/processing/raw/popular/recent) gets it — SongRow itself only paints them on a ready row.
 	const m = PAGE.match(/const\s+rowMeta\s*=\s*\(m:\s*Media\)\s*=>\s*\(\{([\s\S]*?)\}\);/);
 	expect(m).not.toBeNull(); // non-vacuous: rowMeta must exist to be scanned
 	expect(m![1]).toMatch(/tags\s*:\s*libraryTags\[\s*m\.id\s*\]/);

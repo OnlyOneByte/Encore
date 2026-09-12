@@ -80,7 +80,7 @@ def test_dropping_a_requested_capability_is_never_silent(monkeypatch, tmp_path):
 
 # ── specific tokens ─────────────────────────────────────────────────────────────────
 def test_ensemble_is_never_advertised_because_no_engine_implements_it(monkeypatch, tmp_path):
-    # the worker used to advertise `stems:ensemble` whenever both engines were present, but
+    # issue an earlier change: the worker used to advertise `stems:ensemble` whenever both engines were present, but
     # NO ensemble engine exists — `engine_for("ensemble")` raises. So the core would route an ensemble
     # upgrade to this box and the job would die at plan selection with "no separator engine: ensemble",
     # which is the exact "claim the box cannot honour" failure this module exists to remove, and it
@@ -107,7 +107,7 @@ def test_ensemble_is_never_advertised_because_no_engine_implements_it(monkeypatc
 
 
 def test_every_advertised_stems_capability_resolves_to_a_real_engine(monkeypatch, tmp_path):
-    """Parity guard closing issue #118's CLASS, not just its instance.
+    """Parity guard closing issue an earlier change's CLASS, not just its instance.
 
     A `stems*` capability token routes a separation job to an engine: the core resolves the required
     capability to an `engine` name (bare `stems` -> `demucs`, `stems:<name>` -> `<name>`) which the
@@ -128,7 +128,7 @@ def test_every_advertised_stems_capability_resolves_to_a_real_engine(monkeypatch
     assert stems_caps, "the fully-equipped box must advertise at least the bare `stems` token"
     for token in stems_caps:
         engine_name = "demucs" if token == "stems" else token.split(":", 1)[1]
-        # Must not raise: an advertised stems* token that engine_for cannot honour is the parity defect.
+        # Must not raise: an advertised stems* token that engine_for cannot honour is issue an earlier change.
         eng = engine_for(engine_name)
         assert eng is not None
 
@@ -136,7 +136,7 @@ def test_every_advertised_stems_capability_resolves_to_a_real_engine(monkeypatch
 def test_audiosep_is_advertised_only_when_its_dep_is_present(monkeypatch, tmp_path):
     # the mel-band RoFormer engine (python-audio-separator). Advertised only when the dep is
     # present — the same honesty contract as every other token. A box with demucs but no audio-separator
-    # must NOT claim stems:audiosep, or the core would route a mel-band cook that dies at plan selection.
+    # must NOT claim stems:audiosep, or the core would route a mel-band process that dies at plan selection.
     _with_path(monkeypatch, tmp_path)
     _fake_bin(tmp_path, "demucs")  # separator present, but NOT audio-separator
     monkeypatch.setattr(capabilities, "_module_available", lambda _name: False)
@@ -169,7 +169,7 @@ def test_a_cli_on_PATH_counts_even_when_the_module_is_invisible(monkeypatch, tmp
 # ── the JS runtime trap ─────────────────────────────────────────────────────────────
 def test_missing_js_runtime_warns_but_does_not_remove_the_fetch_capability(monkeypatch, tmp_path):
     # YouTube's player challenge cannot be solved without a JS runtime, and the degradation is silent
-    # and total — every cook dies at download with "Requested format is not available", which reads as
+    # and total — every process dies at download with "Requested format is not available", which reads as
     # a broken worker. But vetoing fetch would strip the capability from a deployment that is currently
     # limping along, so the honest signal is a loud warning.
     _with_path(monkeypatch, tmp_path)
@@ -218,14 +218,14 @@ def test_advertised_order_is_stable_across_restarts(monkeypatch, tmp_path):
     assert first == second == tuple(sorted(first))
 
 
-# ── advertise `stems` only when the RESOLVED backend has a demucs engine ──────
+# ── issue an earlier change / an earlier change: advertise `stems` only when the RESOLVED backend has a demucs engine ──────
 def test_stems_survives_on_an_mlx_box(monkeypatch):
     """Issue an earlier change established that `stems` is dropped when the resolved backend has no demucs engine.
-    The MLX engine was implemented, so an Apple-Silicon box that auto-resolves its backend to `mlx`
-    now HAS a demucs engine and must KEEP advertising `stems` — the box can genuinely run the cook
+    an earlier change IMPLEMENTED the MLX engine, so an Apple-Silicon box that auto-resolves its backend to `mlx`
+    now HAS a demucs engine and must KEEP advertising `stems` — the box can genuinely run the process
     (demucs-mlx CLI + mix-minus derivation), so dropping it would refuse work it can do.
 
-    This is the inverse of the pre-change pin: before, an mlx box dropped `stems` (advertise -> cook ->
+    This is the inverse of the pre-an earlier change pin: before, an mlx box dropped `stems` (advertise -> process ->
     die at the unimplemented engine); now it keeps it and no drop warning fires.
 
     Simulates the box exactly as test_backends.py does: patch platform to Darwin/arm64 and make the
@@ -299,7 +299,7 @@ def test_narrow_for_backend_keys_on_a_real_engine_impl():
     assert demucs_engine_backed_by("nonsense") is False
 
     # `engine_for` builds an engine for every backed backend and the built engine reports that backend,
-    # so the predicate the capability site reads cannot drift from the engine the cook actually builds.
+    # so the predicate the capability site reads cannot drift from the engine the process actually builds.
     assert engine_for("demucs", backend="torch").backend == "torch"
     assert isinstance(engine_for("demucs", backend="mlx"), MlxDemucsEngine)
     assert engine_for("demucs", backend="mlx").backend == "mlx"
@@ -316,4 +316,4 @@ def test_narrow_for_backend_keys_on_a_real_engine_impl():
     assert set(dropped) == {"align", "fetch:ytdlp", "stems:roformer"}  # only bare `stems` is backend-driven
     assert warns and "openvino" in warns[0]
     # a box that never proved `stems` is untouched even on an unbacked backend
-    assert capabilities.narrow_for_backend(("align",), "openvino") == (("align",), [])
+    assert capabilities.narrow_for_backend(("align"), "openvino") == (("align"), [])

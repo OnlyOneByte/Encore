@@ -174,7 +174,7 @@ export const SINGER_HUES: readonly number[] = Array.from(
 // is load-bearing rather than taste.
 //
 // A dot is ~12px of fill on a dark card, so SINGER_L = 0.70 is right for it. The stage is the WHOLE
-// SCREEN, and for a make-karaoke song it sits directly behind word-timed lyrics. Painting the dot
+// SCREEN, and for a process song it sits directly behind word-timed lyrics. Painting the dot
 // palette across that field washes the reel out, so the stage is generated far darker and far less
 // saturated.
 //
@@ -539,7 +539,7 @@ export type SingerColor = string;
  * `SINGER_COLORS` clear the floor today, so the two a duet needs are always available.
  *
  * THE FALLBACK IS BY ABSENCE, matching the worker (`diarize/attribution.py`). When NO line carries a
- * part — a solo, a song diarization could not split, an undiarized cook — this returns an EMPTY map,
+ * part — a solo, a song diarization could not split, an undiarized process — this returns an EMPTY map,
  * which the reel reads as "no part colour applies, keep the single-colour path": an undiarized song
  * renders exactly as today. A song with a single part likewise gets one colour. More parts than the
  * palette can legibly cover collapse to whatever it can — but the worker caps a confident duet at two

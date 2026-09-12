@@ -8,7 +8,8 @@
 // Deleting any of these ships a row that never shows tags (or shows them on a raw search result,
 // where a tag is noise) with the suite otherwise green.
 import { test, expect } from 'bun:test';
-import { read } from '@encore/test-support';
+import { readFileSync } from 'node:fs';
+import { at } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	return src
@@ -16,9 +17,7 @@ function stripComments(src: string): string {
 		.replace(/\/\*[\s\S]*?\*\//g, '')
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
-// Was `at('src/lib/components/SongRow.svelte')` — the subject was this guard's own SIBLING in
-// src/lib/components, so the path is now stated in full and anchored on the repo root.
-const src = stripComments(read('src/lib/components/SongRow.svelte'));
+const src = stripComments(readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8'));
 
 test('SongRow accepts a tags prop and destructures it', () => {
 	expect(src).toMatch(/tags\?\s*:\s*string\[\]/); // interface member
@@ -27,7 +26,7 @@ test('SongRow accepts a tags prop and destructures it', () => {
 });
 
 test('showTags is gated on a READY row AND a non-empty tag list', () => {
-	// Both halves are load-bearing: readiness==='ready' keeps tags off raw/cooking rows (a candidate
+	// Both halves are load-bearing: readiness==='ready' keeps tags off raw/processing rows (a candidate
 	// upload has no library tags worth showing), and the length check keeps an empty list from
 	// rendering an empty .chips row. Mutating either half reds this.
 	const m = src.match(/const\s+showTags\s*=\s*\$derived\(([^;]*)\);/);
@@ -49,13 +48,11 @@ test('the tag chips render, keyed, guarded by showTags, inside the .chips wrappe
 
 test('the tag chip is a NEUTRAL family, not a status tint', () => {
 	/*
-	 * S6: the tone lives in ui/badge now, as the `tag` variant's own rules. The claim is unchanged
+ * the tone lives in ui/badge now, as the `tag` variant's own rules. The claim is unchanged
 	 * and still the point — a tag is a describing word, not a warning — so it is asserted against the
 	 * rules that actually paint it rather than against a class SongRow no longer writes.
 	 */
-	// Was `at('src/lib/components/ui/badge/badge.svelte')` — a sibling-relative read of the
-	// components tree this guard used to live in, now named from the repo root.
-	const badge = read('src/lib/components/ui/badge/badge.svelte');
+	const badge = readFileSync(at('src/lib/components/ui/badge/badge.svelte'), 'utf8');
 	expect(badge, 'ui/badge must define a tag tone').toMatch(/\.encore-chip-tag\s*\{/);
 	const accent = badge.match(/\.encore-chip-accent\s*\{([^}]*)\}/);
 	expect(accent, 'the tag tone builds on the accent wash').not.toBeNull();

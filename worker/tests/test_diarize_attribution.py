@@ -52,7 +52,7 @@ def test_confident_duet_gets_abstract_part_letters():
     out = attribute_parts(doc, diar)
     parts = [ln.get("part") for ln in out["lines"]]
     # Abstract letters assigned by FIRST appearance (SPEAKER_01 first → "A"), not by the diarizer's
-    # own numbering, so the label set is {A,B} and a re-cook is stable.
+    # own numbering, so the label set is {A,B} and a re-process is stable.
     assert parts == ["A", "B", "A", "B"]
     # Pure: the input is not mutated.
     assert "part" not in doc["lines"][0]

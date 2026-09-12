@@ -11,7 +11,7 @@ import { instrumentalKey } from '$lib/server/media/paths';
 import type { Media } from '$lib/contract';
 import { EMPTY_SONG_PROFILE } from '$lib/contract';
 
-const cooked = (id: string): Media => ({
+const processed = (id: string): Media => ({
 	id,
 	source: 'youtube',
 	sourceRef: 'vid-' + id,
@@ -25,7 +25,7 @@ const cooked = (id: string): Media => ({
 
 test("tagsOf(id, 'tag') returns exactly the tag-kind values setTags wrote", () => {
 	const repo = new MediaRepository(migratedDb());
-	repo.upsert(cooked('m1'));
+	repo.upsert(processed('m1'));
 	repo.setTags('m1', 'tag', ['Acoustic', '80s', 'duet']);
 	// normalised at the write boundary: trimmed + lower-cased + de-duped, order preserved on read.
 	expect(repo.tagsOf('m1', 'tag').sort()).toEqual(['80s', 'acoustic', 'duet']);
@@ -33,7 +33,7 @@ test("tagsOf(id, 'tag') returns exactly the tag-kind values setTags wrote", () =
 
 test("the default 'genre' read does NOT see tag-kind values — the kind argument is load-bearing", () => {
 	const repo = new MediaRepository(migratedDb());
-	repo.upsert(cooked('m1'));
+	repo.upsert(processed('m1'));
 	repo.setTags('m1', 'tag', ['acoustic']);
 	// A route that called tagsOf(id) without the kind would land here: empty, tag chips gone.
 	expect(repo.tagsOf('m1')).toEqual([]);
@@ -42,6 +42,6 @@ test("the default 'genre' read does NOT see tag-kind values — the kind argumen
 
 test('a song with no tags yields an empty array, so its row omits the chips', () => {
 	const repo = new MediaRepository(migratedDb());
-	repo.upsert(cooked('m2'));
+	repo.upsert(processed('m2'));
 	expect(repo.tagsOf('m2', 'tag')).toEqual([]);
 });

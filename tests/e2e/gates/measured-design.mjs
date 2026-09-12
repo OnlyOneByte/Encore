@@ -40,7 +40,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 import { openBrowseFromHome } from '../lib/phone.mjs';
@@ -58,6 +58,23 @@ import {
 	TEXT_INPUT_TYPES,
 	VIEWPORTS
 } from './measured-design-register.mjs';
+import { existsSync as __exists } from 'node:fs';
+import { join as __join, dirname as __dirname } from 'node:path';
+
+// INLINED, not imported: this driver runs under plain node with no bundler, so the
+// '@encore/test-support' alias does not exist at runtime. Walking up for bunfig.toml is the
+// same root derivation the harness uses, and unlike a hop count it survives a move.
+function __repoRoot() {
+	let d = __dirname(new URL(import.meta.url).pathname);
+	for (let i = 0; i < 12; i += 1) {
+		if (__exists(__join(d, 'bunfig.toml'))) return d;
+		d = __dirname(d);
+	}
+	throw new Error('no bunfig.toml above ' + import.meta.url);
+}
+const repoRoot = __repoRoot();
+/** @param {...string} parts @returns {string} */
+const at = (...parts) => __join(repoRoot, ...parts);
 
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -65,7 +82,7 @@ import {
  * @typedef {{ tag: string, type: string | null, cls: string, near: string, boxH: number, hitH: number, occluded: number, fontSize: number }} Reading
  */
 
-const CORE = join(import.meta.dir, '..', '..');
+const CORE = repoRoot;
 const SCRATCH = join(process.env.KIROCREW_SCRATCH ?? process.env.TMPDIR ?? '/tmp', `measured-design-${process.pid}`);
 
 /** @type {{ name: string, ok: boolean, detail: string }[]} */
@@ -861,7 +878,7 @@ try {
 	 * NO other z-tier-7 box, at 1080p AND 4K.
 	 *
 	 * WHY SYNTHETIC BOXES. `.fs-btn` and `.upnext`/`.corner`/`.lower-third` render only in the PLAYING
-	 * branch, which needs live WS playback the self-hosting drive has no cooked media for (same reason
+	 * branch, which needs live WS playback the self-hosting drive has no processed media for (same reason
 	 * CLAIM 6 covers only attract/lobby). So the probe MOUNTS one element per class under the real
 	 * `.tv` — the tokens (`--tv-safe-x/y`, `--tv-upnext-h`, `--z-tv-card`) resolve on `.tv` and the
 	 * loaded /tv stylesheet positions each element exactly as production does. `.upnext` is given a
@@ -973,8 +990,8 @@ try {
 	 *     painted under .fs-btn is worse than the "+N more" it replaced, and is invisible to a source
 	 *     scan. Swept with LONG-name fixtures at 6/10/12/13 guests (name length is load-bearing here).
 	 *
-	 * The takeover frames (next-up / cooking / skipping) need live WS playback to mount and are NOT
-	 * driven here — the self-hosting drive has no cooked media — so their invariants stay on the
+	 * The takeover frames (next-up / processing / skipping) need live WS playback to mount and are NOT
+	 * driven here — the self-hosting drive has no processed media — so their invariants stay on the
 	 * source-scan guard; this gate covers attract and lobby, the two the drive can reach honestly.
 	 */
 	{
@@ -1023,7 +1040,7 @@ try {
 		// the same join panel (.url) and the roster, so the URL-no-break (XR-TV-19) and the
 		// roster-not-occluded (XR-TV-14) invariants are measured here. The attract `.jt-url` and the three
 		// takeover frames stay on the source-scan guard (the takeovers need live WS playback the
-		// self-hosting drive has no cooked media for).
+		// self-hosting drive has no processed media for).
 		const lobbyProbe = `(() => {
 			const chips = [...document.querySelectorAll(${JSON.stringify(SEL.lobbyStripPerson)})];
 			const url = document.querySelector(${JSON.stringify(SEL.lobbyUrl)});

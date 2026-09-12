@@ -25,6 +25,7 @@
 // dangling citation added here later. Every text-scanning guard in this suite has to survive its own
 // documentation, and this one is no exception.
 
+
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at, filesUnder, relative } from '@encore/test-support';

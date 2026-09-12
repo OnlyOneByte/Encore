@@ -5,7 +5,7 @@
 // entry ahead lacks a duration, Then no minutes clause renders and the string never contains
 // 'roughly 0'". So every expectation below is a HARD-CODED string or an independently hand-computed
 // minute count — never `Math.round(total / 60)`, which is the operation under test. That is the
-// cook-bar rounding failure exactly: a test that rounds its own expected value cannot detect whether the code rounds.
+// process-bar rounding failure exactly: a test that rounds its own expected value cannot detect whether the code rounds.
 import { test, expect } from 'bun:test';
 import { positionWords, waitWords, ordinalWord } from '$lib/position-sentence';
 

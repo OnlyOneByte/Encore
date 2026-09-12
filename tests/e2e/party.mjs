@@ -36,7 +36,7 @@ import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver (pattern). Browser/Page derive from
+ * Types for this out-of-program driver (earlier changes–an earlier change pattern). Browser/Page derive from
  * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
@@ -133,9 +133,7 @@ try {
 	 * reporting `computed 0px`, which is the ORIGINAL false-failure symptom wearing a different hat. So
 	 * wait for the socket, let the sync land, and re-check the screen at the moment of measurement.
 	 */
-	const socketUp = await tv
-		.waitFor(`document.querySelector(${JSON.stringify(SEL.tvConnected)}) !== null`, { timeout: 8000 })
-		.catch(() => false);
+	const socketUp = await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.tvConnected)}) !== null`, { timeout: 8000 }).catch(() => false);
 	if (!socketUp) {
 		console.error(`\nThe TV never opened its WebSocket to ${base}. Is the server still running?`);
 		browser0.close();
@@ -148,9 +146,7 @@ try {
 	// flake that reads as a product defect.
 	await sleep(SYNC_SETTLE_MS);
 
-	const onAttract = await tv
-		.waitFor(`document.querySelector(${JSON.stringify(SEL.attract)}) !== null`, { timeout: 4000 })
-		.catch(() => false);
+	const onAttract = await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.attract)}) !== null`, { timeout: 4000 }).catch(() => false);
 	if (!onAttract) {
 		console.error(
 			'\nThis flow needs an empty room — the attract screen only renders before anyone joins,\n' +
@@ -223,7 +219,7 @@ try {
 		if (hue !== undefined) await page.setRange(SEL.hueSlider, hue);
 		await page.clickByText('Start singing');
 		await page.waitFor(`location.pathname === '/'`);
-		// Home is the QUEUE; searching is a push. openBrowseFromHome waits for the joined home,
+		// Home is the QUEUE since an earlier change; searching is a push. openBrowseFromHome waits for the joined home,
 		// clicks the primary button and waits for the search box, so the caller lands where it used to.
 		await openBrowseFromHome(page);
 		return page;
@@ -252,9 +248,7 @@ try {
 	 * a number this file can know — a fixed sleep passed on one run and failed the next against the same
 	 * build, which is how an e2e earns a reputation for being flaky and stops being run.
 	 */
-	const rows = await maya
-		.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length`, { timeout: 15_000 })
-		.catch(() => 0);
+	const rows = await maya.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length`, { timeout: 15_000 }).catch(() => 0);
 	if (rows === 0) {
 		// Loud and actionable, never a silent skip — an e2e that quietly stops asserting is the exact
 		// failure this rewrite exists to prevent. An empty library is an ENVIRONMENT gap, not a UI bug,
@@ -270,11 +264,11 @@ try {
 		check('the unified search box returns rows', true, `${rows} rows`);
 
 		/*
-		 * A fresh install has NO ready songs — nothing has been cooked yet — so results are raw and carry
+		 * A fresh install has NO ready songs — nothing has been processed yet — so results are raw and carry
 		 * `.sing` rather than `.add`. Both are queueing actions and the flow takes whichever is offered,
 		 * because insisting on `.add` would make this assertion pass only on a machine that had already
-		 * been used. The raw path is also the more interesting one: `.sing` queues AND starts a cook, and
-		 * rotation is supposed to HOLD the slot while it cooks.
+		 * been used. The raw path is also the more interesting one: `.sing` queues AND starts a process, and
+		 * rotation is supposed to HOLD the slot while it processes.
 		 */
 		const readyCount = await maya.count(SEL.addTurn);
 		const rawCount = await maya.count(SEL.sing);
@@ -286,7 +280,7 @@ try {
 		);
 
 		await maya.click(queueAction);
-		// Back to the QUEUE, which is home — the rotation rows, the position line and the
+		// Back to the QUEUE, which is home since an earlier change — the rotation rows, the position line and the
 		// transport all live there, and this flow reads all three below. Ada is still on the browse
 		// screen she joined through, so she comes home too before her rotation is compared.
 		await returnHomeFromBrowse(maya);
@@ -305,7 +299,7 @@ try {
 		 * The song can be in the rotation in THREE shapes, and the first song of the night is the one
 		 * that is not a row: an idle room auto-starts the add, the entry's status becomes 'playing', and
 		 * `queued` filters a playing entry out — so it renders on the HERO instead. It reads as a
-		 * `.qrow` when someone else is already singing, and as `.proc` while it cooks. The invariant is
+		 * `.qrow` when someone else is already singing, and as `.proc` while it processes. The invariant is
 		 * "the singer is in the rotation", so all three count; asserting only `.qrow` would report an
 		 * empty rotation for a room whose first song is playing perfectly.
 		 */
@@ -313,7 +307,7 @@ try {
 		check(
 			'queueing puts the singer in the rotation',
 			queued + processing + heroSong.length > 0,
-			`${queued} ${SEL.queueRow} (of which ${processing} cooking — ProcessingCard carries both classes), hero=${JSON.stringify(heroSong)} — a cooking song HOLDS its slot and a PLAYING one is the hero, which is why all three count`
+			`${queued} ${SEL.queueRow} (of which ${processing} processing — ProcessingCard carries both classes), hero=${JSON.stringify(heroSong)} — a processing song HOLDS its slot and a PLAYING one is the hero, which is why all three count`
 		);
 
 		// ── cross-client sync ───────────────────────────────────────────────
@@ -323,17 +317,13 @@ try {
 		// The rotation AS EACH PHONE SEES IT: the playing song (hero) followed by the waiting rows. Both
 		// halves, for the same reason as above — comparing rows alone compares two empty lists and reads
 		// as agreement when neither phone has rendered anything.
-		const rotationOf = async (/** @type {typeof maya} */ page) => [
-			...(await page.texts(SEL.heroTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing'),
-			...(await page.texts(SEL.queueTitle))
+		const rotationOf = async (/** @type {typeof maya} */ page) => [...(await page.texts(SEL.heroTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing'),...(await page.texts(SEL.queueTitle))
 		];
 		const adaSawRotation = await ada
 			.waitFor(
-				`[...document.querySelectorAll(${JSON.stringify(SEL.heroTitle)}), ...document.querySelectorAll(${JSON.stringify(SEL.queueTitle)})].some(el => (el.textContent || '').trim() && (el.textContent || '').trim() !== 'Nothing playing')`,
+				`[...document.querySelectorAll(${JSON.stringify(SEL.heroTitle)}),...document.querySelectorAll(${JSON.stringify(SEL.queueTitle)})].some(el => (el.textContent || '').trim() && (el.textContent || '').trim() !== 'Nothing playing')`,
 				{ timeout: 10_000 }
-			)
-			.then(() => true)
-			.catch(() => false);
+			).then(() => true).catch(() => false);
 		const mayaQ = await rotationOf(maya);
 		const adaQ = await rotationOf(ada);
 		check(
@@ -366,14 +356,14 @@ try {
 			);
 		} else {
 			/*
-			 * Nothing playable, which is CORRECT here: the queued song is still cooking and this
+			 * Nothing playable, which is CORRECT here: the queued song is still processing and this
 			 * environment has no worker to finish it. So assert the OBSERVABLE requirement rather than an
 			 * internal state — the TV must not sit on a blank stage or a stale lower-third; it has to say
 			 * something about why nothing is playing.
 			 *
 			 * Deliberately NOT asserting `.state-waiting` here. screen.ts documents `waiting` as "something
-			 * is queued but its stems are still cooking", but reaching it requires the PLAYER to be
-			 * actively holding, so a queued-but-never-started cook falls through to the lobby copy
+			 * is queued but its stems are still processing", but reaching it requires the PLAYER to be
+			 * actively holding, so a queued-but-never-started process falls through to the lobby copy
 			 * ("Waiting for someone to pick a song…") even though someone has picked one. That is
 			 * pre-existing behaviour, not something this branch changed, and pinning a test to the current
 			 * outcome would freeze a wording bug in place. Flagged instead of encoded.

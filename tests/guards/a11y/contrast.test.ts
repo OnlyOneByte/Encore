@@ -178,7 +178,7 @@ test('--on-accent passes AA on --accent (the actionable pair)', () => {
  *
  *   --accent on --card = 3.38:1   (#7254e6, registry stop 41)
  *
- * That is counter-intuitive enough that it already happened once: the /metrics "slowest cooks" links
+ * That is counter-intuitive enough that it already happened once: the /metrics "slowest processes" links
  * shipped as `color: var(--accent)` and the suite stayed green, because every other test here checks
  * whether a PAIR is safe and none checked whether this pair was in USE. A reviewer then proposed to
  * "fix" it by switching to the darker --accent-strong, which would have made the contrast worse while

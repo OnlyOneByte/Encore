@@ -2,7 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '$lib/contract';
-	import { chosenCandidate, isPlayable, effectiveSongIntroMs, soundingKeyLabel, songDisplay } from '$lib/contract';
+	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay, soundingKeyLabel } from '$lib/contract';
 	import { GaplessController } from '$lib/tv/gapless';
 	import { telemetryFrame } from '$lib/tv/telemetry';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
@@ -27,12 +27,12 @@
 		lobbyRoster,
 		isUnreachableJoinOrigin,
 		lyricsAdvancing,
-		cookStep,
-		COOK_STEPS
+		processStep,
+		PROCESS_STEPS
 	} from '$lib/tv/screen';
 	import { isAutoTranscribed, provenanceLabel } from '$lib/tv/lyrics';
-	import { cookStageLabel } from '$lib/cook-phrasing';
-	import { mergeCatalog, snapshot, cookIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
+	import { processStageLabel } from '$lib/process-phrasing';
+	import { mergeCatalog, snapshot, processIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
 	import { makePhraseBag, reducedMotionPhrase, seedFromString, ATTRACT_PHRASES } from '$lib/tv/phrases';
 
 	let { data } = $props();
@@ -95,7 +95,7 @@
 	// stage colour toward black by this fraction — a lightness control, no layer over the video.
 	let tvBackgroundDim = $derived(settings.room.tvBackgroundDim);
 	// The visualizers build their palette by hue ARITHMETIC around the room's colour
-	// (`stageHueToHex(hue + deg)`), so they need an ANGLE and the stored value is a hex.
+	// (`stageHueToHex(hue + deg)`), so they need an ANGLE and the stored value is a hex since an earlier change.
 	// `hueOfColor` is the atan2 of the OKLab chromatic axes — scale-free, so it recovers the hue of a
 	// dark stage colour that `nearestSingerHue` would snap to the wrong wheel stop.
 	let tvBackgroundHue = $derived(hueOfColor(tvBackgroundColor));
@@ -122,7 +122,7 @@
 	let keyShift = $state(0);
 	// THE SNAPSHOT SEAM. The slots hold immutable `PlaybackSnapshot`s, not live catalog records:
 	// a `Media` is not assignable here, so the only way a song reaches the player is through
-	// `snapshot()` in `syncSlots()` — i.e. on an explicit playback transition. A cook event cannot
+	// `snapshot()` in `syncSlots()` — i.e. on an explicit playback transition. A process event cannot
 	// reach a playing song even if it churns the catalog, because there is no longer a path from the
 	// catalog to a mounted slot that does not go through a deliberate re-assignment.
 	let slotMedia = $state<{ A: PlaybackSnapshot | null; B: PlaybackSnapshot | null }>({
@@ -138,16 +138,14 @@
 	// ── loudness normalization (PR3) ──────────────────────────────────────────────────────────
 	// The decision happens HERE, at playback, not in the worker: the master pulldown for a song depends
 	// on the LIVE library median, which is a property of the room's whole catalog at play time, not of
-	// the song's cook. The route owns both facts — the full `mediaCatalog` and the room's setting — so
+	// the song's proc. The route owns both facts — the full `mediaCatalog` and the room's setting — so
 	// it resolves the gain and hands each slot a plain `masterLevel`. TvPlayer stays a pure applier.
 	//
 	// Every measured `loudnessLufs` in the library. `null`/absent levels are simply not in the list, so
 	// the count is the population the floor (>=8) is checked against. Re-derives whenever the catalog
-	// changes (a new cook lands a new level), so the median tracks the library rather than a stale seed.
+	// changes (a new process lands a new level), so the median tracks the library rather than a stale seed.
 	const libraryLoudnessLevels = $derived(
-		[...mediaCatalog.values()]
-			.map((m) => m.songProfile?.loudnessLufs ?? null)
-			.filter((v): v is number => typeof v === 'number')
+		[...mediaCatalog.values()].map((m) => m.songProfile?.loudnessLufs ?? null).filter((v): v is number => typeof v === 'number')
 	);
 	// Resolve one slot's master level from its own song's measured loudness, the library levels, and the
 	// room toggle. 1 (unity) for the whole existing library and every song when the feature is off,
@@ -173,10 +171,10 @@
 
 	/*
 	 * The catalog writer and the snapshot seam both live in `$lib/tv/catalog.ts` — see that module for
-	 * why this needed a boundary rather than a fifth consumer-side guard. Two rules hold here:
+	 * why an earlier change needed a boundary rather than a fifth consumer-side guard. Two rules hold here:
 	 *
 	 *   • `mergeCatalog` is the ONLY thing that writes `mediaCatalog`, and it takes a full server list,
-	 *     so this route cannot express a partial local edit to a media record. The cook path used to
+	 *     so this route cannot express a partial local edit to a media record. The process path used to
 	 *     make exactly such an edit; that is what reached the playing song.
 	 *   • the player is handed `snapshot(...)`, never `mediaOf(...)` directly.
 	 */
@@ -221,12 +219,12 @@
 		// Chromium). Until then `drawPosition` extrapolates FORWARD from the previous song's anchor,
 		// so the reel opens the turn parked on (and sweeping past) the old song's last lines and the
 		// progress bar opens two-thirds full. `nowplaying:changed` is the exact event that marks the
-		// new song's zero, so re-anchor here rather than relaxing `drawPosition`'s floor (that
-		// purity is load-bearing) or guarding inside `LyricsOverlay`.
+		// new song's zero, so re-anchor here rather than relaxing `drawPosition`'s floor (— that
+		// purity is load-bearing) or guarding inside `LyricsOverlay`. See issue an earlier change.
 		positionSec = 0;
 		durationSec = 0;
-		// held-slot: if the server handed us a current whose media has no instrumental yet (a cooking
-		// make-karaoke song), show WAITING rather than a black player. Server normally skips these via
+		// held-slot: if the server handed us a current whose media has no instrumental yet (a processing
+		// process song), show WAITING rather than a black player. Server normally skips these via
 		// nextPlayable, so this is a belt-and-suspenders guard.
 		const m = mediaOf(cur);
 		if (cur && m && !isPlayable(m)) {
@@ -250,7 +248,7 @@
 	 * a progress bar that jumps to the beginning on pause. See lib/ws/send.ts.
 	 */
 	function sendTelemetry(status: string, positionSec = 0) {
-		// The frame — including the entry stamp the server's guard needs on EVERY frame — is
+		// The frame — including the entry stamp the server's earlier changes guard needs on EVERY frame — is
 		// built by the pure `telemetryFrame()` in $lib/tv/telemetry.ts, so the stamp is unit-tested
 		// behaviourally rather than only by scanning this .svelte source for a literal.
 		// SILENT drop when the socket is not open (~4 Hz stream) — `quiet` suppresses WsClient's
@@ -360,13 +358,13 @@
 			keyShift = e.state.keyShift;
 		}
 		/*
-		 * COOK LIFECYCLE — and note what is NOT here any more.
+		 * PROCESS LIFECYCLE — and note what is NOT here any more.
 		 *
 		 * This handler used to write the catalog: `new Map(mediaCatalog).set(id, {...m, stemStatus})`,
 		 * on EVERY progress tick, minting a fresh Media identity and inventing a `stemStatus` the
 		 * server never sent (anything not `ready`/`failed` was written as `queued`, which made the
 		 * PLAYING song locally unplayable for a moment). That write is the coupling this issue is
-		 * about: it is how a cook for one song reached the playhead of another.
+		 * about: it is how a process for one song reached the playhead of another.
 		 *
 		 * It is gone, and nothing replaced it, because nothing needed it:
 		 *
@@ -375,20 +373,20 @@
 		 *     `waiting` on an explicit playback event. The old comment here claimed these local
 		 *     catalog writes were what made the TV "leave WAITING promptly" — that was never true;
 		 *     the only exit this handler ever owned is the terminal-failure one below.
-		 *   • cook PROGRESS has no consumer on the TV. The TV renders "Making the karaoke", not a
+		 *   • process PROGRESS has no consumer on the TV. The TV renders "Making the karaoke", not a
 		 *     percentage, so a tick had nothing to update and churned the render tree for free.
 		 *
 		 * What remains is a pure lifecycle decision, and no state of its own.
 		 */
 		if (e.type === 'media:status') {
-			// A cook that FAILED, or a job NO connected worker can ever run (`unservable`), will never
+			// A process that FAILED, or a job NO connected worker can ever run (`unservable`), will never
 			// become playable — and enterWaiting() sets no timer, so if this is the entry the room is
 			// holding on, the party stares at "Making the karaoke" forever. Leave WAITING the same way
 			// the dead-media path does: say so on screen via the error treatment, tell the server the
 			// entry ended so it advances authoritatively, and drop out of the waiting hold.
 			// Defensive: this fires purely on the wire signal and does not assume the server TTL fix
 			// has landed.
-			const stuck = cookIsTerminal(e);
+			const stuck = processIsTerminal(e);
 			if (stuck && tvState === 'waiting' && current && current.mediaId === e.mediaId) {
 				const who = singerName(current.singerId);
 				skipNotice = `Couldn't make the karaoke for ${who}'s song — skipping`;
@@ -411,11 +409,11 @@
 
 	onMount(() => {
 		ws = new WsClient({
-			// one-TV-per-room: bind this TV socket to the room the loader resolved (data.roomCode) by
+			// an earlier change one-TV-per-room: bind this TV socket to the room the loader resolved (data.roomCode) by
 			// passing it on the WS URL. The server's tvRoomId turns the code into the room id the socket is
 			// scoped to, so the TV is IN-ROOM for that party (subscribeTopicFor) rather than an
 			// unscoped spectator of the served room. A code-less loader (prerender/unavailable app) omits
-			// the param and the server falls back to the served room — unchanged from before rooms were introduced.
+			// the param and the server falls back to the served room — unchanged from before an earlier change.
 			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=tv${data.roomCode ? `&room=${encodeURIComponent(data.roomCode)}` : ''}`,
 			// The TV holds no queue rev of its own — it never handles queue:patch and adopts server
 			// truth wholesale from each queue:sync — so the hello handshake always sends lastRev 0,
@@ -494,9 +492,7 @@
 	// Combined style written onto `.tv`: the chrome band AND the up-next height, each falling back to
 	// its app.css default before the first measurement / when its element is absent.
 	const tvStyle = $derived(
-		[chromeBandStyle, measuredUpnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(measuredUpnextPx)}px`]
-			.filter(Boolean)
-			.join('; ') || undefined
+		[chromeBandStyle, measuredUpnextPx === null ? undefined: `--tv-upnext-h: ${Math.ceil(measuredUpnextPx)}px`].filter(Boolean).join('; ') || undefined
 	);
 
 	// Which surface the TV shows. Replaces the old `isAttract` (which collapsed "nobody here"
@@ -512,7 +508,7 @@
 	 * it.
 	 *
 	 * isPlayable (not readyToSing) on purpose: this asks "could the TV load a file for it", which is the
-	 * same question the player asks, so the lobby cannot claim something is cooking that the player
+	 * same question the player asks, so the lobby cannot claim something is processing that the player
 	 * would happily start.
 	 */
 	const pendingCount = $derived(
@@ -522,7 +518,7 @@
 		}).length
 	);
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
-	// /XR-TV-14: the lobby shows the WHOLE roster with no "+N more" — the reason to show it is that
+	// an earlier change/XR-TV-14: the lobby shows the WHOLE roster with no "+N more" — the reason to show it is that
 	// it must not degrade as the party grows, so it is never truncated. Pass Infinity so nothing is
 	// capped; TvLobby renders every chip and steps the chip size down above a threshold instead.
 	const roster = $derived(lobbyRoster(online, away, singers, Infinity));
@@ -535,7 +531,7 @@
 	 * as long as the TV is showing a song, and releases it the moment the room goes idle.
 	 *
 	 * Gated on `!isAttract` — the SAME flag the player slots and the stage background use — not on a
-	 * literal `screen === 'playing'`: a song that is cooking (`waiting`) or between tracks
+	 * literal `screen === 'playing'`: a song that is processing (`waiting`) or between tracks
 	 * (`interstitial`) is still on stage and must keep the screen lit, exactly the instrumental-break
 	 * case the issue names. `attract`/`lobby` (nobody singing, or nothing queued) release it.
 	 *
@@ -569,9 +565,7 @@
 			// re-request.
 			if (acquiring || (sentinel && !sentinel.released)) return;
 			acquiring = true;
-			navigator
-				.wakeLock!.request('screen')
-				.then((s) => {
+			navigator.wakeLock!.request('screen').then((s) => {
 					if (released) {
 						// The effect tore down while the request was in flight — do not leak it.
 						s.release().catch(() => {});
@@ -677,7 +671,7 @@
 	 * Gated on `!isAttract` — the SAME flag that gates the player slots — rather than on
 	 * `screen === 'playing'`. That is deliberate: a literal playing check would drop the background
 	 * during the interstitial, putting a black flash between every song, and it would also drop it on
-	 * `waiting` (a song IS on the stage, it is still cooking). Reusing the flag also means the two
+	 * `waiting` (a song IS on the stage, it is still processing). Reusing the flag also means the two
 	 * conditions cannot drift apart later.
 	 *
 	 * The attract and lobby screens keep painting their own glow at z-index 5 and are untouched by this
@@ -709,7 +703,7 @@
 	);
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
-	// Bug B, and the element-truth rule: the reel and ball ADVANCE only while the song is genuinely playing on BOTH
+	// Bug B + an earlier change: the reel and ball ADVANCE only while the song is genuinely playing on BOTH
 	// dimensions — the room INTENDS to play (`isPlaying`, from the server) AND the master element is
 	// actually running (`masterAdvancing`, reported up from the <audio>'s own play/pause). `isPlaying`
 	// alone stayed true through a phone pause (Bug B) and ALSO through an autoplay refusal or an
@@ -786,7 +780,7 @@
 	 * mid-transition, so two full-screen panels could paint over each other. Deriving a single value and
 	 * gating every block on it makes exactly one mountable, and the precedence states which wins:
 	 *   error   — a skip notice is the most urgent thing to say, so it outranks everything.
-	 *   waiting — the player is actively holding for a cook; a real, named in-progress state.
+	 *   waiting — the player is actively holding for a proc; a real, named in-progress state.
 	 *   next    — the song-intro card (opener or gapless-swap transition).
 	 *   loading — the FALLBACK for the missed-preload path (P1 black stage). When the gapless swap
 	 *             misses its window, `onEnded` sets `loading` with `current` still set, so `screen`
@@ -1077,7 +1071,7 @@
 						>{'\u00a0· '}{nowPlayingDisplay.artist}</span
 					>{/if}</span
 			>
-			<!-- The sounding key + how far it is transposed, when the cook found a trustworthy one. -->
+			<!-- The sounding key + how far it is transposed, when the process found a trustworthy one. -->
 			{#if keyLine}
 				<span class="ls-key">{keyLine}</span>
 			{/if}
@@ -1160,28 +1154,28 @@
 			{/if}
 		</div>
 	{:else if transient === 'waiting'}
-		<!-- Still cooking (T1b) — warn family. A wait, not a failure: the song title is the
+		<!-- Still processing (T1b) — warn family. A wait, not a failure: the song title is the
 		     hero and a bounded 3-step progress names the current step, so the wait reads as finite. The
-		     words come from cook-phrasing (the ONE guest-facing cook vocabulary, shared with the phone).
-		     THE TV KNOWS ONLY A COARSE "cooking" STATE: per-media cook tracking was deliberately stripped
-		     from the TV (a cook for one song was reaching another's playhead), so there is no per-media
-		     MediaStatus to read here. cookStep() is a pure, total MediaStatus->step mapping (guarded in
+		     words come from process-phrasing (the ONE guest-facing process vocabulary, shared with the phone).
+		     THE TV KNOWS ONLY A COARSE "processing" STATE: an earlier change deliberately stripped per-media process tracking
+		     from the TV (a process for one song was reaching another's playhead), so there is no per-media
+		     MediaStatus to read here. processStep() is a pure, total MediaStatus->step mapping (guarded in
 		     screen.test.ts and shared in shape with the phone, XR-TV-15); the TV feeds it the representative
-		     mid-cook step 'separating' (the mockup's bolded "Removing vocals") rather than inventing the
+		     mid-process step 'separating' (the mockup's bolded "Removing vocals") rather than inventing the
 		     per-media tracking the TV was purpose-built not to hold. -->
-		{@const cookMedia = mediaOf(current)}
-		{@const cook = cookStep('separating')}
+		{@const processMedia = mediaOf(current)}
+		{@const proc = processStep('separating')}
 		<div class="interstitial takeover state-waiting">
 			<div class="state-mark"><Icon name="flame" /></div>
-			<div class="up-label">{cookStageLabel('queued')}</div>
-			<div class="up-song hero-song">{songDisplay(cookMedia).title}</div>
+			<div class="up-label">{processStageLabel('queued')}</div>
+			<div class="up-song hero-song">{songDisplay(processMedia).title}</div>
 			<!-- Bounded 3-step progress. The bar width tracks the current step so the wait reads as
 			     finite; the current step is bolded. Every step label is a fixed guest word (not a worker
-			     stage), and exactly one step is current for every status (cookStep is total). -->
-			<div class="cook-bar"><i style="width: {cook.fraction}"></i></div>
-			<div class="cook-steps">
-				{#each COOK_STEPS as label, i (label)}
-					<span class:step-current={i === cook.index} class:step-done={i < cook.index}>{label}</span>
+			     stage), and exactly one step is current for every status (processStep is total). -->
+			<div class="process-bar"><i style="width: {proc.fraction}"></i></div>
+			<div class="process-steps">
+				{#each PROCESS_STEPS as label, i (label)}
+					<span class:step-current={i === proc.index} class:step-done={i < proc.index}>{label}</span>
 				{/each}
 			</div>
 		</div>
@@ -1338,13 +1332,13 @@
 	 * the windowed/dev case where every physical assumption collapses (2.2vh = 20px on a 900px laptop).
 	 *
 	 * --ui-scale is a persisted preference, range 0.8–1.6, default 1. PERSISTENCE IS DEFERRED to a
-	 * follow-up (XR-TV-07's room-setting plumbing lives in src/lib/contract, out of #821's TV-only scope);
+	 * follow-up (XR-TV-07's room-setting plumbing lives in packages/shared, out of an earlier change's TV-only scope);
 	 * until then it defaults to 1 here. The clamp() is defensive: whatever a future setting writes into
 	 * --ui-scale, the multiplier can never leave 0.8–1.6, so the floor holds.
 	 */
 	/*
 	 * --ui-scale registered as a typed custom property (XR-TV-07 default + the reviewer's non-numeric
-	 * advisory). `@property` with `syntax: '<number>'` means a non-numeric write (e.g.
+	 * advisory on an earlier change). `@property` with `syntax: '<number>'` means a non-numeric write (e.g.
 	 * `--ui-scale: banana`) is rejected at parse time and FALLS BACK to `initial-value: 1`, instead of
 	 * poisoning the clamp() and dropping the whole font-size declaration — which would silently remove
 	 * the floor. The clamp() below still bounds a numeric out-of-range value to 0.8–1.6. `inherits: true`
@@ -1366,14 +1360,14 @@
 	 * One monotonic scale now, higher = closer to the viewer. The lyrics reel (6) is owned by the
 	 * sibling LyricsOverlay and is the fixed anchor this scheme is built around.
 	 *
-	 *   0  stage background + visualizer (this file: .stage-bg)
+	 *   0  stage background + visualizer (this file:.stage-bg)
 	 *   1  hidden player slot / 2  visible player slot (TvPlayer .slot, inline z-index)
 	 *   5  idle full-screen screens: attract, lobby (.attract, TvLobby .lobby)
 	 *   6  lyrics reel (LyricsOverlay .lyrics — SIBLING-owned, not editable here)
 	 *   7  persistent chrome that must sit ABOVE the reel and the video: lower-third (bottom-left),
 	 *      brand-float, progress bar (TvProgress), join corner/badqr (JoinBadge, bottom-right),
-	 *      fullscreen button (.fs-btn — shares this tier but pinned TOP-right BELOW the whole
-	 *      "Up next" block, so it overlaps none of them; a transient overlay at 8 and the
+	 *      fullscreen button (.fs-btn, an earlier change — shares this tier but pinned TOP-right BELOW the whole
+	 *      "Up next" block since an earlier change, so it overlaps none of them; a transient overlay at 8 and the
 	 *      autoplay hint at 10 correctly cover it)
 	 *   8  transient full-screen overlays: interstitial / error / waiting / loading (.interstitial) —
 	 *      must cover ALL chrome, which the old shared 7 did only by DOM luck
@@ -1397,7 +1391,7 @@
 		inset: 0;
 		/* Pure black floor UNDER the video/stage — contrast-critical letterbox bars behind object-fit:
 		   contain, not a themeable surface. Legitimate literal (kept per the token sweep). */
-		background: #000;
+		background: an earlier change;
 		overflow: hidden;
 	}
 	/*
@@ -1489,8 +1483,7 @@
 	 * never consults the media query. Under `reduce` this @media block does not apply AND the JS clock is
 	 * never started, so the phrase is simply held with no animation.
 	 */
-	@media (prefers-reduced-motion: no-preference) {
-		.phrase-box .phrase-line {
+	@media (prefers-reduced-motion: no-preference) {.phrase-box.phrase-line {
 			animation: phrase-fade 0.6s ease-out;
 		}
 	}
@@ -1581,12 +1574,12 @@
 		 * comment for why. Legibility comes from BOTH a blurred text-shadow AND a text-stroke, the same
 		 * pair the lyrics reel uses (LyricsOverlay.svelte:346), and both work on every TV browser.
 		 *
-		 * the stroke is load-bearing, not decoration. Before the stage-colour change the stage was pinned dark, so a
-		 * shadow tuned against black was enough. That change lets a room pick ANY stage colour — including
+		 * the stroke is load-bearing, not decoration. Before an earlier change the stage was pinned dark, so a
+		 * shadow tuned against black was enough. an earlier change lets a room pick ANY stage colour — including
 		 * white — and a blurred dark shadow disappears against a bright field of similar luminance, so
 		 * the singer name measured 1.10:1 on white (the retired stage pin used to prevent exactly this).
 		 * `-webkit-text-stroke` with `paint-order: stroke fill` draws a hard dark outline BEHIND the
-		 * glyph, so the text stays readable on any background — the owner's ratified condition,
+		 * glyph, so the text stays readable on any background — the owner's ratified an earlier change condition,
 		 * "always visible regardless of the background". Width in `em` (not px) so it reads the same at
 		 * 720p and 4K, and --scrim-strong reuses the reel's one dark-outline source of truth.
 		 *
@@ -1640,7 +1633,7 @@
 	 * ellipsis is ever painted), while white-space: nowrap DOES apply and turns a long joined credit
 	 * (e.g. "Queen feat. David Bowie") into one unbreakable run that overflows .lower-third's 46vw and
 	 * gets hard-clipped mid-word with no ellipsis. Truncation belongs to .ls-song's 2-line
-	 * -webkit-line-clamp, which absorbs an over-long credit WITH an ellipsis —.
+	 * -webkit-line-clamp, which absorbs an over-long credit WITH an ellipsis — see an earlier change.
 	 */
 	.ls-artist {
 		font-size: var(--tv-body);
@@ -1740,7 +1733,7 @@
 		/*
 		 * A SCRIM, not a wash. This was --bg at 94%, which blanked the room's chosen backdrop — a
 		 * gradient, the singer's colour, or an animated visualiser — for every song change and every
-		 * cook hold. That is the black-flash class of problem the background layer is deliberately gated
+		 * process hold. That is the black-flash class of problem the background layer is deliberately gated
 		 * on `!isAttract` to avoid, undone one layer up. Dark in the middle where the words go, clear at
 		 * the edges so the corner chrome and the backdrop stay visible underneath: the state reads as
 		 * something happening ON the stage rather than as a different screen.
@@ -1770,8 +1763,7 @@
 	.up-song {
 		font-size: var(--tv-name);
 	}
-	/* Inline artist suffix on a takeover song line — same role as the old .up-artist but riding the title. */
-	.up-artist-inline {
+	/* Inline artist suffix on a takeover song line — same role as the old.up-artist but riding the title. */.up-artist-inline {
 		color: var(--ink-dim);
 	}
 	/* A mark large enough to be the first thing read, since it is what distinguishes these states. */
@@ -1787,7 +1779,7 @@
 	 * each, drawn as a 14px LEFT BORDER in the family colour plus a same-direction gradient. Left-aligned
 	 * from the title-safe x (the border lives just outside it, so the text still starts at title-safe),
 	 * overriding the centred base `.interstitial` layout. Colour is never the only carrier — each also
-	 * keeps its own eyebrow and (error/cooking) its own mark.
+	 * keeps its own eyebrow and (error/processing) its own mark.
 	 */
 	.takeover {
 		align-items: flex-start;
@@ -1797,7 +1789,7 @@
 		border-left: var(--tv-takeover-border) solid transparent;
 	}
 	/* Next up — accent family. Singer name is the hero at --tv-takeover-name (132px). --accent (not the
-	   retired --accent-strong, XR-COL-11) as a NON-TEXT border/fill, which is exactly what --accent
+	   retired --accent-strong, an earlier change/XR-COL-11) as a NON-TEXT border/fill, which is exactly what --accent
 	   is certified for; the text on this takeover is --ink / --accent2, never --accent as ink. */
 	.state-next.takeover {
 		border-left-color: var(--accent);
@@ -1807,8 +1799,7 @@
 		font-size: var(--tv-takeover-name);
 		font-weight: 900;
 		line-height: 1.02;
-	}
-	.state-next .up-song {
+	}.state-next.up-song {
 		color: var(--accent2);
 		margin-top: 1.4vh;
 	}
@@ -1822,14 +1813,11 @@
 	.state-error.takeover {
 		border-left-color: var(--danger);
 		background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 14%, transparent), transparent 55%);
-	}
-	.state-error .state-mark {
+	}.state-error.state-mark {
 		color: var(--danger);
-	}
-	.state-error .up-label {
+	}.state-error.up-label {
 		color: var(--danger-ink);
-	}
-	.state-error .up-song {
+	}.state-error.up-song {
 		color: var(--danger-ink);
 	}
 	/* What replaces the skipped song — so the room never wonders whose turn it now is. */
@@ -1839,18 +1827,14 @@
 		margin-top: 1.4vh;
 	}
 
-	/* Still cooking — warn family. Song title is the hero; a bounded 3-step bar says the wait is finite. */
-	.state-waiting.takeover {
+	/* Still processing — warn family. Song title is the hero; a bounded 3-step bar says the wait is finite. */.state-waiting.takeover {
 		border-left-color: var(--warn);
 		background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 10%, transparent), transparent 55%);
-	}
-	.state-waiting .state-mark {
+	}.state-waiting.state-mark {
 		color: var(--warn);
-	}
-	.state-waiting .up-label {
+	}.state-waiting.up-label {
 		color: var(--warn);
-	}
-	.state-waiting .up-song {
+	}.state-waiting.up-song {
 		color: var(--ink);
 	}
 	.hero-song {
@@ -1858,32 +1842,27 @@
 		font-weight: 900;
 		line-height: 1.04;
 		margin-top: 1vh;
-	}
-	.cook-bar {
-		width: var(--tv-cook-bar-w);
-		height: var(--tv-cook-bar-h);
+	}.process-bar {
+		width: var(--tv-process-bar-w);
+		height: var(--tv-process-bar-h);
 		border-radius: var(--radius-pill);
 		background: var(--track-bg);
 		margin-top: 3vh;
 		overflow: hidden;
-	}
-	.cook-bar i {
+	}.process-bar i {
 		display: block;
 		height: 100%;
 		background: var(--warn);
-	}
-	.cook-steps {
+	}.process-steps {
 		display: flex;
 		gap: var(--space-4xl);
 		margin-top: 2vh;
 		font-size: var(--tv-small);
 		color: var(--ink-dim);
-	}
-	.cook-steps .step-current {
+	}.process-steps.step-current {
 		color: var(--warn);
 		font-weight: 700;
-	}
-	.cook-steps .step-done {
+	}.process-steps.step-done {
 		color: var(--ink);
 	}
 	/*
@@ -1926,13 +1905,13 @@
 	 * reel (6) and the player slots (1/2) so it stays tappable during a song, and BELOW the transient
 	 * full-screen overlays (8) and the autoplay hint (10) so those always cover it. It shares the tier
 	 * with the lower-third (bottom-LEFT) and the join QR (bottom-RIGHT); it is pinned TOP-right below
-	 * the status dot so it overlaps NEITHER — before the overlap fix it sat bottom-right too, sharing the join
+	 * the status dot so it overlaps NEITHER — before an earlier change it sat bottom-right too, sharing the join
 	 * QR's exact anchor, and at equal z-index the later-in-DOM button painted over the QR's text.
 	 * Safe-area-inset on both axes so overscan cannot clip it, and `pointer-events`
 	 * drops with the fade so a hidden button can never eat a tap meant for the stage.
 	 *
 	 * The clamp's floor is var(--tap) — app.css's own tap-target minimum, named rather than restated
-	 * (XR-PH-01). A TV remote's pointer needs that floor as much as a thumb does, and this
+	 * (XR-PH-01, issue an earlier change). A TV remote's pointer needs that floor as much as a thumb does, and this
 	 * comment used to CLAIM the binding while the code held a bare `44px`: the one control whose stated
 	 * reason for its size was a token it did not read.
 	 */
@@ -1944,7 +1923,7 @@
 		   top-right holds the status dot (16px, tier 9) AND `.upnext` (tier 7, right:var(--tv-safe-x),
 		   top:calc(var(--tv-safe-y) + 2.6vh)). `.upnext` is the same right edge and same z-tier, and
 		   `.fs-btn` is later in the DOM, so anchoring level with it would paint over the Up-next readout
-		   just as the first attempt (safe-y + 28px) did. So the button sits below `.upnext`'s own
+		   just as the first an earlier change attempt (safe-y + 28px) did. So the button sits below `.upnext`'s own
 		   top PLUS its MEASURED height (`--tv-upnext-h`, a ResizeObserver on the block — its title
 		   wraps, so a fixed offset would fail when it grows) PLUS a gap. `--tv-upnext-h` is 0px when no
 		   next song is queued, so the button just sits at the top-right inset with nothing to clear.

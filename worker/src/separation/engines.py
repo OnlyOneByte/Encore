@@ -36,11 +36,11 @@ class SeparatorEngine(Protocol):
     id: str
     backend: str
 
-    def resolve_model(self, params: dict) -> str: ...
-    def input_wav(self, work: str) -> str: ...
-    def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]: ...
-    def parse_progress(self, line: str) -> int | None: ...
-    def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]: ...
+    def resolve_model(self, params: dict) -> str:...
+    def input_wav(self, work: str) -> str:...
+    def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:...
+    def parse_progress(self, line: str) -> int | None:...
+    def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]:...
 
     def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
         """Extra commands to run AFTER `separate_argv`, before `find_outputs` — each a full argv the
@@ -70,8 +70,7 @@ class DemucsEngine:
         overlap: float | None = None,
         segment: int | None = None,
         shifts: int | None = None,
-        backend: str = "torch",
-    ) -> None:
+        backend: str = "torch") -> None:
         self._default_model = default_model
         self._bin = demucs_bin
         self._device = device
@@ -79,7 +78,7 @@ class DemucsEngine:
         self._overlap = overlap
         self._segment = segment
         self._shifts = shifts
-        # `backend` is the RESOLVED hardware backend this cook runs through (backends.resolve_backend),
+        # `backend` is the RESOLVED hardware backend this process runs through (backends.resolve_backend),
         # recorded into facts so the ledger matches the startup log — not a hardcoded class constant. The
         # torch CLI is the only demucs backend actually implemented here; MLX resolves to MlxDemucsEngine,
         # which refuses at construction rather than reaching this class under an "mlx" label.
@@ -103,8 +102,7 @@ class DemucsEngine:
             jobs=self._jobs,
             overlap=self._overlap,
             segment=self._segment,
-            shifts=self._shifts,
-        )
+            shifts=self._shifts)
 
     def parse_progress(self, line: str) -> int | None:
         return d.parse_demucs_progress(line)
@@ -125,13 +123,13 @@ class DemucsEngine:
 class MlxDemucsEngine:
     """The demucs family through `demucs-mlx` — Apple-Silicon Metal execution of the SAME htdemucs
     checkpoints, selected by `backends.resolve_backend` when MLX is available (Apple Silicon + the
-    `demucs_mlx` package importable).
+    `demucs_mlx` package importable). an earlier change.
 
     The backend selection is genuinely wired: a Mac that resolves `mlx` builds THIS engine
     rather than silently building `DemucsEngine` under an "mlx" label, so `facts.backend` matches the
     startup log instead of announcing `mlx` while recording `torch`.
 
-    THE CLI CONTRACT, measured, is CASE C (owner ruling): `demucs-mlx` has NO `--two-stems` and
+    THE CLI CONTRACT, measured, is CASE C (owner ruling on an earlier change): `demucs-mlx` has NO `--two-stems` and
     NO `--filename` flag, so it emits every source the model carries (4 for htdemucs/_ft, 6 for
     htdemucs_6s) into the demucs-native nested layout `<out>/<track-stem>/<source>.wav`, and there is no
     instrumental file. The instrumental is DERIVED by an ffmpeg mix-minus pass that sums the non-vocal
@@ -147,7 +145,7 @@ class MlxDemucsEngine:
     now True). A box without MLX either resolves to `torch` (never builds this) or, if `mlx` was
     explicitly configured on unsupported hardware, `resolve_backend` raises at worker startup before any
     engine is built. So the honest-degradation contract an earlier change established is preserved: an `mlx` label
-    never runs a torch cook, and unavailable MLX fails loud rather than downgrading silently.
+    never runs a torch process, and unavailable MLX fails loud rather than downgrading silently.
 
     `input_wav` is stashed on the instance at `separate_argv` time so `derive_argvs` and `find_outputs`
     can compute the per-track output directory demucs-mlx names from the INPUT filename. The seam calls
@@ -168,8 +166,7 @@ class MlxDemucsEngine:
         overlap: float | None = None,
         segment: int | None = None,
         shifts: int | None = None,
-        batch_size: int | None = None,
-    ) -> None:
+        batch_size: int | None = None) -> None:
         self._default_model = default_model
         self._bin = mlx_bin
         self._ffmpeg = ffmpeg_bin
@@ -177,7 +174,7 @@ class MlxDemucsEngine:
         self._segment = segment
         self._shifts = shifts
         self._batch_size = batch_size
-        # The decoded input this cook separates, set by separate_argv. demucs-mlx names its per-track
+        # The decoded input this process separates, set by separate_argv. demucs-mlx names its per-track
         # output folder from this filename (see separation/mlx.py), so derive_argvs/find_outputs need it.
         self._input_wav = "input.wav"
 
@@ -199,8 +196,7 @@ class MlxDemucsEngine:
             overlap=self._overlap,
             segment=self._segment,
             shifts=self._shifts,
-            batch_size=self._batch_size,
-        )
+            batch_size=self._batch_size)
 
     def parse_progress(self, line: str) -> int | None:
         # demucs-mlx renders a tqdm bar (separate.py, `tqdm(...)`), same shape demucs uses, so reuse the
@@ -235,8 +231,7 @@ class RoformerEngine:
         *,
         default_model: str = r.DEFAULT_ROFORMER_MODEL,
         roformer_bin: str = "bs-roformer-infer",
-        device: str | None = None,
-    ) -> None:
+        device: str | None = None) -> None:
         self._default_model = default_model
         self._bin = roformer_bin
         self._device = device
@@ -273,9 +268,9 @@ class AudioSepEngine:
 
     The fast RoFormer path `bs-roformer-infer` cannot reach: audio-separator runs mel-band checkpoints
     as a first-class MDXC path, and `mel instrumental_becruily` measures rt 1.28 on the reference box
-    versus `bs_roformer-1297`'s rt 13.29 — a 10.4x RoFormer-family instrumental cook, no GPU
+    versus `bs_roformer-1297`'s rt 13.29 — a 10.4x RoFormer-family instrumental process, no GPU
     (docs/benchmarks/SUMMARY.md §4). Adopted ALONGSIDE roformer, not replacing it — both engines, issue
-    Owner ruling Q1(b).
+    an earlier change owner ruling Q1(b).
 
     Shape-wise it sits between demucs and roformer. Like demucs, its input is a single named WAV (not a
     dedicated input directory — audio-separator takes the input FILE as a positional argument, so it
@@ -287,7 +282,7 @@ class AudioSepEngine:
     `parse_progress` returns None: audio-separator renders a tqdm bar, not a stable percentage source, so
     the step emits a coarse 0→100 exactly as roformer does.
 
-    THE REAL COOK IS UNVERIFIED IN THIS ENVIRONMENT — the same accepted caveat roformer carries (see
+    THE REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT — the same accepted caveat roformer carries (see
     audiosep.py's module warning). audio-separator is not installed on the aarch64 dev/CI box; only a
     worker an operator gave the `stems:audiosep` capability runs it.
     """
@@ -300,8 +295,7 @@ class AudioSepEngine:
         *,
         default_model: str = a.DEFAULT_AUDIOSEP_MODEL,
         audiosep_bin: str = "audio-separator",
-        model_file_dir: str | None = None,
-    ) -> None:
+        model_file_dir: str | None = None) -> None:
         self._default_model = default_model
         self._bin = audiosep_bin
         self._model_file_dir = model_file_dir
@@ -334,7 +328,7 @@ class AudioSepEngine:
 def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorEngine:
     """The engine this job resolved to, executed through the resolved `backend`.
 
-    Unknown names raise — the CORE only routes a roformer cook to a worker advertising `stems:roformer`, so
+    Unknown names raise — the CORE only routes a roformer process to a worker advertising `stems:roformer`, so
     an unknown name here is a routing bug rather than a user choice.
 
     `backend` is the hardware backend `backends.resolve_backend` picked for THIS worker (torch/mlx). It
@@ -351,9 +345,9 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
 
     The model default is per ENGINE, not shared: a caller passes `demucs_model` and/or `roformer_model`,
     and only the matching engine's value is mapped to its `default_model`. A single engine-agnostic
-    `default_model` slot let a caller hand one engine the OTHER engine's checkpoint name (the
+    `default_model` slot let a caller hand one engine the OTHER engine's checkpoint name (issue an earlier change: the
     lone production caller supplied the demucs default, which reached `RoformerEngine` and made
-    `DEFAULT_ROFORMER_MODEL` unreachable — a roformer cook without a `model` then raised naming a demucs
+    `DEFAULT_ROFORMER_MODEL` unreachable — a roformer process without a `model` then raised naming a demucs
     checkpoint). Keeping the names engine-specific makes that cross-wiring inexpressible. `audiosep_model`
     follows the same rule: it maps only to `AudioSepEngine`.
 
@@ -381,7 +375,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
         return AudioSepEngine(**kw)
     if name == DemucsEngine.id:
         if backend == "mlx":
-            # Wired, not silent: an mlx-resolved cook builds the MLX engine, which runs demucs-mlx and
+            # Wired, not silent: an mlx-resolved process builds the MLX engine, which runs demucs-mlx and
             # derives the instrumental. This is what makes facts.backend honest — a torch
             # DemucsEngine can never be built under an "mlx" label.
             allowed = {"overlap", "segment", "shifts"}
@@ -393,11 +387,11 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
         kw = {k: v for k, v in given.items() if k in allowed}
         if "demucs_model" in given:
             kw["default_model"] = given["demucs_model"]
-        # `backend` reaches facts unchanged (defaults to "torch"); an mlx cook never gets here.
+        # `backend` reaches facts unchanged (defaults to "torch"); an mlx process never gets here.
         return DemucsEngine(backend=backend or "torch", **kw)
     # PermanentError (retryable=False): a name with no registered engine — "ensemble" on a box that
     # only has demucs, a typo — cannot be honoured by retrying. Subclasses RuntimeError so the
-    # message and the exception type callers/tests match on are unchanged.
+    # message and the exception type callers/tests match on are unchanged; an earlier change.
     raise PermanentError(f"no separator engine: {name}")
 
 

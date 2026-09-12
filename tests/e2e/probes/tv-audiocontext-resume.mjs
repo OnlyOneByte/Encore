@@ -45,7 +45,7 @@ const ready = await fetch(`${base}/api/search?q=sweet`)
 	.then((r) => r.json())
 	.then((d) => d.ready ?? []);
 if (!ready.length) {
-	console.error('need a cooked song');
+	console.error('need a processed song');
 	process.exit(2);
 }
 

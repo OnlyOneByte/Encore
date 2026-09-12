@@ -1,7 +1,7 @@
 /*
  * P1 — GAPLESS PLAYBACK AND AUTO-ADVANCE.
  *
- * Cooks two library songs to real decodable audio via the fake worker, queues them as two DIFFERENT
+ * Processes two library songs to real decodable audio via the fake worker, queues them as two DIFFERENT
  * singers, opens the TV headless (autoplay allowed), and answers with numbers:
  *
  *   (1) auto-advance   — does song 2 start with no human touch?
@@ -21,7 +21,7 @@
  *
  * ENVIRONMENT LIMITS. This box has no deno / no ffmpeg encode / no torch / no ffmpeg volumedetect
  * (see e2e/HARNESS.md). Nothing here needs any of them: the fake worker publishes real 16-bit PCM WAV
- * by hand (wav.mjs) and the whole cook happens over the real wire.
+ * by hand (wav.mjs) and the whole process happens over the real wire.
  *
  *   PORT=5221 EPORT=5221 bun tests/e2e/probes/p1-gapless.mjs   # boot server + worker first
  *
@@ -82,8 +82,8 @@ mkdirSync(artDir, { recursive: true });
 
 // The fixtures are 8 seconds long. The room defaults ENCORE_SONG_INTRO_MS to 2500. So one full
 // song-to-song cycle is roughly 8s song + 2.5s card + 8s song = 18.5s of screen time. Give a
-// generous margin around that for cook, initial intro card, and post-end settle.
-const COOK_TIMEOUT_MS = 30_000;
+// generous margin around that for process, initial intro card, and post-end settle.
+const PROCESS_TIMEOUT_MS = 30_000;
 const OBSERVE_TIMEOUT_MS = 45_000;
 const SAMPLE_MS = 40; // ~25 Hz — dense enough to see a boundary the size of one video frame
 
@@ -134,9 +134,9 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
 
-// The fake worker must be dial-homed for cooks to complete. HARNESS.md tells the caller to start it,
-// but a caller who forgot would otherwise sit for 30s at "cook did not complete" with no signpost.
-// Cheap check: enqueue one make-karaoke and give up early if it never even reaches `queued`
+// The fake worker must be dial-homed for processes to complete. HARNESS.md tells the caller to start it,
+// but a caller who forgot would otherwise sit for 30s at "process did not complete" with no signpost.
+// Cheap check: enqueue one process and give up early if it never even reaches `queued`
 // beyond the initial dispatch. But the simplest tell is a healthy /health + a search that lands.
 const preSearch = await j(`${base}/api/search?q=`);
 if (!preSearch.ok) bail(`search endpoint failed: ${preSearch.status} ${JSON.stringify(preSearch.body)}`);
@@ -147,7 +147,7 @@ if (!preSearch.ok) bail(`search endpoint failed: ${preSearch.status} ${JSON.stri
 async function findLocalByTitle(q) {
 	const r = await j(`${base}/api/search?q=${encodeURIComponent(q)}`);
 	if (!r.ok) bail(`search failed for ${JSON.stringify(q)}: ${r.status}`);
-	const groups = [r.body.ready ?? [], r.body.cooking ?? [], r.body.results ?? []];
+	const groups = [r.body.ready ?? [], r.body.processing ?? [], r.body.results ?? []];
 	for (const g of groups) {
 		for (const m of /** @type {Media[]} */ (g)) if (m.source === 'local') return m;
 	}
@@ -184,33 +184,33 @@ const alice = await joinSinger(`Alice-${Date.now() % 100000}`, '#ff5cae');
 const bob = await joinSinger(`Bob-${Date.now() % 100000}`, '#66d1ff');
 console.log(`joined ${alice.name} ${alice.singerId} and ${bob.name} ${bob.singerId}`);
 
-// ── cook both songs ─────────────────────────────────────────────────────────────────────────────
+// ── process both songs ─────────────────────────────────────────────────────────────────────────────
 /** @param {string} mediaId @param {string} cookie @param {string} label @returns {Promise<Media>} */
-async function cookAndWait(mediaId, cookie, label) {
-	const res = await fetch(`${base}/api/make-karaoke`, {
+async function processAndWait(mediaId, cookie, label) {
+	const res = await fetch(`${base}/api/process`, {
 		method: 'POST',
 		headers: { 'content-type': 'application/json', cookie },
 		body: JSON.stringify({ mediaId })
 	});
 	if (!res.ok && res.status !== 200) {
 		const body = await res.text();
-		bail(`make-karaoke ${label} failed: ${res.status} ${body}`);
+		bail(`process ${label} failed: ${res.status} ${body}`);
 	}
 	// poll /api/search?q=<title> until this media appears in `ready`
 	const q = label === /** @type {Media} */ (song1).title ? 'caroline' : 'believin';
-	const deadline = Date.now() + COOK_TIMEOUT_MS;
+	const deadline = Date.now() + PROCESS_TIMEOUT_MS;
 	while (Date.now() < deadline) {
 		const s = await j(`${base}/api/search?q=${encodeURIComponent(q)}`);
 		const ready = /** @type {Media[]} */ (s.body.ready ?? []).find((m) => m.id === mediaId);
 		if (ready && ready.instrumentalRef && ready.stemStatus === 'ready') return ready;
 		await sleep(300);
 	}
-	bail(`${label} did not become ready within ${COOK_TIMEOUT_MS}ms — is the fake worker running?`);
+	bail(`${label} did not become ready within ${PROCESS_TIMEOUT_MS}ms — is the fake worker running?`);
 }
-const readied1 = await cookAndWait(song1.id, alice.cookie, song1.title);
-const readied2 = await cookAndWait(song2.id, bob.cookie, song2.title);
-console.log(`cooked: ${readied1.title} → ${readied1.instrumentalRef}`);
-console.log(`cooked: ${readied2.title} → ${readied2.instrumentalRef}`);
+const readied1 = await processAndWait(song1.id, alice.cookie, song1.title);
+const readied2 = await processAndWait(song2.id, bob.cookie, song2.title);
+console.log(`processed: ${readied1.title} → ${readied1.instrumentalRef}`);
+console.log(`processed: ${readied2.title} → ${readied2.instrumentalRef}`);
 
 // ── launch Chromium; open TV so we can observe from t=0 of the first song ──────────────────────
 const proc = spawn(
@@ -278,11 +278,11 @@ try {
 	await phone2.goto(`${base}/`);
 	await openBrowseFromHome(phone2);
 
-	// Alice queues song 1. The .add button only appears on ready songs, which we've now cooked.
+	// Alice queues song 1. The .add button only appears on ready songs, which we've now processed.
 	await phone1.fill(SEL.search, 'caroline');
 	await phone1.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const has1 = await phone1.count(SEL.addTurn);
-	if (has1 === 0) bail('phone1: cooked song 1 did not offer .add (readiness UI is out of step with server)');
+	if (has1 === 0) bail('phone1: processed song 1 did not offer .add (readiness UI is out of step with server)');
 	await phone1.click(SEL.addTurn);
 	await phone1.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
@@ -292,7 +292,7 @@ try {
 	await phone2.fill(SEL.search, 'believin');
 	await phone2.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const has2 = await phone2.count(SEL.addTurn);
-	if (has2 === 0) bail('phone2: cooked song 2 did not offer .add');
+	if (has2 === 0) bail('phone2: processed song 2 did not offer .add');
 	await phone2.click(SEL.addTurn);
 	await phone2.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 

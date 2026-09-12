@@ -1,4 +1,4 @@
-// The two knobs on the LYRICS half of a cook: which model reads the words, and how those words get
+// The two knobs on the LYRICS half of a process: which model reads the words, and how those words get
 // timestamps. The third and fourth axes alongside separator engine/model and fetcher.
 //
 // WHY THIS EXISTS. Both were hardcoded on the worker with no way to change them from the deployment.
@@ -23,7 +23,7 @@ import { makeRegistry } from '../core/registry';
  *
  * The canonical five sizes only. Deliberately NOT included: the `.en` English-only variants (a
  * karaoke box gets handed songs in any language, and the ASR tier detects rather than assumes) and
- * the `distil-*` checkpoints (worth measuring, but an unverified token here becomes a cook that fails
+ * the `distil-*` checkpoints (worth measuring, but an unverified token here becomes a process that fails
  * at model load, which is exactly the failure mode the separator whitelist exists to prevent).
  */
 export type AsrModelId = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
@@ -36,7 +36,7 @@ export interface AsrModel {
 	 * expose: it is the only cost signal available without measuring, and it is what the download and
 	 * the resident memory scale with.
 	 *
-	 * It is NOT a measured cook cost on any box — contrast `SeparatorCost` in separators.ts, which
+	 * It is NOT a measured process cost on any box — contrast `SeparatorCost` in separators.ts, which
 	 * carries a real rtFactor plus the box and date it was measured on. Do not add an rtFactor here
 	 * until someone has actually timed these on the target hardware.
 	 */
@@ -66,7 +66,7 @@ export const ASR_MODELS: readonly AsrModel[] = [
 		label: 'Small',
 		params: '244M',
 		speed: 'moderate',
-		note: "The first size worth trusting with sung words. ~3x base's weights for a modest slice of the cook."
+		note: "The first size worth trusting with sung words. ~3x base's weights for a modest slice of the process."
 	},
 	{
 		id: 'medium',
@@ -80,7 +80,7 @@ export const ASR_MODELS: readonly AsrModel[] = [
 		label: 'Large v3',
 		params: '1550M',
 		speed: 'slowest',
-		note: 'Best available text. Only sane with a GPU, or on a box that cooks ahead of the party rather than during it.'
+		note: 'Best available text. Only sane with a GPU, or on a box that processes ahead of the party rather than during it.'
 	}
 ];
 
@@ -128,7 +128,7 @@ export const SYNC_MODES: readonly SyncMode[] = [
 		label: 'Line sync only',
 		granularity: 'line',
 		usesAligner: false,
-		note: "Skip alignment and use each source's own line timings. No second ML pass, so a cook finishes sooner — but the ball cannot follow individual words. Only as good as the source: an LRC from a different upload of the song is timed for that recording, not this one."
+		note: "Skip alignment and use each source's own line timings. No second ML pass, so a process finishes sooner — but the ball cannot follow individual words. Only as good as the source: an LRC from a different upload of the song is timed for that recording, not this one."
 	}
 ];
 
@@ -145,7 +145,7 @@ export function isValidSyncMode(id: string): id is SyncModeId {
 }
 
 // ── presentation ────────────────────────────────────────────────────────────
-// The two knobs above are PRODUCTION: they decide what timing data a cook produces, and they are
+// The two knobs above are PRODUCTION: they decide what timing data a process produces, and they are
 // global because they cost model weights and RAM. The two below are PRESENTATION: they decide how
 // data that already exists gets drawn on one room's TV, and they are room-scoped for the same reason
 // `tvProgressStyle` is — a staging choice for one party's screen.

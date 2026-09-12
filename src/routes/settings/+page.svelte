@@ -161,7 +161,7 @@
 	let advancedOpen = $state(false);
 	let failed = $state(false);
 
-	// Only engines a live cook may use appear in the primary picker; `ensemble` runs several models and
+	// Only engines a live process may use appear in the primary picker; `ensemble` runs several models and
 	// is upgrade-only, so offering it here would let a singer pick something the server rejects.
 	const liveEngines = SEPARATOR_ENGINES.filter((e) => e.liveSelectable);
 
@@ -179,14 +179,14 @@
 
 	// ── room quality ceiling ───────────────────────────────────────────────────
 	/*
-	 * The room-scoped cook-quality cap, offered as REAL pairings rather than a raw `qualityRank`
+	 * The room-scoped process-quality cap, offered as REAL pairings rather than a raw `qualityRank`
 	 * integer. Each option is one live-selectable engine+model, valued by its rank, and the empty
 	 * option means "no cap" (`null`). Built from the same registry + `qualityRank` that
-	 * `resolveCookSeparator` reads, so the choices the operator sees are exactly the ceilings the
+	 * `resolveProcessSeparator` reads, so the choices the operator sees are exactly the ceilings the
 	 * resolver can honour — never an invented number. Sorted low→high because the control caps quality
 	 * DOWNWARD, so the cheaper/faster ceilings read first.
 	 *
-	 * `rank === 0` pairings are excluded: an unranked model can never win `resolveCookSeparator`, so
+	 * `rank === 0` pairings are excluded: an unranked model can never win `resolveProcessSeparator`, so
 	 * offering it as a ceiling would name a floor nothing sits at.
 	 */
 	const qualityCeilings = liveEngines
@@ -206,7 +206,7 @@
 	let capAboveDefault = $derived(settings.room.maxQualityRank !== null && settings.room.maxQualityRank >= defaultRank);
 
 	// ── audio acquisition ───────────────────────────────────────────────────────
-	// The downloader every new cook's source audio comes through. `local` is excluded: it names one
+	// The downloader every new process's source audio comes through. `local` is excluded: it names one
 	// media's already-present bytes, not a default a room could pick (see fetchers.ts / the schema
 	// comment). Sourced note, same as the splitter and reader pickers.
 	const defaultFetchers = FETCHERS.filter((f) => f.id !== 'local');
@@ -219,7 +219,7 @@
 	let syncNote = $derived(getSyncMode(settings.global.syncMode)?.note ?? '');
 
 	// The same footgun as a slow splitter, and worth naming in the same place: a bigger reader is the
-	// one lever on wrong words, and it is also the one that turns a two-minute cook into a long wait on
+	// one lever on wrong words, and it is also the one that turns a two-minute process into a long wait on
 	// a CPU box. Nobody should discover that at a party.
 	let asrSlow = $derived(['slow', 'slowest'].includes(getAsrModel(settings.global.asrModel)?.speed ?? ''));
 
@@ -583,7 +583,7 @@
 
 				<Card.Root>
 	<Card.Header>
-		<Card.Title>Cook quality</Card.Title>
+		<Card.Title>Process quality</Card.Title>
 	</Card.Header>
 	<Card.Content>
 						<Field.Label for="quality-ceiling">Cap this room at</Field.Label>
@@ -611,7 +611,7 @@
 						bounded by what the worker fleet can run, so a room can only ask for the same or less.
 					-->
 						<Field.Description>
-							Only ever lowers cook quality below the server's default, to keep a busy queue moving. It cannot raise it.
+							Only ever lowers process quality below the server's default, to keep a busy queue moving. It cannot raise it.
 						</Field.Description>
 						{#if capAboveDefault}
 							<p class="warn">
@@ -907,7 +907,7 @@
 						/>
 						<Field.Description>Starting vocal level. Singers can change it per song.</Field.Description>
 						{#if settings.room.guideLevelDefault > 0}
-							<Field.Description>Only songs cooked with their vocals kept can offer a guide.</Field.Description>
+							<Field.Description>Only songs processed with their vocals kept can offer a guide.</Field.Description>
 						{/if}
 
 						<label class="check" for="loudness-norm">
@@ -987,11 +987,11 @@
 						{#if fetcherNote}<Field.Description>{fetcherNote}</Field.Description>{/if}
 						<!--
 						Explicit blast radius, matched to the splitter warning above it: this is the acquirer
-						EVERY new cook downloads its source through, and a worker that cannot run it fails the
+						EVERY new process downloads its source through, and a worker that cannot run it fails the
 						fetch before any separation starts.
 					-->
 						<p class="warn">
-							Changes where every new cook gets its audio. A worker that cannot run it will fail the download.
+							Changes where every new process gets its audio. A worker that cannot run it will fail the download.
 						</p>
 					</Card.Content>
 </Card.Root>
@@ -1020,7 +1020,7 @@
 						</NativeSelect>
 						{#if asrNote}<Field.Description>{asrNote}</Field.Description>{/if}
 						{#if asrSlow}
-							<p class="warn">A big reader needs real memory and adds minutes to every cook on a CPU box.</p>
+							<p class="warn">A big reader needs real memory and adds minutes to every process on a CPU box.</p>
 						{/if}
 
 						<Field.Label for="sync-mode">Timing</Field.Label>
@@ -1080,7 +1080,7 @@
 						<Icon name={advancedOpen ? 'chevron-down' : 'chevron-right'} />
 						Advanced
 						<span class="disclose-now">
-							{settings.global.enqueueUpgrade ? 'Re-cook on' : 'Re-cook off'}
+							{settings.global.enqueueUpgrade ? 'Re-process on' : 'Re-process off'}
 									</span>
 								</button>
 							{/snippet}
@@ -1095,7 +1095,7 @@
 								checked={settings.global.enqueueUpgrade}
 								onCheckedChange={(v) => onglobal({ enqueueUpgrade: v })}
 							/>
-								Re-cook at higher quality after each song
+								Re-process at higher quality after each song
 							</label>
 							<Field.Description>Runs from the audio already saved — no re-download.</Field.Description>
 

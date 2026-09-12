@@ -287,7 +287,7 @@ set (or deliberately left unset) in the override file, with the reasoning inline
   what the GPU is doing.
 - `ENCORE_WORKER_CONCURRENCY` now contends for **VRAM**, not cores. 10 GB is comfortable for one
   separation, but not for a separation *and* WhisperX large-v3 at the same time. Raise concurrency
-  only after watching `nvidia-smi` through a real cook, and expect CUDA OOM rather than graceful
+  only after watching `nvidia-smi` through a real process, and expect CUDA OOM rather than graceful
   slowdown if you overcommit.
 
 ---
@@ -359,7 +359,7 @@ $EC exec worker python -c \
    that text reads `localhost:3000`, no phone can use it.
 
 7. **End to end:** scan the QR, join with a name and colour, search a song, tap Karaoke, and watch
-   `nvidia-smi` during the cook. If VRAM usage and GPU utilisation stay flat, the cook is running on
+   `nvidia-smi` during the process. If VRAM usage and GPU utilisation stay flat, the process is running on
    CPU regardless of what anything claims.
 
 8. **Re-measure.** Run the committed benchmark scripts on this box and add a CUDA column to
@@ -454,7 +454,7 @@ sudo apt update && sudo apt install --only-upgrade nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker   # re-run if the toolkit's config was replaced
 ```
 
-After any driver or toolkit change, re-run the §6 GPU gate before trusting a cook — the failure mode is
+After any driver or toolkit change, re-run the §6 GPU gate before trusting a process — the failure mode is
 a worker that silently falls back to CPU, and the `[worker] hardware:` line reading `accel=cpu` on a box
 you expect to be `accel=cuda` is the tell.
 
@@ -482,5 +482,5 @@ Flagged rather than glossed, because each could cost an evening:
 - **Mirrored networking with Docker Desktop.** Both features rewrite WSL networking; their
   interaction is not something this runbook has tested. If phones cannot reach port 3000 under
   mirrored mode, the §1 portproxy fallback is the escape hatch.
-- **First-cook downloads.** The first `stems` cook fetches the separator checkpoint and yt-dlp's
+- **First-process downloads.** The first `stems` process fetches the separator checkpoint and yt-dlp's
   solver script into `worker-cache`. Expect a slow first song, not a hang.

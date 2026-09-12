@@ -69,7 +69,7 @@ const NOTE = 'No isolated vocals for this song, so the guiding track stays off. 
  * manufacture exactly the silent green those two refusals exist to prevent.
  *
  * The cost is stated plainly rather than buried: these four assertions no longer run on a box with no
- * Chromium. In exchange they now run against a real browser, a real cook, and a real song with no
+ * Chromium. In exchange they now run against a real browser, a real process, and a real song with no
  * vocals stem — reached through the new `FAKE_NO_VOCALS=1` on the fake stems worker, since
  * `hasGuidingTrack()` is `isPlayable(m) && !!m.vocalsRef`. p16 records the mutations that prove it can
  * still fail.

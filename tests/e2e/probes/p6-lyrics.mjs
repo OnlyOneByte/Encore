@@ -31,7 +31,7 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * fuzz.mjs pattern). Browser/Page are derived from cdp.mjs's own return types
+ * earlier changes pattern). Browser/Page are derived from cdp.mjs's own return types
  * so they cannot drift from the driver. page.evaluate()/fetch().json() come back Promise<any>, so
  * DOM/API-shaped results are cast at the call site via the domain typedefs below.
  *
@@ -95,7 +95,7 @@ async function openRawCdp(port) {
 		const id = nextId++;
 		return new Promise((resolve, reject) => {
 			pending.set(id, { resolve, reject });
-			ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+			ws.send(JSON.stringify({ id, method, params,...(sessionId ? { sessionId }: {}) }));
 			setTimeout(() => pending.delete(id) && reject(new Error(`${method} timed out`)), 8_000);
 		});
 	}
@@ -148,7 +148,7 @@ console.log(`\nP6 lyrics probe — server ${base}, media ${MEDIA_DIR}\n`);
 // ── Sanity: is the fake-worker fixture even something the client parser can read? ─────
 // The fake worker's align payload writes {startSec,endSec,text} on words/lines, but the
 // TV overlay's parseLyricsDoc reads {start,end,word}. If the fixture is wrong every
-// downstream timing check is meaningless, so surface that BEFORE cooking a song and
+// downstream timing check is meaningless, so surface that BEFORE processing a song and
 // looking at moving pixels.
 const parserCheck = await (async () => {
 	const raw = {
@@ -169,7 +169,7 @@ const parserCheck = await (async () => {
 })();
 const fixtureShapeMatchesParser = !parserCheck.badWordsDropped;
 
-// ── Cook a song, using the running fake worker ─────────────────────────────
+// ── Process a song, using the running fake worker ─────────────────────────────
 const jar = join(process.env.KIROCREW_SCRATCH ?? '/tmp', `p6-jar-${process.pid}`);
 await fetch(`${base}/api/join`, {
 	method: 'POST',
@@ -181,20 +181,20 @@ await fetch(`${base}/api/join`, {
 });
 const cookieHeader = existsSync(jar) ? readFileSync(jar, 'utf8') : '';
 
-/** Cook a fresh song by title-fragment, returning its media id when the align artifact lands. */
+/** Process a fresh song by title-fragment, returning its media id when the align artifact lands. */
 /**
  * @param {string} query
  * @param {{ waitForAlign?: boolean, timeoutMs?: number }} [opts]
  * @returns {Promise<{ id: string, row: SongRow }>}
  */
-async function cookAndWait(query, { waitForAlign = true, timeoutMs = 15_000 } = {}) {
+async function processAndWait(query, { waitForAlign = true, timeoutMs = 15_000 } = {}) {
 	const found = /** @type {SearchBody} */ (
 		await fetch(`${base}/api/search?q=${encodeURIComponent(query)}`).then((r) => r.json())
 	);
-	const raw = [...found.results, ...found.ready].find((x) => x.source === 'local');
+	const raw = [...found.results,...found.ready].find((x) => x.source === 'local');
 	if (!raw) throw new Error(`no local song matching "${query}"`);
 	if (!found.ready.some((r) => r.id === raw.id)) {
-		await fetch(`${base}/api/make-karaoke`, {
+		await fetch(`${base}/api/process`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json', cookie: cookieHeader },
 			body: JSON.stringify({ mediaId: raw.id })
@@ -213,13 +213,13 @@ async function cookAndWait(query, { waitForAlign = true, timeoutMs = 15_000 } = 
 }
 
 /** @type {{ id: string, row: SongRow }} */
-let cooked;
+let processed;
 try {
-	cooked = await cookAndWait('caroline');
+	processed = await processAndWait('caroline');
 } catch (err) {
-	bail(`could not cook a probe song: ${err instanceof Error ? err.message : String(err)}`);
+	bail(`could not process a probe song: ${err instanceof Error ? err.message: String(err)}`);
 }
-console.log(`cooked: "${cooked.row.title}" id=${cooked.id} lyricsRef=${cooked.row.lyricsRef}\n`);
+console.log(`processed: "${processed.row.title}" id=${processed.id} lyricsRef=${processed.row.lyricsRef}\n`);
 
 // ── Boot Chromium once, drive two contexts (phone + TV) ─────────────────────
 const proc = spawn(
@@ -292,7 +292,7 @@ try {
 	browser = await connect(CDP_PORT);
 	rawCdp = await openRawCdp(CDP_PORT);
 
-	// ── phone joins and queues the cooked song ────────────────────────────
+	// ── phone joins and queues the processed song ────────────────────────────
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
 	await phone.goto(`${base}/join`);
@@ -326,9 +326,7 @@ try {
 	}
 
 	// Wait for a media element with a src so we know the stage is up.
-	await tv
-		.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 })
-		.catch(() => {});
+	await tv.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 }).catch(() => {});
 	const kicked = await ensurePlaying(tv, phone);
 	if (!kicked.ok)
 		console.warn(
@@ -380,7 +378,7 @@ try {
 		'HIGH',
 		reelPresent,
 		'lyrics overlay renders once the align artifact is available, without a reload',
-		reelPresent ? '' : 'no .lyrics element ever appeared on /tv while a cooked song with lyricsRef was current'
+		reelPresent ? '' : 'no.lyrics element ever appeared on /tv while a processed song with lyricsRef was current'
 	);
 
 	// Under what state exactly does it render? Useful context for the visual finding.
@@ -445,9 +443,9 @@ try {
 				// glyph so downstream matching sees "here". Reading the last text-node child would
 				// also work, but this is trivially reversible.
 				const rawActive = a ? a.textContent.trim() : null;
-				const active = rawActive ? rawActive.replace(/^[●·]+\\s*/, '').trim() : null;
+				const active = rawActive ? rawActive.replace(/^[●·]+\s*/, ''): null;
 				const rawCurrent = c ? c.textContent.trim() : null;
-				const current = rawCurrent ? rawCurrent.replace(/^[●·]+\\s*/, '').trim() : null;
+				const current = rawCurrent ? rawCurrent.replace(/^[●·]+\s*/, '').trim(): null;
 				return {
 					wall: performance.now(),
 					currentTime: v ? v.currentTime : -1,
@@ -496,16 +494,15 @@ try {
 		activeSeenAsIs > 0,
 		'the active word appears on screen at all against the shipped fake-worker fixture',
 		activeSeenAsIs > 0
-			? `${activeSeenAsIs}/${asIsTracking.samples.length} samples had a .word.active`
-			: `not once did .word.active exist. All ${asIsTracking.samples.length} samples were null. ` +
+			? `${activeSeenAsIs}/${asIsTracking.samples.length} samples had a.word.active`: `not once did.word.active exist. All ${asIsTracking.samples.length} samples were null. ` +
 					`Root cause: fixture/parser schema mismatch above — no word timings survive parseLyricsDoc.`
 	);
 
 	// ── Override the artifact file with the CORRECT shape, so we can measure real
 	// tracking behavior of the overlay itself. Field names {start,end,word} match the
 	// real Python worker at worker/src/lyrics/artifact.py.
-	if (!cooked.row.lyricsRef) throw new Error('cooked song has no lyricsRef');
-	const lyricsPath = join(MEDIA_DIR, cooked.row.lyricsRef);
+	if (!processed.row.lyricsRef) throw new Error('processed song has no lyricsRef');
+	const lyricsPath = join(MEDIA_DIR, processed.row.lyricsRef);
 	const correctedDoc = {
 		language: 'en',
 		lines: fakeWords.map((w, i) => ({
@@ -522,9 +519,7 @@ try {
 	}
 	// Force the overlay to re-fetch: reload the TV route.
 	await tv.goto(`${base}/tv`);
-	await tv
-		.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 })
-		.catch(() => {});
+	await tv.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 }).catch(() => {});
 	await ensurePlaying(tv, phone);
 	await seekToStart(tv, phone);
 	await sleep(300);
@@ -549,7 +544,7 @@ try {
 	})();
 	console.log('  lyrics file (first 200):', fileNow);
 	const fetchedByBrowser = await tv.evaluate(
-		`fetch('/media/${cooked.row.lyricsRef}').then(r => r.text()).then(t => t.slice(0, 200))`
+		`fetch('/media/${processed.row.lyricsRef}').then(r => r.text()).then(t => t.slice(0, 200))`
 	);
 	console.log('  lyrics file as browser sees:', fetchedByBrowser);
 	record(
@@ -558,8 +553,7 @@ try {
 		activeSeenCorrected > 0,
 		'against a CORRECTLY-shaped fixture, the active word IS drawn',
 		activeSeenCorrected > 0
-			? `${activeSeenCorrected}/${correctedTracking.samples.length} samples had .word.active`
-			: `still no .word.active with the corrected fixture (${JSON.stringify(correctedTracking.samples.slice(0, 3))}) — ` +
+			? `${activeSeenCorrected}/${correctedTracking.samples.length} samples had.word.active`: `still no.word.active with the corrected fixture (${JSON.stringify(correctedTracking.samples.slice(0, 3))}) — ` +
 					`this would be a real overlay defect, not an env limit.`
 	);
 
@@ -592,7 +586,7 @@ try {
 
 	// ── FINDING (3): does the reel SCROLL and does the ball MOVE? ─────────
 	// Reel scrolling shows up as a changing translateY on .reel. Ball moving means the
-	// .word.active element identity moves along the row over time.
+	//.word.active element identity moves along the row over time.
 	const reelSamples = correctedTracking.samples.map((s) => s.reelTransform).filter(Boolean);
 	const distinctTransforms = new Set(reelSamples).size;
 	record(
@@ -601,8 +595,7 @@ try {
 		distinctTransforms > 1,
 		`reel scrolls over the song (${distinctTransforms} distinct transforms observed across ${reelSamples.length} samples)`,
 		distinctTransforms > 1
-			? ''
-			: `reel transform stayed at ${JSON.stringify([...new Set(reelSamples)])} throughout — frozen reel with advancing audio.`
+			? '' : `reel transform stayed at ${JSON.stringify([...new Set(reelSamples)])} throughout — frozen reel with advancing audio.`
 	);
 
 	const activeWords = correctedTracking.samples.map((s) => s.active).filter(Boolean);
@@ -677,7 +670,7 @@ try {
 
 	// A quick contrast check via ratio on the current word's colour vs the stage floor.
 	// The stage is pure black under the lyrics (see .tv rule in +page.svelte). The
-	// component defines white/amber as ink; both are >4.5:1 vs #000 by construction, and
+	// component defines white/amber as ink; both are >4.5:1 vs an earlier change by construction, and
 	// the >=7:1 check here catches an accidental drop to a mid-grey.
 	/** @param {number[]} rgb */
 	function relLum(rgb) {
@@ -701,8 +694,7 @@ try {
 		contrastOk,
 		`text contrast vs stage floor is high (${ratio?.toFixed(1) ?? 'n/a'}:1)`,
 		contrastOk
-			? ''
-			: `ink colour ${geom?.currentColor} lands at ${ratio?.toFixed(1)}:1 — below the WCAG AAA 7:1 target for large text.`
+			? '' : `ink colour ${geom?.currentColor} lands at ${ratio?.toFixed(1)}:1 — below the WCAG AAA 7:1 target for large text.`
 	);
 
 	// ── FINDING (5): provenance label for transcribed words ───────────────
@@ -719,7 +711,7 @@ try {
 	console.log('  provenance state:', JSON.stringify(provState));
 	// This is a LEGIT env limit rather than a real defect: real ASR workers (whisperx.py
 	// via worker/src/lyrics/artifact.py) also pass candidates alongside the uri, so
-	// the label DOES appear in a real cook. The fake worker exposes the surface — the
+	// the label DOES appear in a real process. The fake worker exposes the surface — the
 	// probe therefore records the finding but classifies it as MEDIUM/env-limit.
 	const provOk = provState.asrLabel === 'Auto-transcribed' && provState.unverified;
 	record(
@@ -728,12 +720,11 @@ try {
 		provOk,
 		'transcribed lyrics carry the "Auto-transcribed" provenance label and the amber .unverified tint',
 		provOk
-			? ''
-			: `no .ls-asr label rendered and .lyrics.unverified=${provState.unverified}. ` +
+			? '' : `no.ls-asr label rendered and.lyrics.unverified=${provState.unverified}. ` +
 					`ROOT CAUSE (env limit): fake-stems-worker.mjs align branch does not send ` +
 					`artifacts.lyrics.candidates; worker-hub.ts:245 calls setMediaLyrics without candidates; ` +
 					`chosenCandidate(media) returns null; isAutoTranscribed(null)=false. ` +
-					`Real workers via worker do send candidates, so this surface works in a real cook.`
+					`Real workers via apps/worker do send candidates, so this surface works in a real process.`
 	);
 
 	// ── FINDING (6): live settings changes take effect with NO restart ────
@@ -754,9 +745,7 @@ try {
 		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'caroline');
 		await sleep(300);
-		await phone
-			.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`, { timeout: 5000 })
-			.catch(() => {});
+		await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`, { timeout: 5000 }).catch(() => {});
 		const canAdd = await phone.count(SEL.addTurn);
 		if (canAdd > 0) await phone.click(SEL.addTurn);
 		else if ((await phone.count(SEL.sing)) > 0) await phone.click(SEL.sing);
@@ -850,8 +839,7 @@ try {
 		hlLive,
 		'lyrics-highlight (word / line / off) applies live to the overlay via .hl-* class',
 		hlLive
-			? ''
-			: `hlClass went ${base0?.hlClass} → line:${afterHlLine?.hlClass}, off:${afterHlOff?.hlClass}, word:${afterHlWord?.hlClass}`
+			? '' : `hlClass went ${base0?.hlClass} → line:${afterHlLine?.hlClass}, off:${afterHlOff?.hlClass}, word:${afterHlWord?.hlClass}`
 	);
 
 	// lyrics-ball (only meaningful under highlight=word; already restored)
@@ -880,8 +868,7 @@ try {
 		ballLive,
 		'lyrics-ball (bounce / steady / underline / off) applies live to the marker',
 		ballLive
-			? ''
-			: `ball went steady:${afterBallSteady?.ballClass}, under:${afterBallUnder?.ballClass}, off-present:${afterBallOff?.ballPresent}, bounce:${afterBallBounce?.ballClass}`
+			? '' : `ball went steady:${afterBallSteady?.ballClass}, under:${afterBallUnder?.ballClass}, off-present:${afterBallOff?.ballPresent}, bounce:${afterBallBounce?.ballClass}`
 	);
 
 	// lyrics-font — the family is applied to .viewport but inherited on rows, so read
@@ -944,8 +931,7 @@ try {
 		syncSurvives && syncEffective,
 		'sync-mode flip live-clamps the overlay without breaking it',
 		syncSurvives && syncEffective
-			? ''
-			: `overlay survives=${syncSurvives}, hlClass went lines:${afterSyncLines?.hlClass}, forced:${afterSyncForced?.hlClass}`
+			? '' : `overlay survives=${syncSurvives}, hlClass went lines:${afterSyncLines?.hlClass}, forced:${afterSyncForced?.hlClass}`
 	);
 
 	// ── FINDING (7): a song with NO lyrics renders no broken reel ─────────
@@ -977,8 +963,7 @@ try {
 		emptyOk,
 		'a media with an EMPTY/absent lyrics artifact renders no broken reel',
 		emptyOk
-			? ''
-			: `.lyrics present=${emptyState.present}, rows=${emptyState.rows}, hasCurrent=${emptyState.hasCurrent}, textLen=${emptyState.hasText} — the overlay should silently no-op.`
+			? '' : `.lyrics present=${emptyState.present}, rows=${emptyState.rows}, hasCurrent=${emptyState.hasCurrent}, textLen=${emptyState.hasText} — the overlay should silently no-op.`
 	);
 } catch (err) {
 	record('P6-flow', 'CRITICAL', false, 'probe ran to completion', String(err instanceof Error ? err.stack : err));

@@ -2,7 +2,7 @@
 // media:status win over a stale catalog copy — otherwise tapping "✨ Karaoke" leaves the row looking
 // untouched until the next full sync.
 import { test, expect } from 'bun:test';
-import { readinessOf, displayReadiness, canCook, readyEmptyState, queueCardKind } from '$lib/readiness';
+import { readinessOf, displayReadiness, canProcess, readyEmptyState, queueCardKind } from '$lib/readiness';
 import { readinessOf as serverReadinessOf } from '$lib/server/media/readiness';
 import type { Media } from '$lib/contract';
 import { EMPTY_SONG_PROFILE } from '$lib/contract';
@@ -42,7 +42,7 @@ test('client and server classify readiness identically for every media shape', (
 	for (const c of cases) expect(readinessOf(c)).toBe(serverReadinessOf(c));
 });
 
-test('THE BUG: a separated song mid-align reads as cooking, not unacquired', () => {
+test('THE BUG: a separated song mid-align reads as processing, not unacquired', () => {
 	// stems ready + lyrics queued is past the stems gate but not finished. Before the gate-driven fix
 	// this matched neither 'ready' nor stemStatus==='queued', fell through to 'unacquired', and showed
 	// a Sing button on an already-separated song.
@@ -51,47 +51,47 @@ test('THE BUG: a separated song mid-align reads as cooking, not unacquired', () 
 		lyricsStatus: 'queued',
 		instrumentalRef: 'derived/stems/i-instrumental.flac',
 		// The stems job emits the profile with the instrumental, so a real mid-align song already has it;
-		// without it the stems gate is not done and this would read as unacquired, not cooking.
+		// without it the stems gate is not done and this would read as unacquired, not processing.
 		songProfile: EMPTY_SONG_PROFILE
 	});
-	expect(readinessOf(midAlign)).toBe('cooking');
-	expect(serverReadinessOf(midAlign)).toBe('cooking');
-	expect(canCook(midAlign, readinessOf(midAlign))).toBe(false); // no Sing/cook button on a separated song
+	expect(readinessOf(midAlign)).toBe('processing');
+	expect(serverReadinessOf(midAlign)).toBe('processing');
+	expect(canProcess(midAlign, readinessOf(midAlign))).toBe(false); // no Sing/process button on a separated song
 });
 
 test('a live media:status wins over the catalog copy (the row responds to the tap at once)', () => {
 	const fresh = m();
 	expect(displayReadiness(fresh)).toBe('unacquired');
-	expect(displayReadiness(fresh, { status: 'queued' })).toBe('cooking');
-	expect(displayReadiness(fresh, { status: 'separating' })).toBe('cooking');
+	expect(displayReadiness(fresh, { status: 'queued' })).toBe('processing');
+	expect(displayReadiness(fresh, { status: 'separating' })).toBe('processing');
 	expect(displayReadiness(fresh, { status: 'ready' })).toBe('ready');
 });
 
-test('a failed cook READS as failed, so the singer learns the cook died', () => {
+test('a failed process READS as failed, so the singer learns the process died', () => {
 	// This used to fall through to the catalog and report 'unacquired' — or, while stemStatus was still
-	// mid-flight, 'cooking', which is what made a dead cook read "Making karaoke… 0%" forever. The only
+	// mid-flight, 'processing', which is what made a dead process read "Making karaoke… 0%" forever. The only
 	// failure signal was a four-second toast; look away and the information was gone for good.
 	expect(displayReadiness(m(), { status: 'failed' })).toBe('failed');
 });
 
-test('a failed cook on an already-singable song is not a failure the guest needs', () => {
-	// A dead lyrics upgrade on a cooked song: still fully singable, so reporting failure would be
+test('a failed process on an already-singable song is not a failure the guest needs', () => {
+	// A dead lyrics upgrade on a processed song: still fully singable, so reporting failure would be
 	// alarming and wrong. The gates decide singability, as everywhere else.
-	const cooked = m({
+	const processed = m({
 		stemStatus: 'ready',
 		instrumentalRef: 'derived/stems/m1-instrumental.flac',
 		lyricsStatus: 'ready'
 	});
-	expect(displayReadiness(cooked, { status: 'failed' })).toBe('ready');
+	expect(displayReadiness(processed, { status: 'failed' })).toBe('ready');
 });
 
-test('an unacquired or FAILED song can be cooked; one in flight or done cannot', () => {
-	expect(canCook(m(), 'unacquired')).toBe(true);
-	// The retry path. A failed cook settles back to un-cooked server-side, so offering Sing again is a
-	// real action rather than a button that answers "already cooked".
-	expect(canCook(m(), 'failed')).toBe(true);
-	expect(canCook(m(), 'ready')).toBe(false);
-	expect(canCook(m(), 'cooking')).toBe(false);
+test('an unacquired or FAILED song can be processed; one in flight or done cannot', () => {
+	expect(canProcess(m(), 'unacquired')).toBe(true);
+	// The retry path. A failed process settles back to un-processed server-side, so offering Sing again is a
+	// real action rather than a button that answers "already processed".
+	expect(canProcess(m(), 'failed')).toBe(true);
+	expect(canProcess(m(), 'ready')).toBe(false);
+	expect(canProcess(m(), 'processing')).toBe(false);
 });
 
 // Regression (reported from a real party session): "when I hit karaoke on a song, it clears the
@@ -135,7 +135,7 @@ test('a blank query while searchActive still reads sensibly (no empty quotes)', 
 
 // ── up-next must match what the server will actually play ─────────────────────
 // The phone used to label the FIRST queued row "up next". The server's nextPlayable() skips an entry
-// whose stems are still cooking, so whenever row 0 was cooking the phone promised a song the TV was
+// whose stems are still processing, so whenever row 0 was processing the phone promised a song the TV was
 // about to skip past. These pin the agreement.
 import { entryPlayable, nextPlayableEntryId } from '$lib/readiness';
 import { isEntryReady } from '$lib/server/rotation/index';
@@ -149,12 +149,12 @@ test('entryPlayable agrees with the server isEntryReady for every media shape', 
 	}
 });
 
-test('a live cooking status beats a catalog copy that still says ready', () => {
+test('a live processing status beats a catalog copy that still says ready', () => {
 	expect(entryPlayable(m({ stemStatus: 'ready' }), { status: 'separating' })).toBe(false);
 	expect(entryPlayable(m({ stemStatus: 'queued' }), { status: 'ready' })).toBe(true);
 });
 
-test('separated but lyrics never ran is NOT playable — the gate waits for the whole cook', () => {
+test('separated but lyrics never ran is NOT playable — the gate waits for the whole process', () => {
 	// The gate change: a song is finished when every required step is done, not when the instrumental
 	// exists. Rotation holds its slot and moves on to whoever IS finished.
 	const noLyrics = m({
@@ -170,8 +170,8 @@ test('unknown media is not playable (matches the server returning false)', () =>
 	expect(entryPlayable(undefined)).toBe(false);
 });
 
-test('THE BUG: up-next skips a cooking first entry and names the first READY one', () => {
-	const cook = m({ id: 'cooking', stemStatus: 'queued' });
+test('THE BUG: up-next skips a processing first entry and names the first READY one', () => {
+	const proc = m({ id: 'processing', stemStatus: 'queued' });
 	const ready = m({
 		id: 'ready',
 		stemStatus: 'ready',
@@ -180,10 +180,10 @@ test('THE BUG: up-next skips a cooking first entry and names the first READY one
 		songProfile: EMPTY_SONG_PROFILE
 	});
 	const byId = new Map([
-		[cook.id, cook],
+		[proc.id, proc],
 		[ready.id, ready]
 	]);
-	const queued = [entry('e1', 'cooking'), entry('e2', 'ready')];
+	const queued = [entry('e1', 'processing'), entry('e2', 'ready')];
 
 	const id = nextPlayableEntryId(
 		queued,
@@ -212,10 +212,10 @@ test('up-next is the first entry when it is already playable', () => {
 	).toBe('e1');
 });
 
-test('nothing playable → no up-next (the whole queue is cooking)', () => {
-	const cook = m({ id: 'cooking', stemStatus: 'queued' });
-	const byId = new Map([[cook.id, cook]]);
-	const queued = [entry('e1', 'cooking'), entry('e2', 'cooking')];
+test('nothing playable → no up-next (the whole queue is processing)', () => {
+	const proc = m({ id: 'processing', stemStatus: 'queued' });
+	const byId = new Map([[proc.id, proc]]);
+	const queued = [entry('e1', 'processing'), entry('e2', 'processing')];
 	expect(
 		nextPlayableEntryId(
 			queued,
@@ -226,49 +226,49 @@ test('nothing playable → no up-next (the whole queue is cooking)', () => {
 });
 
 // ── a cancel is not a failure ──────────────────────────────────────────────────────────────────
-// Removing a cooking song settles it back to un-cooked exactly like a terminal failure, so the two
+// Removing a processing song settles it back to un-processed exactly like a terminal failure, so the two
 // need the SAME store effect and OPPOSITE copy. Reusing 'failed' for a cancel made the phone tell a
 // guest who deliberately removed a song "Couldn't make karaoke" — a lie about their own action.
 
-test('a canceled cook reads from the catalog, not as a failure', () => {
+test('a canceled process reads from the catalog, not as a failure', () => {
 	expect(displayReadiness(m(), { status: 'canceled' })).toBe('unacquired');
 	// The distinction that matters: same input shape, different verdict.
 	expect(displayReadiness(m(), { status: 'failed' })).toBe('failed');
 });
 
-test('a canceled cook offers Sing again rather than a failure chip', () => {
-	expect(canCook(m(), displayReadiness(m(), { status: 'canceled' }))).toBe(true);
+test('a canceled process offers Sing again rather than a failure chip', () => {
+	expect(canProcess(m(), displayReadiness(m(), { status: 'canceled' }))).toBe(true);
 });
 
 test('a canceled status leaves playability to the catalog, like failed', () => {
-	const cooked = m({
+	const processed = m({
 		stemStatus: 'ready',
 		instrumentalRef: 'derived/stems/m1-instrumental.flac',
 		lyricsStatus: 'ready'
 	});
-	expect(entryPlayable(cooked, { status: 'canceled' })).toBe(true);
+	expect(entryPlayable(processed, { status: 'canceled' })).toBe(true);
 	expect(entryPlayable(m(), { status: 'canceled' })).toBe(false);
 });
 
-// ── F2: the singer's own queue card must say when the cook died ──────────────────────────────
-// A rotation entry chose between the cook-progress card and a plain waiting row on an "is it in
-// flight" test, and a terminally failed cook is not in flight — so a dead turn rendered
-// byte-for-byte as a turn about to play, with nothing saying the cook failed while nextPlayable held
+// ── F2: the singer's own queue card must say when the process died ──────────────────────────────
+// A rotation entry chose between the process-progress card and a plain waiting row on an "is it in
+// flight" test, and a terminally failed process is not in flight — so a dead turn rendered
+// byte-for-byte as a turn about to play, with nothing saying the process failed while nextPlayable held
 // its slot forever. queueCardKind selects the card, and MUST route a failed live status to a failed
 // card. Expected values are hard-coded, not derived from displayReadiness the same way the code is.
 test('a live failed status selects the FAILED card, not a plain waiting row', () => {
-	// The exact reported state: media settled back to un-cooked (stemStatus none) after a dead cook,
+	// The exact reported state: media settled back to un-processed (stemStatus none) after a dead proc,
 	// live status failed. On base this returned a plain row.
 	expect(queueCardKind(m({ stemStatus: 'none' }), { status: 'failed' })).toBe('failed');
 });
 
-test('a cook in flight still selects the cooking card', () => {
-	expect(queueCardKind(m({ stemStatus: 'queued' }), { status: 'separating' })).toBe('cooking');
-	expect(queueCardKind(m(), { status: 'queued' })).toBe('cooking');
+test('a process in flight still selects the processing card', () => {
+	expect(queueCardKind(m({ stemStatus: 'queued' }), { status: 'separating' })).toBe('processing');
+	expect(queueCardKind(m(), { status: 'queued' })).toBe('processing');
 });
 
 test('a settled or absent status leaves a plain waiting row', () => {
-	// ready and canceled are terminal-and-settled: an ordinary turn again, no cook card.
+	// ready and canceled are terminal-and-settled: an ordinary turn again, no process card.
 	expect(queueCardKind(m(), { status: 'ready' })).toBe('plain');
 	expect(queueCardKind(m(), { status: 'canceled' })).toBe('plain');
 	// no live status at all — the common case, a plain queued turn.
@@ -276,7 +276,7 @@ test('a settled or absent status leaves a plain waiting row', () => {
 });
 
 test('a failed lyrics upgrade on a still-singable song is NOT marked broken', () => {
-	// The one case a raw status===failed test gets wrong: the song is fully cooked and singable, and a
+	// The one case a raw status===failed test gets wrong: the song is fully processed and singable, and a
 	// failed lyrics upgrade must not label a turn that WILL play as a dead one. Deferred to
 	// displayReadiness, which reads the catalog, so this stays plain.
 	const singable = m({

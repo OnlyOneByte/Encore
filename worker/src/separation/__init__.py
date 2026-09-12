@@ -26,7 +26,7 @@ and removed the `from . import demucs as d` line from `roformer.py` (only `engin
 demucs module, and that is by design). What remains is the ffmpeg half. The argv builders
 (`decode_argv`, `encode_flac_argv`) and the process plumbing
 (`subprocess_runner`/`_iter_lines`/`_terminate`) still live in `demucs.py`, but they are not
-demucs-specific: `steps/separate.py` decodes the input and encodes the outputs of a roformer cook out
+demucs-specific: `steps/separate.py` decodes the input and encodes the outputs of a roformer process out
 of them too, and `dial_home.py` builds the fetch and align runners on the same `subprocess_runner`.
 Those are platform concerns (running a CLI, encoding audio) that ended up in an engine module because it
 was the first to need them. Closing this means moving the ffmpeg builders and the subprocess runner into

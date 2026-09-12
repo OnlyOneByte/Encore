@@ -282,8 +282,8 @@ def test_plans_py_is_the_ONLY_module_importing_both_sides():
 
 def test_only_ONE_step_writes_each_artifact_kind():
     """The case in §1.2 that already cost a bug. `demucs.py` and `roformer.py` each hand-assembled
-    `artifacts={"stems": ..., "songProfile": ...}`, and one of them put songProfile in the wrong place —
-    a shape mismatch that would have stalled every cook at "Separating vocals" forever, caught only by a
+    `artifacts={"stems":..., "songProfile":...}`, and one of them put songProfile in the wrong place —
+    a shape mismatch that would have stalled every process at "Separating vocals" forever, caught only by a
     parity guard added afterwards. One writer per kind means the two engines cannot disagree."""
     writers: dict[str, set[str]] = {}
 
@@ -310,8 +310,8 @@ def test_only_ONE_step_writes_each_artifact_kind():
                 _record(node.slice.value, rel)
                 continue
             # Shapes 2 & 3 — the dict was mutated as a whole, which is exactly what the §1.2 bug did:
-            #   ctx.out.artifacts.update({"<kind>": ..., ...})   (a dict literal argument)
-            #   ctx.out.artifacts.setdefault("<kind>", ...)
+            #   ctx.out.artifacts.update({"<kind>":...,...})   (a dict literal argument)
+            #   ctx.out.artifacts.setdefault("<kind>",...)
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
@@ -333,7 +333,7 @@ def test_only_ONE_step_writes_each_artifact_kind():
 
 def test_the_pipeline_doc_matches_what_the_plans_actually_declare():
     """The committed region in docs/ARCHITECTURE.md is generated output, and this is what makes that mean
-    something. Regenerate with `cd worker && python3 -m src.docgen --write`.
+    something. Regenerate with `cd apps/worker && python3 -m src.docgen --write`.
 
     Enforced rather than trusted because this repo's architecture prose has twice described a worker it did
     not have: `fetch.py` named a function as "the one place" three of its four callers bypassed, and
@@ -346,7 +346,7 @@ def test_the_pipeline_doc_matches_what_the_plans_actually_declare():
     committed = BEGIN + text.split(BEGIN, 1)[1].split(END, 1)[0] + END
     assert committed.strip() == render().strip(), (
         "docs/ARCHITECTURE.md's generated region is stale — run `python3 -m src.docgen --write` from "
-        "worker"
+        "apps/worker"
     )
 
 
@@ -392,7 +392,7 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
 
     assert constructions, (
         "no LyricsText(...) construction found under src/lyrics — the tier guard has stopped guarding "
-        "(the sources moved and this scan no longer reaches them — the vacuity regression this floor exists to catch)"
+        "(the sources moved and this scan no longer reaches them, exactly the an earlier change regression)"
     )
     assert not offenders, (
         "a lyrics source is deciding its own tier again — that belongs to its SourceSpec in "
@@ -404,7 +404,7 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
 
 
 def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
-    """The step layer must not reach into a domain LyricsText and rewrite a field on the caller's
+    """the step layer must not reach into a domain LyricsText and rewrite a field on the caller's
     object — it publishes copies via dataclasses.replace instead.
 
     The specific offender this pins: `sel.publish[0].text_confidence = "low"` in GradeAndSelect, which
@@ -412,15 +412,14 @@ def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
     of a caller-owned domain dataclass.
 
     Recognises the reaching-in write by its TARGET, in any of the spellings that share the blind spot
-    (the original guard saw only `<subscript>.attr`, so `x = sel.publish[0]; x.text_confidence =
-    ...` walked straight past it): any assignment whose target is `<expr>.<field>` where `<field>` is a
+    (— the original guard saw only `<subscript>.attr`, so `x = sel.publish[0]; x.text_confidence =...` walked straight past it): any assignment whose target is `<expr>.<field>` where `<field>` is a
     real LyricsText field name and `<expr>` is NOT a bare `self`. `self.<x> = ...` is a step owning its
     OWN attribute in a constructor and is allowed; every other object bearing a LyricsText field in a step
     module is a domain dataclass the step does not own. The forbidden field names are read from the
     LyricsText dataclass itself so this cannot drift as fields are added. AST, not a substring scan,
     because these names appear all over the module in reads and in `replace(..., text_confidence=...)`.
 
-    Scans ALL of `src/steps` via `_py_files` (which carries its own non-vacuity floor), not one
+    Scans ALL of `src/steps` via `_py_files` (which carries its own an earlier change non-vacuity floor), not one
     hardcoded file, so a step added elsewhere in the layer is covered too.
     """
     from src.lyrics.chain import LyricsText
@@ -459,8 +458,8 @@ def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
 
 #: The blocking primitives a Step must never touch directly. Reaching any of these on the event loop
 #: freezes it: the worker stops answering the websocket keepalive AND stops emitting job:progress, so
-#: the core's 30 s progressLease (src/server/jobs/leases.ts) expires and the reaper requeues a
-#: HEALTHY cook — runner.py documents both failures as observed on a live cook. The ML stack names come
+#: the core's 30 s progressLease (src/lib/server/jobs/leases.ts) expires and the reaper requeues a
+#: HEALTHY process — runner.py documents both failures as observed on a live process. The ML stack names come
 #: from worker/pyproject.toml's mypy `ignore_missing_imports` overrides (the untyped C-extension
 #: dependencies), plus the blocking HTTP/subprocess std-lib surfaces.
 _BLOCKING_IMPORT_ROOTS = frozenset(
@@ -485,7 +484,7 @@ def _blocking_offenders_in(path: Path) -> list[str]:
     Two shapes, both AST — a substring scan passes on the docstrings and comments these very step files
     carry ("in-process numpy", "asyncio.to_thread here emitted NOTHING", "subprocess-with-progress"):
 
-      1. an IMPORT of a blocking ML / network module (torch, whisperx, numpy, requests, urllib, ...).
+      1. an IMPORT of a blocking ML / network module (torch, whisperx, numpy, requests, urllib,...).
          Steps delegate that work to a domain function passed to `run_blocking`, so the import belongs in
          `analysis/`, `lyrics/`, `metadata/` — never in `steps/`.
       2. a CALL to a blocking primitive the runtime owns: `asyncio.to_thread(...)` (run_blocking is the
@@ -538,8 +537,8 @@ def test_no_step_reaches_blocking_work_outside_run_blocking_or_run_stage():
     offenders = {str(p.relative_to(SRC)): bad for p in steps if (bad := _blocking_offenders_in(p))}
     assert not offenders, (
         "a step reaches blocking work directly instead of through run_blocking / run_stage, so its "
-        "keepalive never fires and a healthy cook is reaped at the 30 s progress lease "
-        "(docs/ARCHITECTURE.md §7.1): "
+        "keepalive never fires and a healthy process is reaped at the 30 s progress lease "
+        "(docs/ARCHITECTURE.md §7.1; issue an earlier change): "
         + "; ".join(f"{rel} -> {found}" for rel, found in sorted(offenders.items()))
     )
 
@@ -561,8 +560,7 @@ def test_the_blocking_bypass_guard_actually_detects_a_direct_call(tmp_path: Path
         "    asyncio.to_thread(lambda: torch.zeros(1))\n"
         "    subprocess.run(['ffmpeg'])\n"
         "    proc = await asyncio.create_subprocess_exec('yt-dlp')\n",
-        encoding="utf-8",
-    )
+        encoding="utf-8")
     found = _blocking_offenders_in(fake)
     joined = " | ".join(found)
     assert any("import torch" in f for f in found), f"missed a blocking import: {joined}"
@@ -598,7 +596,7 @@ def _run_stage_class_methods(source: str) -> list[str]:
 def test_run_stage_is_defined_once_and_only_as_a_free_function():
     """`runtime/runner.py`'s header (`:3-10`) promises `run_stage` "lives here and nowhere else" — one
     implementation for the four actions that used to hand-roll their own copies (demucs/whisperx/roformer,
-    the S0-S6 refactor). In practice it shipped TWO — the real module-level free function AND a callerless
+    the S0-S6 refactor). Issue an earlier change: it shipped TWO — the real module-level free function AND a callerless
     `PlanRunner.run_stage` shim, re-opening the "which run_stage do I call?" ambiguity the file exists to
     kill (the drift that once double-fired a stage's completion event).
 

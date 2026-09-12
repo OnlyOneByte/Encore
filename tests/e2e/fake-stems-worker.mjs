@@ -1,7 +1,7 @@
 /*
  * A worker that dials home, claims real jobs, and publishes REAL AUDIO.
  *
- * The point is not to fake the pipeline — it is to run the whole core-side cook path for real
+ * The point is not to fake the pipeline — it is to run the whole core-side process path for real
  * (dispatch → accept → progress → publish → markMediaReady → queue:sync → TV loads → sound comes out)
  * while skipping only the part this box cannot do: torch, demucs and whisperx are not installed, and
  * neither ffmpeg here can encode. So this worker does exactly what the Python one does over the wire,
@@ -15,7 +15,7 @@
  *
  * Fault injection, because the interesting defects are all in the unhappy paths:
  *   FAKE_SILENT_INSTRUMENTAL=1  publish a floor-level instrumental (the guard must refuse it)
- *   FAKE_SILENT_VOCALS=1        publish a floor-level vocals stem (must NOT fail the cook)
+ *   FAKE_SILENT_VOCALS=1        publish a floor-level vocals stem (must NOT fail the process)
  *   FAKE_NO_VOCALS=1            publish NO vocals stem at all — a real state, not a fault: worker-hub
  *                               optional-chains `artifacts?.stems?.vocals` and its own comment says a
  *                               worker that could not encode vocals "reports none". The song is still
@@ -25,7 +25,7 @@
  *   FAKE_SKIP_WRITE=1           report a ref for a file never written (the unservable path)
  *   FAKE_NO_PROFILE=1           complete with no songProfile (the gate must not deadlock)
  *   FAKE_FAIL=stems             fail that job type instead of completing it
- *   FAKE_SLOW_MS=1500           dwell between progress frames, to watch the cooking UI
+ *   FAKE_SLOW_MS=1500           dwell between progress frames, to watch the processing UI
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -94,7 +94,7 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 		return send({ type: 'job:failed', workerId, jobId, error: `injected failure for ${jobType}`, retryable: false });
 	}
 
-	// Progress frames drive the phone's cooking bar and refresh the lease, so send real ones.
+	// Progress frames drive the phone's processing bar and refresh the lease, so send real ones.
 	const progress = async (/** @type {string} */ stage, /** @type {number} */ pct) => {
 		send({ type: 'job:progress', workerId, jobId, stage, pct });
 		await sleep(slowMs);
@@ -138,7 +138,7 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 				? { stems: { instrumental: insRef } }
 				: { stems: { instrumental: insRef, vocals: vocRef } };
 			// songProfile is a SIBLING of stems, never a member — the shape drift that once stalled
-			// every cook at "Separating vocals" forever. Publishing it correctly here is the point.
+			// every process at "Separating vocals" forever. Publishing it correctly here is the point.
 			//
 			// The FIELD NAMES matter as much as the placement. An earlier version of this file invented
 			// `{key, lowHz, highHz, medianHz}`, which `normalizeSongProfile` silently discarded down to

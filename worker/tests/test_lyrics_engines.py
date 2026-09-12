@@ -165,7 +165,7 @@ def test_the_aligner_is_cached_per_device_on_the_same_reasoning():
 # ENCORE_WORKER_CONCURRENCY>1 two align jobs enter the check-then-set concurrently. Without the lock both
 # read `None`, both construct a WhisperxForcedAligner, and last-write-wins hands the two jobs DIFFERENT
 # instances — each with its own `self._cache`, so each loads the multi-GB wav2vec2 model (double VRAM /
-# double resident copy; the cook still succeeds, so the only symptom is memory). See asr.py's cache
+# double resident copy; the process still succeeds, so the only symptom is memory). See asr.py's cache
 # comment, which records this exact failure ("load the same model twice and double the memory").
 #
 # This drives the concurrency THROUGH the production factory rather than re-implementing the lock in the
@@ -252,7 +252,7 @@ def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, 
 
 def test_worker_config_rejects_an_unknown_model():
     # Same rule at the other entry point: a bad ENCORE_ASR_MODEL must fail when the worker is built, not
-    # at the first cook of the night.
+    # at the first process of the night.
     async def _noop(argv):  # pragma: no cover - never invoked; construction fails first
         yield ""
 
@@ -330,7 +330,7 @@ def test_forced_mode_runs_the_aligner_and_yields_word_timings():
 
 
 def test_lines_mode_skips_the_aligner_entirely():
-    # The whole point of the mode: one fewer ML pass per cook. If this ever calls the aligner, the
+    # The whole point of the mode: one fewer ML pass per process. If this ever calls the aligner, the
     # setting is cosmetic.
     spy = _SpyAligner()
     doc, timing, _ = _time_one(spy, _ctx("lines"), _line_text(), "vocals.wav", "en")

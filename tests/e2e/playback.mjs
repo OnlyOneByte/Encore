@@ -72,7 +72,7 @@ const ready = await fetch(`${base}/api/search?q=caroline`)
 if (!ready.length) {
 	bail(
 		'no READY song in the library — nothing to play.\n' +
-			'  Seed + cook one first:  bun run e2e:seed  &&  bun e2e/fake-stems-worker.mjs  (then POST /api/make-karaoke)'
+			'  Seed + process one first:  bun run e2e:seed  &&  bun e2e/fake-stems-worker.mjs  (then POST /api/process)'
 	);
 }
 console.log(`fixture: "${ready[0].title}" → ${ready[0].instrumentalRef}\n`);
@@ -100,7 +100,7 @@ let browser;
 try {
 	browser = await connect(CDP_PORT);
 
-	// ── a singer joins and queues the cooked song, through the real UI ──────────
+	// ── a singer joins and queues the processed song, through the real UI ──────────
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
 	await phone.goto(`${base}/join`);
@@ -113,9 +113,9 @@ try {
 	await openBrowseFromHome(phone); // search lives behind the browse push
 	await phone.fill(SEL.search, 'caroline');
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
-	// A ready song offers "add" (queue it now); a raw one offers "sing" (queue + cook).
+	// A ready song offers "add" (queue it now); a raw one offers "sing" (queue + process).
 	const hasAdd = await phone.count(SEL.addTurn);
-	check('the cooked song offers a queue action', hasAdd > 0, `found ${hasAdd} .add buttons`);
+	check('the processed song offers a queue action', hasAdd > 0, `found ${hasAdd} .add buttons`);
 	await phone.click(hasAdd > 0 ? SEL.addTurn : SEL.sing);
 	await returnHomeFromBrowse(phone); // the rotation is on home
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);

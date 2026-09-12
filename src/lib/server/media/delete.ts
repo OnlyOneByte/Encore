@@ -1,4 +1,4 @@
-// Delete a song from the library ENTIRELY — the destructive admin action. The owner's
+// Delete a song from the library ENTIRELY — the destructive admin action of issue an earlier change. The owner's
 // ruling (recorded on the issue, 2026-09-07): a hard delete that reclaims the bytes; a song queued by
 // someone else is deleted along with their turn; a song playing right now is SKIPPED to the next entry
 // rather than refused; gated to admin/host, which is every guest today. This is the first irreversible
@@ -8,7 +8,7 @@
 // rebuildable index over it (media/sidecar.ts, docs/ARCHITECTURE.md): a boot rescan restores any media
 // whose sidecar still exists. So the sidecar must go FIRST — delete the row first and a crash before the
 // sidecar is removed resurrects the whole song on the next boot. Sequence:
-//   1. cancel any in-flight cook (subprocess kill + slot free) — jobs/cancel.ts cancelJobsForMedia
+//   1. cancel any in-flight process (subprocess kill + slot free) — jobs/cancel.ts cancelJobsForMedia
 //   2. remove every queue entry that points at this media (there is NO FK cascade — schema.ts — so the
 //      rows must be deleted explicitly, and if the PLAYING entry is one of them the playback path skips
 //      to the next singer rather than leaving a dangling current)
@@ -20,7 +20,7 @@
 //   6. then broadcast — the queue snapshot, the advertised next, and the per-media status — so every
 //      surface drops the song at once instead of one surface at a time (F3)
 //
-// A SERVER op with no QueueOp — src/lib/contract is untouched — so it lives beside the media modules.
+// A SERVER op with no QueueOp — packages/shared is untouched — so it lives beside the media modules.
 
 import type { QueueEntry, ServerEvent, Media } from '$lib/contract';
 import type { HubDeps } from '../realtime/hub';
@@ -79,12 +79,12 @@ function realDeleteFile(ref: string): void {
  * everything a media STORED (instrumental, vocals at any historical ext, the chosen lyrics JSON, every
  * other lyrics candidate's JSON, the retained raw caption matrix) — this used to re-implement that list
  * and drifted immediately: it named `lyricsKey` + `m.lyricsRef` and stopped, so every non-chosen lyrics
- * candidate was orphaned on disk forever (F2, the same undercount an earlier change closed for retention).
+ * candidate was orphaned on disk forever (F2, the same undercount an earlier change/an earlier change closed for retention).
  * Delegating removes the possibility of drifting again; a one-line `lyricsCandidates` patch here would
  * have closed today's symptom and left the next divergence free.
  *
  * What the delete adds on top is only what retention has no reason to name: the ID-DERIVED keys for a
- * cook that wrote under an older scheme and never stored a ref at all (retention walks live media and
+ * process that wrote under an older scheme and never stored a ref at all (retention walks live media and
  * reads their refs; the delete must name candidates for a row whose refs are missing or stale). Missing
  * files are a no-op for the unlink, so naming a superset is free.
  */
@@ -114,10 +114,10 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 		return { deleted: false, wasPlaying: false, removedEntries: 0, unlinked: [] };
 	}
 
-	// 1. cancel any in-flight cook. Empty remainingEntries → cancel unconditionally (we are about to
+	// 1. cancel any in-flight process. Empty remainingEntries → cancel unconditionally (we are about to
 	// remove every referencing entry). mediaById/broadcast omitted: settling a row about to be deleted
 	// and re-announced in step 6 is pointless. cancelJobsForMedia is a no-op when nothing is live.
-	const cancelDeps: CancelJobsDeps = { ...deps.cancel, remainingEntries: [] };
+	const cancelDeps: CancelJobsDeps = {...deps.cancel, remainingEntries: [] };
 	cancelJobsForMedia(mediaId, cancelDeps);
 
 	// 2. remove every queue entry pointing at this media. No FK cascade (schema.ts), so each row goes
@@ -135,7 +135,7 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 	// kept naming the deleted song. Re-derive and re-broadcast the advertised next here too;
 	// emitNowPlaying is idempotent, so the `else` only avoids the double emit reconcileOnReady already does.
 	//
-	// F3: and re-broadcast the QUEUE ITSELF, which neither of them did. applyQueueOp publishes
+	// an earlier change F3: and re-broadcast the QUEUE ITSELF, which neither of them did. applyQueueOp publishes
 	// nothing, and on this branch the only broadcast was step 6's `media:status canceled`, which no
 	// client turns into a queue mutation — so every phone and the TV kept the removed turn, and the
 	// singer whose turn it was still saw themselves queued. `publishQueue` is player.ts's own, made
@@ -165,7 +165,7 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 	// 4a. the one unrecoverable class. EXT-BLIND (F1): this was `unlink(audioKey(mediaId))`, and
 	// `audioKey`'s default ext is `wav` — the LEGACY mislabelled name. The worker downloads to
 	// `audio/<id>.%(ext)s` and discovers the real name with a `<id>.*` glob because the extension is
-	// whatever YouTube served, so for every song cooked since 2981662 the file is `audio/<id>.m4a` or
+	// whatever YouTube served, so for every song processed since 2981662 the file is `audio/<id>.m4a` or
 	// `.webm` and the single unlink named a path that does not exist. The bytes then survived
 	// PERMANENTLY, not until the next sweep: the sidecar and the row are gone by the time this returns,
 	// retention is barred from `audio/` by design, and there is no orphan-audio pass in the boot chain —
@@ -181,8 +181,8 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 	hub.mediaById.delete(mediaId);
 
 	// 6. broadcast — every surface drops the song at once. media:status canceled (there is no 'deleted'
-	// member and src/lib/contract is untouched here) tells any surface still
-	// keyed on the live-status map (a search row, a stale cooking chip) that the song is gone.
+	// member and packages/shared is untouched here) tells any surface still
+	// keyed on the live-status map (a search row, a stale processing chip) that the song is gone.
 	const event: ServerEvent = { type: 'media:status', mediaId, status: 'canceled', pct: 0 };
 	hub.publish(event);
 

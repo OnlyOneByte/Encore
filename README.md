@@ -20,9 +20,9 @@ docker compose up                    # core only, on http://localhost:3000
 docker compose --profile stems up    # core + the worker that makes karaoke tracks
 ```
 
-> **Run the `stems` profile if you want make-karaoke to work.** Core accepts a Karaoke request
+> **Run the `stems` profile if you want process to work.** Core accepts a Karaoke request
 > happily and then leaves it at `queued` **forever**, because stem separation happens in the worker —
-> a separate process. There is no error on screen; the song just never cooks. This is the single most
+> a separate process. There is no error on screen; the song just never processes. This is the single most
 > common first-run surprise.
 
 **Local dev (Bun ≥ 1.3), from the repo root:**
@@ -47,7 +47,7 @@ Then open **`/tv`** on the television, and **scan the QR** with phones.
 > the SvelteKit handler and the WebSocket hub in one process; serving `build/index.js` directly gives
 > you a UI with no realtime at all.
 
-### The make-karaoke worker
+### The process worker
 
 To run it natively instead of in Docker:
 
@@ -72,18 +72,18 @@ The worker **dials home** to core, never the reverse, and shells out to `yt-dlp`
 `demucs` **by name via PATH** — hence the `PATH` prefix above, and why capabilities are probed against
 PATH too. `MEDIA_DIR` must point at the _same_ directory core is using, or core will mark a job
 complete for a file it cannot serve. Expect **~1–2 min/song** on CPU;
-`ENCORE_WORKER_CONCURRENCY` (default `1`) sets how many cook at once.
+`ENCORE_WORKER_CONCURRENCY` (default `1`) sets how many process at once.
 
 A native worker also needs a **JavaScript runtime on PATH — install `deno`.** YouTube's player
 challenge (the signature and `n` parameters) cannot be solved without one, and yt-dlp needs its solver
 enabled via `--remote-components ejs:github`. Miss either and extraction degrades silently until no
-audio-only format resolves at all, so every cook fails at download with `Requested format is not
+audio-only format resolves at all, so every process fails at download with `Requested format is not
 available` — which reads as a broken worker rather than a missing dependency. The Docker images ship
 `deno` plus `/etc/yt-dlp.conf`; a native run does not, so install `deno` and either copy
 `worker/yt-dlp.conf` to `/etc/yt-dlp.conf` or point yt-dlp at it with `--config-location`.
 
 Separately: **not every YouTube video will download.** Upstream bot-checking rejects some, and a
-handful of failed cooks on specific videos is not a broken install — see
+handful of failed processes on specific videos is not a broken install — see
 [`docs/HANDOFF.md`](docs/HANDOFF.md).
 
 `ENCORE_PROCESSOR=stub` swaps in a no-ML processor for smoke-testing the plumbing, and needs only
@@ -100,8 +100,8 @@ would want it for.
   remove with undo, now-playing transport, and a pull-up rotation sheet.
 - **TV stage** — four room states (attract → lobby → waiting → playing), gapless two-player video, a
   "now singing" lower third, and a song-intro card between turns.
-- **Make-karaoke** — tap Karaoke on any result and the worker strips the vocals. The singer keeps
-  their rotation slot while it cooks.
+- **Process** — tap Karaoke on any result and the worker strips the vocals. The singer keeps
+  their rotation slot while it processes.
 - **Word-timed lyrics** — WhisperX timings drive a bouncing-ball overlay; marker, highlight, size,
   font, case and row counts are all room settings. When a song has several releases, Encore grades
   each candidate set of words against what is _actually audible_ and the closest one wins, so
@@ -112,7 +112,7 @@ would want it for.
   Per song, with a room default.
 - **Key shift** — ± semitone in the browser, with the sounding key and the range the song demands
   updating as you move it.
-- **Karaoke library** — cooked songs persist in a self-describing media volume, browsable by artist
+- **Karaoke library** — processed songs persist in a self-describing media volume, browsable by artist
   and genre.
 - **House rules** — fair rotation (the default: everyone's 1st pick before anyone's 2nd), first come
   first served, shuffle, or whoever sang longest ago. A room setting, so changing it re-orders what's
@@ -123,7 +123,7 @@ would want it for.
   would only be pretending. Why: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §4.
 - **Stats and audit** — `/stats` is public and aggregate-only (library size, most-sung, top artists,
   sings per day). `/metrics` is internal: time per pipeline step with queue wait separated out,
-  end-to-end per cook, and cost per model measured against the model's own declared `rtFactor`. Any
+  end-to-end per process, and cost per model measured against the model's own declared `rtFactor`. Any
   song links to `/metrics/<mediaId>` — every run, every retry, which model ran it, and why it failed.
 - **Real-time and optimistic** — every tap renders instantly, twenty phones stay in sync over flaky
   wifi, and reconnects self-heal.
@@ -182,7 +182,7 @@ docs/              ← ARCHITECTURE + HANDOFF + DECISIONS; loop/ deploy/ benchma
 | `MEDIA_DIR`              | `./media`    | root of the media volume — created if missing                                                                                                                                                                                                                                                                                                             |
 | `MEDIA_STORE`            | `local`      | `local` volume or `object` (MinIO/S3, for remote workers)                                                                                                                                                                                                                                                                                                 |
 | `ENCORE_SONG_INTRO_MS`   | seeds `2500` | song-intro card duration, seeded into the room on **first boot only** (`0` seeds it off, for a pure gapless hard-cut). `INTERSTITIAL_MS` is still read as a deprecated alias. Both the duration and the on/off toggle live in **Settings → Room** afterwards                                                                                              |
-| `ENCORE_LYRICS_BACKFILL` | on           | set `0` to skip the boot-time lyrics backfill for already-cooked songs                                                                                                                                                                                                                                                                                    |
+| `ENCORE_LYRICS_BACKFILL` | on           | set `0` to skip the boot-time lyrics backfill for already-processed songs                                                                                                                                                                                                                                                                                    |
 | `ENCORE_VOCALS_BACKFILL` | on           | set `0` to skip the boot-time guiding-track (vocals stem) backfill                                                                                                                                                                                                                                                                                        |
 | `ENCORE_EPHEMERAL`       | unset        | `1` → in-memory DB; nothing persists (handy for a throwaway instance)                                                                                                                                                                                                                                                                                     |
 | `FFMPEG_BIN`             | `ffmpeg`     | ffmpeg binary used for recompression                                                                                                                                                                                                                                                                                                                      |
@@ -222,7 +222,7 @@ or you want to deliberately limit a box:
   (`8`)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only
   fallbacks for a job carrying neither, `ENCORE_LRCLIB_BASE` (point at a mirror when lrclib.net is
-  blocked), `ENCORE_ANNOTATE` (`1`; set `0` on a box with no outbound network), `ENCORE_KEEP_RAW_CAPTIONS` (`0`; set `1` to retain the raw `.vtt`/`.srt` caption track in `derived/captions/` for post-cook diagnosis — counted and evicted by the `ENCORE_MEDIA_MAX_GB` cap)
+  blocked), `ENCORE_ANNOTATE` (`1`; set `0` on a box with no outbound network), `ENCORE_KEEP_RAW_CAPTIONS` (`0`; set `1` to retain the raw `.vtt`/`.srt` caption track in `derived/captions/` for post-process diagnosis — counted and evicted by the `ENCORE_MEDIA_MAX_GB` cap)
 - **Escape hatches** — `ENCORE_PROCESSOR` (`real`/`stub`), `ENCORE_YTDLP_BIN`, `ENCORE_DEMUCS_BIN`,
   `ENCORE_FFMPEG_BIN`
 
@@ -230,7 +230,7 @@ What the worker measures for itself: the **accelerator** (CUDA / ROCm / Intel xp
 via `torch.accelerator` then a per-device usability probe), **usable cores** (the tightest of
 `cpu_count`, scheduler affinity and the cgroup quota — a container throttled to 2 cores no longer
 sizes itself for the host's 32), **memory**, **free accelerator memory** (which is what a demucs
-segment has to fit inside — a 12 GB card with a display server and another cook on it can have under
+segment has to fit inside — a 12 GB card with a display server and another process on it can have under
 3 GB left, and a worker that sizes itself for 12 dies at the first chunk with an OOM the room sees as
 a failed song), the **alignment device**, and its **capabilities**.
 
@@ -242,7 +242,7 @@ every **lyrics presentation** option are per-room.
 ## Status & roadmap
 
 **Done:** the realtime spine (join, phone remote, search, gapless TV, room states + presence),
-hardening → **v0.1.0**, make-karaoke (Demucs stems) → **v0.2.0**, word-timed lyrics, the saved
+hardening → **v0.1.0**, process (Demucs stems) → **v0.2.0**, word-timed lyrics, the saved
 library, readiness search, media storage classes + browse + retention, the tiered lyrics source
 chain (LRCLIB → captions → ASR with provenance labelling) and its two-tier version selection
 (candidates graded against audible baselines), stats + audit dashboards, browser pitch-shift so ±key

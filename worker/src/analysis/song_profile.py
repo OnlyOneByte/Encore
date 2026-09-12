@@ -2,11 +2,11 @@
 in scratch, before encoding) into the `songProfile` artifact core validates.
 
 WHY this is its own module: the always-publish contract is subtle and load-bearing, and duplicating
-it across demucs.py and roformer.py is how the two would drift. Core's cook gate treats a PRESENT
-profile as "the analysis step ran" and an ABSENT one as "still cooking". So a stems job MUST publish
+it across demucs.py and roformer.py is how the two would drift. Core's process gate treats a PRESENT
+profile as "the analysis step ran" and an ABSENT one as "still processing". So a stems job MUST publish
 a songProfile object on every success — even when analysis finds nothing — with inner fields null.
 The failure this prevents is real: a song whose vocals stem is digital silence (which happens on this
-box) would, if we omitted the profile on empty analysis, be permanently unsingable AND never re-cook,
+box) would, if we omitted the profile on empty analysis, be permanently unsingable AND never re-process,
 because core would wait forever for a step that already ran.
 
 So BOTH analyses are wrapped best-effort here: key detection and range summary each fail independently
@@ -66,7 +66,7 @@ def build_song_profile(
             profile["keyTonic"] = tonic
             profile["keyMode"] = mode
             profile["keyConfidence"] = confidence
-        except Exception as exc:  # noqa: BLE001 — analysis must never fail the cook
+        except Exception as exc:  # noqa: BLE001 — analysis must never fail the process
             log(
                 f"[worker] key detection failed for {media_id} "
                 f"({type(exc).__name__}: {exc}); publishing null key",
@@ -80,7 +80,7 @@ def build_song_profile(
     # levelling the instrumental is also what makes a guide set to 15% mean the same on the next song.
     #
     # The MEASUREMENT is stored, never a gain. The ruling is an outlier clamp against the library, so
-    # the gain depends on every OTHER song's level and moves whenever one is cooked; baking it in here
+    # the gain depends on every OTHER song's level and moves whenever one is processed; baking it in here
     # would be derived state going stale on disk. Playback derives it from the stored levels.
     #
     # Best-effort like the halves above — measure_lufs never raises — and tri-state: an unmeasurable
@@ -104,7 +104,7 @@ def build_song_profile(
             profile["p05Midi"] = rng["p05Midi"]
             profile["p95Midi"] = rng["p95Midi"]
             profile["histogram"] = rng["histogram"]
-        except Exception as exc:  # noqa: BLE001 — analysis must never fail the cook
+        except Exception as exc:  # noqa: BLE001 — analysis must never fail the process
             log(
                 f"[worker] vocal-range summary failed for {media_id} "
                 f"({type(exc).__name__}: {exc}); publishing null range",

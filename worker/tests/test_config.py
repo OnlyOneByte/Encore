@@ -153,7 +153,7 @@ def test_blank_env_vars_fall_back_to_defaults_not_to_empty_strings():
     # Compose plumbs optional overrides as `FOO=${FOO:-}`, which puts an EMPTY STRING in the
     # environment rather than leaving it absent. `dict.get(key, default)` sees a present value and
     # returns "", so an unset override became demucs_model="" — a worker that passes `-n ''` to demucs
-    # and fails every cook for a reason the config line would not explain.
+    # and fails every process for a reason the config line would not explain.
     blank = {
         k: ""
         for k in (
@@ -307,7 +307,7 @@ def test_segment_shrinks_as_free_memory_shrinks():
 
 
 def test_a_nearly_full_card_still_gets_a_workable_chunk():
-    """The case this exists for: a 12GiB card with a display server and another cook on it. A slow cook
+    """The case this exists for: a 12GiB card with a display server and another process on it. A slow process
     beats a CUDA OOM reported to the room as a failed song."""
     from src.config import auto_demucs_segment
 

@@ -45,12 +45,11 @@ from ..lyrics import (
     read_captions,
     repair_word_spans,
     select_by_baselines,
-    validate_timing,
-)
+    validate_timing)
 from ..lyrics.captions import find_caption_file
 
 # _opening_window_indices moved to lyrics/validate.py; re-imported so `_opens_for`'s
-# fallback works and the guard tests can still do `from src.steps.lyrics import
+# fallback works and the an earlier change guard tests can still do `from src.steps.lyrics import
 # _opening_window_indices`.
 from ..lyrics.validate import LrcShift, _opening_window_indices, estimate_lrc_shift, shift_segments
 from ..processor import ProgressEvent, raw_caption_path
@@ -64,9 +63,9 @@ from ..vocabulary import Stage, SyncMode, TextSource
 AUTHORED = "captions"
 MACHINE = "auto-captions"
 
-#: Whether to retain the RAW caption track for post-cook diagnosis. The raw `.vtt`/`.srt` is
+#: Whether to retain the RAW caption track for post-process diagnosis. The raw `.vtt`/`.srt` is
 #: otherwise written into per-job scratch (`ctx.work`) and destroyed with it, so a caption-parsing
-#: defect can never be re-examined from the source bytes after a cook, and
+#: defect (earlier changes-class) can never be re-examined from the source bytes after a process, and
 #: re-fetching needs the network and a still-live upload. When on, the winning raw track is copied to
 #: `derived/captions/<kind>/` before teardown -- the same storage class as the other retained
 #: artifacts, with the authored/machine split kept structural by directory.
@@ -114,8 +113,7 @@ class FetchCaptions(Step):
             ctx.job.source_uri,
             os.path.join(out_dir, "captions.%(ext)s"),
             str(ctx.params.get("ytdlpBin") or self.ytdlp_bin),
-            auto=self.auto,
-        )
+            auto=self.auto)
         try:
             # yt-dlp caption fetch emits no parseable progress, so the parser is constant-None: the
             # shared run_stage then brackets the drain with pct=0 and a single pct=100 — exactly the
@@ -144,7 +142,7 @@ class FetchCaptions(Step):
         """Copy the RAW caption track out of scratch into the durable `derived/` store.
 
         Copies the SAME file the parser chose (`find_caption_file`), so the retained bytes are
-        exactly what produced this cook's cues — the point is to diagnose the parser, so any other
+        exactly what produced this process's cues — the point is to diagnose the parser, so any other
         candidate in the directory would be the wrong evidence. `self.kind` is the storage tier, so
         the authored/machine split stays structural (a directory), never a filename heuristic.
 
@@ -174,7 +172,7 @@ class AcquireTexts(Step):
     This is the one step that can STOP the plan. "This song has no words" is a RESULT — a genuine
     instrumental has none by nature — and it used to be an early `return` inside the god-method. Raising
     would be worse than wrong: readiness waits on align, so a raise would leave an instrumental stuck
-    cooking forever on a step that is working correctly.
+    processing forever on a step that is working correctly.
     """
 
     name = "acquire-texts"
@@ -218,8 +216,7 @@ class AcquireTexts(Step):
             client=self._client or LrclibClient(),
             to_segments=lrclib_to_segments,
             transcriber=self._transcriber or _default_transcriber(ctx),
-            normalize=normalize_lyrics,
-        )
+            normalize=normalize_lyrics)
         for note in notes:
             ctx.note(note)
         return sources
@@ -241,8 +238,7 @@ class AcquireTexts(Step):
             yield StepResult(
                 outcome=Outcome.STOP,
                 reason=f"REFUSING pinned ref {asked!r}: it leaves the media directory. Completing with "
-                "no lyrics rather than reading or writing outside the store",
-            )
+                "no lyrics rather than reading or writing outside the store")
             return
         if pinned_ref:
             pinned = _pinned_lyrics_text(ctx, pinned_ref)
@@ -250,8 +246,7 @@ class AcquireTexts(Step):
                 yield StepResult(
                     outcome=Outcome.STOP,
                     reason=f"pinned lyrics {pinned_ref} carry no readable text — leaving the stored "
-                    "candidate exactly as it is rather than re-picking behind the operator",
-                )
+                    "candidate exactly as it is rather than re-picking behind the operator")
                 return
             ctx.lyrics.texts = [pinned]
             ctx.note(
@@ -268,8 +263,7 @@ class AcquireTexts(Step):
             audio_path=ctx.audio.path or "",
             vocals_path=ctx.audio.vocals_path,
             caption_segments=ctx.lyrics.authored_cues,
-            auto_caption_segments=ctx.lyrics.machine_cues,
-        )
+            auto_caption_segments=ctx.lyrics.machine_cues)
         sources = self._build_sources(ctx, req)
         texts: list[LyricsText] = []
         run_notes: list[str] = []
@@ -287,8 +281,7 @@ class AcquireTexts(Step):
             yield StepResult(
                 outcome=Outcome.STOP,
                 reason="no text from any source (instrumental, or every tier missed) "
-                "— completing with no lyrics",
-            )
+                "— completing with no lyrics")
 
 
 class PresplitTexts(Step):
@@ -345,13 +338,13 @@ class GradeAndSelect(Step):
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         duration_sec = ctx.audio.duration_sec
         sel = select_by_baselines(ctx.lyrics.texts, duration_sec)
-        # Report overshoot in the same operator log that already carries timing defects,
-        # so a candidate timed past audio-end is visible in the cook log rather than only on the TV.
+        # Report overshoot in the same operator log that already carries timing defects (piece 2),
+        # so a candidate timed past audio-end is visible in the process log rather than only on the TV.
         #
         # report from the candidates as they were BEFORE selection, not from `sel.publish`. A
         # candidate DEMOTED for overshoot (chain.py overshoot_penalized) is not among the survivors, so
         # iterating `sel.publish` fired the note exactly when the demotion changed nothing and stayed
-        # SILENT exactly when it changed the outcome — the one case this note exists for. Walk every
+        # SILENT exactly when it changed the outcome — the one case an earlier change piece 2 exists for. Walk every
         # pre-selection candidate (each source's own text plus its alternates); `select_by_baselines`
         # does not mutate its input (it rebinds via `replace`), so `ctx.lyrics.texts` still carries them.
         # Published-vs-demoted is decided by identity against `sel.publish` on (text_source, variant),
@@ -392,10 +385,10 @@ class GradeAndSelect(Step):
                 is_published = key in published_keys
                 if over / duration_sec <= OVERSHOOT_FRACTION_MAX:
                     # A small, tolerated overshoot the demotion did not act on — still worth seeing,
-                    # but F2: say WHOSE. This is the only arm that can fire for a candidate the
+                    # but an earlier change F2: say WHOSE. This is the only arm that can fire for a candidate the
                     # operator has no other way to place — `sel.choices` names a winner only when one
                     # source offered several versions — so worded bare it read as an overshoot on the
-                    # SHIPPED lyrics when it was on a rejected rival, a false alarm about a cook whose
+                    # SHIPPED lyrics when it was on a rejected rival, a false alarm about a process whose
                     # published text does not run past the audio at all. `is_published` is already in
                     # scope and both sibling arms state it; state it here too.
                     verdict = (
@@ -404,14 +397,14 @@ class GradeAndSelect(Step):
                         else f"within tolerance — NOT published, {winner_label} was"
                     )
                 elif is_published:
-                    # Over the limit and it WON: the stated cost of owner ruling B (it fixes some
-                    # cases, not all). F1: whether a fitting candidate existed is decided from the
+                    # Over the limit and it WON: an earlier change's own stated cost (owner ruling B fixes some
+                    # cases, not all). an earlier change F1: whether a fitting candidate existed is decided from the
                     # POOL, never from `is_published`, which says only that THIS text is in
                     # `sel.publish`. `overshoot_penalized` (lyrics/chain.py) subtracts the overshoot
                     # FRACTION from the composite score — a COMPARATIVE penalty — so an overshooter
                     # leading a fitting rival by more than that fraction publishes with the fitting
                     # rival in the pool the whole time. Claiming "no candidate that fits the audio"
-                    # from `is_published` was false on every such cook, and false in the direction that
+                    # from `is_published` was false on every such process, and false in the direction that
                     # ends the investigation: told nothing fit, the operator hunts a new lyrics source
                     # instead of inspecting the text that was fetched, graded, and narrowly lost.
                     verdict = "past the OVERSHOOT limit — PUBLISHED anyway"
@@ -421,14 +414,14 @@ class GradeAndSelect(Step):
                         else ", no candidate that fits the audio"
                     )
                 else:
-                    # Over the limit and NOT published — the case this note was written to surface.
-                    # F2: this is the third arm of the ladder whose other two were corrected, and
+                    # Over the limit and NOT published — the case an earlier change piece 2 was written to surface.
+                    # an earlier change F2: this is the third arm of the ladder an earlier change corrected the other two of, and
                     # it repeated their exact defect. `is_published` False means only that THIS text is
                     # not in `sel.publish`; it does NOT mean the overshoot penalty is why. The wrong-song
                     # case loses on AGREEMENT by a margin the comparative `overshoot_penalized` never came
                     # near — the winner is identical with the penalty switched off — so "DEMOTED" here
                     # asserted a causation the step cannot see, and did so on the one line an operator
-                    # reads to decide whether the overshoot demotion did anything. Word it from the fact the step
+                    # reads to decide whether an earlier change's demotion did anything. Word it from the fact the step
                     # actually has, mirroring the `PUBLISHED anyway` / `within tolerance` sibling arms.
                     verdict = f"past the OVERSHOOT limit — NOT published, {winner_label} was"
                 ctx.note(
@@ -456,7 +449,7 @@ class GradeAndSelect(Step):
             )
             # Demote via replace rather than `sel.publish[0].text_confidence = "low"`: that reached from
             # the step layer straight into a domain LyricsText, mutating a caller-owned object in place
-            # (the same cross-object write chain.py was corrected for). Rebinding the list slot to a copy keeps
+            # (the same cross-object write an earlier change fixes in chain.py). Rebinding the list slot to a copy keeps
             # the demotion local to the published list — see presplit.py's replace() note.
             sel.publish[0] = replace(sel.publish[0], text_confidence="low")
         ctx.lyrics.selection = sel
@@ -508,7 +501,7 @@ class TimeTexts(Step):
         if ctx.audio.vocals_path is None:
             ctx.note(
                 "no vocals stem — aligning against the MIX, which is materially less accurate. "
-                "Re-cook to get a stem."
+                "Re-process to get a stem."
             )
 
         sel = ctx.lyrics.selection
@@ -584,7 +577,7 @@ class TimeTexts(Step):
                     doc = line_synced_lyrics(placed, language=text.language or language)
                     timing, timing_confidence = TIMING_LINE, "low"
                 else:
-                    # ACT on the smears/flashes rep just diagnosed. validate_timing
+                    # ACT on the smears/flashes rep just diagnosed (item an earlier change). validate_timing
                     # reports them; this REPAIRS them in the doc that publishes, provably order-preserving
                     # so it can never turn a defect into the one disqualifier (an out-of-order word). Only
                     # on a usable word doc — a degraded line-sync doc has no per-word spans to repair.
@@ -622,10 +615,10 @@ class TimeTexts(Step):
             # TIMING, which catches the case where a different master shifts or stretches every line.
             if timing == TIMING_WORD and text.timing == TIMING_LINE:
                 # Compute the OPENING-window index of each human line, then hand the fit decision
-                # to lyrics/validate.lrc_fit_notes (an earlier extraction moved the ~45-line decision + its two pairing
+                # to lyrics/validate.lrc_fit_notes (an earlier change moved the ~45-line decision + its two pairing
                 # helpers into the domain package; this step now owns only the windows/opens the
                 # decision needs). `_opens_for` prefers presplit's EMITTED opens map over re-deriving by
-                # float-equality — that preference is pinned HERE, in the step layer, by a guard test, which is
+                # float-equality — that preference is pinned HERE, in the step layer, by an earlier change, which is
                 # why the call site stays in TimeTexts.run and is not folded into the domain function.
                 # When presplit set `align_windows`, only each line's OPENING window carries a real
                 # source start; when it did not, the segments ARE the windows and every index opens one.
@@ -696,10 +689,9 @@ class TimeTexts(Step):
             raise RuntimeError("text was acquired but nothing could be timed (no word or line sync)")
         ctx.out.artifacts["lyrics"] = {"candidates": candidates}
         # Persist WHY this lyric won, not just which one. `sel.choices` already carries every rejected
-        # label with its score, `decided_by` and the baseline vote count; those reach the cook log via
+        # label with its score, `decided_by` and the baseline vote count; those reach the process log via
         # summary() above but the log rotates and is per-container. Crossing them to durable state here
-        # is the whole point of persisting the record — the audit trail can then say which arm of the
-        # selection fired for a mis-pick.
+        # is the whole of an earlier change — the audit trail can then say which of an earlier change's arms fired for a mis-pick.
         if sel is not None:
             ctx.out.selection = sel.to_record()
         yield ProgressEvent(stage=self.stage, pct=100)
@@ -709,7 +701,7 @@ class PublishLyrics(Step):
     """Point the CompleteResult at an artifact and report the resolved engines.
 
     `uri` is the FIRST candidate, not the best. Ranking lives in exactly one place — pickBestLyrics in
-    src/shared/lyrics/lyrics.ts — and the core re-picks from `candidates` on every write and restore.
+    src/lib/contract/lyrics/lyrics.ts — and the core re-picks from `candidates` on every write and restore.
     A second ranking here would drift silently.
     """
 
@@ -762,7 +754,7 @@ def _pinned_ref(ctx: Ctx) -> str | None:
     with `ctx.job.media_dir` to both READ a stored doc and WRITE the re-timed one, so an escaping key
     would point the align step at a file outside the store. The core's own `safeMediaPath` rejects the
     same shapes; the worker does not take that on trust, because the worker is the side holding the file
-    handle. A refused key is never silently downgraded to a normal cook — AcquireTexts STOPs and says so.
+    handle. A refused key is never silently downgraded to a normal process — AcquireTexts STOPs and says so.
     """
     ref = str(ctx.params.get("pinnedRef") or "").strip()
     if not ref or os.path.isabs(ref) or ".." in ref.replace("\\", "/").split("/"):
@@ -874,7 +866,7 @@ def _time_one(
          discarding them would be strictly worse output for no saving, since no alignment pass is
          involved either way.
       2. `lines` mode then skips forced alignment entirely rather than failing it: one fewer ML pass per
-         cook, at the cost of the bouncing ball. It takes the SAME path the aligner's failure fallback
+         process, at the cost of the bouncing ball. It takes the SAME path the aligner's failure fallback
          takes, so there is one line-sync implementation rather than two that can drift.
       3. Otherwise force-align, and on ANY aligner failure fall back to the source's own line timings.
 

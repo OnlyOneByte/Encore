@@ -52,13 +52,13 @@ export class AttemptLedger {
 	 * deliberately NOT incremented for an ack-timeout (no work was performed), so it undercounts the
 	 * attempts that physically happened. The ledger records physical attempts.
 	 */
-	open(job: Pick<Job, 'id' | 'mediaId' | 'cookId' | 'jobType'>, now: number): JobAttempt {
+	open(job: Pick<Job, 'id' | 'mediaId' | 'processingId' | 'jobType'>, now: number): JobAttempt {
 		const attempt = this.#countFor(job.id) + 1;
 		const row: JobAttempt = {
 			id: ulid(now),
 			jobId: job.id,
 			mediaId: job.mediaId,
-			cookId: job.cookId,
+			processingId: job.processingId,
 			jobType: job.jobType,
 			attempt,
 			workerId: null,
@@ -84,7 +84,7 @@ export class AttemptLedger {
 
 	/** Offered to a worker. Records the dispatched facts — what was ASKED for (see AttemptFacts). */
 	assigned(jobId: string, workerId: string, facts: AttemptFacts, now: number): void {
-		this.#patchOpen(jobId, { workerId, assignedAt: now, ...pickFacts(facts) });
+		this.#patchOpen(jobId, { workerId, assignedAt: now,...pickFacts(facts) });
 	}
 
 	/** Worker accepted: processing begins here. `finishedAt − startedAt` is the number that matters. */
@@ -118,22 +118,12 @@ export class AttemptLedger {
 
 	/** Every attempt for one song, oldest first — the per-song audit timeline. */
 	byMedia(mediaId: string): JobAttempt[] {
-		return this.#db
-			.select()
-			.from(jobAttempts)
-			.where(eq(jobAttempts.mediaId, mediaId))
-			.orderBy(asc(jobAttempts.enqueuedAt))
-			.all();
+		return this.#db.select().from(jobAttempts).where(eq(jobAttempts.mediaId, mediaId)).orderBy(asc(jobAttempts.enqueuedAt)).all();
 	}
 
-	/** Every attempt of one cook, oldest first — end-to-end spans one of these. */
-	byCook(cookId: string): JobAttempt[] {
-		return this.#db
-			.select()
-			.from(jobAttempts)
-			.where(eq(jobAttempts.cookId, cookId))
-			.orderBy(asc(jobAttempts.enqueuedAt))
-			.all();
+	/** Every attempt of one process, oldest first — end-to-end spans one of these. */
+	byProcess(processingId: string): JobAttempt[] {
+		return this.#db.select().from(jobAttempts).where(eq(jobAttempts.processingId, processingId)).orderBy(asc(jobAttempts.enqueuedAt)).all();
 	}
 
 	/** The attempt still in flight for a job, if any. At most one by construction. */
@@ -143,38 +133,24 @@ export class AttemptLedger {
 
 	/**
 	 * Sealed attempts finished at or after `sinceMs`, newest first, capped at `limit`. A TIME window
-	 * rather than a bare row count: the row-count window (`allFinished`) silently dropped a cook's
-	 * older steps at the cap, so the cook straddling the boundary reported `complete: true` and
-	 * measured its span from only the surviving rows — understating that cook's duration. The
-	 * caller pairs the window edge (`sinceMs`) with `perCook(rows, sinceMs)` so a boundary-straddling
-	 * cook is flagged `clipped` and excluded rather than counted low.
+	 * rather than a bare row count: the row-count window (`allFinished`) silently dropped a process's
+	 * older steps at the cap, so the process straddling the boundary reported `complete: true` and
+	 * measured its span from only the surviving rows — understating that process's duration. The
+	 * caller pairs the window edge (`sinceMs`) with `perProcess(rows, sinceMs)` so a boundary-straddling
+	 * process is flagged `clipped` and excluded rather than counted low.
 	 */
 	finishedSince(sinceMs: number, limit = 20_000): JobAttempt[] {
-		return this.#db
-			.select()
-			.from(jobAttempts)
-			.where(and(isNotNull(jobAttempts.outcome), gte(jobAttempts.finishedAt, sinceMs)))
-			.orderBy(desc(jobAttempts.finishedAt))
-			.limit(limit)
-			.all();
+		return this.#db.select().from(jobAttempts).where(and(isNotNull(jobAttempts.outcome), gte(jobAttempts.finishedAt, sinceMs))).orderBy(desc(jobAttempts.finishedAt)).limit(limit).all();
 	}
 
 	/** How many sealed attempts exist in total — the honest denominator behind a windowed sample. */
 	countFinished(): number {
-		const row = this.#db
-			.select({ n: sql<number>`count(*)` })
-			.from(jobAttempts)
-			.where(isNotNull(jobAttempts.outcome))
-			.all();
+		const row = this.#db.select({ n: sql<number>`count(*)` }).from(jobAttempts).where(isNotNull(jobAttempts.outcome)).all();
 		return row[0]?.n ?? 0;
 	}
 
 	#findOpen(jobId: string): JobAttempt | undefined {
-		return this.#db
-			.select()
-			.from(jobAttempts)
-			.where(and(eq(jobAttempts.jobId, jobId), isNull(jobAttempts.outcome)))
-			.all()[0];
+		return this.#db.select().from(jobAttempts).where(and(eq(jobAttempts.jobId, jobId), isNull(jobAttempts.outcome))).all()[0];
 	}
 
 	#countFor(jobId: string): number {
@@ -183,7 +159,7 @@ export class AttemptLedger {
 
 	/**
 	 * Patch the in-flight attempt. A no-op when there is none rather than a throw: the ledger is
-	 * OBSERVABILITY, and a missing record must never be able to break a cook. Jobs that predate this
+	 * OBSERVABILITY, and a missing record must never be able to break a process. Jobs that predate this
 	 * table have no open attempt, so a running deployment upgrading into this code would otherwise
 	 * throw on the first completion of an in-flight job.
 	 */

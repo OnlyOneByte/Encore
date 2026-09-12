@@ -27,7 +27,7 @@ USER_AGENT = "Encore/0.2 (+https://github.com/OnlyOneByte/Encore)"
 #: a property of the source IP, not of a client object) at one per second — the same interval its
 #: MusicBrainz twin uses (metadata/annotate.py). This corp box DNS-sinkholes lrclib.net so the gate
 #: only ever bites on the deploy box, but the asymmetry the issue names — the twin has a gate and this
-#: did not — is what let a single transient 5xx silently cost a cook its authoritative lyrics.
+#: did not — is what let a single transient 5xx silently cost a process its authoritative lyrics.
 MIN_INTERVAL_SEC = 1.0
 
 #: A transient failure (503 "busy / over the limit", 429 "too many requests") is retried with

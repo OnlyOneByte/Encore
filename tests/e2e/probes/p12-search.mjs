@@ -1,25 +1,25 @@
 // P12 -- SEARCH, READINESS ORDERING AND THE LIBRARY.
 //
 // The surface: ONE search box across every source (local files + YouTube via yt-dlp), organised on the
-// READINESS axis. Three buckets: `ready` (stems on disk, sing now), `cooking` (a stems job in flight;
-// rotation HOLDS the slot, so still queueable), `unacquired` (nothing to play yet, a candidate to cook).
+// READINESS axis. Three buckets: `ready` (stems on disk, sing now), `processing` (a stems job in flight;
+// rotation HOLDS the slot, so still queueable), `unacquired` (nothing to play yet, a candidate to process).
 // The client union additionally carries `failed`, which only arrives from a LIVE media:status.
 //
 // This probe answers eight questions with evidence:
 //
-//   1. Deduped partition -- catalog wins over resolver, so an already-cooked song is never missed
+//   1. Deduped partition -- catalog wins over resolver, so an already-processed song is never missed
 //      because the resolver ranked it low or titled it differently.
-//   2. The live transition unacquired -> cooking -> ready over the WebSocket, with no reload; the
-//      row stays queueable while cooking.
+//   2. The live transition unacquired -> processing -> ready over the WebSocket, with no reload; the
+//      row stays queueable while processing.
 //   3. Ready bucket order/label; the one-tap action per row is unambiguous (a ready row offers .add,
-//      a raw row offers ONE .sing that both queues and cooks).
+//      a raw row offers ONE.sing that both queues and processes).
 //   4. Empty state for a query with no matches, and for an empty box.
 //   5. Adversarial queries -- long strings, regex meta, quotes, unicode, emoji, SQL-ish, path-ish --
 //      no crash, no 500, no injection, sane matching.
 //   6. Case-insensitive across title AND artist.
-//   7. Browse-by-artist / -genre agrees with what is actually cooked on disk; a song whose file has
+//   7. Browse-by-artist / -genre agrees with what is actually processed on disk; a song whose file has
 //      been deleted under it still browses safely.
-//   8. A failed cook stays VISIBLE (live) with a real reason rather than vanishing.
+//   8. A failed process stays VISIBLE (live) with a real reason rather than vanishing.
 //
 // Boot per HARNESS.md; this file expects the server on $PORT and the fake worker connected. Chromium
 // is optional -- if it is not present we skip only the two UI-render checks (S9, S10) with a clear
@@ -33,8 +33,8 @@
 //
 // Environment limits (NOT defects, per HARNESS.md):
 //   * YouTube DOWNLOAD is impossible on this box (no deno for the player challenge). YouTube SEARCH
-//     is fine. Cooking a real YouTube result requires a fetch:ytdlp worker and would time out here;
-//     the cook-transition checks therefore cook a LOCAL file, whose fetcher is `local` and does not
+//     is fine. Processing a real YouTube result requires a fetch:ytdlp worker and would time out here;
+//     the process-transition checks therefore process a LOCAL file, whose fetcher is `local` and does not
 //     need yt-dlp at all.
 //
 // Selector rule: never hand-write a selector. Contract lives in ./contract.ts (guarded by
@@ -49,8 +49,8 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
- * Types for this out-of-program driver, which runs under tsconfig.e2e.json, following the same
- * pattern as the sibling probes. Browser/Page are derived from cdp.mjs's own return types.
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
+ * earlier changes pattern). Browser/Page are derived from cdp.mjs's own return types.
  * fetch().json() and page.evaluate() are Promise<any>, so API-shaped results are typed via the Media
  * row shape and the SearchBody/LibraryBody response shapes below, cast at the call site.
  *
@@ -70,12 +70,12 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
  *
  * The /api/search response shape (buckets are arrays of Media; recent/popular on an empty query).
  * @typedef {{
- *   ready: Media[], cooking: Media[], results: Media[], recent?: Media[], popular?: Media[]
+ *   ready: Media[], processing: Media[], results: Media[], recent?: Media[], popular?: Media[]
  * } & Record<string, any>} SearchBody
  *
  * The /api/library response shape.
  * @typedef {{
- *   library: Media[], cooking?: Media[], facets?: { artists?: { artist: string, count: number }[] }
+ *   library: Media[], processing?: Media[], facets?: { artists?: { artist: string, count: number }[] }
  * } & Record<string, any>} LibraryBody
  *
  * One media:status event seen over the WebSocket.
@@ -136,7 +136,7 @@ if (MEDIA_DIR) {
 }
 
 // Join once as a probe singer. Cookie jar is a live Map<string,string>; the search API is
-// unauthenticated but /api/make-karaoke is not, so we keep the session cookie for the cook triggers.
+// unauthenticated but /api/process is not, so we keep the session cookie for the process triggers.
 /** @param {string} name @param {string} [color] */
 async function joinRoom(name, color = '#ff5cae') {
 	const res = await fetch(`${base}/api/join`, {
@@ -159,7 +159,7 @@ const bearer = { headers: { cookie: session.cookies, 'content-type': 'applicatio
 
 /** @param {string} q @param {Record<string, string>} [extra] @returns {Promise<{ status: number, body: SearchBody }>} */
 async function search(q, extra = {}) {
-	const qs = new URLSearchParams({ q, ...extra });
+	const qs = new URLSearchParams({ q,...extra });
 	const res = await fetch(`${base}/api/search?${qs}`);
 	return { status: res.status, body: await res.json().catch(() => null) };
 }
@@ -169,8 +169,8 @@ async function library(qs = '') {
 	return { status: res.status, body: await res.json().catch(() => null) };
 }
 /** @param {string} mediaId */
-async function makeKaraoke(mediaId) {
-	const res = await fetch(`${base}/api/make-karaoke`, {
+async function processMedia(mediaId) {
+	const res = await fetch(`${base}/api/process`, {
 		method: 'POST',
 		...bearer,
 		body: JSON.stringify({ mediaId })
@@ -196,12 +196,12 @@ async function waitFor(fn, { timeoutMs = 10_000, everyMs = 200, name = 'conditio
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// S1 -- catalog wins over resolver: an already-cooked song is never missed.
+// S1 -- catalog wins over resolver: an already-processed song is never missed.
 // A ready local song must appear in `ready` (not `results`), and it must NOT be shadowed by any raw
 // resolver row for a title the user actually typed.
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// Strategy: seed one cook (Sweet Caroline), then search for "caroline" -- YouTube returns a dozen
+// Strategy: seed one process (Sweet Caroline), then search for "caroline" -- YouTube returns a dozen
 // unrelated hits, so the row easily disappears behind a resolver whose 12 rows outrank a single local.
 // The partition must place Sweet Caroline in `ready` regardless of the resolver's ranking.
 
@@ -215,7 +215,7 @@ if (!svc.body || !Array.isArray(svc.body.results)) {
 	);
 	process.exit(1);
 }
-const localCaroline = [...(svc.body.ready ?? []), ...(svc.body.results ?? [])].find(
+const localCaroline = [...(svc.body.ready ?? []),...(svc.body.results ?? [])].find(
 	(m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline')
 );
 if (!localCaroline) {
@@ -229,15 +229,15 @@ if (!localCaroline) {
 	process.exit(2);
 }
 
-// Cook it (fake worker completes stems + align in ~2s at default FAKE_SLOW_MS=120).
-const mk1 = await makeKaraoke(localCaroline.id);
+// Process it (fake worker completes stems + align in ~2s at default FAKE_SLOW_MS=120).
+const mk1 = await processMedia(localCaroline.id);
 if (mk1.status !== 200 || (!mk1.body?.job && !mk1.body?.alreadyReady)) {
 	record(
 		'HIGH',
-		'S1a-cook-start',
+		'S1a-process-start',
 		false,
-		`make-karaoke for ${localCaroline.id} → ${mk1.status} ${JSON.stringify(mk1.body).slice(0, 200)}`,
-		'src/routes/api/make-karaoke/+server.ts:1'
+		`process for ${localCaroline.id} → ${mk1.status} ${JSON.stringify(mk1.body).slice(0, 200)}`,
+		'src/routes/api/process/+server.ts:1'
 	);
 }
 try {
@@ -248,16 +248,16 @@ try {
 		},
 		{ timeoutMs: 15_000, name: 'sweet-caroline ready' }
 	);
-	record('PASS', 'S1a-cook-ready', true);
+	record('PASS', 'S1a-process-ready', true);
 } catch (e) {
 	record(
 		'CRITICAL',
-		'S1a-cook-ready',
+		'S1a-process-ready',
 		false,
 		String(e),
 		'tests/e2e/fake-stems-worker.mjs (must be running with fetch/stems/align caps)'
 	);
-	// If the cook never completes, everything downstream is meaningless.
+	// If the process never completes, everything downstream is meaningless.
 	process.exit(2);
 }
 
@@ -268,28 +268,28 @@ record(
 	'CRITICAL',
 	'S1-catalog-precedence',
 	inReady && !inResults,
-	'a cooked local song must appear in `ready` (not `results`) even when the resolver returns many higher-ranked raw rows',
-	`ready=${after.body.ready.length}, cooking=${after.body.cooking.length}, results=${after.body.results.length}; sweet-caroline in ready=${inReady} in results=${inResults}. See src/lib/server/media/readiness.ts:51 partitionSearch (catalog upserted before resolver hits into a byId Map).`
+	'a processed local song must appear in `ready` (not `results`) even when the resolver returns many higher-ranked raw rows',
+	`ready=${after.body.ready.length}, processing=${after.body.processing.length}, results=${after.body.results.length}; sweet-caroline in ready=${inReady} in results=${inResults}. See src/lib/server/media/readiness.ts:51 partitionSearch (catalog upserted before resolver hits into a byId Map).`
 );
 
-// Dedupe by (source, sourceRef): search a second time and confirm the cooked song appears exactly once.
-const idCount = [...after.body.ready, ...after.body.cooking, ...after.body.results].filter(
+// Dedupe by (source, sourceRef): search a second time and confirm the processed song appears exactly once.
+const idCount = [...after.body.ready,...after.body.processing,...after.body.results].filter(
 	(m) => m.id === localCaroline.id
 ).length;
 record(
 	'HIGH',
 	'S1b-dedupe-by-id',
 	idCount === 1,
-	'one media id must appear at most once across ready/cooking/results',
+	'one media id must appear at most once across ready/processing/results',
 	`sweet-caroline appears ${idCount} times. See src/routes/api/search/+server.ts:81 (materialize -- upsert-or-reuse by id) + readiness.ts:60 (byId Map dedupe).`
 );
 
 // Cross-source dedupe is INTENTIONAL non-dedupe: a local file "Bohemian Rhapsody" and a YouTube "Queen
 // - Bohemian Rhapsody" are different recordings and should both appear. Verify they do -- and check
-// ALL three buckets since the local file might already be cooked from an earlier check, which lands
+// ALL three buckets since the local file might already be processed from an earlier check, which lands
 // it in `ready` while the YouTube upload stays in `results`.
 const bohRes = await search('bohemian rhapsody');
-const bohAll = [...(bohRes.body.ready ?? []), ...(bohRes.body.cooking ?? []), ...(bohRes.body.results ?? [])];
+const bohAll = [...(bohRes.body.ready ?? []),...(bohRes.body.processing ?? []),...(bohRes.body.results ?? [])];
 const bohLocal = bohAll.find((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
 const bohYT = bohAll.find((m) => m.source === 'youtube');
 record(
@@ -301,8 +301,8 @@ record(
 );
 
 // ═════════════════════════════════════════════════════════════════════════════
-// S2 -- live transition unacquired → cooking → ready over the WebSocket.
-// Also: the entry stays queueable throughout (rotation HOLDS a cooking slot).
+// S2 -- live transition unacquired → processing → ready over the WebSocket.
+// Also: the entry stays queueable throughout (rotation HOLDS a processing slot).
 // ═════════════════════════════════════════════════════════════════════════════
 
 /** @param {string} mediaId @param {number} [timeoutMs] */
@@ -330,9 +330,9 @@ async function subscribeMediaStatus(mediaId, timeoutMs = 20_000) {
 	return { events, done: settled, ws };
 }
 
-// Cook a fresh song so the sequence starts CLEANLY (Sweet Caroline is already ready from S1).
+// Process a fresh song so the sequence starts CLEANLY (Sweet Caroline is already ready from S1).
 const s = await search('believin');
-const believin = [...(s.body.ready ?? []), ...(s.body.results ?? [])].find(
+const believin = [...(s.body.ready ?? []),...(s.body.results ?? [])].find(
 	(m) => m.source === 'local' && m.sourceRef?.includes('believin')
 );
 if (!believin) {
@@ -344,21 +344,19 @@ if (!believin) {
 		'tests/e2e/seed-media.mjs'
 	);
 } else {
-	// It might already be cooked from a prior run (ENCORE_EPHEMERAL=1 resets state but keeps media
-	// files -- and a repeat run of this probe would already have cooked it once). Cancel + re-cook
+	// It might already be processed from a prior run (ENCORE_EPHEMERAL=1 resets state but keeps media
+	// files -- and a repeat run of this probe would already have processed it once). Cancel + re-process
 	// isn't wired via HTTP, so if it's already ready we just report S2 as a skip. Fresh run: no problem.
 	const preReadiness = await search('believin');
 	const preState = preReadiness.body.ready?.some((m) => m.id === believin.id)
-		? 'ready'
-		: preReadiness.body.cooking?.some((m) => m.id === believin.id)
-			? 'cooking'
-			: 'unacquired';
+		? 'ready': preReadiness.body.processing?.some((m) => m.id === believin.id)
+			? 'processing': 'unacquired';
 
 	if (preState === 'unacquired') {
 		const sub = await subscribeMediaStatus(believin.id);
-		const mk = await makeKaraoke(believin.id);
+		const mk = await processMedia(believin.id);
 		if (mk.status !== 200) {
-			record('HIGH', 'S2-cook-start', false, `make-karaoke → ${mk.status} ${JSON.stringify(mk.body).slice(0, 200)}`);
+			record('HIGH', 'S2-process-start', false, `process → ${mk.status} ${JSON.stringify(mk.body).slice(0, 200)}`);
 		} else {
 			await sub.done;
 			sub.ws.close();
@@ -369,7 +367,7 @@ if (!believin) {
 				'CRITICAL',
 				'S2a-ws-transition',
 				sawSeparating && sawReady,
-				'unacquired → cooking → ready must arrive on the WebSocket without reload',
+				'unacquired → processing → ready must arrive on the WebSocket without reload',
 				`events=${JSON.stringify(sub.events)}. See src/lib/server/jobs/worker-hub.ts + media-status.ts.`
 			);
 
@@ -389,13 +387,13 @@ if (!believin) {
 	}
 }
 
-// The row stays queueable while cooking (rotation HOLDS the slot). Directly assert this on the
-// search response: a cooking row must appear in `cooking`, be presented with `stemStatus: 'queued'`
+// The row stays queueable while processing (rotation HOLDS the slot). Directly assert this on the
+// search response: a processing row must appear in `processing`, be presented with `stemStatus: 'queued'`
 // (i.e. not `none` -- would look raw, offering only .sing) and NOT show up as `ready`.
-// Cook a fresh un-cooked local song. If none is available (all four seeds already cooked from a
+// Process a fresh un-processed local song. If none is available (all four seeds already processed from a
 // prior run against the same MEDIA_DIR), record that as a skip rather than silently omitting -- an
 // invisible test is exactly the failure mode HARNESS.md exists to prevent.
-const cookableCandidate = await (async () => {
+const processableCandidate = await (async () => {
 	for (const q of ['bohemian', 'dancing queen', 'take on me', 'brightside']) {
 		const r = await search(q);
 		const m = r.body.results?.find((x) => x.source === 'local' && x.stemStatus !== 'ready');
@@ -403,21 +401,21 @@ const cookableCandidate = await (async () => {
 	}
 	return null;
 })();
-if (cookableCandidate) {
-	const mk = await makeKaraoke(cookableCandidate.id);
+if (processableCandidate) {
+	const mk = await processMedia(processableCandidate.id);
 	if (mk.status === 200) {
-		let sawCooking = false;
-		let queueableWhileCooking = false;
+		let sawProcessing = false;
+		let queueableWhileProcessing = false;
 		for (let i = 0; i < 25; i++) {
-			const snap = await search((cookableCandidate.title ?? '').split(/\s+/)[0]);
-			const asCooking = snap.body.cooking?.find((m) => m.id === cookableCandidate.id);
-			const asReady = snap.body.ready?.find((m) => m.id === cookableCandidate.id);
-			if (asCooking) {
-				sawCooking = true;
-				// A cooking row's stemStatus MUST read 'queued' -- 'none' would send the client's
+			const snap = await search((processableCandidate.title ?? '').split(/\s+/)[0]);
+			const asProcessing = snap.body.processing?.find((m) => m.id === processableCandidate.id);
+			const asReady = snap.body.ready?.find((m) => m.id === processableCandidate.id);
+			if (asProcessing) {
+				sawProcessing = true;
+				// A processing row's stemStatus MUST read 'queued' -- 'none' would send the client's
 				// readinessOf() back to 'unacquired', which only offers .sing (not .add). Rotation's
-				// held-slot rule requires the row to remain queueable while cooking.
-				if (asCooking.stemStatus === 'queued') queueableWhileCooking = true;
+				// held-slot rule requires the row to remain queueable while processing.
+				if (asProcessing.stemStatus === 'queued') queueableWhileProcessing = true;
 				break;
 			}
 			if (asReady) break;
@@ -425,39 +423,39 @@ if (cookableCandidate) {
 		}
 		record(
 			'HIGH',
-			'S2c-cooking-visible',
-			sawCooking,
-			'a mid-flight song must appear in the `cooking` bucket',
-			'src/lib/server/media/readiness.ts:15 readinessOf + src/routes/api/search/+server.ts:83 (partitionSearch groups cooking into its own bucket)'
+			'S2c-processing-visible',
+			sawProcessing,
+			'a mid-flight song must appear in the `processing` bucket',
+			'src/lib/server/media/readiness.ts:15 readinessOf + src/routes/api/search/+server.ts:83 (partitionSearch groups processing into its own bucket)'
 		);
 		record(
 			'HIGH',
-			'S2d-cooking-queueable',
-			queueableWhileCooking,
-			"a cooking row's stemStatus must read `queued` so the client's readinessOf → 'cooking' and the row still shows .add (rotation holds its slot)",
-			'src/lib/readiness.ts:12 readinessOf + src/lib/components/SongRow.svelte:174-194 ({#if onmake} .sing {:else} .add {/if}) + src/routes/+page.svelte:864-877 (cooking row uses onmake={canCook(r) ? ... : undefined}; a cooking readiness returns false for canCook so onmake is undefined and .add renders)'
+			'S2d-processing-queueable',
+			queueableWhileProcessing,
+			"a processing row's stemStatus must read `queued` so the client's readinessOf → 'processing' and the row still shows.add (rotation holds its slot)",
+			'src/lib/readiness.ts:12 readinessOf + src/lib/components/SongRow.svelte:174-194 ({#if onmake}.sing {:else}.add {/if}) + src/routes/+page.svelte:864-877 (processing row uses onmake={canProcess(r) ?...: undefined}; a processing readiness returns false for canProcess so onmake is undefined and.add renders)'
 		);
 		// Let it finish so subsequent probes see a stable ready state.
 		try {
-			await waitFor(async () => (await library()).body?.library?.some((m) => m.id === cookableCandidate.id), {
+			await waitFor(async () => (await library()).body?.library?.some((m) => m.id === processableCandidate.id), {
 				timeoutMs: 15_000,
-				name: `${cookableCandidate.title} ready`
+				name: `${processableCandidate.title} ready`
 			});
 		} catch {}
 	} else {
 		record(
 			'MEDIUM',
-			'S2c-cooking-visible',
+			'S2c-processing-visible',
 			false,
-			`could not start cook for ${cookableCandidate.id}: ${mk.status} ${JSON.stringify(mk.body).slice(0, 120)}`
+			`could not start process for ${processableCandidate.id}: ${mk.status} ${JSON.stringify(mk.body).slice(0, 120)}`
 		);
 	}
 } else {
 	record(
 		'LOW',
-		'S2c-cooking-visible',
+		'S2c-processing-visible',
 		true,
-		'skipped -- every local seed was already cooked from a prior run against this MEDIA_DIR; re-run with a fresh $SCRATCH to exercise this path'
+		'skipped -- every local seed was already processed from a prior run against this MEDIA_DIR; re-run with a fresh $SCRATCH to exercise this path'
 	);
 }
 
@@ -484,15 +482,15 @@ record(
 	`search-ready(caroline shared)=${JSON.stringify(sharedIds)} vs library-ready(shared)=${JSON.stringify(libOrderOnShared)}. See src/lib/server/media/readiness.ts:51 partitionSearch (ready group is Map insertion order, not sorted) vs src/lib/server/media/repository.ts:149 listReady (orderBy desc(media.id) newest-first ULID).`
 );
 
-// The label: search returns three arrays named `ready`, `cooking`, `results`. The client renders
+// The label: search returns three arrays named `ready`, `processing`, `results`. The client renders
 // group heads "Ready to sing · no wait" and "Needs karaoke · has vocals" (routes/+page.svelte:762,
 // 828). Assert the API shape carries the three keys and no others that we depend on being absent.
 const shape = Object.keys(rq.body).sort();
 record(
 	'HIGH',
 	'S3b-search-shape-stable',
-	['cooking', 'ready', 'results'].every((k) => shape.includes(k)),
-	'the search response must expose ready/cooking/results at minimum',
+	['processing', 'ready', 'results'].every((k) => shape.includes(k)),
+	'the search response must expose ready/processing/results at minimum',
 	`keys=${JSON.stringify(shape)}. See src/routes/api/search/+server.ts:94.`
 );
 
@@ -504,7 +502,7 @@ record(
 const empty = await search('');
 const emptyShapeOk =
 	Array.isArray(empty.body.ready) &&
-	Array.isArray(empty.body.cooking) &&
+	Array.isArray(empty.body.processing) &&
 	Array.isArray(empty.body.results) &&
 	Array.isArray(empty.body.recent) &&
 	Array.isArray(empty.body.popular);
@@ -512,7 +510,7 @@ record(
 	'HIGH',
 	'S4a-empty-shape',
 	emptyShapeOk,
-	'empty ?q= must still return { ready, cooking, results, recent, popular } for a single render shape',
+	'empty ?q= must still return { ready, processing, results, recent, popular } for a single render shape',
 	`shape=${JSON.stringify(shape)}. Body keys=${JSON.stringify(Object.keys(empty.body))}.`
 );
 
@@ -527,12 +525,12 @@ record(
 	`oneSpace body=${JSON.stringify(oneSpace.body).slice(0, 120)}. See src/routes/api/search/+server.ts:66 (q.trim()).`
 );
 
-// A garbage query with no matches: server responds { ready:[], cooking:[], results:[] } and the phone
+// A garbage query with no matches: server responds { ready:[], processing:[], results:[] } and the phone
 // falls through to the "No results" paragraph in routes/+page.svelte:875. Verify at the API level.
 // (The MISLEADING copy of that empty paragraph is S9 -- it needs the browser.)
 const garbage = await search('zzzzzzznotasongzzzzzz');
 const garbageAllEmpty =
-	garbage.body.ready?.length === 0 && garbage.body.cooking?.length === 0 && garbage.body.results?.length === 0;
+	garbage.body.ready?.length === 0 && garbage.body.processing?.length === 0 && garbage.body.results?.length === 0;
 record(
 	'HIGH',
 	'S4c-no-results-empty',
@@ -600,15 +598,9 @@ record(
 const baseline = await search('caroline');
 const parenised = await search('(caroline)');
 const starred = await search('caroline*');
-const baselineHasLocal = baseline.body.results
-	.concat(baseline.body.ready)
-	.some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
-const parenisedHasLocal = parenised.body.results
-	.concat(parenised.body.ready)
-	.some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
-const starredHasLocal = starred.body.results
-	.concat(starred.body.ready)
-	.some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
+const baselineHasLocal = baseline.body.results.concat(baseline.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
+const parenisedHasLocal = parenised.body.results.concat(parenised.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
+const starredHasLocal = starred.body.results.concat(starred.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
 record(
 	'HIGH',
 	'S5b-fts-meta-silent-drop',
@@ -643,9 +635,7 @@ const titleVariants = ['Bohemian', 'bohemian', 'BOHEMIAN', 'BoHeMiAn'];
 const titleHits = [];
 for (const q of titleVariants) {
 	const r = await search(q);
-	const has = r.body.results
-		.concat(r.body.ready)
-		.some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
+	const has = r.body.results.concat(r.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
 	titleHits.push({ q, has });
 }
 record(
@@ -661,9 +651,7 @@ const artistVariants = ['queen', 'Queen', 'QUEEN', 'qUeEn'];
 const artistHits = [];
 for (const q of artistVariants) {
 	const r = await search(q);
-	const has = r.body.results
-		.concat(r.body.ready)
-		.some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
+	const has = r.body.results.concat(r.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
 	artistHits.push({ q, has });
 }
 record(
@@ -678,13 +666,13 @@ record(
 // S7 -- browse-by-artist / -genre agrees with disk.
 // ═════════════════════════════════════════════════════════════════════════════
 
-// After the S1 cook, Sweet Caroline is on disk with artist "Neil Diamond". The library facets
+// After the S1 process, Sweet Caroline is on disk with artist "Neil Diamond". The library facets
 // should include Neil Diamond (repository.artistFacets excludes null-artist rows). GET
 // /api/library?artist=Neil Diamond must return that song. Same behaviour for genre if tagged.
 //
 // REAL DEFECT observed here: local-library files carry an `artist` field but the browse facets read
 // `artistCanonical`, and canonical is only set by the MusicBrainz annotation step that runs during a
-// YouTube fetch. A local file cooked from disk has artist='Neil Diamond' AND artistCredit='Neil Diamond'
+// YouTube fetch. A local file processed from disk has artist='Neil Diamond' AND artistCredit='Neil Diamond'
 // AND stemStatus='ready' -- everything a user would expect -- but artistFacets() filters out rows with
 // null artistCanonical, so a library made ONLY of local files (the common case on an offline party)
 // has NO browsable artists.
@@ -695,7 +683,7 @@ record(
 	'HIGH',
 	'S7a-artist-facet-present',
 	!!artistFacet && artistFacet.count >= 1,
-	`browse-by-artist facet must include a cooked song's artist. Currently: local-library files (${localReady.length} cooked) carry \`artist\` but NOT \`artistCanonical\`, and artistFacets() filters on artistCanonical -- so a library of only-local files exposes ZERO browsable artists`,
+	`browse-by-artist facet must include a processed song's artist. Currently: local-library files (${localReady.length} processed) carry \`artist\` but NOT \`artistCanonical\`, and artistFacets() filters on artistCanonical -- so a library of only-local files exposes ZERO browsable artists`,
 	`library has ${libFull.body.library?.length ?? 0} ready song(s), ${localReady.length} of them local; facets.artists=${JSON.stringify(libFull.body.facets?.artists)}. See src/lib/server/media/repository.ts:217 artistFacets (filters isNotNull(artistCanonical)) + src/lib/server/media/local.ts (local files never set artistCanonical) + src/lib/server/jobs/annotation.ts (MusicBrainz runs during the fetch job, which does not run for a local file).`
 );
 
@@ -706,7 +694,7 @@ if (artistFacet) {
 		'HIGH',
 		'S7b-browse-by-artist',
 		returnedIds.includes(localCaroline.id),
-		'browse-by-artist must return the cooked song whose artist matches the facet',
+		'browse-by-artist must return the processed song whose artist matches the facet',
 		`browse artist='Neil Diamond' returned ${JSON.stringify(returnedIds)}. Expected includes ${localCaroline.id}. See src/lib/server/media/repository.ts:241 byArtist.`
 	);
 
@@ -774,21 +762,21 @@ if (MEDIA_DIR) {
 			'LOW',
 			'S7d-orphan-stem-listed',
 			true,
-			`skipped -- no derived/stems dir under MEDIA_DIR (${MEDIA_DIR}); the cook may not have produced any stems yet.`
+			`skipped -- no derived/stems dir under MEDIA_DIR (${MEDIA_DIR}); the process may not have produced any stems yet.`
 		);
 	}
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// S8 -- failed cook stays visible with a real reason (LIVE).
+// S8 -- failed process stays visible with a real reason (LIVE).
 // ═════════════════════════════════════════════════════════════════════════════
 
-// Failed cooks arrive as a LIVE `media:status: failed` broadcast -- see readiness.ts:34 which is the
+// Failed processes arrive as a LIVE `media:status: failed` broadcast -- see readiness.ts:34 which is the
 // only place `failed` can appear in the client's Readiness union. The catalog itself does NOT record
 // failure (settleStemsGate resets stemStatus to `none`), so a phone that RELOADS after a failure
 // sees the row as `unacquired` again -- documented, but a real UX consequence worth pinning.
 //
-// To fail a cook, we would need to restart the fake worker with FAKE_FAIL=stems. That is out of
+// To fail a process, we would need to restart the fake worker with FAKE_FAIL=stems. That is out of
 // scope for a probe that must not touch other files; but we CAN verify the two client-facing
 // guarantees from the transcript:
 //   (i)  the server broadcasts `media:status: failed` when a job errors out permanently, and
@@ -802,25 +790,25 @@ if (MEDIA_DIR) {
 // are all in the unhappy paths -- restart the worker with FAKE_FAIL=stems to see them."
 //
 // However, we CAN empirically test the after-reload defect via a fresh WebSocket that never saw the
-// failure: seed a fresh cook, kill... wait, we can't kill the worker from here without touching files.
+// failure: seed a fresh process, kill... wait, we can't kill the worker from here without touching files.
 // Instead: rely on the client's cold-load behaviour that /api/library only enumerates readinessOf ==
-// 'cooking' entries -- which by construction excludes 'failed'. So a phone reloading loses the failed
+// 'processing' entries -- which by construction excludes 'failed'. So a phone reloading loses the failed
 // row entirely.
 
-const cookingResult = await library();
-const failedInCooking = cookingResult.body.cooking?.some((c) => c.status === 'failed');
+const processingResult = await library();
+const failedInProcessing = processingResult.body.processing?.some((c) => c.status === 'failed');
 record(
 	'HIGH',
 	'S8a-failed-cold-load-invisible',
 	true, // this test verifies the DEFECT is documented and REPORTED, not passing
-	'a failed cook is invisible after phone reload: /api/library.cooking excludes anything whose readinessOf is not "cooking", and readiness.ts:14 documents that "failed" never appears in the catalog',
-	`cooking.failed=${failedInCooking} (always false by construction). See src/lib/server/media/readiness.ts:15 (catalog cannot express failed) + src/routes/api/library/+server.ts:33 (cooking = readinessOf === 'cooking'). Live phones see it via WebSocket only (mediaStatus map, routes/+page.svelte:180-210); cold reload loses it.`
+	'a failed process is invisible after phone reload: /api/library.processing excludes anything whose readinessOf is not "processing", and readiness.ts:14 documents that "failed" never appears in the catalog',
+	`processing.failed=${failedInProcessing} (always false by construction). See src/lib/server/media/readiness.ts:15 (catalog cannot express failed) + src/routes/api/library/+server.ts:33 (processing = readinessOf === 'processing'). Live phones see it via WebSocket only (mediaStatus map, routes/+page.svelte:180-210); cold reload loses it.`
 );
 
 // The failed BROADCAST guarantee is testable by wiring the fake worker to fail. Spawn a fail-worker
 // alongside whatever worker(s) are already connected. The pre-existing worker may WIN the race for
 // the job (that is exactly how the fake worker in HARNESS.md is meant to be used) -- in that case
-// the cook completes normally, and we say so as an ENV limit rather than a defect, per HARNESS.md's
+// the process completes normally, and we say so as an ENV limit rather than a defect, per HARNESS.md's
 // "never conflate 2 with 0" rule.
 try {
 	const failWorker = spawn(process.execPath.includes('bun') ? process.execPath : 'bun', ['../fake-stems-worker.mjs'], {
@@ -841,7 +829,7 @@ try {
 	// Give it a moment to join.
 	await sleep(1200);
 
-	// Pick a fresh un-cooked local song. If all four seeds are already cooked, we can't run this
+	// Pick a fresh un-processed local song. If all four seeds are already processed, we can't run this
 	// check -- flag as skip rather than fail.
 	const failCandidate = await (async () => {
 		for (const q of ['livin', 'believin', 'bohemian', 'sweet']) {
@@ -854,7 +842,7 @@ try {
 
 	if (failCandidate) {
 		const sub = await subscribeMediaStatus(failCandidate.id, 20_000);
-		const mk = await makeKaraoke(failCandidate.id);
+		const mk = await processMedia(failCandidate.id);
 		if (mk.status === 200) {
 			await sub.done;
 			sub.ws.close();
@@ -868,24 +856,24 @@ try {
 					'a permanently-failed job broadcasts `media:status: failed` on the WebSocket',
 					`events=${JSON.stringify(sub.events)}`
 				);
-				// Right after failure, /api/library.cooking must NOT include this song (settleStemsGate
+				// Right after failure, /api/library.processing must NOT include this song (settleStemsGate
 				// resets stemStatus, readinessOf falls back to 'unacquired').
 				await sleep(300);
 				const post = await library();
-				const stillInCooking = post.body.cooking?.some((c) => c.media?.id === failCandidate.id);
+				const stillInProcessing = post.body.processing?.some((c) => c.media?.id === failCandidate.id);
 				record(
 					'MEDIUM',
 					'S8c-failed-cleared-from-catalog',
-					!stillInCooking,
-					'catalog cooking group must NOT contain a failed song (settleStemsGate resets stemStatus back to "none")',
-					`library.cooking contains it=${stillInCooking}. See src/lib/server/jobs/worker-hub.ts settleStemsGate.`
+					!stillInProcessing,
+					'catalog processing group must NOT contain a failed song (settleStemsGate resets stemStatus back to "none")',
+					`library.processing contains it=${stillInProcessing}. See src/lib/server/jobs/worker-hub.ts settleStemsGate.`
 				);
 			} else if (seenReady) {
 				record(
 					'LOW',
 					'S8b-failed-broadcast',
 					true,
-					'skipped -- another connected worker won the race and completed the cook before the fail-worker could claim it. Kill the good worker and re-run to exercise this path.'
+					'skipped -- another connected worker won the race and completed the process before the fail-worker could claim it. Kill the good worker and re-run to exercise this path.'
 				);
 			} else {
 				record(
@@ -901,7 +889,7 @@ try {
 				'MEDIUM',
 				'S8b-failed-broadcast',
 				false,
-				`couldn't trigger the fail cook: /api/make-karaoke → ${mk.status} ${JSON.stringify(mk.body).slice(0, 200)}`
+				`couldn't trigger the fail process: /api/process → ${mk.status} ${JSON.stringify(mk.body).slice(0, 200)}`
 			);
 		}
 	} else {
@@ -909,7 +897,7 @@ try {
 			'LOW',
 			'S8b-failed-broadcast',
 			true,
-			'skipped -- every local seed was already cooked; nothing left to fail-cook. Re-run with a fresh $SCRATCH to exercise this path.'
+			'skipped -- every local seed was already processed; nothing left to fail-process. Re-run with a fresh $SCRATCH to exercise this path.'
 		);
 	}
 } catch (err) {
@@ -957,7 +945,7 @@ if (!chromium) {
 		// the search box moved behind the browse push, so joining lands on the queue.
 		await openBrowseFromHome(phone);
 
-		// Search for something we know is cooked (Sweet Caroline is ready from S1).
+		// Search for something we know is processed (Sweet Caroline is ready from S1).
 		await phone.fill(SEL.search, 'caroline');
 		await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length >= 1`, { timeout: 10_000 });
 
@@ -968,7 +956,7 @@ if (!chromium) {
 			[...document.querySelectorAll(${JSON.stringify(SEL.songRow)})].map((row) => ({
 				add: row.querySelectorAll(${JSON.stringify(SEL.addTurn)}).length,
 				sing: row.querySelectorAll(${JSON.stringify(SEL.sing)}).length,
-				readiness: row.className.match(/ready|cooking/)?.[0] ?? 'raw',
+				readiness: row.className.match(/ready|processing/)?.[0] ?? 'raw',
 				title: row.querySelector(${JSON.stringify(SEL.rowTitle)})?.textContent?.trim()?.slice(0, 40)
 			}))
 		`);
@@ -977,7 +965,7 @@ if (!chromium) {
 			'CRITICAL',
 			'S9a-one-action-per-row',
 			eachExactlyOne,
-			'every SongRow must expose EXACTLY one queueing action (.add for ready, .sing for raw/cooking/failed)',
+			'every SongRow must expose EXACTLY one queueing action (.add for ready,.sing for raw/processing/failed)',
 			`perRow=${JSON.stringify(perRow).slice(0, 500)}. See src/lib/components/SongRow.svelte:174-194 ({#if onmake} .sing {:else} .add {/if}).`
 		);
 
@@ -990,7 +978,7 @@ if (!chromium) {
 			'HIGH',
 			'S9b-action-matches-readiness',
 			readyRowsOk && rawRowsOk,
-			'a ready row offers .add; a raw/cooking row offers .sing (both queue; .sing also cooks)',
+			'a ready row offers.add; a raw/processing row offers.sing (both queue;.sing also processes)',
 			`perRow=${JSON.stringify(perRow).slice(0, 500)}`
 		);
 
@@ -998,9 +986,7 @@ if (!chromium) {
 		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'zzzzzzznotasongzzzzzz');
 		await sleep(600); // debounce is 150ms; give the search a fair moment
-		const noResultsText = await phone
-			.evaluate(`document.querySelector(${JSON.stringify(SEL.empty)})?.textContent?.trim() ?? ''`)
-			.catch(() => '');
+		const noResultsText = await phone.evaluate(`document.querySelector(${JSON.stringify(SEL.empty)})?.textContent?.trim() ?? ''`).catch(() => '');
 		const mentionsYtDlpUnavailable = /yt-dlp/i.test(noResultsText);
 		record(
 			'MEDIUM',
@@ -1012,7 +998,7 @@ if (!chromium) {
 
 		// Empty-state for a query the ready library cannot answer: this is where readyEmptyState fires
 		// the "None of your N karaoke songs match X" copy + "Show all" button. It used to need a click on
-		// the Ready readiness chip; direction B deleted the chips, and the state is now reached by the condition
+		// the Ready readiness chip; an earlier change deleted the chips, and the state is now reached by the condition
 		// it was always really about — a non-matching query against a non-empty library.
 		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'xyznotasongxyz');

@@ -31,9 +31,8 @@
  * on the record, never to nudge a number.
  */
 
-import { readFileSync } from 'node:fs';
-import { existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 // The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
 // and the runner agree on the root. Was `join(import.meta.dirname, …)`, which encoded this file's distance
 // from `.` and broke the moment the e2e tree moved under `tests/`.

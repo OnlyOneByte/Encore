@@ -89,9 +89,7 @@ test('the DB partial unique index enforces dedup even if the app check is bypass
 	// Insert a second LIVE row for the same key directly (simulating a dispatch race that slips
 	// past findLive) — the partial unique index must reject it.
 	expect(() =>
-		db
-			.insert(jobs)
-			.values({
+		db.insert(jobs).values({
 				id: 'dup',
 				mediaId: 'media-1',
 				jobType: 'stems',
@@ -170,11 +168,11 @@ test('unknown job id throws', () => {
 	expect(repo.byId('nope')).toBeNull();
 });
 
-// — findOutstandingForMedia: the lookup behind /api/library's "what is cooking right now?" —
-// It walks the cook chain fetch → stems → align in order and returns the first step that is NOT
+// — findOutstandingForMedia: the lookup behind /api/library's "what is processing right now?" —
+// It walks the process chain fetch → stems → align in order and returns the first step that is NOT
 // `ready` (in flight or waiting), skips finished/never-enqueued steps, and excludes stems-upgrade
 // (background work on an already-singable song). A silent regression here snaps the phone's
-// progress strip back to queued/0% on reload while a song is mid-cook.
+// progress strip back to queued/0% on reload while a song is mid-process.
 
 /** Drive a fresh job to `running` (queued → assigned → running). Returns its id. */
 function runningJob(repo: JobRepository, mediaId: string, jobType: JobType, at = T0): string {
@@ -241,12 +239,12 @@ test('findOutstandingForMedia: a queued (waiting) step counts as outstanding', (
 	expect(out?.status).toBe('queued');
 });
 
-test('findOutstandingForMedia: a live stems-upgrade on an all-ready song reads as null (not cooking)', () => {
+test('findOutstandingForMedia: a live stems-upgrade on an all-ready song reads as null (not processing)', () => {
 	const { repo } = makeRepo();
 	readyJob(repo, 'media-1', 'fetch');
 	readyJob(repo, 'media-1', 'stems', T0 + 100);
 	readyJob(repo, 'media-1', 'align', T0 + 200);
-	// background upgrade running on a finished, singable song — must NOT report the song as cooking
+	// background upgrade running on a finished, singable song — must NOT report the song as processing
 	runningJob(repo, 'media-1', 'stems-upgrade', T0 + 300);
 	expect(repo.findOutstandingForMedia('media-1')).toBeNull();
 });
@@ -290,15 +288,15 @@ test('reprioritize refuses a terminal job (no scheduling future)', () => {
 
 	const after = repo.reprioritize(job.id, 0, T0 + 4);
 	expect(after.status).toBe('ready');
-	expect(after.priority).toBe(5); // untouched — a finished cook has no queue position to fix
+	expect(after.priority).toBe(5); // untouched — a finished process has no queue position to fix
 });
 
-test('reprioritize works on an ASSIGNED job (event-typed-machine regression): the reconnect add lands during the ack window', () => {
-	// The starvation feature exists for a cook already in flight when the singer's queue `add`
+test('reprioritize works on an ASSIGNED job (regression/): the reconnect add lands during the ack window', () => {
+	// The starvation feature exists for a process already in flight when the singer's queue `add`
 	// finally lands. "In flight" includes ASSIGNED (offered to a worker, ack still pending). Before
 	// the event-typed machine this was a raw db.update that never consulted the table; after it,
 	// reprioritize() routes through transition('REPRIORITIZE', …), so `assigned` MUST carry a
-	// REPRIORITIZE self-loop or the whole onEntryAdded → reprioritizeCookForMedia path throws and the
+	// REPRIORITIZE self-loop or the whole onEntryAdded → reprioritizeProcessForMedia path throws and the
 	// queue:patch broadcast is dropped (clients silently diverge). This is that guard.
 	const { repo } = makeRepo();
 	const job = repo.enqueue('m-assigned', 'stems', Number.MAX_SAFE_INTEGER, T0); // NO_QUEUE_PRIORITY

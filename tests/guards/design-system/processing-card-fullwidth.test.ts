@@ -1,7 +1,7 @@
 // Guard: the ProcessingCard progress block (bar + stage line) must occupy the
 // card's FULL inner width, independent of whether the action cluster
 // (remove / reorder) renders. Before the fix the bar and chips lived INSIDE .meta, which shared a
-// single flex row with .actions, so a viewer's OWN cooking song (which shows up to three 44px
+// single flex row with .actions, so a viewer's OWN processing song (which shows up to three 44px
 // buttons = ~148px) got a 134px bar while a stranger's action-less card kept a 294px bar —
 // different geometry for the same component in the same list. (The per-stage chip strip this guard
 // also once covered has since been removed; the bar's width-invariance is what this guard pins.)
