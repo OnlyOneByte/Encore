@@ -11,6 +11,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
+	import * as Item from '$lib/components/ui/item';
+	import { Button } from '$lib/components/ui/button';
 
 	interface LibrarySong {
 		id: string;
@@ -97,34 +99,58 @@
 			<p class="notice" role="status">{notice}</p>
 		{/if}
 
+		<!--
+			The confirm step used to swap the focused Delete button out of the DOM for a `{:else}` branch,
+			so keyboard focus fell to <body> and a screen-reader user heard nothing — for the product's
+			only irreversible action. Now the row's confirm prompt is a live region (role="alert", which
+			announces on insertion) and every repeated control carries the song title in its accessible
+			name, so "Delete" is no longer announced N times with nothing to tell the rows apart.
+		-->
 		{#if loading}
-			<p class="muted">Loading library…</p>
+			<p class="muted" role="status">Loading library…</p>
 		{:else if failed}
-			<p class="muted">Could not load the library. <button class="link" onclick={load}>Retry</button></p>
+			<p class="muted" role="alert">
+				Could not load the library.
+				<Button variant="link" onclick={load}>Retry</Button>
+			</p>
 		{:else if songs.length === 0}
 			<p class="muted">No processed songs in the library.</p>
 		{:else}
-			<ul class="songlist">
+			<Item.Group>
 				{#each songs as song (song.id)}
-					<li class="song-row">
-						<span class="meta">
-							<span class="title">{song.title}</span>
-							{#if song.artist}<span class="artist">{song.artist}</span>{/if}
-						</span>
-						{#if confirmingId === song.id}
-							<span class="confirm">
-								<span class="confirm-q">Delete for good?</span>
-								<button class="danger" disabled={deletingId === song.id} onclick={() => confirmDelete(song)}
-									>{deletingId === song.id ? 'Deleting…' : 'Yes, delete'}</button
+					<Item.Root variant="outline">
+						<Item.Content>
+							<Item.Title>{song.title}</Item.Title>
+							{#if song.artist}<Item.Description>{song.artist}</Item.Description>{/if}
+						</Item.Content>
+						<Item.Actions>
+							{#if confirmingId === song.id}
+								<span class="confirm-q" role="alert">Delete for good?</span>
+								<Button
+									data-act="confirm-delete"
+									variant="destructive"
+									disabled={deletingId === song.id}
+									aria-label={`Confirm delete ${song.title}`}
+									onclick={() => confirmDelete(song)}>{deletingId === song.id ? 'Deleting…' : 'Yes, delete'}</Button
 								>
-								<button class="ghost" disabled={deletingId === song.id} onclick={cancelDelete}>Cancel</button>
-							</span>
-						{:else}
-							<button class="delete" onclick={() => askDelete(song.id)}>Delete</button>
-						{/if}
-					</li>
+								<Button
+									variant="ghost"
+									disabled={deletingId === song.id}
+									aria-label={`Cancel deleting ${song.title}`}
+									onclick={cancelDelete}>Cancel</Button
+								>
+							{:else}
+								<Button
+									data-act="arm-delete"
+									variant="outline"
+									aria-label={`Delete ${song.title}`}
+									onclick={() => askDelete(song.id)}>Delete</Button
+								>
+							{/if}
+						</Item.Actions>
+					</Item.Root>
 				{/each}
-			</ul>
+			</Item.Group>
 		{/if}
 	</main>
 </div>
@@ -137,6 +163,8 @@
 		   sticky header's background then covers the whole column width as content scrolls under it. */
 		max-width: 44rem;
 		margin: 0 auto;
+		/* Header and content share this measure via the PageHeader --page-measure cap. */
+		--page-measure: 44rem;
 		/* .app-shell is a centred flex column, so a cap alone takes width off the right only; width:100%
 		   keeps the stretch so margin:auto re-centres the capped block. Same reason as /stats. */
 		width: 100%;
@@ -144,96 +172,44 @@
 	.admin {
 		/* Top padding trimmed from 2rem: PageHeader now supplies the space above the lede with its own
 		   padding + rule, so the old value left the content floating away from its heading. */
-		padding: 1.25rem 1.25rem 4rem;
+		padding: var(--space-4xl) var(--space-4xl) 4rem;
 	}
 	/* The h1 rule that lived here is gone with the hand-rolled heading — PageHeader owns the h1 now, so
 	   a local `h1 {}` would be an unused selector (a svelte warning, and typecheck must be 0/0). */
 	.lede {
-		color: var(--muted, #8a8a8a);
-		margin: 0 0 1.5rem;
+		color: var(--ink-dim);
+		margin: 0 0 var(--space-2xl);
 	}
 	.muted {
-		color: var(--muted, #8a8a8a);
+		/* --ink-dim (7.16:1 on --bg), NOT var(--muted). `--muted` is the shadcn SURFACE alias and resolves
+		   to var(--card2) #212133, which measured 1.24:1 as ink — this page's four dimmed-copy sites were
+		   effectively invisible, including the "cannot be undone" warning and the load-failure message.
+		   The `var(--muted, #8a8a8a)` form hid it: the fallback never fired because --muted IS defined. */
+		color: var(--ink-dim);
+		display: flex;
+		align-items: center;
+		gap: var(--space-sm);
 	}
 	.notice {
 		background: color-mix(in srgb, var(--accent2) 12%, transparent);
 		border: 1px solid color-mix(in srgb, var(--accent2) 40%, transparent);
-		border-radius: 0.5rem;
-		padding: 0.6rem 0.9rem;
-		margin: 0 0 1rem;
+		border-radius: var(--radius-sm);
+		padding: var(--space-md) var(--space-lg);
+		margin: 0 0 var(--space-2xl);
 	}
-	.songlist {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	.song-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		padding: 0.75rem 1rem;
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 0.6rem;
-	}
-	.meta {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-	}
-	.title {
-		font-weight: 600;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.artist {
-		color: var(--muted, #8a8a8a);
-		font-size: 0.85rem;
-	}
-	button {
-		font: inherit;
-		cursor: pointer;
-		border-radius: 0.5rem;
-		border: 1px solid transparent;
-		padding: 0.45rem 0.8rem;
-	}
-	.delete {
-		background: transparent;
-		border-color: rgba(255, 92, 92, 0.5);
-		color: #ff7676;
-	}
-	.confirm {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
+	/*
+	 * the primitive-adoption pass: `.songlist`, `.song-row`, `.meta`, `.title`, `.artist`, the bare `button` rule,
+	 * `.delete`, `.confirm`, `.danger`, `.danger:disabled`, `.ghost` and `.link` are all GONE — the row
+	 * is Item.Group / Item.Root / Item.Content / Item.Title / Item.Description / Item.Actions and every
+	 * control is a Button variant (outline / destructive / ghost / link). That deleted 13 rules and, with
+	 * them, all seven hardcoded colours this file used to carry (rgba(255,255,255,0.1),
+	 * rgba(255,92,92,0.5), #ff7676, #ff5c5c, #180000, rgba(255,255,255,0.2), #6db3ff) — none of which
+	 * were theme-aware — plus the bare `button { padding: 0.45rem 0.8rem }` with NO min-height that made
+	 * every control on this page 35.4px, and the `.link` Retry 19px tall, under the 44px --tap floor.
+	 * Button's own sizes clear that floor.
+	 */
 	.confirm-q {
-		font-size: 0.85rem;
-		color: var(--muted, #8a8a8a);
-	}
-	.danger {
-		background: #ff5c5c;
-		color: #180000;
-		font-weight: 600;
-	}
-	.danger:disabled {
-		opacity: 0.6;
-		cursor: default;
-	}
-	.ghost {
-		background: transparent;
-		border-color: rgba(255, 255, 255, 0.2);
-		color: inherit;
-	}
-	.link {
-		background: none;
-		border: none;
-		color: #6db3ff;
-		text-decoration: underline;
-		padding: 0;
+		font-size: var(--ph-text-sm);
+		color: var(--ink-dim);
 	}
 </style>

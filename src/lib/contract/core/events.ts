@@ -288,7 +288,22 @@ export type WorkerCommand =
 	| { type: 'ping' };
 
 export interface JobArtifacts {
-	stems?: { instrumental?: string; vocals?: string };
+	/**
+	 * MediaStore keys for the files separation published.
+	 *
+	 * `guideMix` is both stems in ONE 4-channel FLAC — channels 0/1 the instrumental, 2/3 the vocals.
+	 * It is a MEMBER of `stems` (unlike `songProfile`/`guideOffsetMs` beside it) because it is a file,
+	 * and it is a THIRD entry rather than a replacement for the two: the single-stem files still back
+	 * the two-element playback path, and `vocals` still feeds pitch and range analysis.
+	 *
+	 * Why it exists at all: two stems mean two media elements, which is two decoders and two clocks, and
+	 * two clocks cannot be sample-locked from script — `guide-sync.ts` can only compare each element's
+	 * reported `currentTime`, which excludes output latency, so its governor converges on a signal that
+	 * does not describe what the ear hears. One file has one playhead, so drift becomes impossible
+	 * rather than corrected. Absent whenever there was no publishable vocals stem, or the extra encode
+	 * failed — both leave the room on the two-element path, which is why it is optional.
+	 */
+	stems?: { instrumental?: string; vocals?: string; guideMix?: string };
 	/**
 	 * What the separation LEARNED about the music — detected key and sung range. A SIBLING of `stems`,
 	 * not a member of it, because `stems` holds MediaStore keys for files and this is an analysis result

@@ -117,6 +117,23 @@ export interface Media {
 	 */
 	vocalsRef?: string;
 	/**
+	 * The GUIDE MIX: both stems in ONE 4-channel file — channels 0/1 the instrumental, 2/3 the vocals.
+	 * When present the TV plays THIS instead of two separate elements, and the guiding track cannot drift.
+	 *
+	 * WHY A SECOND REF RATHER THAN A REPLACEMENT. Two stems mean two media elements, which is two decoders
+	 * and two clocks, and two clocks cannot be sample-locked from script: `guide-sync.ts` compares each
+	 * element's reported `currentTime`, which is the spec's official playback position and excludes each
+	 * element's output latency — so its governor converges to "aligned" on a signal that does not describe
+	 * what the ear hears, then holds. One file has ONE playhead, so drift stops being a governed quantity.
+	 * The single-stem files stay: `vocalsRef` still feeds pitch and range analysis, `instrumentalRef` still
+	 * backs the no-mix path, and a browser that cannot deliver four channels still gets its instrumental.
+	 *
+	 * ABSENT IS TODAY'S BEHAVIOUR. Every song processed before this existed has no mix and plays through
+	 * the two-element path exactly as before; `guidePath` maps absent to that path with no branch at the
+	 * call site. Absent also covers a best-effort encode that failed and a song with no vocals stem at all.
+	 */
+	guideMixRef?: string;
+	/**
 	 * Signed millisecond offset of the guiding track against the instrumental, MEASURED at process time —
 	 * the guide-alignment half of the guide feature made observable instead of assumed.
 	 *

@@ -361,7 +361,8 @@ test('no component hard-codes a spacing value the scale already owns', () => {
 	// `14px` matching inside `114px`.
 	const steps = scale(/^space-/, (v) => (/^\d+px$/.test(v) ? v : null));
 	expect(steps.size).toBeGreaterThanOrEqual(8);
-	const PROPS = /^(gap|row-gap|column-gap|margin|margin-(top|right|bottom|left|inline|block)|padding|padding-(top|right|bottom|left|inline|block))$/;
+	const PROPS =
+		/^(gap|row-gap|column-gap|margin|margin-(top|right|bottom|left|inline|block)|padding|padding-(top|right|bottom|left|inline|block))$/;
 	const offences: string[] = [];
 	let spacingDeclsSeen = 0;
 	for (const f of FILES) {
@@ -415,7 +416,9 @@ test('no component hard-codes a phone type size the ladder already owns', () => 
 				if (!lit) continue;
 				const token = steps.get(String(parseFloat(lit[1]!)) + 'rem');
 				if (!token) continue;
-				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, at)}: ${sel} { font-size: ${d[1]!.trim()} } is var(--${token})`);
+				offences.push(
+					`${f.replace(SRC, 'src')}:${lineOf(src, at)}: ${sel} { font-size: ${d[1]!.trim()} } is var(--${token})`
+				);
 			}
 		}
 	}
@@ -562,10 +565,9 @@ test('each paint-order ladder still climbs in its documented order', () => {
 	for (const [name, ladder] of Object.entries(LADDERS)) {
 		for (let i = 1; i < ladder.length; i++) {
 			rungsChecked++;
-			expect(
-				value(ladder[i]!),
-				`${name}: --${ladder[i]} must paint above --${ladder[i - 1]}`
-			).toBeGreaterThan(value(ladder[i - 1]!));
+			expect(value(ladder[i]!), `${name}: --${ladder[i]} must paint above --${ladder[i - 1]}`).toBeGreaterThan(
+				value(ladder[i - 1]!)
+			);
 		}
 	}
 	// Every tier in :root belongs to exactly one ladder, so a tier added without a place in the order
@@ -711,7 +713,7 @@ test('the colour picker wires its swatch tabindex to presetTabStopIndex', () => 
 	// production logic instead of a reconstructed predicate -- but that closed only the *reconstruction*
 	// hazard. It left the *reversion* hazard open: the one line that actually READS the function is a
 	// Svelte template expression, and reverting it to the pre-fix `tabindex={value === c ? 0 : -1}`
-	// (issue #88's exact bug -- after any wheel pick no swatch is tabbable and the presets fall out of
+	// (an earlier fix's exact bug -- after any wheel pick no swatch is tabbable and the presets fall out of
 	// the tab order for good) leaves every gate green, because the three presetTabStopIndex unit tests
 	// never touch the caller. This pins the call site itself, mirroring the sibling roving group's guard
 	// at settings-scopes.test.ts (`tabindex={tab === t.id ? 0 : -1}`), so the wiring cannot silently
@@ -962,29 +964,42 @@ test('every identity-dot rule declares a non-shrinking flex basis', () => {
 	// OWN row, the one place the truncated name is least able to disambiguate them. colors.ts:12-14
 	// states that dot is "the only thing telling two singers apart besides the name", so this is a
 	// functional loss, not cosmetic. The fix is the same `flex: 0 0 auto` that `.seq`/`.actions` carry;
-	// this guard pins it for every identity-dot rule so a future edit can't drop it. ProcessingCard's
-	// `.who i` is byte-identical by design, so it must satisfy the same rule.
+	// this guard pins it for every identity-dot rule so a future edit can't drop it.
+	//
+	// RE-ANCHORED (the primitive-adoption pass). The dot was FOUR byte-identical copies — QueueRow's `.who i`,
+	// ProcessingCard's `.who i`, NowPlayingHero's `.eyebrow .dot` and ColourPicker's larger
+	// `.colour-chip`. They are now ONE shared `.singer-dot` rule in app.css, so scanning components for
+	// `.who i` would count zero and this arm would pass while guarding nothing. It therefore follows the
+	// dot to its new home: the invariant is unchanged and is now asserted where the dot is actually
+	// declared, plus components are still swept in case a local copy is reintroduced.
 	const offences: string[] = [];
+	const dotRules: { where: string; body: string }[] = [];
+	// The shared rule (app.css). `css` is already comment-stripped at the top of this file.
+	for (const m of css.matchAll(/\.singer-dot\s*\{([^}]*)\}/g)) {
+		dotRules.push({ where: `src/app.css:${lineOf(css, m.index!)} .singer-dot`, body: m[1]! });
+	}
+	// Any component-local copy that comes back, under either historical selector.
 	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
-		for (const m of src.matchAll(/\.who\s+i\s*\{([^}]*)\}/g)) {
-			const body = m[1]!;
-			const flexShorthand = body.match(/(^|[;{\s])flex:\s*0\s+0\b/);
-			const flexShrink0 = body.match(/flex-shrink:\s*0\b/);
-			if (!flexShorthand && !flexShrink0) {
-				offences.push(
-					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: .who i must declare flex:0 0 <basis> (or flex-shrink:0) so the identity dot cannot collapse to 0px`
-				);
+		for (const re of [/\.who\s+i\s*\{([^}]*)\}/g, /\.singer-dot\s*\{([^}]*)\}/g]) {
+			for (const m of src.matchAll(re)) {
+				dotRules.push({ where: `${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}`, body: m[1]! });
 			}
 		}
 	}
-	// The rule must actually match something, or a selector rename would silently disarm it.
-	// QueueRow + ProcessingCard both carry a .who i rule.
-	let seen = 0;
-	for (const f of FILES) {
-		seen += [...stripComments(readFileSync(f, 'utf8')).matchAll(/\.who\s+i\s*\{/g)].length;
+	for (const { where, body } of dotRules) {
+		const flexShorthand = body.match(/(^|[;{\s])flex:\s*0\s+0\b/);
+		const flexShrink0 = body.match(/flex-shrink:\s*0\b/);
+		if (!flexShorthand && !flexShrink0) {
+			offences.push(
+				`${where}: an identity-dot rule must declare flex:0 0 <basis> (or flex-shrink:0) so the dot cannot collapse to 0px`
+			);
+		}
 	}
-	expect(seen).toBeGreaterThanOrEqual(2); // @nvf-floor seen
+	// The rule must actually match something, or a selector rename would silently disarm it. One shared
+	// declaration is the whole population now, so the floor is 1 rather than the old 2 (which counted the
+	// two component copies this change collapsed).
+	expect(dotRules.length).toBeGreaterThanOrEqual(1); // @nvf-floor dotRules.length
 	expect(offences).toEqual([]);
 });
 

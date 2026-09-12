@@ -166,7 +166,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 200,
 			count: 1,
 			guards:
-				'the repo-wide .ts basename walk that tells a real cross-tree pointer apart from a stale or misspelled one. This floor exists because the walk has already failed silently once: it enumerated `[\'apps\', \'packages\']`, the flatten deleted both names, `walkBasenames` swallows a missing directory, and the set went EMPTY — at which point every cross-tree citation reads as "exists nowhere" and the guard convicts correct comments. The paired known-true/known-false citations either side of this line are the mutation arm; the floor is what names the cause instead of the symptom. ~460 basenames at the time of writing.'
+				"the repo-wide .ts basename walk that tells a real cross-tree pointer apart from a stale or misspelled one. This floor exists because the walk has already failed silently once: it enumerated `['apps', 'packages']`, the flatten deleted both names, `walkBasenames` swallows a missing directory, and the set went EMPTY — at which point every cross-tree citation reads as \"exists nowhere\" and the guard convicts correct comments. The paired known-true/known-false citations either side of this line are the mutation arm; the floor is what names the cause instead of the symptom. ~460 basenames at the time of writing."
 		}
 	],
 	'tests/guards/docs/cited-paths-resolve.test.ts': [
@@ -182,7 +182,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 100,
 			count: 1,
 			guards:
-				"the citation regex actually matching. This is the sharper of the two: if the pattern stopped matching, the walk would still find every document and the guard would report a clean register while every path in it rotted. 38 references went stale in a single commit before this guard existed."
+				'the citation regex actually matching. This is the sharper of the two: if the pattern stopped matching, the walk would still find every document and the guard would report a clean register while every path in it rotted. 38 references went stale in a single commit before this guard existed.'
 		}
 	],
 	'tests/guards/meta/no-self-anchored-paths.test.ts': [
@@ -298,7 +298,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 200,
 			count: 1,
 			guards:
-				"every test file in the repo, which the stale-$app-claim scan reads. This walk was rooted at src alone — correct when every test sat beside its source, and quietly wrong the moment the reorganisation began moving them into tests/. Measured: the narrow walk sees 252 files today and would see 120 once the guards move, while its old floor of >50 kept passing. Coverage would have halved with no signal. The walk now spans every root and this floor is set against the whole population, so losing a root reds instead."
+				'every test file in the repo, which the stale-$app-claim scan reads. This walk was rooted at src alone — correct when every test sat beside its source, and quietly wrong the moment the reorganisation began moving them into tests/. Measured: the narrow walk sees 252 files today and would see 120 once the guards move, while its old floor of >50 kept passing. Coverage would have halved with no signal. The walk now spans every root and this floor is set against the whole population, so losing a root reds instead.'
 		}
 	],
 	'tests/guards/design-system/tailwind-toolchain.test.ts': [
@@ -379,9 +379,47 @@ const FLOORS: Record<string, Floor[]> = {
 		{ subject: 'svelte.length', min: 20, count: 1, guards: 'the markup walk behind the utility-class arm' },
 		{ subject: 'netFiles.length', min: 40, count: 1, guards: 'the svelte + .ts walk behind the utility-name net' }
 	],
+	'tests/guards/hygiene/class-reachable-alone-913.test.ts': [
+		{
+			subject: 'files.length',
+			min: 20,
+			count: 1,
+			guards:
+				'the app-side walk of the element/class-list matchability scan. An empty walk reports zero offenders exactly like a clean tree, so the population is pinned. Its firing means the scan lost the app source and the .chip/.chip.ghost defect class went unenforceable.'
+		},
+		{
+			subject: 'listsSeen',
+			min: 80,
+			count: 1,
+			guards:
+				'the class attributes actually examined by that scan. The reader deliberately SKIPS any list containing an interpolation (a class: directive can supply the token a compound rule needs), so a refactor that made more lists dynamic would shrink this population silently while still reporting clean.'
+		}
+	],
+	'tests/guards/design-system/field-rhythm-913.test.ts': [
+		{
+			subject: 'users.length',
+			min: 2,
+			count: 1,
+			guards:
+				'the files that render a shadcn Field LEAF part. If no file uses a leaf there is no rhythm to supply and the arm is moot, so an empty population must be loud rather than a pass. Its firing means the Field leaves left the tree, at which point the whole file should be retired rather than believed.'
+		},
+		{
+			subject: 'usersSeen',
+			min: 2,
+			count: 1,
+			guards:
+				'the leaf users examined by the wrapper-or-local-spacing arm. Same population as above, counted at the point of enforcement so a scope regression in that loop cannot report clean by iterating nothing.'
+		}
+	],
 	'tests/guards/design-system/design-system.test.ts': [
 		{ subject: 'FILES.length', min: 15, count: 1, guards: 'the design-system source walk' },
-		{ subject: 'seen', min: 2, count: 1, guards: 'the rules examined by the token-duplication scan' },
+		{
+			subject: 'dotRules.length',
+			min: 1,
+			count: 1,
+			guards:
+				'the identity-dot rules examined by the non-shrinking-flex scan. RE-ANCHORED from `seen` >= 2 by the primitive-adoption pass: the dot was four byte-identical copies (QueueRow/.who i, ProcessingCard/.who i, NowPlayingHero/.eyebrow .dot, ColourPicker/.colour-chip) and is now ONE shared `.singer-dot` rule in app.css, so a scan of component files counts zero and the old floor of 2 was unreachable. The floor follows the population: one shared declaration. The arm still sweeps components for a reintroduced local copy under either historical selector, so collapsing the copies did not narrow what is enforced — only where it is declared.'
+		},
 		{ subject: 'checked', min: 3, count: 1, guards: 'the surfaces examined by the surface-token scan' },
 		{
 			subject: 'bridgeRefsScanned',
@@ -526,7 +564,7 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 		{
 			subject: 'files.length',
 			reason:
-				"The copied-in-component theme scan. RETIRED BY the shadcn-svelte restructure. XR-VER-06/07 record. (a) The invariant: a copied-in shadcn component must reference NO shadcn theme name (bg-primary, text-muted-foreground, border-ring), because app.css defined none of them, so such a class resolved to nothing and the element rendered unstyled, which looks like a design choice in a screenshot rather than a defect. (b) What left scope: the PREMISE, deliberately inverted. app.css now defines the semantic layer (--primary: var(--accent) and friends) and bridges it in @theme, precisely so a vendored component works UNEDITED and `shadcn-svelte add --overwrite` stays safe across the fourteen components S2-S8 brought in. Those class names are the intended mechanism now; a guard banning them would forbid the architecture. (c) What covers it now, together strictly more than this file did: shadcn-ink-ban-913.test.ts bans the INK direction (text-primary, text-destructive) in app source while exempting the vendored tree by path, which is the real hazard since --accent as ink measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2 and 2.90 on --card-tint2, four AA failures; tailwind-toolchain.test.ts still refuses to register a PLAYER HUE in @theme, whose per-stop ink/fill split no single minted utility can respect; and motion.test.ts's net arm is what caught transition-all shipping in the stock Button and is what catches its return after any --overwrite. The floor was retired rather than lowered to 0, which is what \"never leave a guard passing vacuously\" requires."
+				'The copied-in-component theme scan. RETIRED BY the shadcn-svelte restructure. XR-VER-06/07 record. (a) The invariant: a copied-in shadcn component must reference NO shadcn theme name (bg-primary, text-muted-foreground, border-ring), because app.css defined none of them, so such a class resolved to nothing and the element rendered unstyled, which looks like a design choice in a screenshot rather than a defect. (b) What left scope: the PREMISE, deliberately inverted. app.css now defines the semantic layer (--primary: var(--accent) and friends) and bridges it in @theme, precisely so a vendored component works UNEDITED and `shadcn-svelte add --overwrite` stays safe across the fourteen components S2-S8 brought in. Those class names are the intended mechanism now; a guard banning them would forbid the architecture. (c) What covers it now, together strictly more than this file did: shadcn-ink-ban-913.test.ts bans the INK direction (text-primary, text-destructive) in app source while exempting the vendored tree by path, which is the real hazard since --accent as ink measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2 and 2.90 on --card-tint2, four AA failures; tailwind-toolchain.test.ts still refuses to register a PLAYER HUE in @theme, whose per-stop ink/fill split no single minted utility can respect; and motion.test.ts\'s net arm is what caught transition-all shipping in the stock Button and is what catches its return after any --overwrite. The floor was retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires.'
 		}
 	],
 	'tests/guards/design-system/design-system.test.ts': [

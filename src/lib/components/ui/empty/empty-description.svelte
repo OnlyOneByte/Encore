@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { cn, type WithElementRef } from "$lib/utils.js";
-	import type { HTMLAttributes } from "svelte/elements";
+	import { cn, type WithElementRef } from '$lib/utils.js';
+	import type { HTMLAttributes } from 'svelte/elements';
 
 	let {
 		ref = $bindable(null),
@@ -13,10 +13,7 @@
 <div
 	bind:this={ref}
 	data-slot="empty-description"
-	class={cn(
-		"[&>a]:underline [&>a]:underline-offset-4",
-		className
-	)}
+	class={cn('[&>a]:underline [&>a]:underline-offset-4', className)}
 	{...restProps}
 >
 	{@render children?.()}

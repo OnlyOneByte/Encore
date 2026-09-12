@@ -20,9 +20,10 @@ from .ffmpeg import ffmpeg_argv
 # Stored stem formats — BOTH stems are lossless FLAC:
 #   instrumental -> FLAC (lossless). It comes out of the speakers at volume, and it is the one place
 #     a second lossy generation is audible: AAC smears high-frequency transients (a crash cymbal).
-#   vocals -> FLAC (lossless). It IS played aloud — the guiding track is a second <audio> the TV
-#     mixes under the instrumental (TvPlayer.svelte). Encoding it lossless like the instrumental means
-#     both stems share ONE codec and ONE container, so they decode to a sample-exact common START.
+#   vocals -> FLAC (lossless). It IS played aloud — on a song with no guide mix the TV mounts it as a
+#     second <audio> and follows the instrumental with it (TvPlayer.svelte's ELEMENT path). Encoding it
+#     lossless like the instrumental means both stems share ONE codec and ONE container, so they decode to
+#     a sample-exact common START.
 #     An AAC-in-m4a encoder inserts priming samples (~1024, i.e. ~21 ms at 48 kHz) that shift the
 #     vocals start relative to the FLAC instrumental. That start offset used to sit ABOVE guide-sync's
 #     15 ms deadband, so guideCorrection converged it out with a startup rate-trim (~15 s) rather than
@@ -32,6 +33,12 @@ from .ffmpeg import ffmpeg_argv
 # MUST match the core's paths.ts INSTRUMENTAL_EXT / VOCALS_EXT.
 INSTRUMENTAL_EXT = "flac"
 VOCALS_EXT = "flac"
+# The GUIDE MIX: both stems in ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals). FLAC again, and
+# for a sharper reason than the stems' — this is the file the TV plays, and one file played by one
+# element has ONE playhead, so the guide cannot drift from the instrumental at all. See
+# `encode_guide_mix_argv` for why two elements cannot be held in sync from script, and the browser
+# evidence that four channels survive to WebAudio. MUST match the core's paths.ts GUIDE_MIX_EXT.
+GUIDE_MIX_EXT = "flac"
 
 
 @dataclass
@@ -130,6 +137,20 @@ def vocals_path(media_dir: str, media_id: str) -> str:
     extraction and the vocal-guide mix (docs/ARCHITECTURE.md §7). Parallels the core's
     process `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
     return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.{VOCALS_EXT}")
+
+
+def guide_mix_path(media_dir: str, media_id: str) -> str:
+    """Deterministic MediaStore key for a media's GUIDE MIX — both stems as one 4-channel FLAC.
+
+    Under `derived/stems/` beside the two single-stem files it is built from, because it is exactly as
+    regenerable as they are: it is a lossless remux of PCM that separation already produced, so it costs
+    one ffmpeg pass and no separation to rebuild, and it is safe to evict first.
+
+    MUST match the core's paths.ts `guideMixKey()` byte-for-byte — the TV resolves `/media/<ref>`, so a
+    mismatch 404s on a file that exists. Named `-guidemix` rather than `-mix` so it can never be read as
+    a mixdown: nothing here is summed, the two stems sit side by side in separate channels.
+    """
+    return os.path.join(media_dir, "derived", "stems", f"{media_id}-guidemix.{GUIDE_MIX_EXT}")
 
 
 def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt") -> str:

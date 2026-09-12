@@ -18,6 +18,7 @@
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
 	import Icon from '$lib/ui/Icon.svelte';
 	import * as Collapsible from '$lib/components/ui/collapsible';
+	import { Progress } from '$lib/components/ui/progress';
 
 	interface Props {
 		/** The song, or the empty-state line when nothing is playing. */
@@ -90,7 +91,8 @@
 	     driven idle room — the frame is what found it. -->
 	{#if singerName}
 		<div class="eyebrow">
-			<span class="dot" style="--singer:{singerColor ?? 'var(--accent)'}"></span>
+			<!-- app.css's shared `.singer-dot` (the primitive-adoption pass): the hue arrives as `--singer`, set here. -->
+			<span class="singer-dot" style="--singer:{singerColor ?? 'var(--accent)'}"></span>
 			<span>Now singing · {singerName}</span>
 		</div>
 	{/if}
@@ -106,7 +108,12 @@
 		     I up?". `aria-hidden` because the position card states the same thing in words. -->
 		<div class="seekrow" aria-hidden="true">
 			<span class="time">{formatClock(elapsedSec)}</span>
-			<span class="track"><i style="transform:scaleX({progress})"></i></span>
+			<!-- The third copy of the hand-rolled `.track` + `<i>` idiom, now ui/progress like the other two
+			     (S6): same `var(--grad)` fill, same transform-only transition and reduced-motion reset,
+			     `size="sm"` for this row's 4px. It brings `role="progressbar"` with it, which sits inside the
+			     `aria-hidden` row deliberately — the position card already states the same thing in words, so
+			     announcing it twice is the regression, not the win. -->
+			<div class="bar-slot"><Progress value={progress * 100} size="sm" /></div>
 			<span class="time r">{formatRemaining(elapsedSec, durationSec)}</span>
 		</div>
 	{/if}
@@ -123,7 +130,8 @@
 			<Icon name="prev" />
 		</Button>
 		<Button
-			variant="iconPrimary" size="icon"
+			variant="iconPrimary"
+			size="icon"
 			aria-label="play/pause"
 			disabled={!hasSong && !canStart}
 			onclick={() => ontoggleplay?.()}
@@ -150,11 +158,21 @@
 			<Collapsible.Root bind:open={controlsOpen}>
 				<Collapsible.Trigger>
 					{#snippet child({ props })}
-						<button class="tools-toggle" {...props}>
-				<Icon name={controlsOpen ? 'chevron-down' : 'chevron-right'} />
-				<span class="tools-label">Adjust while you sing</span>
-				{#if controlsSummary}<span class="tools-peek">{controlsSummary}</span>{/if}
-			</button>
+						<!--
+							Full-width ghost button = <Button variant="ghost" size="block">. `size="block"` is what
+							carries the width AND the tap floor (`w-full min-h-tap`); written as a utility at this
+							call site it would emit nothing, because app.css is `source(none)` with a single
+							`@source` over components/ui.
+
+							`.tools-toggle` stays on the BUTTON rather than moving to an inner span: the e2e drives
+							this control by that class and reads `aria-expanded` off it (e2e/contract.ts
+							`toolsToggle`), and the disclosure state lives on the button, not on its contents.
+						-->
+						<Button variant="ghost" size="block" {...props} class="tools-toggle">
+							<Icon name={controlsOpen ? 'chevron-down' : 'chevron-right'} />
+							<span class="tools-label">Adjust while you sing</span>
+							{#if controlsSummary}<span class="tools-peek">{controlsSummary}</span>{/if}
+						</Button>
 					{/snippet}
 				</Collapsible.Trigger>
 				<Collapsible.Content>
@@ -167,17 +185,16 @@
 						-->
 						<div class="tools-body" {...props}>
 							{#if controlsOpen}
-					<!-- Ahead of the controls, so the reason is read BEFORE the dead control it explains rather
+								<!-- Ahead of the controls, so the reason is read BEFORE the dead control it explains rather
 					     than after it — and outside the snippet, so no `opacity` on a disabled control can dim
 					     it (XR-PH-15 / XR-PH-03). -->
-					{#if controlsNote}<p class="tools-note">{controlsNote}</p>{/if}
-					{@render controls()}
-											{/if}
+								{#if controlsNote}<p class="tools-note">{controlsNote}</p>{/if}
+								{@render controls()}
+							{/if}
 						</div>
 					{/snippet}
 				</Collapsible.Content>
 			</Collapsible.Root>
-
 		</div>
 	{/if}
 </section>
@@ -199,16 +216,10 @@
 		color: var(--ink-dim);
 		min-width: 0;
 	}
-	/* flex: 0 0 auto for the same reason QueueRow's dot carries it: .eyebrow is a flex row, an empty
-	   element's automatic minimum size is 0, and under a long singer name the identity dot otherwise
-	   collapses to 0px and the colour vanishes. */
-	.eyebrow .dot {
-		flex: 0 0 auto;
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		background: var(--singer);
-	}
+	/* The identity dot is app.css's shared `.singer-dot` (the primitive-adoption pass) — this was the third of the four
+	   byte-identical copies that rule replaced. `flex: 0 0 auto` is load-bearing and lives with it:
+	   `.eyebrow` is a flex row, an empty element's automatic minimum size is 0, and under a long singer
+	   name the dot is what shrinks — it collapsed to 0px and the colour vanished (an earlier fix). */
 	.eyebrow span:last-child {
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -250,29 +261,16 @@
 	.time.r {
 		text-align: right;
 	}
-	.track {
+	/*
+	 * S6: `.track` and its `<i>` fill are ui/progress now — the same idiom lived in THREE
+	 * components (ProcessingCard, SongRow, here), differing only in height, and the vendored bar owns
+	 * the gradient, the composited transform and `role="progressbar"`. What stays here is where the bar
+	 * sits in this ROW rather than the bar's own metric, which is the same split `.bar-slot` carries at
+	 * the other two call sites.
+	 */
+	.bar-slot {
 		flex: 1;
-		height: 4px;
-		background: var(--line);
-		border-radius: var(--radius-xs);
-		overflow: hidden;
-	}
-	/* scaleX, not width: animating width triggers layout every frame, which motion.test.ts forbids
-	   outright. The fill is full-width and scaled from its left edge, which composites. The transition
-	   exists because position arrives about once a second — without it the bar visibly steps. */
-	.track > i {
-		display: block;
-		height: 100%;
-		width: 100%;
-		background: var(--grad);
-		border-radius: var(--radius-xs);
-		transform-origin: left center;
-		transition: transform var(--motion-tick) linear;
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.track > i {
-			transition: none;
-		}
+		min-width: 0;
 	}
 	.transport {
 		display: flex;
@@ -289,17 +287,19 @@
 		border-top: 1px solid var(--line);
 		padding-top: var(--space-2xs);
 	}
-	.tools-toggle {
-		display: flex;
-		align-items: center;
+	/*
+	 * Width, the tap floor, the surface and the press feedback all come from
+	 * <Button variant="ghost" size="block">. What is left here is only what that variant cannot know:
+	 * the button base CENTRES its content, and this control is a left-aligned label with the current
+	 * values pushed to the right edge.
+	 *
+	 * `:global` is required, not stylistic — the class is handed to a CHILD component, so Svelte's scope
+	 * hash lands on nothing and a plain rule would match no element (ui-scoped-style-reach-913.test.ts,
+	 * which names `:global()` as one of the two sanctioned fixes).
+	 */
+	:global(.tools-toggle) {
 		gap: var(--space-sm);
-		width: 100%;
-		min-height: var(--tap);
-		background: none;
-		border: 0;
-		padding: 0;
-		color: var(--ink);
-		font: inherit;
+		justify-content: flex-start;
 		font-size: 0.82rem;
 		font-weight: 600;
 		text-align: left;

@@ -35,7 +35,11 @@ import { parseTrackTitle, type TrackParseRule } from './track-title';
 // 6: `artifacts.lyricsOverrideText` added (the WORDS behind a pasted override). Purely additive: a
 // schema-5 record has no pasted text, which means "the pin names a candidate already on disk" — the
 // worker then re-times that stored doc, exactly as it did before.
-export const SIDECAR_SCHEMA = 6;
+// 7: `artifacts.guideMix` added (both stems as one 4-channel file, so the guide shares the instrumental's
+// playhead and cannot drift). Purely additive: a schema-6 record has no mix, restored as absent, which
+// guidePath() maps to the legacy two-element path — today's playback, unchanged, until the song is
+// re-processed.
+export const SIDECAR_SCHEMA = 7;
 
 /** How a derived field was obtained. Mirrors the lyrics chain's provenance idea on purpose. */
 export interface FieldProvenance {
@@ -79,6 +83,13 @@ export interface MediaSidecar {
 		audio: string | null;
 		instrumental: string | null;
 		vocals: string | null;
+		/**
+		 * The GUIDE MIX: both stems in ONE 4-channel file (ch 0/1 instrumental, 2/3 vocals). Authoritative
+		 * here like every derived artifact, so a DB wipe restores it without re-processing. Optional/absent
+		 * on schema-6 and earlier; absent means the TV takes the legacy two-element path, which is exactly
+		 * today's behaviour.
+		 */
+		guideMix?: string | null;
 		/** The CHOSEN lyrics ref (whichever candidate pickBestLyrics selected). */
 		lyrics: string | null;
 		/**
@@ -151,8 +162,7 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 	const CITED = ['manual', 'musicbrainz', 'youtube'];
 	const keepCited = (field: 'artist' | 'title') => CITED.includes(prev?.provenance?.[field]?.by ?? '');
 	// Runtime annotation wins over a stored one: it is the fresher citation. Either citation source.
-	const cited =
-		m.annotation?.source === 'musicbrainz' || m.annotation?.source === 'youtube' ? m.annotation : undefined;
+	const cited = m.annotation?.source === 'musicbrainz' || m.annotation?.source === 'youtube' ? m.annotation : undefined;
 	// The provenance `by` records WHICH authority cited it, so a YouTube citation is not mislabelled as
 	// MusicBrainz (they are not equal evidence, and `by` is what a later reader trusts).
 	const citedBy = cited?.source === 'youtube' ? ('youtube' as const) : ('musicbrainz' as const);
@@ -183,11 +193,16 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			language: prev?.canonical.language ?? null,
 			durationSec: m.durationSec
 		},
-		provenance: {...(prev?.provenance ?? {}),...(cited
+		provenance: {
+			...(prev?.provenance ?? {}),
+			...(cited
 				? {
 						artist: { by: citedBy, confidence: cited.confidence },
 						title: { by: citedBy, confidence: cited.confidence }
-					}: {...(keepCited('artist') ? {}: { artist: { by: parsed.by, confidence: parsed.confidence } }),...(keepCited('title') ? {}: { title: { by: parsed.by, confidence: parsed.confidence } })
+					}
+				: {
+						...(keepCited('artist') ? {} : { artist: { by: parsed.by, confidence: parsed.confidence } }),
+						...(keepCited('title') ? {} : { title: { by: parsed.by, confidence: parsed.confidence } })
 					})
 		},
 		artifacts: {
@@ -195,6 +210,10 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			audio: prev?.artifacts.audio ?? null,
 			instrumental: m.instrumentalRef ?? prev?.artifacts.instrumental ?? null,
 			vocals: m.vocalsRef ?? prev?.artifacts.vocals ?? null,
+			// Same runtime-first / preserve-prior rule as `vocals`: an index-only hydrate carries no mix on
+			// the Media, so falling back to the prior write is what stops a sidecar rewrite from erasing a
+			// mix the backfill or a process already recorded.
+			guideMix: m.guideMixRef ?? prev?.artifacts.guideMix ?? null,
 			lyrics: m.lyricsRef ?? prev?.artifacts.lyrics ?? null,
 			// Runtime first, else a prior write: an index-only hydrate leaves lyricsCandidates undefined,
 			// and losing the set here would silently destroy the upgrade path the set exists for.
@@ -251,7 +270,7 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		artist: s.raw.uploader ?? undefined,
 		durationSec: s.canonical.durationSec,
 		thumbnail: s.raw.thumbnail ?? undefined,
-		stemStatus: processed ? 'ready': 'none',
+		stemStatus: processed ? 'ready' : 'none',
 		// The lyrics gate is DERIVED from the artifact rather than stored, so the sidecar keeps its
 		// meaning: artifacts are the truth and status is a projection of them.
 		//
@@ -280,6 +299,9 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		// The sidecar is authoritative, so a song whose vocals artifact was recorded before the DB was
 		// wiped gets its guiding track back here without a re-process.
 		vocalsRef: s.artifacts.vocals ?? undefined,
+		// Same rule for the mix. A schema-6 sidecar has none, which stays undefined → guidePath() returns
+		// the two-element path, i.e. today's behaviour.
+		guideMixRef: s.artifacts.guideMix ?? undefined,
 		lyricsRef: chosenLyricsRef(s),
 		lyricsCandidates: s.artifacts.lyricsCandidates,
 		// Carry the human override onto the runtime Media so the phone can show which pick is pinned and
@@ -320,7 +342,9 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
  * a restore and a live align completion can never disagree about which candidate a human's pick selects.
  */
 export function chosenLyricsRef(s: MediaSidecar): string | undefined {
-	return resolveLyricsRef(s.artifacts.lyricsCandidates, s.artifacts.lyricsOverrideRef) ?? s.artifacts.lyrics ?? undefined;
+	return (
+		resolveLyricsRef(s.artifacts.lyricsCandidates, s.artifacts.lyricsOverrideRef) ?? s.artifacts.lyrics ?? undefined
+	);
 }
 
 /** The browse-safe canonical artist: null when we only guessed (see track-title.ts). */
@@ -483,6 +507,8 @@ export async function clearArtifacts(mediaId: string): Promise<void> {
 		...side.artifacts,
 		instrumental: null,
 		vocals: null,
+		// The mix IS the two stems being evicted, in one file — it goes with them.
+		guideMix: null,
 		lyrics: null,
 		lyricsCandidates: [],
 		// The offset was measured FROM the stems being evicted, so it goes with them — a re-process measures a
@@ -496,7 +522,9 @@ export async function clearArtifacts(mediaId: string): Promise<void> {
 export async function listSidecarIds(): Promise<string[]> {
 	const { readdirSync } = await import('node:fs');
 	try {
-		return readdirSync(metaDir()).filter((n) => n.endsWith('.json')).map((n) => n.slice(0, -'.json'.length));
+		return readdirSync(metaDir())
+			.filter((n) => n.endsWith('.json'))
+			.map((n) => n.slice(0, -'.json'.length));
 	} catch {
 		return [];
 	}

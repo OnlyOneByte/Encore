@@ -182,7 +182,7 @@ docs/              ← ARCHITECTURE + HANDOFF + DECISIONS; loop/ deploy/ benchma
 | `MEDIA_DIR`              | `./media`    | root of the media volume — created if missing                                                                                                                                                                                                                                                                                                             |
 | `MEDIA_STORE`            | `local`      | `local` volume or `object` (MinIO/S3, for remote workers)                                                                                                                                                                                                                                                                                                 |
 | `ENCORE_SONG_INTRO_MS`   | seeds `2500` | song-intro card duration, seeded into the room on **first boot only** (`0` seeds it off, for a pure gapless hard-cut). `INTERSTITIAL_MS` is still read as a deprecated alias. Both the duration and the on/off toggle live in **Settings → Room** afterwards                                                                                              |
-| `ENCORE_LYRICS_BACKFILL` | on           | set `0` to skip the boot-time lyrics backfill for already-processed songs                                                                                                                                                                                                                                                                                    |
+| `ENCORE_LYRICS_BACKFILL` | on           | set `0` to skip the boot-time lyrics backfill for already-processed songs                                                                                                                                                                                                                                                                                 |
 | `ENCORE_VOCALS_BACKFILL` | on           | set `0` to skip the boot-time guiding-track (vocals stem) backfill                                                                                                                                                                                                                                                                                        |
 | `ENCORE_EPHEMERAL`       | unset        | `1` → in-memory DB; nothing persists (handy for a throwaway instance)                                                                                                                                                                                                                                                                                     |
 | `FFMPEG_BIN`             | `ffmpeg`     | ffmpeg binary used for recompression                                                                                                                                                                                                                                                                                                                      |
@@ -190,12 +190,12 @@ docs/              ← ARCHITECTURE + HANDOFF + DECISIONS; loop/ deploy/ benchma
 **Storage classes** — split by _replaceability_ so they can live on different volumes (see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6). Each defaults under `MEDIA_DIR`.
 
-| Env                   | Default              | Holds                                                       |
-| --------------------- | -------------------- | ----------------------------------------------------------- |
-| `ENCORE_AUDIO_DIR`    | `$MEDIA_DIR/audio`   | raw originals — **not regenerable; back this up**           |
-| `ENCORE_DERIVED_DIR`  | `$MEDIA_DIR/derived` | stems, lyrics, thumbs — safe to delete                      |
-| `ENCORE_META_DIR`     | `$MEDIA_DIR/meta`    | sidecar records — the authoritative library index           |
-| `ENCORE_MEDIA_MAX_GB` | unset                | soft cap; evicts `derived/` LRU-first. Unset = never delete |
+| Env                   | Default              | Holds                                                                                                                                                                              |
+| --------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENCORE_AUDIO_DIR`    | `$MEDIA_DIR/audio`   | raw originals — **not regenerable; back this up**                                                                                                                                  |
+| `ENCORE_DERIVED_DIR`  | `$MEDIA_DIR/derived` | stems, the guide mix, lyrics, thumbs — safe to delete                                                                                                                              |
+| `ENCORE_META_DIR`     | `$MEDIA_DIR/meta`    | sidecar records — the authoritative library index                                                                                                                                  |
+| `ENCORE_MEDIA_MAX_GB` | unset                | soft cap; evicts `derived/` LRU-first. Unset = never delete. A song with a guide mix costs ~2× the derived stem bytes, so re-check this after enabling it — eviction is whole-song |
 
 **Object store** (only when `MEDIA_STORE=object`) — `S3_BUCKET` (required), `S3_ENDPOINT`,
 `S3_REGION`, `S3_PREFIX`. Credentials come from the standard `AWS_*` env vars, which `Bun.S3Client`
@@ -217,7 +217,10 @@ or you want to deliberately limit a box:
   `ENCORE_SEPARATOR_BACKEND` (`torch`/`mlx`), `ENCORE_WHISPERX_DEVICE` (alignment only; CTranslate2
   does `cpu`/`cuda` and nothing else), `ENCORE_TORCH_THREADS`. `ENCORE_DEMUCS_DEVICE` is a deprecated
   alias of `ENCORE_DEVICE` and now sets the device for the whole worker
-- **Separation** — `ENCORE_DEMUCS_MODEL`, `ENCORE_DEMUCS_JOBS` (auto-derived from usable cores),
+- **Separation** — `ENCORE_GUIDE_MIX` (`1`; set `0` to skip the 4-channel guide mix, which is what lets
+  the TV play the guiding track from one playhead — it roughly doubles a song's derived stem bytes, so this
+  is the knob for a box tight on disk. Off means every song takes the older two-element guide path),
+  `ENCORE_DEMUCS_MODEL`, `ENCORE_DEMUCS_JOBS` (auto-derived from usable cores),
   `ENCORE_DEMUCS_OVERLAP`/`_SEGMENT` (auto-derived from _free_ accelerator memory)/`_SHIFTS`, `ENCORE_FLAC_LEVEL`
   (`8`)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only

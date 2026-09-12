@@ -18,22 +18,13 @@
     - `font-size: var(--ph-text-base)` (16px) so iOS does not auto-zoom when a tab takes focus.
 -->
 <script lang="ts">
-	import { Tabs as TabsPrimitive } from "bits-ui";
-	import { cn } from "$lib/utils.js";
+	import { Tabs as TabsPrimitive } from 'bits-ui';
+	import { cn } from '$lib/utils.js';
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		...restProps
-	}: TabsPrimitive.TriggerProps = $props();
+	let { ref = $bindable(null), class: className, ...restProps }: TabsPrimitive.TriggerProps = $props();
 </script>
 
-<TabsPrimitive.Trigger
-	bind:ref
-	data-slot="tabs-trigger"
-	class={cn(className)}
-	{...restProps}
-/>
+<TabsPrimitive.Trigger bind:ref={ref} data-slot="tabs-trigger" class={cn(className)} {...restProps} />
 
 <style>
 	:global([data-slot='tabs-trigger']) {

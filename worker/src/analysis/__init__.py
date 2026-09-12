@@ -28,6 +28,7 @@ from .key_detect import detect_key
 from .loudness import measure_lufs
 from .song_profile import build_song_profile, empty_profile
 from .vocal_range import PitchFrame, extract_pitch_track, summarize_range
+from .wav import wav_frame_length
 
 __all__ = [
     "PitchFrame",
@@ -38,4 +39,5 @@ __all__ = [
     "measure_guide_offset_ms",
     "measure_lufs",
     "summarize_range",
+    "wav_frame_length",
 ]

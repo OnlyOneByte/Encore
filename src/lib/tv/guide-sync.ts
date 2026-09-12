@@ -12,6 +12,13 @@
  *
  * So: ignore drift that does not matter, take out drift that does with a tempo trim (continuous, no
  * seam), and reserve seeking for a guide that is genuinely lost.
+ *
+ * THIS GOVERNS THE TWO-ELEMENT PATH ONLY. A song whose separation produced a guide MIX plays both stems
+ * from one media element (`guidePath` returns `mix`), so it has ONE playhead and nothing here is reached —
+ * no drift to measure, no trim to apply. That path exists because this one cannot be made exact: every
+ * function below compares the two elements' reported `currentTime`, which excludes each element's output
+ * latency, so the governor converges on a signal that does not describe what the ear hears. This remains
+ * the correct answer for the songs that have no mix, and the wrong place to look for the ones that do.
  */
 
 /** Drift we simply do not care about. Chasing zero is what produced the crackle. */

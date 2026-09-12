@@ -14,6 +14,8 @@
 	import { formatClock } from '$lib/clock';
 	import type { SelectionRecord } from '$lib/contract';
 	import * as Card from '$lib/components/ui/card';
+	import * as Item from '$lib/components/ui/item';
+	import FactList from '$lib/components/FactList.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 
 	interface AuditAttempt {
@@ -53,6 +55,9 @@
 			// measured guide/instrumental offset in signed ms (undefined = never measured).
 			vocalsRef?: string;
 			guideOffsetMs?: number;
+			// Present ⇔ this song plays through the ONE-file guide path, which changes what the offset above
+			// means (frozen at merge, not applied live).
+			guideMixRef?: string;
 		} | null;
 		processes: Process[];
 		plays: { at: number; entryId: string }[];
@@ -82,8 +87,14 @@
 	// localStamp renders each instant in the VIEWER'S local zone: the old toISOString() form
 	// printed UTC with the Z sliced off, dating an evening US run to the next day.
 	const stamp = (ms: number) => localStamp(ms);
-	/** Only the model fields this step actually carries — a null is "not applicable", not "unknown". */
-	const usedModels = (m: Record<string, string | null>) => Object.entries(m).filter(([, v]) => v);
+	/**
+	 * Only the model fields this step actually carries — a null is "not applicable", not "unknown" —
+	 * already paired with its label, because <FactList> renders whatever wording it is handed.
+	 */
+	const modelFacts = (m: Record<string, string | null>): [string, string][] =>
+		Object.entries(m)
+			.filter((e): e is [string, string] => Boolean(e[1]))
+			.map(([k, v]): [string, string] => [factLabel(k), v]);
 
 	// STEP_LABELS/stepLabel moved to $lib/metrics-format (shared with /metrics).
 
@@ -118,150 +129,212 @@
 	};
 	const decidedLabel = (d: string) => DECIDED_LABELS[d] ?? d;
 	const score = (n: number | null) => (n === null ? '—' : n.toFixed(2));
+
+	/** One string for the h1 and the <main> landmark's accessible name, so they cannot drift apart. */
+	const pageTitle = $derived(audit?.media?.titleCanonical ?? audit?.media?.title ?? mediaId ?? '');
 </script>
 
 <svelte:head><title>Encore — audit {mediaId}</title></svelte:head>
 
 <section class="audit">
-	<PageHeader
-		title={audit?.media?.titleCanonical ?? audit?.media?.title ?? mediaId ?? ''}
-		back={{ href: '/metrics', label: 'Back to metrics' }}
-	/>
+	<PageHeader title={pageTitle} back={{ href: '/metrics', label: 'Back to metrics' }} />
 
-	{#if error}
-		<p class="note" role="alert">{error}</p>
-	{:else if !audit}
-		<p class="note" role="status">Loading…</p>
-	{:else}
-		{#if audit.media?.artistCanonical}<p class="sub">{audit.media.artistCanonical}</p>{/if}
-		<p class="note">
-			{#if audit.media}{formatClock(audit.media.durationSec)} long ·
-			{/if}sung {audit.plays.length} times
-		</p>
-
-		{#if audit.media?.vocalsRef}
+	<!--
+		The shadcn migration: the content is a <main> landmark, the shape /admin and /settings already use. The cap,
+		--page-measure and the auto inline margin stay on .audit so the PageHeader inside it still shares
+		the content's 760px measure; <main> only carries the grid the cards lay out in.
+	-->
+	<main aria-label={pageTitle}>
+		{#if error}
+			<p class="note" role="alert">{error}</p>
+		{:else}
 			<!--
-				The MEASURED guide/instrumental offset, so a wrong alignment is diagnosable here rather
+				ONE live region that EXISTS BEFORE ITS CONTENT CHANGES (the shadcn migration). This was
+				`{:else if !audit}<p role="status">Loading…</p>`, a region CREATED by the load rather than
+				updated by it, so nothing was announced either while waiting or on arrival. Persisting the
+				element and swapping only its text makes the transition the change. The loaded copy is the
+				duration/plays line this paragraph already carried, so the announcement is the page's own first
+				fact rather than a sentence added to be announced.
+			-->
+			<p class="note" role="status">
+				{#if !audit}
+					Loading…
+				{:else}
+					{#if audit.media}{formatClock(audit.media.durationSec)} long ·
+					{/if}sung {audit.plays.length} times
+				{/if}
+			</p>
+
+			{#if audit}
+				{#if audit.media?.artistCanonical}<p class="sub">{audit.media.artistCanonical}</p>{/if}
+
+				{#if audit.media?.vocalsRef}
+					<!--
+				The MEASURED guide/instrumental offset (an earlier change), so a wrong alignment is diagnosable here rather
 				than only by ear on the party box. Shown only when this song has a guiding track (a vocals
 				stem) — the only case an offset means anything. `undefined` ⇔ never measured (an older process);
 				a number, 0 included, ⇔ measured, so the two read differently.
 			-->
-			<p class="note">
-				Guide offset:
-				{#if typeof audit.media.guideOffsetMs === 'number'}
-					<strong>{audit.media.guideOffsetMs} ms</strong>
-					{audit.media.guideOffsetMs === 0 ? '(vocals aligned with instrumental)' : '(vocals vs instrumental)'}
-				{:else}
-					<strong>not measured</strong> (processed before this was recorded)
+					<p class="note">
+						Guide offset:
+						{#if typeof audit.media.guideOffsetMs === 'number'}
+							<strong>{audit.media.guideOffsetMs} ms</strong>
+							{audit.media.guideOffsetMs === 0 ? '(vocals aligned with instrumental)' : '(vocals vs instrumental)'}
+						{:else}
+							<strong>not measured</strong> (processed before this was recorded)
+						{/if}
+					</p>
+					<!--
+						WHICH GUIDE PATH the TV takes for this song, because the offset above means two different
+						things depending on it and an operator cannot otherwise tell. On the mix path the offset was
+						measured and then FROZEN into the file at merge time, and `guide-sync.ts`'s governor is
+						unreachable; on the element path the offset is applied live at three sites and the governor is
+						what holds the two elements together. Same number, opposite significance.
+					-->
+					<p class="note">
+						Guide path:
+						{#if audit.media.guideMixRef}
+							<strong>one 4-channel file</strong> (one playhead — drift is impossible; the offset above was frozen at merge)
+						{:else}
+							<strong>two elements</strong> (drift-governed; the offset above is applied live)
+						{/if}
+					</p>
 				{/if}
-			</p>
+
+				{#if !audit.hasHistory}
+					<Card.Root>
+						<Card.Content>
+							<p class="note">
+								No history for this song — it was processed before this page existed, so its timings were never
+								recorded.
+							</p>
+						</Card.Content>
+					</Card.Root>
+				{:else}
+					<p class="note">
+						Each <strong>run</strong> below is one attempt at making a karaoke track. A run has several steps, and a step
+						can be retried.
+					</p>
+				{/if}
+
+				{#each audit.processes as process, i (process.processingId)}
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Run {i + 1}</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<header>
+								<Badge
+									variant={process.outcome === 'ready'
+										? 'ok'
+										: process.outcome === 'failed' || process.outcome === 'abandoned'
+											? 'bad'
+											: 'warn'}>{outcomeLabel(process.outcome)}</Badge
+								>
+							</header>
+							<p class="note">
+								{stamp(process.startedAt)}{#if process.totalMs !== null}{' · took '}{dur(
+										process.totalMs
+									)}{:else}{' · still going'}{/if}
+							</p>
+
+							<!--
+						The shadcn migration: each attempt is <Item.Root> for the shared row GRAMMAR, with the <li> kept through Item's
+						own `child` snippet — the QueueRow shape, and load-bearing twice over here. The panel carries two
+						conditional state classes (`failed`, `abandoned`), and a `class:` directive is not valid on a
+						component while a class handed to one would be scoped to this file and reach nothing; and the
+						attempts are an ordered sequence, so the <ol>/<li> pair is meaning rather than markup.
+
+						Everything goes inside ONE <Item.Content>. Item's base is a flex ROW and this is a vertical
+						panel, so a second direct child of the <li> would lay out beside the first instead of under it;
+						`[data-slot='item-content']` is the `flex-1 min-width:0` column that keeps the stack.
+
+						Card.Root was the other candidate and does not fit: it renders its own <div> with no `child`
+						snippet, so it cannot BE the <li>, and its surface is painted inside the component — the
+						failed/abandoned tinting below could not reach it from here.
+					-->
+							<ol class="steps">
+								{#each process.attempts as a (a.id)}
+									<Item.Root variant="bare" size="bare">
+										{#snippet child({ props })}
+											<li {...props} class:failed={a.outcome === 'failed'} class:abandoned={a.outcome === 'abandoned'}>
+												<Item.Content>
+													<div class="row">
+														<strong>{stepLabel(a.jobType)}</strong>
+														{#if a.attempt > 1}<span class="retry">try {a.attempt}</span>{/if}
+														<Badge
+															variant={a.outcome === 'ready'
+																? 'ok'
+																: a.outcome === 'failed' || a.outcome === 'abandoned'
+																	? 'bad'
+																	: 'warn'}>{outcomeLabel(a.outcome)}</Badge
+														>
+													</div>
+													<div class="metrics-row">
+														<span class="ran">{dur(a.processingMs)}</span>
+														<span class="secondary">waited {dur(a.queueWaitMs)}</span>
+														{#if a.rtFactor !== null}<span class="secondary">{rate(a.rtFactor)} song length</span>{/if}
+														{#if a.workerId}<span class="secondary">on {a.workerId}</span>{/if}
+													</div>
+													<FactList facts={modelFacts(a.models)} />
+													{#if a.stages.length}
+														<div class="metrics-row">
+															{#each a.stages as s (s.stage)}<span class="secondary"
+																	>{stageLabel(s.stage)} {dur(s.ms)}</span
+																>{/each}
+														</div>
+													{/if}
+													{#if a.selection}
+														<div class="selection">
+															{#each a.selection.choices as c (c.textSource)}
+																<div class="pick">
+																	<span class="kept"
+																		>kept <strong>{c.chosen ?? '?'}</strong>{#if c.chosenScore !== null}
+																			({score(c.chosenScore)} from {c.votes} baseline{c.votes === 1
+																				? ''
+																				: 's'}){/if}</span
+																	>
+																	<span class="secondary">{decidedLabel(c.decidedBy)}</span>
+																	{#if c.rejected.length}
+																		<span class="secondary"
+																			>over {#each c.rejected as r, i (r.label ?? i)}{r.label ?? '?'}
+																				{score(r.score)}{#if i < c.rejected.length - 1},
+																				{/if}{/each}</span
+																		>
+																	{/if}
+																</div>
+															{/each}
+															{#if a.selection.winnerSuspect}<span class="secondary suspect"
+																	>winner disagreed with every baseline — probably the wrong song</span
+																>{/if}
+														</div>
+													{/if}
+													{#if a.error}<p class="err">{a.error}</p>{/if}
+												</Item.Content>
+											</li>
+										{/snippet}
+									</Item.Root>
+								{/each}
+							</ol>
+						</Card.Content>
+					</Card.Root>
+				{/each}
+
+				{#if audit.plays.length}
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Sung</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<ul class="plays">
+								{#each audit.plays as p (p.entryId)}<li>{stamp(p.at)}</li>{/each}
+							</ul>
+						</Card.Content>
+					</Card.Root>
+				{/if}
+			{/if}
 		{/if}
-
-		{#if !audit.hasHistory}
-			<Card.Root>
-	<Card.Content>
-				<p class="note">
-					No history for this song — it was processed before this page existed, so its timings were never recorded.
-				</p>
-	</Card.Content>
-</Card.Root>
-		{:else}
-			<p class="note">
-				Each <strong>run</strong> below is one attempt at making a karaoke track. A run has several steps, and a step can
-				be retried.
-			</p>
-		{/if}
-
-		{#each audit.processes as process, i (process.processingId)}
-			<Card.Root>
-	<Card.Header>
-		<Card.Title>Run {i + 1}</Card.Title>
-	</Card.Header>
-	<Card.Content>
-				<header>
-					
-					<Badge variant={process.outcome === 'ready' ? 'ok' : process.outcome === 'failed' || process.outcome === 'abandoned' ? 'bad' : 'warn'}>{outcomeLabel(process.outcome)}</Badge>
-				</header>
-				<p class="note">
-					{stamp(process.startedAt)}{#if process.totalMs !== null}{' · took '}{dur(
-							process.totalMs
-						)}{:else}{' · still going'}{/if}
-				</p>
-
-				<ol class="steps">
-					{#each process.attempts as a (a.id)}
-						<li class:failed={a.outcome === 'failed'} class:abandoned={a.outcome === 'abandoned'}>
-							<div class="row">
-								<strong>{stepLabel(a.jobType)}</strong>
-								{#if a.attempt > 1}<span class="retry">try {a.attempt}</span>{/if}
-								<Badge variant={a.outcome === 'ready' ? 'ok' : a.outcome === 'failed' || a.outcome === 'abandoned' ? 'bad' : 'warn'}>{outcomeLabel(a.outcome)}</Badge>
-							</div>
-							<div class="metrics-row">
-								<span class="ran">{dur(a.processingMs)}</span>
-								<span class="secondary">waited {dur(a.queueWaitMs)}</span>
-								{#if a.rtFactor !== null}<span class="secondary">{rate(a.rtFactor)} song length</span>{/if}
-								{#if a.workerId}<span class="secondary">on {a.workerId}</span>{/if}
-							</div>
-							{#if usedModels(a.models).length}
-								<dl class="facts">
-									{#each usedModels(a.models) as [k, v] (k)}
-										<div>
-											<dt>{factLabel(k)}</dt>
-											<dd>{v}</dd>
-										</div>
-									{/each}
-								</dl>
-							{/if}
-							{#if a.stages.length}
-								<div class="metrics-row">
-									{#each a.stages as s (s.stage)}<span class="secondary">{stageLabel(s.stage)} {dur(s.ms)}</span>{/each}
-								</div>
-							{/if}
-							{#if a.selection}
-								<div class="selection">
-									{#each a.selection.choices as c (c.textSource)}
-										<div class="pick">
-											<span class="kept"
-												>kept <strong>{c.chosen ?? '?'}</strong>{#if c.chosenScore !== null}
-													({score(c.chosenScore)} from {c.votes} baseline{c.votes === 1 ? '' : 's'}){/if}</span
-											>
-											<span class="secondary">{decidedLabel(c.decidedBy)}</span>
-											{#if c.rejected.length}
-												<span class="secondary"
-													>over {#each c.rejected as r, i (r.label ?? i)}{r.label ?? '?'}
-														{score(r.score)}{#if i < c.rejected.length - 1},
-														{/if}{/each}</span
-												>
-											{/if}
-										</div>
-									{/each}
-									{#if a.selection.winnerSuspect}<span class="secondary suspect"
-											>winner disagreed with every baseline — probably the wrong song</span
-										>{/if}
-								</div>
-							{/if}
-							{#if a.error}<p class="err">{a.error}</p>{/if}
-						</li>
-					{/each}
-				</ol>
-	</Card.Content>
-</Card.Root>
-		{/each}
-
-		{#if audit.plays.length}
-			<Card.Root>
-	<Card.Header>
-		<Card.Title>Sung</Card.Title>
-	</Card.Header>
-	<Card.Content>
-				
-				<ul class="plays">
-					{#each audit.plays as p (p.entryId)}<li>{stamp(p.at)}</li>{/each}
-				</ul>
-	</Card.Content>
-</Card.Root>
-		{/if}
-	{/if}
+	</main>
 </section>
 
 <style>
@@ -272,13 +345,26 @@
 	.audit {
 		display: grid;
 		gap: 1rem;
+		/* 3rem (48px) is off-scale — the scale stops at --space-4xl (20px) — so it stays a literal. */
 		padding: 1rem 0 3rem;
 		max-width: 760px;
+		/* Match the PageHeader's --page-measure cap to this block's width (header and content share one
+		   measure; header does not cap below 760 when --max-w steps down in the 768–1200 band). */
+		--page-measure: 760px;
 		/* The cap takes width off the right only on a flex child (.app-shell is a
 		   centered flex column); width:100% keeps the stretch so margin-inline:auto
 		   re-centres the full capped block instead of collapsing it to content width. */
 		width: 100%;
 		margin-inline: auto;
+	}
+	/*
+	 * The <main> landmark (the shadcn migration). It carries the CARD grid and nothing else: the cap, --page-measure and
+	 * the auto inline margin stay on .audit so the PageHeader sitting inside that block keeps sharing the
+	 * content's measure.
+	 */
+	main {
+		display: grid;
+		gap: 1rem;
 	}
 	/* .card in app.css has no padding — see routes/stats/+page.svelte. */
 	/*
@@ -320,6 +406,9 @@
 	 * Each attempt is a NESTED PANEL on the process's card, not a floating stripe. A 2px left border was
 	 * the only thing marking one level of nesting, so process and attempt read as the same depth — which
 	 * is precisely the parent/child relationship processingId exists to express.
+	 *
+	 * These rules STAY here, and that is the reason Card.Root was rejected for this panel: they paint a
+	 * surface and tint it by outcome, and a page cannot reach inside a component to do either.
 	 */
 	.steps li {
 		background: var(--bg2);
@@ -360,26 +449,13 @@
 		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 	}
-	/* Aligned pairs instead of a run-on line: keys stay dim, values take ink. */
-	.facts {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(150px, max-content));
-		gap: 0.2rem 1.2rem;
-		margin: 0.45rem 0 0;
-		font-size: var(--ph-text-xs);
-	}
-	.facts div {
-		display: flex;
-		gap: 0.35rem;
-	}
-	.facts dt {
-		color: var(--ink-dim);
-	}
-	.facts dd {
-		margin: 0;
-		color: var(--ink);
-	}
-	/* WHY the lyric was picked: one small block per source, each line dim so it reads as
+	/*
+	 * The shadcn migration: `.facts` and its three descendant rules are GONE from this file. They were duplicated
+	 * VERBATIM in routes/metrics/+page.svelte — four rules and seven lines of markup in each, already
+	 * diverging by one `overflow-wrap` — and are now lib/components/FactList.svelte, which both pages
+	 * import. A scoped rule here could not reach that component's <dl> anyway.
+	 */
+	/* WHY the lyric was picked (an earlier change): one small block per source, each line dim so it reads as
 	   provenance beside the timings rather than competing with them. */
 	.selection {
 		display: flex;
