@@ -188,12 +188,19 @@ const FLOORS: Record<string, Floor[]> = {
 	'tests/guards/meta/no-self-anchored-paths.test.ts': [
 		{
 			subject: 'files.length',
-			min: 100,
+			min: 300,
 			count: 1,
 			guards:
-				'the walk that looks for self-anchored path derivations across the test tree. This guard exists because 61 relocated guards passed while their scan roots pointed at the wrong tree; if its own walk found nothing it would report a clean tree in exactly that way, reproducing the defect it was written to catch. It went unregistered from the moment it was written — direction C is what surfaced it.'
+				'the walk that looks for self-anchored path derivations across the test tree. This guard exists because 61 relocated guards kept path arithmetic pointing at their old depth and reported green from the wrong tree. Raised 100 -> 300 when the walk widened from `.test.ts` (292 files) to `.ts` + `.mjs` (341), which is the extension list that would have caught the six e2e probes resolving their repo root one hop short.'
+		},
+		{
+			subject: 'mjs.length',
+			min: 30,
+			count: 1,
+			guards:
+				'that the widened walk still reaches the `.mjs` drivers specifically. The `.test.ts`-only walk is precisely why six probes anchored one hop short for as long as they did, so a future narrowing of the extension list has to fail here rather than pass quietly on a tree that no longer includes them.'
 		}
-	],
+		],
 	'tests/guards/meta/test-tree-deps.test.ts': [
 		{
 			subject: 'files.length',
@@ -745,7 +752,12 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// to the new test-tree-deps guard, one is direction C's own `filesWalked`, and one is a floor on
 	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
 	// surfaced it. Both literals were re-measured, not incremented.
-	expect(located).toBeGreaterThanOrEqual(66);
+	//
+	// Re-measured to 71 when no-self-anchored-paths gained an `mjs.length` floor. The previous value
+	// of 66 was not wrong so much as SLACK: these are `>=` floors, so 66 kept passing while the real
+	// count drifted up to 70 without anything saying so. Measured by raising both to 99999 and reading
+	// `Received: N`, which is the only way to learn the actual number.
+	expect(located).toBeGreaterThanOrEqual(71);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -836,7 +848,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(66);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(71);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

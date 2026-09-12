@@ -46,6 +46,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+import { repoRoot } from '../lib/repo-root.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
@@ -811,8 +812,8 @@ record(
 // the process completes normally, and we say so as an ENV limit rather than a defect, per HARNESS.md's
 // "never conflate 2 with 0" rule.
 try {
-	const failWorker = spawn(process.execPath.includes('bun') ? process.execPath : 'bun', ['../fake-stems-worker.mjs'], {
-		cwd: new URL('.', import.meta.url).pathname,
+	const failWorker = spawn(process.execPath.includes('bun') ? process.execPath : 'bun', ['tests/e2e/fake-stems-worker.mjs'], {
+		cwd: repoRoot,
 		env: {
 			...process.env,
 			EPORT: PORT,
