@@ -58,9 +58,6 @@
         "typescript": "^5.6.0",
       },
     },
-    "packages/test-support": {
-      "name": "@encore/test-support",
-    },
     "tests": {
       "name": "@encore/tests",
       "devDependencies": {
@@ -88,8 +85,6 @@
     "@encore/core": ["@encore/core@workspace:apps/core"],
 
     "@encore/shared": ["@encore/shared@workspace:packages/shared"],
-
-    "@encore/test-support": ["@encore/test-support@workspace:packages/test-support"],
 
     "@encore/tests": ["@encore/tests@workspace:tests"],
 

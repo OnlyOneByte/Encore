@@ -20,8 +20,8 @@
 	"compilerOptions": {
 		"baseUrl": ".",
 		"paths": {
-			"@encore/test-support": ["../packages/test-support/src/index.ts"],
-			"@encore/test-support/*": ["../packages/test-support/src/*.ts"],
+			"@encore/test-support": ["./support/src/index.ts"],
+			"@encore/test-support/*": ["./support/src/*.ts"],
 			"@encore/shared": ["../packages/shared/src/index.ts"],
 			"$lib": ["../apps/core/src/lib"],
 			"$lib/*": ["../apps/core/src/lib/*"],
@@ -29,5 +29,5 @@
 			"$server/*": ["../apps/core/src/server/*"]
 		}
 	},
-	"include": ["**/*.ts", "../packages/test-support/src/**/*.ts"]
+	"include": ["**/*.ts", "./support/src/**/*.ts"]
 }
