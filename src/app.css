@@ -28,7 +28,7 @@
  * added without the frames and the fallout being dealt with, so the decision cannot be reversed by
  * accident.
  *
- * CONSEQUENCE FOR #827, WHICH MUST NOT BE LOST: a copied-in shadcn component assumes Preflight ran —
+ * CONSEQUENCE FOR an earlier change, WHICH MUST NOT BE LOST: a copied-in shadcn component assumes Preflight ran —
  * `box-sizing: border-box`, zeroed margins, `list-style: none`. Without it those must be supplied by
  * the component's own classes. That is a real cost of option A and it is #827's to weigh when it
  * decides whether the drawer is viable; option B (enable it and fix the fallout) stays available as
@@ -379,7 +379,7 @@
 	/*
 	 * ── BREAKPOINTS ──────────────────────────────────────────────────────────────────
 	 *
-	 * The sixth zero-token dimension #829 named and deliberately left for this issue, because a
+	 * The sixth zero-token dimension an earlier change named and deliberately left for this issue, because a
 	 * breakpoint set has no meaning without the parity test that pins the `@media` widths to it, and
 	 * minting the token alone would put a second source of truth in front of that test (app.css's own
 	 * "what this deliberately does not do" note said exactly this). So the declaration and its guard
@@ -504,11 +504,11 @@
 	 * TV route so the same components size correctly in the /components gallery, which renders them
 	 * outside it; the ROOT that gives the rem its px is what is scoped to /tv (routes/tv/+page.svelte).
 	 *
-	 * HISTORY (→ #821). #906 recorded that the previous clamp minimums were NOT all at the ten-foot
+	 * HISTORY (→ an earlier change). an earlier change recorded that the previous clamp minimums were NOT all at the ten-foot
 	 * floor and that the comment which claimed they were had read as false certification: against
 	 * `MIN_TV_PX` (24px) in `lib/tv/stage-scale.test.ts`, `--tv-eyebrow` bound at 16px and `--tv-label`
-	 * at 20px, both also binding on a 720p panel and resolving to 16.2px / 21.6px at 1080p. #821 lands
-	 * the fix #906 said could not be applied literally: the floor moved into ONE declaration on the /tv
+	 * at 20px, both also binding on a 720p panel and resolving to 16.2px / 21.6px at 1080p. an earlier change lands
+	 * the fix an earlier change said could not be applied literally: the floor moved into ONE declaration on the /tv
 	 * document's `:root` (so the phone root is untouched and SC 1.4.4 does not regress), the whole ladder
 	 * became rem off it, and eyebrow/label now resolve to 27px / 29px — clear of the 24px floor.
 	 */
@@ -622,10 +622,18 @@
 	 * are the named exemption to the "no viewport term" rule and may carry vw/vmin (XR-TV-02, XR-TV-09).
 	 */
 	/* The attract split: a left column at the title-safe x carrying the label + phrase, and a flat-filled
-	   right panel carrying the join block. Widths track the panel so the 820/600 proportion from the
-	   mockup holds at 1080p and scales on a larger wall rather than freezing two pixel columns. */
-	--tv-attract-left: min(820px, 44vw);
-	--tv-attract-right: min(600px, 32vw);
+	   right panel carrying the join block. Widths are `clamp(floor, Nvw, ceiling)` so the panel is
+	   proportional to the wall and GROWS on a 4K stage instead of freezing at a phone-sized column while
+	   the vh-scaled type doubles (XR-TV-19). The right panel's 37.5vw term and floor are sized from
+	   a MEASURED fact: a 23-char LAN address ("192.168.1.100:3721/join") rendered at --tv-name is 414px
+	   @720p / 604px @1080p / 1208px @4K, and the panel must clear that PLUS its overscan padding
+	   (--tv-safe-x ≈ 48/96/192px + a 20px interior gutter). 37.5vw yields ~480/720/1440px at those
+	   widths, so the address fits ONE line at --tv-name everywhere — which is what lets .jt-url keep the
+	   fixed 44px budget the ratified-states guard pins, with no font escape hatch and no mid-token break.
+	   Old form was `min(820px, 44vw)` / `min(600px, 32vw)`, which cap AT the px term — too narrow at
+	   1080p AND frozen at 4K, the two composing halves of the XR-TV-19 clip. */
+	--tv-attract-left: clamp(560px, 44vw, 1400px);
+	--tv-attract-right: clamp(482px, 37.5vw, 1440px);
 	/* The attract panel's own QR (not the --tv-qr hero): 230px in the mockup, in vmin so it grows. */
 	--tv-attract-qr: clamp(190px, 16vmin, 300px);
 	/* The full-screen takeover's family-coloured left border (Next-up / Still-processing / Skipping). One
@@ -696,7 +704,6 @@
 	   before the first measure and whenever no next song is queued (the block is absent). */
 	--tv-upnext-h: 0px;
 
-
 	/*
 	 * ── THE SHADCN SEMANTIC LAYER (restructure) ────────────────────────────────────────────────
 	 *
@@ -764,11 +771,11 @@
  *
  * THREE NAMESPACES WERE DELIBERATELY ABSENT WHEN THIS BLOCK WAS WRITTEN. Two are now filled, and the
  * reasons the others stay out have not changed.
- *   - motion (`--duration-*`), and the spacing / type / line-height scales: FILLED by #829, which
+ *   - motion (`--duration-*`), and the spacing / type / line-height scales: FILLED by an earlier change, which
  *     declared them in `:root` above and bridges them below. An earlier change left this seam open rather than
  *     inventing values for it, which is why every bridge entry added for them carries no number of its
  *     own -- each is a `var()` back to the single declaration in `:root`.
- *   - easing (`--ease-*`): still absent. #829 states why at its motion block above -- every curve in
+ *   - easing (`--ease-*`): still absent. an earlier change states why at its motion block above -- every curve in
  *     the tree is bespoke to one gesture, so there is no shared scale to name.
  *   - z-index: absent because Tailwind HAS no z-index theme namespace -- `z-10` is a bare-value
  *     utility computed from the class name, so there is no key to register a tier under. The two
@@ -834,7 +841,7 @@
 	--spacing-tv-safe-y: var(--tv-safe-y);
 
 	/*
-	 * TYPE — mints text-tv-*. The TV ladder. The phone's ladder sits beside it below, added by #829;
+	 * TYPE — mints text-tv-*. The TV ladder. The phone's ladder sits beside it below, added by an earlier change;
 	 * when this block was written the phone's sizes were still per-component literals, so there was
 	 * nothing to bridge and inventing a phone scale here would have been the same second-source-of-truth
 	 * problem the motion namespace was being kept clear of.
@@ -919,6 +926,40 @@
 }
 
 /*
+ * THE TWO PREFLIGHT RESETS THE VENDORED PRIMITIVES ASSUME (an earlier fix, Preflight OFF).
+ *
+ * Preflight is deliberately off (its universal reset would restyle ~4,950 lines of hand-written CSS —
+ * see the top-of-file note), and this app supplies `box-sizing: border-box` above. But two of Preflight's
+ * resets are load-bearing for the shadcn components and were NOT hand-supplied, so a vendored control
+ * rendered wrong:
+ *
+ *   - `button, input, select, textarea { font: inherit }`. Without it a control keeps the UA font
+ *     family — `body` sets font-family but it does not reach a form control, and no rule targeted a
+ *     bare control. So every vendored Button/Input/NativeSelect rendered in the browser's default UI
+ *     font. (Nine hand-rolled controls in app source set `font: inherit` themselves; the vendored
+ *     primitives were the only ones that did not, which is the tell.)
+ *   - `ul, ol { margin: 0; padding: 0 }`. Field.Error is a `<ul class="ml-4 ...">`; without the reset
+ *     the UA adds `margin-block: 1em` + `padding-inline-start: 40px`, so `ml-4` stacks on top of a 40px
+ *     UA indent. list-style is left to the components (Field.Error opts back into `list-disc`).
+ *
+ * This is scoped to the four element types rather than re-enabling Preflight wholesale, which
+ * tailwind-toolchain.test.ts bans and which owes a large acceptance-evidence bar (thousands of moved
+ * boxes). App-source lists that relied on the UA indent set their own padding; a spot check found the
+ * only rendered list (routes/admin) already resets it explicitly.
+ */
+button,
+input,
+select,
+textarea {
+	font: inherit;
+}
+ul,
+ol {
+	margin: 0;
+	padding: 0;
+}
+
+/*
  * Global focus ring. Every interactive element gets one, because -webkit-tap-highlight-color is
  * suppressed above and most controls here are custom-styled, so without this a keyboard or switch user
  * can operate the whole app while never seeing where they are.
@@ -950,7 +991,20 @@ body {
 }
 
 body {
-	background: radial-gradient(120% 80% at 50% -10%, var(--stage-glow) 0%, var(--bg) 55%);
+	/*
+	 * The glow is a top-of-page vignette. `background-attachment` stays `scroll` (the default), so it
+	 * scrolls away with the content, which is what `at 50% -10%` already describes it as — a vignette
+	 * anchored above the fold, not a fixed backdrop.
+	 *
+	 * `no-repeat` + a matching `background-color` is load-bearing, not tidiness. The body's background
+	 * propagates to the canvas and is treated as if set on the root, whose positioning area is one
+	 * viewport tall (html/body height:100%); with `background-repeat` at its default the one-viewport
+	 * gradient TILED, restarting at every multiple of the viewport height (measured seams at 844/1688/
+	 * 2532px on a 2646px page). It is seamless rather than seam-shifted because the gradient's final
+	 * stop is already `var(--bg) 55%`, so the flat colour that continues below the tile IS the end of
+	 * the tile — the two are one token so they cannot drift.
+	 */
+	background: var(--bg) radial-gradient(120% 80% at 50% -10%, var(--stage-glow) 0%, var(--bg) 55%) no-repeat;
 	color: var(--ink);
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, system-ui, sans-serif;
 	/* 100%, not 16px, to remove a LATENT trap rather than to fix a measured one — stated precisely
@@ -1022,7 +1076,7 @@ body {
 	border-radius: var(--radius-sm);
 }
 /*
- * `.btn-accent` was DELETED by #913 S1. Its two consumers — settings' Save and join's Start
+ * `.btn-accent` was DELETED by S1. Its two consumers — settings' Save and join's Start
  * singing — are now <Button variant="accent">, whose `accent` variant reproduces it: the fill and
  * its only legal ink (#840's per-stop pair), weight 700, and the same bare `active:scale(0.96)`
  * with no transition, which is what keeps the migration invisible. The hardcoded 10px it carried is
@@ -1047,6 +1101,31 @@ body {
 }
 
 /*
+ * THE SINGER IDENTITY DOT (the primitive-adoption pass). Four independent copies existed — QueueRow's `.who i`,
+ * ProcessingCard's `.who i`, NowPlayingHero's `.eyebrow .dot`, and ColourPicker's 14px `.colour-chip` —
+ * all the same five declarations. The hue is per-singer and arrives as `--singer`, set inline at the
+ * call site. It lives here for the same reason `.list-row` does: three of those four sit in the same
+ * list, so a dot that differs between them is a bug rather than a variation.
+ *
+ * `flex: 0 0 auto` is load-bearing: the dot sits in a flex line beside a name that ellipsises, and
+ * without it the dot is the thing that shrinks — it vanished from its own row (an earlier fix).
+ *
+ * NOT extended to the row STATE classes (`.pending`, `.dimmed`), which are also byte-identical across
+ * QueueRow and ProcessingCard. Those names are too generic to be safe as globals: this repo has already
+ * been bitten by a component class colliding with a global rule of the same name, and a guard pins
+ * `class:pending` in the markup, so renaming them to something specific is not free either. Six
+ * duplicated lines is a smaller cost than that collision risk.
+ */
+.singer-dot {
+	flex: 0 0 auto;
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--singer);
+}
+
+/*
  * The square icon button that ends a list row.
  *
  * QueueRow and ProcessingCard had byte-identical copies of this, each carrying its own copy of the
@@ -1060,7 +1139,7 @@ body {
  * with a different job, and folding them in here would only be tidiness pretending to be reuse.
  */
 /*
- * `.icon-btn` was DELETED by #913 S1b. Its ten consumers across QueueRow, ProcessingCard and
+ * `.icon-btn` was DELETED by the shadcn migration S1b. Its ten consumers across QueueRow, ProcessingCard and
  * NowPlayingHero are now <Button variant="icon">, whose variant carries the 44px box, the
  * --radius-sm corner, the --card2 surface and the dimmed glyph. `display: grid` + `place-items`
  * survives as `grid place-items-center` and is still load-bearing: Icon renders as a block, and

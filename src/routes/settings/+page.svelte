@@ -478,673 +478,677 @@
 			</Tabs.List>
 
 			<Tabs.Content value="you">
-			<!-- ── YOU ────────────────────────────────────────────────────────── -->
-			<div class="panel" id="panel-you" role="tabpanel" aria-labelledby="tab-you" tabindex="-1">
-				<Card.Root>
-	<Card.Header>
-		<Card.Title>Who you are</Card.Title>
-	</Card.Header>
-	<Card.Content>
-						<Field.Label for="profile-name">Your name</Field.Label>
-						<Input
-							id="profile-name"
-							variant="comfortable"
-							type="text"
-							maxlength={32}
-							autocomplete="off"
-							placeholder="e.g. Dana"
-							bind:value={name}
-						/>
+				<!-- ── YOU ────────────────────────────────────────────────────────── -->
+				<div class="panel" id="panel-you" role="tabpanel" aria-labelledby="tab-you" tabindex="-1">
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Who you are</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<Field.Label for="profile-name">Your name</Field.Label>
+							<Input
+								id="profile-name"
+								variant="comfortable"
+								type="text"
+								maxlength={32}
+								autocomplete="off"
+								placeholder="e.g. Dana"
+								bind:value={name}
+							/>
 
-						<ColourPicker bind:value={colour} hint="How you'll spot yourself in the queue and on the TV." />
+							<ColourPicker bind:value={colour} hint="How you'll spot yourself in the queue and on the TV." />
 
-						{#if profileError}<p class="warn" role="alert">{profileError}</p>{/if}
+							{#if profileError}<p class="warn" role="alert">{profileError}</p>{/if}
 
-						<!--
+							<!--
 						The one control on this page that needs an explicit commit. Every party and server
 						setting writes the moment it changes; a name is typed, so it saves on purpose.
 					-->
-						<div class="save-slot">
-							<Button size="block" disabled={!canSaveProfile} onclick={saveProfile}>
-								{#if saving}Saving…{:else}Save{/if}
-							</Button>
-						</div>
-					</Card.Content>
-</Card.Root>
+							<div class="save-slot">
+								<Button size="block" disabled={!canSaveProfile} onclick={saveProfile}>
+									{#if saving}Saving…{:else}Save{/if}
+								</Button>
+							</div>
+						</Card.Content>
+					</Card.Root>
 
-				<!--
+					<!--
 				Its own card, below the reversible one: leaving cannot be undone, so the boundary is drawn
 				rather than implied by being last in a list.
 			-->
-				<Card.Root>
-	<Card.Header>
-		<Card.Title>Leaving</Card.Title>
-	</Card.Header>
-	<Card.Content>
-						{#if !confirmingLeave}
-							<button class="leave" onclick={askLeave}>Leave the room</button>
-							<Field.Description>Your queued songs go with you.</Field.Description>
-						{:else}
-							<p class="leave-warn" role="alert">{leaveWarning}</p>
-							<div class="pair">
-								<button class="stay" onclick={() => (confirmingLeave = false)}>Stay</button>
-								<button class="leave confirm" disabled={leaving} onclick={leaveRoom}>
-									{#if leaving}Leaving…{:else}Yes, leave{/if}
-								</button>
-							</div>
-						{/if}
-					</Card.Content>
-</Card.Root>
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Leaving</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							{#if !confirmingLeave}
+								<button class="leave" onclick={askLeave}>Leave the room</button>
+								<Field.Description>Your queued songs go with you.</Field.Description>
+							{:else}
+								<p class="leave-warn" role="alert">{leaveWarning}</p>
+								<div class="pair">
+									<button class="stay" onclick={() => (confirmingLeave = false)}>Stay</button>
+									<button class="leave confirm" disabled={leaving} onclick={leaveRoom}>
+										{#if leaving}Leaving…{:else}Yes, leave{/if}
+									</button>
+								</div>
+							{/if}
+						</Card.Content>
+					</Card.Root>
 
-				<!--
+					<!--
 				The same footer exit the other two tabs have. Save is disabled until something is dirty, so
 				without this the You tab was a dead end for anyone who opened it and changed nothing — the
 				header's back arrow was the only way out, which no other tab relies on.
 			-->
-				<button class="done" onclick={() => goto('/')}>Done</button>
-			</div>
+					<button class="done" onclick={() => goto('/')}>Done</button>
+				</div>
 			</Tabs.Content>
 			<Tabs.Content value="party">
-			<!-- ── PARTY ──────────────────────────────────────────────────────── -->
-			<div class="panel" id="panel-party" role="tabpanel" aria-labelledby="tab-party" tabindex="-1">
-				<Card.Root>
-	<Card.Header>
-		<Card.Title>Rotation</Card.Title>
-	</Card.Header>
-	<Card.Content>
-						<Field.Label for="queue-order">Who sings next</Field.Label>
-						<NativeSelect
-							id="queue-order"
-							value={settings.room.queueOrder}
-							onchange={(e) => onroom({ queueOrder: e.currentTarget.value as QueueOrderId })}
-						>
-							{#each QUEUE_ORDERS as o (o.id)}
-								<option value={o.id}>{o.label}</option>
-							{/each}
-						</NativeSelect>
-						{#if queueOrderNote}<Field.Description>{queueOrderNote}</Field.Description>{/if}
+				<!-- ── PARTY ──────────────────────────────────────────────────────── -->
+				<div class="panel" id="panel-party" role="tabpanel" aria-labelledby="tab-party" tabindex="-1">
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Rotation</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<Field.Label for="queue-order">Who sings next</Field.Label>
+							<NativeSelect
+								id="queue-order"
+								value={settings.room.queueOrder}
+								onchange={(e) => onroom({ queueOrder: e.currentTarget.value as QueueOrderId })}
+							>
+								{#each QUEUE_ORDERS as o (o.id)}
+									<option value={o.id}>{o.label}</option>
+								{/each}
+							</NativeSelect>
+							{#if queueOrderNote}<Field.Description>{queueOrderNote}</Field.Description>{/if}
 
-						<Field.Label for="presence-grace">
-							Keep people in the room for · {graceLabel}
-						</Field.Label>
-						<Slider
-							id="presence-grace"
-							type="single"
-							min={MIN_PRESENCE_GRACE_MINUTES}
-							max={MAX_PRESENCE_GRACE_MINUTES}
-							step={15}
-							value={settings.room.presenceGraceMinutes}
-							onValueChange={(v) => liveRoom('presenceGraceMinutes', v)}
-							onValueCommit={(v) => onroom({ presenceGraceMinutes: v })}
-						/>
-						<Field.Description>A locked phone is not someone leaving, so they stay on the roster this long.</Field.Description>
-					</Card.Content>
-</Card.Root>
+							<Field.Label for="presence-grace">
+								Keep people in the room for · {graceLabel}
+							</Field.Label>
+							<Slider
+								id="presence-grace"
+								type="single"
+								min={MIN_PRESENCE_GRACE_MINUTES}
+								max={MAX_PRESENCE_GRACE_MINUTES}
+								step={15}
+								value={settings.room.presenceGraceMinutes}
+								onValueChange={(v) => liveRoom('presenceGraceMinutes', v)}
+								onValueCommit={(v) => onroom({ presenceGraceMinutes: v })}
+							/>
+							<Field.Description
+								>A locked phone is not someone leaving, so they stay on the roster this long.</Field.Description
+							>
+						</Card.Content>
+					</Card.Root>
 
-				<Card.Root>
-	<Card.Header>
-		<Card.Title>Process quality</Card.Title>
-	</Card.Header>
-	<Card.Content>
-						<Field.Label for="quality-ceiling">Cap this room at</Field.Label>
-						<!--
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Process quality</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<Field.Label for="quality-ceiling">Cap this room at</Field.Label>
+							<!--
 						A ceiling, offered as real engine+model pairings valued by their rank, not a raw
 						integer. The value is the `qualityRank`; the empty option is `null` = no cap. The
 						resolver picks the best live pairing AT OR UNDER this, so these are exactly the
 						ceilings it can honour.
 					-->
-						<NativeSelect
-							id="quality-ceiling"
-							value={settings.room.maxQualityRank ?? ''}
-							onchange={(e) =>
-								onroom({
-									maxQualityRank: e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
-								})}
-						>
-							<option value="">No cap — use the server default</option>
-							{#each qualityCeilings as c (c.rank)}
-								<option value={c.rank}>Up to {c.label}</option>
-							{/each}
-						</NativeSelect>
-						<!--
+							<NativeSelect
+								id="quality-ceiling"
+								value={settings.room.maxQualityRank ?? ''}
+								onchange={(e) =>
+									onroom({
+										maxQualityRank: e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
+									})}
+							>
+								<option value="">No cap — use the server default</option>
+								{#each qualityCeilings as c (c.rank)}
+									<option value={c.rank}>Up to {c.label}</option>
+								{/each}
+							</NativeSelect>
+							<!--
 						Downward-only, and this is where a party learns it: the server's default is already
 						bounded by what the worker fleet can run, so a room can only ask for the same or less.
 					-->
-						<Field.Description>
-							Only ever lowers process quality below the server's default, to keep a busy queue moving. It cannot raise it.
-						</Field.Description>
-						{#if capAboveDefault}
-							<p class="warn">
-								This cap is at or above the server's current default, so it changes nothing. Pick a lower one to
-								actually cap this room.
-							</p>
-						{/if}
-					</Card.Content>
-</Card.Root>
+							<Field.Description>
+								Only ever lowers process quality below the server's default, to keep a busy queue moving. It cannot
+								raise it.
+							</Field.Description>
+							{#if capAboveDefault}
+								<p class="warn">
+									This cap is at or above the server's current default, so it changes nothing. Pick a lower one to
+									actually cap this room.
+								</p>
+							{/if}
+						</Card.Content>
+					</Card.Root>
 
-				<Card.Root>
-	<Card.Header>
-		<Card.Title>The TV</Card.Title>
-	</Card.Header>
-	<Card.Content>
-						<div class="pair">
-							<div class="cell">
-								<Field.Label for="tv-background">Background</Field.Label>
-								<NativeSelect
-									id="tv-background"
-									value={settings.room.tvBackgroundStyle}
-									onchange={(e) => onroom({ tvBackgroundStyle: e.currentTarget.value as TvBackgroundStyle })}
-								>
-									{#each TV_BACKGROUND_STYLES as s (s.id)}
-										<option value={s.id}>{s.label}</option>
-									{/each}
-								</NativeSelect>
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>The TV</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<div class="pair">
+								<div class="cell">
+									<Field.Label for="tv-background">Background</Field.Label>
+									<NativeSelect
+										id="tv-background"
+										value={settings.room.tvBackgroundStyle}
+										onchange={(e) => onroom({ tvBackgroundStyle: e.currentTarget.value as TvBackgroundStyle })}
+									>
+										{#each TV_BACKGROUND_STYLES as s (s.id)}
+											<option value={s.id}>{s.label}</option>
+										{/each}
+									</NativeSelect>
+								</div>
+								<div class="cell">
+									<Field.Label for="tv-progress">Song progress</Field.Label>
+									<NativeSelect
+										id="tv-progress"
+										value={settings.room.tvProgressStyle}
+										onchange={(e) => onroom({ tvProgressStyle: e.currentTarget.value as TvProgressStyle })}
+									>
+										{#each TV_PROGRESS_STYLES as s (s.id)}
+											<option value={s.id}>{s.label}</option>
+										{/each}
+									</NativeSelect>
+								</div>
 							</div>
-							<div class="cell">
-								<Field.Label for="tv-progress">Song progress</Field.Label>
-								<NativeSelect
-									id="tv-progress"
-									value={settings.room.tvProgressStyle}
-									onchange={(e) => onroom({ tvProgressStyle: e.currentTarget.value as TvProgressStyle })}
-								>
-									{#each TV_PROGRESS_STYLES as s (s.id)}
-										<option value={s.id}>{s.label}</option>
-									{/each}
-								</NativeSelect>
-							</div>
-						</div>
-						{#if tvBackgroundNote}<Field.Description>{tvBackgroundNote}</Field.Description>{/if}
-						{#if tvProgressNote}<Field.Description>{tvProgressNote}</Field.Description>{/if}
+							{#if tvBackgroundNote}<Field.Description>{tvBackgroundNote}</Field.Description>{/if}
+							{#if tvProgressNote}<Field.Description>{tvProgressNote}</Field.Description>{/if}
 
-						<!--
+							<!--
 						Gated, not disabled: a visualizer picker means nothing for a black stage, and a control
 						that does nothing for the current selection implies it does something.
 					-->
-						{#if settings.room.tvBackgroundStyle === 'visualizer'}
-							<Field.Label for="tv-visualizer">Which visualizer</Field.Label>
-							<NativeSelect
-								id="tv-visualizer"
-								value={settings.room.tvVisualizer}
-								onchange={(e) => onroom({ tvVisualizer: e.currentTarget.value as TvVisualizerId })}
-							>
-								{#each TV_VISUALIZERS as v (v.id)}
-									<option value={v.id}>{v.label}</option>
-								{/each}
-							</NativeSelect>
-							{#if tvVisualizerNote}<Field.Description>{tvVisualizerNote}</Field.Description>{/if}
-						{/if}
+							{#if settings.room.tvBackgroundStyle === 'visualizer'}
+								<Field.Label for="tv-visualizer">Which visualizer</Field.Label>
+								<NativeSelect
+									id="tv-visualizer"
+									value={settings.room.tvVisualizer}
+									onchange={(e) => onroom({ tvVisualizer: e.currentTarget.value as TvVisualizerId })}
+								>
+									{#each TV_VISUALIZERS as v (v.id)}
+										<option value={v.id}>{v.label}</option>
+									{/each}
+								</NativeSelect>
+								{#if tvVisualizerNote}<Field.Description>{tvVisualizerNote}</Field.Description>{/if}
+							{/if}
 
-						<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
-						{#if settings.room.tvBackgroundStyle === 'solid' || settings.room.tvBackgroundStyle === 'visualizer'}
-							<Field.Label data-inline for="tv-background-color">
-								Background colour
-								<span class="swatch" style="background: {tvBackgroundPreview}" aria-hidden="true"></span>
-							</Field.Label>
-							<!--
-							A real colour input, not the hue slider this was until the stage-colour change: the room names a colour
+							<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
+							{#if settings.room.tvBackgroundStyle === 'solid' || settings.room.tvBackgroundStyle === 'visualizer'}
+								<Field.Label data-inline for="tv-background-color">
+									Background colour
+									<span class="swatch" style="background: {tvBackgroundPreview}" aria-hidden="true"></span>
+								</Field.Label>
+								<!--
+							A real colour input, not the hue slider this was until an earlier change: the room names a colour
 							outright now rather than an angle rendered at a pinned lightness. oninput/onchange are
 							split for the same reason every slider here splits them — the native picker fires
 							`input` continuously while you drag inside it, so the swatch has to track live, while only
 							the committed `change` writes and broadcasts room-wide.
 						-->
-							<input
-								id="tv-background-color"
-								class="colour"
-								type="color"
-								value={settings.room.tvBackgroundColor}
-								oninput={(e) => liveRoom('tvBackgroundColor', e.currentTarget.value)}
-								onchange={(e) => onroom({ tvBackgroundColor: e.currentTarget.value })}
-							/>
+								<input
+									id="tv-background-color"
+									class="colour"
+									type="color"
+									value={settings.room.tvBackgroundColor}
+									oninput={(e) => liveRoom('tvBackgroundColor', e.currentTarget.value)}
+									onchange={(e) => onroom({ tvBackgroundColor: e.currentTarget.value })}
+								/>
 
-							<Field.Label for="tv-background-dim">
-								Dim · {Math.round(settings.room.tvBackgroundDim * 100)}%
-							</Field.Label>
-							<!--
-							Dims the stage colour toward black (owner ruling Q2 = A) — a lightness control, not
-							a layer over the video. Split oninput/onchange like every other slider here: the
+								<Field.Label for="tv-background-dim">
+									Dim · {Math.round(settings.room.tvBackgroundDim * 100)}%
+								</Field.Label>
+								<!--
+							Dims the stage colour toward black (an earlier change, owner ruling Q2 = A) — a lightness control, not
+							a layer over the video. Split oninput/onchange like every other slider here (an earlier change): the
 							readout above is the only display of the value, so it must track the thumb live, while
 							only the committed `change` writes and broadcasts. Stored 0..1, shown as a percent; the
 							range spans the full 0..100 the server clamp accepts.
 						-->
-							<Slider
-								id="tv-background-dim"
-								type="single"
-								min={0}
-								max={100}
-								step={1}
-								value={Math.round(settings.room.tvBackgroundDim * 100)}
-								onValueChange={(v) => liveRoom('tvBackgroundDim', v / 100)}
-								onValueCommit={(v) => onroom({ tvBackgroundDim: v / 100 })}
-							/>
-							<Field.Description>How far the stage colour is darkened toward black. 0% is the colour itself.</Field.Description>
-						{/if}
+								<Slider
+									id="tv-background-dim"
+									type="single"
+									min={0}
+									max={100}
+									step={1}
+									value={Math.round(settings.room.tvBackgroundDim * 100)}
+									onValueChange={(v) => liveRoom('tvBackgroundDim', v / 100)}
+									onValueCommit={(v) => onroom({ tvBackgroundDim: v / 100 })}
+								/>
+								<Field.Description
+									>How far the stage colour is darkened toward black. 0% is the colour itself.</Field.Description
+								>
+							{/if}
 
-						<label class="check" for="song-intro-on">
-							<Checkbox
-								id="song-intro-on"
-								checked={settings.room.songIntroEnabled}
-								onCheckedChange={(v) => onroom({ songIntroEnabled: v })}
-							/>
-							Song intro before each turn
-						</label>
-						<Field.Description>A card naming the song, artist and singer.</Field.Description>
+							<label class="check" for="song-intro-on">
+								<Checkbox
+									id="song-intro-on"
+									checked={settings.room.songIntroEnabled}
+									onCheckedChange={(v) => onroom({ songIntroEnabled: v })}
+								/>
+								Song intro before each turn
+							</label>
+							<Field.Description>A card naming the song, artist and singer.</Field.Description>
 
-						<Field.Label data-dim={!settings.room.songIntroEnabled || undefined} for="song-intro-ms">
-							Intro holds for · {(settings.room.songIntroMs / 1000).toFixed(1)}s
-						</Field.Label>
-						<!--
+							<Field.Label data-dim={!settings.room.songIntroEnabled || undefined} for="song-intro-ms">
+								Intro holds for · {(settings.room.songIntroMs / 1000).toFixed(1)}s
+							</Field.Label>
+							<!--
 					  The range MUST match the server clamp exactly (MIN/MAX_SONG_INTRO_MS). A slider narrower
 					  than the clamp has shipped here before: the UI silently refuses values the server takes.
 					-->
-						<Slider
-							id="song-intro-ms"
-							type="single"
-							min={MIN_SONG_INTRO_MS}
-							max={MAX_SONG_INTRO_MS}
-							step={SONG_INTRO_STEP_MS}
-							disabled={!settings.room.songIntroEnabled}
-							value={settings.room.songIntroMs}
-							onValueChange={(v) => liveRoom('songIntroMs', v)}
-							onValueCommit={(v) => onroom({ songIntroMs: v })}
-						/>
-					</Card.Content>
-</Card.Root>
+							<Slider
+								id="song-intro-ms"
+								type="single"
+								min={MIN_SONG_INTRO_MS}
+								max={MAX_SONG_INTRO_MS}
+								step={SONG_INTRO_STEP_MS}
+								disabled={!settings.room.songIntroEnabled}
+								value={settings.room.songIntroMs}
+								onValueChange={(v) => liveRoom('songIntroMs', v)}
+								onValueCommit={(v) => onroom({ songIntroMs: v })}
+							/>
+						</Card.Content>
+					</Card.Root>
 
-				<Card.Root>
-	<Card.Header>
-		<Card.Title>Lyrics on the TV</Card.Title>
-	</Card.Header>
-	<Card.Content>
-						<div class="pair">
-							<div class="cell">
-								<Field.Label for="lyrics-highlight">Highlight</Field.Label>
-								<NativeSelect
-									id="lyrics-highlight"
-									value={settings.room.lyricsHighlight}
-									onchange={(e) => onroom({ lyricsHighlight: e.currentTarget.value as LyricsHighlightId })}
-								>
-									{#each LYRICS_HIGHLIGHTS as h (h.id)}
-										<option value={h.id}>{h.label}</option>
-									{/each}
-								</NativeSelect>
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Lyrics on the TV</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<div class="pair">
+								<div class="cell">
+									<Field.Label for="lyrics-highlight">Highlight</Field.Label>
+									<NativeSelect
+										id="lyrics-highlight"
+										value={settings.room.lyricsHighlight}
+										onchange={(e) => onroom({ lyricsHighlight: e.currentTarget.value as LyricsHighlightId })}
+									>
+										{#each LYRICS_HIGHLIGHTS as h (h.id)}
+											<option value={h.id}>{h.label}</option>
+										{/each}
+									</NativeSelect>
+								</div>
+								<div class="cell">
+									<Field.Label for="lyrics-ball">Marker</Field.Label>
+									<NativeSelect
+										id="lyrics-ball"
+										value={settings.room.lyricsBall}
+										onchange={(e) => onroom({ lyricsBall: e.currentTarget.value as LyricsBallStyleId })}
+									>
+										{#each LYRICS_BALL_STYLES as s (s.id)}
+											<option value={s.id}>{s.label}</option>
+										{/each}
+									</NativeSelect>
+								</div>
 							</div>
-							<div class="cell">
-								<Field.Label for="lyrics-ball">Marker</Field.Label>
-								<NativeSelect
-									id="lyrics-ball"
-									value={settings.room.lyricsBall}
-									onchange={(e) => onroom({ lyricsBall: e.currentTarget.value as LyricsBallStyleId })}
-								>
-									{#each LYRICS_BALL_STYLES as s (s.id)}
-										<option value={s.id}>{s.label}</option>
-									{/each}
-								</NativeSelect>
-							</div>
-						</div>
-						{#if highlightNote}<Field.Description>{highlightNote}</Field.Description>{/if}
-						{#if ballNote}<Field.Description>{ballNote}</Field.Description>{/if}
+							{#if highlightNote}<Field.Description>{highlightNote}</Field.Description>{/if}
+							{#if ballNote}<Field.Description>{ballNote}</Field.Description>{/if}
 
-						<!--
+							<!--
 						Say when a choice is not being honoured. The server's sync mode decides whether per-word
 						timings exist at all, so under "Line sync only" a word-level treatment has nothing to
 						light. A picker that silently does nothing is worse than one that explains itself.
 					-->
-						{#if lyricsClamped}
-							<p class="warn">
-								Showing <strong>{resolvedHighlight}</strong>{resolvedBall ? '' : ' with no marker'}: the server's
-								<em>Lyrics timing</em> is set to line-only, so there are no word timings.
-							</p>
-						{/if}
+							{#if lyricsClamped}
+								<p class="warn">
+									Showing <strong>{resolvedHighlight}</strong>{resolvedBall ? '' : ' with no marker'}: the server's
+									<em>Lyrics timing</em> is set to line-only, so there are no word timings.
+								</p>
+							{/if}
 
-						<div class="pair">
-							<div class="cell">
-								<Field.Label for="lyrics-font">Font</Field.Label>
-								<NativeSelect
-									id="lyrics-font"
-									value={settings.room.lyricsFont}
-									onchange={(e) => onroom({ lyricsFont: e.currentTarget.value as LyricsFontId })}
-								>
-									{#each LYRICS_FONTS as f (f.id)}
-										<option value={f.id}>{f.label}</option>
-									{/each}
-								</NativeSelect>
+							<div class="pair">
+								<div class="cell">
+									<Field.Label for="lyrics-font">Font</Field.Label>
+									<NativeSelect
+										id="lyrics-font"
+										value={settings.room.lyricsFont}
+										onchange={(e) => onroom({ lyricsFont: e.currentTarget.value as LyricsFontId })}
+									>
+										{#each LYRICS_FONTS as f (f.id)}
+											<option value={f.id}>{f.label}</option>
+										{/each}
+									</NativeSelect>
+								</div>
+								<div class="cell">
+									<Field.Label for="lyrics-case">Letter case</Field.Label>
+									<NativeSelect
+										id="lyrics-case"
+										value={settings.room.lyricsCase}
+										onchange={(e) => onroom({ lyricsCase: e.currentTarget.value as LyricsCaseId })}
+									>
+										{#each LYRICS_CASES as c (c.id)}
+											<option value={c.id}>{c.label}</option>
+										{/each}
+									</NativeSelect>
+								</div>
 							</div>
-							<div class="cell">
-								<Field.Label for="lyrics-case">Letter case</Field.Label>
-								<NativeSelect
-									id="lyrics-case"
-									value={settings.room.lyricsCase}
-									onchange={(e) => onroom({ lyricsCase: e.currentTarget.value as LyricsCaseId })}
-								>
-									{#each LYRICS_CASES as c (c.id)}
-										<option value={c.id}>{c.label}</option>
-									{/each}
-								</NativeSelect>
-							</div>
-						</div>
-						{#if fontNote}<Field.Description>{fontNote}</Field.Description>{/if}
-						{#if caseNote}<Field.Description>{caseNote}</Field.Description>{/if}
+							{#if fontNote}<Field.Description>{fontNote}</Field.Description>{/if}
+							{#if caseNote}<Field.Description>{caseNote}</Field.Description>{/if}
 
-						<Field.Label for="lyrics-scale">Text size · {settings.room.lyricsScalePct}%</Field.Label>
-						<Slider
-							id="lyrics-scale"
-							type="single"
-							min={MIN_LYRICS_SCALE_PCT}
-							max={MAX_LYRICS_SCALE_PCT}
-							step={5}
-							value={settings.room.lyricsScalePct}
-							onValueChange={(v) => liveRoom('lyricsScalePct', v)}
-							onValueCommit={(v) => onroom({ lyricsScalePct: v })}
-						/>
-						<!--
+							<Field.Label for="lyrics-scale">Text size · {settings.room.lyricsScalePct}%</Field.Label>
+							<Slider
+								id="lyrics-scale"
+								type="single"
+								min={MIN_LYRICS_SCALE_PCT}
+								max={MAX_LYRICS_SCALE_PCT}
+								step={5}
+								value={settings.room.lyricsScalePct}
+								onValueChange={(v) => liveRoom('lyricsScalePct', v)}
+								onValueCommit={(v) => onroom({ lyricsScalePct: v })}
+							/>
+							<!--
 						Says PERCENT OF, not a size, because that is what it is: the TV already picks a size from
 						its own height and this scales it. "48px" would mean nothing on a different screen.
 					-->
-						<Field.Description>Relative to the size the TV picks for its own screen.</Field.Description>
+							<Field.Description>Relative to the size the TV picks for its own screen.</Field.Description>
 
-						<Field.Label for="lyrics-lead">
-							Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
-						</Field.Label>
-						<Slider
-							id="lyrics-lead"
-							type="single"
-							min={0}
-							max={MAX_LYRICS_LEAD_MS}
-							step={50}
-							value={settings.room.lyricsLeadMs}
-							onValueChange={(v) => liveRoom('lyricsLeadMs', v)}
-							onValueCommit={(v) => onroom({ lyricsLeadMs: v })}
-						/>
-
-						<div class="pair">
-							<div class="cell">
-								<Field.Label for="lyrics-before">Lines sung · {settings.room.lyricsLinesBefore}</Field.Label>
-								<Slider
-									id="lyrics-before"
-									type="single"
-									min={0}
-									max={MAX_LYRICS_LINES_BEFORE}
-									step={1}
-									value={settings.room.lyricsLinesBefore}
-									onValueChange={(v) => liveRoom('lyricsLinesBefore', v)}
-									onValueCommit={(v) => onroom({ lyricsLinesBefore: v })}
-								/>
-							</div>
-							<div class="cell">
-								<Field.Label for="lyrics-after">Lines ahead · {settings.room.lyricsLinesAfter}</Field.Label>
-								<Slider
-									id="lyrics-after"
-									type="single"
-									min={0}
-									max={MAX_LYRICS_LINES_AFTER}
-									step={1}
-									value={settings.room.lyricsLinesAfter}
-									onValueChange={(v) => liveRoom('lyricsLinesAfter', v)}
-									onValueCommit={(v) => onroom({ lyricsLinesAfter: v })}
-								/>
-							</div>
-						</div>
-					</Card.Content>
-</Card.Root>
-
-				<Card.Root>
-	<Card.Header>
-		<Card.Title>Sound</Card.Title>
-	</Card.Header>
-	<Card.Content>
-						<Field.Label for="guide-default">
-							Guiding track · {Math.round(settings.room.guideLevelDefault * 100)}%
-						</Field.Label>
-						<Slider
-							id="guide-default"
-							type="single"
-							min={0}
-							max={100}
-							step={1}
-							value={Math.round(settings.room.guideLevelDefault * 100)}
-							onValueChange={(v) => liveRoom('guideLevelDefault', v / 100)}
-							onValueCommit={(v) => onroom({ guideLevelDefault: v / 100 })}
-						/>
-						<Field.Description>Starting vocal level. Singers can change it per song.</Field.Description>
-						{#if settings.room.guideLevelDefault > 0}
-							<Field.Description>Only songs processed with their vocals kept can offer a guide.</Field.Description>
-						{/if}
-
-						<label class="check" for="loudness-norm">
-							<Checkbox
-								id="loudness-norm"
-								checked={settings.room.loudnessNormalization}
-								onCheckedChange={(v) => onroom({ loudnessNormalization: v })}
+							<Field.Label for="lyrics-lead">
+								Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
+							</Field.Label>
+							<Slider
+								id="lyrics-lead"
+								type="single"
+								min={0}
+								max={MAX_LYRICS_LEAD_MS}
+								step={50}
+								value={settings.room.lyricsLeadMs}
+								onValueChange={(v) => liveRoom('lyricsLeadMs', v)}
+								onValueCommit={(v) => onroom({ lyricsLeadMs: v })}
 							/>
-							Even out loud songs
-						</label>
-						<Field.Description>
-							Turns down the few songs that are much louder than the rest, so you stop reaching for the volume. Quiet
-							songs are left alone.
-						</Field.Description>
-					</Card.Content>
-</Card.Root>
 
-				<!--
+							<div class="pair">
+								<div class="cell">
+									<Field.Label for="lyrics-before">Lines sung · {settings.room.lyricsLinesBefore}</Field.Label>
+									<Slider
+										id="lyrics-before"
+										type="single"
+										min={0}
+										max={MAX_LYRICS_LINES_BEFORE}
+										step={1}
+										value={settings.room.lyricsLinesBefore}
+										onValueChange={(v) => liveRoom('lyricsLinesBefore', v)}
+										onValueCommit={(v) => onroom({ lyricsLinesBefore: v })}
+									/>
+								</div>
+								<div class="cell">
+									<Field.Label for="lyrics-after">Lines ahead · {settings.room.lyricsLinesAfter}</Field.Label>
+									<Slider
+										id="lyrics-after"
+										type="single"
+										min={0}
+										max={MAX_LYRICS_LINES_AFTER}
+										step={1}
+										value={settings.room.lyricsLinesAfter}
+										onValueChange={(v) => liveRoom('lyricsLinesAfter', v)}
+										onValueCommit={(v) => onroom({ lyricsLinesAfter: v })}
+									/>
+								</div>
+							</div>
+						</Card.Content>
+					</Card.Root>
+
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Sound</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<Field.Label for="guide-default">
+								Guiding track · {Math.round(settings.room.guideLevelDefault * 100)}%
+							</Field.Label>
+							<Slider
+								id="guide-default"
+								type="single"
+								min={0}
+								max={100}
+								step={1}
+								value={Math.round(settings.room.guideLevelDefault * 100)}
+								onValueChange={(v) => liveRoom('guideLevelDefault', v / 100)}
+								onValueCommit={(v) => onroom({ guideLevelDefault: v / 100 })}
+							/>
+							<Field.Description>Starting vocal level. Singers can change it per song.</Field.Description>
+							{#if settings.room.guideLevelDefault > 0}
+								<Field.Description>Only songs processed with their vocals kept can offer a guide.</Field.Description>
+							{/if}
+
+							<label class="check" for="loudness-norm">
+								<Checkbox
+									id="loudness-norm"
+									checked={settings.room.loudnessNormalization}
+									onCheckedChange={(v) => onroom({ loudnessNormalization: v })}
+								/>
+								Even out loud songs
+							</label>
+							<Field.Description>
+								Turns down the few songs that are much louder than the rest, so you stop reaching for the volume. Quiet
+								songs are left alone.
+							</Field.Description>
+						</Card.Content>
+					</Card.Root>
+
+					<!--
 				/stats is the GUEST page, so it is the one dashboard safe to reach from a surface any phone
 				can open. Its sibling on the Server tab is not, which is why they are not side by side.
 			-->
-				<a class="dash" href="/stats">
-					<Icon name="sparkle" />
-					Party stats <span class="dash-note">safe to share</span>
-				</a>
+					<a class="dash" href="/stats">
+						<Icon name="sparkle" />
+						Party stats <span class="dash-note">safe to share</span>
+					</a>
 
-				<button class="done" onclick={() => goto('/')}>Done</button>
-			</div>
+					<button class="done" onclick={() => goto('/')}>Done</button>
+				</div>
 			</Tabs.Content>
 			<Tabs.Content value="server">
-			<!-- ── SERVER ─────────────────────────────────────────────────────── -->
-			<div class="panel" id="panel-server" role="tabpanel" aria-labelledby="tab-server" tabindex="-1">
-				<p class="scope-note">Affects every room on this server.</p>
+				<!-- ── SERVER ─────────────────────────────────────────────────────── -->
+				<div class="panel" id="panel-server" role="tabpanel" aria-labelledby="tab-server" tabindex="-1">
+					<p class="scope-note">Affects every room on this server.</p>
 
-				<Card.Root>
-	<Card.Header>
-		<Card.Title>Making karaoke</Card.Title>
-	</Card.Header>
-	<Card.Content>
-						<!-- Stacked for the same measured reason as the lyrics engine below: "BS-RoFormer 1297". -->
-						<Field.Label for="engine">Stem splitter</Field.Label>
-						<NativeSelect
-							id="engine"
-							value={settings.global.defaultEngine}
-							onchange={(e) => pickEngine(e.currentTarget.value)}
-						>
-							{#each liveEngines as engine (engine.id)}
-								<option value={engine.id}>{engine.label}</option>
-							{/each}
-						</NativeSelect>
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Making karaoke</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<!-- Stacked for the same measured reason as the lyrics engine below: "BS-RoFormer 1297". -->
+							<Field.Label for="engine">Stem splitter</Field.Label>
+							<NativeSelect
+								id="engine"
+								value={settings.global.defaultEngine}
+								onchange={(e) => pickEngine(e.currentTarget.value)}
+							>
+								{#each liveEngines as engine (engine.id)}
+									<option value={engine.id}>{engine.label}</option>
+								{/each}
+							</NativeSelect>
 
-						<Field.Label for="model">Model</Field.Label>
-						<NativeSelect
-							id="model"
-							value={settings.global.defaultModel}
-							onchange={(e) => onglobal({ defaultModel: e.currentTarget.value })}
-						>
-							{#each liveModels as model (model.id)}
-								<option value={model.id}>{model.label}</option>
-							{/each}
-						</NativeSelect>
-						{#if liveNote}<Field.Description>{liveNote}</Field.Description>{/if}
-						{#if liveSlow}
-							<p class="warn">Slow on CPU — around 45 minutes per song. Better suited to upgrades.</p>
-						{/if}
+							<Field.Label for="model">Model</Field.Label>
+							<NativeSelect
+								id="model"
+								value={settings.global.defaultModel}
+								onchange={(e) => onglobal({ defaultModel: e.currentTarget.value })}
+							>
+								{#each liveModels as model (model.id)}
+									<option value={model.id}>{model.label}</option>
+								{/each}
+							</NativeSelect>
+							{#if liveNote}<Field.Description>{liveNote}</Field.Description>{/if}
+							{#if liveSlow}
+								<p class="warn">Slow on CPU — around 45 minutes per song. Better suited to upgrades.</p>
+							{/if}
 
-						<Field.Label for="fetcher">Where audio comes from</Field.Label>
-						<NativeSelect
-							id="fetcher"
-							value={settings.global.defaultFetcher}
-							onchange={(e) => onglobal({ defaultFetcher: e.currentTarget.value as FetcherId })}
-						>
-							{#each defaultFetchers as f (f.id)}
-								<option value={f.id}>{f.label}</option>
-							{/each}
-						</NativeSelect>
-						{#if fetcherNote}<Field.Description>{fetcherNote}</Field.Description>{/if}
-						<!--
+							<Field.Label for="fetcher">Where audio comes from</Field.Label>
+							<NativeSelect
+								id="fetcher"
+								value={settings.global.defaultFetcher}
+								onchange={(e) => onglobal({ defaultFetcher: e.currentTarget.value as FetcherId })}
+							>
+								{#each defaultFetchers as f (f.id)}
+									<option value={f.id}>{f.label}</option>
+								{/each}
+							</NativeSelect>
+							{#if fetcherNote}<Field.Description>{fetcherNote}</Field.Description>{/if}
+							<!--
 						Explicit blast radius, matched to the splitter warning above it: this is the acquirer
 						EVERY new process downloads its source through, and a worker that cannot run it fails the
 						fetch before any separation starts.
 					-->
-						<p class="warn">
-							Changes where every new process gets its audio. A worker that cannot run it will fail the download.
-						</p>
-					</Card.Content>
-</Card.Root>
+							<p class="warn">
+								Changes where every new process gets its audio. A worker that cannot run it will fail the download.
+							</p>
+						</Card.Content>
+					</Card.Root>
 
-				<Card.Root>
-	<Card.Header>
-		<Card.Title>Lyrics engine</Card.Title>
-	</Card.Header>
-	<Card.Content>
-						<!--
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Lyrics engine</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<!--
 						NOT paired two-up like the room controls, and measured rather than assumed: at 390px a
 						half-width select leaves ~120px for its text, and these registries carry the app's
 						longest option labels ("Forced alignment", "BS-RoFormer 1297"), which truncate there.
 						The room's pairs were checked at the same width and fit. A truncated option is worse
 						than a longer page, and this is the tab you visit once.
 					-->
-						<Field.Label for="asr-model">Reader</Field.Label>
-						<NativeSelect
-							id="asr-model"
-							value={settings.global.asrModel}
-							onchange={(e) => onglobal({ asrModel: e.currentTarget.value as GlobalSettings['asrModel'] })}
-						>
-							{#each ASR_MODELS as model (model.id)}
-								<option value={model.id}>{model.label} · {model.params}</option>
-							{/each}
-						</NativeSelect>
-						{#if asrNote}<Field.Description>{asrNote}</Field.Description>{/if}
-						{#if asrSlow}
-							<p class="warn">A big reader needs real memory and adds minutes to every process on a CPU box.</p>
-						{/if}
+							<Field.Label for="asr-model">Reader</Field.Label>
+							<NativeSelect
+								id="asr-model"
+								value={settings.global.asrModel}
+								onchange={(e) => onglobal({ asrModel: e.currentTarget.value as GlobalSettings['asrModel'] })}
+							>
+								{#each ASR_MODELS as model (model.id)}
+									<option value={model.id}>{model.label} · {model.params}</option>
+								{/each}
+							</NativeSelect>
+							{#if asrNote}<Field.Description>{asrNote}</Field.Description>{/if}
+							{#if asrSlow}
+								<p class="warn">A big reader needs real memory and adds minutes to every process on a CPU box.</p>
+							{/if}
 
-						<Field.Label for="sync-mode">Timing</Field.Label>
-						<NativeSelect
-							id="sync-mode"
-							value={settings.global.syncMode}
-							onchange={(e) => onglobal({ syncMode: e.currentTarget.value as GlobalSettings['syncMode'] })}
-						>
-							{#each SYNC_MODES as mode (mode.id)}
-								<option value={mode.id}>{mode.label}</option>
-							{/each}
-						</NativeSelect>
-						{#if syncNote}<Field.Description>{syncNote}</Field.Description>{/if}
-					</Card.Content>
-</Card.Root>
+							<Field.Label for="sync-mode">Timing</Field.Label>
+							<NativeSelect
+								id="sync-mode"
+								value={settings.global.syncMode}
+								onchange={(e) => onglobal({ syncMode: e.currentTarget.value as GlobalSettings['syncMode'] })}
+							>
+								{#each SYNC_MODES as mode (mode.id)}
+									<option value={mode.id}>{mode.label}</option>
+								{/each}
+							</NativeSelect>
+							{#if syncNote}<Field.Description>{syncNote}</Field.Description>{/if}
+						</Card.Content>
+					</Card.Root>
 
-				<Card.Root>
-	<Card.Header>
-		<Card.Title>Joining</Card.Title>
-	</Card.Header>
-	<Card.Content>
-						<Field.Label for="join-origin">Address phones join at</Field.Label>
-						<Input
-							id="join-origin"
-							variant="mono"
-							type="text"
-							inputmode="url"
-							autocomplete="off"
-							spellcheck="false"
-							placeholder={data.joinOriginFallback}
-							aria-describedby="join-origin-hint"
-							aria-invalid={joinError ? 'true' : undefined}
-							bind:value={joinDraft}
-							onchange={commitJoinOrigin}
-						/>
-						<Field.Description id="join-origin-hint">
-							What the TV's QR code points at. Empty means <strong>{data.joinOriginFallback}</strong>.
-						</Field.Description>
-						{#if joinError}<p class="warn" role="alert">{joinError}</p>{/if}
-						{#if joinSchemeMismatch}
-							<p class="warn">This party runs over plain http, so phones cannot open an https address.</p>
-						{/if}
-					</Card.Content>
-</Card.Root>
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Joining</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<Field.Label for="join-origin">Address phones join at</Field.Label>
+							<Input
+								id="join-origin"
+								variant="mono"
+								type="text"
+								inputmode="url"
+								autocomplete="off"
+								spellcheck="false"
+								placeholder={data.joinOriginFallback}
+								aria-describedby="join-origin-hint"
+								aria-invalid={joinError ? 'true' : undefined}
+								bind:value={joinDraft}
+								onchange={commitJoinOrigin}
+							/>
+							<Field.Description id="join-origin-hint">
+								What the TV's QR code points at. Empty means <strong>{data.joinOriginFallback}</strong>.
+							</Field.Description>
+							{#if joinError}<p class="warn" role="alert">{joinError}</p>{/if}
+							{#if joinSchemeMismatch}
+								<p class="warn">This party runs over plain http, so phones cannot open an https address.</p>
+							{/if}
+						</Card.Content>
+					</Card.Root>
 
-				<Card.Root>
-	<Card.Content>
-					<!--
+					<Card.Root>
+						<Card.Content>
+							<!--
 						S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> STAYS
 						here via Bits UI's `child` snippet — `.disclose` is scoped CSS in this file, and a class handed
 						to a component is scoped to the CALLER and stripped there as unused.
 					-->
-					<Collapsible.Root bind:open={advancedOpen}>
-						<Collapsible.Trigger>
-							{#snippet child({ props })}
-								<button class="disclose" {...props}>
-						<Icon name={advancedOpen ? 'chevron-down' : 'chevron-right'} />
-						Advanced
-						<span class="disclose-now">
-							{settings.global.enqueueUpgrade ? 'Re-process on' : 'Re-process off'}
-									</span>
-								</button>
-							{/snippet}
-						</Collapsible.Trigger>
+							<Collapsible.Root bind:open={advancedOpen}>
+								<Collapsible.Trigger>
+									{#snippet child({ props })}
+										<button class="disclose" {...props}>
+											<Icon name={advancedOpen ? 'chevron-down' : 'chevron-right'} />
+											Advanced
+											<span class="disclose-now">
+												{settings.global.enqueueUpgrade ? 'Re-process on' : 'Re-process off'}
+											</span>
+										</button>
+									{/snippet}
+								</Collapsible.Trigger>
 
-						<Collapsible.Content>
-							{#snippet child({ props })}
-								<Card.Content id="advanced-body" {...props}>
-							<label class="check" for="enqueue-upgrade">
-							<Checkbox
-								id="enqueue-upgrade"
-								checked={settings.global.enqueueUpgrade}
-								onCheckedChange={(v) => onglobal({ enqueueUpgrade: v })}
-							/>
-								Re-process at higher quality after each song
-							</label>
-							<Field.Description>Runs from the audio already saved — no re-download.</Field.Description>
+								<Collapsible.Content>
+									{#snippet child({ props })}
+										<Card.Content id="advanced-body" {...props}>
+											<label class="check" for="enqueue-upgrade">
+												<Checkbox
+													id="enqueue-upgrade"
+													checked={settings.global.enqueueUpgrade}
+													onCheckedChange={(v) => onglobal({ enqueueUpgrade: v })}
+												/>
+												Re-process at higher quality after each song
+											</label>
+											<Field.Description>Runs from the audio already saved — no re-download.</Field.Description>
 
-							<!-- Stacked: these default to the roformer names, the longest labels in any registry. -->
-							<Field.Label for="upgrade-engine">Upgrade splitter</Field.Label>
-							<NativeSelect
-								id="upgrade-engine"
-								value={settings.global.upgradeEngine}
-								onchange={(e) => pickUpgradeEngine(e.currentTarget.value)}
-							>
-								{#each SEPARATOR_ENGINES as engine (engine.id)}
-									<option value={engine.id}>{engine.label}</option>
-								{/each}
-							</NativeSelect>
+											<!-- Stacked: these default to the roformer names, the longest labels in any registry. -->
+											<Field.Label for="upgrade-engine">Upgrade splitter</Field.Label>
+											<NativeSelect
+												id="upgrade-engine"
+												value={settings.global.upgradeEngine}
+												onchange={(e) => pickUpgradeEngine(e.currentTarget.value)}
+											>
+												{#each SEPARATOR_ENGINES as engine (engine.id)}
+													<option value={engine.id}>{engine.label}</option>
+												{/each}
+											</NativeSelect>
 
-							<Field.Label for="upgrade-model">Upgrade model</Field.Label>
-							<NativeSelect
-								id="upgrade-model"
-								value={settings.global.upgradeModel}
-								onchange={(e) => onglobal({ upgradeModel: e.currentTarget.value })}
-							>
-								{#each upgradeModels as model (model.id)}
-									<option value={model.id}>{model.label}</option>
-								{/each}
-							</NativeSelect>
+											<Field.Label for="upgrade-model">Upgrade model</Field.Label>
+											<NativeSelect
+												id="upgrade-model"
+												value={settings.global.upgradeModel}
+												onchange={(e) => onglobal({ upgradeModel: e.currentTarget.value })}
+											>
+												{#each upgradeModels as model (model.id)}
+													<option value={model.id}>{model.label}</option>
+												{/each}
+											</NativeSelect>
 
-							{#if settings.global.enqueueUpgrade && !upgradeIsBetter}
-								<p class="warn">This is not better than the splitter above, so no upgrade will run.</p>
-							{/if}
+											{#if settings.global.enqueueUpgrade && !upgradeIsBetter}
+												<p class="warn">This is not better than the splitter above, so no upgrade will run.</p>
+											{/if}
+										</Card.Content>
+									{/snippet}
+								</Collapsible.Content>
+							</Collapsible.Root>
 						</Card.Content>
-							{/snippet}
-						</Collapsible.Content>
-					</Collapsible.Root>
+					</Card.Root>
 
-				</Card.Content>
-</Card.Root>
-
-				<!--
+					<!--
 				/metrics is ungated (there is no operator identity — any phone can POST /api/join), so it
 				is reachable only from here. Linking it from the remote or the TV would advertise worker
 				ids, model names, host details and error strings to every device in the room.
 			-->
-				<a class="dash" href="/metrics">
-					<Icon name="clock" />
-					Processing metrics <span class="dash-note">internal</span>
-				</a>
+					<a class="dash" href="/metrics">
+						<Icon name="clock" />
+						Processing metrics <span class="dash-note">internal</span>
+					</a>
 
-				<button class="done" onclick={() => goto('/')}>Done</button>
-			</div>
+					<button class="done" onclick={() => goto('/')}>Done</button>
+				</div>
 			</Tabs.Content>
 		</Tabs.Root>
 	</main>
@@ -1152,18 +1156,24 @@
 
 <style>
 	/*
-	 * The app shell caps every phone surface at --max-w. Settings opts out and sets its own cap: one
-	 * scope at a time is a single column, so the useful width is a readable measure, not the whole
-	 * monitor. The old two-column grid put Global beside This room, which stops making sense once the
-	 * scopes are tabs.
+	 * The app shell caps every phone surface at --max-w. Settings opts out so its own column can be
+	 * WIDER than the 480px phone cap (the paired controls need room) — but the opt-out removed the cap
+	 * from the whole shell, so the PageHeader (a child of .settings-page, above <main>) spanned the
+	 * ENTIRE viewport while <main> sat at 560px: on a wide monitor the h1 was hundreds of px left of the
+	 * text it introduces. Fix: --page-measure caps the header on the SAME 560px measure as <main>, so
+	 * the two share one column, while the shell stays uncapped so nothing else is constrained.
 	 */
+	.settings-page {
+		--page-measure: 560px;
+	}
 	:global(.app-shell:has(.settings-page)) {
 		max-width: none;
 	}
 
 	main {
 		/* A single readable column. Wider than the 480px phone cap so a desktop operator gets room for
-		   the paired controls, narrower than the shell's 1080px so a select never spans a monitor. */
+		   the paired controls, narrower than the shell's 1080px so a select never spans a monitor.
+		   Kept in sync with --page-measure above so the header aligns with this column. */
 		max-width: 560px;
 		margin: 0 auto;
 		padding: var(--space-md) var(--space-3xl) calc(28px + env(safe-area-inset-bottom, 0px));
@@ -1204,8 +1214,30 @@
 	 * model). This is most of what shortened the page. It collapses at 380px, because two selects in
 	 * ~150px each is where the option text starts truncating.
 	 */
-	.pair {
+	/*
+	 * The tab panel holding a scope's cards. shadcn's Card carries no outer margin — its spacing is all
+	 * internal — so the eleven sibling Card.Root boxes stacked with 0px between them and two adjacent
+	 * rings touched, reading as one 2px divider. `.panel` had NO rule at all before this (its rule was
+	 * dropped before the shadcn migration and never replaced, which is why it sat in
+	 * app-class-resolution-913.test.ts's PRE_EXISTING allowlist; that entry is deleted with this rule).
+	 *
+	 * This is the panel-level fix. The deeper one is Field.Group / Field.Field, which is where the
+	 * registry keeps this rhythm and which also fixes it for any future card body — Phase 2.
+	 */
+	.panel {
 		display: flex;
+		flex-direction: column;
+		gap: var(--space-lg);
+	}
+
+	.pair {
+		/* Grid, not flex, so the gap SURVIVES the narrow-viewport collapse below. As `display:flex` with
+		   a `gap`, switching to `display:block` at ≤380px dropped the gap entirely (gap does not apply to
+		   a block container), so the two stacked cells touched — worst on the Leaving card, where Stay and
+		   the destructive "Yes, leave" met edge-to-edge. A grid keeps its row-gap when it collapses to one
+		   column. */
+		display: grid;
+		grid-template-columns: 1fr 1fr;
 		gap: var(--space-md);
 	}
 	.cell {
@@ -1214,29 +1246,29 @@
 	}
 	@media (max-width: 380px) {
 		.pair {
-			display: block;
+			grid-template-columns: 1fr;
 		}
 	}
 
 	/*
 	 * S4: `.field`, `.field-swatch`, `.hint` and the `.dim` label state left this file for
-	 * ui/field. The vertical rhythm they carried moved with them, because the registry's label has no
-	 * margins and 27 stacked fields would otherwise collapse against each other.
+	 * ui/field. NOTE (corrected): the vertical rhythm they carried did NOT move with them. The
+	 * registry's `Field.Label` and `Field.Description` are marginless by design — the spacing lives in
+	 * the WRAPPER parts (`Field.Field`'s gap, `Field.Group`'s gap), and this page adopted the leaves
+	 * without the wrappers, so stacked fields collapse against each other. The `.panel`/`.pair` gaps
+	 * below are the interim fix at the panel level; adopting `Field.Field`/`Field.Group` is the real
+	 * one. The earlier version of this comment asserted the rhythm "moved with them", which was false.
 	 */
-	/* The duration is inert while the intro is off; the label recedes with its control. */
 	/* A trailing 1em swatch after flowing text can wrap onto its own line at 320px, reading as an orphan
 	   dot. A flex row keeps text and swatch together and lets them wrap as a unit if ever needed. */
 	/*
-	 * S2: `select`, `.text` and `.name-input` left this rule — their appearance moved INTO
-	 * ui/input and ui/native-select, because Svelte's scoped CSS cannot reach an element inside a child
-	 * component and a call-site utility is minted by nothing under `source(none)`. The range stays
-	 * native until its Slider rebuild, so it keeps the rule.
-	 */
-	/*
-	 * S3: the range sliders are <Slider> now. Their geometry — a 28px thumb on a 6px --track-bg
-	 * rail at var(--tap) — moved into ui/slider, and with it the two parallel ::-webkit-slider-* and
-	 * ::-moz-range-* rule sets a native range needed. Bits UI builds the control from real elements, so
-	 * one set of rules replaces both. Width comes from the component too.
+	 * S2/S3: `select`, `.text`, `.name-input` and the range sliders all left this file — their
+	 * appearance moved into ui/input, ui/native-select and ui/slider, because Svelte's scoped CSS
+	 * cannot reach an element inside a child component and a call-site utility is minted by nothing
+	 * under `source(none)`. (The previous two comments here disagreed on whether the range was still
+	 * native; it is a <Slider> now, and the 28px-thumb / 6px --track-bg / var(--tap) geometry plus the
+	 * two parallel ::-webkit-slider-* and ::-moz-range-* rule sets a native range needed all live in
+	 * ui/slider, where Bits UI builds the control from real elements so one rule set replaces both.)
 	 */
 	/*
 	 * A live swatch beside the label, so the choice is visible without walking to the TV. It carries no

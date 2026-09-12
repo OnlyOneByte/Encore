@@ -26,12 +26,12 @@
 -->
 
 <script lang="ts">
-	import { Tabs as TabsPrimitive } from "bits-ui";
-	import { cn } from "$lib/utils.js";
+	import { Tabs as TabsPrimitive } from 'bits-ui';
+	import { cn } from '$lib/utils.js';
 
 	let {
 		ref = $bindable(null),
-		variant = "default",
+		variant = 'default',
 		class: className,
 		...restProps
 	}: TabsPrimitive.ListProps & {
@@ -39,13 +39,7 @@
 	} = $props();
 </script>
 
-<TabsPrimitive.List
-	bind:ref
-	data-slot="tabs-list"
-	data-variant={variant}
-	class={cn(className)}
-	{...restProps}
-/>
+<TabsPrimitive.List bind:ref={ref} data-slot="tabs-list" data-variant={variant} class={cn(className)} {...restProps} />
 
 <style>
 	:global([data-slot='tabs-list']) {

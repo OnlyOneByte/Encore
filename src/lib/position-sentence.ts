@@ -60,7 +60,7 @@ export interface PositionWords {
 export function ordinalWord(n: number): string {
 	const i = Math.trunc(n);
 	const tens = Math.abs(i) % 100;
-	const suffix = tens >= 11 && tens <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][Math.abs(i) % 10] ?? 'th';
+	const suffix = tens >= 11 && tens <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][Math.abs(i) % 10] ?? 'th');
 	return `${i}${suffix}`;
 }
 
