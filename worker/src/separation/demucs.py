@@ -100,6 +100,63 @@ def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", 
     )
 
 
+def encode_guide_mix_argv(
+    instrumental_wav: str,
+    vocals_wav: str,
+    out_path: str,
+    ffmpeg_bin: str = "ffmpeg",
+    level: int = 8,
+) -> list[str]:
+    """ffmpeg argv: fold BOTH stems into ONE 4-channel FLAC — channels 0/1 instrumental, 2/3 vocals.
+
+    WHY THIS FILE EXISTS. Two separate stems are two separate media elements in the browser, which is
+    two DECODERS and two clocks, and two clocks cannot be sample-locked from script: `guide-sync.ts`
+    can only compare each element's reported `currentTime`, which is the spec's "official playback
+    position" and NOT the audible playhead. Its governor therefore converges to "aligned" on a signal
+    that does not include either element's output latency, and then stops looking — so a residual the
+    ear hears survives every correction the policy is willing to make. ONE file played by ONE element
+    has ONE playhead, so the guide cannot drift: the desync stops being a governed quantity and becomes
+    unrepresentable.
+
+    The two stems come out of separation as sample-exact siblings of one mix, so this reads the RAW
+    scratch WAVs — the same PCM `measure_guide_offset_ms` reads — rather than re-decoding the published
+    FLACs. Nothing is resampled and nothing is mixed down: each stem keeps its own two channels.
+
+    CHANNEL ORDER IS THE CONTRACT, not the layout label. The browser's `ChannelSplitter` splits by
+    channel INDEX in the decoded stream, and FLAC stores channels in the order written, so
+    instrumental-then-vocals is what the TV relies on; `quad` is merely the honest name for two stereo
+    pairs. The mapping is spelled out rather than left to `join`'s default — MEASURED, that default
+    produces the identical layout, so this is defence-in-depth against a future ffmpeg or layout change
+    rather than a correction of a wrong default. It is worth keeping because the failure it guards is
+    inaudible in review and unmistakable in a room: the vocals would land in the instrumental's gain.
+
+    MEASURED, not assumed (2026-09-11): a 4-channel FLAC built by this argv yields four DISTINCT
+    channels through one `<audio>` -> `MediaElementAudioSourceNode` -> `ChannelSplitter(4)` in both
+    Chromium 1232 and Firefox 140 ESR, with per-pair gain exact to the decibel. Firefox resampled 48 kHz
+    to a 44.1 kHz context and the isolation survived. One trap that verification turned up and that no
+    caller may rely on: `MediaElementAudioSourceNode.channelCount` reports **2** in BOTH engines while
+    four channels are demonstrably flowing, so it is not a capability probe — energy on channel 2 is.
+    """
+    return ffmpeg_argv(
+        ffmpeg_bin,
+        [instrumental_wav, vocals_wav],
+        [
+            "-filter_complex",
+            # `map` is input.channel-output: instrumental L/R to the front pair, vocals L/R to the back.
+            "[0:a][1:a]join=inputs=2:channel_layout=quad:map=0.0-FL|0.1-FR|1.0-BL|1.1-BR[mix]",
+            "-map",
+            "[mix]",
+            "-c:a",
+            "flac",
+            "-compression_level",
+            str(level),
+            "-sample_fmt",
+            "s16",
+        ],
+        [out_path],
+    )
+
+
 def demucs_argv(
     input_path: str,
     out_dir: str,

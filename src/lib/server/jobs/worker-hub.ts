@@ -36,6 +36,7 @@ import {
 	markMediaReady,
 	setMediaLyrics,
 	setMediaVocals,
+	setMediaGuideMix,
 	setMediaSongProfile,
 	setMediaGuideOffset,
 	applyAnnotation,
@@ -66,6 +67,13 @@ export interface WorkerHubDeps {
 	registry: WorkerRegistry;
 	/** Resolve a media's source URI (youtube id / file key) so the worker can pull it. */
 	mediaById: Map<string, Media>;
+	/**
+	 * Delete a media's guide-mix FILE. Called when a completion frame carries no mix, which means the mix
+	 * on disk was built from stems this frame has just replaced. Optional so the hub still unit-tests bare;
+	 * `app.ts` wires it. Without it a stale-but-structurally-valid mix survives on disk and the next boot's
+	 * backfill re-adopts it, pinning the room to the superseded separation.
+	 */
+	discardGuideMix?: (mediaId: string) => void | Promise<void>;
 	toWorker: ToWorker; // send a WorkerCommand to ONE worker session
 	broadcast: Broadcast; // media:status to the whole room
 	/** Fired AFTER a media flips to ready (stems done): lets the core reconcile playback so a held
@@ -189,7 +197,7 @@ export class WorkerHub {
 		const effective = this.#d.getSettings?.();
 		if (!effective) return undefined;
 		const { engine, model } = resolveProcessSeparator(effective);
-		return {...effective.global, defaultEngine: engine, defaultModel: model };
+		return { ...effective.global, defaultEngine: engine, defaultModel: model };
 	}
 
 	/** Handle one inbound worker message. Returns nothing — effects go through the injected sinks. */
@@ -219,7 +227,8 @@ export class WorkerHub {
 		// slow" gets answered from the core's log without shelling into the worker. `cpuCount` is the
 		// worker's EFFECTIVE count, so `(contained)` marks a box that was given a slice of a bigger one.
 		const hw = msg.host
-			? `${msg.host.accelerator ?? (msg.host.cuda ? 'cuda': 'cpu')}/${msg.host.cpuCount ?? '?'}cpu${msg.host.contained ? ' (contained)': ''}`: 'hardware unreported';
+			? `${msg.host.accelerator ?? (msg.host.cuda ? 'cuda' : 'cpu')}/${msg.host.cpuCount ?? '?'}cpu${msg.host.contained ? ' (contained)' : ''}`
+			: 'hardware unreported';
 		console.log(
 			`[hub] worker ${msg.workerId} joined: ${hw}, caps=[${msg.capabilities.join(',')}], slots=${msg.concurrency}`
 		);
@@ -314,6 +323,21 @@ export class WorkerHub {
 				// a worker that could not encode vocals, or measured them as silence, reports none and the
 				// song simply offers no guide.
 				setMediaVocals(job.mediaId, msg.artifacts?.stems?.vocals, this.#d.mediaById);
+				// The SAME separation also folded both stems into one 4-channel file — the guide mix, a
+				// THIRD member of `stems` because it is a file (unlike songProfile/guideOffsetMs below).
+				// When present the TV plays that one file and splits the channels, so the guiding track
+				// shares the instrumental's playhead and cannot drift; absent leaves the room on the
+				// two-element path. Read through the DECLARED wire field, the lesson the songProfile line
+				// below records.
+				//
+				// An absent key CLEARS the ref rather than preserving it, because the mix is a DERIVATIVE of
+				// the two stems this frame just replaced — see `setMediaGuideMix`. When it clears, the file
+				// on disk is now built from superseded stems, so delete it: leaving it would let the next
+				// boot's backfill ADOPT it (adoption probes for four channels, which a stale-but-valid mix
+				// still has) and re-record a ref to the worse separation.
+				if (!setMediaGuideMix(job.mediaId, msg.artifacts?.stems?.guideMix, this.#d.mediaById)) {
+					void this.#d.discardGuideMix?.(job.mediaId);
+				}
 				// The SAME separation also analysed the two stems for key + range and reported it as a third
 				// artifact, a SIBLING of `stems` rather than a member of it (a profile is not a file). Persisted
 				// here, at the boundary, because its PRESENCE completes the stems process gate (gates.ts) — so
@@ -369,8 +393,8 @@ export class WorkerHub {
 				next,
 				job.priority,
 				this.#d.now(),
-				inheritsProcess(next) ? job.processingId: undefined,
-				inheritsProcess(next) ? (job.singerId ?? undefined): undefined
+				inheritsProcess(next) ? job.processingId : undefined,
+				inheritsProcess(next) ? (job.singerId ?? undefined) : undefined
 			);
 			// Name the step the song is now waiting on, so the phone's processing line can say "Timing
 			// lyrics" instead of leaving a finished separation looking idle.

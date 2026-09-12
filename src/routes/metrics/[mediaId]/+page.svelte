@@ -55,6 +55,9 @@
 			// measured guide/instrumental offset in signed ms (undefined = never measured).
 			vocalsRef?: string;
 			guideOffsetMs?: number;
+			// Present ⇔ this song plays through the ONE-file guide path, which changes what the offset above
+			// means (frozen at merge, not applied live).
+			guideMixRef?: string;
 		} | null;
 		processes: Process[];
 		plays: { at: number; entryId: string }[];
@@ -179,6 +182,21 @@
 							{audit.media.guideOffsetMs === 0 ? '(vocals aligned with instrumental)' : '(vocals vs instrumental)'}
 						{:else}
 							<strong>not measured</strong> (processed before this was recorded)
+						{/if}
+					</p>
+					<!--
+						WHICH GUIDE PATH the TV takes for this song, because the offset above means two different
+						things depending on it and an operator cannot otherwise tell. On the mix path the offset was
+						measured and then FROZEN into the file at merge time, and `guide-sync.ts`'s governor is
+						unreachable; on the element path the offset is applied live at three sites and the governor is
+						what holds the two elements together. Same number, opposite significance.
+					-->
+					<p class="note">
+						Guide path:
+						{#if audit.media.guideMixRef}
+							<strong>one 4-channel file</strong> (one playhead — drift is impossible; the offset above was frozen at merge)
+						{:else}
+							<strong>two elements</strong> (drift-governed; the offset above is applied live)
 						{/if}
 					</p>
 				{/if}

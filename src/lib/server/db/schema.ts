@@ -72,7 +72,9 @@ export const media = sqliteTable('media', {
 	// the gate existed, which the gate reads as "done if a lyrics artifact is already present" so an
 	// existing library does not become unsingable on upgrade.
 	lyricsStatus: text('lyrics_status', { enum: ['none', 'queued', 'ready'] }),
-	stemStatus: text('stem_status', { enum: ['none', 'queued', 'ready'] }).notNull().default('none'),
+	stemStatus: text('stem_status', { enum: ['none', 'queued', 'ready'] })
+		.notNull()
+		.default('none'),
 	// The separated instrumental's MediaStore key. Kept SEPARATE from source_ref so source_ref stays
 	// the song's immutable origin identity (what search dedupes on) — see Media.sourceRef.
 	instrumentalRef: text('instrumental_ref'),
@@ -81,6 +83,14 @@ export const media = sqliteTable('media', {
 	// feature survive a restart instead of silently vanishing from a library song. Nullable: absent
 	// means no guide is offered (never separated, or the stem came back silent).
 	vocalsRef: text('vocals_ref'),
+	// The GUIDE MIX: both stems in ONE 4-channel file (ch 0/1 instrumental, ch 2/3 vocals). When set, the
+	// TV plays this through a SINGLE media element and splits the channels in WebAudio, so the guiding
+	// track shares the instrumental's playhead and cannot drift from it. Two elements are two decoders and
+	// two clocks, and two clocks cannot be sample-locked from script — see Media.guideMixRef. Nullable with
+	// a meaningful null: null ⇔ "no mix (row predates the feature, no vocals stem, or the best-effort
+	// encode failed)", which guidePath() maps to the legacy two-element path, so every song already in the
+	// library keeps today's behaviour after the upgrade with no backfill required.
+	guideMixRef: text('guide_mix_ref'),
 	// Signed millisecond offset of the vocals stem against the instrumental, measured at process time.
 	// INTEGER (whole ms is all the alignment ever needs — the client divides by 1000), and NULLABLE with a
 	// meaningful null: null ⇔ "never measured / row predates the feature", which guideOffsetSec() maps to 0
@@ -178,7 +188,9 @@ export const queueEntries = sqliteTable(
 		singerId: text('singer_id').notNull(),
 		status: text('status', {
 			enum: ['queued', 'playing', 'done']
-		}).notNull().default('queued'),
+		})
+			.notNull()
+			.default('queued'),
 		rotationSeq: integer('rotation_seq').notNull(),
 		addedAt: integer('added_at').notNull(),
 		// The party this queue entry belongs to. `queue_entries` carried no room, so the queue
@@ -257,9 +269,15 @@ export const roomSettings = sqliteTable('room_settings', {
 	// like the style settings, so a hand-edited DB cannot name an algorithm that does not exist — and
 	// the default is today's fair rotation, so an existing room's behaviour is unchanged by the column
 	// appearing.
-	queueOrder: text('queue_order', { enum: ['fair', 'fcfs', 'shuffle', 'least-recently-sung', 'manual'] }).notNull().default('fair'),
-	tvProgressStyle: text('tv_progress_style', { enum: ['card', 'corner', 'edge', 'off'] }).notNull().default('card'),
-	tvBackgroundStyle: text('tv_background_style', { enum: ['off', 'gradient', 'singer', 'solid', 'visualizer'] }).notNull().default('off'),
+	queueOrder: text('queue_order', { enum: ['fair', 'fcfs', 'shuffle', 'least-recently-sung', 'manual'] })
+		.notNull()
+		.default('fair'),
+	tvProgressStyle: text('tv_progress_style', { enum: ['card', 'corner', 'edge', 'off'] })
+		.notNull()
+		.default('card'),
+	tvBackgroundStyle: text('tv_background_style', { enum: ['off', 'gradient', 'singer', 'solid', 'visualizer'] })
+		.notNull()
+		.default('off'),
 	// The stage's COLOUR, as canonical 6-digit lowercase hex. Text, not the integer hue angle this was
 	// until an earlier change: the room now names a colour outright instead of naming an angle that `stageHueToHex`
 	// rendered at a pinned lightness. The pin existed to stop a room washing out the word-timed lyric
@@ -278,23 +296,33 @@ export const roomSettings = sqliteTable('room_settings', {
 	tvBackgroundDim: real('tv_background_dim').notNull().default(0),
 	// Which visualizer runs when the style is `visualizer`. Kept across a switch away from it, so a room
 	// that tries another background and comes back does not lose the choice.
-	tvVisualizer: text('tv_visualizer', { enum: ['plasma', 'starfield', 'moire', 'lissajous'] }).notNull().default('plasma'),
+	tvVisualizer: text('tv_visualizer', { enum: ['plasma', 'starfield', 'moire', 'lissajous'] })
+		.notNull()
+		.default('plasma'),
 	songIntroEnabled: integer('song_intro_enabled', { mode: 'boolean' }).notNull().default(true),
 	songIntroMs: integer('song_intro_ms').notNull().default(2500),
 	maxQualityRank: integer('max_quality_rank'),
 	// Lyrics presentation. Defaults reproduce the previously-hardcoded TV exactly, so an existing room
 	// renders identically after the migration. Enum-constrained at the column like tv_progress_style,
 	// so a hand-edited DB cannot smuggle in a style the renderer has no branch for.
-	lyricsBall: text('lyrics_ball', { enum: ['bounce', 'steady', 'underline', 'off'] }).notNull().default('off'),
-	lyricsHighlight: text('lyrics_highlight', { enum: ['word', 'line', 'off'] }).notNull().default('word'),
+	lyricsBall: text('lyrics_ball', { enum: ['bounce', 'steady', 'underline', 'off'] })
+		.notNull()
+		.default('off'),
+	lyricsHighlight: text('lyrics_highlight', { enum: ['word', 'line', 'off'] })
+		.notNull()
+		.default('word'),
 	lyricsLeadMs: integer('lyrics_lead_ms').notNull().default(300),
 	// The reel's type. `lyrics_scale_pct` is a PERCENT of the computed distance-based scale, not a size
 	// — see DEFAULT_LYRICS_SCALE_PCT for why storing an absolute size would be wrong. Integer so this
 	// table stays all-integer; enum-constrained where there is a registry, so a hand-edited DB cannot
 	// name a font or case the renderer has no branch for.
 	lyricsScalePct: integer('lyrics_scale_pct').notNull().default(100),
-	lyricsFont: text('lyrics_font', { enum: ['system', 'grotesk', 'serif', 'mono'] }).notNull().default('system'),
-	lyricsCase: text('lyrics_case', { enum: ['natural', 'upper', 'lower'] }).notNull().default('natural'),
+	lyricsFont: text('lyrics_font', { enum: ['system', 'grotesk', 'serif', 'mono'] })
+		.notNull()
+		.default('system'),
+	lyricsCase: text('lyrics_case', { enum: ['natural', 'upper', 'lower'] })
+		.notNull()
+		.default('natural'),
 	lyricsLinesBefore: integer('lyrics_lines_before').notNull().default(2),
 	lyricsLinesAfter: integer('lyrics_lines_after').notNull().default(2),
 	// The room's default guiding-track level, 0..1. REAL for the same reason as playback_state's —
@@ -330,7 +358,9 @@ export const jobs = sqliteTable(
 		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'stems-upgrade'] }).notNull(),
 		status: text('status', {
 			enum: ['queued', 'assigned', 'running', 'ready', 'failed', 'canceled']
-		}).notNull().default('queued'),
+		})
+			.notNull()
+			.default('queued'),
 		priority: integer('priority').notNull().default(0),
 		attempts: integer('attempts').notNull().default(0),
 		maxAttempts: integer('max_attempts').notNull().default(3),
@@ -348,7 +378,9 @@ export const jobs = sqliteTable(
 	// failure or cancel. Two people queueing the same song → one compute; the DB enforces it even
 	// if a dispatch race slips past the application-level check.
 	(t) => ({
-		liveJobIdx: uniqueIndex('jobs_live_media_type_idx').on(t.mediaId, t.jobType).where(sql`${t.status} NOT IN ('failed', 'canceled')`)
+		liveJobIdx: uniqueIndex('jobs_live_media_type_idx')
+			.on(t.mediaId, t.jobType)
+			.where(sql`${t.status} NOT IN ('failed', 'canceled')`)
 	})
 );
 

@@ -364,6 +364,37 @@ export class PitchShiftGraph {
 	 * Defaults to 1 (master instrumental never attenuates).
 	 */
 	private desiredGain = 1;
+	/**
+	 * SPLIT MODE — this element carries a 4-channel GUIDE MIX rather than a plain stereo instrumental,
+	 * so the output stage pulls the two pairs apart and gives each its own gain (channels 0/1 the
+	 * instrumental, 2/3 the vocals).
+	 *
+	 * It lives in THIS class rather than a sibling one for a hard reason, not for convenience: a
+	 * `MediaElementAudioSourceNode` is a permanent, ONE-PER-ELEMENT capture, so the pitch shifter and the
+	 * channel splitter cannot each own a graph over the same element — the second `createMediaElementSource`
+	 * throws. One element, one graph.
+	 *
+	 * The worklet needs no change to serve it: `process()` already loops over `output.length` with
+	 * per-channel state (`ensure(output.length)`), and at ratio 1 it is a bit-exact passthrough. So the
+	 * SAME node shifts all four channels by the same ratio — which is what we want, because both pairs
+	 * are the same recording and a transpose must move them together.
+	 */
+	private split: boolean;
+	private splitter: ChannelSplitterNode | null = null;
+	/** Re-merged stereo pairs, kept so `detach` can disconnect them. */
+	private mergers: ChannelMergerNode[] = [];
+	/** The vocals pair's own level — the guiding-track knob, in split mode. */
+	private guideGain: GainNode | null = null;
+	/**
+	 * The guide pair's level. DEFAULTS TO 0, unlike `desiredGain`, and that asymmetry is deliberate.
+	 *
+	 * There is precedent: a freshly built graph defaulted its gain to 1, the level effect did not re-run
+	 * on construction, and the isolated vocals played at FULL VOLUME under the instrumental for the rest of
+	 * the song. Here the stakes are higher — in split mode the vocals are inside the file the room is
+	 * playing, so there is no native path that happens to be quiet. Defaulting to silence means the worst
+	 * case of a missed `setGuideGain` is a guide nobody hears, never a guide that drowns the singer.
+	 */
+	private desiredGuideGain = 0;
 	/** True once we have attached a MediaElementSource — from here the element only outputs via the graph. */
 	private routed = false;
 	/** True if we tried to build the graph and could not resume — we are in audible-fallback mode. */
@@ -378,9 +409,68 @@ export class PitchShiftGraph {
 	 * retryable (the an earlier change degraded-retry property).
 	 */
 	#building: Promise<void> | null = null;
+	/**
+	 * True once `createMediaElementSource` has run. Distinct from `routed`, which also means "the graph is
+	 * wired": between the capture and the last connect there is a window where the element is committed but
+	 * the graph is not finished, and the `catch` needs to tell those apart — closing the context after a
+	 * capture is what silences the element permanently.
+	 */
+	#captured = false;
+	/**
+	 * Set by `detach()`. Checked after every `await` in `#buildOnce` so a build still in flight when the
+	 * element is torn down closes its own context instead of routing an orphan nothing holds — the
+	 * released-context leak class, which the eager split build reopened without any keyShift involved.
+	 */
+	#disposed = false;
 
-	constructor(el: HTMLMediaElement) {
+	/**
+	 * The worklet node, with split mode's 4-channel pin and a fallback if the engine refuses it.
+	 *
+	 * In split mode the node is PINNED to 4 channels: left to negotiate, a worklet whose input has not been
+	 * measured yet can settle on stereo and silently drop the guide pair. But `outputChannelCount` is a
+	 * documented NotSupportedError candidate on engines that cap worklet output channels, and a throw here
+	 * would take the whole graph down — so a refusal DEGRADES to a default node and clears `split`. With
+	 * `split` false the caller's `isSplit` gate withholds the mix src, so the room plays the plain
+	 * instrumental with no guide rather than a 4-channel file through a stereo graph.
+	 */
+	private makeWorkletNode(ctx: AudioContext): AudioWorkletNode {
+		if (!this.split) return new AudioWorkletNode(ctx, 'encore-pitch-shift');
+		try {
+			return new AudioWorkletNode(ctx, 'encore-pitch-shift', {
+				channelCount: 4,
+				channelCountMode: 'explicit',
+				outputChannelCount: [4]
+			});
+		} catch {
+			// The engine will not give us four channels. Fall back to a plain node and stop claiming to be
+			// a split graph, so nothing promotes a 4-channel src into it.
+			this.split = false;
+			return new AudioWorkletNode(ctx, 'encore-pitch-shift');
+		}
+	}
+
+	constructor(el: HTMLMediaElement, opts: { split?: boolean } = {}) {
 		this.el = el;
+		this.split = opts.split === true;
+	}
+
+	/**
+	 * Build the graph NOW, without waiting for a transpose to ask for one — the entry point split mode
+	 * needs and the plain path must never use.
+	 *
+	 * `setShift` deliberately refuses to build at ratio 1, so that a song at keyShift 0 touches no
+	 * WebAudio at all and a broken graph can never cost the room its audio. That is the right default and
+	 * it stays. But a guide mix INVERTS the tradeoff: its guiding track does not exist until the splitter
+	 * runs, so the graph has to be attempted up front.
+	 *
+	 * Resolving does NOT mean success — read `isRouted` afterwards. A suspended context (no gesture on the
+	 * TV wall) leaves us degraded with the element on its native output, which is why the caller must keep
+	 * the plain instrumental src until this reports routed. See `guide-mix-src.ts` for that rule and what
+	 * happens if it is broken.
+	 */
+	async ensureRouted(): Promise<void> {
+		if (this.routed) return;
+		await this.build();
 	}
 
 	/** Build (if needed) and apply the given shift. Safe to call repeatedly with the same value. */
@@ -437,6 +527,13 @@ export class PitchShiftGraph {
 			// A context created without a user gesture is `suspended`. Try to resume; on the TV wall the
 			// gesture may never come, so resume() can reject or stay suspended.
 			await this.ctx.resume().catch(() => {});
+			// The element may have been torn down while we awaited. Bail before the capture rather than
+			// routing a graph nothing holds: the caller has already dropped its reference.
+			if (this.#disposed) {
+				await this.ctx.close().catch(() => {});
+				this.ctx = null;
+				return;
+			}
 			if (this.ctx.state !== 'running') {
 				// Cannot run the graph. CRITICAL: do NOT create the MediaElementSource — creating it would
 				// permanently steal the element's audio into a dead (suspended) graph = total silence.
@@ -449,20 +546,83 @@ export class PitchShiftGraph {
 			const blob = new Blob([PITCH_WORKLET_SOURCE], { type: 'application/javascript' });
 			this.moduleUrl = URL.createObjectURL(blob);
 			await this.ctx.audioWorklet.addModule(this.moduleUrl);
-			// Only NOW, with a running context and a loaded module, do we commit the element to the graph.
-			this.source = this.ctx.createMediaElementSource(this.el);
-			this.node = new AudioWorkletNode(this.ctx, 'encore-pitch-shift');
+			// Same disposal check on the other side of the other await — this is the window the eager split
+			// build actually lands in, because it starts at mount and `addModule` is the slow step.
+			if (this.#disposed) {
+				await this.ctx.close().catch(() => {});
+				this.ctx = null;
+				return;
+			}
+
+			// BUILD EVERY NODE BEFORE THE CAPTURE. `createMediaElementSource` is irreversible, so any
+			// construction that can throw MUST happen before it — otherwise a throw leaves the element
+			// permanently captured by a source node whose context this `catch` then CLOSES, and that
+			// element's audio reaches nothing for the life of the page. That is the "killing all room
+			// audio" outcome this module exists to prevent, and split mode introduced a real throw
+			// candidate: `outputChannelCount: [4]` is rejected with NotSupportedError by engines that cap
+			// worklet output channels. Before split mode the only post-capture construction was a bare
+			// AudioWorkletNode, which cannot realistically throw once `addModule` has resolved — so the
+			// ordering was safe by luck rather than by design. It is now safe by design.
+			this.node = this.makeWorkletNode(this.ctx);
 			this.gain = this.ctx.createGain();
 			this.gain.gain.value = this.desiredGain;
-			// source -> shifter -> gain -> speakers. The gain stage is what re-implements the guide's volume
-			// knob once the element property is bypassed by the source capture.
-			this.source.connect(this.node).connect(this.gain).connect(this.ctx.destination);
+			if (this.split) {
+				// SPLIT OUTPUT STAGE. source -> shifter -> splitter(4) -> [pair -> merger -> gain] -> speakers.
+				//
+				// Each pair is re-MERGED to stereo before its gain, which is the part that is easy to get
+				// wrong: connecting splitter outputs 0 and 1 into one GainNode SUMS them, collapsing the
+				// instrumental to mono. A ChannelMerger keeps left as left.
+				//
+				// WHICH MERGER FEEDS WHICH GAIN IS HALF THE CONTRACT. Exchanging them puts the instrumental
+				// on `guideGain` (which defaults to 0) and the isolated vocals on `gain` (which defaults to
+				// 1) — the room then hears full-volume vocals with no backing track. The splitter indices
+				// alone do not pin this; `guide-mix-graph.test.ts` asserts the whole chain per pair.
+				this.splitter = this.ctx.createChannelSplitter(4);
+				this.node.connect(this.splitter);
+				const instMerger = this.ctx.createChannelMerger(2);
+				this.splitter.connect(instMerger, 0, 0);
+				this.splitter.connect(instMerger, 1, 1);
+				instMerger.connect(this.gain).connect(this.ctx.destination);
+				const guideMerger = this.ctx.createChannelMerger(2);
+				this.splitter.connect(guideMerger, 2, 0);
+				this.splitter.connect(guideMerger, 3, 1);
+				this.guideGain = this.ctx.createGain();
+				// Whatever level the room had set BEFORE the graph existed, applied at construction. This is
+				// the full-volume-vocals fix made structural: the level effect does not re-run when a graph is built, so a
+				// graph that did not read the remembered value here would play the vocals at its own default.
+				this.guideGain.gain.value = this.desiredGuideGain;
+				guideMerger.connect(this.guideGain).connect(this.ctx.destination);
+				this.mergers = [instMerger, guideMerger];
+			} else {
+				// source -> shifter -> gain -> speakers. The gain stage is what re-implements the guide's volume
+				// knob once the element property is bypassed by the source capture.
+				this.node.connect(this.gain).connect(this.ctx.destination);
+			}
+
+			// LAST: commit the element. Everything downstream of it already exists and is wired to the
+			// destination, so from here there is nothing left that can throw and strand a captured element.
+			this.source = this.ctx.createMediaElementSource(this.el);
+			this.#captured = true;
+			this.source.connect(this.node);
 			this.routed = true;
 			this.node.port.postMessage({ ratio: this.ratio });
 		} catch {
-			// Any failure (addModule rejected, source creation threw) -> leave audible on the native path
-			// if we had not yet routed. If we HAD routed, the element is committed to the graph at
-			// whatever ratio was last set; ratio defaults to 1 so it is still audible.
+			// A throw before the capture: close the context and leave the element on its native output
+			// (audible, unshifted). `degraded` is not terminal, so a later attempt can retry.
+			//
+			// A throw AFTER the capture must NOT close the context — that is what would silence the element
+			// forever. Belt and braces for a case the reordering above should make unreachable: reconnect
+			// the captured source straight to the destination so the room still hears the song, and keep the
+			// context alive to carry it.
+			if (this.#captured && this.ctx) {
+				try {
+					this.source?.connect(this.ctx.destination);
+					this.routed = true;
+				} catch {
+					/* nothing further to try; the element is captured either way */
+				}
+				return;
+			}
 			if (!this.routed) {
 				await this.ctx?.close().catch(() => {});
 				this.ctx = null;
@@ -488,6 +648,26 @@ export class PitchShiftGraph {
 		if (this.gain) this.gain.gain.value = g;
 	}
 
+	/**
+	 * Set the GUIDE pair's level — the guiding-track knob, in split mode only.
+	 *
+	 * Deliberately a separate method from `setGain` rather than an extra argument: on a non-split graph
+	 * there is no guide pair to address, and a single setter taking two levels would let a caller believe
+	 * it had set a guide level on an element that has no guide in it. Calling this on a non-split graph is
+	 * remembered and simply never applied, which is the same shape `setGain` already has for the
+	 * not-yet-built case.
+	 */
+	setGuideGain(level: number): void {
+		const g = Math.max(0, Math.min(1, level));
+		this.desiredGuideGain = g;
+		if (this.guideGain) this.guideGain.gain.value = g;
+	}
+
+	/** True when this graph pulls a 4-channel mix apart — i.e. the guide rides inside the master element. */
+	get isSplit(): boolean {
+		return this.split;
+	}
+
 	/** True if we tried and could not run a context — playback is audible but unshifted. */
 	get isDegraded(): boolean {
 		return this.degraded;
@@ -501,10 +681,18 @@ export class PitchShiftGraph {
 	 * reloads, which is why callers only ever attach a graph to an element that lives as long as the graph.
 	 */
 	detach(): void {
+		// Tell an in-flight build to abandon itself rather than route an orphan whose context nothing would
+		// ever close. Set BEFORE the disconnects so a build resuming from an await in the same tick sees it.
+		this.#disposed = true;
 		try {
 			this.node?.disconnect();
 			this.source?.disconnect();
 			this.gain?.disconnect();
+			// The split stage's nodes too. Omitting them would leave the splitter and both mergers holding
+			// references into a closed context — the same leak already closed for the master graph.
+			this.splitter?.disconnect();
+			for (const m of this.mergers) m.disconnect();
+			this.guideGain?.disconnect();
 		} catch {
 			/* disconnect on an already-dead node throws; ignore */
 		}
@@ -517,6 +705,9 @@ export class PitchShiftGraph {
 		this.node = null;
 		this.source = null;
 		this.gain = null;
+		this.splitter = null;
+		this.mergers = [];
+		this.guideGain = null;
 		// routed stays true: the element is still (permanently) captured. Do not pretend otherwise.
 	}
 }
