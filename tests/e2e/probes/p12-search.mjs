@@ -113,9 +113,9 @@ const healthRes = await fetch(`${base}/health`).catch(() => null);
 if (!healthRes?.ok) {
 	console.error(
 		`\nNo Encore core on ${base}. Boot one per tests/e2e/HARNESS.md and re-run:\n` +
-			`  PORT=${PORT} SCRATCH=$KIROCREW_SCRATCH/e2e-${PORT} bun run e2e/seed-media.mjs   # seed 4 demo tracks\n` +
+			`  PORT=${PORT} SCRATCH=$KIROCREW_SCRATCH/e2e-${PORT} bun run tests/e2e/seed-media.mjs   # seed 4 demo tracks\n` +
 			`  ENCORE_EPHEMERAL=1 PORT=${PORT} HOST=127.0.0.1 MEDIA_DIR=$SCRATCH/media ENCORE_LYRICS_BACKFILL=0 ENCORE_VOCALS_BACKFILL=0 bun run ./server.ts &\n` +
-			`  EPORT=${PORT} MEDIA_DIR=$SCRATCH/media bun e2e/fake-stems-worker.mjs &\n`
+			`  EPORT=${PORT} MEDIA_DIR=$SCRATCH/media bun tests/e2e/fake-stems-worker.mjs &\n`
 	);
 	process.exit(2);
 }
@@ -128,7 +128,7 @@ if (MEDIA_DIR) {
 	if (!seeded) {
 		console.error(
 			`\nMEDIA_DIR (${MEDIA_DIR}) has no seeded demo files. Run:\n` +
-				`  MEDIA_DIR=${MEDIA_DIR} bun run e2e/seed-media.mjs\n` +
+				`  MEDIA_DIR=${MEDIA_DIR} bun run tests/e2e/seed-media.mjs\n` +
 				`  # then RESTART the core so its LocalLibrary FTS reindexes.\n`
 		);
 		process.exit(2);
@@ -918,7 +918,6 @@ if (!chromium) {
 		'skipped -- no Chromium found; the row-action + empty-state assertions need a real render'
 	);
 } else {
-	const CDP_PORT = Number(process.env.CDP_PORT ?? 9433);
 
 	let browser;
 	try {

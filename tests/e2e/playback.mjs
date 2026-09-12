@@ -43,7 +43,6 @@ import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9344);
 
 /** @type {Check[]} */
 const checks = [];
@@ -71,7 +70,7 @@ const ready = await fetch(`${base}/api/search?q=caroline`)
 if (!ready.length) {
 	bail(
 		'no READY song in the library — nothing to play.\n' +
-			'  Seed + process one first:  bun run e2e:seed  &&  bun e2e/fake-stems-worker.mjs  (then POST /api/process)'
+			'  Seed + process one first:  bun run e2e:seed  &&  bun tests/e2e/fake-stems-worker.mjs  (then POST /api/process)'
 	);
 }
 console.log(`fixture: "${ready[0].title}" → ${ready[0].instrumentalRef}\n`);

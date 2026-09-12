@@ -85,7 +85,7 @@ PORT=52NN                      # yours alone
 SCRATCH=$KIROCREW_SCRATCH/e2e-$PORT
 rm -rf "$SCRATCH"; mkdir -p "$SCRATCH/media"
 
-MEDIA_DIR="$SCRATCH/media" bun run e2e/seed-media.mjs      # 4 demo tracks become indexable
+MEDIA_DIR="$SCRATCH/media" bun run tests/e2e/seed-media.mjs      # 4 demo tracks become indexable
 
 ENCORE_EPHEMERAL=1 PORT=$PORT HOST=127.0.0.1 MEDIA_DIR="$SCRATCH/media" \
   ENCORE_LYRICS_BACKFILL=0 ENCORE_VOCALS_BACKFILL=0 \
@@ -93,7 +93,7 @@ ENCORE_EPHEMERAL=1 PORT=$PORT HOST=127.0.0.1 MEDIA_DIR="$SCRATCH/media" \
 
 until curl -sf "http://127.0.0.1:$PORT/health" >/dev/null; do sleep 0.5; done
 
-EPORT=$PORT MEDIA_DIR="$SCRATCH/media" nohup bun e2e/fake-stems-worker.mjs > "$SCRATCH/worker.log" 2>&1 &
+EPORT=$PORT MEDIA_DIR="$SCRATCH/media" nohup bun tests/e2e/fake-stems-worker.mjs > "$SCRATCH/worker.log" 2>&1 &
 ```
 
 `bun run build` must have run once for the UI to exist; the server warns loudly if it has not.

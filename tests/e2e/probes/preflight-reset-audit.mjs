@@ -15,7 +15,7 @@
  * and the differ refuses to compare two runs whose tag sequence disagrees — if a future caller does
  * change markup, that check fails loudly rather than silently pairing the wrong elements.
  *
- *   EPORT=5911 CDP_PORT=9911 bun run e2e/probes/preflight-reset-audit.mjs <outFile.json>
+ *   EPORT=5911 CDP_PORT=9911 bun run tests/e2e/probes/preflight-reset-audit.mjs <outFile.json>
  *
  * Exit codes follow the harness contract (HARNESS.md): 0 measured, 1 a real failure, 2 the
  * environment could not host the probe.
@@ -28,7 +28,6 @@ import { findChromium } from '../lib/chromium.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9500);
 /** Distinguishes this run's singers from any other run against the same room. */
 const RUN_TAG = process.env.RUN_TAG ?? 'x';
 const OUT = process.argv[2];

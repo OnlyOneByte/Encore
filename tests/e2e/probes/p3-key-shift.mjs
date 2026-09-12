@@ -80,7 +80,6 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 
 const PORT = process.env.EPORT ?? process.env.PORT ?? '5223';
 const base = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9503);
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? '/tmp';
 
 // Findings collected as { severity, name, ok, detail }. Severity per the prompt:
@@ -125,7 +124,7 @@ const ready = await fetch(`${base}/api/search?q=caroline`)
 if (!ready.length) {
 	bail(
 		'no READY song in the library — nothing to play.\n' +
-			'  Seed + process one first:  bun run e2e/seed-media.mjs  &&  bun e2e/fake-stems-worker.mjs  (then POST /api/process)'
+			'  Seed + process one first:  bun run tests/e2e/seed-media.mjs  &&  bun tests/e2e/fake-stems-worker.mjs  (then POST /api/process)'
 	);
 }
 console.log(`fixture: "${ready[0].title}" → ${ready[0].instrumentalRef}\n`);

@@ -27,7 +27,7 @@ Reproduce:
 ```bash
 cd . && bun run build
 ENCORE_EPHEMERAL=1 PORT=5271 HOST=127.0.0.1 bun run ./server.ts &
-EPORT=5271 bun e2e/probes/spike827-queuesheet-drawer.mjs      # 17/17
+EPORT=5271 bun tests/e2e/probes/spike827-queuesheet-drawer.mjs      # 17/17
 bun test src/lib/components/drawer-spike-827.test.ts # 5/5
 ```
 

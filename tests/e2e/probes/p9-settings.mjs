@@ -526,7 +526,7 @@ async function runWireProbe() {
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'medium', syncMode: 'lines' } });
 
 	// Start a stems worker (fetch,stems only — leave align to the align-worker below).
-	const stems = spawn('bun', [pathJoin(process.cwd(), 'e2e/fake-stems-worker.mjs')], {
+	const stems = spawn('bun', [pathJoin(process.cwd(), 'tests/e2e/fake-stems-worker.mjs')], {
 		env: { ...process.env, EPORT: PORT, MEDIA_DIR: process.env.MEDIA_DIR ?? './media', FAKE_CAPS: 'fetch,stems' },
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
@@ -538,7 +538,7 @@ async function runWireProbe() {
 	await sleep(500);
 
 	// Start a one-shot align worker that prints the FIRST assign and exits.
-	const alignA = spawn('bun', [pathJoin(process.cwd(), 'e2e/fake-align-worker.mjs')], {
+	const alignA = spawn('bun', [pathJoin(process.cwd(), 'tests/e2e/fake-align-worker.mjs')], {
 		env: { ...process.env, EPORT: PORT },
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
@@ -596,7 +596,7 @@ async function runWireProbe() {
 	} else {
 		await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'tiny', syncMode: 'forced' } });
 		// Fresh one-shot align worker.
-		const alignB = spawn('bun', [pathJoin(process.cwd(), 'e2e/fake-align-worker.mjs')], {
+		const alignB = spawn('bun', [pathJoin(process.cwd(), 'tests/e2e/fake-align-worker.mjs')], {
 			env: { ...process.env, EPORT: PORT },
 			stdio: ['ignore', 'pipe', 'pipe']
 		});

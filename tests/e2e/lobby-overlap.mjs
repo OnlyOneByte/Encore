@@ -7,8 +7,8 @@
  * Chromium, so as a unit test it would SKIP wherever either is missing, and a permanently-skipped
  * test is the silent rot the contract guard exists to prevent (see contract.test.ts). The always-on
  * reversion guard lives in src/lib/tv/stage-scale.test.ts as a source scan; THIS is the
- * measured property behind it — run it on demand (`bun run e2e/lobby-overlap.mjs`) or against an
- * already-running server (`EPORT=xxxx bun run e2e/lobby-overlap.mjs`).
+ * measured property behind it — run it on demand (`bun run tests/e2e/lobby-overlap.mjs`) or against an
+ * already-running server (`EPORT=xxxx bun run tests/e2e/lobby-overlap.mjs`).
  *
  * WHAT IT ASSERTS, and why these inputs. `lobbyRoster` caps the roster at max = 8 in screen.ts, so
  * n = 8 is the PRODUCTION CEILING, not a stress case — and long display names are ordinary user data
@@ -43,7 +43,6 @@ import { findChromium } from './lib/chromium.mjs';
 
 const PORT = process.env.EPORT ?? '5188';
 const base = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9339);
 
 const HUES = ['#8b5cf6', '#ec4899', '#22c55e', '#f59e0b', '#3b82f6', '#f43f5e', '#a855f7', '#10b981'];
 

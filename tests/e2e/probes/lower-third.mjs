@@ -9,7 +9,7 @@
  * This samples the truth instead: it follows which src the AUDIBLE (unpaused, advancing) element
  * carries, and asserts the name changes when that src changes. No anchoring on decode counters.
  *
- *   EPORT=<port> CDP_PORT=<port> bun e2e/probes/lower-third.mjs
+ *   EPORT=<port> CDP_PORT=<port> bun tests/e2e/probes/lower-third.mjs
  */
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';

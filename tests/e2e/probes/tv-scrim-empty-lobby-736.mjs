@@ -37,7 +37,6 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = 'http://127.0.0.1:' + PORT;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9371);
 const SCRATCH = process.env.E2E_SCRATCH ?? '/tmp';
 const SHOTS = join(SCRATCH, 'shots-736');
 

@@ -3,7 +3,7 @@
  *
  *   bun run e2e:seed                                   # or point MEDIA_DIR at a real processed library
  *   ENCORE_EPHEMERAL=1 PORT=3500 MEDIA_DIR=<media> bun run start
- *   EPORT=3500 bun run e2e/capture.mjs [outDir]
+ *   EPORT=3500 bun run tests/e2e/capture.mjs [outDir]
  *
  * This exists because a screenshot of a default page proves almost nothing: the states worth looking
  * at are the ones a guest actually hits — a queue with a song processing in it, the sheet pulled up, the
@@ -61,7 +61,6 @@ const at = (...parts) => __join(repoRoot, ...parts);
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
 const OUT = process.argv[2] ?? at('docs/mocks');
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9500);
 /*
  * The id half of `<id>-<what>-eyeson.png`. `tour` = this full-surface tour, as opposed to the older
  * per-milestone ids (m0c5-, b7c4-, ds-…) that record the work which first produced a frame.

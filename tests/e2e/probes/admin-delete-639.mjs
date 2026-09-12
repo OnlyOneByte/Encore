@@ -13,7 +13,6 @@ if (!chromium) {
 	console.error('no chromium');
 	process.exit(2);
 }
-const CDP_PORT = 9639;
 
 await sleep(1200);
 let code = 0;

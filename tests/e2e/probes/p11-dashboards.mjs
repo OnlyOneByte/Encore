@@ -26,9 +26,10 @@
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+import { repoRoot } from '../lib/repo-root.mjs';
 
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
@@ -52,12 +53,10 @@ import { findChromium } from '../lib/chromium.mjs';
 
 // ── configuration ──────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT ?? 5231);
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9343);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.SCRATCH ?? join(process.env.KIROCREW_SCRATCH ?? '/tmp', `e2e-${PORT}`);
 const MEDIA_DIR = join(SCRATCH, 'media');
 const SHOTS_DIR = join(SCRATCH, 'shots');
-const REPO = resolve(new URL('../..', import.meta.url).pathname); // apps/core
 
 // ── finding recorder ───────────────────────────────────────────────────────
 /** @type {Finding[]} */
@@ -243,8 +242,8 @@ async function bootServer() {
 	mkdirSync(MEDIA_DIR, { recursive: true });
 	mkdirSync(SHOTS_DIR, { recursive: true });
 
-	const seed = launch('bun', ['run', 'e2e/seed-media.mjs'], {
-		cwd: REPO,
+	const seed = launch('bun', ['run', 'tests/e2e/seed-media.mjs'], {
+		cwd: repoRoot,
 		env: {...process.env, MEDIA_DIR }
 	});
 	await new Promise((r) => seed.on('exit', r));
@@ -252,7 +251,7 @@ async function bootServer() {
 	serverLogPath = join(SCRATCH, 'server.log');
 	const w = Bun.file(serverLogPath).writer();
 	const p = launch('bun', ['run', './server.ts'], {
-		cwd: REPO,
+		cwd: repoRoot,
 		env: {
 			...process.env,
 			ENCORE_EPHEMERAL: '1',
@@ -275,8 +274,8 @@ async function bootServer() {
 function bootWorker(env, tag) {
 	const workerLog = join(SCRATCH, `${tag}.log`);
 	const w = Bun.file(workerLog).writer();
-	const p = launch('bun', ['e2e/fake-stems-worker.mjs'], {
-		cwd: REPO,
+	const p = launch('bun', ['tests/e2e/fake-stems-worker.mjs'], {
+		cwd: repoRoot,
 		env: {...process.env, EPORT: String(PORT), MEDIA_DIR, FAKE_WORKER_ID: tag,...env }
 	});
 	p.stdout?.on('data', (/** @type {Buffer} */ d) => w.write(d));

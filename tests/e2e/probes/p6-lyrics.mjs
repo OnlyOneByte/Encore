@@ -21,13 +21,14 @@
  * Exit 0 — every finding passed; 1 — one or more real defects; 2 — the environment could
  * not host the test. Never conflate 2 with 0 (HARNESS.md).
  */
-import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
+import { atRepo } from '../lib/repo-root.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -157,7 +158,7 @@ const parserCheck = await (async () => {
 	const bad = {
 		lines: [{ startSec: 0, endSec: 1, text: 'x', words: [{ text: 'x', startSec: 0, endSec: 1 }] }]
 	};
-	const mod = await import(new URL('../../../src/lib/tv/lyrics.ts', import.meta.url).href);
+	const mod = await import(pathToFileURL(atRepo('src', 'lib', 'tv', 'lyrics.ts')).href);
 	const parseLyricsDoc = mod.parseLyricsDoc;
 	const good = parseLyricsDoc(raw);
 	const badParsed = parseLyricsDoc(bad);

@@ -78,22 +78,7 @@ import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
-import { existsSync as __exists } from 'node:fs';
-import { join as __join, dirname as __dirname } from 'node:path';
-// INLINED, not imported: this driver runs under plain node with no bundler, so the
-// '@encore/test-support' alias does not exist at runtime. Walking up for bunfig.toml is the
-// same root derivation the harness uses, and unlike a hop count it survives a move.
-function __repoRoot() {
-	let d = __dirname(new URL(import.meta.url).pathname);
-	for (let i = 0; i < 12; i += 1) {
-		if (__exists(__join(d, 'bunfig.toml'))) return d;
-		d = __dirname(d);
-	}
-	throw new Error('no bunfig.toml above ' + import.meta.url);
-}
-const repoRoot = __repoRoot();
-/** @param {...string} parts @returns {string} */
-const at = (...parts) => __join(repoRoot, ...parts);
+import { atRepo as at } from './lib/repo-root.mjs';
 
 
 /**
@@ -165,7 +150,6 @@ const N_INPUTS = Number(process.env.FUZZ_INPUTS ?? 24); // tens, not thousands �
 const SETTLE_MS = 700; // let one input land before reading state
 const CROSS_MS = 3000; // budget for a cross-surface value to propagate before it counts as a violation
 const DECODE_GAP_MS = 1500; // "sample twice, seconds apart"
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9461);
 
 // ── output ───────────────────────────────────────────────────────────────────────────────────────
 /** Everything driven so far, in order — this list IS the reproduction recipe. */

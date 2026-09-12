@@ -1,23 +1,23 @@
 // Eyes-on screenshot helper. Drives the Chromium already cached for the e2e probes
-// (~/.cache/ms-playwright/chromium-<build>/chrome-linux/chrome) over the repo's own
-// zero-dependency CDP driver.
+// (~/.cache/ms-playwright/chromium-<build>/chrome-linux/chrome) through the repo's own
+// e2e driver.
 //
-// WHY NOT PLAYWRIGHT. This file used to `import { chromium } from 'playwright-core'`, which was
-// never a declared dependency of this package — it worked on whichever machine happened to have one
-// lying around and failed everywhere else. e2e/driver.mjs replaced that exact import across the e2e
-// path with a CDP driver over the cached Chromium; this helper was the survivor the sweep missed.
-// It now adds no install step, no lockfile entry, and no version to drift.
+// WHY IT GOES THROUGH THE SHARED DRIVER. This file used to `import { chromium } from
+// 'playwright-core'`, which was never a declared dependency — it worked on whichever machine
+// happened to have one lying around and failed everywhere else. It now uses ./driver.mjs, the same
+// connection every probe uses, so there is one place that decides how a browser is launched and
+// which Chromium it points at.
 //
-// Usage: PW_CHROMIUM=/path/to/chrome node scripts/shot.mjs <url> <outPath> [widthxheight]
+// Usage: PW_CHROMIUM=/path/to/chrome bun run tests/e2e/shot.mjs <url> <outPath> [widthxheight]
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join as pathJoin } from 'node:path';
-import { connect, sleep } from '../e2e/driver.mjs';
+import { connect, sleep } from './driver.mjs';
 
 const [, , url, out, size = '390x844'] = process.argv;
 if (!url || !out) {
-	console.error('usage: node scripts/shot.mjs <url> <outPath> [widthxheight]');
+	console.error('usage: bun run tests/e2e/shot.mjs <url> <outPath> [widthxheight]');
 	process.exit(2);
 }
 const [w, h] = size.split('x').map(Number);

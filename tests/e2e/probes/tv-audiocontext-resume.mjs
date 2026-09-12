@@ -17,7 +17,7 @@
  *   GESTURELESS ctx absent while shift > 0 → the graph never built; look at `active` (hypothesis 2).
  *   GESTURELESS ctx.state === 'running'    → the context is fine and the cause is elsewhere (3).
  *
- *   EPORT=<port> bun e2e/probes/tv-audiocontext-resume.mjs
+ *   EPORT=<port> bun tests/e2e/probes/tv-audiocontext-resume.mjs
  */
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -38,7 +38,6 @@ if (!chrome) {
 	process.exit(2);
 }
 /** @type {string} the guard above narrows `chrome`; capture it so the nested runUnder() closure keeps the narrowing */
-const chromeBin = chrome;
 
 const ready = await fetch(`${base}/api/search?q=sweet`)
 	.then((r) => r.json())

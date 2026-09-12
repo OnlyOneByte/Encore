@@ -12,7 +12,6 @@
  *
  * Exit 0 all passed / 1 a real failure / 2 the environment could not host the test.
  */
-import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
@@ -28,8 +27,6 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = 'http://127.0.0.1:' + PORT;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9347);
-const SCRATCH = process.env.E2E_SCRATCH ?? '/tmp';
 
 /** @type {Check[]} */
 const checks = [];
@@ -56,7 +53,7 @@ const ready = await fetch(base + '/api/search?q=caroline')
 	.then((r) => r.json())
 	.then((d) => d.ready ?? []);
 if (!ready.length) {
-	bail('no READY song in the library - seed + process one first (bun run e2e:seed && bun e2e/fake-stems-worker.mjs).');
+	bail('no READY song in the library - seed + process one first (bun run e2e:seed && bun tests/e2e/fake-stems-worker.mjs).');
 }
 console.log('fixture: "' + ready[0].title + '" -> ' + ready[0].instrumentalRef + '\n');
 

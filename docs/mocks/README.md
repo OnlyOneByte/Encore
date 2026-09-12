@@ -24,7 +24,7 @@ captured frame.
 ```bash
 cd apps/core
 ENCORE_EPHEMERAL=1 PORT=3500 MEDIA_DIR=./media bun run start
-EPORT=3500 bun run e2e/capture.mjs                   # writes here by default
+EPORT=3500 bun run tests/e2e/capture.mjs                   # writes here by default
 ```
 
 The capture applies the `tour-<what>-eyeson` naming itself, so a regenerated set cannot drift out of

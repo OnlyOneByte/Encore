@@ -72,7 +72,6 @@ import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 const PORT = process.env.EPORT ?? '5224';
 const base = `http://127.0.0.1:${PORT}`;
 const wsBase = `ws://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9424);
 
 /** @type {Finding[]} */
 const findings = [];

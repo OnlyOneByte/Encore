@@ -1,8 +1,8 @@
 /*
  * Seed the four demo library tracks so the e2e can exercise the queue path.
  *
- *   bun run e2e/seed-media.mjs            # into ./media
- *   MEDIA_DIR=/tmp/x bun run e2e/seed-media.mjs
+ *   bun run tests/e2e/seed-media.mjs            # into ./media
+ *   MEDIA_DIR=/tmp/x bun run tests/e2e/seed-media.mjs
  *
  * WHY THIS IS NEEDED. server.ts indexes a demo track only when a file actually exists behind it. That
  * filter is deliberate and load-bearing: without it the four demos were searchable, queueable songs

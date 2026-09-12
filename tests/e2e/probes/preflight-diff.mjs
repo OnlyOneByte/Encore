@@ -1,7 +1,7 @@
 /*
  * Diff two preflight-reset-audit runs.
  *
- *   bun run e2e/probes/preflight-diff.mjs <before.json> <after.json>
+ *   bun run tests/e2e/probes/preflight-diff.mjs <before.json> <after.json>
  *
  * WHAT THIS REFUSES TO DO. Elements are paired BY INDEX in document order, which is only sound while
  * the two runs rendered the same DOM. Some surfaces in this app are DATA-DEPENDENT — /stats and

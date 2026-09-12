@@ -30,14 +30,14 @@ from ..retry_policy import BoundaryError, permanent_by_message
 DEFAULT_MODEL = "htdemucs"
 
 # The demucs-family checkpoints this engine will run. Mirrors the `demucs` engine's model
-# whitelist in src/shared/lyrics/separators.ts — defence in depth: the core already validates the
+# allowlist in src/lib/contract/lyrics/separators.ts — defence in depth: the core already validates the
 # engine+model pairing before enqueueing, but a worker must never shell `demucs -n <arbitrary>` from
 # a job param, so an unknown model is rejected here too rather than silently falling back.
 DEMUCS_MODELS = ("htdemucs", "htdemucs_ft", "htdemucs_6s")
 
 
 def resolve_demucs_model(params: dict, default: str = DEFAULT_MODEL) -> str:
-    """Pick the demucs checkpoint for a job: the whitelisted `params['model']`, else the worker
+    """Pick the demucs checkpoint for a job: the allowlisted `params['model']`, else the worker
     default. An explicit-but-unknown model raises (the job fails non-retryable) instead of quietly
     separating with the wrong model — a silent substitution would ship a different instrumental than
     the room asked for."""

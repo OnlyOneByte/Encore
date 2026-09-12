@@ -13,29 +13,17 @@
  */
 import { existsSync, mkdirSync, openSync, readdirSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
-// The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
-// and the runner agree on the root. Was `join(import.meta.dirname, …)`, which encoded this file's distance
-// from `.` and broke the moment the e2e tree moved under `tests/`.
-const REPO_ROOT = (() => {
-	let dir = import.meta.dirname;
-	for (let i = 0; i < 10; i += 1) {
-		if (existsSync(join(dir, 'bunfig.toml'))) return dir;
-		const parent = dirname(dir);
-		if (parent === dir) break;
-		dir = parent;
-	}
-	throw new Error(`no bunfig.toml above ${import.meta.dirname}`);
-})();
+import { repoRoot } from './lib/repo-root.mjs';
+import { spawnChild, killChild } from './lib/child.mjs';
 
 
 const PORT = process.env.EPORT ?? '5217';
 const BASE = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9361);
-const CORE = REPO_ROOT;
+const CORE = repoRoot;
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? process.env.TMPDIR ?? '/tmp';
 const RUN = join(SCRATCH, `shoot913-${process.pid}`);
 const MEDIA = join(RUN, 'media');
@@ -78,7 +66,7 @@ async function boot() {
 	mkdirSync(MEDIA, { recursive: true });
 	mkdirSync(OUT, { recursive: true });
 	await new Promise((res, rej) => {
-		const p = spawnChild('bun', ['run', 'e2e/seed-media.mjs'], { cwd: CORE, env: { ...process.env, MEDIA_DIR: MEDIA } });
+		const p = spawnChild('bun', ['run', 'tests/e2e/seed-media.mjs'], { cwd: CORE, env: { ...process.env, MEDIA_DIR: MEDIA } });
 		p.on('exit', (c) => (c === 0 ? res(null) : rej(new Error(`seed exited ${c}`))));
 	});
 	const log = join(RUN, 'server.log');
@@ -101,7 +89,7 @@ async function boot() {
 
 async function worker() {
 	const log = join(RUN, 'worker.log');
-	const p = spawnChild('bun', ['e2e/fake-stems-worker.mjs'], {
+	const p = spawnChild('bun', ['tests/e2e/fake-stems-worker.mjs'], {
 		cwd: CORE,
 		stdio: ['ignore', openSync(log, 'w'), openSync(log, 'a')],
 		env: { ...process.env, EPORT: PORT, MEDIA_DIR: MEDIA, FAKE_WORKER_ID: `shoot-${process.pid}`, FAKE_SLOW_MS: '50' }
@@ -135,14 +123,6 @@ async function processMedia(q) {
 /** @type {import('node:child_process').ChildProcess|undefined} */ let wk;
 /** @type {any} */ let browser;
 
-/** @param {import('node:child_process').ChildProcess|undefined} p */
-async function kill(p) {
-	if (!p || p.exitCode !== null) return;
-	p.kill('SIGTERM');
-	const t0 = Date.now();
-	while (p.exitCode === null && Date.now() - t0 < 3000) await sleep(100);
-	if (p.exitCode === null) p.kill('SIGKILL');
-}
 
 async function main() {
 	mkdirSync(RUN, { recursive: true });
@@ -257,7 +237,7 @@ try {
 	} catch {
 		// A browser that already died closes with a throw; the children below are killed either way.
 	}
-	await kill(wk);
-	await kill(server);
+	await killChild(wk);
+	await killChild(server);
 }
 process.exit(code);

@@ -73,7 +73,6 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 
 // ── config ─────────────────────────────────────────────────────────────────────────────────────
 const PORT = process.env.EPORT ?? process.env.PORT ?? '5221';
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9421);
 const base = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? '/tmp';
 const artDir = join(SCRATCH, `p1-gapless-${PORT}`);
@@ -157,7 +156,7 @@ const song2 = await findLocalByTitle('believin');
 if (!song1 || !song2) {
 	bail(
 		`could not find two distinct demo tracks (need sweet-caroline + dont-stop-believin). ` +
-			`Seed with: MEDIA_DIR=... bun run e2e/seed-media.mjs`
+			`Seed with: MEDIA_DIR=... bun run tests/e2e/seed-media.mjs`
 	);
 }
 if (song1.id === song2.id) bail('sanity: search returned the same media for both queries');

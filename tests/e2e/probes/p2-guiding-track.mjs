@@ -23,14 +23,15 @@
  * Exit 0 all passed · 1 a real failure · 2 the environment could not host the test.
  */
 
-import { spawn } from 'node:child_process';
 import { mkdirSync, openSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
+import { repoRoot } from '../lib/repo-root.mjs';
+import { spawnChild, killChild } from '../lib/child.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -59,11 +60,9 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 
 const PORT = process.env.EPORT ?? '5222';
 const BASE = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9422);
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? '/tmp';
 const RUN_DIR = join(SCRATCH, `p2-guide-${PORT}-${process.pid}`);
 const MEDIA_DIR = process.env.MEDIA_DIR ?? join(RUN_DIR, 'media');
-const CORE_DIR = resolve(new URL('../../', import.meta.url).pathname); // .
 
 // ── reporting ──────────────────────────────────────────────────────────────
 /** @type {{ sev: Severity, name: string, ok: boolean, obs?: string, exp?: string }[]} */
@@ -99,27 +98,15 @@ let browser;
 /** @type {Child | undefined} */
 
 /**
+ * Tracks every child so `cleanup()` can reap them; the spawn itself is shared.
  * @param {string} cmd
  * @param {string[]} args
  * @param {import('node:child_process').SpawnOptions} [opts]
  */
-function spawnChild(cmd, args, opts = {}) {
-	const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...opts });
+function track(cmd, args, opts = {}) {
+	const p = spawnChild(cmd, args, opts);
 	childProcs.push(p);
 	return p;
-}
-/** @param {Child} p @param {number} [grace] */
-async function killChild(p, grace = 800) {
-	if (!p || p.exitCode !== null) return;
-	try {
-		p.kill('SIGTERM');
-	} catch {}
-	await new Promise((r) => setTimeout(r, grace));
-	if (p.exitCode === null) {
-		try {
-			p.kill('SIGKILL');
-		} catch {}
-	}
 }
 function cleanup() {
 	try {
@@ -180,8 +167,8 @@ async function bootServer() {
 
 	// seed library placeholders (idempotent — see seed-media.mjs's own header)
 	await new Promise((res, rej) => {
-		const p = spawnChild('bun', ['run', 'e2e/seed-media.mjs'], {
-			cwd: CORE_DIR,
+		const p = track('bun', ['run', 'tests/e2e/seed-media.mjs'], {
+			cwd: repoRoot,
 			env: { ...process.env, MEDIA_DIR }
 		});
 		p.on('exit', (code) => (code === 0 ? res(null) : rej(new Error(`seed exited ${code}`))));
@@ -190,8 +177,8 @@ async function bootServer() {
 	const logFd = join(RUN_DIR, 'server.log');
 	mkdirSync(RUN_DIR, { recursive: true });
 	const logHandle = openSync(logFd, 'w');
-	const proc = spawnChild('bun', ['./server.ts'], {
-		cwd: CORE_DIR,
+	const proc = track('bun', ['./server.ts'], {
+		cwd: repoRoot,
 		detached: false,
 		stdio: ['ignore', logHandle, logHandle],
 		env: {
@@ -232,8 +219,8 @@ async function spawnWorker(kind) {
 	if (kind === 'silent') env.FAKE_SILENT_VOCALS = '1';
 	const logFd = join(RUN_DIR, `worker-${kind}.log`);
 	const logHandle = openSync(logFd, 'w');
-	const p = spawnChild('bun', ['e2e/fake-stems-worker.mjs'], {
-		cwd: CORE_DIR,
+	const p = track('bun', ['tests/e2e/fake-stems-worker.mjs'], {
+		cwd: repoRoot,
 		stdio: ['ignore', logHandle, logHandle],
 		env
 	});

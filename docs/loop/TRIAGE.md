@@ -446,7 +446,7 @@ anything.
      `cd . && bun run build`, then
      `PATH="/home/angryang/ffmpeg:$PATH" ENCORE_EPHEMERAL=1 HOST=127.0.0.1 PORT=51xx MEDIA_DIR=<seeded> bun run server.ts`.
      Kill it by port→PID (`ss -lptn 'sport = :PORT'`), never `pkill -f`.
-   - Seed a library with `bun run e2e/seed-media.mjs` and drive the UI with the repo's **own**
+   - Seed a library with `bun run tests/e2e/seed-media.mjs` and drive the UI with the repo's **own**
      zero-dep CDP driver in `tests/e2e/` (`driver.mjs`, `party.mjs`). A Chromium is already cached at
      `~/.cache/ms-playwright/chromium-1232/chrome-linux/chrome`.
    - **`playwright-cli`: the old reason to rule it out no longer holds** — it needed Node 20 when this
