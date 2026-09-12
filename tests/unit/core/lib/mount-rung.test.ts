@@ -33,11 +33,11 @@ import { test, expect, beforeEach } from 'bun:test';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { mount, unmount, flushSync } from '../../../../tests/setup/svelte-client';
-import { appSrc, repoRoot, at } from '@encore/test-support';
+import { at, repoRoot, srcDir } from '@encore/test-support';
 
 // src — where routes, lib and server live. Anchored from the repo root via
 // @encore/test-support, never from where this test sits, so a move is a git mv (no-self-anchored-paths).
-const SRC = appSrc;
+const SRC = srcDir;
 
 // The repo root, resolved once by @encore/test-support (walks up for bunfig.toml). The old inline
 // walker counted parents from the file location; the anchor now comes from the repo root instead.

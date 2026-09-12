@@ -13,7 +13,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { appE2e, appSrc, at, repoRoot } from '@encore/test-support';
+import { at, e2eDir, repoRoot, srcDir } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -26,7 +26,7 @@ function stripComments(src: string): string {
 const REPO_ROOT = repoRoot;
 const OPS_PATH = at('src', 'lib', 'contract', 'core', 'ops.ts');
 // src — the server + client TypeScript that could read the field.
-const CORE_SRC = appSrc;
+const CORE_SRC = srcDir;
 const CORE_ENTRY = at('server.ts');
 
 // Slice out the `export interface ClientCommand { ... }` body via a brace-depth walk located from
@@ -98,7 +98,7 @@ test('no non-test source under . references baseRev', () => {
 // `report()` string literal that stripComments cannot blank (it is not a comment), and a bare-word
 // ban self-reds on it — the exact trap that has fired three times before. A re-added send is always
 // `baseRev: <value>`, so the colon form catches every regression while leaving honest prose alone.
-const E2E_DIR = appE2e;
+const E2E_DIR = e2eDir;
 
 function collectMjs(root: string): string[] {
 	const out: string[] = [];

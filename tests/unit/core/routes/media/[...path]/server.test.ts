@@ -30,9 +30,6 @@ function fakeS3(): S3Like {
 				},
 				slice(start: number, end: number) {
 					return (store.get(key) ?? new Blob()).slice(start, end);
-				},
-				presign() {
-					return `https://s3.fake/${key}`;
 				}
 			};
 		}

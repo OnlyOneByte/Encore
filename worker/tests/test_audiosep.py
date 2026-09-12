@@ -96,7 +96,7 @@ def test_audiosep_argv_includes_model_file_dir_when_set():
 
 # ── engine routing ─────────────────────────────────────────────────────────────────
 def test_engine_for_builds_a_real_audiosep_engine():
-    """The an earlier change parity contract for the new token: `engine_for("audiosep")` must build a real engine
+    """The parity contract for the new token: `engine_for("audiosep")` must build a real engine
     (capabilities.py advertises `stems:audiosep` only when the dep is present, and the core routes a
     stems:audiosep process here — an unbuildable engine would dispatch and die at plan selection)."""
     from src.separation.engines import AudioSepEngine, engine_for

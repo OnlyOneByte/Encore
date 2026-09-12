@@ -2,6 +2,29 @@
   "id": "issue-fix",
   "repo": "OnlyOneByte/Encore",
   "default_branch": "main",
+  "_comment_gates": "The gate list is EXECUTABLE: `bun run gates` (root package.json) runs the five legs below in this order, stops at the first failure, prints which leg failed, and exits non-zero. `legs` mirrors that script leg-for-leg and `tests/guards/docs/gates-prose-matches-script.test.ts` reds if the script, this list and the prose list in docs/loop/PR-BOT.md ever disagree. THE NUMBERS BELOW WERE MEASURED, not remembered: this file previously claimed `bun test` ran '1351 tests in ~8s' and pytest '~540 in ~5s' and named only FOUR gates, which was wrong on the count, wrong on both durations by 4x and 20x, and missing `bun run lint` entirely. Durations are wall clock on the owner's cloud desktop and drift; the leg LIST is the contract, the timings are only there so nobody plans around an ~8s figure. Note `lint` is cache-backed (`.eslintcache`): ~11s warm, but ~430s on a cold cache, so a fresh worktree's first `bun run gates` is dominated by it. `bun run gate:measured` is deliberately NOT a leg — it needs a built bundle plus a real headless Chromium, so it is run separately after `bun run build`.",
+  "gates": {
+    "command": "bun run gates",
+    "script": "gates",
+    "legs": [
+      "bun test",
+      "cd worker && python3 -m pytest -q",
+      "bun run typecheck",
+      "bun run lint",
+      "bun run build"
+    ],
+    "measured_on": "2026-09-12",
+    "measured": {
+      "bun test": "2672 pass / 0 fail across 292 files, ~33s (repo root only — bunfig.toml's relative preload does not resolve from a subdirectory)",
+      "cd worker && python3 -m pytest -q": "915 passed / 1 skipped, ~105s",
+      "bun run typecheck": "exit 0, 0 errors (10 warnings in 1 file), ~18s",
+      "bun run lint": "exit 0, 0 errors / 82 warnings, ~11s warm cache (~430s cold)",
+      "bun run build": "exit 0, ~9s"
+    },
+    "separate": {
+      "bun run gate:measured": "the layout rung — needs `bun run build` first plus a real headless Chromium, so it is not a leg of `bun run gates`"
+    }
+  },
   "_comment_work_source": "DISPATCH GATE (owner ruling 2026-09-06): dispatchable = carries triaged AND not covered by an open PR/branch/worktree AND carries none of the skip_signals. Require ONLY triaged \u2014 review, loop, severity (user-facing/internal) and proposal DO NOT block (they are for other lanes/bookkeeping). Only needs-decision (the single owner-blocked label) and an explicit wontfix gate. claimed/in-progress mean another session already owns it. Oldest issue number first; skip-to-disjoint on file overlap.",
   "work_source": {
     "kind": "gh_issues",
@@ -47,7 +70,7 @@
   },
   "_comment_encore_overrides": "Three places the generic conductor procedure is WRONG for this repo. Read these before dispatching anything.",
   "encore_overrides": {
-    "full_suite_is_cheap": "The skill's 'targeted tests ONLY, never the full suite, bounded pytest -n' rule exists for slow pytest repos. Encore is not one: `bun test` runs 1351 tests in ~8s and the worker's pytest runs ~540 in ~5s. Workers MUST run the full gates every time \u2014 the four are `bun test` (repo root), `cd worker && python3 -m pytest -q`, `bun run build`, `bun run typecheck`. Do NOT emit BANNED lines for full-suite runs here; a full run is the correct behaviour and banning it would strip the only safety net.",
+    "full_suite_is_cheap": "The skill's 'targeted tests ONLY, never the full suite, bounded pytest -n' rule exists for slow pytest repos. Encore is not one, though it is no longer as fast as this line used to claim: `bun test` runs 2672 tests in ~33s and the worker's pytest runs 915 in ~105s (measured 2026-09-12; the '1351 in ~8s' and '~540 in ~5s' figures this sentence carried were stale by 4x and 20x). Workers MUST run the full gates every time, and they do NOT assemble the list by hand any more — `bun run gates` IS the list, five legs in order: `bun test` (repo root), `cd worker && python3 -m pytest -q`, `bun run typecheck`, `bun run lint`, `bun run build`. See the top-level `gates` block for the measured numbers and for why `gate:measured` is run separately. Do NOT emit BANNED lines for full-suite runs here; a full run is the correct behaviour and banning it would strip the only safety net.",
     "there_is_no_ci": "CRITICAL. This repo has NO .github/ and no CI whatsoever, so the skill's 'babysit the PR to green' and 'collapse check-runs per lane' steps have nothing to read. There are no check runs, no reviewer bot lanes, and no `PR Readiness` status. The review lane is `pr-bot` (docs/loop/PR-BOT.md), a scheduled agent that posts a verdict comment and applies `review:approved` or `review:blocked`. Independent green verification therefore means: (1) the four gates pass on the PR's head SHA, re-run by the conductor itself, not taken on the worker's word; (2) `review:approved` present and `review:blocked` absent; (3) every blocking finding in pr-bot's comment answered; (4) PR MERGEABLE and one commit on a fresh base.",
     "file_overlap_gate": "The generic dispatch check catches an existing PR, branch or worktree for the SAME item. It does not catch two DIFFERENT items whose fixes touch the same files \u2014 and that is the common case here, because several open issues land in `TvPlayer.svelte`, `settings.ts` and `src/lib/contract`. Before dispatching, read the candidate issue's named `path:line` sites and skip the item if any in-flight worker's branch already touches that file (`git diff --name-only main...<branch>`). Whoever merges first makes the other stale, and the loser's rebase eats the whole win.",
     "phase_ladder_still_applies": "RETIRED 2026-09-07 \u2014 the P0-P4 phase labels no longer exist. Migration: phase:P1 -> user-facing, phase:P2 -> internal, phase:P4 -> owner-only (itself deleted 2026-09-07), HIGH-PRIORITY -> priority; phase:P0 and phase:P3 deleted (P0/P1 were complete with zero open, and dispatch had already moved to oldest-issue-first, so the ladder ordered nothing). What replaces it: severity is user-facing vs internal; a user-facing defect outranks all internal work regardless of arrival order; the blocking family (needs-owner, owner-only, needs-repro, needs-owner-verification, for-owner) collapsed into the single label needs-decision on 2026-09-07 \u2014 the label is a boolean gate and the ISSUE COMMENT carries what is actually needed, as a Decisions block; priority is the owner's queue-jump and agents must never apply it. See docs/loop/DEFECT-TAXONOMY.md \u00a71.6."

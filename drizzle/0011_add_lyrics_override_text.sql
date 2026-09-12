@@ -1,0 +1,17 @@
+-- media.lyrics_override_text — the WORDS behind a pasted (`manual`) lyrics override. The ref half
+-- (0010) names a candidate; a pasted pick names a candidate NOTHING has written yet, so the text itself
+-- has to be stored or the pin points at an empty key. `assignParams` derives an align job's params from
+-- the media row, which is why this belongs here and not on the job: a restart between enqueue and
+-- dispatch re-derives them, so a paste held only in memory was dropped and the worker got `pinnedRef`
+-- with no `pinnedText` behind it — a 200 for a paste the room silently discarded.
+--
+-- A real numbered migration (0011, after 0010_add_lyrics_override_ref), NOT an in-place edit of the
+-- baseline: drizzle keys replay on the journal `when`, so a rewritten baseline never re-applies to an
+-- existing box and the column would be missing at boot the first time a reader selected it. This
+-- replays only on DBs that have not recorded idx:11.
+--
+-- ADDITIVE AND NULLABLE. A plain `ADD COLUMN`, not the __new_ create-copy-drop-rename idiom, because
+-- `media` needs no primary-key change (same shape as 0006/0007/0008/0010). NULL ⇔ "no pasted text",
+-- which is every existing row and every ref pick: the worker then re-times the doc already stored under
+-- the pinned ref, exactly as it does today. No backfill.
+ALTER TABLE `media` ADD `lyrics_override_text` text;

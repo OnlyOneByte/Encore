@@ -141,6 +141,34 @@ test('media.lyrics_override_ref defaults null and round-trips a stored ref', () 
 	expect(byId.get('o1')).toBe('derived/lyrics/o1-manual-word.json');
 });
 
+// media.lyrics_override_text arrives via migration 0011 (not a baseline edit), defaults null ("no
+// pasted text → the pin names a candidate already on disk"), and round-trips the words behind a pasted
+// override. It is the column that makes a paste survive a restart between enqueue and dispatch, where
+// `assignParams` re-derives the align job's `pinnedText` from this row. RED on base: the media table has
+// no lyrics_override_text column, so this insert/read cannot preserve it.
+test('media.lyrics_override_text defaults null and round-trips pasted words', () => {
+	const { db, sqlite } = openDb(':memory:');
+	runMigrations(db);
+	const cols = (sqlite.query('PRAGMA table_info(media)').all() as { name: string }[]).map((c) => c.name);
+	expect(cols).toContain('lyrics_override_text'); // the migration added it
+	db.insert(media).values({ id: 't0', source: 'youtube', sourceRef: 'a', title: 'A', durationSec: 200 }).run();
+	db.insert(media)
+		.values({
+			id: 't1',
+			source: 'youtube',
+			sourceRef: 'b',
+			title: 'B',
+			durationSec: 200,
+			lyricsOverrideRef: 'derived/lyrics/t1-manual-word.json',
+			lyricsOverrideText: 'hello darkness my old friend\nive come to talk with you again'
+		})
+		.run();
+	const byId = new Map(db.select().from(media).all().map((r) => [r.id, r.lyricsOverrideText]));
+	expect(byId.get('t0')).toBeNull(); // no pasted text — a ref pick, or no pin at all
+	// Newlines survive: the worker splits the paste into one line per lyric line.
+	expect(byId.get('t1')).toBe('hello darkness my old friend\nive come to talk with you again');
+});
+
 // the room_settings.lyrics_ball COLUMN default is 'off' (owner decision C — flip the marker
 // default to No marker, keep the styles). This pins the SQLite column default itself: a raw insert
 // that omits lyrics_ball must read back 'off'. Reverting schema.ts's .default('off') -> 'bounce'

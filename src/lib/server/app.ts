@@ -35,6 +35,7 @@ import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
 import { existsSync } from 'node:fs';
 import { markLyricsQueued, reportTerminalFailure } from './jobs/process';
+import { reconcileStrandedGates } from './jobs/gate-reconcile';
 import { cancelJobsForMedia } from './jobs/cancel';
 import { reprioritizeProcessForMedia } from './jobs/reprioritize-process';
 import {
@@ -243,6 +244,33 @@ export function getApp(): EncoreApp {
 		})();
 	});
 	hydrateMediaCatalog(mediaRepo.all(), mediaById);
+
+	// Re-derive any readiness gate the durable row claims is in flight while the job ledger says nothing
+	// alive can ever finish it (XR-JOB-04). SYNCHRONOUS and here, immediately after the hydrate that
+	// reads the stale value and BEFORE the party is serveable — unlike the detached passes below this
+	// does no directory scan and no network call (a handful of indexed lookups over only the rows that
+	// claim to be processing), and its whole purpose is that a stranded song must not be observable as
+	// stranded. Deferring it would hand the first phone to load /api/library the exact row the pass
+	// exists to repair.
+	//
+	// Idempotent, so it stays wired permanently rather than being a one-shot script: a settled gate is
+	// no longer in flight, so the next boot matches nothing and writes nothing.
+	//
+	// WRAPPED for the same reason migrateStorageLayout is: library housekeeping must never stop a party
+	// server from booting. A repair that could not run leaves the songs it would have recovered exactly
+	// as they already were — bad, but strictly better than a box that will not start.
+	try {
+		const recovered = reconcileStrandedGates(mediaById, {
+			findLiveJob: (mediaId, jobType) => jobs.findLive(mediaId, jobType),
+			persist: (m) => mediaRepo.upsert(m)
+		});
+		if (recovered.length > 0)
+			console.log(
+				`[core] settled ${recovered.length} stale readiness gate(s) with no live job: ${recovered.join(', ')}`
+			);
+	} catch (err) {
+		console.warn(`[core] stale readiness-gate reconciliation skipped: ${(err as Error).message}`);
+	}
 
 	// Restore anything the sidecars know about that the index does not. This is what makes the media
 	// volume portable: drop it on a new box (or delete the SQLite file) and the library comes back.

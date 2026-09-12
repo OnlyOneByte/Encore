@@ -900,7 +900,7 @@ test('persists the variant-pick provenance from job:complete so a mis-pick is di
 
 	hub.handle({ type: 'job:complete', workerId: 'w1', jobId: job.id, mediaUri: 'derived/lyrics/m1.json', selection });
 
-	// Retrievable from DURABLE state after the process — the whole point of.
+	// Retrievable from DURABLE state after the process — the whole point.
 	const [a] = attempts.byMedia('m1');
 	const got = attemptSelection(a);
 	expect(got).not.toBeNull();

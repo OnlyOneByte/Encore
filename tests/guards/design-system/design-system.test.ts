@@ -20,10 +20,10 @@
 import { test, expect } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { appSrc, at, repoRoot } from '@encore/test-support';
+import { at, repoRoot, srcDir } from '@encore/test-support';
 import { svelteFiles, styleFiles } from '$lib/test-helpers';
 
-const SRC = appSrc;
+const SRC = srcDir;
 // Repo root, for the breakpoint scan which must reach packages/*/src as well as apps/*/src.
 const REPO = repoRoot;
 // Read app.css comment-stripped: the `defined`-token set and the palette are built from this text and

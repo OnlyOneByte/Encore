@@ -17,7 +17,7 @@
 
 
 import { test, expect } from 'bun:test';
-import { read, filesUnder, relative } from '@encore/test-support';
+import { filesUnder, read, relative } from '@encore/test-support';
 
 /** Bare package specifiers, excluding builtins, path aliases and relative imports. */
 function externalImports(src: string): string[] {

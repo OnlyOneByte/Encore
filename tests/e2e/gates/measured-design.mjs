@@ -40,7 +40,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { join, resolve, sep } from 'node:path';
+import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 import { openBrowseFromHome } from '../lib/phone.mjs';
@@ -73,8 +73,6 @@ function __repoRoot() {
 	throw new Error('no bunfig.toml above ' + import.meta.url);
 }
 const repoRoot = __repoRoot();
-/** @param {...string} parts @returns {string} */
-const at = (...parts) => __join(repoRoot, ...parts);
 
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser

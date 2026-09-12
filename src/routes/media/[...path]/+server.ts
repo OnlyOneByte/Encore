@@ -41,8 +41,22 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	// Fallback for a MediaStore that implements neither `size` nor `getRange`: one full-body 200 with
 	// no `accept-ranges`, which means WebKit (Safari/iOS) will refuse to play — see media/http-range.ts.
 	// Both shipped stores (local + object) answer these, so this is a floor for a future store, NOT the
-	// object-store path: the TV loads every ref through this same-origin /media route (TvPlayer hardcodes
-	// `/media/${ref}` and never calls MediaStore.url()), so the object store MUST serve ranges here.
+	// object-store path: EVERY ref, of EVERY store kind, is served through this same-origin route
+	// (TvPlayer hardcodes `/media/${ref}`, as does LyricsOverlay's artifact fetch), so the object store
+	// MUST serve ranges here.
+	//
+	// ON THE RECORD — the presigned direct-to-S3 path was REMOVED, not overlooked. `MediaStore.url()`
+	// (and `mediaProxyUrl`, `ObjectMediaStore`'s `presignExpiresIn`/`proxyUrls`, and `S3Like.presign`)
+	// handed out a 1-hour presigned URL and had ZERO production callers — its only callers were its own
+	// tests, which is why the absence stayed invisible to coverage. It is deleted rather than wired up
+	// because wiring it would regress three things at once: (1) a cross-origin media element taints
+	// `MediaElementAudioSourceNode`, so the deferred FFT visualizer work silently goes flat with no
+	// error (docs/DECISIONS.md, "Audio-REACTIVE visualizers"); (2) LyricsOverlay `fetch`es its
+	// artifacts from this origin and would need bucket CORS; (3) a presigned URL is a bearer credential
+	// for a media file with a TTL nobody specified, and a song plus its queue wait can outlive an hour.
+	// Re-adding a URL member is therefore a product decision about same-origin playback, not a store
+	// detail — see docs/arch/01-media.md XR-MED-10. The guard is
+	// tests/guards/subsystem-media/store-members-have-production-callers.test.ts.
 	if (typeof store.size !== 'function' || typeof store.getRange !== 'function') {
 		const stream = await store.get(ref);
 		if (!stream) return new Response('not found', { status: 404 });

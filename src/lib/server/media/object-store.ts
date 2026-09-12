@@ -2,17 +2,21 @@
 // Bun's native S3 (Bun.S3Client) — no aws-sdk/minio dep; speaks to MinIO via a custom `endpoint`.
 // See ARCHITECTURE §2. The S3 client is injected behind a tiny interface so the whole store
 // unit-tests against an in-memory fake (no network, no creds).
+//
+// BYTES TRANSIT THE CORE, BY DESIGN. This store answers `size`/`getRange` with ranged GETs, and the
+// same-origin `/media/<ref>` route serves them — there is no presigned direct-to-S3 URL. The `url()`
+// member and its `presignExpiresIn` / `proxyUrls` options were removed for having no production
+// caller; see the on-record note at src/routes/media/[...path]/+server.ts before reinstating them.
 
-import { objectKey, mediaProxyUrl, type MediaStore, type ObjectStoreConfig } from './store';
+import { objectKey, type MediaStore, type ObjectStoreConfig } from './store';
 
 /** The slice of an S3 client this store needs — Bun.S3Client satisfies it; tests pass a fake. */
 export interface S3Like {
-	/** Object handle exposing exists/write/stream/size/slice + a presign for a single key. */
+	/** Object handle exposing exists/write/stream/size/slice for a single key. */
 	file(key: string): {
 		exists(): Promise<boolean>;
 		write(data: Uint8Array | ReadableStream | Blob): Promise<unknown>;
 		stream(): ReadableStream;
-		presign(opts?: { expiresIn?: number }): string;
 		/** HEAD the object for metadata (Bun.S3File.stat) — `.size` is the byte length, no body. */
 		stat(): Promise<{ size: number }>;
 		/**
@@ -24,25 +28,14 @@ export interface S3Like {
 	};
 }
 
-export interface ObjectMediaStoreOpts {
-	/** Presigned-URL TTL handed to the TV `<video>` (default 1h — longer than any song). */
-	presignExpiresIn?: number;
-	/** Force the same-origin /media proxy instead of presigned URLs (e.g. private buckets). */
-	proxyUrls?: boolean;
-}
-
 export class ObjectMediaStore implements MediaStore {
 	readonly kind = 'object' as const;
 	#client: S3Like;
 	#prefix: string | undefined;
-	#expiresIn: number;
-	#proxyUrls: boolean;
 
-	constructor(client: S3Like, config: Pick<ObjectStoreConfig, 'prefix'>, opts: ObjectMediaStoreOpts = {}) {
+	constructor(client: S3Like, config: Pick<ObjectStoreConfig, 'prefix'>) {
 		this.#client = client;
 		this.#prefix = config.prefix;
-		this.#expiresIn = opts.presignExpiresIn ?? 3600;
-		this.#proxyUrls = opts.proxyUrls ?? false;
 	}
 
 	#key(ref: string): string {
@@ -82,18 +75,6 @@ export class ObjectMediaStore implements MediaStore {
 
 	async put(ref: string, data: Uint8Array | ReadableStream | Blob): Promise<void> {
 		await this.#client.file(this.#key(ref)).write(data);
-	}
-
-	/**
-	 * Object stores serve a presigned, time-limited DIRECT url by default (offloads bytes from the
-	 * core — the whole point of going remote). When `proxyUrls` is set (private bucket / no CORS),
-	 * fall back to the same-origin /media route, which streams via get(). Unsafe ref → null.
-	 */
-	url(ref: string): string | null {
-		if (this.#proxyUrls) return mediaProxyUrl(ref);
-		// guard the ref the same way the proxy path does, so a traversal-y ref never becomes a key
-		if (mediaProxyUrl(ref) === null) return null;
-		return this.#client.file(this.#key(ref)).presign({ expiresIn: this.#expiresIn });
 	}
 }
 

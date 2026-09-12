@@ -61,7 +61,7 @@
  * count, so a sibling PR adding a new floor to a listed file is fine; removing one is not.
  */
 import { test, expect } from 'bun:test';
-import { repoRoot, filesUnder, relative } from '@encore/test-support';
+import { filesUnder, relative, repoRoot } from '@encore/test-support';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -110,6 +110,15 @@ const FLOORS: Record<string, Floor[]> = {
 			count: 1,
 			guards:
 				'the reachability walk itself. This is the sharper of the two: a broken roots filter would report EVERY file unrun, at which point the recorded unrun list looks complete for entirely the wrong reason and the guard reports a clean tree.'
+		}
+	],
+	'tests/guards/docs/gates-prose-matches-script.test.ts': [
+		{
+			subject: 'scriptLegs.length',
+			min: 5,
+			count: 1,
+			guards:
+				'the parse of the `gates` script in package.json into its individual legs, which is the ONLY side of this guard that can silently go empty. The comparison is `expect(prose).toEqual(scriptLegs)`, so a broken leg parse yields [] on both sides — the prose line matches the shape and then parses to nothing only if the doc changed, but a regressed `legsFromScript` (a script rewritten as an `&&` chain, dropping the `||` failure arms this guard keys on) makes the assertion compare two empty arrays and PASS while the prose and the executable definition are free to diverge completely. That is the exact silent-green this whole file exists to detect, one level up: the repo already ran for months with a prose gate list nothing compared to anything. 5 legs as of 2026-09-12.'
 		}
 	],
 	'tests/guards/docs/register-index-matches.test.ts': [
@@ -698,7 +707,7 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// to the new test-tree-deps guard, one is direction C's own `filesWalked`, and one is a floor on
 	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
 	// surfaced it. Both literals were re-measured, not incremented.
-	expect(located).toBeGreaterThanOrEqual(65);
+	expect(located).toBeGreaterThanOrEqual(66);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -789,7 +798,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(65);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(66);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

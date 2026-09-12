@@ -20,7 +20,7 @@ export interface StatePersistence {
 const NOOP_PERSIST: StatePersistence = { persist() {} };
 
 /**
- * The an earlier change resolution predicate: does `currentEntryId` name a live entry? This is the SINGLE
+ * The resolution predicate: does `currentEntryId` name a live entry? This is the SINGLE
  * production statement of it. It was stated twice before (an earlier change removed server.ts's copy but left
  * this store boot-heal and player.ts's runtime recovery as two byte-identical copies modulo the
  * receiver), and a developer narrowing one and not the other left boot and runtime disagreeing
