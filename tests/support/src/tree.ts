@@ -22,7 +22,7 @@
 // examine nothing. If a caller genuinely needs to tolerate absence it must say so at its own call site,
 // where a reviewer can see the decision, and it must carry a non-vacuity floor (XR-VER-05).
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
 /**
@@ -121,6 +121,52 @@ export function read(...parts: string[]): string {
 	return readFileSync(abs, 'utf8');
 }
 
+/**
+ * Directories no source walk may descend into.
+ *
+ * `build/`, `.svelte-kit/` and `dist/` hold BUILT COPIES of source: a walk that reaches them reads
+ * stale duplicates and reports on code the app no longer runs — a guard passing on the wrong tree,
+ * which is the failure mode this whole harness is arranged against. `node_modules/` and `.git/` are
+ * simply not this repo's source.
+ *
+ * This set used to live beside the `.svelte` walk in `scan.ts` while `filesUnder` here had NO skip
+ * list at all — two recursive walks with different scope rules, either of which a guard might be
+ * using. It is now defined once, next to the single walk that honours it.
+ *
+ * There is deliberately no allowlist of directories to INCLUDE. Every walk is unconditionally
+ * recursive, so a new source directory is in scope by construction rather than by someone remembering
+ * to add it.
+ */
+export const SKIP_DIRS: ReadonlySet<string> = new Set([
+	'node_modules',
+	'build',
+	'.svelte-kit',
+	'dist',
+	'.git'
+]);
+
+/**
+ * THE recursive walk. Every file-listing helper in this package is a filter over this one function,
+ * so scope has exactly one definition and one edit moves every guard's scope with it.
+ *
+ * Uses `withFileTypes` rather than a `statSync` per entry: fewer syscalls, and it does not follow
+ * symlinks, so a symlinked directory cannot make the walk leave the tree it was pointed at.
+ *
+ * Sorted, always. `readdirSync` order is filesystem-dependent, so an unsorted walk makes any
+ * order-sensitive assertion pass or fail based on the machine it ran on.
+ */
+function walkDir(dir: string, keep: (name: string) => boolean): string[] {
+	const out: string[] = [];
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		const p = join(dir, entry.name);
+		if (entry.isDirectory()) {
+			if (SKIP_DIRS.has(entry.name)) continue;
+			out.push(...walkDir(p, keep));
+		} else if (keep(entry.name)) out.push(p);
+	}
+	return out;
+}
+
 /** Every file under a repo-relative directory, recursively, with the given extensions. Sorted, absolute. */
 export function filesUnder(rel: string, exts: readonly string[]): string[] {
 	const root = at(rel);
@@ -131,16 +177,25 @@ export function filesUnder(rel: string, exts: readonly string[]): string[] {
 				'Throwing keeps that from becoming a vacuous pass.'
 		);
 	}
-	const out: string[] = [];
-	const walk = (dir: string): void => {
-		for (const entry of readdirSync(dir)) {
-			const p = join(dir, entry);
-			if (statSync(p).isDirectory()) walk(p);
-			else if (exts.some((e) => entry.endsWith(e))) out.push(p);
-		}
-	};
-	walk(root);
-	return out.sort();
+	return filesIn(root, exts);
+}
+
+/**
+ * Every file under an ABSOLUTE directory, recursively, with the given extensions. Sorted.
+ *
+ * The absolute-path variant exists because the `.svelte` scanning helpers are handed a directory that
+ * a guard has already resolved (`join(SRC, 'lib')`), not a repo-relative string. Same walk, same skip
+ * set, same ordering — the difference is only how the root is named.
+ */
+export function filesIn(dir: string, exts: readonly string[]): string[] {
+	if (!existsSync(dir)) {
+		throw new Error(
+			`@encore/test-support: no directory at ${dir}.\n` +
+				'A walk over a missing root yields an empty list, which reads exactly like a clean tree. ' +
+				'Throwing keeps that from becoming a vacuous pass.'
+		);
+	}
+	return walkDir(dir, (name) => exts.some((e) => name.endsWith(e))).sort();
 }
 
 /** A repo-relative path from an absolute one, for stable failure messages that do not leak a machine path. */

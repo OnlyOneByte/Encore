@@ -10,9 +10,7 @@
 // touch-target threshold `TAP` was re-declared in each touch guard. It is single-sourced here — and
 // it is READ FROM `app.css` rather than hand-written, so the guards and the components
 // resolve the same token instead of two numbers that merely agreed.
-import { join } from 'node:path';
-import { readdirSync } from 'node:fs';
-import { read } from './tree.ts';
+import { filesIn, read } from './tree.ts';
 //
 // SCOPE IS THE POINT (XR-VER-14). Four of the five named scan helpers were still per-file
 // copies: `styleFiles` in components/motion.test.ts, `markupControls` in touch-targets.test.ts,
@@ -38,28 +36,20 @@ import { read } from './tree.ts';
  * recursive, so a new source directory — `src/lib/components/ui/`, the design-library copy-in target
  * — is in scope by construction rather than by someone remembering to add it.
  */
-export const SKIP_DIRS = new Set(['node_modules', 'build', '.svelte-kit', 'dist', '.git']);
-
 /**
- * THE recursive source walk. Every helper below is a named extension filter over this one function,
- * so the walk's scope — what it descends into and what it skips — has exactly one definition and one
- * edit brings every guard's scope with it.
+ * The exclusion set, re-exported from where the walk lives.
+ *
+ * It used to be DEFINED here, next to a second recursive walk, while `filesUnder` in `tree.ts` had no
+ * skip list at all. Two walks with different scope rules is the same defect as two copies of a
+ * predicate: whichever one a guard happened to import decided what that guard could see. There is now
+ * one walk, in `tree.ts`, and this is the same set it honours — kept exported here because
+ * `test-helpers.test.ts` asserts on it through this module.
  */
-function walk(dir: string, keep: (name: string) => boolean): string[] {
-	const out: string[] = [];
-	for (const ent of readdirSync(dir, { withFileTypes: true })) {
-		const p = join(dir, ent.name);
-		if (ent.isDirectory()) {
-			if (SKIP_DIRS.has(ent.name)) continue;
-			out.push(...walk(p, keep));
-		} else if (keep(ent.name)) out.push(p);
-	}
-	return out;
-}
+export { SKIP_DIRS } from './tree.ts';
 
-/** Recursively collect every `.svelte` file under `dir` (absolute paths). */
+/** Recursively collect every `.svelte` file under `dir` (absolute paths, sorted). */
 export function svelteFiles(dir: string): string[] {
-	return walk(dir, (n) => n.endsWith('.svelte'));
+	return filesIn(dir, ['.svelte']);
 }
 
 /**
@@ -70,7 +60,7 @@ export function svelteFiles(dir: string): string[] {
  * caller that must see standalone stylesheets uses this; callers reading markup use `svelteFiles`.
  */
 export function styleFiles(dir: string): string[] {
-	return walk(dir, (n) => n.endsWith('.svelte') || n.endsWith('.css'));
+	return filesIn(dir, ['.svelte', '.css']);
 }
 
 /**
