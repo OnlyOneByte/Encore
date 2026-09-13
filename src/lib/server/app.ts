@@ -351,12 +351,11 @@ export function getApp(): EncoreApp {
 				// filesystem work — no job, no worker, no cpu — so unlike the lyrics backfill there is nothing
 				// to queue and nothing for a singer's live process to compete with. A silent stem is counted and
 				// deliberately NOT linked: see media/loudness.ts.
-				const probe = ffmpegLoudnessProbe();
 				const res = await backfillVocalsRefs(mediaById.values(), {
 					resolve: (ref) => safeMediaPath(ref),
 					exists: (abs) => existsSync(abs),
 					measure: async (abs) => {
-						const reading = await probe(abs);
+						const reading = await loudness(abs);
 						if (!reading) return 'unknown'; // no ffmpeg — cannot judge, do not pretend to
 						return isDigitalSilence(reading) ? 'silent' : 'audible';
 					},
@@ -537,11 +536,38 @@ export function getApp(): EncoreApp {
 		})();
 	});
 
+	/*
+	 * ONE loudness probe for the whole app: the live publish gate below and the boot guiding-track
+	 * backfill both measure the same way, because a stem that is silent enough to refuse at publish time
+	 * is silent enough to refuse a guide link, and two thresholds would eventually disagree.
+	 */
+	const loudness = ffmpegLoudnessProbe();
+
 	const workerHub = new WorkerHub({
 		jobs,
 		attempts,
 		registry: workers,
 		mediaById,
+		/*
+		 * Defence in depth on the live publish, using the SAME measurement the boot backfill uses.
+		 *
+		 * `media/loudness.ts` has been able to spot a digitally-silent stem since two songs in the live
+		 * library turned out to be exactly that — both stems at the 16-bit floor, sitting in the Ready list
+		 * and ready to play four minutes of nothing. But it was only ever invoked by the guiding-track
+		 * backfill, so the path that PUBLISHES a fresh separation trusted whatever the worker reported: a
+		 * silent instrumental became a READY song, and the singer found out by singing it.
+		 *
+		 * Three-way on purpose, and the third case is the safety property: unmeasurable is not silence. A
+		 * box with no ffmpeg measures nothing, and refusing every process it ran would be a self-inflicted
+		 * outage — so only a POSITIVE measurement of silence refuses the completion.
+		 */
+		verifyInstrumental: async (ref) => {
+			const abs = safeMediaPath(ref);
+			if (!abs || !existsSync(abs)) return 'unknown'; // nothing to measure; the publish path judges the ref
+			const reading = await loudness(abs);
+			if (!reading) return 'unknown'; // no ffmpeg, a timeout, or an unreadable file
+			return isDigitalSilence(reading) ? 'silent' : 'audible';
+		},
 		toWorker: (workerId, cmd) => app.toWorker(workerId, cmd),
 		// A completion frame with no guide mix means the mix on disk was built from stems this frame has
 		// just replaced (a stems-upgrade re-separates and overwrites both stem files in place). Delete it:
