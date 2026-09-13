@@ -200,7 +200,7 @@ try {
 		await page.fill(SEL.nameInput, name);
 		if (colourName) await page.clickByLabel(SEL.swatch(colourName).name);
 		if (hue !== undefined) await page.setRange(SEL.hueSlider, hue);
-		await page.clickByText('Start singing');
+		await page.clickByRole('button', 'Start singing');
 		await page.waitFor(`location.pathname === '/'`);
 		// Home is the QUEUE since an earlier change; searching is a push. openBrowseFromHome waits for the joined home,
 		// clicks the primary button and waits for the search box, so the caller lands where it used to.

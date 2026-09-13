@@ -182,11 +182,16 @@ async function prepareReadySong(base) {
 	);
 }
 
-/** Seed a media library and boot one ephemeral server for the `serves` group. */
-/** @param {number} port */
-async function bootSharedServer(port) {
-	const mediaDir = join(RUN_DIR, 'media');
-	rmSync(RUN_DIR, { recursive: true, force: true });
+/**
+ * Seed a media library and boot one PRISTINE ephemeral server, with a fake stems worker and one song
+ * driven to READY. Called once per `serves` probe rather than once per run — see the loop in main() for
+ * why an empty room is load-bearing.
+ * @param {number} port
+ */
+async function bootProbeServer(port) {
+	// Per-port, and deliberately NOT wiping RUN_DIR: each probe gets its own library, and clearing the
+	// whole scratch tree here would delete a sibling's while it was still in use.
+	const mediaDir = join(RUN_DIR, `media-${port}`);
 	mkdirSync(mediaDir, { recursive: true });
 
 	const seed = spawnChild('bun', ['run', atRepo('tests', 'e2e', 'seed-media.mjs')], {
@@ -226,7 +231,7 @@ async function bootSharedServer(port) {
 	if (!healthy) {
 		await killChild(server);
 		throw new Error(
-			`the shared probe server did not answer ${base}/health within 15s.\n` +
+			`the probe server did not answer ${base}/health within 15s.\n` +
 				'Run `bun run build` then `bun run start` by hand to see why.'
 		);
 	}
@@ -293,36 +298,55 @@ async function main() {
 	}
 
 	const results = [];
-	let shared;
-	try {
-		if (selected.some((p) => p.mode === 'serves')) {
-			const port = Number(process.env.EPORT ?? 5390);
-			process.stdout.write(`booting one shared server on :${port} for the serves group…\n`);
-			shared = await bootSharedServer(port);
-			for (const probe of selected.filter((p) => p.mode === 'serves')) {
-				/*
-				 * BOTH port variables, because the probes do not agree on one. Most read
-				 * `EPORT ?? <default>`, `p1-gapless` and `p3-key-shift` read `EPORT ?? PORT ?? <default>`,
-				 * and `p10-scaling` reads `PORT` ALONE. Passing only EPORT left p10 dialling its own
-				 * hardcoded 5230 — where it got ERR_CONNECTION_REFUSED and still exited 0.
-				 */
-				results.push(
-					await runOne(probe, {
-						EPORT: String(port),
-						PORT: String(port),
-						MEDIA_DIR: shared.mediaDir
-					})
-				);
-			}
+	/*
+	 * A FRESH server per `serves` probe, not one shared across the group.
+	 *
+	 * Sharing was the obvious optimisation and it is wrong here. Several of these probes assert on a
+	 * PRISTINE room: `p8-presence-resilience` bails outright with "server was not empty at start of run",
+	 * and `tv-scrim-empty-lobby-736` checks "one entry, nothing behind it". Run them after a probe that
+	 * joined singers and queued songs and they report an environment failure that says nothing about the
+	 * behaviour they exist to measure — and the ones that report a finding rather than bailing would report
+	 * a FALSE one.
+	 *
+	 * The cost is one boot, seed and process cycle per probe, roughly ten seconds each. That is the right
+	 * trade for a suite that is opt-in and already measured in minutes: cross-probe interference is the
+	 * kind of failure that wastes an afternoon before anyone suspects the harness.
+	 */
+	const servesGroup = selected.filter((p) => p.mode === 'serves');
+	const basePort = Number(process.env.EPORT ?? 5390);
+	for (const [i, probe] of servesGroup.entries()) {
+		const port = basePort + i;
+		let env;
+		process.stdout.write(`\nbooting a fresh server on :${port} for ${stem(probe.path)}…\n`);
+		try {
+			env = await bootProbeServer(port);
+		} catch (err) {
+			process.stdout.write(`  could not prepare the environment: ${String(err).split('\n')[0]}\n`);
+			results.push({ label: stem(probe.path), code: 1, secs: '0.0', kind: probe.kind ?? 'asserts' });
+			continue;
 		}
+		try {
+			/*
+			 * BOTH port variables, because the probes do not agree on one. Most read
+			 * `EPORT ?? <default>`, `p1-gapless` and `p3-key-shift` read `EPORT ?? PORT ?? <default>`,
+			 * and `p10-scaling` reads `PORT` ALONE. Passing only EPORT left p10 dialling its own
+			 * hardcoded 5230 — where it got ERR_CONNECTION_REFUSED and still exited 0.
+			 */
+			results.push(
+				await runOne(probe, { EPORT: String(port), PORT: String(port), MEDIA_DIR: env.mediaDir })
+			);
+		} finally {
+			await killChild(env.worker);
+			await killChild(env.server);
+		}
+	}
+
+	try {
 		for (const probe of selected.filter((p) => p.mode === 'boots')) {
 			results.push(await runOne(probe, {}));
 		}
 	} finally {
-		if (shared) {
-			await killChild(shared.worker);
-			await killChild(shared.server);
-		}
+		// The `serves` group reaps its own server in the loop above; this only clears the scratch tree.
 		rmSync(RUN_DIR, { recursive: true, force: true });
 	}
 

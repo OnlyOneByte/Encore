@@ -929,7 +929,7 @@ if (!chromium) {
 		await phone.goto(`${base}/`);
 		await phone.fill(SEL.nameInput, `P12ui-${Date.now() % 100000}`);
 		await phone.clickByLabel(SEL.swatch('pink').name);
-		await phone.clickByText('Start singing');
+		await phone.clickByRole('button', 'Start singing');
 		await phone.waitFor(`location.pathname === '/'`);
 		// the search box moved behind the browse push, so joining lands on the queue.
 		await openBrowseFromHome(phone);

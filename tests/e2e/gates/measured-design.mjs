@@ -308,7 +308,7 @@ try {
 	await page.goto(`${base}/`);
 	const joinSweep = /** @type {Reading[]} */ (await page.evaluate(sweepExpr()));
 	await page.fill(SEL.nameInput, `Gate${Date.now() % 1000000}`);
-	await page.clickByText('Start singing');
+	await page.clickByRole('button', 'Start singing');
 	// Joining lands on the QUEUE — the search box is a screen further in. `homeReady` is the
 	// joined-home signal, and the shared step leaves the page on the browse screen the sweep below types
 	// into. Both selectors and the step come from the contract, so this does not re-spell the sequence.

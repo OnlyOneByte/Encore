@@ -69,7 +69,7 @@ try {
 	await phone.viewport(390, 844);
 	await phone.goto(base + '/');
 	await phone.fill(SEL.nameInput, 'Singer' + (Date.now() % 100000));
-	await phone.clickByText('Start singing');
+	await phone.clickByRole('button', 'Start singing');
 	await phone.waitFor("location.pathname === '/'");
 	await openBrowseFromHome(phone);
 

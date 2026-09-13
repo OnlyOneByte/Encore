@@ -93,7 +93,7 @@ async function runUnder(label, extraFlags, tag) {
 		await phone.viewport(390, 844);
 		await phone.goto(`${base}/`);
 		await phone.fill(SEL.nameInput, `T17-${tag}-${Date.now() % 10000}`);
-		await phone.clickByText('Start singing');
+		await phone.clickByRole('button', 'Start singing');
 		await phone.waitFor(`location.pathname === '/'`);
 		await openBrowseFromHome(phone);
 		await phone.fill(SEL.search, 'sweet');

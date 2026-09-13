@@ -182,7 +182,7 @@ try {
 				await page.goto(`${base}/`);
 				await page.fill(SEL.nameInput, `Pf${s.name.replace(/[^a-z]/gi, '')}${RUN_TAG}`);
 				await sleep(250);
-				await page.clickByText('Start singing');
+				await page.clickByRole('button', 'Start singing');
 				await page.waitFor(`location.pathname === '/'`);
 			}
 			await page.goto(base + s.url);

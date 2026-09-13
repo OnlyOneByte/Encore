@@ -1391,7 +1391,7 @@ try {
 		await page.viewport(390, 844);
 		await page.goto(`${base}/`);
 		await page.fill(SEL.nameInput, name);
-		await page.clickByText('Start singing');
+		await page.clickByRole('button', 'Start singing');
 		await page.waitFor(`location.pathname === '/'`, { timeout: 15000 });
 		await openBrowseFromHome(page, { timeout: 15000 });
 		await openWire(page);

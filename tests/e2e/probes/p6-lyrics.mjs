@@ -27,7 +27,7 @@ import { pathToFileURL } from 'node:url';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
-import { openBrowseFromHome } from '../lib/phone.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 import { atRepo } from '../lib/repo-root.mjs';
 
 /**
@@ -224,7 +224,7 @@ try {
 	await phone.viewport(390, 844);
 	await phone.goto(`${base}/`);
 	await phone.fill(SEL.nameInput, `P6Phone${Date.now() % 100000}`);
-	await phone.clickByText('Start singing');
+	await phone.clickByRole('button', 'Start singing');
 	await phone.waitFor(`location.pathname === '/'`);
 	await openBrowseFromHome(phone);
 
@@ -232,6 +232,10 @@ try {
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const hasAdd = await phone.count(SEL.addTurn);
 	await phone.click(hasAdd > 0 ? SEL.addTurn : SEL.sing);
+	// Back to the queue before counting rows: the rotation is NOT rendered in the results view, so a
+	// `.qrow` count taken here reads an empty list and times out. `returnHomeFromBrowse` clears the
+	// search, which is what brings the queue back — its own docstring names this exact mistake.
+	await returnHomeFromBrowse(phone);
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
 	// ── TV opens the /tv route ───────────────────────────────────────────

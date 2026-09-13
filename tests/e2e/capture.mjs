@@ -249,7 +249,7 @@ try {
 	await maya.clickByLabel(SEL.swatch(PRESET_COLOUR_NAMES[1]).name); // pink
 	await sleep(250);
 	await frame('join-ready', () => shoot(maya, 'join-ready', 'name entered and a preset chosen, submit enabled'));
-	await maya.clickByText('Start singing');
+	await maya.clickByRole('button', 'Start singing');
 	await maya.waitFor(`location.pathname === '/'`);
 	await openBrowseFromHome(maya);
 	await sleep(700);
@@ -315,7 +315,7 @@ try {
 	await ada.goto(`${base}/`);
 	await ada.fill(SEL.nameInput, 'Ada');
 	await ada.setRange(SEL.hueSlider, 210);
-	await ada.clickByText('Start singing');
+	await ada.clickByRole('button', 'Start singing');
 	await ada.waitFor(`location.pathname === '/'`);
 	await sleep(800);
 

@@ -235,7 +235,7 @@ try {
 		await page.viewport(390, 844);
 		await page.goto(`${base}/`);
 		await page.fill(SEL.nameInput, name);
-		await page.clickByText('Start singing');
+		await page.clickByRole('button', 'Start singing');
 		// Wait for the remote. The search field USED to be the signal the room UI mounted; now it
 		// lives on the browse screen, so the docked band is the joined-home signal and this helper also
 		// leaves the page on the browse screen, where the rest of this probe expects to be.

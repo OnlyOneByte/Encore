@@ -437,7 +437,7 @@ async function main() {
 	await phone.viewport(390, 844);
 	await phone.goto(`${BASE}/`);
 	await phone.fill(SEL.nameInput, `Guide${Date.now() % 100000}`);
-	await phone.clickByText('Start singing');
+	await phone.clickByRole('button', 'Start singing');
 	await phone.waitFor(`location.pathname === '/'`, { timeout: 15_000 });
 	await openBrowseFromHome(phone, { timeout: 15_000 });
 

@@ -33,7 +33,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
-import { openBrowseFromHome } from '../lib/phone.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json, following the same
@@ -267,6 +267,10 @@ try {
 	const has1 = await phone1.count(SEL.addTurn);
 	if (has1 === 0) bail('phone1: processed song 1 did not offer .add (readiness UI is out of step with server)');
 	await phone1.click(SEL.addTurn);
+	// Back to the queue before counting rows: the rotation is NOT rendered in the results view, so a
+	// `.qrow` count taken here reads an empty list and times out. `returnHomeFromBrowse` clears the
+	// search, which is what brings the queue back — its own docstring names this exact mistake.
+	await returnHomeFromBrowse(phone1);
 	await phone1.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
 	// Bob queues song 2. Between his join and this add, the server has already autostarted playback of
@@ -277,6 +281,10 @@ try {
 	const has2 = await phone2.count(SEL.addTurn);
 	if (has2 === 0) bail('phone2: processed song 2 did not offer .add');
 	await phone2.click(SEL.addTurn);
+	// Back to the queue before counting rows: the rotation is NOT rendered in the results view, so a
+	// `.qrow` count taken here reads an empty list and times out. `returnHomeFromBrowse` clears the
+	// search, which is what brings the queue back — its own docstring names this exact mistake.
+	await returnHomeFromBrowse(phone2);
 	await phone2.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
 	// ── the assertion path — dense polling of the TV ────────────────────────────────────────────

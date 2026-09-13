@@ -42,7 +42,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
-import { openBrowseFromHome } from '../lib/phone.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -386,7 +386,7 @@ try {
 	await phone.viewport(390, 844);
 	await phone.goto(`${base}/`);
 	await phone.fill(SEL.nameInput, `P3S${Date.now() % 100000}`);
-	await phone.clickByText('Start singing');
+	await phone.clickByRole('button', 'Start singing');
 	await phone.waitFor(`location.pathname === '/'`);
 	await openBrowseFromHome(phone);
 	await phone.fill(SEL.search, 'caroline');
@@ -395,6 +395,10 @@ try {
 	if (hasAdd === 0)
 		bail(`processed song offered no ${SEL.addTurn} action — the seeder+worker sequence probably did not finish`);
 	await phone.click(SEL.addTurn);
+	// Back to the queue before counting rows: the rotation is NOT rendered in the results view, so a
+	// `.qrow` count taken here reads an empty list and times out. `returnHomeFromBrowse` clears the
+	// search, which is what brings the queue back — its own docstring names this exact mistake.
+	await returnHomeFromBrowse(phone);
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
 	// ── TV: install the hook FIRST, then navigate ──────────────────────────

@@ -148,7 +148,7 @@ async function joinPhone(browser, name, colourName = PRESET_COLOUR_NAMES[0]) {
 	 */
 	await page.fill(SEL.nameInput, name);
 	await page.clickByLabel(colourName);
-	await page.clickByText('Start singing');
+	await page.clickByRole('button', 'Start singing');
 	// A well-formed join lands on / with the joined home rendered — the DOCKED BAND, not the search box:
 	// search lives on the browse screen, so testing for it here would mean "browsing", not
 	// "joined". A duplicate-name join sits on /join with a `.err[role=alert]` — differentiate here so the
@@ -454,16 +454,12 @@ async function main() {
 							`src/lib/components/JoinLanding.svelte:14 submitting flag reset`
 						);
 					} else {
-						// And prove recovery actually works: type a fresh name and submit.
-						await dup.page.evaluate(
-							`(() => {
-								const el = document.querySelector(${JSON.stringify(SEL.nameInput)});
-								el.focus(); el.value = 'ZZReplay';
-								el.dispatchEvent(new Event('input', { bubbles: true }));
-								el.dispatchEvent(new Event('change', { bubbles: true }));
-								[...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith('Start singing'))?.click();
-							})()`
-						);
+						// And prove recovery actually works: type a fresh name and submit. Driven through the
+						// driver's verbs for the same reason as `joinPhone` — a synthesised click on the button
+						// found by text was landing on an inner text node rather than the button itself, so the
+						// form never submitted and the recovery this arm claims to prove was never exercised.
+						await dup.page.fill(SEL.nameInput, 'ZZReplay');
+						await dup.page.clickByRole('button', 'Start singing');
 						const recovered = await dup.page
 							.waitFor(
 								`location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`,
