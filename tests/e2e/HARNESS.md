@@ -186,26 +186,36 @@ Reachability and gate membership are different things.
 `ran` in the summary is not `passed`. Three drivers gather EVIDENCE rather than assert an invariant —
 they write screenshots or a `findings.json` and exit 0 whatever they saw. Read their output.
 
-### State as of the first full run
+### State, and what was wrong with all of it
 
-These sat unexecuted long enough to go stale, which is exactly what an unrun list buys you. Recorded
-so the next person starts from data rather than from scratch.
+Most of these were red for ONE reason, and it was not the reason any of them named.
+
+`clickByText('Start singing')` resolved to the inner text node of a button whose content is
+`Start singing <Icon/>`, so the click did nothing — no error, no submit — and every downstream wait
+then timed out on a selector that was perfectly current. Sixteen call sites across fifteen files. Use
+`clickByRole('button', …)`; it is what the driver's own comment recommends, because the accessible
+labels are the contract.
+
+Two more shared causes went with it: thirteen files navigated to `/join`, which has returned 404 since
+Q2-A retired the route and moved the join UI to `/`; and four probes counted `.qrow` while still in the
+RESULTS view, where the rotation is not rendered — `returnHomeFromBrowse` exists for exactly that and
+its docstring names the mistake.
 
 | Driver | State |
 |---|---|
+| `p8-presence-resilience` | **runs to completion.** 10/10 phones join, the duplicate-name 409 recovery arm passes (it was previously vacuous — it never resubmitted). Reports 3 HIGH and 1 MEDIUM about real behaviour: no optimistic row on an offline tap, offline reconciliation disagreeing between origin and others, and queue-length divergence after a burst of adds |
+| `tv-audiocontext-resume` | **passes** |
+| `p9-settings` | **passes** |
 | `p14-playhead-vs-process` | **passes** — playhead never stepped back, worst delta 0.000s |
 | `p15-phone-reflow` | **passes** 4/4 — needs a built UI, the runner checks for one |
 | `p16-hero-live-controls` | **passes** 11/11 |
-| `p5-process-lifecycle` | **runs, and reports a real `[HIGH]` finding**: a floor-level silent instrumental is published as READY with no defence-in-depth in the core. This is the probe doing its job — treat it as a product defect, not a broken probe. |
-| `p15-reload-resume` | environment bail: server position never passes 3s, so there is no resume to test |
-| `p10-scaling`, `admin-delete-639`, `shoot-913` | capture only; `p10` recorded 12 phases of which 7 were `remote-*` timeouts |
-| `p2-guiding-track`, `tv-audiocontext-resume` | boot and process fine, then time out filling the join name input. The selector and its placeholder both still exist, so this is page state, not a stale selector |
-| `tv-scrim-empty-lobby-736` | opens `/` in a fresh browser and expects home; a browser with no session gets the join landing, so `.search-dock` never appears. The probe never joins |
-| `p8-presence-resilience` | carries its OWN hand-rolled CDP client, which the Playwright port left behind — it dials a debug port that no longer exists |
-| `p1-gapless`, `p3-key-shift`, `p6-lyrics`, `p9-settings` | fail on queue/UI preconditions; each needs its own read |
+| `p5-process-lifecycle` | reported a real `[HIGH]`: a floor-level silent instrumental published as READY with no defence in the core. **Fixed** — the loudness probe is now wired into the live publish path, not only the boot backfill |
+| `p10-scaling`, `admin-delete-639`, `shoot-913` | capture only; they exit 0 whatever they saw, so the summary says `ran`, not `ok`. `p10` records 12 phases and 7 of them were `remote-*` timeouts worth reading |
+| `p1-gapless`, `p3-key-shift`, `p6-lyrics`, `tv-scrim-empty-lobby-736` | **still red**, all four on the same next step: the search returns 13 rows, twelve remote `.sing` and one local `.add`, and clicking the `.add` reports success while queueing nothing. Which control a READY song actually offers is the open question |
+| `p15-reload-resume` | environment bail: the server position never passes 3s, so there is no resume to test |
 
-Two things worth knowing before touching any of them. The probes do not agree on which variable names
-the port: most read `EPORT`, two read `EPORT ?? PORT`, and `p10-scaling` reads `PORT` alone — the
-runner passes both, and passing only `EPORT` is what left `p10` dialling its own hardcoded 5230, where
-it got `ERR_CONNECTION_REFUSED` and still exited 0. And a probe that cannot reach the app must fail;
-if you find one reporting success from an unreachable server, that is the bug, not the symptom.
+Two things to know before touching any of them. The probes do not agree on which variable names the
+port — most read `EPORT`, two read `EPORT ?? PORT`, and `p10-scaling` reads `PORT` alone — so the runner
+passes both; passing only `EPORT` left `p10` dialling its own hardcoded 5230, where it got
+`ERR_CONNECTION_REFUSED` and still exited 0. And a probe that cannot reach the app must FAIL; if you
+find one reporting success from an unreachable server, that is the bug, not the symptom.

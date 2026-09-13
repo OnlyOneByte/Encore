@@ -267,11 +267,13 @@ All of these were verified, and none was caused by the review. **Fixed:**
   remaining item below. Their individual state is recorded in
   `tests/e2e/HARNESS.md`; several are stale in named, specific ways, and repairing
   a probe by weakening its assertion would be worse than leaving it red.
-- **A floor-level silent instrumental is published as READY with no
-  defence-in-depth in the core** — reported at `[HIGH]` by
-  `p5-process-lifecycle`, which had never been executed. This is a product defect,
-  not a broken probe, and it is the most substantive thing this whole review
-  turned up.
+- ~~A floor-level silent instrumental is published as READY with no defence-in-depth
+  in the core.~~ **Fixed.** The loudness probe that existed for exactly this is now
+  wired into the live publish path and not only the boot backfill; a measured
+  silence refuses the completion terminally, while an unmeasurable file still
+  publishes because a box with no ffmpeg must not fail every process it runs.
+  Verified by unit test with an injected verdict — this host has no ffmpeg, so the
+  live gate cannot be made to fire here.
 
 ---
 
