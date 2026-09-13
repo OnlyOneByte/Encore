@@ -43,13 +43,6 @@ import { atRepo } from '../lib/repo-root.mjs';
  * One finding row: a pass/fail check with its id, severity and evidence.
  * @typedef {{ id: string, sev: Severity, ok: boolean, name: string, detail: string }} Finding
  *
- * The raw-CDP surface openRawCdp() returns — a second connection kept alongside driver.mjs's own.
- * @typedef {{
- *   send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<any>,
- *   attachToUrlContaining: (urlSubstring: string) => Promise<string | null>,
- *   close: () => void
- * }} RawCdp
- *
  * One search-result / ready row from /api/search (only the fields this probe reads).
  * @typedef {{ id: string, title: string, source: string, lyricsRef?: string }} SongRow
  *
@@ -68,55 +61,7 @@ import { atRepo } from '../lib/repo-root.mjs';
 
 const PORT = process.env.EPORT ?? '5226';
 const base = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9426);
 const MEDIA_DIR = resolve(process.env.MEDIA_DIR ?? './media');
-
-/** A tiny second CDP connection, kept alongside the one driver.mjs owns. Needed because driver.mjs
- * intentionally keeps its surface small (newPage/close/evaluate/goto/waitFor) and does NOT expose
- * raw `send`, so cache-affecting commands (Network.setCacheDisabled) live here in the probe. Same
- * debugger port, independent socket. */
-/** @param {number} port @returns {Promise<RawCdp>} */
-async function openRawCdp(port) {
-	const v = await fetch(`http://127.0.0.1:${port}/json/version`).then((r) => r.json());
-	const ws = new WebSocket(v.webSocketDebuggerUrl);
-	await new Promise((r) => ws.addEventListener('open', r, { once: true }));
-	const pending = new Map();
-	let nextId = 10_000; // stay clear of driver.mjs's own ids (which start at 1)
-	ws.addEventListener('message', (ev) => {
-		const m = JSON.parse(String(ev.data));
-		if (m.id && pending.has(m.id)) {
-			const { resolve, reject } = pending.get(m.id);
-			pending.delete(m.id);
-			if (m.error) reject(new Error(m.error.message));
-			else resolve(m.result);
-		}
-	});
-	/** @param {string} method @param {Record<string, unknown>} [params] @param {string} [sessionId] */
-	function send(method, params = {}, sessionId) {
-		const id = nextId++;
-		return new Promise((resolve, reject) => {
-			pending.set(id, { resolve, reject });
-			ws.send(JSON.stringify({ id, method, params,...(sessionId ? { sessionId }: {}) }));
-			setTimeout(() => pending.delete(id) && reject(new Error(`${method} timed out`)), 8_000);
-		});
-	}
-	/** @param {string} urlSubstring */
-	async function attachToUrlContaining(urlSubstring) {
-		const targets = await send('Target.getTargets');
-		const t = targets.targetInfos.find(
-			(/** @type {{ type: string, url: string, targetId: string }} */ tt) =>
-				tt.type === 'page' && tt.url.includes(urlSubstring)
-		);
-		if (!t) return null;
-		const { sessionId } = await send('Target.attachToTarget', {
-			targetId: t.targetId,
-			flatten: true
-		});
-		await send('Network.enable', {}, sessionId);
-		return sessionId;
-	}
-	return { send, attachToUrlContaining, close: () => ws.close() };
-}
 
 /** Findings, printed at the end grouped by severity.
  * @type {Finding[]} */
@@ -271,15 +216,13 @@ async function seekToStart(tv, phone) {
 }
 
 let browser;
-let rawCdp;
 try {
-	browser = await connect(undefined, { args: ['--autoplay-policy=no-user-gesture-required'] });
-	rawCdp = await openRawCdp(CDP_PORT);
+	browser = await connect({ args: ['--autoplay-policy=no-user-gesture-required'] });
 
 	// ── phone joins and queues the processed song ────────────────────────────
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
-	await phone.goto(`${base}/join`);
+	await phone.goto(`${base}/`);
 	await phone.fill(SEL.nameInput, `P6Phone${Date.now() % 100000}`);
 	await phone.clickByText('Start singing');
 	await phone.waitFor(`location.pathname === '/'`);
@@ -296,18 +239,11 @@ try {
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
 
-	// Disable the TV page's HTTP cache once, so a subsequent artifact overwrite is actually
-	// SEEN by the overlay. The /media route replies with `Cache-Control: public, max-age=86400`
-	// (see src/routes/media/[...path]/+server.ts), so without this the browser reuses the first
-	// fetch of a given lyricsRef until tomorrow — and every reload-based re-test lies.
-	const tvSession = await rawCdp.attachToUrlContaining('/tv');
-	if (tvSession) {
-		try {
-			await rawCdp.send('Network.setCacheDisabled', { cacheDisabled: true }, tvSession);
-		} catch (e) {
-			console.warn(`WARN could not disable HTTP cache on TV: ${e instanceof Error ? e.message : String(e)}`);
-		}
-	}
+	// Keep the TV off its HTTP cache for media, so a subsequent artifact overwrite is actually SEEN by
+	// the overlay. The /media route replies `Cache-Control: public, max-age=86400` (see
+	// src/routes/media/[...path]/+server.ts), so without this the browser reuses the first fetch of a
+	// given lyricsRef until tomorrow — and every reload-based re-test lies.
+	await tv.bypassCacheFor('**/media/**');
 
 	// Wait for a media element with a src so we know the stage is up.
 	await tv.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 }).catch(() => {});
@@ -953,7 +889,6 @@ try {
 	record('P6-flow', 'CRITICAL', false, 'probe ran to completion', String(err instanceof Error ? err.stack : err));
 } finally {
 	browser?.close();
-	rawCdp?.close();
 }
 
 // ── Summary ────────────────────────────────────────────────────────────────

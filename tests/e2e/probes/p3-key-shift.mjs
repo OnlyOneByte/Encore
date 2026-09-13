@@ -384,7 +384,7 @@ try {
 	// ── phone: join and queue ───────────────────────────────────────────────
 	phone = await browser.newPage();
 	await phone.viewport(390, 844);
-	await phone.goto(`${base}/join`);
+	await phone.goto(`${base}/`);
 	await phone.fill(SEL.nameInput, `P3S${Date.now() % 100000}`);
 	await phone.clickByText('Start singing');
 	await phone.waitFor(`location.pathname === '/'`);

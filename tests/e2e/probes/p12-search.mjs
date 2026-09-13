@@ -925,8 +925,8 @@ if (!chromium) {
 		browser = await connect();
 		const phone = await browser.newPage();
 
-		// Join first (the phone route redirects to /join when no session cookie).
-		await phone.goto(`${base}/join`);
+		// Join first (an unjoined visitor gets the join landing at / (no separate /join route since Q2-A)).
+		await phone.goto(`${base}/`);
 		await phone.fill(SEL.nameInput, `P12ui-${Date.now() % 100000}`);
 		await phone.clickByLabel(SEL.swatch('pink').name);
 		await phone.clickByText('Start singing');

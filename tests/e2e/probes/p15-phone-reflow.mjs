@@ -58,7 +58,6 @@ const VIEWPORT_H = 480;
 const SCALED_ROOT_FONT_SIZE = '32px';
 
 const PORT = Number(process.env.EPORT ?? 5244);
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9455);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.SCRATCH ?? join(process.env.KIROCREW_SCRATCH ?? '/tmp', `e2e-reflow-${PORT}`);
 
@@ -162,7 +161,7 @@ const READ = `(() => {
 	return out;
 })()`;
 
-const browser = await connect(CDP_PORT);
+const browser = await connect();
 const page = await browser.newPage();
 await page.viewport(VIEWPORT_W, VIEWPORT_H, 2);
 

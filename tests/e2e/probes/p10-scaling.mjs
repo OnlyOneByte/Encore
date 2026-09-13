@@ -44,7 +44,6 @@ import { SEL } from '../contract.ts';
  */
 
 const PORT = Number(process.env.PORT || 5230);
-const CDPPORT = Number(process.env.CDPPORT || 9230);
 const SCRATCH = process.env.SCRATCH || `${process.env.KIROCREW_SCRATCH || '/tmp'}/e2e-${PORT}`;
 const OUT = join(SCRATCH, 'shots', 'p10');
 mkdirSync(OUT, { recursive: true });
@@ -84,7 +83,7 @@ function contrastRatio(fg, bg) {
 }
 
 // Boot the browser once; a fresh guest per page opens its own cookie jar and its own idle state.
-const browser = await connect(CDPPORT);
+const browser = await connect();
 
 // A process has already run before this probe — a probe must not require another. To reach the TV's
 // "playing" screen we drive a real phone through join → queue → play in a hidden browser tab, because
@@ -385,7 +384,7 @@ const REMOTE_SIZES = [
 async function measureRemote(label, w, h) {
 	const page = await browser.newPage();
 	await page.viewport(w, h, 1);
-	// Join first so the page lands on the room UI, not the /join redirect.
+	// Join first so the page lands on the room UI rather than the join landing.
 	await page.goto(`http://127.0.0.1:${PORT}/join`);
 	await page.waitForSelector('input[placeholder^="e.g."]' , { timeout: 5000 });
 	const uniq = `P10-${label}-${Date.now().toString(36).slice(-4)}`;

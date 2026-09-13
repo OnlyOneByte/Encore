@@ -196,7 +196,7 @@ try {
 	/** @param {string} name @param {{ colourName?: string, hue?: number }} [opts] @returns {Promise<Page>} */
 	async function joinAs(name, { colourName, hue } = {}) {
 		const page = await browser0.newPage();
-		await page.goto(`${base}/join`);
+		await page.goto(`${base}/`);
 		await page.fill(SEL.nameInput, name);
 		if (colourName) await page.clickByLabel(SEL.swatch(colourName).name);
 		if (hue !== undefined) await page.setRange(SEL.hueSlider, hue);

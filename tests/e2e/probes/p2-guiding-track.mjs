@@ -435,7 +435,7 @@ async function main() {
 	// it exists to drive commands and to render the guiding-track control if we want to look at it.
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
-	await phone.goto(`${BASE}/join`);
+	await phone.goto(`${BASE}/`);
 	await phone.fill(SEL.nameInput, `Guide${Date.now() % 100000}`);
 	await phone.clickByText('Start singing');
 	await phone.waitFor(`location.pathname === '/'`, { timeout: 15_000 });

@@ -7,10 +7,12 @@
  * duplicate-name form, a silent WS drop that never resyncs, a queue op eaten by a severed socket,
  * a leave that abandons queued songs — is visible with that count.
  *
- * WHAT THIS FILE OWNS. This probe is the only file the task allowed to change (`change NO other
- * file`). Everything the tests need beyond `driver.mjs`'s tiny driver — Target-level CDP sends,
- * per-target script injection to instrument WebSocket, network emulation to sever a socket without
- * closing it politely — lives inline here. The probe file is the domain that was widened.
+ * WHAT THIS FILE OWNS. Only the WebSocket instrument below, and the assertions. It used to carry a
+ * full private CDP client — a `Cdp` class over a hand-rolled WebSocket and a `CdpPage` reimplementing
+ * evaluate, goto, click, waitFor, screenshot, viewport and network emulation — because `driver.mjs`
+ * exposed neither per-page script injection nor a way to sever a socket without closing it politely.
+ * Both now exist there as native Playwright (`newPage({ initScript })` and `setOffline`), so the
+ * parallel driver is gone and this probe drives the same pages every other flow does.
  *
  * WHAT THIS PROBE DOES NOT TRY TO ASSERT. Playback (no working ML pipeline, no volumedetect on this
  * box), lyrics timing, and 20-phone scale. It stops short of 20 both because context isolation costs
@@ -22,18 +24,20 @@
  * under `ENV` and never inflate a real number.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { SEL, PRESET_COLOUR_NAMES } from '../contract.ts';
-import { findChromium } from '../lib/chromium.mjs';
+import { connect } from '../driver.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
- * /pattern). This probe grows its OWN thin CDP client (Cdp/CdpPage)
- * rather than reusing driver.mjs's Page, so the types are declared on those classes directly. page.evaluate()
- * returns Promise<any>, so DOM-shaped reads are cast at the call site via the domain typedefs below.
+ * /pattern). Pages come from driver.mjs, so `Page` is its wrapper; page.evaluate() returns
+ * Promise<any>, so DOM-shaped reads are cast at the call site via the domain typedefs below.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
  *
  * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ENV' | 'PASS'} Level
  *
@@ -53,7 +57,6 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 // ── config ────────────────────────────────────────────────────────────────
 const PORT = process.env.EPORT ?? '5228';
 const BASE = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9528); // paired with 5228, one CDP per probe
 const SCRATCH = process.env.KIROCREW_SCRATCH || process.env.TMPDIR || '/tmp';
 const OUT_DIR = join(SCRATCH, `p8-${Date.now()}`);
 mkdirSync(OUT_DIR, { recursive: true });
@@ -76,192 +79,6 @@ const findings = [];
 function report(level, title, detail, evidence) {
 	findings.push({ level, title, detail: detail ?? '', evidence });
 	console.log(`[${level}]  ${title}${detail ? '\n        ' + detail : ''}${evidence ? '\n        ' + evidence : ''}`);
-}
-
-// ── Chromium discovery ────────────────────────────────────────────────────
-
-// ── minimal raw CDP client ────────────────────────────────────────────────
-/*
- * driver.mjs's newPage is deliberately small: goto, evaluate, click, screenshot. We need more:
- * Page.addScriptToEvaluateOnNewDocument to instrument WebSocket BEFORE the app opens it, and
- * Network.emulateNetworkConditions to sever a socket without closing it (a phone that lost signal
- * looks nothing like a phone that closed politely). Both are per-session CDP methods, so the probe
- * grows its own thin driver instead of a passthrough on top of driver.mjs.
- */
-class Cdp {
-	/** @param {number} cdpPort */
-	constructor(cdpPort) {
-		this.cdpPort = cdpPort;
-		/** @type {WebSocket | null} */
-		this.ws = null;
-		/** @type {Map<number, { resolve: (v: any) => void, reject: (e: Error) => void }>} */
-		this.pending = new Map();
-		this.next = 1;
-		/** @type {string[]} */
-		this.contexts = [];
-		/** @type {Set<string>} */
-		this.targets = new Set();
-	}
-	async connect() {
-		const v = await fetch(`http://127.0.0.1:${this.cdpPort}/json/version`).then((r) => r.json());
-		const ws = new WebSocket(v.webSocketDebuggerUrl);
-		this.ws = ws;
-		await new Promise((resolve, reject) => {
-			ws.addEventListener('open', resolve, { once: true });
-			ws.addEventListener('error', () => reject(new Error('cdp open failed')), { once: true });
-		});
-		ws.addEventListener('message', (/** @type {MessageEvent} */ ev) => {
-			const msg = JSON.parse(String(ev.data));
-			const entry = msg.id ? this.pending.get(msg.id) : undefined;
-			if (entry) {
-				const { resolve, reject } = entry;
-				this.pending.delete(msg.id);
-				if (msg.error) reject(new Error(`${msg.error.message} :: ${JSON.stringify(msg.error.data ?? {})}`));
-				else resolve(msg.result);
-			}
-		});
-	}
-	/**
-	 * @param {string} method
-	 * @param {Record<string, unknown>} [params]
-	 * @param {string} [sessionId]
-	 * @returns {Promise<any>}
-	 */
-	send(method, params = {}, sessionId) {
-		const id = this.next++;
-		return new Promise((resolve, reject) => {
-			this.pending.set(id, { resolve, reject });
-			this.ws?.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
-			setTimeout(() => {
-				if (this.pending.delete(id)) reject(new Error(`CDP ${method} timed out (15s)`));
-			}, 15_000);
-		});
-	}
-	close() {
-		this.ws?.close();
-	}
-	/** @param {string | null} [instrumentJs] */
-	async newContextPage(instrumentJs = null) {
-		const { browserContextId } = await this.send('Target.createBrowserContext');
-		this.contexts.push(browserContextId);
-		const { targetId } = await this.send('Target.createTarget', { url: 'about:blank', browserContextId });
-		const { sessionId } = await this.send('Target.attachToTarget', { targetId, flatten: true });
-		this.targets.add(targetId);
-		await this.send('Page.enable', {}, sessionId);
-		await this.send('Runtime.enable', {}, sessionId);
-		await this.send('Network.enable', {}, sessionId);
-		if (instrumentJs) {
-			// Adds a script that runs on EVERY navigation of this target BEFORE the app's own scripts.
-			// This is how a WebSocket proxy gets installed early enough to catch the socket the app opens.
-			await this.send('Page.addScriptToEvaluateOnNewDocument', { source: instrumentJs }, sessionId);
-		}
-		return new CdpPage(this, sessionId, targetId, browserContextId);
-	}
-}
-
-class CdpPage {
-	/**
-	 * @param {Cdp} cdp
-	 * @param {string} sessionId
-	 * @param {string} targetId
-	 * @param {string} browserContextId
-	 */
-	constructor(cdp, sessionId, targetId, browserContextId) {
-		this.cdp = cdp;
-		this.sessionId = sessionId;
-		this.targetId = targetId;
-		this.browserContextId = browserContextId;
-	}
-	/** @param {string} expression @returns {Promise<any>} */
-	async evaluate(expression) {
-		const res = await this.cdp.send(
-			'Runtime.evaluate',
-			{ expression, awaitPromise: true, returnByValue: true, timeout: 10_000 },
-			this.sessionId
-		);
-		if (res.exceptionDetails) {
-			throw new Error(`in-page: ${res.exceptionDetails.exception?.description ?? 'unknown'}`);
-		}
-		return res.result?.value;
-	}
-	/** @param {string} url */
-	async goto(url) {
-		await this.cdp.send('Page.navigate', { url }, this.sessionId);
-		await this.waitFor(`document.readyState === "complete"`, 15_000);
-	}
-	/**
-	 * Click a selector. Added: the shared `openBrowseFromHome` step needs it, and this thin
-	 * client had no click at all — every earlier interaction here was an `evaluate` that dispatched its
-	 * own events. Implemented the same way, so it adds no new mechanism.
-	 * @param {string} selector
-	 */
-	async click(selector) {
-		const target = JSON.stringify(selector);
-		const clicked = await this.evaluate(
-			`(() => { const el = document.querySelector(${target}); if (!el) return false; el.click(); return true; })()`
-		);
-		if (!clicked) throw new Error(`click: no element matched ${selector}`);
-	}
-	/**
-	 * @param {string} expr
-	 * @param {number | { timeout?: number, every?: number }} [timeout] positional ms (this probe's own
-	 *   callers) or an options object (what the shared drivers and `lib/phone.mjs` pass)
-	 * @param {number} [every]
-	 */
-	async waitFor(expr, timeout = 10_000, every = 100) {
-		if (timeout !== null && typeof timeout === 'object') {
-			every = timeout.every ?? every;
-			timeout = timeout.timeout ?? 10_000;
-		}
-		const deadline = Date.now() + timeout;
-		let last;
-		while (Date.now() < deadline) {
-			try {
-				last = await this.evaluate(`(()=>(${expr}))()`);
-				if (last) return last;
-			} catch (e) {
-				last = String(e);
-			}
-			await delay(every);
-		}
-		throw new Error(`waitFor timeout: ${expr}\n  last=${JSON.stringify(last)}`);
-	}
-	/** @param {string} path @param {{ fullPage?: boolean }} [opts] */
-	async screenshot(path, { fullPage = false } = {}) {
-		const { data } = await this.cdp.send(
-			'Page.captureScreenshot',
-			{ format: 'png', captureBeyondViewport: fullPage },
-			this.sessionId
-		);
-		writeFileSync(path, Buffer.from(data, 'base64'));
-		return path;
-	}
-	/** @param {number} width @param {number} height @param {number} [dsf] */
-	async viewport(width, height, dsf = 1) {
-		await this.cdp.send(
-			'Emulation.setDeviceMetricsOverride',
-			{ width, height, deviceScaleFactor: dsf, mobile: width < 700 },
-			this.sessionId
-		);
-	}
-	/** @param {boolean} offline */
-	async setOffline(offline) {
-		// Network conditions across the whole target: the phone's WebSocket loses its underlying TCP
-		// connection without the app calling close(), which is the exact scenario the WsClient's
-		// liveness watchdog exists to catch.
-		await this.cdp.send(
-			'Network.emulateNetworkConditions',
-			{ offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 },
-			this.sessionId
-		);
-	}
-	async close() {
-		try {
-			await this.cdp.send('Target.closeTarget', { targetId: this.targetId });
-		} catch {
-			// best-effort — a target that already closed itself is not an error
-		}
-	}
 }
 
 // ── WebSocket instrumentation ─────────────────────────────────────────────
@@ -311,34 +128,27 @@ const INSTRUMENT = `
 
 // ── join helpers ──────────────────────────────────────────────────────────
 /**
- * @param {Cdp} cdp
+ * @param {Browser} browser
  * @param {string} name
  * @param {string} [colourName]
  */
-async function joinPhone(cdp, name, colourName = PRESET_COLOUR_NAMES[0]) {
-	const page = await cdp.newContextPage(INSTRUMENT);
+async function joinPhone(browser, name, colourName = PRESET_COLOUR_NAMES[0]) {
+	const page = await browser.newPage({ initScript: INSTRUMENT });
 	await page.viewport(390, 844, 1); // an iPhone-ish portrait, without the 2000px screenshot ceiling risk
-	await page.goto(`${BASE}/join`);
-	await page.evaluate(
-		`(() => {
-			const el = document.querySelector(${JSON.stringify(SEL.nameInput)});
-			el.focus(); el.value = ${JSON.stringify(name)};
-			el.dispatchEvent(new Event('input', { bubbles: true }));
-			el.dispatchEvent(new Event('change', { bubbles: true }));
-		})()`
-	);
-	await page.evaluate(
-		`(() => {
-			const r = document.querySelector('[aria-label=' + JSON.stringify(${JSON.stringify(colourName)}) + ']');
-			if (r) r.click();
-		})()`
-	);
-	await page.evaluate(
-		`(() => {
-			const btn = [...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith('Start singing'));
-			if (btn) btn.click();
-		})()`
-	);
+	await page.goto(`${BASE}/`);
+
+	/*
+	 * Driven through the driver's verbs rather than three `evaluate`s that dispatched their own events.
+	 * The old shape did `el.focus(); el.value = …; dispatchEvent(new Event('input'))` and found the two
+	 * buttons with `querySelector().click()`, which had two problems beyond the duplication: it threw
+	 * `Cannot read properties of null` whenever the form had not rendered yet, because a bare
+	 * `querySelector` does not wait; and a synthesised click grants NO user activation, which is exactly
+	 * the distinction a presence probe should not blur. `fill` and the click verbs wait for actionability
+	 * and deliver real input.
+	 */
+	await page.fill(SEL.nameInput, name);
+	await page.clickByLabel(colourName);
+	await page.clickByText('Start singing');
 	// A well-formed join lands on / with the joined home rendered — the DOCKED BAND, not the search box:
 	// search lives on the browse screen, so testing for it here would mean "browsing", not
 	// "joined". A duplicate-name join sits on /join with a `.err[role=alert]` — differentiate here so the
@@ -350,7 +160,7 @@ async function joinPhone(cdp, name, colourName = PRESET_COLOUR_NAMES[0]) {
 			if (err) return 'err:' + (err.textContent || '').trim();
 			return null;
 		})()`,
-		8_000
+		{ timeout: 8_000 }
 	);
 	if (outcome === 'joined') {
 		// Wait for the socket to actually connect before returning — every downstream assertion (roster,
@@ -360,13 +170,13 @@ async function joinPhone(cdp, name, colourName = PRESET_COLOUR_NAMES[0]) {
 		// queue:sync is answered has no `baseRev` context on the client side — nothing breaks, but a
 		// tight loop of "join → search → click" measured on this same phone can miss its own
 		// optimistic row if the store subscribe callback hasn't observed the sync-time rebase yet.
-		await page.waitFor(`window.__p8 && window.__p8.connectCount > 0`, 8_000).catch(() => null);
+		await page.waitFor(`window.__p8 && window.__p8.connectCount > 0`, { timeout: 8_000 }).catch(() => null);
 		await delay(400);
 	}
 	return { page, name, outcome };
 }
 
-/** @param {CdpPage} page @returns {Promise<RoomState>} */
+/** @param {Page} page @returns {Promise<RoomState>} */
 async function getState(page) {
 	return page.evaluate(
 		`(() => {
@@ -388,7 +198,7 @@ async function getState(page) {
 // was losing rows — the queue was fine, the search just hadn't returned yet.
 const SEARCH_TERM = process.env.P8_SEARCH ?? 'bohemian';
 
-/** @param {CdpPage} page @param {string} [term] */
+/** @param {Page} page @param {string} [term] */
 async function searchAndQueue(page, term = SEARCH_TERM) {
 	// The search box is on the browse screen, so get there first. A no-op when already there.
 	await openBrowseFromHome(page);
@@ -423,7 +233,7 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 			if (!row) return null;
 			return row.querySelector(${JSON.stringify(SEL.addOrSing)}) ? 'row-ready' : null;
 		})()`,
-			20_000
+			{ timeout: 20_000 }
 		)
 		.catch(() => null);
 	if (!clicked) return { queued: false, reason: 'no actionable row after 20s' };
@@ -436,12 +246,12 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 	// message.
 	let btnClass = await attemptClick();
 	const landed = await page
-		.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > ${rowsBefore}`, 3_000)
+		.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > ${rowsBefore}`, { timeout: 3_000 })
 		.catch(() => false);
 	if (!landed) {
 		btnClass = (await attemptClick()) ?? btnClass;
 		const landed2 = await page
-			.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > ${rowsBefore}`, 3_000)
+			.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > ${rowsBefore}`, { timeout: 3_000 })
 			.catch(() => false);
 		if (!landed2) {
 			const diag = await page.evaluate(
@@ -460,7 +270,7 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 }
 
 // ── TV helpers ────────────────────────────────────────────────────────────
-/** @param {CdpPage} tv @returns {Promise<TvRoster>} */
+/** @param {Page} tv @returns {Promise<TvRoster>} */
 async function tvRoster(tv) {
 	return tv.evaluate(
 		`(() => {
@@ -485,31 +295,18 @@ async function main() {
 		console.error(`No Encore server on ${BASE}. Boot per e2e/HARNESS.md and re-run.`);
 		process.exit(2);
 	}
-	const chromium = findChromium();
-	if (!chromium) {
-		console.error('No Chromium found. Set PW_CHROMIUM or install one.');
-		process.exit(2);
-	}
 
 
 
-	const cdp = new Cdp(CDP_PORT);
+	/** @type {Browser | undefined} */
+	let browser;
 	let phones = [];
 	let tv;
 	try {
-		// give Chromium a beat to bind the port
-		for (let i = 0; i < 30; i++) {
-			try {
-				await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
-				break;
-			} catch {
-				await delay(200);
-			}
-		}
-		await cdp.connect();
+		browser = await connect();
 
 		// ── 1. TV, then N phones, then the TV roster + screenshot ──────────
-		tv = await cdp.newContextPage(null); // TV needs no instrumentation
+		tv = await browser.newPage(); // TV needs no instrumentation
 		await tv.viewport(1600, 900, 1);
 		await tv.goto(`${BASE}/tv`);
 		// Freshness gate. Attract-only markup (`.is-label` inside `.idle-strip`, i.e. "Nobody here
@@ -519,7 +316,7 @@ async function main() {
 		// condition that doesn't exist in this harness. `.is-label` renders on both branches of the
 		// attract state and on neither of the other two, so it does the actual job.
 		const attract = await tv
-			.waitFor(`document.querySelector(${JSON.stringify(SEL.isLabel)}) !== null`, 8_000)
+			.waitFor(`document.querySelector(${JSON.stringify(SEL.isLabel)}) !== null`, { timeout: 8_000 })
 			.catch(() => false);
 		if (!attract) {
 			report(
@@ -531,7 +328,7 @@ async function main() {
 		}
 
 		for (let i = 0; i < NUM_PHONES; i++) {
-			const p = await joinPhone(cdp, PHONE_NAMES[i], PRESET_COLOUR_NAMES[i % PRESET_COLOUR_NAMES.length]);
+			const p = await joinPhone(browser, PHONE_NAMES[i], PRESET_COLOUR_NAMES[i % PRESET_COLOUR_NAMES.length]);
 			phones.push(p);
 			if (p.outcome !== 'joined') {
 				report('HIGH', `phone ${PHONE_NAMES[i]} could not join`, `outcome=${p.outcome}`);
@@ -598,12 +395,12 @@ async function main() {
 				)
 			)
 		);
-		const allSaw = perPhoneSingers.every((s) => s.hasMe);
+		const allSaw = perPhoneSingers.every((/** @type {{ hasMe: boolean }} */ s) => s.hasMe);
 		if (!allSaw) {
 			report(
 				'HIGH',
 				'not every phone confirmed a joined session',
-				`hasMe counts: ${perPhoneSingers.filter((s) => s.hasMe).length}/${NUM_PHONES}`,
+				`hasMe counts: ${perPhoneSingers.filter((/** @type {{ hasMe: boolean }} */ s) => s.hasMe).length}/${NUM_PHONES}`,
 				`src/routes/api/me/+server.ts`
 			);
 		} else {
@@ -612,7 +409,7 @@ async function main() {
 
 		// ── 2. Name collision — a duplicate name must produce a human 409, not a dead form ──
 		{
-			const dup = await joinPhone(cdp, PHONE_NAMES[0], PRESET_COLOUR_NAMES[1]);
+			const dup = await joinPhone(browser, PHONE_NAMES[0], PRESET_COLOUR_NAMES[1]);
 			if (dup.outcome === 'joined') {
 				report(
 					'CRITICAL',
@@ -670,7 +467,7 @@ async function main() {
 						const recovered = await dup.page
 							.waitFor(
 								`location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`,
-								8_000
+								{ timeout: 8_000 }
 							)
 							.catch(() => false);
 						if (!recovered) {
@@ -705,7 +502,7 @@ async function main() {
 				// The WsClient's reconnect backoff starts at 250ms. Give it enough to complete a full
 				// cycle including the hello -> queue:sync resync handshake.
 				const reconnected = await victim.page
-					.waitFor(`window.__p8.connectCount > ${before}`, 10_000)
+					.waitFor(`window.__p8.connectCount > ${before}`, { timeout: 10_000 })
 					.catch(() => false);
 				if (!reconnected) {
 					report(
@@ -804,7 +601,7 @@ async function main() {
 						const chips = [...document.querySelectorAll(${JSON.stringify(SEL.stripPerson)})];
 						return chips.some(c => c.classList.contains('away') && (c.textContent || '').includes(${JSON.stringify(away.name)}));
 					})()`,
-						15_000
+						{ timeout: 15_000 }
 					)
 					.catch(() => false);
 				if (!tvSaidAway) {
@@ -841,7 +638,7 @@ async function main() {
 				// #bindLifecycle handler listens for it and calls wake() → dial() unconditionally.
 				await away.page.setOffline(false);
 				await away.page.evaluate(`window.dispatchEvent(new Event('online'))`);
-				await away.page.waitFor(`window.__p8.connectCount > ${beforeConnects}`, 15_000).catch(() => null);
+				await away.page.waitFor(`window.__p8.connectCount > ${beforeConnects}`, { timeout: 15_000 }).catch(() => null);
 				const back = await tv
 					.waitFor(
 						`(() => {
@@ -849,7 +646,7 @@ async function main() {
 						const c = chips.find(c => (c.textContent || '').includes(${JSON.stringify(away.name)}));
 						return c && !c.classList.contains('away');
 					})()`,
-						15_000
+						{ timeout: 15_000 }
 					)
 					.catch(() => false);
 				if (!back) {
@@ -890,7 +687,7 @@ async function main() {
 						if (!row) return 0;
 						return row.querySelector(${JSON.stringify(SEL.addOrSing)}) ? 1 : 0;
 					})()`,
-					20_000
+					{ timeout: 20_000 }
 				)
 				.catch(() => 0);
 			if (!rows) {
@@ -927,7 +724,7 @@ async function main() {
 				// Bring the network back and let the client wake up.
 				await p.page.setOffline(false);
 				await p.page.evaluate(`window.dispatchEvent(new Event('online'))`);
-				await p.page.waitFor(`window.__p8.connectCount > ${beforeConnects}`, 15_000).catch(() => null);
+				await p.page.waitFor(`window.__p8.connectCount > ${beforeConnects}`, { timeout: 15_000 }).catch(() => null);
 				await delay(3000);
 				const after = await witness.page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`);
 				const offlineRowsOnP = await p.page.evaluate(
@@ -1021,7 +818,7 @@ async function main() {
 			// is 401 now and it will silently no-op on tap.
 			leaver.outcome = 'left';
 			// And their name must return to the pool: rejoining with the same name should succeed now.
-			const rejoin = await joinPhone(cdp, leaver.name, PRESET_COLOUR_NAMES[3]);
+			const rejoin = await joinPhone(browser, leaver.name, PRESET_COLOUR_NAMES[3]);
 			if (rejoin.outcome !== 'joined') {
 				report(
 					'HIGH',
@@ -1120,7 +917,7 @@ async function main() {
 			for (const p of phones) await p.page.close();
 			if (tv) await tv.close();
 		} catch {}
-		cdp.close();
+		await browser?.close();
 	}
 
 	// ── Report ────────────────────────────────────────────────────────────

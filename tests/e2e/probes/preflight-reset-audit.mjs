@@ -179,14 +179,14 @@ try {
 				 * The one driven step in this probe. Named per surface and per run so a re-run of the
 				 * AFTER pass cannot collide with the BEFORE pass's singer (409 → still on /join).
 				 */
-				await page.goto(`${base}/join`);
+				await page.goto(`${base}/`);
 				await page.fill(SEL.nameInput, `Pf${s.name.replace(/[^a-z]/gi, '')}${RUN_TAG}`);
 				await sleep(250);
 				await page.clickByText('Start singing');
 				await page.waitFor(`location.pathname === '/'`);
 			}
 			await page.goto(base + s.url);
-			// a session-gated surface must not be measured as its /join redirect
+			// a session-gated surface must not be measured as the join landing it fallt
 			const landed = await page.evaluate('location.pathname');
 			if (s.join && landed !== s.url) throw new Error(`redirected to ${landed} — join did not take`);
 			// settle: fonts, the socket's first frame, and any mount-time style write (--dock-h etc.)

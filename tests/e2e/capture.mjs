@@ -216,7 +216,7 @@ try {
 	// `--autoplay-policy=no-user-gesture-required` is NECESSARY here, per this file's own header: without
 	// it the <video> never starts and every captured frame is the poster. The driver does not grant it by
 	// default — a flow that needs it says so, because `fuzz.mjs` and the gestureless probes need it ABSENT.
-	const browser0 = await connect(undefined, { args: ['--autoplay-policy=no-user-gesture-required'] });
+	const browser0 = await connect({ args: ['--autoplay-policy=no-user-gesture-required'] });
 	browser = browser0;
 
 	// ── TV first: attract only exists while the room is empty ─────────────────
@@ -236,7 +236,7 @@ try {
 	// ── join, both ways of picking a colour ──────────────────────────────────
 	const maya = await browser0.newPage();
 	await maya.viewport(...PHONE);
-	await maya.goto(`${base}/join`);
+	await maya.goto(`${base}/`);
 	await frame('join-presets', () => shoot(maya, 'join-presets', 'presets, with the violet default selected'));
 
 	await frame('join-hue-wheel', async () => {
@@ -312,7 +312,7 @@ try {
 	// ── a second guest, so the roster and cross-client sync are visible ──────
 	const ada = await browser0.newPage();
 	await ada.viewport(...PHONE);
-	await ada.goto(`${base}/join`);
+	await ada.goto(`${base}/`);
 	await ada.fill(SEL.nameInput, 'Ada');
 	await ada.setRange(SEL.hueSlider, 210);
 	await ada.clickByText('Start singing');

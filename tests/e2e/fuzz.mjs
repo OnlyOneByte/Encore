@@ -1380,7 +1380,7 @@ async function maybeDeliverTap(world) {
 // ── run ──────────────────────────────────────────────────────────────────────────────────────────
 let exitCode = 0;
 try {
-	browser = await connect(undefined, { args: chromeArgs });
+	browser = await connect({ args: chromeArgs });
 
 	// Two phones, each its own isolated context and therefore its own session — two genuinely
 	// different guests, not one guest in two tabs. That is the whole point of the topology: a
@@ -1389,7 +1389,7 @@ try {
 	async function newPhone(name) {
 		const page = await /** @type {Browser} */ (browser).newPage();
 		await page.viewport(390, 844);
-		await page.goto(`${base}/join`);
+		await page.goto(`${base}/`);
 		await page.fill(SEL.nameInput, name);
 		await page.clickByText('Start singing');
 		await page.waitFor(`location.pathname === '/'`, { timeout: 15000 });

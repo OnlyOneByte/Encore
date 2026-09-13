@@ -233,7 +233,7 @@ try {
 	async function newPhone(name) {
 		const page = await b.newPage();
 		await page.viewport(390, 844);
-		await page.goto(`${base}/join`);
+		await page.goto(`${base}/`);
 		await page.fill(SEL.nameInput, name);
 		await page.clickByText('Start singing');
 		// Wait for the remote. The search field USED to be the signal the room UI mounted; now it

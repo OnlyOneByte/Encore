@@ -194,6 +194,15 @@ const FLOORS: Record<string, Floor[]> = {
 				'the citation regex actually matching. This is the sharper of the two: if the pattern stopped matching, the walk would still find every document and the guard would report a clean register while every path in it rotted. 38 references went stale in a single commit before this guard existed.'
 		}
 	],
+	'tests/guards/meta/no-hand-rolled-cdp.test.ts': [
+		{
+			subject: 'files.length',
+			min: 300,
+			count: 1,
+			guards:
+				'the walk that looks for a hand-rolled DevTools connection across the whole test tree. Two probes each grew a private CDP client because the shared driver lacked one verb, and the larger of the two then rotted silently: it kept dialling a debugging port after the Chromium spawn that opened it was removed, and no command ran it to say so. An empty walk here would report a clean tree in exactly that way.'
+		}
+	],
 	'tests/guards/meta/no-self-anchored-paths.test.ts': [
 		{
 			subject: 'files.length',
@@ -762,11 +771,11 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
 	// surfaced it. Both literals were re-measured, not incremented.
 	//
-	// Re-measured to 72: 71 when no-self-anchored-paths gained an `mjs.length` floor, then 72 when dev-only-routes registered its fixture-consumer floor. The previous value
+	// Re-measured to 72: 71 when no-self-anchored-paths gained an `mjs.length` floor, then 72 when dev-only-routes registered its fixture-consumer floor, then 73 when no-hand-rolled-cdp registered its walk. The previous value
 	// of 66 was not wrong so much as SLACK: these are `>=` floors, so 66 kept passing while the real
 	// count drifted up to 70 without anything saying so. Measured by raising both to 99999 and reading
 	// `Received: N`, which is the only way to learn the actual number.
-	expect(located).toBeGreaterThanOrEqual(72);
+	expect(located).toBeGreaterThanOrEqual(73);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -857,7 +866,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(72);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(73);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

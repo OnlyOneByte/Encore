@@ -73,8 +73,8 @@ const READ = `(() => {
   };
 })()`;
 
-/** @param {string} label @param {string[]} extraFlags @param {number} cdpPort */
-async function runUnder(label, extraFlags, cdpPort) {
+/** @param {string} label @param {string[]} extraFlags @param {number} tag a run disambiguator, so the two arms join under different names */
+async function runUnder(label, extraFlags, tag) {
 
 
 	/** @type {Awaited<ReturnType<typeof connect>> | undefined} */
@@ -84,15 +84,15 @@ async function runUnder(label, extraFlags, cdpPort) {
 		// launch (`[]`) and one granted `--autoplay-policy=no-user-gesture-required`. The driver launches
 		// the browser now, so the flags go to it — passed through here rather than dropped, or both arms
 		// would run identically and the probe would report a difference it never created.
-		browser = await connect(cdpPort, { args: extraFlags });
+		browser = await connect({ args: extraFlags });
 
 		// Queue a song through the REAL phone UI first. A hand-rolled WS frame with an invented
 		// singerId is rejected, which leaves the TV on the lobby with no media element — and then the
 		// absence of an AudioContext proves nothing at all about the shifter.
 		const phone = await browser.newPage();
 		await phone.viewport(390, 844);
-		await phone.goto(`${base}/join`);
-		await phone.fill(SEL.nameInput, `T17-${cdpPort}-${Date.now() % 10000}`);
+		await phone.goto(`${base}/`);
+		await phone.fill(SEL.nameInput, `T17-${tag}-${Date.now() % 10000}`);
 		await phone.clickByText('Start singing');
 		await phone.waitFor(`location.pathname === '/'`);
 		await openBrowseFromHome(phone);
