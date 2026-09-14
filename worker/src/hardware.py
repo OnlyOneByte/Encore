@@ -26,6 +26,7 @@ import os
 import platform
 import socket
 from dataclasses import dataclass
+from functools import lru_cache
 
 #: cgroup v2 then v1 locations for the CPU quota and the memory ceiling. Both layouts are still in
 #: the wild (Amazon Linux 2 is v1, most modern distros are v2), and a v2-only reader silently
@@ -160,8 +161,16 @@ class Accelerator:
     vram_bytes: int | None = None
 
 
+@lru_cache(maxsize=1)
 def detect_accelerator() -> Accelerator:
     """The accelerator torch can reach here, or a cpu Accelerator.
+
+    MEMOIZED for the process's lifetime: this is the expensive half of a probe (it imports torch and
+    queries device properties), `probe()` runs on every `hello` rather than once at startup as its
+    docstring used to claim, and a box does not swap its accelerator while the worker runs. `vram_bytes`
+    is PHYSICAL capacity, not free memory, so it is a static fact too — the FREE-memory figure a demucs
+    segment has to fit inside is measured separately and is not cached. Tests that need a fresh answer can
+    call `detect_accelerator.cache_clear()`.
 
     Deliberately tolerant: torch may be absent entirely (the stub processor needs no ML), the wheel
     may be built for a different backend than the box has, and a driver mismatch raises rather than
@@ -271,17 +280,38 @@ class HardwareReport:
         return " ".join(bits)
 
 
-def probe(root: str = "") -> HardwareReport:
-    """One full hardware probe. Called once at startup — it imports torch, so it is not free."""
-    accel = detect_accelerator()
-    cpus = effective_cpus(root)
-    host = os.cpu_count() or cpus
+@lru_cache(maxsize=1)
+def _torch_version() -> str | None:
+    """The installed torch version, looked up ONCE per process.
+
+    Memoized for the same reason `detect_accelerator` is: importing torch is the expensive part of a
+    probe, the answer cannot change while the process runs, and `probe()` turned out to run far more often
+    than its docstring claimed.
+    """
     try:
         import torch
 
-        torch_version = str(torch.__version__)
-    except Exception:
-        torch_version = None
+        return str(torch.__version__)
+    except Exception:  # noqa: BLE001 — torch may be absent entirely; that is a cpu answer, not a crash
+        return None
+
+
+def probe(root: str = "") -> HardwareReport:
+    """One full hardware probe.
+
+    NOT once at startup, which this docstring used to claim. `protocol.host_facts()` delegates here, and
+    `host_facts` is built for every `hello` — so a worker redialling a flapping core re-probed on each
+    attempt, re-importing torch and re-querying the accelerator every few seconds. The immutable half is
+    now memoized (`detect_accelerator`, `_torch_version`): a box does not change its GPU mid-process.
+
+    The DYNAMIC half is deliberately re-read on every call. `available_memory_bytes` is MemAvailable —
+    free memory right now, not capacity — and the core uses it for placement, so caching it would send a
+    stale fact that gets less true the longer the worker runs. `effective_cpus` is re-read too: it is
+    cheap, and scheduler affinity can be changed under a running process.
+    """
+    accel = detect_accelerator()
+    cpus = effective_cpus(root)
+    host = os.cpu_count() or cpus
     return HardwareReport(
         accelerator=accel.kind,
         device_name=accel.name,
@@ -291,7 +321,7 @@ def probe(root: str = "") -> HardwareReport:
         vram_bytes=accel.vram_bytes,
         platform_name=platform.system(),
         machine=platform.machine(),
-        torch_version=torch_version,
+        torch_version=_torch_version(),
         contained=cpus < host,
     )
 

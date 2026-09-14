@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field, replace
+from typing import Any
 
 from .hardware import effective_cpus
 from .vocabulary import StemFormat, parse_stem_format
@@ -389,7 +390,7 @@ class WorkerConfig:
         return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConfig, list[str]]:
+def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConfig, list[str], list[Any]]:
     """Fill in everything that depends on the HOST rather than the environment.
 
     Kept out of `from_env` on purpose: that function is pure over a dict so the perf knobs stay
@@ -406,7 +407,7 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
     from . import capabilities as caps_mod
     from .hardware import default_worker_id
 
-    caps, _probes, warnings = caps_mod.resolve(
+    caps, probes, warnings = caps_mod.resolve(
         cfg.capabilities_override, ytdlp_bin=cfg.ytdlp_bin, demucs_bin=cfg.demucs_bin
     )
 
@@ -444,17 +445,28 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
             f"ENCORE_WHISPERX_DEVICE={cfg.whisperx_device!r} is not a device whisperx can use "
             "(CTranslate2 supports cuda and cpu only); alignment will likely fail"
         )
-    return resolved, warnings
+    # The PROBES come back too, rather than being computed and thrown away. `capability_probe_lines` used
+    # to re-run `probe_all` purely to render the startup log, so every boot probed the box TWICE — four
+    # extra `shutil.which` calls plus a `find_spec` on `whisperx` and `pyannote.audio`, and those two are
+    # the expensive ones because resolving them imports their parent packages.
+    return resolved, warnings, probes
 
 
-def capability_probe_lines(cfg: WorkerConfig) -> list[str]:
+def capability_probe_lines(cfg: WorkerConfig, probes: list[Any] | None = None) -> list[str]:
     """One line per capability with the evidence, for the startup log. A capability that is MISSING is
     the interesting case — that is the one that leaves songs stuck at 0% — so absent ones are reported
-    just as loudly as present ones."""
+    just as loudly as present ones.
+
+    Pass the `probes` `resolve()` already returned. Without them this re-probes the box, which is what made
+    every boot probe twice for one log block; the parameter stays optional so a caller that only has a
+    config (a test, a diagnostic) still works.
+    """
     from . import capabilities as caps_mod
 
+    if probes is None:
+        probes = list(caps_mod.probe_all(ytdlp_bin=cfg.ytdlp_bin, demucs_bin=cfg.demucs_bin))
     lines = []
-    for p in caps_mod.probe_all(ytdlp_bin=cfg.ytdlp_bin, demucs_bin=cfg.demucs_bin):
+    for p in probes:
         mark = "yes" if p.available else "NO "
         lines.append(f"  {mark} {p.token}: {p.reason}")
     return lines

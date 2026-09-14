@@ -766,10 +766,10 @@ async def _run_forever() -> None:
         print(f"[worker] FATAL: {exc}", flush=True)
         raise
 
-    cfg, resolve_warnings = resolve(CONFIG, device=device)
+    cfg, resolve_warnings, cap_probes = resolve(CONFIG, device=device)
     print(f"[worker] config: {cfg.describe()}", flush=True)
     print("[worker] capabilities (probed):", flush=True)
-    for line in capability_probe_lines(cfg):
+    for line in capability_probe_lines(cfg, cap_probes):
         print(f"[worker]{line}", flush=True)
     for warning in (*cfg.warnings, *resolve_warnings):
         print(f"[worker] config warning: {warning}", flush=True)

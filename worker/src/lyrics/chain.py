@@ -399,11 +399,76 @@ def agreement(candidate: str, baseline: str) -> Agreement | None:
     tokens_c, tokens_b = lyrics_tokens(candidate), lyrics_tokens(baseline)
     if len(set(tokens_c)) < MIN_TOKENS_TO_COMPARE or len(set(tokens_b)) < MIN_TOKENS_TO_COMPARE:
         return None
-    shared = _multiset_overlap(tokens_c, tokens_b)
-    pairs_c, pairs_b = _adjacent_pairs(tokens_c), _adjacent_pairs(tokens_b)
-    shared_pairs = _multiset_overlap(pairs_c, pairs_b)  # type: ignore[arg-type]
-    sequence = min(shared_pairs / len(pairs_b), shared_pairs / len(pairs_c)) if pairs_c and pairs_b else 0.0
-    return Agreement(coverage=shared / len(tokens_b), fidelity=shared / len(tokens_c), sequence=sequence)
+    # Delegates to the view form so there is ONE implementation of the arithmetic. The string entry point
+    # stays because tests and any one-off comparison read better with it; the hot path (composite_score
+    # over a candidate pool) builds its views once and calls `agreement_of` directly.
+    return agreement_of(TokenView.of(candidate), TokenView.of(baseline))
+
+
+@dataclass(frozen=True)
+class TokenView:
+    """One text, tokenized ONCE, with everything `agreement` needs precomputed.
+
+    `agreement` used to take two strings and derive all of this on every call — `lyrics_tokens` (an NFKC
+    fold plus two regex substitutions plus a split), a `set` for the comparability floor, a `Counter` for
+    the multiset overlap, the adjacent-pair list, and a second `Counter` for the pair overlap. It is called
+    once per (candidate, baseline) PAIR, so with five candidates and three baselines every text was
+    tokenized three (or five) times over: thirty tokenizations, thirty pair-list builds and sixty Counters
+    for eight texts' worth of distinct work, over strings that run to thousands of tokens.
+
+    Deriving it once per TEXT and reusing it across pairs makes the cost O(C + B) instead of O(C × B). The
+    numbers are unchanged — this is the same arithmetic reading precomputed operands.
+
+    Deliberately NOT a module-level cache keyed on the text. Holding a job's lyrics in a global for the
+    lifetime of a long-running worker is a retention surprise, and the sharing that actually matters is
+    within one selection, which the caller can express by building the views once.
+    """
+
+    tokens: tuple[str, ...]
+    counts: Counter[str]
+    pair_counts: Counter[tuple[str, str]]
+    distinct: int
+    pair_total: int
+
+    @classmethod
+    def of(cls, text: str) -> TokenView:
+        tokens = lyrics_tokens(text)
+        pairs = _adjacent_pairs(tokens)
+        return cls(
+            tokens=tuple(tokens),
+            counts=Counter(tokens),
+            pair_counts=Counter(pairs),
+            distinct=len(set(tokens)),
+            pair_total=len(pairs),
+        )
+
+
+def _counter_overlap(a: Counter, b: Counter) -> int:
+    """Σ min(count_a, count_b) over precomputed counters — the multiset overlap `_multiset_overlap`
+    computes, without rebuilding either side."""
+    return sum(min(n, b.get(token, 0)) for token, n in a.items())
+
+
+def agreement_of(candidate: TokenView, baseline: TokenView) -> Agreement | None:
+    """`agreement` over precomputed views. The string form delegates here, so there is one implementation.
+
+    Returns None when either side is below MIN_TOKENS_TO_COMPARE distinct tokens — the comparability floor,
+    unchanged.
+    """
+    if candidate.distinct < MIN_TOKENS_TO_COMPARE or baseline.distinct < MIN_TOKENS_TO_COMPARE:
+        return None
+    shared = _counter_overlap(candidate.counts, baseline.counts)
+    shared_pairs = _counter_overlap(candidate.pair_counts, baseline.pair_counts)
+    sequence = (
+        min(shared_pairs / baseline.pair_total, shared_pairs / candidate.pair_total)
+        if candidate.pair_total and baseline.pair_total
+        else 0.0
+    )
+    return Agreement(
+        coverage=shared / len(baseline.tokens),
+        fidelity=shared / len(candidate.tokens),
+        sequence=sequence,
+    )
 
 
 def agreement_score(candidate: str, baseline: str) -> float | None:
@@ -446,7 +511,12 @@ class Composite(NamedTuple):
     votes: list[float]
 
 
-def composite_score(candidate: LyricsText, baselines: list[LyricsText]) -> Composite:
+def composite_score(
+    candidate: LyricsText,
+    baselines: list[LyricsText],
+    *,
+    baseline_views: list[TokenView] | None = None,
+) -> Composite:
     """Mean agreement of one candidate against every baseline that can speak, plus the votes cast.
 
     Returns (None, None, []) when NO baseline is comparable — nothing was audible enough to judge with,
@@ -464,9 +534,22 @@ def composite_score(candidate: LyricsText, baselines: list[LyricsText]) -> Compo
 
     The two means are taken over the SAME set of speaking baselines, so `coverage` cannot be formed from
     a different quorum than `score` — a baseline that abstains abstains on both axes.
+
+    `baseline_views` lets the caller tokenize the baselines ONCE for a whole candidate pool instead of once
+    per candidate — see `TokenView`. Omitting it is correct and self-contained, just O(C × B) again.
     """
+    candidate_view = TokenView.of(candidate.plain_text)
     spoke = [
-        got for got in (agreement(candidate.plain_text, b.plain_text) for b in baselines) if got is not None
+        got
+        for got in (
+            agreement_of(candidate_view, bv)
+            for bv in (
+                baseline_views
+                if baseline_views is not None
+                else [TokenView.of(b.plain_text) for b in baselines]
+            )
+        )
+        if got is not None
     ]
     if not spoke:
         return Composite(None, None, [])
@@ -679,8 +762,14 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
     candidates = candidates_of(texts)
     sel = Selection()
 
-    for b in baselines:
-        tokens = len(set(lyrics_tokens(b.plain_text)))
+    # Tokenize each baseline ONCE for the whole selection — the notes below and every candidate
+    # comparison then read the same precomputed view instead of re-deriving it. See `TokenView`: this is
+    # what turns the grading cost from O(candidates × baselines) tokenizations into O(candidates +
+    # baselines), and the `distinct` count the note wants is already on the view.
+    baseline_views = [TokenView.of(b.plain_text) for b in baselines]
+
+    for b, bv in zip(baselines, baseline_views, strict=False):
+        tokens = bv.distinct
         sel.baseline_notes.append(
             f"{b.variant or b.text_source}: {tokens} distinct words"
             + ("" if tokens >= MIN_TOKENS_TO_COMPARE else " — too few to judge with, ABSTAINS")
@@ -698,7 +787,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
     best_rank: float | None = None
     for cand in candidates:
         pool = [cand, *cand.alternates]
-        scored = [composite_score(c, baselines) for c in pool]
+        scored = [composite_score(c, baselines, baseline_views=baseline_views) for c in pool]
         # The RANKING key demotes a version timed past audio-end; `scored` itself keeps the raw
         # agreement so provenance and `winner_score` report what the words actually matched, not the
         # penalty. A None-scored (unjudgeable) version stays -1.0 and is never penalised into a lower

@@ -251,7 +251,7 @@ def test_stems_survives_on_an_mlx_box(monkeypatch):
 
     # AUTO backend selection (no ENCORE_SEPARATOR_BACKEND) — the reachable trigger with no operator action.
     cfg = WorkerConfig(demucs_bin="__no_such_bin__", ytdlp_bin="__no_such_bin__")
-    resolved, warnings = config.resolve(cfg, device=None)
+    resolved, warnings, _probes = config.resolve(cfg, device=None)
 
     # sanity: the backend genuinely resolves to mlx on this simulated box
     assert backends.resolve_backend(None).backend.value == "mlx"
@@ -280,7 +280,7 @@ def test_stems_survives_on_a_torch_box(monkeypatch):
     monkeypatch.setattr(backends, "torch_device_available", lambda d: d in ("", "cpu"))
 
     cfg = WorkerConfig(demucs_bin="__no_such_bin__", ytdlp_bin="__no_such_bin__")
-    resolved, warnings = config.resolve(cfg, device=None)
+    resolved, warnings, _probes = config.resolve(cfg, device=None)
 
     assert backends.resolve_backend(None).backend.value == "torch"
     assert "stems" in resolved.capabilities
