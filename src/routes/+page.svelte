@@ -3,7 +3,6 @@
 		SINGER_COLORS,
 		DEFAULT_EFFECTIVE_SETTINGS,
 		queueOrderLabel,
-		singHistoryFrom,
 		originalKeyLabel,
 		soundingKeyLabel,
 		rangeLabel,
@@ -15,7 +14,6 @@
 	} from '$lib/contract';
 	import { onMount, tick } from 'svelte';
 	import type {
-		ServerEvent,
 		QueueEntry,
 		Media,
 		PublicSinger,
@@ -23,8 +21,8 @@
 		PlayerCommand,
 		EffectiveSettings
 	} from '$lib/contract';
-	import { QueueStore } from '$lib/stores/queue';
-	import { WsClient } from '$lib/ws/client';
+	import type { QueueStore } from '$lib/stores/queue';
+	import { room } from '$lib/stores/room';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
@@ -47,7 +45,6 @@
 		queueCardKind,
 		type Readiness
 	} from '$lib/readiness';
-	import { activeScars, recordScar, clearScar } from '$lib/stores/process-scars';
 	import { positionWords } from '$lib/phrasing/position-sentence';
 	import type { MediaStatus } from '$lib/contract';
 	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isProcessableSource } from '$lib/contract';
@@ -88,11 +85,6 @@
 	// live process progress per mediaId — driven by media:status broadcasts AND seeded
 	// from /api/library on load, so a reload mid-process doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
-	// Failed-process scars captured once on mount from localStorage. Held so they can be re-merged
-	// into the catalog after a queue:sync REPLACES it — otherwise the room's first sync wipes the
-	// scarred (failed, so server-unknown) media and its row vanishes again on the very reload the
-	// scar exists to survive.
-	let scarredMedia: Media[] = [];
 	/*
 	 * DIRECTION A + the 2026-09-09 owner correction (docs/DECISIONS.md, issues earlier changes): the room's
 	 * queue IS the home screen, and the search box is docked at the bottom of it AT ALL TIMES for a
@@ -166,8 +158,9 @@
 	// the room picks anything else. Eyes-on: it still said ROTATION with the room on first-come-first-served.
 	const orderLabel = $derived(queueOrderLabel(settings.room.queueOrder));
 
-	let store: QueueStore;
-	let ws: WsClient;
+	// MIRRORED from the room link, not owned here — see the onMount block. Optional because a guest
+	// who has not joined has no queue at all, which is what every `store?.` call site below reads.
+	let store = $state<QueueStore | undefined>(undefined);
 
 	function mediaTitle(id: string): string {
 		const m = mediaCatalog.get(id);
@@ -179,158 +172,53 @@
 	/** Merge media into the client catalog. The catalog is otherwise fed ONLY by queue:sync/patch, so
 	 *  a song that came from search or the library — and is not (yet) in anyone's queue — has no
 	 *  resolvable title: a processing card would render a raw ULID. */
-	function mergeMedia(list: Media[]) {
-		if (!list.length) return;
-		const next = new Map(mediaCatalog);
-		for (const m of list) next.set(m.id, m);
-		mediaCatalog = next;
-	}
-	/** Merge media but only for ids the catalog does NOT already hold — used to re-apply failed-process
-	 *  scars after a queue:sync without clobbering a fresher server copy of the same song. */
-	function mergeMissingMedia(list: Media[]) {
-		if (!list.length) return;
-		const next = new Map(mediaCatalog);
-		let changed = false;
-		for (const m of list)
-			if (!next.has(m.id)) {
-				next.set(m.id, m);
-				changed = true;
-			}
-		if (changed) mediaCatalog = next;
-	}
-
+	const mergeMedia = (list: Media[]) => room.mergeMedia(list);
+	/*
+	 * THE ROOM LINK, MIRRORED. The socket, the QueueStore and every field the room broadcasts into used
+	 * to be CONSTRUCTED here, which made this route the owner of app-wide truth — and that is precisely
+	 * why the now-playing band could not become app chrome: a component in +layout.svelte cannot read a
+	 * sibling route's locals. `$lib/stores/room.ts` owns them now; this block adopts them.
+	 *
+	 * THE LOCALS BELOW KEEP THEIR NAMES ON PURPOSE. Every read site in this 2000-line template is
+	 * unchanged, so the diff is a change of OWNER, not a rename sweep — and a rename sweep across this
+	 * file is exactly the kind of change that hides a real defect in 300 lines of noise.
+	 *
+	 * `sync()` RUNS ONCE BEFORE SUBSCRIBING, which is not belt-and-braces: the link is a singleton that
+	 * outlives this component, so on any later navigation back to `/` it is ALREADY live and the next
+	 * emit may be seconds away. Subscribing alone would render an empty queue until the room happened
+	 * to say something.
+	 *
+	 * NOTHING HERE CLOSES THE SOCKET. It is deliberately not this route's to close — the connection has
+	 * to survive navigation to the find surface and a song page, so the layout owns its lifetime.
+	 */
 	onMount(() => {
-		let disposed = false;
-		(async () => {
-			const res = await fetch('/api/me');
-			if (!res.ok) {
-				// Unjoined. `/` is the landing page now (Q2-A retired /join), so the template renders
-				// the JoinLanding state below rather than bouncing. Leave `me` null and stop: no store, no
-				// socket for a guest who has not joined.
-				return;
-			}
-			me = (await res.json()).singer;
-			if (disposed || !me) return;
-
-			store = new QueueStore({
-				singerId: me.id,
-				sendCommand: (cmd) => ws.send({ type: 'queue:command', command: cmd }),
-				onReject: (reason) => showError(`Couldn't do that: ${reason}`),
-				// Read at apply time, not captured: both the algorithm and the sing history change while
-				// the party runs, and predicting with a stale ordering is what makes a row jump.
-				ordering: () => ({ order: settings.room.queueOrder, lastSungAt: singHistoryFrom(singers.values()) })
-			});
-			store.subscribe((e) => {
-				entries = e;
-				pendingKind = store.pendingKindById;
-			});
-
-			ws = new WsClient({
-				url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`,
-				getLastRev: () => store.rev,
-				onConnectionChange: (c) => (connected = c),
-				onEvent: (e: ServerEvent) => {
-					if (e.type === 'queue:sync') {
-						if (e.settings) settings = e.settings;
-						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
-						if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
-						// Re-apply failed-process scars: a queue:sync REPLACES the catalog, and a failed song is
-						// not in the room's media (it settled to un-processed server-side), so without this the
-						// scarred row is wiped by the very first sync. A real entry for the id (already added
-						// above) wins; this only fills a gap.
-						if (scarredMedia.length) mergeMissingMedia(scarredMedia);
-						// The room's guiding-track default — needed to LABEL the control, since a null
-						// per-song override means "inherit" and the phone would otherwise show 0%.
-						if (e.settings) roomGuideDefault = e.settings.room.guideLevelDefault;
-						// An omitted list means "no info", not "nobody is away" — do not blank what we have.
-						if (e.away) awaySingers = new Set(e.away);
-						queueMicrotask(() => store.resendPending());
-					}
-					if (e.type === 'singer:presence') awaySingers = new Set(e.away);
-					if (e.type === 'queue:patch' && e.patch.media) mergeMedia(e.patch.media);
-					if (e.type === 'settings:changed') settings = e.settings;
-					if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
-					// A rename must land on every OTHER phone too, or their queue rows keep naming someone
-					// who no longer goes by that.
-					if (e.type === 'singer:updated') singers = new Map(singers).set(e.singer.id, e.singer);
-					// Someone left on purpose. Their entries arrive as ordinary remove patches; this is what
-					// takes them out of the away set, which no patch would have implied.
-					if (e.type === 'singer:left') {
-						const next = new Set(awaySingers);
-						next.delete(e.singerId);
-						awaySingers = next;
-						// Also drop them from the singers map. A singer who leaves with no queued songs
-						// produces no queue:patch, so without this their name keeps rendering on every other
-						// phone until the next full sync. joined/updated rebuild this map; left must too.
-						const nextSingers = new Map(singers);
-						nextSingers.delete(e.singerId);
-						singers = nextSingers;
-					}
-					if (e.type === 'playback:state') playback = e.state;
-					// A room default changed mid-party: adopt it so the guiding-track control keeps
-					// reporting the level the TV is actually mixing at.
-					if (e.type === 'settings:changed') roomGuideDefault = e.settings.room.guideLevelDefault;
-					if (e.type === 'media:status') {
-						const next = new Map(mediaStatus);
-						next.set(e.mediaId, { status: e.status, pct: e.pct, etaSec: e.etaSec });
-						mediaStatus = next;
-						// reflect the flip on the catalog copy so readiness agrees without a full sync.
-						// A `failed` process must NOT be written back as 'queued' — that pins the row in the
-						// Processing group at 0% forever with no failure signal (the singer never learns the
-						// process died). Preserve the existing stemStatus on failure, matching the TV route.
-						const m = mediaCatalog.get(e.mediaId);
-						if (m) {
-							const nm = new Map(mediaCatalog);
-							nm.set(e.mediaId, {
-								...m,
-								stemStatus:
-									// A failed OR canceled process settles back to un-processed server-side (settleStemsGate),
-									// so the optimistic copy follows it. This used to preserve the mid-flight status,
-									// which is what kept the row reading as processing after the job had already died.
-									e.status === 'ready' ? 'ready' : e.status === 'failed' || e.status === 'canceled' ? 'none' : 'queued'
-							});
-							mediaCatalog = nm;
-						}
-						// a song that just finished processing belongs in the saved library now, and a successful
-						// re-process clears any failed-process scar so the row never lingers as failed while it is ready.
-						if (e.status === 'ready') {
-							clearScar(e.mediaId);
-							loadLibrary();
-						}
-						// Surface a died process to the singer instead of leaving the row silently stuck, and
-						// persist a per-device scar so the failure survives a reload (the live map does not).
-						if (e.status === 'failed') {
-							const failedMedia = mediaCatalog.get(e.mediaId);
-							if (failedMedia) recordScar(failedMedia);
-							showError(`Couldn't make karaoke for “${mediaTitle(e.mediaId)}” — try again.`);
-						}
-					}
-					store.onServerEvent(e);
-				}
-			});
-			// Re-surface failed processes that a reload would otherwise have erased: the live `mediaStatus`
-			// map is in-memory only, so a persisted scar (Encore an earlier change) is seeded back as a synthetic
-			// `failed` live status. This flows through liveOf -> displayReadiness -> processingRows to the
-			// same red-chip + Sing row a live failure renders, with no extra UI. A fresher live broadcast
-			// always wins (checked below), and any scar cleared by a later `ready` is already gone.
-			scarredMedia = activeScars();
-			if (scarredMedia.length) {
-				// GET /api/library returns only ready + processing media, so a failed song is not in the
-				// catalog — merge the scar's snapshot in so its row can render, then mark it failed. The
-				// captured list is re-applied on every queue:sync (which replaces the catalog), so the
-				// row survives the room's first sync.
-				mergeMissingMedia(scarredMedia);
-				const withScars = new Map(mediaStatus);
-				for (const m of scarredMedia) if (!withScars.has(m.id)) withScars.set(m.id, { status: 'failed', pct: 0 });
-				mediaStatus = withScars;
-			}
-			ws.open();
-			loadShortcuts();
-			loadLibrary();
-		})();
+		const sync = () => {
+			me = room.me;
+			connected = room.connected;
+			playback = room.playback;
+			singers = room.singers;
+			mediaCatalog = room.mediaCatalog;
+			settings = room.settings;
+			awaySingers = room.awaySingers;
+			mediaStatus = room.mediaStatus;
+			roomGuideDefault = room.roomGuideDefault;
+			entries = room.entries;
+			pendingKind = room.pendingKind;
+			store = room.queue;
+		};
+		sync();
+		const stopMirror = room.subscribe(sync);
+		// The link holds no opinion about how a failure is shown, so the toast stays a route decision.
+		const stopErrors = room.onError((message) => showError(message));
+		// A process going ready means the saved library moved; only this route renders the library.
+		const stopLibrary = room.onLibraryChanged(() => loadLibrary());
+		void room.connect();
+		loadShortcuts();
+		loadLibrary();
 		return () => {
-			disposed = true;
-			ws?.close();
+			stopMirror();
+			stopErrors();
+			stopLibrary();
 		};
 	});
 
@@ -366,7 +254,7 @@
 	async function processMedia(mediaId: string) {
 		if (navigator.vibrate) navigator.vibrate(12);
 		// optimistic: the row reads as processing immediately, before the request lands
-		mediaStatus = new Map(mediaStatus).set(mediaId, { status: 'queued', pct: 0 });
+		room.setMediaStatus(mediaId, { status: 'queued', pct: 0 });
 		try {
 			const res = await fetch('/api/process', {
 				method: 'POST',
@@ -375,14 +263,14 @@
 			});
 			const body = await res.json().catch(() => ({}));
 			if (!res.ok) {
-				mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
+				room.clearMediaStatus(mediaId);
 				showError(body.error ?? 'Could not start process');
 				return;
 			}
 			// the stems were already on disk (processed on an earlier night) — nothing to wait for
 			if (body.alreadyReady) loadLibrary();
 		} catch {
-			mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
+			room.clearMediaStatus(mediaId);
 			showError('Could not start process — check your connection');
 		}
 	}
@@ -635,11 +523,8 @@
 			const processing: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.processing ?? [];
 			if (processing.length) {
 				mergeMedia(processing.map((c) => c.media));
-				const next = new Map(mediaStatus);
-				// a live broadcast is fresher than this snapshot — never overwrite one
-				for (const c of processing)
-					if (!next.has(c.media.id)) next.set(c.media.id, { status: c.status, pct: c.pct, etaSec: c.etaSec });
-				mediaStatus = next;
+				// a live broadcast is fresher than this snapshot — seedMediaStatus never overwrites one
+				room.seedMediaStatus(processing);
 			}
 		} catch {
 			/* ignore — the library is an accelerator, never a blocker */
@@ -951,7 +836,7 @@
 	);
 
 	function sendPlayer(command: PlayerCommand) {
-		ws?.send({ type: 'player:command', command });
+		room.command(command);
 	}
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
 	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);

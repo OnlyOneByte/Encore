@@ -201,7 +201,10 @@ test('every result surface is gated on searchActive — an empty box shows the q
 test('both row kinds are told WHICH mutation they are waiting on (XR-PH-10)', () => {
 	const wired = PAGE.match(/pending=\{pendingKind\.get\(e\.id\) \?\? null\}/g) ?? [];
 	expect(wired.length).toBe(2); // QueueRow and ProcessingCard
-	expect(PAGE).toMatch(/pendingKind = store\.pendingKindById/);
+	// Both hops since the room-link hoist: the link re-reads the kind map off the QueueStore it now
+	// owns, and the page mirrors the link's copy. Either hop breaking is the same stale-marker defect.
+	expect(read('src/lib/stores/room.ts')).toMatch(/this\.pendingKind = this\.queue!\.pendingKindById/);
+	expect(PAGE).toMatch(/pendingKind = room\.pendingKind/);
 });
 
 // ── the imports the shell stands on ──────────────────────────────────────────────────────────────
