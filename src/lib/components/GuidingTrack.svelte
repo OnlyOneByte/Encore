@@ -91,7 +91,7 @@
 		color: var(--ink-dim);
 	}
 	.lab {
-		font-size: 0.7rem;
+		font-size: var(--ph-text-2xs);
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
 	}
@@ -99,7 +99,7 @@
 		/* What `.gt-head`'s `justify-content: space-between` used to do, from the value's own side —
 		   <Field.Label data-inline> is a plain flex row, and the row has exactly these two children. */
 		margin-left: auto;
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		font-weight: 700;
 		color: var(--ink);
 		font-variant-numeric: tabular-nums;

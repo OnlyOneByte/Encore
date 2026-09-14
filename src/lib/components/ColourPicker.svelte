@@ -209,7 +209,7 @@
 	 * the settings page's 27-field vertical rhythm into this flex head row.
 	 */
 	.field-label {
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
@@ -223,7 +223,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 7px;
-		font-size: 0.85rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink);
 	}
 	.colour-chip {
@@ -331,7 +331,7 @@
 	/* Dark tick on a light swatch, with a faint light halo so it survives the darker presets too. */
 	.tick {
 		color: var(--bg);
-		font-size: 1.3rem;
+		font-size: var(--ph-text-xl);
 		display: grid;
 		place-items: center;
 		filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.5));

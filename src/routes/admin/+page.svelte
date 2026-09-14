@@ -13,6 +13,7 @@
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import * as Item from '$lib/components/ui/item';
 	import * as Alert from '$lib/components/ui/alert';
+	import * as Empty from '$lib/components/ui/empty';
 	import { Button } from '$lib/components/ui/button';
 
 	interface LibrarySong {
@@ -115,12 +116,25 @@
 		{#if loading}
 			<p class="muted" role="status">Loading library…</p>
 		{:else if failed}
-			<p class="muted" role="alert">
-				Could not load the library.
-				<Button variant="link" onclick={load}>Retry</Button>
-			</p>
+			<!--
+				`role="alert"` is kept ON the Empty: a load failure is a change the operator must hear, and
+				`Empty.Root` renders a plain div with no role of its own. The Retry lives in `Empty.Content`,
+				which is the slot for an empty state`s one next action.
+			-->
+			<Empty.Root role="alert">
+				<Empty.Header>
+					<Empty.Description>Could not load the library.</Empty.Description>
+				</Empty.Header>
+				<Empty.Content>
+					<Button variant="link" onclick={load}>Retry</Button>
+				</Empty.Content>
+			</Empty.Root>
 		{:else if songs.length === 0}
-			<p class="muted">No processed songs in the library.</p>
+			<Empty.Root>
+				<Empty.Header>
+					<Empty.Description>No processed songs in the library.</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
 		{:else}
 			<Item.Group>
 				{#each songs as song (song.id)}

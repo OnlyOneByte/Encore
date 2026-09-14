@@ -462,7 +462,7 @@
 		align-items: baseline;
 	}
 	.kept {
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink);
 	}
 	/*
@@ -484,7 +484,7 @@
 		list-style: none;
 		margin: 0.6rem 0 0;
 		padding: 0;
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;
 		display: grid;

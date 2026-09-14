@@ -471,6 +471,9 @@
 		   surface, so white is a deliberate photo-overlay exception rather than a themeable colour. */
 		background: var(--scrim-strong);
 		color: #fff;
+		/* 0.62rem, below --ph-text-2xs: the duration badge sits INSIDE the thumbnail, over an arbitrary
+		   video frame, and the box is 84x47. A ladder step would push it past the frame it labels. Paired
+		   with the deliberate `#fff` above — both are photo-overlay exceptions, not theme type. */
 		font-size: 0.62rem;
 		font-weight: 700;
 		padding: 1px var(--space-2xs);
@@ -530,7 +533,7 @@
 
 	/* The uploader / canonical artist, alone on its line so it is never truncated by prose beside it. */
 	.byline {
-		font-size: 0.74rem;
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 		margin-top: var(--space-3xs);
 		white-space: nowrap;
@@ -683,7 +686,7 @@
 			margin-top: 5px;
 		}
 		.byline {
-			font-size: 0.72rem;
+			font-size: var(--ph-text-xs);
 		}
 		.row {
 			padding: var(--space-sm);

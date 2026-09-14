@@ -1810,7 +1810,7 @@
 		flex: 1 1 auto;
 		min-width: 0;
 		margin: 0;
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 	}
 	.reorder-acts {
@@ -1820,7 +1820,7 @@
 	}
 	.reorder-note {
 		margin: 0 0 var(--space-sm);
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		color: var(--warn);
 	}
 	/*
@@ -1848,7 +1848,7 @@
 		border-radius: var(--radius-sm);
 		background: var(--bg2);
 		color: var(--ink-dim);
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		font-weight: 600;
 		cursor: pointer;
 	}
@@ -2040,7 +2040,7 @@
 		opacity: 0.5;
 	}
 	.key .lab {
-		font-size: 0.7rem;
+		font-size: var(--ph-text-2xs);
 		color: var(--ink-dim);
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
@@ -2073,7 +2073,7 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.key-orig {
-		font-size: 0.85rem;
+		font-size: var(--ph-text-sm);
 		font-weight: 700;
 		color: var(--ink);
 	}
@@ -2086,7 +2086,7 @@
 		font-size: var(--ph-text-sm);
 	}
 	.key-sound {
-		font-size: 0.85rem;
+		font-size: var(--ph-text-sm);
 		font-weight: 700;
 		color: var(--warn);
 	}
@@ -2117,18 +2117,18 @@
 		gap: var(--space-md);
 	}
 	.range-label {
-		font-size: 0.95rem;
+		font-size: var(--ph-text-base);
 		font-weight: 700;
 		color: var(--ink);
 		font-variant-numeric: tabular-nums;
 	}
 	.range-oct {
-		font-size: 0.72rem;
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;
 	}
 	.range-band {
-		font-size: 0.72rem;
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 		margin: var(--space-2xs) 0 0;
 	}
@@ -2196,7 +2196,7 @@
 		border: 1px solid var(--line-strong);
 		border-radius: var(--radius-pill);
 		padding: var(--space-2xs) var(--space-md);
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		white-space: nowrap;
 	}
 
@@ -2217,7 +2217,7 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-sm);
-		font-size: 0.85rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 	}
 	/* Centres the "Show all" way-back button under an empty Ready filter. Classed, not inline, so the

@@ -24,7 +24,7 @@
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { NativeSelect } from '$lib/components/ui/native-select';
-	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Switch } from '$lib/components/ui/switch';
 	import { Slider } from '$lib/components/ui/slider';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Card from '$lib/components/ui/card';
@@ -770,7 +770,7 @@
 							{/if}
 
 							<label class="check" for="song-intro-on">
-								<Checkbox
+								<Switch
 									id="song-intro-on"
 									checked={settings.room.songIntroEnabled}
 									onCheckedChange={(v) => onroom({ songIntroEnabled: v })}
@@ -961,7 +961,7 @@
 							{/if}
 
 							<label class="check" for="loudness-norm">
-								<Checkbox
+								<Switch
 									id="loudness-norm"
 									checked={settings.room.loudnessNormalization}
 									onCheckedChange={(v) => onroom({ loudnessNormalization: v })}
@@ -1141,7 +1141,7 @@
 									{#snippet child({ props })}
 										<Card.Content id="advanced-body" {...props}>
 											<label class="check" for="enqueue-upgrade">
-												<Checkbox
+												<Switch
 													id="enqueue-upgrade"
 													checked={settings.global.enqueueUpgrade}
 													onCheckedChange={(v) => onglobal({ enqueueUpgrade: v })}
@@ -1247,7 +1247,7 @@
 	/* Only the server scope needs saying out loud; "You" and "Party" say it in the tab. */
 	.scope-note {
 		margin: 0 0 var(--space-md) var(--space-3xs);
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 	}
 	/* A failed write is about the page, not one card, so it sits above them all. */
@@ -1358,7 +1358,7 @@
 	 */
 	.warn {
 		margin: var(--space-xs) 0 0;
-		font-size: 0.76rem;
+		font-size: var(--ph-text-xs);
 		color: var(--warn);
 	}
 
@@ -1366,7 +1366,7 @@
 	/* States what is behind the door, so it does not have to be opened to be read. */
 	.disclose-now {
 		margin-left: auto;
-		font-size: 0.72rem;
+		font-size: var(--ph-text-xs);
 		font-weight: 600;
 		color: var(--ink-dim);
 	}
@@ -1375,10 +1375,10 @@
 		align-items: center;
 		gap: var(--space-sm);
 		min-height: var(--tap);
-		font-size: 0.86rem;
+		font-size: var(--ph-text-md);
 	}
 	/*
-	 * S3: was `.check input { width: 18px; height: 18px }`. The glyph is now <Checkbox>, which
+	 * S3: was `.check input { width: 18px; height: 18px }`. The control is now <Switch> (<Checkbox> in between), which
 	 * carries its own `size-[18px]` — scoped CSS cannot reach inside a child component, so the size had
 	 * to move with it. The TAP TARGET is unchanged and still this label's `min-height: var(--tap)`,
 	 * which is what the tap-floor ruling settled and what touch-targets.test.ts examines.

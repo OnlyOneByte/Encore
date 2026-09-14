@@ -234,6 +234,10 @@
 	.axis-ends {
 		display: flex;
 		justify-content: space-between;
+		/* 0.6rem, below the ladder's smallest step (--ph-text-2xs, 0.68rem), for the same reason the radii
+		   here are sub-token: these are axis end-labels on an `aria-hidden` chart, and the strip has to fit
+		   C2..C6 across a phone. The ladder governs READABLE copy; this is chart furniture, and the facts
+		   it labels are stated in text beside it. */
 		font-size: 0.6rem;
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;

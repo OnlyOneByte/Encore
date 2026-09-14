@@ -15,6 +15,7 @@
 	import * as Card from '$lib/components/ui/card';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
+	import * as Empty from '$lib/components/ui/empty';
 	import * as Item from '$lib/components/ui/item';
 	import * as Table from '$lib/components/ui/table';
 	import FactList from '$lib/components/FactList.svelte';
@@ -188,7 +189,11 @@
 					</Card.Header>
 					<Card.Content>
 						{#if m.steps.length === 0}
-							<p class="note">Nothing processed yet.</p>
+							<Empty.Root>
+								<Empty.Header>
+									<Empty.Description>Nothing processed yet.</Empty.Description>
+								</Empty.Header>
+							</Empty.Root>
 						{:else}
 							<div class="scroller">
 								<Table.Root>
@@ -238,7 +243,11 @@
 					</Card.Header>
 					<Card.Content>
 						{#if m.models.length === 0}
-							<p class="note">No vocals removed yet.</p>
+							<Empty.Root>
+								<Empty.Header>
+									<Empty.Description>No vocals removed yet.</Empty.Description>
+								</Empty.Header>
+							</Empty.Root>
 						{:else}
 							<div class="scroller">
 								<Table.Root>
@@ -290,7 +299,11 @@
 					</Card.Header>
 					<Card.Content>
 						{#if m.asr.length === 0}
-							<p class="note">No lyrics timed yet.</p>
+							<Empty.Root>
+								<Empty.Header>
+									<Empty.Description>No lyrics timed yet.</Empty.Description>
+								</Empty.Header>
+							</Empty.Root>
 						{:else}
 							<div class="scroller">
 								<Table.Root>
@@ -390,7 +403,11 @@
 					</Card.Header>
 					<Card.Content>
 						{#if m.workers.length === 0}
-							<p class="note">Nothing is connected, so no song can be processed.</p>
+							<Empty.Root>
+								<Empty.Header>
+									<Empty.Description>Nothing is connected, so no song can be processed.</Empty.Description>
+								</Empty.Header>
+							</Empty.Root>
 						{:else}
 							{#each m.workers as w (w.workerId)}
 								<div class="worker">
@@ -532,12 +549,12 @@
 	}
 	.kv .k {
 		display: block;
-		font-size: 0.72rem;
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 		text-transform: uppercase;
 	}
 	.v {
-		font-size: 1.05rem;
+		font-size: var(--ph-text-base);
 		font-weight: 600;
 		font-variant-numeric: tabular-nums;
 	}

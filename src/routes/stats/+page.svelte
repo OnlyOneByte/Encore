@@ -323,10 +323,10 @@
 		line-height: var(--lh-tight);
 	}
 	.primary .n {
-		font-size: 2.6rem;
+		font-size: var(--ph-text-3xl);
 	}
 	.k {
-		font-size: 0.88rem;
+		font-size: var(--ph-text-md);
 	}
 	.sub,
 	.note {
