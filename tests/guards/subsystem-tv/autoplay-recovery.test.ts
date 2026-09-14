@@ -58,10 +58,16 @@ test('TvPlayer arms a document-wide gesture listener that re-attempts playback',
 	// covers a tap AND a keypress (a remote / keyboard is a valid gesture on a TV).
 	expect(src).toMatch(/window\.addEventListener\(\s*['"]pointerdown['"]/);
 	expect(src).toMatch(/window\.addEventListener\(\s*['"]keydown['"]/);
-	// The listener is armed only while blocked (its effect early-returns otherwise) and re-attempts the
-	// master's play via the tracking helper — the ONE place a play() promise is resolved.
-	expect(src).toMatch(/if\s*\(\s*!autoplayBlocked\s*\)\s*return/);
+	// The listener is ARMED UNCONDITIONALLY — its effect must NOT early-return on the latch. That gating
+	// was the semitone defect: a TV whose autoplay succeeded never raised `autoplayBlocked`, so it had no
+	// gesture listener at all, so its AudioContext could never be resumed and every ± press degraded
+	// silently. The play() nudge is still latch-gated, just INSIDE the handler (read at gesture time),
+	// so a tap cannot start a room somebody deliberately paused.
+	expect(src).not.toMatch(/if\s*\(\s*!autoplayBlocked\s*\)\s*return/);
+	expect(src).toMatch(/if\s*\(\s*autoplayBlocked\s*\)\s*\{/);
 	expect(src).toContain('tryPlayMaster');
+	// And the gesture re-drives a transpose that could not route for want of activation.
+	expect(src).toContain('retryPitchAfterGesture');
 	// On recovery the latch clears and the page is told — so the hint retracts and the listener's effect
 	// cleanup removes it.
 	expect(src).toMatch(/autoplayBlocked\s*=\s*false/);

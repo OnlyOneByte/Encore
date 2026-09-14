@@ -112,6 +112,24 @@
 		// (like `onautoplayblocked`) so the hidden pre-warming slot cannot raise a phantom failure. `reason`
 		// is the error name, for the operator-facing surface.
 		onplaybackfailed?: (reason: string) => void;
+		/*
+		 * A TRANSPOSE WAS ASKED FOR AND COULD NOT ROUTE. The ± semitone shift runs through a WebAudio
+		 * graph, and a browser only lets an AudioContext reach `running` once the page has user
+		 * activation. With none, `PitchShiftGraph` degrades deliberately — it closes the context and
+		 * leaves the element on its native output, audible but UNSHIFTED — because the alternative
+		 * (capturing the element into a suspended graph) is permanent silence for the whole room.
+		 *
+		 * That degradation had no reader. `isDegraded` and `isRouted` existed on the graph and nothing in
+		 * the app called them, so on a TV that autoplays correctly — which therefore never receives the
+		 * tap that `autoplayBlocked` would have invited — every press of ± did nothing, said nothing, and
+		 * logged nothing. This is the signal that lets the page ask for the one tap that fixes it.
+		 *
+		 * Fires ONLY from the active+visible slot, like `onautoplayblocked`, so the hidden pre-warming
+		 * slot cannot raise a phantom hint.
+		 */
+		onpitchblocked?: () => void;
+		/** The transpose is routing (or nothing is pending) — retract any hint raised above. */
+		onpitchrouted?: () => void;
 	}
 	let {
 		media,
@@ -132,7 +150,9 @@
 		onautoplayblocked,
 		onautoplayrecovered,
 		onplayingchange,
-		onplaybackfailed
+		onplaybackfailed,
+		onpitchblocked,
+		onpitchrouted
 	}: Props = $props();
 
 	let master: HTMLAudioElement | undefined = $state();
@@ -596,51 +616,91 @@
 		}
 	}
 
-	// Recovery from a blocked autoplay. A user gesture ANYWHERE on the page (a tap on the TV's own
-	// touchscreen, a click from a paired remote, a keypress) authorises playback for this document, so on
-	// such a gesture we re-attempt the master's play() SYNCHRONOUSLY inside the handler — the play() must
-	// share the gesture's task to consume the user activation. The listener is NOT `once`: it is torn
-	// down by this effect's cleanup, which runs when `autoplayBlocked` clears (a successful re-attempt
-	// flips the latch inside tryPlayMaster). So a gesture that does NOT recover playback (rare, but a
-	// second attempt is free) leaves the listener armed for the next one, while a recovery removes it and
-	// a TV that recovered pays nothing thereafter. We re-align and re-start the guide too, so a recovered
-	// master never leaves the guide silent behind it.
+	/**
+	 * Re-drive a transpose that could not route for want of user activation.
+	 *
+	 * Called from the gesture listener below, which is the only moment an AudioContext can become
+	 * resumable. A ± press before any tap builds a graph, fails to resume, and degrades to
+	 * audible-but-unshifted; none of the pitch effect's tracked deps change when the wall is finally
+	 * tapped, so without this the song never shifts however many times the guest presses.
+	 *
+	 * Cheap and safe to call on every gesture: `setShift` on an already-routed graph just re-posts the
+	 * ratio to the worklet, and the `needsShift` guard keeps the keyShift-0 invariant intact — at 0 we
+	 * build nothing, touch no AudioContext, and capture no element.
+	 */
+	async function retryPitchAfterGesture(): Promise<void> {
+		if (!needsShift(keyShift)) return;
+		if (!masterGraph && !guideGraph) return;
+		await masterGraph?.setShift(keyShift).catch(() => {});
+		await guideGraph?.setShift(keyShift).catch(() => {});
+		if (!active || !visible) return;
+		if (masterGraph?.isRouted) onpitchrouted?.();
+	}
+
+	// Recovery from a blocked autoplay, AND the one chance a pending transpose has of routing. A user
+	// gesture ANYWHERE on the page (a tap on the TV's own touchscreen, a click from a paired remote, a
+	// keypress) authorises playback and WebAudio for this document, so on such a gesture we re-attempt
+	// the master's play() SYNCHRONOUSLY inside the handler — the play() must share the gesture's task to
+	// consume the user activation.
 	//
-	// It does NOT build a WebAudio graph: this is a bare element.play(), so the keyShift===0 invariant —
-	// no AudioContext, no MediaElementSource unless a shift is actually applied — is untouched. A pending
-	// non-zero shift is applied by the pitch-shift effect on its own inputs, independently of this retry.
+	// THE LISTENER IS ARMED UNCONDITIONALLY, and that is the fix. It used to be gated on
+	// `autoplayBlocked`, so it existed only on a TV whose autoplay had been REFUSED. A TV that autoplays
+	// correctly — the normal, correctly-configured case — therefore had no gesture listener at all, and
+	// its AudioContext could never be resumed, so the ± semitone buttons were permanently dead with no
+	// error anywhere. The autoplay half still runs only while the latch is up (read at gesture time, not
+	// as an effect dependency): calling tryPlayMaster() on every tap regardless would start a room that
+	// someone had deliberately paused. The pitch half runs on any gesture, because that is precisely the
+	// event it was missing.
+	//
+	// Being armed for the life of the component is the point and costs almost nothing — two passive,
+	// capture-phase listeners. Cleanup is unmount, not "the block cleared", since there is no longer a
+	// latch to clear. We re-align and re-start the guide too, so a recovered master never leaves the
+	// guide silent behind it.
+	//
+	// It still builds no WebAudio graph of its own: `tryPlayMaster` is a bare element.play(), so the
+	// keyShift===0 invariant — no AudioContext, no MediaElementSource unless a shift is actually
+	// applied — is untouched. `retryPitchAfterGesture` only re-drives graphs that a real non-zero shift
+	// already created.
 	$effect(() => {
-		if (!autoplayBlocked) return;
 		if (typeof window === 'undefined') return;
 		const onGesture = () => {
-			void tryPlayMaster();
-			// A gesture is also the ONLY thing that can make an AudioContext resumable, so it is the only
-			// chance a mix song has to get its split graph after a pre-gesture attempt was refused. Without
-			// this the first song of every TV session loses its guide permanently: the eager build runs at
-			// mount (context suspended → `denied`), and none of the pitch effect's tracked deps change when
-			// the wall is finally tapped, so nothing ever re-attempts. Re-open the gate first so the src
-			// effect re-takes its decision once the retry settles.
-			if (masterGraph && !masterGraph.isRouted && wantsEagerGraph(guidePlan)) {
-				mixSettled = false;
-				void masterGraph
-					.ensureRouted()
-					.catch(() => {})
-					.finally(() => {
-						mixSettled = true;
-					});
+			// Read the latch HERE rather than in the effect body: that is what lets the listener stay
+			// armed on a TV that never raised it, while keeping the play() nudge exclusive to a TV that
+			// genuinely was blocked.
+			if (autoplayBlocked) {
+				void tryPlayMaster();
+				// A gesture is also the ONLY thing that can make an AudioContext resumable, so it is the only
+				// chance a mix song has to get its split graph after a pre-gesture attempt was refused. Without
+				// this the first song of every TV session loses its guide permanently: the eager build runs at
+				// mount (context suspended → `denied`), and none of the pitch effect's tracked deps change when
+				// the wall is finally tapped, so nothing ever re-attempts. Re-open the gate first so the src
+				// effect re-takes its decision once the retry settles.
+				if (masterGraph && !masterGraph.isRouted && wantsEagerGraph(guidePlan)) {
+					mixSettled = false;
+					void masterGraph
+						.ensureRouted()
+						.catch(() => {})
+						.finally(() => {
+							mixSettled = true;
+						});
+				}
+				// Bring the guide along if it is mounted and wanted — it obeys the same transport, but its own
+				// play() was refused by the same policy, so it needs the same nudge.
+				if (vocals && transport === 'play') {
+					// Same fixed-target lock-on as the transport path: seek to the master playhead sampled NOW,
+					// never to a moving reference the guide flush would fall behind.
+					alignGuidePreroll();
+					vocals.play().catch(() => {});
+				}
 			}
-			// Bring the guide along if it is mounted and wanted — it obeys the same transport, but its own
-			// play() was refused by the same policy, so it needs the same nudge.
-			if (vocals && transport === 'play') {
-				// Same fixed-target lock-on as the transport path: seek to the master playhead sampled NOW,
-				// never to a moving reference the guide flush would fall behind.
-				alignGuidePreroll();
-				vocals.play().catch(() => {});
-			}
+			// The pitch retry runs on ANY gesture, blocked or not — a TV that autoplayed fine still needs
+			// this one tap before WebAudio will run, and it is the only reason this listener is armed there.
+			void retryPitchAfterGesture();
 		};
 		// `capture` so it sees the gesture even if something downstream stops propagation. Passive: we
-		// never preventDefault. Not `once` — removal is the effect cleanup's job (fires when the block
-		// clears), so a non-recovering gesture leaves the listener armed for the next attempt.
+		// never preventDefault. Not `once`, and no longer torn down on a latch change either — removal is
+		// the effect cleanup's job, which now means unmount, so a pending transpose can still take a
+		// gesture that arrives long after any autoplay question was settled.
 		const opts: AddEventListenerOptions = { capture: true, passive: true };
 		window.addEventListener('pointerdown', onGesture, opts);
 		window.addEventListener('keydown', onGesture, opts);
@@ -757,13 +817,10 @@
 		// A bare read is enough to register the dep in runes mode.
 		void seekRev;
 		if (target === undefined) return;
-		// hold this position for the master's `canplay`. On a cold mount (a reload mid-song) the
-		// <audio> does not exist yet — it is gated on `nowplaying:changed`, which the server sends AFTER
-		// this `playback:state` — so `applySeek` below early-returns on a null master and the target is
-		// lost, and telemetry never bumps `rev` to re-wake this effect. Stashing it lets `applyResume`
-		// take it once the element can play. `applySeek` still runs for the WARM path (a live scrub with
-		// an element already mounted), where `canplay` will not fire again.
-		resumeTarget = target;
+		// The COLD-MOUNT hold lives inside `applySeek`, with the element read it depends on. Keeping it
+		// there is what lets this effect's dependency set stay exactly "what a playback command asked
+		// for" — see the playhead-isolation guard, which bans every catalog/element/slot identifier from
+		// this body precisely because one of them being read here is the bug described above.
 		applySeek(target);
 	});
 
@@ -788,6 +845,30 @@
 	 */
 	function applySeek(seekTarget: number): void {
 		const el = untrack(() => master);
+		/*
+		 * THE COLD-MOUNT HOLD, and the fix for a playhead that jumped backwards at random.
+		 *
+		 * With NO element there is nothing to seek, so hold the position for the master's `canplay`: on a
+		 * reload mid-song the <audio> does not exist yet (it is gated on `nowplaying:changed`, which the
+		 * server sends AFTER this `playback:state`), and telemetry never bumps `rev` to re-wake the
+		 * effect, so without the hold the room's position is simply lost. `applyResume` takes it once the
+		 * element can play.
+		 *
+		 * With an element the hold must be CLEARED, and that is the half that was missing. The stash used
+		 * to be unconditional, on the false premise that on the warm path "`canplay` will not fire
+		 * again". It does: per the HTML media spec `canplay` fires every time `readyState` rises back to
+		 * HAVE_FUTURE_DATA — after any seek that empties the buffer, and after every buffer-underrun
+		 * recovery. Meanwhile the broadcast `positionSec` is the live telemetry playhead, so the plan
+		 * below almost always declines it as sub-threshold and nothing cleared the stash. The target
+		 * stayed armed at the playhead as of the last command, and the next network or decode hiccup
+		 * fired `canplay` and applied it — flushing the decoder (a brief stop) and resuming seconds
+		 * EARLIER. Every control re-armed it, and the guide slider re-arms it ~8x/second while dragging,
+		 * which is what made a deterministic bug look like random pausing and unpausing.
+		 *
+		 * A mounted element takes the position here, which is the whole warm path, so a held target on
+		 * top of it buys nothing and costs the jump.
+		 */
+		resumeTarget = el ? undefined : seekTarget;
 		const snap = untrack(() => media);
 		const isActive = untrack(() => active);
 		if (!el || !snap || !isPlayable(snap) || !isActive) return;
@@ -926,7 +1007,31 @@
 		// Master. Only ever build the graph once there is a real shift to apply; setShift(0) on an
 		// un-built graph is a documented no-op.
 		if (needsShift(shift) && !masterGraph) masterGraph = new PitchShiftGraph(v);
-		masterGraph?.setShift(shift);
+		// REPORT THE OUTCOME. `setShift` resolves whether or not the graph could route, and a graph that
+		// could not (no user activation yet → suspended AudioContext → deliberate degrade to the element's
+		// native output) leaves the song audible but UNSHIFTED. Nothing read that before, which is why a
+		// dead ± button had no symptom beyond "it does nothing". Telling the page lets it ask for the tap
+		// that would fix it, and `retryPitchAfterGesture` above is what makes that tap work.
+		const applied = masterGraph?.setShift(shift);
+		if (applied) {
+			void applied
+				.catch(() => {})
+				.then(() => {
+					// Only the slot the viewer is looking at may raise a hint, like `onautoplayblocked`.
+					if (!active || !visible) return;
+					if (!needsShift(shift)) {
+						// Back at concert pitch — nothing is pending, so retract any hint.
+						onpitchrouted?.();
+					} else if (masterGraph && !masterGraph.isRouted) {
+						onpitchblocked?.();
+					} else {
+						onpitchrouted?.();
+					}
+				});
+		} else if (!needsShift(shift) && active && visible) {
+			// No graph at all and no shift wanted: the keyShift-0 invariant path. Nothing is pending.
+			onpitchrouted?.();
+		}
 		// Re-apply the master's normalization level, same shape as the guide's an earlier change re-apply
 		// below: the level effect above owns it, but its tracked deps are `master`/`effectiveMasterLevel`
 		// only — `masterGraph` is a plain variable, so that effect does NOT re-run when a transpose

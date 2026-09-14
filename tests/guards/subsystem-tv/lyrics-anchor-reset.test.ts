@@ -64,6 +64,38 @@ test('F1/F2: applyNowPlaying resets the drawn-position anchor on the entry chang
 	expect(/\bdurationSec\s*=\s*0\b/.test(body)).toBe(true);
 });
 
+test('F1/F2: the reset fires ONLY on a real entry change, never on every playback command', () => {
+	// THE OTHER HALF, and it was missing — which is why this guard stayed green through a real defect.
+	// The server calls `emitNowPlaying` at the tail of EVERY player command (server/realtime/player.ts),
+	// not only on an advance, so an unguarded reset ran on every pause, resume, restart, key press and
+	// guide nudge. `positionSec = 0` flows into the overlay's anchor and `activeLineIndex(lines, 0)`
+	// returns 0, so the reel snapped back to the FIRST line and the progress bar emptied until the next
+	// `timeupdate` ~250ms later. Under the guide slider's ~8 commands/second it is re-pinned to 0 faster
+	// than telemetry can recover it, so for the whole drag the reel parks on the opening line and stops
+	// tracking the singer.
+	//
+	// Asserting the reset EXISTS (the test above) is compatible with the bug. Asserting it is CONDITIONAL
+	// is what closes it.
+	const clean = stripComments(ROUTE);
+	const body = functionBody(clean, 'applyNowPlaying');
+	expect(body, 'applyNowPlaying body must be found').not.toBe('');
+
+	// The turn identity is compared BEFORE `current` is overwritten, on the ENTRY id — a song queued
+	// twice is two entries over one media record, so the media id would miss a real advance.
+	const decl = /const\s+entryChanged\s*=\s*([^\n;]+);/.exec(body);
+	expect(decl, 'applyNowPlaying must derive an entryChanged flag').not.toBeNull();
+	expect(decl?.[1]).toContain('cur?.id');
+	expect(decl?.[1]).toContain('current?.id');
+	// Taken before the assignment that would make the comparison vacuous (`current = cur`).
+	expect(body.indexOf('entryChanged')).toBeLessThan(body.indexOf('current = cur'));
+
+	// Both resets sit inside that condition, not at the function's top level.
+	const guarded = /if\s*\(entryChanged\)\s*\{([\s\S]*?)\}/.exec(body)?.[1] ?? '';
+	expect(guarded, 'the resets must live inside an if (entryChanged) block').not.toBe('');
+	expect(/\bpositionSec\s*=\s*0\b/.test(guarded)).toBe(true);
+	expect(/\bdurationSec\s*=\s*0\b/.test(guarded)).toBe(true);
+});
+
 test('F3: LyricsOverlay clears the cached doc on a ref change, not only when the ref goes falsy', () => {
 	const clean = stripComments(OVERLAY);
 
