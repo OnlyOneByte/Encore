@@ -73,63 +73,65 @@
 </script>
 
 <div class="band" class:idle={!hasSong}>
-	<!--
+	<div class="inner">
+		<!--
 		The pull surface. It carries the expand action and NOTHING else: XR-PH-15's prohibition is on a
 		control sharing a drag surface, and a range input here would fight the gesture. The handle is a
 		real button so the band is reachable without a pointer — a drag-only affordance is unreachable
 		by keyboard and by a screen reader.
 	-->
-	<button
-		class="handle"
-		type="button"
-		aria-label={hasSong ? 'Open now playing' : 'Open the player'}
-		onclick={() => onexpand?.()}
-	>
-		<i></i>
-	</button>
-
-	<div class="strip">
-		<div class="meta">
-			<div class="title">{hasSong ? title : 'Nothing playing'}</div>
-			<div class="byline">
-				{#if hasSong && singerName}
-					<span class="dot" style:background={singerColor ?? 'var(--accent)'}></span>
-				{/if}
-				<span class="byline-text">{byline}</span>
-			</div>
-		</div>
-
-		<button class="btn" type="button" aria-label="Search for a song" onclick={() => onsearch?.()}>
-			<Icon name="search" />
+		<button
+			class="handle"
+			type="button"
+			aria-label={hasSong ? 'Open now playing' : 'Open the player'}
+			onclick={() => onexpand?.()}
+		>
+			<i></i>
 		</button>
 
-		<!--
+		<div class="strip">
+			<div class="meta">
+				<div class="title">{hasSong ? title : 'Nothing playing'}</div>
+				<div class="byline">
+					{#if hasSong && singerName}
+						<span class="dot" style:background={singerColor ?? 'var(--accent)'}></span>
+					{/if}
+					<span class="byline-text">{byline}</span>
+				</div>
+			</div>
+
+			<button class="btn" type="button" aria-label="Search for a song" onclick={() => onsearch?.()}>
+				<Icon name="search" />
+			</button>
+
+			<!--
 			The disc: artwork, transport and progress in one control. The ring is drawn OUTSIDE the
 			button box so the tap target stays a full var(--tap) — an inset ring would eat into it, which
 			is how a 44px control silently becomes 38px.
 		-->
-		<button
-			class="disc"
-			type="button"
-			aria-label={isPlaying ? 'Pause' : 'Play'}
-			disabled={!hasSong}
-			onclick={() => ontoggleplay?.()}
-		>
-			<span class="art"></span>
-			<span class="mark"><Icon name={isPlaying ? 'pause' : 'play'} /></span>
-			<svg class="ring" viewBox="0 0 52 52" aria-hidden="true">
-				<circle class="ring-track" cx="26" cy="26" r="24" />
-				<circle
-					class="ring-fill"
-					cx="26"
-					cy="26"
-					r="24"
-					stroke-dasharray={CIRCUMFERENCE}
-					stroke-dashoffset={dashOffset}
-					transform="rotate(-90 26 26)"
-				/>
-			</svg>
-		</button>
+			<button
+				class="disc"
+				type="button"
+				aria-label={isPlaying ? 'Pause' : 'Play'}
+				disabled={!hasSong}
+				onclick={() => ontoggleplay?.()}
+			>
+				<span class="art"></span>
+				<span class="mark"><Icon name={isPlaying ? 'pause' : 'play'} /></span>
+				<svg class="ring" viewBox="0 0 52 52" aria-hidden="true">
+					<circle class="ring-track" cx="26" cy="26" r="24" />
+					<circle
+						class="ring-fill"
+						cx="26"
+						cy="26"
+						r="24"
+						stroke-dasharray={CIRCUMFERENCE}
+						stroke-dashoffset={dashOffset}
+						transform="rotate(-90 26 26)"
+					/>
+				</svg>
+			</button>
+		</div>
 	</div>
 </div>
 
@@ -145,6 +147,43 @@
 		box-shadow: var(--shadow);
 		padding-bottom: env(safe-area-inset-bottom, 0px);
 		z-index: var(--z-dock);
+		/*
+		 * SAFE TO PLACE IN A FLEX OR GRID PARENT, which `min-width: 0` is the only way to be.
+		 *
+		 * A flex/grid item's automatic minimum is its MIN-CONTENT width, and `.title` is
+		 * `white-space: nowrap`, so the band's min-content is the full untruncated title. Without this
+		 * the band refuses to shrink and OVERFLOWS its own container instead of ellipsising inside it —
+		 * measured at 593px inside a 390px column, which is how the first gallery frame lost its
+		 * controls off the right edge. `.meta` below frees the flex child; this frees the band itself.
+		 *
+		 * Same defect class as the `.sheet-surface > * { min-width: 0 }` rule the drawer deletion
+		 * retired: an unbreakable label sizing a box that was supposed to cap itself (SC 1.4.10).
+		 */
+		min-width: 0;
+	}
+
+	/*
+	 * FULL-BLEED SURFACE, CAPPED INNER STRIP — and the split is the whole desktop answer.
+	 *
+	 * A bottom-docked surface must track `--max-w` or it floats free of the content column it is
+	 * supposed to belong to: the app shell caps its column at `--max-w` and grows it in two steps
+	 * (480 → 760 at 768px → 1080 at 1200px), so a band whose CONTENT ran the full viewport width would
+	 * put its transport under the singer's thumb on a phone and out at the far edge of a laptop,
+	 * pointing at nothing.
+	 *
+	 * The surface stays full-bleed deliberately — the paint, the top border and the safe-area inset
+	 * span the viewport, so the band reads as app chrome rather than as a floating card, and on a phone
+	 * (where the viewport is narrower than the cap) the two are identical.
+	 *
+	 * It also makes the component honest in ANY container: the strip is bounded by the token, not by
+	 * whoever renders it, so a desktop-wide gallery column no longer stretches the controls to its
+	 * edges — which is exactly how the first captured frame lost them off-screen.
+	 */
+	.inner {
+		max-width: var(--max-w);
+		margin-inline: auto;
+		/* Same reason as `.band` above: the nowrap title must not set a floor this box cannot go under. */
+		min-width: 0;
 	}
 
 	.handle {

@@ -693,7 +693,7 @@
 		the long-title case stops proving anything, because a 900px band fits any title. 390px is the
 		reference device, so these five read as they will on the thing they are for.
 	-->
-	<div style="display:grid;gap:20px;max-width:390px;">
+	<div style="display:grid;grid-template-columns:minmax(0,390px);gap:20px;">
 		<div>
 			<p class="caption">Playing, mid-song — the canonical state</p>
 			<NowPlayingBand
