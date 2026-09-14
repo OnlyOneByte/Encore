@@ -14,6 +14,7 @@
 	import { formatClock } from '$lib/clock';
 	import type { SelectionRecord } from '$lib/contract';
 	import * as Card from '$lib/components/ui/card';
+	import * as Alert from '$lib/components/ui/alert';
 	import * as Item from '$lib/components/ui/item';
 	import FactList from '$lib/components/FactList.svelte';
 	import { Badge } from '$lib/components/ui/badge';
@@ -145,7 +146,7 @@
 	-->
 	<main aria-label={pageTitle}>
 		{#if error}
-			<p class="note" role="alert">{error}</p>
+			<Alert.Root variant="destructive"><Alert.Title>{error}</Alert.Title></Alert.Root>
 		{:else}
 			<!--
 				ONE live region that EXISTS BEFORE ITS CONTENT CHANGES (the shadcn migration). This was

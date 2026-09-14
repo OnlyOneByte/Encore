@@ -13,6 +13,7 @@
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import { dur, stepLabel, stageLabel, rate } from '$lib/metrics-format';
 	import * as Card from '$lib/components/ui/card';
+	import * as Alert from '$lib/components/ui/alert';
 	import * as Item from '$lib/components/ui/item';
 	import * as Table from '$lib/components/ui/table';
 	import FactList from '$lib/components/FactList.svelte';
@@ -127,7 +128,7 @@
 	-->
 	<main aria-label="Processing metrics">
 		{#if failed}
-			<p class="note" role="alert">Could not load metrics.</p>
+			<Alert.Root variant="destructive"><Alert.Title>Could not load metrics.</Alert.Title></Alert.Root>
 		{:else}
 			<!--
 				Worker state leads. It was last on the page, but it is the difference between "processing is
@@ -135,7 +136,14 @@
 				rather than live state, and that is the first thing an operator needs to know.
 			-->
 			{#if m && m.workers.length === 0}
-				<p class="banner" role="status">No worker connected — songs can't be processed right now.</p>
+				<!--
+					`role="status"`, not the registry's hardcoded `alert`: this reports a STANDING condition,
+					so it must not interrupt a screen reader mid-sentence. phone-inventory.test.ts requires
+					every live region on these surfaces to be polite.
+				-->
+				<Alert.Root variant="warn" role="status">
+					<Alert.Title>No worker connected — songs can't be processed right now.</Alert.Title>
+				</Alert.Root>
 			{/if}
 
 			<!--
@@ -468,27 +476,16 @@
 	 * S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
 	 * title where this was hand-styled, which is part of the visual change accepted for S4.
 	 */
-	/* Stopped, not merely slow — the one state that invalidates every number below it. --warn-bg gives
-	   it a fill (it painted transparent while the token was undefined, hiding the page's most important
-	   state); --warn-line is the matching border. */
-	.banner {
-		margin: 0;
-		padding: 0.6rem 0.8rem;
-		border-radius: var(--radius-sm);
-		background: var(--warn-bg);
-		border: 1px solid var(--warn-line);
-		color: var(--warn);
-		/*
-		 * --ph-text-base (1rem / 16px), raised from 0.85rem / 13.6px (the shadcn migration). This banner is the page's most
-		 * important state — with no worker connected every number below it is history rather than live —
-		 * and it was set SMALLER than the body copy it interrupts. Bold at 13.6px is not a substitute for
-		 * size: weight does not restore the stroke contrast small type loses, and the sentence is one short
-		 * line in a full-width block, so there is no layout cost to reading it at body size. It is a ladder
-		 * step rather than a nudged literal so it stays on the scale the rest of the page sizes from.
-		 */
-		font-size: var(--ph-text-base);
-		font-weight: 600;
-	}
+	/*
+	 * `.banner` is GONE — the no-worker state is `Alert variant="warn" role="status"` with its sentence
+	 * in `Alert.Title`. The reasoning the old rule carried is preserved where it now lives: the warn
+	 * fill/line pair became the component's `warn` variant (added precisely because the registry's
+	 * `destructive` paints the flat card surface and would have made this banner LESS legible than the
+	 * hand-rolled one), `--ph-text-base` became the component's base type size for the same
+	 * "bold is not a substitute for size" reason, and the 600 weight is `Alert.Title`'s `font-medium`.
+	 * Deleted rather than kept because a Svelte rule matching nothing is an unused selector, which this
+	 * repo treats as a typecheck failure.
+	 */
 	/*
 	 * NUMERIC COLUMNS ARE RIGHT-ALIGNED, and the first column stays left because it is a name rather
 	 * than a quantity. tabular-nums does half that job by making every digit the same width, but

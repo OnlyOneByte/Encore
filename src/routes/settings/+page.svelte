@@ -30,6 +30,7 @@
 	import * as Field from '$lib/components/ui/field';
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import * as Alert from '$lib/components/ui/alert';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -448,7 +449,9 @@
 
 	<main>
 		{#if failed}
-			<p class="warn banner" role="alert">That change could not be saved. Reverted to the last good value.</p>
+			<Alert.Root variant="destructive">
+				<Alert.Title>That change could not be saved. Reverted to the last good value.</Alert.Title>
+			</Alert.Root>
 		{/if}
 
 		<!--
@@ -1247,9 +1250,8 @@
 		color: var(--ink-dim);
 	}
 	/* A failed write is about the page, not one card, so it sits above them all. */
-	.banner {
-		margin: 0 0 var(--space-md);
-	}
+	/* `.banner` is GONE: the save-failure line is `Alert variant="destructive"`, which owns its own
+	   block spacing. Deleted rather than kept, because an unused selector is a typecheck failure here. */
 
 	/*
 	 * Two controls per row where they are genuinely a pair (highlight + marker, font + case, splitter +

@@ -12,6 +12,7 @@
 	import { onMount } from 'svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import * as Item from '$lib/components/ui/item';
+	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
 
 	interface LibrarySong {
@@ -96,7 +97,12 @@
 		<p class="lede">Hard-delete a song from the library. This removes its files and cannot be undone.</p>
 
 		{#if notice}
-			<p class="notice" role="status">{notice}</p>
+			<!--
+				`role="status"`: this reports the outcome of an action the operator just took, so it must
+				not interrupt. `accent`, not `destructive` — a completed delete is a confirmation, and
+				painting it in the danger family would make a success look like a failure.
+			-->
+			<Alert.Root variant="accent" role="status"><Alert.Title>{notice}</Alert.Title></Alert.Root>
 		{/if}
 
 		<!--
@@ -190,13 +196,8 @@
 		align-items: center;
 		gap: var(--space-sm);
 	}
-	.notice {
-		background: color-mix(in srgb, var(--accent2) 12%, transparent);
-		border: 1px solid color-mix(in srgb, var(--accent2) 40%, transparent);
-		border-radius: var(--radius-sm);
-		padding: var(--space-md) var(--space-lg);
-		margin: 0 0 var(--space-2xl);
-	}
+	/* `.notice` is GONE: the post-action confirmation is `Alert variant="accent" role="status"`. The
+	   accent2 color-mix tint it used became the component's `accent` variant over --card-tint. */
 	/*
 	 * the primitive-adoption pass: `.songlist`, `.song-row`, `.meta`, `.title`, `.artist`, the bare `button` rule,
 	 * `.delete`, `.confirm`, `.danger`, `.danger:disabled`, `.ghost` and `.link` are all GONE — the row

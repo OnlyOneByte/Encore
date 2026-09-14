@@ -11,6 +11,7 @@
 	import Trend from '$lib/charts/Trend.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import * as Card from '$lib/components/ui/card';
+	import * as Alert from '$lib/components/ui/alert';
 
 	interface Stats {
 		library: { ready: number; catalog: number };
@@ -68,7 +69,7 @@
 	-->
 	<main aria-label="Party stats">
 		{#if failed}
-			<p class="note" role="alert">Could not load stats.</p>
+			<Alert.Root variant="destructive"><Alert.Title>Could not load stats.</Alert.Title></Alert.Root>
 		{:else}
 			<!--
 				ONE live region that EXISTS BEFORE ITS CONTENT CHANGES (the shadcn migration). This was
