@@ -70,7 +70,7 @@ test('pasting reports the text via onpaste', () => {
 	open(host);
 	(host.querySelector('.reselect-paste-open') as HTMLButtonElement).click();
 	flushSync();
-	const ta = host.querySelector('.reselect-textarea') as HTMLTextAreaElement;
+	const ta = host.querySelector('[data-slot="textarea"]') as HTMLTextAreaElement;
 	ta.value = 'my own words';
 	const win = host.ownerDocument.defaultView as unknown as { Event: typeof Event };
 	ta.dispatchEvent(new win.Event('input', { bubbles: true }));

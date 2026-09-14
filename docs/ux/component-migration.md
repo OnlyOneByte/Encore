@@ -146,16 +146,17 @@ same problem and the same status.
 ## Group 5 — Required set, and the gaps
 
 The registry carries 62 components ([shadcn-svelte.com/docs/components](https://shadcn-svelte.com/docs/components),
-read 2026-09-14). **22 are vendored**: alert, alert-dialog, badge, button, card, chart, checkbox,
+read 2026-09-14). **23 are vendored**: alert, alert-dialog, badge, button, card, chart, checkbox,
 collapsible, empty, field, input, item, label, native-select, progress, skeleton, slider, sonner,
-spinner, switch, table, tabs.
+spinner, switch, table, tabs, textarea.
 
-`alert`, `alert-dialog` and `switch` were added by this migration; each is wired to a real call site,
-because "vendored but unwired reads as migrated when it is not".
+`alert`, `alert-dialog`, `switch` and `textarea` were added by this migration; each is wired to a real
+call site, because "vendored but unwired reads as migrated when it is not". That rule earned itself when
+`separator` was pulled from this list: both call sites the draft claimed for it turned out not to exist.
 
 | ID | Requirement | Rationale | Acceptance | Check |
 |---|---|---|---|---|
-| **LIB-19** | These are **required and not yet vendored**, each with a named call site: `separator` (metrics worker divider · `JoinLanding`'s labelled "or" rule), `textarea` (`LyricsReselect`'s paste path), `radio-group` (`ColourPicker`'s swatch grid), `button-group` (the hero transport · the ∓semitone pair · `/admin`'s confirm cluster), `input-group` (the search dock's leading icon), `input-otp` (`CodeEntry`'s six segments). `toggle-group` and `tooltip` are deliberately **not** required — see the notes below. | this audit | Given the required list, When a component is vendored, Then it is wired to the named call site in the same change. | inventory |
+| **LIB-19** | These are **required and not yet vendored**, each with a named call site: `radio-group` (`ColourPicker`'s swatch grid), `button-group` (the hero transport · the ∓semitone pair · `/admin`'s confirm cluster), `input-group` (the search dock's leading icon), `input-otp` (`CodeEntry`'s six segments). `toggle-group` and `tooltip` are deliberately **not** required — see the notes below. | this audit | Given the required list, When a component is vendored, Then it is wired to the named call site in the same change. | inventory |
 | **LIB-20** | A vendored component carries an **`ENCORE DEVIATIONS`** HTML comment at the top naming each divergence from registry output and the test that enforces it. 18 of 19 comply; `button/` uses an older marker inside `<script module>` and is the known exception. | `ui/README.md` | Given a file in `ui/`, When it lacks the header, Then the requirement fails. | source scan |
 | **LIB-21** | **A guard follows what it watches.** A migration that ends a guard's premise re-anchors it in the same change, or retires it on the record with its successors named. A guard left passing vacuously is a defect, not a pass. | `non-vacuity-floors.test.ts` `RETIRED` registry | Given a retired premise, When the suite runs, Then no assertion passes vacuously. | `non-vacuity-floors.test.ts` |
 | **LIB-22** | **No call site may ask for a Button size pinned under `--tap`.** Every stock registry size is: `xs` 24px, `sm` 32px, `default` 36px, `lg` 40px. A size complies by deferring to the tap token or by pinning no height at all. | measured; four controls regressed 44px→32px during this migration | Given a `<Button size="…">`, When the size pins a height under 44px, Then the guard reds. | `button-tap-floor.test.ts` |

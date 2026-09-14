@@ -12,6 +12,7 @@
 	import type { LyricsCandidate } from '$lib/contract';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Item from '$lib/components/ui/item';
 
@@ -128,12 +129,12 @@
 
 				{#if pasting}
 					<div class="reselect-paste">
-						<textarea
-							class="reselect-textarea"
+						<Textarea
 							bind:value={draft}
-							rows="5"
+							rows={5}
 							placeholder="Paste the correct lyrics, one line per line…"
-							aria-label="Paste lyrics"></textarea>
+							aria-label="Paste lyrics"
+						/>
 						<div class="reselect-acts">
 							<Button data-act="confirm" disabled={!draft.trim()} onclick={submitPaste}>Use these lyrics</Button>
 							<Button data-act="cancel" variant="outline" onclick={() => (pasting = false)}>Cancel</Button>
@@ -246,16 +247,13 @@
 		padding: var(--space-2xs) 0;
 		cursor: pointer;
 	}
-	.reselect-textarea {
-		width: 100%;
+	/*
+	 * `.reselect-textarea` moved into ui/textarea. Its one call-site declaration was the top margin,
+	 * which is this file's spacing rather than the field's, so it stays here on the wrapper the page
+	 * renders — scoped CSS cannot reach the element the component renders.
+	 */
+	.reselect-paste > :global([data-slot='textarea']) {
 		margin-top: var(--space-xs);
-		background: var(--card2);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		color: var(--ink);
-		font: inherit;
-		padding: var(--space-xs);
-		resize: vertical;
 	}
 	.reselect-acts {
 		display: flex;

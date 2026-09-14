@@ -23,27 +23,38 @@
 > fits, why an exception holds — is what a future step needs, and that has not changed. For **current**
 > status, [`## Done, and what is left`](#done-and-what-is-left) at the foot of this file is
 > authoritative. Where the two disagree, the foot of the file is right.
+>
+> **The line numbers are from the audit tree and are approximate.** They were taken before trunk
+> flattened `apps/core/src/` to `src/`, and spot-checking found two that now point at unrelated code.
+> Treat them as "roughly here", and search for the class instead.
 
-## Vendored today (22)
+## Vendored today (23)
 
 alert · alert-dialog · badge · button · card · chart · checkbox · collapsible · empty · field · input ·
-item · label · native-select · progress · skeleton · slider · sonner · spinner · switch · table · tabs
+item · label · native-select · progress · skeleton · slider · sonner · spinner · switch · table · tabs ·
+textarea
 
-`alert`, `alert-dialog` and `switch` were added by the migration and each is wired to a real call site.
+`alert`, `alert-dialog`, `switch` and `textarea` were added by the migration and each is wired to a real
+call site.
 
 ## Required, not yet vendored (LIB-19)
 
 | Component | Call sites waiting on it |
 |---|---|
-| `separator` | metrics worker divider · `JoinLanding`'s labelled "or" rule |
-| `textarea` | `LyricsReselect`'s paste-your-own path |
 | `radio-group` | `ColourPicker`'s swatch grid |
 | `button-group` | hero transport · ∓semitone pair · `/admin`'s confirm cluster |
 | `input-group` | the search dock's leading icon |
 | `input-otp` | `CodeEntry`'s six segments |
 
 Vendored since the first draft: `alert-dialog` (the leave-the-room confirm), `alert` (six banners),
-`switch` (the three room booleans).
+`switch` (the three room booleans), `textarea` (`LyricsReselect`'s paste path).
+
+**`separator` was on this list and should not have been.** Both call sites the draft named are fictional,
+and I carried them into the reconciliation without checking — the correction is recorded here rather than
+quietly dropped. `/metrics` has no divider at all: no `<hr>`, no `role="separator"`, and no `border-top`
+or `border-bottom` anywhere in the route. `JoinLanding`'s `.or` is centred dim text with no rule drawn —
+making it a labelled rule would ADD two lines to the join screen, which is a design change, not a
+migration. Vendoring it today would leave a primitive wired to nothing, which LIB-19 exists to prevent.
 
 > **Note on `toggle-group`.** The readiness chips and facet rails that would have used it were
 > **deleted when the chip family was consolidated**; every surviving `.chip` in `routes/+page.svelte` is a button. Vendor it only
@@ -132,7 +143,7 @@ Vendored since the first draft: `alert-dialog` (the leave-the-room confirm), `al
 | ✅ | Primary CTA | 210 | `Button size="blockLg"` |
 | ▶ | **Scan-hint card** `.scan-row card` | 162–168 | `Card.Root` + `Item.Media` / `.Content` / `.Title` / `.Description`. Cleanest greenfield Item adoption in the app. |
 | ⚠ | Error block `.err` | 157, 194 | `alert` — **not vendored** (LIB-19). Two call sites. |
-| ⚠ | "or" rule `.or` | 169 | `separator` — **not vendored**, and it carries **text**, so only a labelled variant works. |
+| 🔒 | "or" rule `.or` | — | **Not a rule.** Centred dim text, no lines drawn. `separator` would ADD two, which is a design change rather than a migration. |
 | 🔒 | `.cta-reason` | 200 | `role="status"` + `aria-live`, SC 3.3.2. |
 | 🔒 | `.submit-slot` | 197 | Reserves height so the reason line cannot shift the CTA. |
 
@@ -216,7 +227,7 @@ Vendored since the first draft: `alert-dialog` (the leave-the-room confirm), `al
 | ▶ | **`/admin` song list + rows** | 107–127 | `Item.Group` + `Item` outline variant — the border+radius at 179–180 is exactly what Item's outline provides. Best Item fit in the app. |
 | ▶ | `/admin` `.danger`, `.ghost`, `.delete`, `.link` | 117, 120, 123, 103 | `Button variant="destructive"` ×2, `"ghost"`, `"link"` |
 | ⚠ | `.banner` / `.notice` / `.err` panels | metrics 125 · admin 97 · `[mediaId]` 243 | `alert` — **not vendored**; `Badge` is the wrong scale for a full-width tinted panel |
-| ⚠ | Worker divider | metrics 553 | `separator` — **not vendored** |
+| — | Worker divider | — | **Does not exist.** No `<hr>`, no `role="separator"`, no `border-top`/`border-bottom` anywhere in `/metrics`. The row was fictional. |
 | 🔒 | `.facts` definition lists | metrics 351–358 · `[mediaId]` 206–213 | A `<dl>` of key/value pairs has no registry primitive. |
 | 🔒 | `.scroller` | metrics 159, 209, 260 | This page's layout, which `ui/table`'s own rules key off as an **ancestor** (documented 400–405). |
 | 🔒 | `.slower` / `.faster` | metrics 231–232, 243–244 | Inline semantic colour on a number; `Badge` would add chrome inside a numeric column and break the shared right edge. |
@@ -271,8 +282,9 @@ Landed on `fix/p0-ui-defects`, in order:
 **What is left, in rough value order.** Each is an `⚠` or a decision in the tables above rather than
 a mechanical swap:
 
-1. **Vendor `separator` and `textarea`**, the two smallest registry gaps, and close `JoinLanding`'s
-   labelled "or" rule and `LyricsReselect`'s paste path.
+1. **`textarea` is done** — `LyricsReselect`'s paste field now renders it. `separator` was the other
+   half of this step and was withdrawn: see the note under the required set. The next smallest real gap
+   is `input-otp`, for `CodeEntry`'s six segments.
 2. **`LyricsReselect` → `Collapsible`.** Attempted and reverted: Bits UI reads
    `getBoundingClientRect`, which happy-dom stubs, so mounting it broke three behaviour tests. The
    claims have to move to the layout rung first — the same route the hero's disclosure took.
