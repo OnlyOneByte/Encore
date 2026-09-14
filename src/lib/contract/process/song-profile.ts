@@ -194,7 +194,7 @@ export function transposePitchClass(tonic: PitchClass, semitones: number): Pitch
  * how the change is actually notated.
  */
 export function keyLabel(tonic: PitchClass, mode: KeyMode, accidental: Accidental = 'sharp'): string {
-	const names = accidental === 'flat' ? FLAT_NAMES: SHARP_NAMES;
+	const names = accidental === 'flat' ? FLAT_NAMES : SHARP_NAMES;
 	return `${names[transposePitchClass(tonic, 0)]} ${mode}`;
 }
 
@@ -207,18 +207,15 @@ export function keyLabel(tonic: PitchClass, mode: KeyMode, accidental: Accidenta
 export function soundingKeyLabel(p: SongProfile | null | undefined, keyShift: number): string | null {
 	if (!hasKey(p)) return null;
 	const shift = Math.trunc(keyShift);
-	return keyLabel(transposePitchClass(p.keyTonic, shift), p.keyMode, shift < 0 ? 'flat': 'sharp');
+	return keyLabel(transposePitchClass(p.keyTonic, shift), p.keyMode, shift < 0 ? 'flat' : 'sharp');
 }
 
 /** The song's ORIGINAL key, unshifted — `null` when undetected or below the confidence floor. */
 export function originalKeyLabel(p: SongProfile | null | undefined): string | null {
-	return hasKey(p) ? keyLabel(p.keyTonic, p.keyMode): null;
+	return hasKey(p) ? keyLabel(p.keyTonic, p.keyMode) : null;
 }
 
 // ── note names ────────────────────────────────────────────────────────────────────
-
-/** MIDI note number of middle C. Scientific pitch notation, so 60 is C4 and 69 is A4 (concert A). */
-export const MIDI_C4 = 60;
 
 /**
  * MIDI number -> scientific pitch name: `50` -> `'D3'`, `69` -> `'A4'`.
@@ -281,7 +278,7 @@ export interface VoiceBand {
  * declared `VoiceBand | null` return was unassignable — the type understated the table, and the honest
  * fix is to state the invariant here rather than assert it away at the use site.
  */
-export const VOICE_BANDS: readonly [VoiceBand,...VoiceBand[]] = [
+export const VOICE_BANDS: readonly [VoiceBand, ...VoiceBand[]] = [
 	{ id: 'bass', label: 'Bass', lowMidi: 40, highMidi: 64 }, // E2-E4
 	{ id: 'baritone', label: 'Baritone', lowMidi: 45, highMidi: 69 }, // A2-A4
 	{ id: 'tenor', label: 'Tenor', lowMidi: 48, highMidi: 72 }, // C3-C5
@@ -316,8 +313,8 @@ export function voiceBandZones(): { id: VoiceBandId; label: string; lowMidi: num
 		return {
 			id: b.id,
 			label: b.label,
-			lowMidi: prev ? (centre(prev) + centre(b)) / 2: AXIS_LOW_MIDI,
-			highMidi: next ? (centre(b) + centre(next)) / 2: AXIS_HIGH_MIDI
+			lowMidi: prev ? (centre(prev) + centre(b)) / 2 : AXIS_LOW_MIDI,
+			highMidi: next ? (centre(b) + centre(next)) / 2 : AXIS_HIGH_MIDI
 		};
 	});
 }
@@ -351,7 +348,7 @@ export function voiceBandFor(p: SongProfile | null | undefined, semitones = 0): 
 /** `'Sits in tenor range'` — describes the song, never the singer. `null` with no range. */
 export function voiceBandSentence(p: SongProfile | null | undefined, semitones = 0): string | null {
 	const band = voiceBandFor(p, semitones);
-	return band ? `Sits in ${band.label.toLowerCase()} range`: null;
+	return band ? `Sits in ${band.label.toLowerCase()} range` : null;
 }
 
 /**
@@ -389,13 +386,13 @@ export function rangeBarFractions(
  * is a real and gate-satisfying answer, and refusing to represent it is what would strand a song.
  */
 export function normalizeSongProfile(input: unknown): SongProfile {
-	if (!input || typeof input !== 'object') return {...EMPTY_SONG_PROFILE };
+	if (!input || typeof input !== 'object') return { ...EMPTY_SONG_PROFILE };
 	const o = input as Record<string, unknown>;
 
-	const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v: null);
+	const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 	const tonic = num(o.keyTonic);
-	const mode = o.keyMode === 'major' || o.keyMode === 'minor' ? o.keyMode: null;
+	const mode = o.keyMode === 'major' || o.keyMode === 'minor' ? o.keyMode : null;
 	const conf = num(o.keyConfidence);
 	const keyOk = tonic !== null && tonic >= 0 && tonic <= 11 && mode !== null;
 
@@ -409,7 +406,8 @@ export function normalizeSongProfile(input: unknown): SongProfile {
 		low !== null && high !== null && p05 !== null && p95 !== null && low <= p05 && p05 <= p95 && p95 <= high;
 
 	const hist = Array.isArray(o.histogram)
-		? o.histogram.filter((x): x is number => typeof x === 'number' && Number.isFinite(x) && x >= 0): null;
+		? o.histogram.filter((x): x is number => typeof x === 'number' && Number.isFinite(x) && x >= 0)
+		: null;
 
 	// Loudness is its OWN half, validated against the measurable window rather than merely being
 	// finite: an out-of-window number is not a quiet or loud song, it is a bad reading, and trusting
@@ -418,14 +416,14 @@ export function normalizeSongProfile(input: unknown): SongProfile {
 	const lufsOk = lufs !== null && lufs >= MIN_MEASURABLE_LUFS && lufs <= MAX_MEASURABLE_LUFS;
 
 	return {
-		keyTonic: keyOk ? Math.trunc(tonic!): null,
-		keyMode: keyOk ? mode: null,
-		keyConfidence: keyOk && conf !== null ? Math.max(0, Math.min(1, conf)): null,
-		lowMidi: rangeOk ? low: null,
-		highMidi: rangeOk ? high: null,
-		p05Midi: rangeOk ? p05: null,
-		p95Midi: rangeOk ? p95: null,
-		histogram: rangeOk && hist && hist.length > 0 ? hist: null,
-		loudnessLufs: lufsOk ? lufs: null
+		keyTonic: keyOk ? Math.trunc(tonic!) : null,
+		keyMode: keyOk ? mode : null,
+		keyConfidence: keyOk && conf !== null ? Math.max(0, Math.min(1, conf)) : null,
+		lowMidi: rangeOk ? low : null,
+		highMidi: rangeOk ? high : null,
+		p05Midi: rangeOk ? p05 : null,
+		p95Midi: rangeOk ? p95 : null,
+		histogram: rangeOk && hist && hist.length > 0 ? hist : null,
+		loudnessLufs: lufsOk ? lufs : null
 	};
 }

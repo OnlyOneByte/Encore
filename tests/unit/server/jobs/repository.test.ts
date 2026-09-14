@@ -89,7 +89,9 @@ test('the DB partial unique index enforces dedup even if the app check is bypass
 	// Insert a second LIVE row for the same key directly (simulating a dispatch race that slips
 	// past findLive) — the partial unique index must reject it.
 	expect(() =>
-		db.insert(jobs).values({
+		db
+			.insert(jobs)
+			.values({
 				id: 'dup',
 				mediaId: 'media-1',
 				jobType: 'stems',

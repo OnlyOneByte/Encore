@@ -91,7 +91,11 @@ test('isEntryReady: ready ONLY with an instrumental — nothing plays unprocesse
 		['skewed', m('skewed', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: undefined })],
 		[
 			'processed',
-			m('processed', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })
+			m('processed', {
+				stemStatus: 'ready',
+				lyricsStatus: 'ready',
+				instrumentalRef: 'derived/stems/i-instrumental.flac'
+			})
 		]
 	]);
 	// An unseparated song is a process candidate, not something the room can sing — this is the change

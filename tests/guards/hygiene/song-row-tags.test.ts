@@ -48,7 +48,7 @@ test('the tag chips render, keyed, guarded by showTags, inside the .chips wrappe
 
 test('the tag chip is a NEUTRAL family, not a status tint', () => {
 	/*
- * the tone lives in ui/badge now, as the `tag` variant's own rules. The claim is unchanged
+	 * the tone lives in ui/badge now, as the `tag` variant's own rules. The claim is unchanged
 	 * and still the point — a tag is a describing word, not a warning — so it is asserted against the
 	 * rules that actually paint it rather than against a class SongRow no longer writes.
 	 */

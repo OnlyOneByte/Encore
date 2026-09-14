@@ -18,7 +18,6 @@
 // gate being removed, it is a new endpoint arriving ungated and nobody noticing, which is how seven of the
 // eight current `none` postures came to be.
 
-
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { filesUnder, relative } from '@encore/test-support';
@@ -46,8 +45,8 @@ const POSTURE: Record<string, { gate: Posture; why: string }> = {
 		gate: 'none',
 		why: 'necessarily ungated — it is how a caller ACQUIRES a session. Gating it would make joining impossible.'
 	},
-	'leave GET': { gate: 'session', why: 'acts on the caller\'s own session, so it needs to identify one.' },
-	'leave POST': { gate: 'session', why: 'acts on the caller\'s own session, so it needs to identify one.' },
+	'leave GET': { gate: 'session', why: "acts on the caller's own session, so it needs to identify one." },
+	'leave POST': { gate: 'session', why: "acts on the caller's own session, so it needs to identify one." },
 	'library GET': {
 		gate: 'none',
 		why: 'the durable catalog for a just-loaded client that has received no broadcasts yet. Everything in it is already on the TV.'
@@ -55,7 +54,7 @@ const POSTURE: Record<string, { gate: Posture; why: string }> = {
 	'lyrics-reselect POST': { gate: 'session', why: 'queues work and attributes it to a singer.' },
 	'process POST': { gate: 'session', why: 'queues a process, which is the most expensive work an actor can cause.' },
 	'me GET': { gate: 'session', why: 'answers "who am I", which is meaningless without a session.' },
-	'me PATCH': { gate: 'session', why: 'mutates the caller\'s own singer record.' },
+	'me PATCH': { gate: 'session', why: "mutates the caller's own singer record." },
 	'metrics GET': {
 		gate: 'none',
 		why: 'ungated "deliberately and temporarily" per its own header, for want of an admin identity. The word temporarily is the reason this entry exists rather than being waived.'
@@ -74,7 +73,10 @@ const POSTURE: Record<string, { gate: Posture; why: string }> = {
 	},
 	'settings PUT': { gate: 'capability', why: 'writes deployment-wide configuration.' },
 	'settings/room PUT': { gate: 'capability', why: 'writes room-scoped configuration.' },
-	'stats GET': { gate: 'none', why: 'explicitly "the PUBLIC party stats", read-only and unauthenticated by its own header.' },
+	'stats GET': {
+		gate: 'none',
+		why: 'explicitly "the PUBLIC party stats", read-only and unauthenticated by its own header.'
+	},
 	'thumb GET': {
 		gate: 'none',
 		why: 'a thumbnail proxy over an https-only five-host allowlist with the cloud-metadata attack named in its comment. The allowlist, not a session, is what bounds it.'
@@ -118,9 +120,7 @@ test('every API route method applies the auth gate this registry records', () =>
 	let methodsChecked = 0;
 
 	for (const abs of routes) {
-		const route = relative(abs)
-			.replace('src/routes/api/', '')
-			.replace('/+server.ts', '');
+		const route = relative(abs).replace('src/routes/api/', '').replace('/+server.ts', '');
 		const bodies = methodBodies(readFileSync(abs, 'utf8'));
 		for (const [method, body] of Object.entries(bodies)) {
 			const key = `${route} ${method}`;
@@ -166,8 +166,8 @@ test('the method splitter separates handlers, and does not let one inherit its n
 	 * error a per-file scan makes on settings/+server.ts.
 	 */
 	const src = [
-		"export const PUT: RequestHandler = async ({ cookies }) => {",
-		"\tconst s = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));",
+		'export const PUT: RequestHandler = async ({ cookies }) => {',
+		'\tconst s = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));',
 		"\tif (!can({ singerId: s?.id }, 'settings:write-global')) return json({}, { status: 401 });",
 		'};',
 		'export const GET: RequestHandler = async () => {',

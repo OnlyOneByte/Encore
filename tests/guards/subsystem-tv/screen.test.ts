@@ -161,7 +161,10 @@ describe('lobbyRoster', () => {
  * Blank comments first so prose describing the wiring cannot satisfy a scan.
  */
 function stripComments(src: string): string {
-	return src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' ')).replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+	return src
+		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+		.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '))
+		.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
 }
 
 describe('the element-advancing signal is wired from the master element to the gate', () => {

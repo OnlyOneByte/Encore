@@ -161,7 +161,7 @@ test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item,
 		const { grow } = flexOf(r.body);
 		// grow MUST be 0: `.sparkle` is `display: inline-grid; place-items: center`, so any grow lets the
 		// box swell and centres the glyph out in the empty tail, separating it from the title (Finding 2,
- // 's symptom). `flex: 1 1 auto` => grow "1" reds here where the any-match guard let it pass.
+		// 's symptom). `flex: 1 1 auto` => grow "1" reds here where the any-match guard let it pass.
 		expect(grow).toBe('0');
 	}
 });
@@ -198,10 +198,10 @@ test('.t does not grow and always shrinks — the clamp box hugs its text so the
 	// first-rule-only guard let it survive.
 	for (const b of declaring) {
 		const { grow, shrink } = flexOf(b.body);
- // grow: `flex: 1` => "1" (the defect); `flex: 0 1 auto` => "0" (the fix). Anything > 0 reds.
+		// grow: `flex: 1` => "1" (the defect); `flex: 0 1 auto` => "0" (the fix). Anything > 0 reds.
 		expect(grow).toBe('0');
 		// shrink MUST be > 0 so the two-line clamp box shrinks to hug its text. `flex: 0 0 auto`
- // (shrink 0) is the-reopening edit the grow-only guard misses; it must red here.
+		// (shrink 0) is the-reopening edit the grow-only guard misses; it must red here.
 		expect(shrink).not.toBeNull();
 		expect(Number(shrink)).toBeGreaterThan(0);
 	}

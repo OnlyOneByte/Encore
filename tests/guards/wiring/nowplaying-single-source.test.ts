@@ -245,7 +245,9 @@ test('ARM 3/4 cannot be satisfied by dropping the resync frame — hello still s
 	expect(arm).toMatch(/type:\s*'playback:state'/);
 	expect(arm).toMatch(/ws\.send\(JSON\.stringify\(nowPlayingEvent\(deps\)\)\)/);
 	// Imported from the player module — the owner — not re-implemented locally.
-	expect(SERVER).toMatch(/import\s*\{[^}]*\bnowPlayingEvent\b[^}]*\}\s*from\s*'\.\/src\/lib\/server\/realtime\/player'/);
+	expect(SERVER).toMatch(
+		/import\s*\{[^}]*\bnowPlayingEvent\b[^}]*\}\s*from\s*'\.\/src\/lib\/server\/realtime\/player'/
+	);
 });
 
 test('the typed-builder precedent this follows still exists: syncEvent', () => {

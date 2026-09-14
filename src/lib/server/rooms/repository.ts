@@ -17,8 +17,6 @@ import { ulid, CODE_ALPHABET, CODE_LENGTH } from '../../contract';
 
 // The join-code vocabulary now lives in $lib/contract/room-code so the phone's six-segment entry
 // (XR-PH-14) rejects exactly the characters this server rejects, with no second copy to drift.
-// Re-exported here so this module's existing importers keep their import site.
-export { CODE_ALPHABET, CODE_LENGTH } from '../../contract';
 
 /** A persisted room. Shape mirrors the `rooms` table row. */
 export interface Room {

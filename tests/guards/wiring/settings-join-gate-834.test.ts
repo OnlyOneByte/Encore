@@ -53,7 +53,7 @@ test('an unjoined visitor to /settings is redirected to / (not /join), carrying 
 	expect(redir.location).not.toContain('/join');
 });
 
-test("leaving the room sends the guest to / (the landing page), not the retired /join", () => {
+test('leaving the room sends the guest to / (the landing page), not the retired /join', () => {
 	// The leave handler clears the session cookie and navigates; after Q2-A the honest destination
 	// is `/` (which shows the join UI unjoined), never `/join`. Source-scan: mounting the settings page
 	// needs its full load data, so the navigation target is pinned from the source. A revert reds here.

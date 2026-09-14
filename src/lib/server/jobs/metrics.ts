@@ -159,7 +159,9 @@ export function e2e(
 	windowStartMs: number | null = null
 ): { n: number; meanMs: number | null; p50Ms: number | null; p95Ms: number | null } {
 	// A clipped boundary process is not complete, so it never enters this aggregate.
-	const totals = perProcess(attempts, windowStartMs).filter((c) => c.complete).map((c) => c.totalMs);
+	const totals = perProcess(attempts, windowStartMs)
+		.filter((c) => c.complete)
+		.map((c) => c.totalMs);
 	return { n: totals.length, meanMs: mean(totals), p50Ms: percentile(totals, 50), p95Ms: percentile(totals, 95) };
 }
 
@@ -257,7 +259,9 @@ export function perStage(attempts: JobAttempt[]): { stage: string; n: number; me
 			groups.set(s.stage, list);
 		}
 	}
-	return [...groups.entries()].map(([stage, ms]) => ({ stage, n: ms.length, meanMs: mean(ms) })).sort((a, b) => (b.meanMs ?? 0) - (a.meanMs ?? 0));
+	return [...groups.entries()]
+		.map(([stage, ms]) => ({ stage, n: ms.length, meanMs: mean(ms) }))
+		.sort((a, b) => (b.meanMs ?? 0) - (a.meanMs ?? 0));
 }
 
 /**

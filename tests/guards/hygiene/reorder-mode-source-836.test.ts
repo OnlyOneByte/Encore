@@ -132,7 +132,7 @@ const GRAB_RULE = /([^{}]+)\{([^}]*cursor:\s*grab\s*(?=[;}])[^}]*)\}/g;
 
 test('XR-PH-17 · cursor:grab is declared on the grip button and on no row', () => {
 	/*
- * RE-ANCHORED BY (XR-VER-07). This previously scanned QueueRow, where `.grip` declared its
+	 * RE-ANCHORED BY (XR-VER-07). This previously scanned QueueRow, where `.grip` declared its
 	 * own cursor. The grip is now <Button press="grab">, so the declaration lives on the shared control
 	 * keyed by that attribute. What is asserted is the same thing it always was: the grab cursor is on
 	 * ONE selector, and that selector is the grip control rather than a row.
@@ -378,7 +378,9 @@ test('step 4 · the up/down arrows are wired to moveGlobal, which emits store.mo
 	// singer's own-picks index — that is what makes the arrows reach every row. Reverting the props to
 	// the own-picks basis (myIdx / myPicks.length) reds these. Both QueueRow blocks are covered.
 	expect((src.match(/canUp=\{queuedIdx\(e\.id\)\s*>\s*0\}/g) || []).length).toBeGreaterThanOrEqual(2);
-	expect((src.match(/canDown=\{queuedIdx\(e\.id\)[\s\S]*?queued\.length\s*-\s*1\}/g) || []).length).toBeGreaterThanOrEqual(2);
+	expect(
+		(src.match(/canDown=\{queuedIdx\(e\.id\)[\s\S]*?queued\.length\s*-\s*1\}/g) || []).length
+	).toBeGreaterThanOrEqual(2);
 	// no arrow-gating prop falls back to the own-picks basis
 	expect(/canUp=\{myIdx\(/.test(src)).toBe(false);
 	expect(/canDown=\{myIdx\(/.test(src)).toBe(false);

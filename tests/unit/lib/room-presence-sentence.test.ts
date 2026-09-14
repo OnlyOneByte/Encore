@@ -13,9 +13,7 @@ test('an empty room says the guest will be first — not "0 people"', () => {
 
 test('one, two and three present are named in a natural sentence', () => {
 	expect(roomPresenceSentence({ code: 'X', presentCount: 1, names: ['Maya'] })).toBe('Maya is here.');
-	expect(roomPresenceSentence({ code: 'X', presentCount: 2, names: ['Maya', 'Dana'] })).toBe(
-		'Maya and Dana are here.'
-	);
+	expect(roomPresenceSentence({ code: 'X', presentCount: 2, names: ['Maya', 'Dana'] })).toBe('Maya and Dana are here.');
 	expect(roomPresenceSentence({ code: 'X', presentCount: 3, names: ['Maya', 'Dana', 'Lee'] })).toBe(
 		'Maya, Dana and Lee are here.'
 	);

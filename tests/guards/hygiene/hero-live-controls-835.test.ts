@@ -79,7 +79,6 @@ const NOTE = 'No isolated vocals for this song, so the guiding track stays off. 
  */
 // ── the arm that needs no layout engine: nothing playing, so nothing mounts ───────────────────────
 
-
 // ── the arms where no sentence is owed ───────────────────────────────────────────────────────────
 
 test('nothing playing offers no live control and no sentence about one', () => {
@@ -90,7 +89,6 @@ test('nothing playing offers no live control and no sentence about one', () => {
 	expect(host.querySelector('.tools-note')).toBeNull();
 	expect((host.textContent ?? '').toLowerCase()).not.toContain('no isolated vocals');
 });
-
 
 // ── the route rung: the derivation and the copy ───────────────────────────────────────────────────
 const PAGE = read('src/routes/+page.svelte');

@@ -3,13 +3,7 @@
 // what stops the two ends from drifting — and each targets a single production hunk so a revert reds
 // exactly one test (per-hunk proof discipline).
 import { test, expect } from 'bun:test';
-import {
-	CODE_ALPHABET,
-	CODE_LENGTH,
-	isRoomCodeChar,
-	normalizeRoomCodeInput,
-	CODE_EXCLUDED_NOTE
-} from '$lib/contract';
+import { CODE_ALPHABET, CODE_LENGTH, isRoomCodeChar, normalizeRoomCodeInput, CODE_EXCLUDED_NOTE } from '$lib/contract';
 
 test('CODE_ALPHABET is exactly the confusable-free set, and CODE_LENGTH is six', () => {
 	// The literal itself — a revert to any other alphabet reds here, which is what keeps the phone's

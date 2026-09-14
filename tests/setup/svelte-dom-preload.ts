@@ -73,9 +73,22 @@ const g = globalThis as unknown as Record<string, unknown>;
 if (typeof g.document === 'undefined') {
 	const win = new Window({ url: 'http://localhost/' });
 	const names = [
-		'document', 'customElements', 'Node', 'Element', 'HTMLElement', 'HTMLAudioElement',
-		'HTMLMediaElement', 'Event', 'CustomEvent', 'DocumentFragment', 'Text', 'Comment',
-		'MutationObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'getComputedStyle',
+		'document',
+		'customElements',
+		'Node',
+		'Element',
+		'HTMLElement',
+		'HTMLAudioElement',
+		'HTMLMediaElement',
+		'Event',
+		'CustomEvent',
+		'DocumentFragment',
+		'Text',
+		'Comment',
+		'MutationObserver',
+		'requestAnimationFrame',
+		'cancelAnimationFrame',
+		'getComputedStyle',
 		'navigator'
 	];
 	g.window = win;
@@ -106,24 +119,27 @@ if (typeof g.document === 'undefined') {
 // DOM provider. It reads the ACTIVE globals for the same reason, and says so if there are none.
 const domCtors = ['Element', 'HTMLElement', 'SVGElement'] as const;
 const rungPrototypes = domCtors
-	.map((name) => (g[name] ?? (g.window as Record<string, unknown> | undefined)?.[name]) as
-		{ prototype: Record<string, unknown> } | undefined)
+	.map(
+		(name) =>
+			(g[name] ?? (g.window as Record<string, unknown> | undefined)?.[name]) as
+				{ prototype: Record<string, unknown> } | undefined
+	)
 	.filter((ctor): ctor is { prototype: Record<string, unknown> } => typeof ctor?.prototype === 'object')
 	.map((ctor) => ctor.prototype);
 if (rungPrototypes.length === 0) {
 	throw new Error(
 		'tests/setup/svelte-dom-preload.ts: no Element/HTMLElement global to harden, so the mount rung ' +
-		'would report fabricated zero geometry. A DOM must be installed before this point.'
+			'would report fabricated zero geometry. A DOM must be installed before this point.'
 	);
 }
 
 function unmeasurable(api: string): never {
 	throw new Error(
 		`${api} cannot measure on the MOUNT rung: happy-dom has no layout engine and fabricates a zero ` +
-		`(node_modules/happy-dom/lib/nodes/element/Element.js, .../html-element/HTMLElement.js). Box ` +
-		`geometry, clipping, env() and dvh/vh are decidable only on the LAYOUT rung — drive a real ` +
-		`render through tests/e2e/driver.mjs (see tests/e2e/HARNESS.md and ` +
-		`docs/ux/04-verification.md, XR-VER-03). Do not read a zero here as a measurement.`
+			`(node_modules/happy-dom/lib/nodes/element/Element.js, .../html-element/HTMLElement.js). Box ` +
+			`geometry, clipping, env() and dvh/vh are decidable only on the LAYOUT rung — drive a real ` +
+			`render through tests/e2e/driver.mjs (see tests/e2e/HARNESS.md and ` +
+			`docs/ux/04-verification.md, XR-VER-03). Do not read a zero here as a measurement.`
 	);
 }
 
@@ -131,7 +147,14 @@ for (const proto of rungPrototypes) {
 	for (const method of ['getBoundingClientRect', 'getClientRects'] as const) {
 		proto[method] = (): never => unmeasurable(`${method}()`);
 	}
-	for (const prop of ['offsetWidth', 'offsetHeight', 'clientWidth', 'clientHeight', 'scrollWidth', 'scrollHeight'] as const) {
+	for (const prop of [
+		'offsetWidth',
+		'offsetHeight',
+		'clientWidth',
+		'clientHeight',
+		'scrollWidth',
+		'scrollHeight'
+	] as const) {
 		Object.defineProperty(proto, prop, {
 			configurable: true,
 			get: (): never => unmeasurable(prop)
@@ -160,8 +183,13 @@ const KIT_STUBS: Record<string, string> = {
 // the first component to import one fails with a message naming the fix instead of bun's bare
 // "Cannot find module '$app/forms'", which reads as a broken component rather than a missing stub.
 const KIT_UNSTUBBED = [
-	'$app/forms', '$app/paths', '$app/server', '$app/stores',
-	'$env/static/public', '$env/dynamic/private', '$env/static/private'
+	'$app/forms',
+	'$app/paths',
+	'$app/server',
+	'$app/stores',
+	'$env/static/public',
+	'$env/dynamic/private',
+	'$env/static/private'
 ];
 
 plugin({
@@ -178,12 +206,11 @@ plugin({
 		}
 		for (const specifier of KIT_UNSTUBBED) {
 			build.module(specifier, () => ({
-				contents:
-					`throw new Error(${JSON.stringify(
-						`No test stub for SvelteKit virtual module '${specifier}'. Add one under tests/setup/kit/ ` +
+				contents: `throw new Error(${JSON.stringify(
+					`No test stub for SvelteKit virtual module '${specifier}'. Add one under tests/setup/kit/ ` +
 						`and register it in KIT_STUBS in tests/setup/svelte-dom-preload.ts. Stubbed today: ` +
 						`${Object.keys(KIT_STUBS).join(', ')}.`
-					)});`,
+				)});`,
 				loader: 'ts'
 			}));
 		}

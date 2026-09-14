@@ -1,5 +1,13 @@
 import { test, expect } from 'bun:test';
-import { storedOrder, assignSeqs, insertEntry, applyAndReseq, isTerminal, reorderWithinSinger, moveToIndex } from '$lib/contract';
+import {
+	storedOrder,
+	assignSeqs,
+	insertEntry,
+	applyAndReseq,
+	isTerminal,
+	reorderWithinSinger,
+	moveToIndex
+} from '$lib/contract';
 import type { QueueEntry } from '$lib/contract';
 
 // `rotationSeq` is the STORED position and is what every read goes through. `addedAt` no longer
@@ -185,9 +193,7 @@ test('move-to-index leaves a playing entry on stage; it never occupies a queued 
 
 test('move-to-index through applyAndReseq matches the direct call (the wire path clients run)', () => {
 	const q = build([e('a1', 'a', 1), e('b1', 'b', 2), e('a2', 'a', 3)], 'fair');
-	expect(ids(applyAndReseq(q, { op: 'move-to-index', id: 'a1', toIdx: 2 }))).toEqual(
-		ids(moveToIndex(q, 'a1', 2))
-	);
+	expect(ids(applyAndReseq(q, { op: 'move-to-index', id: 'a1', toIdx: 2 }))).toEqual(ids(moveToIndex(q, 'a1', 2)));
 });
 
 test('nothing mutates its input', () => {

@@ -117,7 +117,7 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 	// 1. cancel any in-flight process. Empty remainingEntries → cancel unconditionally (we are about to
 	// remove every referencing entry). mediaById/broadcast omitted: settling a row about to be deleted
 	// and re-announced in step 6 is pointless. cancelJobsForMedia is a no-op when nothing is live.
-	const cancelDeps: CancelJobsDeps = {...deps.cancel, remainingEntries: [] };
+	const cancelDeps: CancelJobsDeps = { ...deps.cancel, remainingEntries: [] };
 	cancelJobsForMedia(mediaId, cancelDeps);
 
 	// 2. remove every queue entry pointing at this media. No FK cascade (schema.ts), so each row goes

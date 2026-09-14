@@ -721,8 +721,8 @@ const assignOf = (sent: { cmd: WorkerCommand }[]) =>
 test('a room quality ceiling LOWERS the stems engine, model, and routing capability', () => {
 	// Global default is a high-tier roformer process; the room caps quality down to the demucs tier.
 	const effective: EffectiveSettings = {
-		global: {...DEFAULT_EFFECTIVE_SETTINGS.global, defaultEngine: 'roformer', defaultModel: 'bs-roformer-1297' }, // rank 35
-		room: {...DEFAULT_EFFECTIVE_SETTINGS.room, maxQualityRank: 10 } // cap at the demucs:htdemucs tier
+		global: { ...DEFAULT_EFFECTIVE_SETTINGS.global, defaultEngine: 'roformer', defaultModel: 'bs-roformer-1297' }, // rank 35
+		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, maxQualityRank: 10 } // cap at the demucs:htdemucs tier
 	};
 	const { hub, jobs, sent } = hubWithSettings(() => effective);
 	jobs.enqueue('m1', 'stems', 0, T0);
@@ -738,8 +738,8 @@ test('a room quality ceiling LOWERS the stems engine, model, and routing capabil
 
 test('with NO room cap, dispatch uses the global default unchanged (ceiling is downward-only)', () => {
 	const effective: EffectiveSettings = {
-		global: {...DEFAULT_EFFECTIVE_SETTINGS.global, defaultEngine: 'roformer', defaultModel: 'bs-roformer-1297' },
-		room: {...DEFAULT_EFFECTIVE_SETTINGS.room, maxQualityRank: null } // no cap
+		global: { ...DEFAULT_EFFECTIVE_SETTINGS.global, defaultEngine: 'roformer', defaultModel: 'bs-roformer-1297' },
+		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, maxQualityRank: null } // no cap
 	};
 	const { hub, jobs, sent } = hubWithSettings(() => effective);
 	jobs.enqueue('m1', 'stems', 0, T0);
@@ -889,7 +889,7 @@ test('persists the variant-pick provenance from job:complete so a mis-pick is di
 				decidedBy: 'agreement',
 				votes: 2,
 				// The rejected candidates + their scores — the evidence that existed for one log line and
- // is gone today. This is what separates arm (b) from arm (c) for a real mis-pick.
+				// is gone today. This is what separates arm (b) from arm (c) for a real mis-pick.
 				rejected: [
 					{ label: 'lrclib-plain', score: 0.61 },
 					{ label: 'captions-stub', score: null }

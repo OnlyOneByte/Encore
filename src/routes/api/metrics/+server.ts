@@ -58,21 +58,24 @@ export const GET: RequestHandler = async ({ url }) => {
 			processes: overall.n,
 			provisional: isAnecdote(overall.n)
 		},
-		steps: steps.map((s) => ({...s, provisional: isAnecdote(s.n) })),
+		steps: steps.map((s) => ({ ...s, provisional: isAnecdote(s.n) })),
 		e2e: overall,
 		// Measured cost per separator model, beside the rtFactor the whitelist claims. `ratioToDeclared`
 		// of 1.0 means the benchmark holds on this box; 2.0 means it is twice as slow here, which is the
 		// number needed to size a party rather than a pass/fail.
-		models: models.map((m) => ({...m, provisional: isAnecdote(m.n) })),
+		models: models.map((m) => ({ ...m, provisional: isAnecdote(m.n) })),
 		// The lyrics axis has no declared cost anywhere to compare against — AsrModel refuses to carry
 		// an rtFactor until someone times it on real hardware. These rows are that measurement.
-		asr: perAsrModel(attempts).map((a) => ({...a, provisional: isAnecdote(a.n) })),
+		asr: perAsrModel(attempts).map((a) => ({ ...a, provisional: isAnecdote(a.n) })),
 		// Sub-step split, from what the worker reported. Empty for attempts predating that.
 		stages: perStage(attempts),
 		// Slowest complete processes, for finding the outlier rather than reasoning about the mean. Titles are
 		// joined here because a media id is not a song: an operator navigating a list of "m-zombie" has
 		// to open each one to find out what it is. /api/stats already does the same join.
-		slowestProcesses: processes.filter((c) => c.complete).slice(0, 10).map((c) => ({...c, title: titleOf.get(c.mediaId) ?? null })),
+		slowestProcesses: processes
+			.filter((c) => c.complete)
+			.slice(0, 10)
+			.map((c) => ({ ...c, title: titleOf.get(c.mediaId) ?? null })),
 		workers: app.workers.list().map((w) => ({
 			workerId: w.workerId,
 			capabilities: w.capabilities,

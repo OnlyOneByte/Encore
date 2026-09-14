@@ -29,8 +29,6 @@ export const ATTRACT_PHRASES = [
 	'The mic is open.'
 ] as const;
 
-export type AttractPhrase = (typeof ATTRACT_PHRASES)[number];
-
 /**
  * The admission ceiling, in characters. A phrase longer than this overflows the fixed two-line box at
  * the attract scale, so it is rejected by `phrases.test.ts` at the DATA layer rather than discovered

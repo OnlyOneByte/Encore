@@ -112,10 +112,10 @@ test('the scan reads code, not a comment that merely names findChromium', () => 
 	 * that read as an undeclared discoverer and reported the file for a missing import it should not have.
 	 * Real code must still be caught, including on a line that also carries a comment.
 	 */
-	expect(codeOnly('// discovery is the driver\'s job, via findChromium').includes('findChromium')).toBe(false);
-	expect(
-		codeOnly('/*\n * findChromium used to be copied into every driver.\n */').includes('findChromium')
-	).toBe(false);
+	expect(codeOnly("// discovery is the driver's job, via findChromium").includes('findChromium')).toBe(false);
+	expect(codeOnly('/*\n * findChromium used to be copied into every driver.\n */').includes('findChromium')).toBe(
+		false
+	);
 
 	expect(codeOnly("import { findChromium } from '../lib/chromium.mjs';").includes('findChromium')).toBe(true);
 	expect(DEF.test(codeOnly('function findChromium() { return null; }'))).toBe(true);

@@ -114,9 +114,7 @@ test('the epilogue still works with no sink wired, so the hub unit-tests bare', 
 	const { jobs, mediaById } = harness();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	const failed = jobs.fail(job.id, 'boom', T0 + 1_000);
-	expect(() =>
-		reportTerminalFailure(failed, 'reaper', { broadcast: () => {}, mediaById })
-	).not.toThrow();
+	expect(() => reportTerminalFailure(failed, 'reaper', { broadcast: () => {}, mediaById })).not.toThrow();
 	expect(mediaById.get('m1')!.stemStatus).toBe('none');
 });
 

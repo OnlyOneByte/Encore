@@ -167,7 +167,7 @@ describe('the seek effect depends on playback intent, never on the catalog', () 
 	});
 
 	/*
- * THE GUARD. On base this fails on `media` and `isPlayable`, which is the defect. It also bans
+	 * THE GUARD. On base this fails on `media` and `isPlayable`, which is the defect. It also bans
 	 * the elements and the slot flag, because the same argument applies to all of them: an input to the
 	 * decision must never be a trigger for it, and a re-run on ANY of them re-applies a stale position.
 	 */
@@ -243,8 +243,14 @@ describe('the seek effect depends on playback intent, never on the catalog', () 
 
 		const allowed: Array<[string, string]> = [
 			['the seam itself — the whole point of the boundary', "import type { PlaybackSnapshot } from './catalog';"],
-			['the contract helpers this component does take', "import { playbackRef, isPlayable, guideOffsetSec } from '$lib/contract';"],
-			['a sibling seam whose list is multi-line', "import type {\n\tPlaybackSnapshot,\n\tSongToken\n} from './transport';"],
+			[
+				'the contract helpers this component does take',
+				"import { playbackRef, isPlayable, guideOffsetSec } from '$lib/contract';"
+			],
+			[
+				'a sibling seam whose list is multi-line',
+				"import type {\n\tPlaybackSnapshot,\n\tSongToken\n} from './transport';"
+			],
 			['a DOM type that merely starts with the same six letters', 'const el = master as HTMLMediaElement;'],
 			['a WebAudio name that contains it', 'const node = ctx.createMediaElementSource(master);'],
 			['prose-free code that names the field, not the type', 'const snap: PlaybackSnapshot | null = media;']

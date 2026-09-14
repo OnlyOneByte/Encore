@@ -261,11 +261,7 @@ export function isQueueOrder(v: unknown): v is QueueOrderId {
  * default rather than throwing — a de-whitelisted setting must degrade to a running party. `queued`
  * is the current stored queued list in stored order and does NOT include `entry`.
  */
-export function insertIndexFor(
-	queued: readonly QueueEntry[],
-	entry: QueueEntry,
-	ordering: Ordering = {}
-): number {
+export function insertIndexFor(queued: readonly QueueEntry[], entry: QueueEntry, ordering: Ordering = {}): number {
 	const policy = getQueueOrder(ordering.order) ?? getQueueOrder(DEFAULT_QUEUE_ORDER)!;
 	const at = policy.insertIndex(queued, entry, ordering);
 	return Math.max(0, Math.min(at, queued.length)); // total: clamp a rule that returned out of range

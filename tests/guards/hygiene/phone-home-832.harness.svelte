@@ -20,24 +20,19 @@
 		singerName?: string | null;
 		title?: string;
 	}
-	let {
-		controlsSummary = null,
-		hasSong = true,
-		singerName = 'Maya',
-		title = 'Bohemian Rhapsody'
-	}: Props = $props();
+	let { controlsSummary = null, hasSong = true, singerName = 'Maya', title = 'Bohemian Rhapsody' }: Props = $props();
 </script>
 
 <NowPlayingHero
-	{title}
-	{singerName}
+	title={title}
+	singerName={singerName}
 	singerColor="#5cb8ff"
 	byline="Queen Official · G major"
 	elapsedSec={30}
 	durationSec={120}
 	isPlaying
-	{hasSong}
-	{controlsSummary}
+	hasSong={hasSong}
+	controlsSummary={controlsSummary}
 >
 	{#snippet controls()}
 		<div class="stub-controls">

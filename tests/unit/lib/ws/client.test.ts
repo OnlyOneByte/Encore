@@ -5,10 +5,6 @@ import { WS_OPEN } from '$lib/ws/send';
 import { expect, test } from 'bun:test';
 // done-when: kill+restore socket -> client re-syncs to authoritative rev.
 
-
-
-
-
 // A controllable fake socket: capture sends, drive open/message/close from the test.
 class FakeSocket implements MinimalSocket {
 	onopen: (() => void) | null = null;
@@ -255,8 +251,6 @@ test('send on a non-OPEN socket is guarded, not thrown', () => {
 // also no listener for visibilitychange/pageshow/online, so nothing reacted to the page waking up.
 //
 // Two mechanisms cover it: wake() (bound to those events) and a liveness watchdog on the heartbeat.
-
-
 
 class FakeSocket_Liveness implements MinimalSocket {
 	onopen: (() => void) | null = null;
