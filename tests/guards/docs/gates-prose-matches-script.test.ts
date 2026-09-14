@@ -46,6 +46,16 @@ const PROSE_DOC = 'docs/loop/PR-BOT.md';
 const PIPELINE = 'docs/loop/pipeline.json';
 
 /**
+ * The test leg, in either spelling. `bun run test` is now the canonical form — the script it delegates
+ * to carries `--conditions=svelte`, which bun's test resolver needs because `vaul-svelte`'s exports map
+ * declares only `types` and `svelte` with no `default` condition, and bunfig.toml was measured to ignore
+ * a `conditions` key (top level and under `[test]`) on bun 1.3.14. Putting the flag in the script means
+ * it is declared ONCE instead of at every call site. The older bare `bun test` is still accepted so this
+ * guard keeps working from either side of that move rather than reporting "no test leg found".
+ */
+const TEST_LEG = /\bbun (?:run )?test\b/;
+
+/**
  * Parse the legs out of the `gates` script.
  *
  * The script is a `;`-separated sh chain where every LEG carries a `|| { echo …; exit 1; }` failure
@@ -72,15 +82,17 @@ function legsFromScript(script: string): string[] {
  * Parse the legs out of the prose line in PR-BOT.md.
  *
  * The line is identified STRUCTURALLY — the unique line containing `·`-separated commands that starts
- * with `bun test` — rather than by line number. A line number in a guard is a stale pointer waiting to
- * happen: this very list has already moved down the file once. Uniqueness is asserted below, so a
- * second such line is a finding instead of a silently-preferred first match.
+ * with the test leg — rather than by line number. A line number in a guard is a stale pointer waiting
+ * to happen: this very list has already moved down the file once. The spelling is matched loosely
+ * (`bun test` OR `bun run test`, see `TEST_LEG`) because the leg moved from the former to the latter;
+ * pinning either one alone would make this finder return zero lines the next time it moves. Uniqueness
+ * is asserted below, so a second such line is a finding instead of a silently-preferred first match.
  */
 function proseLines(doc: string): string[] {
 	return doc
 		.split('\n')
 		.map((l) => l.trim())
-		.filter((l) => l.startsWith('bun test') && l.includes('·'));
+		.filter((l) => l.startsWith('bun') && TEST_LEG.test(l) && l.includes('·'));
 }
 
 function legsFromProse(line: string): string[] {
@@ -156,15 +168,26 @@ test('every leg is a real, runnable command — not a description of one', () =>
 	expect(offenders).toEqual([]);
 });
 
-test('the `bun test` leg runs from the repo root, where bunfig.toml’s relative preload resolves', () => {
-	// bun does NOT walk up for bunfig.toml, and this repo's preload path is relative, so a `bun test`
-	// run from a subdirectory silently loses the DOM/Svelte preload and reports ~44 phantom failures.
-	// The leg must therefore be bare `bun test` with no `cd` in front of it, and only the pytest leg
-	// may carry a `cd`.
+test('the test leg runs from the repo root, where bunfig.toml’s relative preload resolves', () => {
+	// bun does NOT walk up for bunfig.toml, and this repo's preload path is relative, so a test run
+	// from a subdirectory silently loses the DOM/Svelte preload and reports ~44 phantom failures.
+	// The leg must therefore be the BARE test command with no `cd` in front of it, and only the pytest
+	// leg may carry a `cd` — that, not the leg's spelling, is what this arm is pinning.
+	//
+	// The canonical spelling is now `bun run test`, not `bun test`: the `test` script carries
+	// `--conditions=svelte` so the flag is declared ONCE rather than at every call site (bun's test
+	// resolver needs it for `vaul-svelte`, whose exports map has no `default` condition, and bunfig.toml
+	// was measured to ignore a `conditions` key). Both spellings are accepted via `TEST_LEG` so the leg
+	// can move between them without this guard reporting a phantom "no test leg found"; what stays
+	// asserted is that whichever spelling is used, it is the WHOLE leg — nothing before it, nothing
+	// after it, so no working directory can be changed out from under it.
 	const legs = legsFromScript(script!);
-	const testLeg = legs.find((l) => l.includes('bun test'));
-	expect(testLeg, 'no `bun test` leg found').toBeString();
-	expect(testLeg, '`bun test` must run from the repo root — a `cd` in this leg loses bunfig.toml').toBe('bun test');
+	const testLeg = legs.find((l) => TEST_LEG.test(l));
+	expect(testLeg, 'no `bun test` / `bun run test` leg found').toBeString();
+	expect(
+		testLeg,
+		'the test leg must run from the repo root — anything wrapped around bare `bun test` / `bun run test` (a `cd`, a prefix) loses bunfig.toml'
+	).toMatch(/^bun (?:run )?test$/);
 	// The pytest leg is the ONE leg allowed to change directory, and it must come back (it is wrapped
 	// in a subshell in the script, which `legsFromScript` strips — so assert the `cd` is scoped there).
 	const cdLegs = legs.filter((l) => /(^|\s)cd\s/.test(l));

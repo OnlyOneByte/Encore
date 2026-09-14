@@ -344,15 +344,6 @@ const FLOORS: Record<string, Floor[]> = {
 				'the repo-wide task-number walk; an unanchored `git ls-files` returning nothing passed with zero files scanned'
 		}
 	],
-	'tests/guards/design-system/drawer-surface-removed-903.test.ts': [
-		{
-			subject: 'scanned',
-			min: 100,
-			count: 1,
-			guards:
-				'the production-file walk behind the drawer-deletion guard. The scan proves no live code imports the deleted drawer components, reads the retired --peek-h / --z-sheet tiers, or declares the sheet chrome — and it reports an empty offenders array both when the tree is genuinely clean AND when it read nothing (a wrong root, a broken extension filter, a test-file exclusion that swallowed the walk), so this counts what was actually opened. It REPLACES the `scanned` floor retired from design-system.test.ts in the same change: one population-counting floor out, one in'
-		}
-	],
 	'tests/guards/hygiene/icon-centring.test.ts': [
 		{ subject: 'FILES.length', min: 7, count: 1, guards: 'the icon-centring components + routes walk' }
 	],
@@ -602,7 +593,7 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 		{
 			subject: 'the dvh sheet-cap scan (every bottom-docked sheet caps its height in dvh, not vh)',
 			reason:
-				'RETIRED BY the drawer deletion. The guard looped over a hardcoded list of exactly two files — QueueSheet.svelte and QueueSheetDrawer.svelte — asserting each declared a max-height in dvh/svh and none in vh (iOS resolves vh against the LARGE viewport, so a vh-capped sheet hides its own footer while the URL bar shows). Both files were deleted, so the list is empty and there is NO successor address: the only viewport-unit cap left under src is lib/tv/TvLobby.svelte\u2019s `max-height: 20vh`, a TV surface, in vh — re-pointing there would INVERT the assertion into a failure. Its PENDING_RULING said RE-ANCHOR, DO NOT DELETE, and that ruling was correct for what it anticipated: a PORT, where the sheet still existed at a new address. This is a REMOVAL, so there is no address to move to and nothing is being laundered away — no surface docked to the bottom caps itself in a viewport fraction any more. SHEET_CAP_FRACTION was retired from the measured-design register in the same commit for the same reason.'
+				'RETIRED BY the drawer deletion. The guard looped over a hardcoded list of exactly two files — QueueSheet.svelte and QueueSheetDrawer.svelte — asserting each declared a max-height in dvh/svh and none in vh (iOS resolves vh against the LARGE viewport, so a vh-capped sheet hides its own footer while the URL bar shows). Both files were deleted, so the list is empty and there is NO successor address: the only viewport-unit cap left under src is lib/tv/TvLobby.svelte\u2019s `max-height: 20vh`, a TV surface, in vh — re-pointing there would INVERT the assertion into a failure. Its PENDING_RULING said RE-ANCHOR, DO NOT DELETE, and that ruling was correct for what it anticipated: a PORT, where the sheet still existed at a new address. This is a REMOVAL, so there is no address to move to and nothing is being laundered away — no surface docked to the bottom caps itself in a viewport fraction any more. SHEET_CAP_FRACTION was retired from the measured-design register in the same commit for the same reason. ── UPDATE 2026-09-14: THE SUCCESSOR ADDRESS NOW EXISTS. The owner ruled the phone remote back onto a drawer, and lib/components/ui/drawer/drawer-content.svelte caps itself `max-h-[82dvh]` — arrived at by CORRECTING shadcn\u2019s stock `max-h-[80vh]`, which is precisely the iOS hazard this scan existed to catch, shipped by the upstream copy-in. A re-anchored cap scan therefore has exactly one live subject again. Restore it against drawer-content.svelte rather than reviving the two-file list.'
 		}
 	],
 	'tests/guards/layout/phone-reflow-rung-l.test.ts': [
@@ -776,7 +767,14 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// of 66 was not wrong so much as SLACK: these are `>=` floors, so 66 kept passing while the real
 	// count drifted up to 70 without anything saying so. Measured by raising both to 99999 and reading
 	// `Received: N`, which is the only way to learn the actual number.
-	expect(located).toBeGreaterThanOrEqual(73);
+	//
+	// 73 → 72 with the drawer-deletion guard's removal (owner ruling 2026-09-14: the phone remote is
+	// being rebuilt around a now-playing drawer, so `drawer-surface-removed-903.test.ts` asserted the
+	// negation of the shipped design and went, taking its one `scanned` floor and one tagged site with
+	// it). `taggedSitesSeen` below moves in the same commit, as its own comment requires — a whole
+	// deleted guard file gets NO RETIRED entry (this file's own retirement arm rejects a key that no
+	// longer resolves); the rationale lives in docs/DECISIONS.md and the deleting commit.
+	expect(located).toBeGreaterThanOrEqual(72);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -867,7 +865,8 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(73);
+	// 73 → 72 in lockstep with `located` above, for the drawer-deletion guard's removal.
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(72);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

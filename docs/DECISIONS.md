@@ -627,3 +627,59 @@ Parked deliberately. These return only if the owner says so.
 - **VBR or mono for the vocals stem** — it is CBR 192k today, so silence costs the same as singing.
 - **Re-encoding `audio/`** — still ~494 MB of pre-policy WAV. It is the only **unrecoverable** class,
   so touching it is the owner's call.
+
+## Ratified: the phone remote is rebuilt around a drawer (decided 2026-09-14)
+
+The phone remote is being rebuilt: the queue becomes the whole home screen, the now-playing hero card
+goes, and one **band** — persistent app chrome in `routes/+layout.svelte`, not a home-screen element —
+carries the peek and pulls up into a **drawer** holding the transport plus the live controls. Search
+turns that same band into the field, and its zero-query state is the library.
+
+**The drawer is shadcn-svelte's `drawer`, and `vaul-svelte` is a pinned exact dependency
+(`1.0.0-next.7`).** The owner ruled against hand-rolling it and against vendoring vaul's source. Three
+consequences were accepted knowingly, each measured rather than assumed:
+
+1. **The gate leg is now `bun run test`, not `bun test`.** `vaul-svelte` declares
+   `exports["."] = { types, svelte }` with **no `default`, no `import`, no `require`**. Vite applies the
+   `svelte` condition so the app builds; bun's test resolver does not, so a bare `bun test` fails with
+   `Cannot find package 'vaul-svelte'` **while the build stays green** — and `mount-rung.test.ts` imports
+   every component that imports a `$app/*` module, so the phone surface would have gone dark silently.
+   The fix is `--conditions=svelte`, declared **once** inside package.json's `test` script so no
+   contributor has to know the flag exists. It cannot live in `bunfig.toml`: a `conditions` key was
+   measured as ignored on bun 1.3.14 both at top level and under `[test]`.
+2. **`drawer-surface-removed-903.test.ts` is deleted.** It asserted `vaul-svelte` absent and both old
+   sheet components gone from disk — the negation of this design. A whole deleted guard file gets **no**
+   `RETIRED` entry (`non-vacuity-floors.test.ts`'s own retirement arm rejects a key that no longer
+   resolves), so the record is this section plus the deleting commit. Its `scanned` floor and tagged
+   site went with it: `located` and `taggedSitesSeen` moved 73 → 72 in lockstep, as their comments
+   require. What covers the survivors is strictly more than that file held — see below.
+3. **Upstream is frozen.** `1.0.0-next.7` published 2025-03-24 and is still the newest; the `latest`
+   tag points at `0.3.2`, which depends on `bits-ui@^0.21.7` and would install a **second, ancient
+   bits-ui** beside ours. Pin the prerelease exactly; do not float it.
+
+**The copy-in shipped two real defects, both caught by existing guards rather than by review.** This is
+the copy-in rationale earning its keep, and worth recording because the next `--overwrite` reintroduces
+both:
+
+- `drawer-content.svelte` arrived with `sm:max-w-sm`. This app bridges t-shirt **spacing** keys and does
+  **not** bridge the container scale, so `max-w-sm` resolved `sm` through the wrong namespace and emitted
+  `max-width: 8px`. Now `max-w-[24rem]`. Caught by `vendored-dimension-keys.test.ts`.
+- `drawer-overlay.svelte` arrived with `data-open:animate-in data-open:fade-in-0
+  data-closed:animate-out data-closed:fade-out-0`. `motion.test.ts` rejects `animate-*` **outright**,
+  which is the rule working as designed: a utility-expressed animation is invisible to the declaration
+  scans by construction, which is the enforcement gap `XR-PH-06` exists to close. The fade is now a
+  scannable declaration in that component's own `<style>` — opacity only, duration from `--motion-base`,
+  gated on `prefers-reduced-motion`, addressed via `:global([data-slot='drawer-overlay'])` because a
+  class string handed to a component carries no scope hash.
+
+It also arrived with `max-h-[80vh]`, corrected to **`max-h-[82dvh]`** — iOS resolves `vh` against the
+LARGE viewport, so a `vh`-capped sheet hides its own footer while the URL bar shows. That correction
+restores the **successor address** the retired dvh sheet-cap scan recorded as missing, so that rule can
+be re-anchored against one live subject instead of a deleted two-file list.
+
+**What did not change:** the band contract (`--dock-h` equals the band's real rendered height, with the
+safe-area inset on the band alone and nothing above it adding a second `env()`) survives in
+`phone-home-shell-832.test.ts` and in the rung-L measured gate. `XR-PH-15` still holds — the guide
+level, pitch and range bar sit in a disclosure **body** and never on a drag surface — but the container
+it names is now the drawer rather than the hero, and the range bar sits directly under the key control
+so the ± buttons and their consequence are adjacent.
