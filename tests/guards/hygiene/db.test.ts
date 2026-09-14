@@ -849,7 +849,7 @@ test('an EXISTING database upgrades — 0007 adds tv_background_dim defaulting t
 // 0004/0005/0006/0010/0011/0012 headers all record: drizzle keys replay on the journal `when`, so a migration
 // folded into a rewritten baseline never re-applies to a deployed box, and the column is missing at boot the
 // first time a reader selects it.
-test('an EXISTING database upgrades — 0012 adds guide_mix_ref defaulting to NULL (two-element guide)', () => {
+test('an EXISTING database upgrades — 0012 adds guide_mix_ref defaulting to NULL (no mix, so no guide)', () => {
 	const { db, sqlite } = openDb(':memory:');
 
 	const real = DRIZZLE;
@@ -903,5 +903,9 @@ test('an EXISTING database upgrades — 0012 adds guide_mix_ref defaulting to NU
 	// today's two-element guide rather than being handed a mix that does not exist.
 	const restored = new MediaRepository(db).all().find((m) => m.id === 'old1');
 	expect(restored?.guideMixRef).toBeUndefined();
-	expect(guidePath(restored!)).toEqual({ kind: 'element', ref: 'derived/stems/old1-vocals.flac' });
+	// A pre-0012 row has no mix, and a mix is now the ONLY guide path — so the upgraded row offers no
+	// guide until it is re-processed. It used to resolve to the two-element path; that path is deleted
+	// (see guide-level.ts for why it could not be made exact). What this still pins is the MIGRATION: the
+	// column arrives NULL-by-default and the repository reads it back as absent rather than throwing.
+	expect(guidePath(restored!)).toEqual({ kind: 'none' });
 });

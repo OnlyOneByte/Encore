@@ -11,36 +11,34 @@
 	// for <audio>. Playing an audio-only stream through the audio element removes a whole class of
 	// "decodes, advances, makes no sound" from the picture.
 	//
-	// THE GUIDING TRACK, and the TWO paths it can take. `guidePath` (shared) decides which, per song.
+	// THE GUIDING TRACK. One path, and only one: a guide-mix song is ONE 4-channel file through THIS ONE
+	// media element — channels 0/1 the instrumental and 2/3 the isolated vocals, pulled apart by a
+	// `PitchShiftGraph(el, { split: true })` that gives each pair its own gain. One decoder means ONE
+	// playhead, so the guide cannot drift from the instrumental: the problem is not governed, it is
+	// unrepresentable. A song with no mix offers no guide at all (`guidePath` → `none`).
 	//
-	//   • MIX — one 4-channel file through ONE media element, channels 0/1 the instrumental and 2/3 the
-	//     isolated vocals, pulled apart by a `PitchShiftGraph(el, { split: true })` that gives each pair
-	//     its own gain. One decoder means ONE playhead, so the guide cannot drift from the instrumental:
-	//     the problem stops being governed and becomes unrepresentable. This is the preferred path.
-	//   • ELEMENT — the legacy shape, kept for songs with no mix: a second, secondary <audio> carries the
-	//     isolated vocals and FOLLOWS the instrumental, held in time by `guide-sync.ts`'s drift governor.
+	// THE SECOND-ELEMENT PATH WAS DELETED, not disabled. It played the vocals stem in its own <audio>
+	// held against the instrumental by a drift governor, and it could not be made exact: the governor
+	// compared the two elements' reported `currentTime`, which EXCLUDES each element's output latency, so
+	// it converged on "aligned" using a signal that does not describe what the ear hears and then stopped
+	// correcting. Rooms heard a guide that was audibly late and never self-healed, and appeared to fix it
+	// by transposing — which captured both elements into one AudioContext and collapsed their latency
+	// difference by accident. Gone with it: the governor and its deadband/trim/reseek bands, the pre-roll
+	// lock-on, the guide readiness latch and its timeout, the second graph, and the measured-offset
+	// compensation that existed only because two decoders cannot be trusted to agree.
 	//
-	// WHY THE MIX EXISTS, given the element path already worked. Two elements are two decoders and two
-	// clocks, and two clocks cannot be sample-locked from script: `guide-sync.ts` can only compare each
-	// element's reported `currentTime`, which is the spec's official playback position and excludes each
-	// element's output latency. So its governor converges to "aligned" on a signal that does not describe
-	// what the ear hears, and then correctly stops correcting. (An earlier version of this header argued
-	// the opposite — that two elements beat a WebAudio graph because "nothing about the existing playback
-	// path changes". That trade was real but the premise was wrong: the part that "already works" is the
-	// part that cannot be made exact.)
-	//
-	// On BOTH paths the instrumental stays the master: it keeps owning play/pause, currentTime, `ended`,
-	// and every telemetry callback the gapless state machine and the lyrics overlay run on. On the mix path
-	// the master simply happens to carry the guide inside it.
+	// The instrumental is the master and always was: it owns play/pause, currentTime, `ended`, and every
+	// telemetry callback the gapless state machine and the lyrics overlay run on. It simply happens to
+	// carry the guide inside it.
 	//
 	// THE ONE RULE THAT MUST NOT BE BROKEN: a 4-channel file must never reach an element that is not
 	// routed through a running split graph. Played natively the browser DOWNMIXES it, summing the isolated
 	// vocals into the instrumental at full volume — worse than any drift. `guide-mix-src.ts` owns that
 	// gate; read it before touching the src assignment.
-	import { playbackRef, isPlayable, guideOffsetSec, guidePath } from '$lib/contract';
+	import { playbackRef, isPlayable, guidePath } from '$lib/contract';
 	import type { PlaybackSnapshot } from './catalog';
 	import { untrack } from 'svelte';
-	import { guideCorrection, prerollSeekTarget, resumeSeekTarget, seekPlan } from './guide-sync';
+	import { resumeSeekTarget, seekPlan } from './playhead-sync';
 	import { masterSrcPlan, wantsEagerGraph, mixGateFor } from './guide-mix-src';
 	import { nextVideoSrc } from './video-src';
 	import { transportFor, slotHoldsSong, songToken } from './transport';
@@ -156,11 +154,13 @@
 	}: Props = $props();
 
 	let master: HTMLAudioElement | undefined = $state();
-	let vocals: HTMLAudioElement | undefined = $state();
 
-	// Lazily-built pitch-shift graphs, one per element (master instrumental + optional guide vocals).
+	// The lazily-built pitch-shift graph for the master element. ONE graph, because there is ONE element:
+	// the guide rides inside the master's own file as channels 2/3, so the split graph that pulls the
+	// pairs apart is this same graph in `split` mode. A second `guideGraph` existed only while the guide
+	// was a second <audio>.
 	// Declared here so both the volume effect and the shift-wiring effect below reference the same
-	// instances. Not $state — nothing renders off them; they are imperative WebAudio handles.
+	// instance. Not $state — nothing renders off it; it is an imperative WebAudio handle.
 	let masterGraph: PitchShiftGraph | undefined;
 	/**
 	 * Has this song's split-graph routing attempt SETTLED? Reactive, and the src effect depends on it.
@@ -176,43 +176,12 @@
 	 * decision, and a slot whose graph already exists settles again immediately on the next flush.
 	 */
 	let mixSettled = $state(false);
-	let guideGraph: PitchShiftGraph | undefined;
 
-	/**
-	 * How the guide is held against the master — and specifically why it is NOT held with seeks.
-	 *
-	 * Two independent media elements are not sample-locked, so the guide is always drifting. The
-	 * obvious correction — assign `vocals.currentTime` — is the wrong tool at this scale: setting
-	 * `currentTime` flushes the decoder and re-primes the buffer, which is an audible discontinuity.
-	 * Correcting a 40ms drift on the master's ~4Hz `timeupdate` therefore meant a decoder flush every
-	 * few hundred ms, heard as a faint continuous crackle under the instrumental. The nudge was never
-	 * the cheap half of that trade; it was the expensive half.
-	 *
-	 * The policy itself lives in `guide-sync.ts` as a pure function, so it can be tested without two
-	 * real media elements. This component only applies the answer.
-	 */
-
-	/**
-	 * Pre-roll alignment only. Before the guide is playing a seek costs nothing, so it stays a seek.
-	 * The tolerance itself lives in `guide-sync.ts` — the same one the jump path re-aligns to, so the
-	 * two cannot drift apart.
-	 */
-
-	/**
-	 * How long to wait for the guide to become playable before giving up on it for this slot.
-	 *
-	 * This exists because `onready` gates the gapless swap. Waiting for BOTH elements is correct — a
-	 * slot whose guide has not buffered would start the song with silence where the guide should be —
-	 * but waiting FOREVER would let one stalled audio fetch cost the room the song entirely. `onerror`
-	 * covers a 404 or a decode failure; this covers a fetch that simply never resolves.
-	 */
-	const GUIDE_READY_TIMEOUT_MS = 4000;
-
-	// The vocals stem is rendered at key 0. It USED to be force-muted whenever keyShift !== 0, because
-	// mixing key-0 vocals under a +2 instrumental is musically wrong — but muting it meant the singer
-	// lost their guide the moment they transposed, which is exactly when a guide is most wanted. Now the
-	// guide is pitch-shifted by the SAME amount as the instrumental (see the two PitchShiftGraphs below),
-	// so it stays in key with what is playing and the level applies unchanged at any shift.
+	// The guide is pitch-shifted by the SAME amount as the instrumental, because it IS the instrumental's
+	// file: one worklet shifts all four channels at one ratio, so the guide cannot fall out of key with
+	// what is playing and the level applies unchanged at any shift. (It was once force-muted at any
+	// non-zero keyShift, when the guide was a separate key-0 stem and mixing it under a transposed
+	// instrumental was musically wrong — that muted the guide exactly when a singer most wanted it.)
 	const effectiveGuide = $derived(Math.max(0, Math.min(1, guideLevel)));
 
 	// The master instrumental's applied level — the loudness-normalization pulldown, clamped to
@@ -221,61 +190,21 @@
 	const effectiveMasterLevel = $derived(Math.max(0, Math.min(1, masterLevel)));
 
 	/**
-	 * WHICH guide this song offers — one 4-channel mix, two elements, or none (`guidePath` in shared).
+	 * WHICH guide this song offers — one 4-channel mix, or none (`guidePath` in shared).
 	 *
-	 * The discriminated union is what makes "both paths at once" unrepresentable. Playing the mix AND
-	 * mounting the vocals element would sound the vocals twice, once inside the mix at the room's level
-	 * and once on top at the element's — a doubled, flanged vocal, which is the exact defect class the
-	 * mix exists to remove.
+	 * There is no longer a second-element alternative: `guidePath` answers `mix` or `none`, so a song
+	 * without a mix plays with no guiding track at all rather than falling back to a second decoder that
+	 * could not be held in time. See `guide-level.ts` for why that path was deleted instead of tuned.
 	 */
 	const guidePlan = $derived(media ? guidePath(media) : ({ kind: 'none' } as const));
-	/**
-	 * The vocals stem ref for the TWO-ELEMENT path, and `null` on every other path.
-	 *
-	 * This is the line that keeps the second element off a mix song: it reads `guidePlan.kind` rather
-	 * than `media.vocalsRef`, so a song WITH a mix — which still has a perfectly good vocals stem on
-	 * disk, because the mix does not replace it — resolves to null here and the `{#if}` below never
-	 * mounts. Reading `media.vocalsRef` directly would mount both.
-	 */
-	const guideRef = $derived(guidePlan.kind === 'element' ? guidePlan.ref : null);
-	/**
-	 * The measured guide/instrumental offset in SECONDS — the ZERO POINT the guide is aligned to.
-	 *
-	 * `guide-sync.ts` compares playheads and is blind to any offset baked into the decoded audio, so a
-	 * stem shifted in its samples reads as in-time while the ears hear it early or late. This carries the
-	 * measured shift so the guide is aligned to `master.currentTime + guideOffsetSecValue` at all three
-	 * sites (pre-roll, jump, drift). It is 0 for a song with no measured offset (guideOffsetSec maps
-	 * absent → 0), so the whole existing library is held EXACTLY as today; only a song with a stored
-	 * non-zero offset is shifted. The offset arrives as an INPUT to the pure policy functions — never a
-	 * new branch inside guide-sync.ts.
-	 */
-	const guideOffsetSecValue = $derived(media ? guideOffsetSec(media) : 0);
-	/**
-	 * Mount-worthiness, split from level-gating (§3 of an earlier change). The guide <audio> stays mounted
-	 * whenever THIS song CAN have a guide — a guide ref exists and the song is playable — regardless of
-	 * the current level. It deliberately does NOT read `effectiveGuide`: the guide-level slider is
-	 * `step="1"` from `min="0"`, so dragging it through the left end used to flip a level-gated mount
-	 * false-then-true and UNMOUNT/REMOUNT the element mid-song, re-paying the pre-roll lock-on (the
-	 * `canplay` alignment) on every pass through 0. Keeping the element mounted through 0 means passing
-	 * through 0 gates the audio to silent (see the level effect: `vocals.volume`/`guideGraph.setGain`)
-	 * without ever tearing the buffered/aligned element down.
-	 */
-	const guideMountable = $derived(!!guideRef && !!media && isPlayable(media));
-	/**
-	 * Level-gating for READINESS, kept on the ORIGINAL condition (`effectiveGuide > 0`) — trap an earlier change of
-	 * an earlier change. This is what keeps the default free: the feature ships at 0, and a room that never turns it
-	 * on must NOT wait on `guideSettled` before announcing ready, i.e. must not pay to decode a second
-	 * stream in silence just to leave `loading`. So the ready-report effects below gate on `wantsGuide`
-	 * (level > 0), NOT on `guideMountable`. A room that DOES set a default pays one extra preload per
-	 * slot — exactly what it asked for.
-	 */
-	const wantsGuide = $derived(guideMountable && effectiveGuide > 0);
 
 	// ── readiness ──────────────────────────────────────────────────────────────
-	// The slot is ready for a gapless swap only when everything it will play can play. Announcing on
-	// the master alone would start a song whose guide had not buffered — silence where the guide should
-	// be, for the first seconds of every song. `guideSettled` means "stop waiting": ready, failed, or
-	// timed out.
+	// The slot is ready for a gapless swap when its MASTER can play — which is now the whole story. It
+	// used to also wait on a `guideSettled` latch (ready / errored / timed out after
+	// GUIDE_READY_TIMEOUT_MS), because a second <audio> carrying the vocals could still be buffering when
+	// the master was good to go, and starting then meant silence where the guide should be. The guide
+	// lives inside the master's own file now, so a master that can play is a guide that can play: there is
+	// no second buffer to wait for, nothing to time out, and no way for the two to disagree.
 	let masterReady = $state(false);
 	// the last room position from `playback:state`, HELD so a cold mount can take it on the
 	// master's `canplay` — the element does not exist when the frame arrives on a reload. Applied ONCE
@@ -286,7 +215,6 @@
 	// BEFORE `emitNowPlaying`, so the incoming song re-stashes a target of 0, not the outgoing position
 	// (the earlier changes protection lives there, at the source).
 	let resumeTarget: number | undefined;
-	let guideSettled = $state(false);
 	// Two independent latches, because the two reports mean different things and fire on different
 	// conditions. `prewarmedFired` guards the buffer-settled signal (any visibility, once per song);
 	// `visibleReadyFired` guards the visible-ready signal (only while visible). They are separate
@@ -356,33 +284,22 @@
 		//     dies: the destroy effect below on component teardown, AND the `if (!master)` element-unmount
 		//     effect that releases the master graph when a drained room unmounts the <audio>. A song
 		//     CHANGE keeps the element mounted, so it must NOT detach here.
-		//   • GUIDE lives as long as its <audio> element is MOUNTED — which is exactly as long as
-		//     `guideMountable` holds ({#if guideMountable && guideRef} below; mount-worthiness is a
-		//     playable song WITH a guide ref, INDEPENDENT of the level — an earlier change). The earlier model here
-		//     said the guide is "remounted for the NEW song" and so detached its graph on every song
-		//     change. That is FALSE for the common case: a SKIP changes the song IN PLACE in
-		//     the visible slot (gapless.ts onNowPlaying keeps the same slot and only its src changes), and
-		//     `guideMountable` is true for both the skipped and the next song, so Svelte keeps the SAME
-		//     <audio> element. Its MediaElementSource is a PERMANENT capture, so detach() there left the
-		//     still-captured element feeding a released, disconnected context = SILENT guide until a
-		//     keyShift built a fresh graph on it (the same shape as an earlier change on the master). So the guide
-		//     gets the master's treatment on a song change: reset IN PLACE with setShift(0) (transparent on
-		//     a routed graph, a no-op on an un-built one) and re-apply the room level with
-		//     setGain(effectiveGuide) — the re-apply is NOT optional, a graph defaults its gain to 1
-		//     (pitch-shift.ts) which is the an earlier change defect. We do NOT detach and do NOT drop the reference
-		//     here, so we keep the pre-roll lock-on earlier changes protect. detach() moves to where the element
-		//     GENUINELY dies: the destroy effect below, PLUS a dedicated effect that releases the graph
-		//     when `guideMountable` goes false (a ref-less or non-playable next song unmounts the <audio>).
+		//
+		// There is no longer a SECOND lifetime to reason about. The guide used to be its own <audio> with
+		// its own graph, and getting that lifetime wrong was a repeat defect: detaching on a song change
+		// left a still-captured element feeding a released context (a silent guide until someone
+		// transposed), because a skip changes the song IN PLACE in the visible slot and Svelte keeps the
+		// same element. One element and one graph removes that whole class.
 		void masterGraph?.setShift(0);
-		void guideGraph?.setShift(0);
-		guideGraph?.setGain(effectiveGuide);
 		// Same in-place re-apply for the master's normalization level: a song change resets the
 		// graph in place (not detached), and a graph defaults its gain to 1, so re-assert the pulldown
-		// here for the same reason the guide does — the new song's level is resolved by the route and
-		// arrives as `effectiveMasterLevel`.
+		// here — the new song's level is resolved by the route and arrives as `effectiveMasterLevel`.
 		masterGraph?.setGain(effectiveMasterLevel);
+		// And the GUIDE pair's gain, which is a gain on this same graph now. A freshly built graph
+		// defaults `desiredGuideGain` to 0, and a song change re-takes the routing decision, so the room's
+		// level has to be re-asserted here or a mix song plays with a silent guide until the slider moves.
+		masterGraph?.setGuideGain(effectiveGuide);
 		masterReady = false;
-		guideSettled = false;
 		// A new song re-takes the mix decision from scratch. Cleared here rather than left latched because a
 		// non-mix song must not inherit the previous song's `routed`, and a mix song following a mix song
 		// still has to re-evaluate (the graph's mode is fixed, but `guidePath` may differ). A slot whose
@@ -407,37 +324,15 @@
 	$effect(() => {
 		return () => {
 			masterGraph?.detach();
-			guideGraph?.detach();
 			masterGraph = undefined;
-			guideGraph = undefined;
 		};
-	});
-
-	// The guide's element genuinely dies when `guideMountable` goes false — a ref-less or
-	// non-playable next song unmounts the <audio> ({#if guideMountable && guideRef} below). THAT is
-	// where the guide graph's permanent MediaElementSource is actually gone and its context must be
-	// released, so detach() lives here rather than on every song change (see the per-song reset above:
-	// a song-to-song skip keeps `guideMountable` true and the SAME element, so detaching there was the
-	// an earlier change silence bug). Guarded on the mount-worthiness VALUE, not the media signal, so identity
-	// churn on the same mounted state is a no-op; runs once more on destroy via cleanup order, which
-	// the destroy effect above already handles idempotently (detach() is best-effort).
-	let guideDetachedForUnmount = false;
-	$effect(() => {
-		if (guideMountable) {
-			guideDetachedForUnmount = false;
-			return;
-		}
-		if (guideDetachedForUnmount) return;
-		guideDetachedForUnmount = true;
-		guideGraph?.detach();
-		guideGraph = undefined;
 	});
 
 	// Buffer settled. Report it as a pre-warm signal on ANY slot — the controller ignores it unless the
 	// id is the one it is warming (the visible slot's call is a no-op). This is what lets the hidden
 	// slot advertise a gapless-ready next song.
 	$effect(() => {
-		if (masterReady && (guideSettled || !wantsGuide) && !prewarmedFired) {
+		if (masterReady && !prewarmedFired) {
 			prewarmedFired = true;
 			onprewarmed?.();
 		}
@@ -449,19 +344,10 @@
 	// fires from the hidden pre-warming slot, so a pre-buffered next song can no longer flip the room
 	// to playing over the visible slot's black frame.
 	$effect(() => {
-		if (visible && masterReady && (guideSettled || !wantsGuide) && !visibleReadyFired) {
+		if (visible && masterReady && !visibleReadyFired) {
 			visibleReadyFired = true;
 			onready?.();
 		}
-	});
-
-	// Give up on a guide that neither loads nor errors, so one stalled fetch cannot strand the slot.
-	$effect(() => {
-		if (!wantsGuide || guideSettled) return;
-		const t = setTimeout(() => {
-			guideSettled = true;
-		}, GUIDE_READY_TIMEOUT_MS);
-		return () => clearTimeout(t);
 	});
 
 	/**
@@ -630,11 +516,10 @@
 	 */
 	async function retryPitchAfterGesture(): Promise<void> {
 		if (!needsShift(keyShift)) return;
-		if (!masterGraph && !guideGraph) return;
-		await masterGraph?.setShift(keyShift).catch(() => {});
-		await guideGraph?.setShift(keyShift).catch(() => {});
+		if (!masterGraph) return;
+		await masterGraph.setShift(keyShift).catch(() => {});
 		if (!active || !visible) return;
-		if (masterGraph?.isRouted) onpitchrouted?.();
+		if (masterGraph.isRouted) onpitchrouted?.();
 	}
 
 	// Recovery from a blocked autoplay, AND the one chance a pending transpose has of routing. A user
@@ -684,14 +569,6 @@
 							mixSettled = true;
 						});
 				}
-				// Bring the guide along if it is mounted and wanted — it obeys the same transport, but its own
-				// play() was refused by the same policy, so it needs the same nudge.
-				if (vocals && transport === 'play') {
-					// Same fixed-target lock-on as the transport path: seek to the master playhead sampled NOW,
-					// never to a moving reference the guide flush would fall behind.
-					alignGuidePreroll();
-					vocals.play().catch(() => {});
-				}
 			}
 			// The pitch retry runs on ANY gesture, blocked or not — a TV that autoplayed fine still needs
 			// this one tap before WebAudio will run, and it is the only reason this listener is armed there.
@@ -710,70 +587,20 @@
 		};
 	});
 
-	// The guide mirrors the master's transport exactly — the SAME `transport` value, computed once by the
-	// derived above, so both effects take the same edge at the same time. This is only literally true once
-	// that value actually MOVES on a real transport change: before an earlier change a same-song advance produced no
-	// value edge for the master (its `hasSrc` stayed stale-true), so the master effect did not re-run while
-	// the guide's own start path (its `canplay` / preroll) still could, and the guide could run while the
-	// master sat paused at 0 — the mismatch an earlier change measured. With the transport now re-armed per ENTRY the
-	// value takes a genuine `idle -> play` edge and both effects re-run together, so the shared-`transport`
-	// claim holds. A rejected play() is swallowed the same way the master's is: an autoplay refusal on the
-	// guide must degrade to a silent guide, never to a stalled song.
-	$effect(() => {
-		if (!vocals || !master) return;
-		if (transport === 'play') {
-			// Start from neutral tempo and preserve pitch; the governor re-derives any trim it needs
-			// from real drift, and a tempo trim must never become a pitch shift on a sung vocal (set
-			// explicitly -- the default is not uniform across browsers).
-			vocals.playbackRate = 1;
-			vocals.preservesPitch = true;
-			// The ALIGNMENT is deliberately NOT taken here. Aligning at effect time and then calling
-			// play() lets the guide decoder spin-up (~150-250ms) run the master forward before the
-			// first guide frame emerges, so the guide enters that far behind and the governor spends
-			// ~15s per e-fold crawling it back -- the 'starts late and stays late' defect.
-			// The lock-on is re-taken on the guide canplay, against the master playhead AT THAT MOMENT,
-			// by alignGuidePreroll below; we also take it here so a pause->play on an already-primed
-			// buffer (whose canplay will not fire again) still locks on.
-			alignGuidePreroll();
-			vocals.play().catch(() => {});
-		} else {
-			vocals.pause();
-			vocals.playbackRate = 1;
-		}
-	});
+	// NO SECOND TRANSPORT, and no pre-roll lock-on. Both lived here to drive a guide <audio> that had to
+	// mirror the master's play/pause and be seeked onto the master's playhead at the moment it became
+	// audible. The guide is now channels 2/3 of the master's own file, so it starts, stops, seeks and
+	// ends with the master by construction — there is no second element to arm, no decoder spin-up to
+	// out-run, and no "the guide is playing while the master sits paused" state to keep the two effects
+	// agreeing about.
 
-	/**
-	 * Lock the guide onto the master CURRENT playhead -- the pre-roll alignment, and the fix.
-	 *
-	 * Called at the moment the guide can actually play (its canplay) and on a transport arm, never at
-	 * effect time before the buffer exists. The decision is prerollSeekTarget in guide-sync.ts: it reads
-	 * the master playhead into a fixed local target and seeks the guide to THAT, so the guide is never
-	 * assigned master.currentTime inline (a moving target the decoder flush would outrun). A guide
-	 * already inside GUIDE_PREROLL_ALIGN_SEC is left untouched -- no decoder flush for nothing.
-	 */
-	function alignGuidePreroll(): void {
-		if (!vocals || !master) return;
-		// The zero point is the master playhead PLUS the measured offset: a stem shifted in its
-		// decoded samples must lock on to `master + offset`, not to `master`, or it starts that far out of
-		// time and the governor spends ~15s per e-fold crawling it back. `guideOffsetSecValue` is 0 for the
-		// whole existing library, so this is byte-for-byte today's pre-roll for a song with no offset.
-		const plan = prerollSeekTarget(vocals.currentTime, master.currentTime + guideOffsetSecValue);
-		if (plan.seek) vocals.currentTime = plan.target;
-		// Neutral tempo so the governor starts from real drift; pitch preserved for the sung vocal.
-		vocals.playbackRate = 1;
-		vocals.preservesPitch = true;
-	}
-
-	// The level itself — the whole "how loud are the original vocals" knob. Set on the element for the
-	// native (unshifted) path AND on the guide graph, because once the guide is routed through WebAudio
-	// for a shift the element's `volume` is bypassed and only the graph's gain governs it.
+	// The level itself — the whole "how loud are the original vocals" knob. ONE site now: the guide is a
+	// channel pair inside the master, so its level is a gain on the master's split graph. There is no
+	// element `.volume` half any more, because there is no second element — and no dual-site risk of the
+	// two disagreeing. Set unconditionally: `setGuideGain` remembers the value on a graph that is not
+	// split or not yet built, and the build applies whatever is remembered, which is what keeps the
+	// room's level from being lost in the window before the graph exists.
 	$effect(() => {
-		if (vocals) vocals.volume = effectiveGuide;
-		guideGraph?.setGain(effectiveGuide);
-		// SPLIT MODE: the guide is a channel pair inside the master, so its level is a gain on the master's
-		// graph rather than a second element's volume. Set unconditionally — `setGuideGain` remembers the
-		// value on a graph that is not split or not yet built, and the build applies whatever is remembered,
-		// which is what keeps the room's level from being lost in the window before the graph exists.
 		masterGraph?.setGuideGain(effectiveGuide);
 	});
 
@@ -825,20 +652,19 @@
 	});
 
 	/**
-	 * Apply a seek target to both elements, from one plan. Called ONLY by the effect above.
+	 * Apply a seek target to the master. Called ONLY by the effect above.
 	 *
 	 * Every read in here is `untrack`ed. That is not incidental tidiness — it is the invariant: an
-	 * input to the decision must never become a trigger for it. `vocals` is the original case (the guide
-	 * MOUNTING would otherwise re-run the seek and yank the master to a stale position); `media`,
-	 * `master` and `active` are the same argument, and `media` is the one that caused an earlier change.
+	 * input to the decision must never become a trigger for it. `media`, `master` and `active` are all
+	 * that argument, and `media` is the one that caused a real playhead-yanking defect. (`vocals` was the
+	 * original case — the guide element MOUNTING re-ran the seek and pulled the master to a stale
+	 * position — and it is gone with the element.)
 	 *
-	 * BOTH ELEMENTS MOVE, FROM ONE PLAN. This used to reposition the master alone. The guide then kept
-	 * playing from wherever it already was, and recovery fell to `syncGuide`'s governor — which is built
-	 * for continuous drift and deliberately prefers a tempo trim to a seam, so it closed a whole-song
-	 * discontinuity at 2% (a crawl) and never hard-resynced once the residual landed back inside the trim
-	 * band. A jump is not drift: it is corrected the way the pre-roll is, with a seek on both elements at
-	 * the same moment. The master already has a seam here, so the guide's costs nothing extra. `seekPlan`
-	 * owns the two thresholds and the reason `guide` is gated on `master`.
+	 * ONE ELEMENT MOVES, because there is one element. This used to carry a second half: the guide was
+	 * seeked to `seekTarget + offset` from the same plan, because leaving it to the drift governor meant a
+	 * whole-song discontinuity closed at a 2% tempo trim (a crawl that never hard-resynced once the
+	 * residual fell back inside the trim band). The guide travels with the master inside one file now, so
+	 * a jump repositions it for free and there is no second playhead to keep honest.
 	 *
 	 * Only a jump (> SEEK_JUMP_SEC from where we are) acts, so the ~4Hz position telemetry and
 	 * pause/resume (which carry the current position) don't fight the playhead.
@@ -872,27 +698,8 @@
 		const snap = untrack(() => media);
 		const isActive = untrack(() => active);
 		if (!el || !snap || !isPlayable(snap) || !isActive) return;
-		// A guide that is not mounted has no playhead to compare; NaN reads as "needs the seek" and is
-		// then skipped by the `guideEl` guard below, so the master's half of the plan is unaffected.
-		const guideEl = untrack(() => vocals);
-		// The guide's zero point is `seekTarget + offset`, the master's is `seekTarget`. seekPlan
-		// takes ONE target for both, so the guide half is expressed by shifting the guide's playhead the
-		// other way: `guide - offset` compared to `seekTarget` is exactly `guide` compared to
-		// `seekTarget + offset`. This keeps seekPlan a pure single-target function and leaves the master's
-		// decision (`el.currentTime` vs `seekTarget`) untouched. `guideOffsetSecValue` is 0 for the whole
-		// existing library, so a no-offset song's jump is byte-for-byte today's.
-		const offset = untrack(() => guideOffsetSecValue);
-		const guideSecForPlan = guideEl ? guideEl.currentTime - offset : NaN;
-		const plan = seekPlan(el.currentTime, guideSecForPlan, seekTarget);
-		if (!plan.master) return;
+		if (!seekPlan(el.currentTime, seekTarget)) return;
 		el.currentTime = seekTarget;
-		if (guideEl) {
-			if (plan.guide) guideEl.currentTime = seekTarget + offset;
-			// Back to neutral tempo. Any trim still on the element was derived from the drift that
-			// existed BEFORE the jump, so carrying it across corrects a drift that no longer exists; the
-			// governor re-derives whatever it needs from real drift on its next tick.
-			guideEl.playbackRate = 1;
-		}
 	}
 
 	/**
@@ -973,7 +780,6 @@
 		// Read reactive deps up front so the effect re-runs when any of them change.
 		const shift = active ? keyShift : 0;
 		const v = master;
-		const g = vocals;
 		if (!v) return;
 		// GUIDE-MIX SONGS BUILD EAGERLY, and in SPLIT mode. Their guiding track does not exist until the
 		// splitter runs, so unlike a transpose there is nothing to wait for — `wantsEagerGraph` names that
@@ -1032,27 +838,23 @@
 			// No graph at all and no shift wanted: the keyShift-0 invariant path. Nothing is pending.
 			onpitchrouted?.();
 		}
-		// Re-apply the master's normalization level, same shape as the guide's an earlier change re-apply
-		// below: the level effect above owns it, but its tracked deps are `master`/`effectiveMasterLevel`
-		// only — `masterGraph` is a plain variable, so that effect does NOT re-run when a transpose
-		// builds the graph here. Without this, an attenuated song jumps to FULL volume the first time
-		// anyone transposes. Reading `effectiveMasterLevel` here also re-runs this effect on a level
-		// change, so the graph's gain tracks the pulldown whether the graph is built before or after it.
+		// Re-apply the master's normalization level: the level effect above owns it, but its tracked deps
+		// are `master`/`effectiveMasterLevel` only — `masterGraph` is a plain variable, so that effect does
+		// NOT re-run when a transpose builds the graph here. Without this, an attenuated song jumps to FULL
+		// volume the first time anyone transposes. Reading `effectiveMasterLevel` here also re-runs this
+		// effect on a level change, so the graph's gain tracks the pulldown whether the graph is built
+		// before or after it.
 		masterGraph?.setGain(effectiveMasterLevel);
-		// Guide, when it is mounted. Shifting it by the SAME amount is what lets us keep it audible under
-		// a transposed instrumental instead of muting it.
-		if (g) {
-			if (needsShift(shift) && !guideGraph) guideGraph = new PitchShiftGraph(g);
-			guideGraph?.setShift(shift);
-			// Re-apply the room's guide level. The gain effect above owns the level, but its
-			// tracked deps are `vocals` and `effectiveGuide` only — `guideGraph` is a plain variable, so
-			// that effect does NOT re-run when a transpose builds (or, post-an earlier change, rebuilds) the graph here.
-			// A freshly built PitchShiftGraph defaults desiredGain to 1 (pitch-shift.ts), so without this
-			// the isolated vocals jump to FULL volume the first time anyone transposes and stay there.
-			// Reading `effectiveGuide` here also makes this effect re-run on a level change, so the graph's
-			// gain tracks the knob whether the graph is built before or after the level is set.
-			guideGraph?.setGain(effectiveGuide);
-		}
+		// And the GUIDE pair's gain, for the same reason and on the same graph. A freshly built
+		// PitchShiftGraph defaults `desiredGuideGain` to 0 (deliberately — see pitch-shift.ts: the worst
+		// case of a missed call must be a guide nobody hears, never one that drowns the singer), so a
+		// transpose that (re)builds the graph has to re-assert the room's level here. Reading
+		// `effectiveGuide` also makes this effect re-run when the knob moves.
+		masterGraph?.setGuideGain(effectiveGuide);
+		// The guide needs no shift of its own: it is channels 2/3 of this same element, so ONE worklet
+		// shifts all four channels at one ratio and the pair cannot fall out of key with the instrumental.
+		// A second graph on a second element used to do this, and keeping the two ratios equal was a
+		// standing obligation rather than a property.
 	});
 
 	function fileSrc(m: PlaybackSnapshot): string {
@@ -1136,26 +938,10 @@
 		}
 	});
 
-	/**
-	 * The drift governor. Runs on the master's existing ~4Hz `ontimeupdate` rather than its own timer,
-	 * so the guide is corrected against the clock that actually drives the room.
-	 *
-	 * It corrects with `playbackRate`, not `currentTime`: see `guide-sync.ts` for why seeking here is
-	 * what made the guide crackle.
-	 */
-	function syncGuide(): void {
-		if (!vocals || !master || vocals.seeking) return;
-		// The zero point the guide is held at is `master + offset`: the offset is the guide's
-		// measured place relative to the instrumental, so drift is `guide - (master + offset)` and a
-		// reseek lands the guide at `master + offset`. `guideOffsetSecValue` is 0 for the whole existing
-		// library, so a no-offset song's drift governor is byte-for-byte today's. guideCorrection stays a
-		// pure policy function — the offset is folded into its `masterSec` input, never a branch inside it.
-		const zero = master.currentTime + guideOffsetSecValue;
-		const correction = guideCorrection(vocals.currentTime, zero);
-		if (correction.kind === 'reseek') vocals.currentTime = zero;
-		// Assign only on a real change: writing playbackRate is not free on every element.
-		if (vocals.playbackRate !== correction.rate) vocals.playbackRate = correction.rate;
-	}
+	// THE DRIFT GOVERNOR IS GONE. It ran on the master's ~4Hz `ontimeupdate` and nudged the guide
+	// element's `playbackRate` toward the master's playhead. Nothing replaces it, because with one decoder
+	// there is no relative drift to correct: the guide is the same samples, from the same clock, as the
+	// instrumental. See `playhead-sync.ts` for why the governor could never have worked from script.
 </script>
 
 <!--
@@ -1165,9 +951,10 @@
 <div class="slot" class:visible={visible} style="z-index:{visible ? 'var(--z-tv-video-active)' : 'var(--z-tv-video)'}">
 	{#if media && isPlayable(media)}
 		<!--
-			THE MASTER. An <audio>, not a <video> — see the note at the top of this file. It owns the clock:
-			play/pause, currentTime, `ended`, and the position telemetry that the lyrics overlay and the
-			room's progress bar both run on.
+			THE MASTER, and now the ONLY media element. An <audio>, not a <video> — see the note at the top
+			of this file. It owns the clock: play/pause, currentTime, `ended`, and the position telemetry
+			that the lyrics overlay and the room's progress bar both run on — and, on a guide-mix song, it
+			carries the guiding track inside itself as channels 2/3.
 		-->
 		<audio
 			bind:this={master}
@@ -1183,28 +970,8 @@
 			onerror={() => active && visible && onerror?.()}
 			ontimeupdate={() => {
 				if (master) onposition?.(master.currentTime, master.duration);
-				syncGuide();
 			}}
 		></audio>
-		{#if guideMountable && guideRef}
-			<!-- The guiding track: the isolated vocals, following the master. Never the position source
-			     for anything — telemetry, lyrics and progress all read the instrumental. -->
-			<audio
-				bind:this={vocals}
-				src={`/media/${guideRef}`}
-				preload="auto"
-				oncanplaythrough={() => (guideSettled = true)}
-				oncanplay={() => {
-					// take the pre-roll lock-on HERE, when the guide buffer is primed and the master
-					// playhead is where it will be when audio emerges -- not at effect time before decode.
-					if (transport === 'play') {
-						alignGuidePreroll();
-						vocals?.play().catch(() => {});
-					}
-				}}
-				onerror={() => (guideSettled = true)}
-			></audio>
-		{/if}
 	{/if}
 </div>
 

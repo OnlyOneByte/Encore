@@ -419,14 +419,16 @@ function stripComments(src: string): string {
 describe('TvPlayer wiring', () => {
 	const src = stripComments(read('src/lib/tv/TvPlayer.svelte'));
 
-	test('the second element is gated on the ELEMENT path, so a mix song never mounts one', () => {
-		// The single most important line in the feature. Mounting both would sound the vocals twice —
-		// once inside the mix at the room's level, once on top at the element's — a doubled, flanged
-		// vocal, which is the defect class the mix exists to remove.
-		expect(src).toMatch(/guideRef\s*=\s*\$derived\(\s*guidePlan\.kind === 'element'/);
-		// Mutation trap: ANY spelling that reads the raw stem ref would mount both, so reject the field
-		// appearing in this derived at all rather than one exact rewrite of it.
-		expect(src).not.toMatch(/guideRef\s*=\s*\$derived\([^)]*vocalsRef/);
+	test('there is no second element to mount, on any path', () => {
+		// This used to assert the second element was GATED to the element path, so a mix song never mounted
+		// one — mounting both would sound the vocals twice (once inside the mix, once on top): a doubled,
+		// flanged vocal. The gate is now structural: the element, its ref derivation and the whole
+		// `guidePath` → `element` branch are deleted, so "both at once" is unrepresentable rather than
+		// merely guarded. Assert the artefacts stay gone.
+		expect(src).not.toMatch(/guideRef/);
+		expect(src).not.toMatch(/bind:this=\{vocals\}/);
+		// And no code path may reach for the raw stem ref to resurrect one.
+		expect(src).not.toMatch(/vocalsRef/);
 	});
 
 	test('the master src goes through masterSrcPlan with the FULL gate, never a bare isRouted', () => {

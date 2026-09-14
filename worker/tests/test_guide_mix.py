@@ -68,6 +68,28 @@ def test_lossless_flac_at_the_requested_level() -> None:
     assert argv[-1] == "/w/m.flac"
 
 
+def test_declares_the_muxer_so_the_callers_temp_output_still_encodes() -> None:
+    """The output FORMAT must be declared, because the caller's filename cannot imply it.
+
+    PublishStems encodes to a temp sibling and renames (atomicity: a killed ffmpeg finalises a valid
+    but SHORT file, and the mix owns the master's `duration`). So the path it hands this builder ends
+    in `.tmp` — `<id>-guidemix.flac.<pid>.tmp` — and with no `-f`, ffmpeg maps that extension to no
+    container and aborts with "Unable to find a suitable output format" before encoding a frame. The
+    mix then failed for EVERY song and the room fell back to the two-element guide, which is exactly
+    the drift the mix exists to make unrepresentable.
+
+    THE TRAP THIS CLOSES: every other argv test here names a `.flac` output, so the muxer is inferred
+    and the defect is invisible to all of them. Passing the shape the REAL caller uses is the whole
+    point of this test — do not "tidy" it to `/w/m.flac`.
+    """
+    tmp = "/media/derived/stems/abc123-guidemix.flac.4242.tmp"
+    argv = encode_guide_mix_argv("/w/i.wav", "/w/v.wav", tmp)
+    assert argv[argv.index("-f") + 1] == "flac"
+    # The declared format must not disturb the output position or the channel-preserving contract.
+    assert argv[-1] == tmp
+    assert "-ac" not in argv
+
+
 def test_writes_quietly_and_overwrites() -> None:
     """Same preamble as every other writing call — a stale scratch file must not fail the encode."""
     argv = encode_guide_mix_argv("/w/i.wav", "/w/v.wav", "/w/m.flac", ffmpeg_bin="/opt/ffmpeg")
