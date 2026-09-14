@@ -95,7 +95,9 @@ test('the wait is summed from the CATALOG, with an absent media reported as unkn
 	// `Media.durationSec` is required, so the reachable unknown is an entry whose media is not in the
 	// client catalog. `?? null` is what carries that to the builder — `?? 0` would silently understate
 	// the wait, which is the dishonest rendering the requirement exists to prevent.
-	expect(PAGE).toMatch(/aheadDurationsSec:\s*queued\s*\.?slice\(0, idx\)\.map\(\(e\) => mediaCatalog\.get\(e\.mediaId\)\?\.durationSec \?\? null\)/);
+	expect(PAGE).toMatch(
+		/aheadDurationsSec:\s*queued\s*\.?slice\(0, idx\)\.map\(\(e\) => mediaCatalog\.get\(e\.mediaId\)\?\.durationSec \?\? null\)/
+	);
 	// A playing song of unknown length makes the whole wait unknown, rather than contributing zero.
 	expect(PAGE).toMatch(/if \(nowDurationSec <= 0\) return null;/);
 });

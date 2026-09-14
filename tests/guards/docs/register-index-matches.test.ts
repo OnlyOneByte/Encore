@@ -25,7 +25,6 @@
 // dangling citation added here later. Every text-scanning guard in this suite has to survive its own
 // documentation, and this one is no exception.
 
-
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at, filesUnder, relative } from '@encore/test-support';
@@ -92,9 +91,7 @@ test("each tree's index table matches the rows in the files it lists", () => {
 	 * detected when someone lowers it.
 	 */
 	expect(tablesChecked).toBeGreaterThanOrEqual(2); // @nvf-floor tablesChecked
-	expect(tablesChecked, 'a tree was dropped from TREES, so its index is no longer checked at all').toBe(
-		TREES.length
-	);
+	expect(tablesChecked, 'a tree was dropped from TREES, so its index is no longer checked at all').toBe(TREES.length);
 	expect(offenders).toEqual([]);
 });
 
@@ -127,8 +124,11 @@ test('every requirement ID cited in a document or a test resolves to a defined r
 
 	const dangling = [...cited.entries()]
 		.filter(([id]) => !defined.has(id))
-		.map(([id, where]) => `${where} cites ${id}, which no row defines. A Check field or a test naming a ` +
-			`requirement that does not exist is a claim of coverage with nothing behind it.`);
+		.map(
+			([id, where]) =>
+				`${where} cites ${id}, which no row defines. A Check field or a test naming a ` +
+				`requirement that does not exist is a claim of coverage with nothing behind it.`
+		);
 	expect(dangling).toEqual([]);
 });
 
@@ -141,8 +141,7 @@ test('the row and table patterns match the real shapes and not near-misses', () 
 	expect(rows('#### XR-TV-01 — a sub-heading\n')).toEqual([]);
 	expect(rows('> ### XR-TV-01 — quoted\n')).toEqual([]);
 
-	const table = (s: string): [string, number][] =>
-		[...s.matchAll(TABLE_ROW)].map((m) => [m[1]!, Number(m[2]!)]);
+	const table = (s: string): [string, number][] => [...s.matchAll(TABLE_ROW)].map((m) => [m[1]!, Number(m[2]!)]);
 	expect(table('| [`01-tv.md`](01-tv.md) | 20 | Type floor |')).toEqual([['01-tv.md', 20]]);
 	// the "how to read a row" table has no filename cell, so it must not be read as a section row
 	expect(table('| Field | Content |')).toEqual([]);

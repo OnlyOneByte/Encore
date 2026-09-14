@@ -1,7 +1,12 @@
 // The guiding-track backfill: which processed songs need a vocals ref, and the existence-then-loudness
 // scan that links them. Fully injected IO — no disk, no ffmpeg.
 import { describe, it, expect } from 'bun:test';
-import { needsVocalsBackfill, candidateVocalsRefs, backfillVocalsRefs, type VocalsBackfillIO } from '$lib/server/media/vocals-backfill';
+import {
+	needsVocalsBackfill,
+	candidateVocalsRefs,
+	backfillVocalsRefs,
+	type VocalsBackfillIO
+} from '$lib/server/media/vocals-backfill';
 import type { Media } from '$lib/contract';
 
 const m = (id: string, over: Partial<Media> = {}): Media => ({
@@ -61,7 +66,7 @@ describe('candidateVocalsRefs', () => {
 	});
 
 	it('G4: a FLAC-instrumental interim process still surfaces its.m4a vocals sibling', () => {
- // The finding re-measured: once VOCALS_EXT is.flac, an ext-blind swap on a.flac
+		// The finding re-measured: once VOCALS_EXT is.flac, an ext-blind swap on a.flac
 		// instrumental names only -vocals.flac, so a row that never stored a ref and left an interim
 		//.m4a vocals stem on disk becomes unfindable. The fallback must offer EVERY known vocals
 		// extension, not just today's constant. BASE reds: Received [derived/stems/a-vocals.flac].
@@ -150,7 +155,7 @@ describe('backfillVocalsRefs', () => {
 	it('mixes all three outcomes in one pass, and is a no-op for already-linked songs', async () => {
 		const { io: deps, linked } = io({
 			exists: (abs) => !abs.includes('gone'),
-			measure: async (abs) => (abs.includes('silent') ? 'silent': 'audible')
+			measure: async (abs) => (abs.includes('silent') ? 'silent' : 'audible')
 		});
 		const res = await backfillVocalsRefs(
 			[m('good'), m('silent'), m('gone'), m('done', { vocalsRef: 'derived/stems/done-vocals.m4a' })],

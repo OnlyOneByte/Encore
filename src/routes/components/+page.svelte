@@ -85,7 +85,7 @@
 		loudnessLufs: -11.2 // a loud modern master, for the level half of the profile
 	};
 	// Same range, but NO histogram — the block must degrade to a flat fill (range known, weight unknown).
-	const profileNoHist: SongProfile = {...profileFull, histogram: null };
+	const profileNoHist: SongProfile = { ...profileFull, histogram: null };
 	// A key but NO measured range (silent/instrumental vocal stem). The bar renders NOTHING.
 	const profileKeyOnly: SongProfile = {
 		keyTonic: 2, // D
@@ -288,7 +288,7 @@
 	// The line-sync floor: same lines, no per-word timings — what an un-alignable LRC renders as.
 	const demoLineOnly: LyricsDoc = {
 		language: 'en',
-		lines: demoLyrics.lines.map((l) => ({...l, words: [] })),
+		lines: demoLyrics.lines.map((l) => ({ ...l, words: [] })),
 		words: []
 	};
 	/*
@@ -300,7 +300,7 @@
 	 */
 	const demoDuet: LyricsDoc = {
 		language: 'en',
-		lines: demoLyrics.lines.map((l, i) => ({...l, part: i % 2 === 0 ? 'A': 'B' })),
+		lines: demoLyrics.lines.map((l, i) => ({ ...l, part: i % 2 === 0 ? 'A' : 'B' })),
 		words: []
 	};
 	/*
@@ -346,7 +346,7 @@
 		language: 'en',
 		lines: demoLyrics.lines.map((l) => {
 			const words = l.words.slice(0, 2);
-			return {...l, words, text: words.map((w) => w.word).join(' ') || l.text };
+			return { ...l, words, text: words.map((w) => w.word).join(' ') || l.text };
 		}),
 		words: []
 	};

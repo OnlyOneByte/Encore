@@ -40,9 +40,7 @@ const FIXTURE_CONSUMERS = [
 ];
 
 test('the gallery route is gated to dev, not merely described as dev-only', () => {
-	expect(existsSync(at(GATE)), `${GATE} is missing — the dev-only claim is unenforced again`).toBe(
-		true
-	);
+	expect(existsSync(at(GATE)), `${GATE} is missing — the dev-only claim is unenforced again`).toBe(true);
 
 	const gate = read(GATE);
 
@@ -61,9 +59,7 @@ test('the gallery route is gated to dev, not merely described as dev-only', () =
 });
 
 test('the gallery survives as a fixture surface, and every consumer still reads it', () => {
-	expect(existsSync(at(GALLERY)), `${GALLERY} is gone — five guards read it as a fixture`).toBe(
-		true
-	);
+	expect(existsSync(at(GALLERY)), `${GALLERY} is gone — five guards read it as a fixture`).toBe(true);
 
 	// Non-vacuity: the list is the check, so an empty or shrunken list asserts nothing. A FLOOR rather
 	// than an equality on purpose — a sixth guard adopting the gallery as a fixture is welcome and

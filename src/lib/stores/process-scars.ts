@@ -63,7 +63,7 @@ export function snapshotOf(m: Media): ScarMedia {
 
 /** Rehydrate a scar snapshot into a full (un-processed) Media for the catalog. */
 export function scarToMedia(s: Scar): Media {
-	return {...s.media, stemStatus: 'none' };
+	return { ...s.media, stemStatus: 'none' };
 }
 
 // ── pure helpers (no DOM, no clock — `now` is passed in) ──────────────────────
@@ -89,7 +89,7 @@ function storageOf(store?: Storage): Storage | null {
 	// SvelteKit's `$app/environment` `browser` flag, so the pure I/O layer stays unit-testable off a
 	// browser (an injected `store` in tests, real localStorage in the client).
 	try {
-		return typeof localStorage !== 'undefined' ? localStorage: null;
+		return typeof localStorage !== 'undefined' ? localStorage : null;
 	} catch {
 		// Accessing localStorage can itself throw (some private-mode / sandboxed contexts).
 		return null;

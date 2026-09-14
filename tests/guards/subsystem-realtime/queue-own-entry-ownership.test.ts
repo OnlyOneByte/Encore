@@ -91,7 +91,9 @@ test('with the current policy a singer may move-to-index SOMEONE ELSE\u2019S ent
 
 test('move-to-index rejects a non-integer toIdx at the seam', () => {
 	expect(validateCommand(cmd({ op: 'move-to-index', id: 'own1', toIdx: 1.5 }), harness())).toBe('invalid toIdx: 1.5');
-	expect(validateCommand(cmd({ op: 'move-to-index', id: 'own1', toIdx: NaN as number }), harness())).toBe('invalid toIdx: NaN');
+	expect(validateCommand(cmd({ op: 'move-to-index', id: 'own1', toIdx: NaN as number }), harness())).toBe(
+		'invalid toIdx: NaN'
+	);
 });
 
 test('move-to-index on an unknown entry rejects before any ownership/capability check', () => {

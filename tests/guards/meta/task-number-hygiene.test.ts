@@ -84,7 +84,7 @@ const PATTERNS: { re: RegExp; family: string; only?: (rel: string) => boolean }[
 			`(?<![0-9a-fA-F#])(?<!\\bFinding )(?<!\\bFinding #[0-9]{1,4}/)(?<!\\b(?:${ORDINAL_NOUNS}) )` +
 				// …one to four decimal digits…
 				// A LEADING ZERO makes it a colour, not an issue. Issue numbers start at 1 and never carry one,
- // while `` in prose (`both are >4.5:1 vs by construction`) is a three-digit hex value
+				// while `` in prose (`both are >4.5:1 vs by construction`) is a three-digit hex value
 				// written unquoted — which the trailing-quote exclusion below cannot see. This is the
 				// discriminator that covers the unquoted case.
 				`#(?!0)[0-9]{1,4}` +

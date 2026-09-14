@@ -61,21 +61,21 @@
 	-->
 	<Chart.Container config={{ sings: { label: 'Sings', color: 'var(--accent)' } }}>
 		<div class="chart" role="group" aria-label="{total} sings over {calendar.length} days">
-		{#each calendar as slot (slot.day)}
-			<button
-				type="button"
-				class="col"
-				class:missing={slot.plays === null}
-				title={slot.plays === null ? `${slot.day}: no plays recorded` : `${slot.day}: ${slot.plays}`}
-				aria-label={slot.plays === null ? `${slot.day}: no plays recorded` : `${slot.day}: ${slot.plays} sings`}
-			>
-				<div class="bar" style:height="{slot.plays === null ? 0 : Math.max(6, (slot.plays / max) * 100)}%"></div>
-				<!-- title alone is desktop-only (no :hover on touch), so the count also lives in aria-label
+			{#each calendar as slot (slot.day)}
+				<button
+					type="button"
+					class="col"
+					class:missing={slot.plays === null}
+					title={slot.plays === null ? `${slot.day}: no plays recorded` : `${slot.day}: ${slot.plays}`}
+					aria-label={slot.plays === null ? `${slot.day}: no plays recorded` : `${slot.day}: ${slot.plays} sings`}
+				>
+					<div class="bar" style:height="{slot.plays === null ? 0 : Math.max(6, (slot.plays / max) * 100)}%"></div>
+					<!-- title alone is desktop-only (no :hover on touch), so the count also lives in aria-label
 				     for AT and in this readout, revealed on tap/focus, so a phone can surface the value. -->
-				<span class="readout">{slot.plays === null ? '·' : slot.plays}</span>
-			</button>
-		{/each}
-	</div>
+					<span class="readout">{slot.plays === null ? '·' : slot.plays}</span>
+				</button>
+			{/each}
+		</div>
 	</Chart.Container>
 	<p class="axis">
 		<span>{calendar[0]?.day}</span>

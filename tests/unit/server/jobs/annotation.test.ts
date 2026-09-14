@@ -130,8 +130,6 @@ test('a YouTube payload missing a field is not half-applied', () => {
 
 test('an unknown annotation source writes nothing', () => {
 	const m = media({ artistCanonical: 'guessed' });
-	expect(
-		applyAnnotation('m1', catalog(m), { source: 'normalizer', artist: 'a-ha', title: 'Take On Me' })
-	).toBe(false);
+	expect(applyAnnotation('m1', catalog(m), { source: 'normalizer', artist: 'a-ha', title: 'Take On Me' })).toBe(false);
 	expect(m.artistCanonical).toBe('guessed');
 });

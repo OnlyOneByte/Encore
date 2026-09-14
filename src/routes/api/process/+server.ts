@@ -15,7 +15,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	if (!singer) return json({ error: 'not joined' }, { status: 401 });
 
 	const body = await request.json().catch(() => ({}));
-	const mediaId = typeof body.mediaId === 'string' ? body.mediaId: '';
+	const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
 	if (!mediaId) return json({ error: 'mediaId required' }, { status: 400 });
 
 	// With a durable catalog, "already processed" is the common happy path (a song separated on a
@@ -81,7 +81,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		// completed job as live, so it really can hand one back — see requestProcess.)
 		status:
 			job.status === 'ready'
-				? completedStatusFor(job, m): mediaStatusFor(job, (job.stage as MediaStatus) ?? undefined),
+				? completedStatusFor(job, m)
+				: mediaStatusFor(job, (job.stage as MediaStatus) ?? undefined),
 		pct: job.progressPct
 	});
 

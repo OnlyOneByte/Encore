@@ -177,9 +177,7 @@ test('the shared walk actually skips a directory in the exclusion set', () => {
 	const fromCore = svelteFiles(at('.'));
 	expect(src.length).toBeGreaterThanOrEqual(20);
 	expect(fromCore.some((f) => f.includes(`${join('', 'node_modules', '')}`))).toBe(false);
-	expect(styleFiles(at('.')).some((f) => f.includes(`${join('', 'node_modules', '')}`))).toBe(
-		false
-	);
+	expect(styleFiles(at('.')).some((f) => f.includes(`${join('', 'node_modules', '')}`))).toBe(false);
 	// …and the walk is otherwise unfiltered: `styleFiles` is `svelteFiles` widened to `.css`, never
 	// narrowed, so it is a strict superset. A drift that narrowed either reds here.
 	const style = new Set(styleFiles(at('src')));

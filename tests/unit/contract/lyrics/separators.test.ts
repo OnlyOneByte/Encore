@@ -86,7 +86,7 @@ describe('separator registry', () => {
 	});
 
 	it('offers audiosep as a live-selectable mel-band engine with instrumental_becruily', () => {
- // Owner ruling Option A: python-audio-separator adopted ALONGSIDE roformer, with the
+		// Owner ruling Option A: python-audio-separator adopted ALONGSIDE roformer, with the
 		// mel-band instrumental_becruily checkpoint live-selectable (NOT upgrade-only like ensemble).
 		const audiosep = getEngine('audiosep');
 		expect(audiosep).toBeTruthy();
@@ -95,9 +95,7 @@ describe('separator registry', () => {
 		expect(isLiveSelectable('audiosep', 'instrumental_becruily')).toBe(true); // Option A, not upgrade-only
 		// its rank sits below the ear-approved bs-roformer-1297 (35): unheard/community, must not
 		// outrank the owner-approved top of the ladder
-		expect(qualityRank('audiosep', 'instrumental_becruily')).toBeLessThan(
-			qualityRank('roformer', 'bs-roformer-1297')
-		);
+		expect(qualityRank('audiosep', 'instrumental_becruily')).toBeLessThan(qualityRank('roformer', 'bs-roformer-1297'));
 	});
 
 	it('does NOT offer a mel-band roformer model', () => {
@@ -141,7 +139,7 @@ describe('measured cost', () => {
 		// apart as checkpoints are tuned. Bands: fast < 1× realtime, medium < 4×, slow beyond.
 		for (const engine of SEPARATOR_ENGINES) {
 			const worst = Math.max(...engine.models.map((m) => m.cost.rtFactor));
-			const band = worst < 1 ? 'fast': worst < 4 ? 'medium': 'slow';
+			const band = worst < 1 ? 'fast' : worst < 4 ? 'medium' : 'slow';
 			expect(engine.speed).toBe(band);
 		}
 	});
@@ -285,7 +283,7 @@ describe('room scope', () => {
 		// clear payload. maxQualityRank is the one field that deliberately ignores `base` (returns null,
 		// not d.maxQualityRank) — without this test, making it fall back like its 17 siblings would leave
 		// the cap permanently unremovable and pass the whole suite.
-		const capped = {...DEFAULT_ROOM_SETTINGS, maxQualityRank: 20 };
+		const capped = { ...DEFAULT_ROOM_SETTINGS, maxQualityRank: 20 };
 		expect(normalizeRoomSettings({ maxQualityRank: null as never }, capped).maxQualityRank).toBeNull();
 		// a genuinely new ceiling still replaces the old one
 		expect(normalizeRoomSettings({ maxQualityRank: 35 }, capped).maxQualityRank).toBe(35);
@@ -299,7 +297,7 @@ describe('resolveProcessSeparator', () => {
 		global,
 		// Spread the defaults rather than listing fields: this helper cares about maxQualityRank only,
 		// and an inline literal made every future RoomSettings field a compile error here.
-		room: {...DEFAULT_ROOM_SETTINGS, maxQualityRank: cap }
+		room: { ...DEFAULT_ROOM_SETTINGS, maxQualityRank: cap }
 	});
 
 	it('uses the global default when the room sets no ceiling', () => {
@@ -315,14 +313,14 @@ describe('resolveProcessSeparator', () => {
 	});
 
 	it('caps DOWNWARD to the best pairing under the ceiling', () => {
-		const global = {...DEFAULT_GLOBAL_SETTINGS, defaultEngine: 'roformer' as const, defaultModel: 'bs-roformer-1297' };
+		const global = { ...DEFAULT_GLOBAL_SETTINGS, defaultEngine: 'roformer' as const, defaultModel: 'bs-roformer-1297' };
 		// roformer ranks 35; a ceiling of 20 forces the best pairing at or under 20 → htdemucs_ft
 		expect(resolveProcessSeparator(withCap(20, global))).toEqual({ engine: 'demucs', model: 'htdemucs_ft' });
 	});
 
 	it('a room ceiling can never RAISE quality above the global choice', () => {
 		// global is the floor-setting authority because it is bounded by what the fleet can run
-		const global = {...DEFAULT_GLOBAL_SETTINGS, defaultEngine: 'demucs' as const, defaultModel: 'htdemucs' };
+		const global = { ...DEFAULT_GLOBAL_SETTINGS, defaultEngine: 'demucs' as const, defaultModel: 'htdemucs' };
 		const picked = resolveProcessSeparator(withCap(999, global));
 		expect(picked).toEqual({ engine: 'demucs', model: 'htdemucs' }); // not upgraded to roformer
 	});
@@ -334,7 +332,8 @@ describe('resolveProcessSeparator', () => {
 		// early (the vacuous case this replaces). Only an out-of-contract global — one
 		// `normalizeGlobalSettings` would refuse — reaches the `liveSelectable` filter, so that is what
 		// is exercised here, asserting the invariant fails CLOSED. Same stance as the `:477` sibling.
-		const global = {...DEFAULT_GLOBAL_SETTINGS,
+		const global = {
+			...DEFAULT_GLOBAL_SETTINGS,
 			defaultEngine: 'ensemble' as const,
 			defaultModel: 'instrumental_clean'
 		};
@@ -354,7 +353,7 @@ describe('tv progress styles', () => {
 
 	it('normalizes a known style and keeps the current one when a write is junk', () => {
 		expect(normalizeRoomSettings({ tvProgressStyle: 'off' }).tvProgressStyle).toBe('off');
-		const room = {...DEFAULT_ROOM_SETTINGS, tvProgressStyle: 'edge' as const };
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvProgressStyle: 'edge' as const };
 		expect(normalizeRoomSettings({ tvProgressStyle: 'nope' as never }, room).tvProgressStyle).toBe('edge');
 	});
 });
@@ -391,7 +390,7 @@ describe('join origin', () => {
 
 	it('a junk write keeps the declared address instead of reverting to auto-detection', () => {
 		// Reverting would put `localhost` back in the QR — the exact failure the setting exists to fix.
-		const declared = {...DEFAULT_GLOBAL_SETTINGS, joinOrigin: 'http://10.69.1.169:3000' };
+		const declared = { ...DEFAULT_GLOBAL_SETTINGS, joinOrigin: 'http://10.69.1.169:3000' };
 		expect(normalizeGlobalSettings({ joinOrigin: 'nonsense' }, declared).joinOrigin).toBe('http://10.69.1.169:3000');
 		// An omitted field is a patch, not a clear.
 		expect(normalizeGlobalSettings({ asrModel: 'base' }, declared).joinOrigin).toBe('http://10.69.1.169:3000');
@@ -408,7 +407,7 @@ describe('lyrics presentation registries', () => {
 
 	it('every entry carries a label and a stated tradeoff', () => {
 		// The house rule for a registry: a style cannot be added without saying what it costs.
-		for (const s of [...LYRICS_BALL_STYLES,...LYRICS_HIGHLIGHTS]) {
+		for (const s of [...LYRICS_BALL_STYLES, ...LYRICS_HIGHLIGHTS]) {
 			expect(s.label.length).toBeGreaterThan(0);
 			expect(s.note.length).toBeGreaterThan(0);
 		}
@@ -421,7 +420,7 @@ describe('lyrics presentation registries', () => {
 	});
 
 	it('the defaults reproduce the TV that shipped before this setting existed', () => {
- // A bouncing ball + word-by-word pink was hardcoded; the lead now ships at 0. Regressing these silently
+		// A bouncing ball + word-by-word pink was hardcoded; the lead now ships at 0. Regressing these silently
 		// changes every existing room on upgrade.
 		expect(DEFAULT_LYRICS_BALL).toBe('off');
 		expect(DEFAULT_LYRICS_HIGHLIGHT).toBe('word');
@@ -431,7 +430,7 @@ describe('lyrics presentation registries', () => {
 
 describe('normalizeRoomSettings — lyrics presentation', () => {
 	it('keeps valid styles and falls back per-field to CURRENT values', () => {
-		const room = {...DEFAULT_ROOM_SETTINGS, lyricsBall: 'underline' as const, lyricsHighlight: 'line' as const };
+		const room = { ...DEFAULT_ROOM_SETTINGS, lyricsBall: 'underline' as const, lyricsHighlight: 'line' as const };
 		expect(normalizeRoomSettings({ lyricsBall: 'steady' }, room).lyricsBall).toBe('steady');
 		// A rejected field must not drag an unrelated choice back to the hardcoded default.
 		expect(normalizeRoomSettings({ lyricsBall: 'disco' as never }, room).lyricsBall).toBe('underline');
@@ -449,8 +448,8 @@ describe('normalizeRoomSettings — lyrics presentation', () => {
 
 describe('resolveLyricsPresentation', () => {
 	const settings = (syncMode: 'forced' | 'lines', room: Partial<RoomSettings> = {}) => ({
-		global: {...DEFAULT_GLOBAL_SETTINGS, syncMode },
-		room: {...DEFAULT_ROOM_SETTINGS,...room }
+		global: { ...DEFAULT_GLOBAL_SETTINGS, syncMode },
+		room: { ...DEFAULT_ROOM_SETTINGS, ...room }
 	});
 
 	it('honours the room exactly when word timings exist', () => {
@@ -526,8 +525,8 @@ describe('resolveLyricsPresentation', () => {
 describe('resolveLyricsPresentation — the per-song inner bound', () => {
 	const wordRoom = { lyricsBall: 'bounce', lyricsHighlight: 'word' } as const;
 	const settings = (syncMode: 'forced' | 'lines', room: Partial<RoomSettings> = {}) => ({
-		global: {...DEFAULT_GLOBAL_SETTINGS, syncMode },
-		room: {...DEFAULT_ROOM_SETTINGS,...room }
+		global: { ...DEFAULT_GLOBAL_SETTINGS, syncMode },
+		room: { ...DEFAULT_ROOM_SETTINGS, ...room }
 	});
 
 	/**
@@ -551,7 +550,7 @@ describe('resolveLyricsPresentation — the per-song inner bound', () => {
 		textConfidence: 'high',
 		createdAt: 1
 	};
-	const wordSong: LyricsCandidate = {...lineOnlySong, timing: 'word' };
+	const wordSong: LyricsCandidate = { ...lineOnlySong, timing: 'word' };
 
 	it('THE BUG: a word-level fleet playing a LINE-ONLY song still clamps the room down', () => {
 		// The reported symptom. `syncMode: 'forced'` is the default, so this is what a stock
@@ -632,7 +631,7 @@ describe('lyrics text registries', () => {
 	});
 
 	it('every entry carries a label and a stated tradeoff', () => {
-		for (const e of [...LYRICS_FONTS,...LYRICS_CASES]) {
+		for (const e of [...LYRICS_FONTS, ...LYRICS_CASES]) {
 			expect(e.label.length).toBeGreaterThan(0);
 			expect(e.note.length).toBeGreaterThan(0);
 		}
@@ -728,7 +727,8 @@ describe('normalizeRoomSettings — lyrics text', () => {
 	});
 
 	it('falls back per-field to CURRENT values, not to the defaults', () => {
-		const room = {...DEFAULT_ROOM_SETTINGS,
+		const room = {
+			...DEFAULT_ROOM_SETTINGS,
 			lyricsFont: 'serif' as const,
 			lyricsCase: 'upper' as const,
 			lyricsScalePct: 140
@@ -769,12 +769,12 @@ describe('tv background styles', () => {
 
 	it('keeps the room current choice when a write is junk, rather than resetting to the default', () => {
 		expect(normalizeRoomSettings({ tvBackgroundStyle: 'gradient' }).tvBackgroundStyle).toBe('gradient');
-		const room = {...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'singer' as const };
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'singer' as const };
 		expect(normalizeRoomSettings({ tvBackgroundStyle: 'nope' as never }, room).tvBackgroundStyle).toBe('singer');
 	});
 
 	it('rejecting one field never discards an unrelated choice the room already made', () => {
-		const room = {...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'solid' as const, tvBackgroundColor: '#123456' };
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'solid' as const, tvBackgroundColor: '#123456' };
 		const out = normalizeRoomSettings({ tvBackgroundStyle: 'garbage' as never }, room);
 		expect(out.tvBackgroundStyle).toBe('solid');
 		expect(out.tvBackgroundColor).toBe('#123456');
@@ -791,14 +791,25 @@ describe('tv background styles', () => {
 
 	it('accepts a colour the retired hue pin could never have produced', () => {
 		// the ruling, as an assertion: brightness is no longer bounded here, because the lyric reel now
- // carries its own stroke instead of the field being restricted to spare it
+		// carries its own stroke instead of the field being restricted to spare it
 		expect(normalizeRoomSettings({ tvBackgroundColor: '#ffffff' }).tvBackgroundColor).toBe('#ffffff');
 		expect(normalizeRoomSettings({ tvBackgroundColor: '#ff0000' }).tvBackgroundColor).toBe('#ff0000');
 	});
 
 	it('falls back on a stage colour that is not a parseable hex', () => {
-		const room = {...DEFAULT_ROOM_SETTINGS, tvBackgroundColor: '#002215' };
-		for (const junk of ['rebeccapurple', 'rgb(1,2,3)', '#7c5cff30', 'an earlier change', '', 240, NaN, null, undefined, {}]) {
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundColor: '#002215' };
+		for (const junk of [
+			'rebeccapurple',
+			'rgb(1,2,3)',
+			'#7c5cff30',
+			'an earlier change',
+			'',
+			240,
+			NaN,
+			null,
+			undefined,
+			{}
+		]) {
 			expect(normalizeRoomSettings({ tvBackgroundColor: junk as never }, room).tvBackgroundColor).toBe('#002215');
 		}
 	});
@@ -831,7 +842,7 @@ describe('tv background styles', () => {
 	});
 
 	it('keeps the room current dim on a junk write, like every other field', () => {
-		const room = {...DEFAULT_ROOM_SETTINGS, tvBackgroundDim: 0.35 };
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundDim: 0.35 };
 		for (const junk of ['0.5', NaN, Infinity, null, undefined, {}]) {
 			expect(normalizeRoomSettings({ tvBackgroundDim: junk as never }, room).tvBackgroundDim).toBe(0.35);
 		}
@@ -860,14 +871,15 @@ describe('tv visualizers', () => {
 
 	it('keeps the room current visualizer when a write is junk', () => {
 		expect(normalizeRoomSettings({ tvVisualizer: 'moire' }).tvVisualizer).toBe('moire');
-		const room = {...DEFAULT_ROOM_SETTINGS, tvVisualizer: 'starfield' as const };
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvVisualizer: 'starfield' as const };
 		expect(normalizeRoomSettings({ tvVisualizer: 'nope' as never }, room).tvVisualizer).toBe('starfield');
 	});
 
 	it('the variant is remembered while another background is selected', () => {
 		// Switching away from the visualizer and back must not forget the choice — the same property
 		// tvBackgroundColor has when the style is not `solid`.
-		const room = {...DEFAULT_ROOM_SETTINGS,
+		const room = {
+			...DEFAULT_ROOM_SETTINGS,
 			tvBackgroundStyle: 'visualizer' as const,
 			tvVisualizer: 'lissajous' as const
 		};
@@ -877,7 +889,8 @@ describe('tv visualizers', () => {
 	});
 
 	it('a bad visualizer write never discards an unrelated choice', () => {
-		const room = {...DEFAULT_ROOM_SETTINGS,
+		const room = {
+			...DEFAULT_ROOM_SETTINGS,
 			tvVisualizer: 'moire' as const,
 			tvBackgroundColor: '#281600',
 			songIntroMs: 7000

@@ -1,17 +1,20 @@
 import { DEFAULT_GLOBAL_SETTINGS, Job, JobType, type GlobalSettings, type Job, type Media } from '$lib/contract';
-import { assignParams, eligible, followUps, hasCapableWorker, planAssignments, requiredCapability, separatorFor, type CapabilityFor } from '$lib/server/jobs/dispatch';
+import {
+	assignParams,
+	eligible,
+	followUps,
+	hasCapableWorker,
+	planAssignments,
+	requiredCapability,
+	separatorFor,
+	type CapabilityFor
+} from '$lib/server/jobs/dispatch';
 import { markMediaReady } from '$lib/server/jobs/process';
 import { WorkerSession } from '$lib/server/jobs/registry';
 import { expect, test } from 'bun:test';
 
-
-
-
 // Pure dispatch policy — need-order (priority ASC, createdAt tiebreak), least-loaded worker,
 // capability match, capacity respected within a single planning pass.
-
-
-
 
 const T0 = 1_700_000_000_000;
 
@@ -100,8 +103,6 @@ test('eligible() requires both a free slot and a matching capability', () => {
 // Lyrics were unreachable for two reasons at once — nothing ever enqueued an `align` job,
 // and `job:assign` could not carry what align needs. These pin both, plus the confidence rule that
 // decides whether a lyrics lookup is even attempted.
-
-
 
 const media = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -360,8 +361,6 @@ test('default capabilityFor (no resolver) preserves plain job_CapabilityRouting-
 // enqueueing `stems` directly would dispatch a separation before its input existed, and a `fetch`
 // that chained to nothing would leave every song stuck with audio on disk and no instrumental.
 
-
-
 const settings_FetchChain = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({ ...DEFAULT_GLOBAL_SETTINGS, ...o });
 const media_FetchChain = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -389,7 +388,9 @@ test('fetch routes on the DOWNLOADER capability, not on stems', () => {
 	// machines: neither capability implies the other.
 	expect(requiredCapability('fetch', settings_FetchChain())).toBe('fetch:ytdlp');
 	expect(requiredCapability('stems', settings_FetchChain())).toBe('stems');
-	expect(requiredCapability('fetch', settings_FetchChain())).not.toBe(requiredCapability('stems', settings_FetchChain()));
+	expect(requiredCapability('fetch', settings_FetchChain())).not.toBe(
+		requiredCapability('stems', settings_FetchChain())
+	);
 });
 
 test('fetch capability falls back sanely with no settings_FetchChain at all (older callers, unit tests)', () => {
@@ -419,7 +420,11 @@ test('a fetch job carries no separator params — it produces nothing singable',
 test('a fetch carries the LOOKUP KEYS too — annotation runs as its final step', () => {
 	// The worker cannot search MusicBrainz without them, and an absent key is the signal to decline
 	// rather than search on a guess. Same confidence gate as an align job's LRCLIB lookup.
-	const p = assignParams('fetch', media_FetchChain({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me' }), settings_FetchChain());
+	const p = assignParams(
+		'fetch',
+		media_FetchChain({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me' }),
+		settings_FetchChain()
+	);
 	expect(p.artist).toBe('a-ha');
 	expect(p.track).toBe('Take On Me');
 	expect(p.durationSec).toBe(225);
@@ -498,13 +503,7 @@ test('a CONFIDENT canonical is never overwritten by the guess', () => {
  * declaration of that name meaning something slightly different, so both are kept and each block
  * keeps the fixture its assertions were written against. Collapsing them is a separate, readable step.
  * ───────────────────────────────────────────────────────────────────────────── */
-import {
-	isQualityUpgrade,
-	qualityRank,
-	DEFAULT_GLOBAL_SETTINGS,
-	type Media,
-	type GlobalSettings
-} from '$lib/contract';
+import { isQualityUpgrade, qualityRank, DEFAULT_GLOBAL_SETTINGS, type Media, type GlobalSettings } from '$lib/contract';
 
 const settings_UpgradeChain = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({
 	...DEFAULT_GLOBAL_SETTINGS,
@@ -548,7 +547,10 @@ test('a process chains align, and the upgrade only when it would improve quality
 	expect(followUps('stems', settings_UpgradeChain({ enqueueUpgrade: true }))).toEqual(['align', 'stems-upgrade']);
 	// enabled but the "upgrade" is not actually better → not enqueued, so no wasted 40-min process
 	expect(
-		followUps('stems', settings_UpgradeChain({ enqueueUpgrade: true, upgradeEngine: 'demucs', upgradeModel: 'htdemucs' }))
+		followUps(
+			'stems',
+			settings_UpgradeChain({ enqueueUpgrade: true, upgradeEngine: 'demucs', upgradeModel: 'htdemucs' })
+		)
 	).toEqual(['align']);
 });
 
@@ -563,7 +565,10 @@ test('separatorFor reports the pairing a separation job used, and nothing for ot
 		engine: 'demucs',
 		model: 'htdemucs_ft'
 	});
-	expect(separatorFor('stems-upgrade', settings_UpgradeChain())).toEqual({ engine: 'roformer', model: 'bs-roformer-1297' });
+	expect(separatorFor('stems-upgrade', settings_UpgradeChain())).toEqual({
+		engine: 'roformer',
+		model: 'bs-roformer-1297'
+	});
 	expect(separatorFor('align', settings_UpgradeChain())).toBeUndefined();
 });
 

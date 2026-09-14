@@ -83,7 +83,6 @@ export const srcDir: string = join(repoRoot, 'src');
  * anchor over 13 copies of a path.
  */
 export const e2eDir: string = join(repoRoot, 'tests', 'e2e');
-/** `src/lib/contract/src` — the domain code both the app and (by hand-mirroring) the worker use. */
 /**
  * The ISOMORPHIC contract — code imported by both `src/lib` (client) and `src/lib/server` (authoritative).
  *
@@ -92,7 +91,6 @@ export const e2eDir: string = join(repoRoot, 'tests', 'e2e');
  * named anchor is why this move needed ONE edit here instead of one per consumer.
  */
 export const sharedSrc: string = join(srcDir, 'lib', 'contract');
-/** `worker` — the Python side. Layer 1B. */
 /** `worker` — the Python side. Layer 1B. Was `apps/worker` until the apps/ layer was flattened away. */
 export const worker: string = join(repoRoot, 'worker');
 
@@ -137,13 +135,7 @@ export function read(...parts: string[]): string {
  * recursive, so a new source directory is in scope by construction rather than by someone remembering
  * to add it.
  */
-export const SKIP_DIRS: ReadonlySet<string> = new Set([
-	'node_modules',
-	'build',
-	'.svelte-kit',
-	'dist',
-	'.git'
-]);
+export const SKIP_DIRS: ReadonlySet<string> = new Set(['node_modules', 'build', '.svelte-kit', 'dist', '.git']);
 
 /**
  * THE recursive walk. Every file-listing helper in this package is a filter over this one function,

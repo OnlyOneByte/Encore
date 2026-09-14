@@ -57,7 +57,13 @@ test('non-vacuous: both documented files exist, are non-trivial, and still discu
 	// whole guard on the live functions rather than on text alone.
 	expect(isLikelyWrongSong(SUSPECT_COVERAGE - 0.01)).toBe(true);
 	expect(isLikelyWrongSong(SUSPECT_COVERAGE + 0.01)).toBe(false);
-	const base = { ref: 'lyrics/a.json', textSource: 'lrclib', timing: 'word', textConfidence: 'high', createdAt: 0 } as const;
+	const base = {
+		ref: 'lyrics/a.json',
+		textSource: 'lrclib',
+		timing: 'word',
+		textConfidence: 'high',
+		createdAt: 0
+	} as const;
 	expect(lyricsRank({ ...base, coverage: 0.2 })).toBe(1);
 	expect(lyricsRank({ ...base, agreement: 0.2 })).toBe(5);
 });

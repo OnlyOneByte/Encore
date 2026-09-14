@@ -45,7 +45,7 @@ afterEach(() => {
 	rmSync(root, { recursive: true, force: true });
 });
 
-const put = (rel: string, bytes: number) => writeFileSync(join(root,...rel.split('/')), Buffer.alloc(bytes, 1));
+const put = (rel: string, bytes: number) => writeFileSync(join(root, ...rel.split('/')), Buffer.alloc(bytes, 1));
 
 describe('retentionCapBytes', () => {
 	it('is unset by default — a party box must not silently delete', () => {
@@ -192,7 +192,7 @@ describe('evictDerived', () => {
 	});
 
 	it('counts the vocals stem under the CURRENT extensions, not just when they happen to match', () => {
- // The modern layout is BOTH stems FLAC. derivedBytesOf must count the vocals stem via
+		// The modern layout is BOTH stems FLAC. derivedBytesOf must count the vocals stem via
 		// vocalsKey, which now names -vocals.flac; the ext-blind "-instrumental."→"-vocals." swap also
 		// resolves it here because the two stems share.flac. derivedBytesOf feeds planEviction's cap
 		// comparison, so undercounting means retention concludes there is nothing to reclaim while the
@@ -207,7 +207,7 @@ describe('evictDerived', () => {
 	});
 
 	it('counts an INTERIM process (flac instrumental + m4a vocals) via the stored m.vocalsRef', () => {
- // regression pin: flipping VOCALS_EXT to.flac makes BOTH vocalsKey and the ext-blind swap
+		// regression pin: flipping VOCALS_EXT to.flac makes BOTH vocalsKey and the ext-blind swap
 		// derive -vocals.flac, so neither names the.m4a vocals stem an interim process actually left on
 		// disk (this PR deliberately does not recompress it). The ONLY thing that still counts it is the
 		// STORED m.vocalsRef. This is the real on-disk layout, not a synthetic one. Deleting m.vocalsRef
@@ -296,10 +296,10 @@ describe('evictDerived', () => {
 	});
 
 	it('counts AND evicts the retained raw caption track the cap claims to bound', () => {
- // THE F1 PIN. shipped ENCORE_KEEP_RAW_CAPTIONS retention, whose docstring claims the track
+		// THE F1 PIN. shipped ENCORE_KEEP_RAW_CAPTIONS retention, whose docstring claims the track
 		// "inherits the retention the cap already bounds" — but eviction here is ref-driven and
 		// derivedRefsOf enumerated no raw-caption key, so derivedBytesOf undercounted (the identical
- // / undercount) and evictDerived orphaned the file on disk PERMANENTLY: retention strips
+		// / undercount) and evictDerived orphaned the file on disk PERMANENTLY: retention strips
 		// the song to un-processed and the raw caption survives the eviction with nothing left pointing at it.
 		// The worker writes it to derived/captions/<kind>/<id>.captions.<ext> keyed per media id (no ref
 		// stored on Media), so derivedRefsOf enumerates CAPTION_KINDS × KNOWN_CAPTION_EXTS via rawCaptionKey.
@@ -402,7 +402,7 @@ describe('§2 — the vocals ref is derived in exactly one place', () => {
 
 	it('derivedRefsOf reads the shared candidate list AND retains the stored ref', () => {
 		// GUARD 3: retention re-derived its own list; it must delegate to candidateVocalsRefs.
- // The m.vocalsRef arm (added by) is a regression guard: it must still be present.
+		// The m.vocalsRef arm (added by) is a regression guard: it must still be present.
 		const body = stripComments(readSrc('retention.ts'));
 		const fn = body.match(/function derivedRefsOf[\s\S]*?\n}/);
 		expect(fn).not.toBeNull();
@@ -458,7 +458,10 @@ describe('the legacy-stem recompress encoder matches its.flac destination', () =
 		);
 		expect(ok).toBe(true);
 
-		const invocations = readFileSync(argvLog, 'utf8').split('---\n').map((chunk) => chunk.split('\n').filter((l) => l.length > 0)).filter((argvv) => argvv.length > 0);
+		const invocations = readFileSync(argvLog, 'utf8')
+			.split('---\n')
+			.map((chunk) => chunk.split('\n').filter((l) => l.length > 0))
+			.filter((argvv) => argvv.length > 0);
 		expect(invocations.length).toBeGreaterThan(0); // the transcoder actually spawned the encoder
 		const argv = invocations[0];
 
@@ -467,7 +470,7 @@ describe('the legacy-stem recompress encoder matches its.flac destination', () =
 		expect(ca).toBeGreaterThan(-1);
 		expect(argv[ca + 1]).toBe('flac');
 
- // And it must NOT carry the retired AAC encoder or its bitrate knob into a.flac container.
+		// And it must NOT carry the retired AAC encoder or its bitrate knob into a.flac container.
 		expect(argv).not.toContain('aac');
 		expect(argv).not.toContain('192k');
 		// `-movflags +faststart` is an MP4/MOV concern that is dead once the output is FLAC.

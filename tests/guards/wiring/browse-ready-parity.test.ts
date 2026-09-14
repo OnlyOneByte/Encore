@@ -43,7 +43,7 @@ const finished = (id: string): Media => ({
 	stemStatus: 'ready',
 	lyricsStatus: 'ready',
 	instrumentalRef: instrumentalKey(id),
-	songProfile: {...EMPTY_SONG_PROFILE }
+	songProfile: { ...EMPTY_SONG_PROFILE }
 });
 
 /**
@@ -111,7 +111,7 @@ let repo: MediaRepository;
 describe('every browse reader answers readiness the same way', () => {
 	beforeEach(() => {
 		repo = new MediaRepository(migratedDb());
- // 's measured three rows, plus the five added so every gate arm has a seeded row:
+		// 's measured three rows, plus the five added so every gate arm has a seeded row:
 		//   a — finished, READY.                       artist 'The Band',       tag 'acoustic'
 		//   b — mid-align, not ready.                  artist 'The Band',       tag 'acoustic'  (shares both with a)
 		//   c — mid-align, not ready.                  artist 'Other',          tag 'ballad'
@@ -160,7 +160,7 @@ describe('every browse reader answers readiness the same way', () => {
 
 	it('the artist filter does not reveal the not-ready songs the library hides (F1)', () => {
 		// base: ['g', 'f', 'e', 'd', 'b', 'a'] — filtering a list narrowed it INTO rows the unnarrowed
- // list refuses. Five of the six are the shapes's seed never held.
+		// list refuses. Five of the six are the shapes's seed never held.
 		expect(repo.byArtist('The Band').map((m) => m.id)).toEqual(['a']);
 		// 'Other' has one song and it is not ready, so its filter is empty…
 		expect(repo.byArtist('Other')).toEqual([]);
@@ -216,8 +216,7 @@ describe('every browse reader answers readiness the same way', () => {
 			{ tag: 'acoustic', count: 1 },
 			{ tag: 'legacy', count: 1 }
 		]);
-	}
-);
+	});
 
 	it('the legacy lyrics-artifact row IS ready, and every one of the five readers shows it', () => {
 		// The other direction: a gate narrowed to `lyricsStatus === 'ready'` — dropping the legacy arm
@@ -349,8 +348,8 @@ describe('readiness is defined once for the whole browse block', () => {
 		const SQL_FORM = "const narrowing = and(eq(media.stemStatus, 'ready'), isNotNull(media.instrumentalRef));";
 
 		/**
- * The sixth reader measured. Its body re-derives readiness in JS after `.map(fromRow)` — it
- * calls no gate and writes no drizzle predicate, so's ban saw nothing and the whole suite
+		 * The sixth reader measured. Its body re-derives readiness in JS after `.map(fromRow)` — it
+		 * calls no gate and writes no drizzle predicate, so's ban saw nothing and the whole suite
 		 * stayed green with it in the file.
 		 */
 		const JS_REDERIVATION = ".map(fromRow).filter((m) => m.stemStatus === 'ready' && !!m.instrumentalRef)";
@@ -367,7 +366,7 @@ describe('readiness is defined once for the whole browse block', () => {
 			expect(count(NARROWING, SQL_FORM)).toBe(1);
 		});
 
- it('now catches a JS re-derivation, which the pre- pattern did not', () => {
+		it('now catches a JS re-derivation, which the pre- pattern did not', () => {
 			expect(count(PRE_799, JS_REDERIVATION)).toBe(0); // the measured hole
 			expect(count(NARROWING, JS_REDERIVATION)).toBe(1); // reverting NARROWING to PRE_799 reds here
 			expect(count(GATE, JS_REDERIVATION)).toBe(0); // and the gate grep never saw it either
@@ -398,8 +397,7 @@ describe('readiness is defined once for the whole browse block', () => {
 		expect(b).toMatch(expected);
 		expect(count(NARROWING, b)).toBe(0);
 		expect(count(GATE, b)).toBe(0);
-	}
-);
+	});
 
 	it('the tag helper inherits readiness from the shared set instead of re-asking it', () => {
 		// `readyTagged` must not carry its own readiness clause; membership of readySongs() IS the
@@ -412,7 +410,7 @@ describe('readiness is defined once for the whole browse block', () => {
 
 	it('the SQL aggregation machinery is gone from this file, so a facet count cannot go back into SQL', () => {
 		// `sql` and `asc` were imported for ONE purpose: the facets' `count(*)` / `ORDER BY count(*)
- // DESC, value ASC`. A count taken in SQL cannot consult the gate table, which is the
+		// DESC, value ASC`. A count taken in SQL cannot consult the gate table, which is the
 		// defect, so re-importing either is the shape of a relapse — deliberate re-use would have to
 		// update this assertion on purpose.
 		const importLine = /^import \{[^}]*\} from 'drizzle-orm';$/m.exec(SRC)?.[0] ?? '';
@@ -426,7 +424,7 @@ describe('readiness is defined once for the whole browse block', () => {
 	it("listReady's own docstring no longer claims to narrow in SQL itself", () => {
 		// RAW text, because a comment is the subject. `listReady` is now a one-liner containing no SQL
 		// at all, so the old sentence describing its query became a comment contradicting its code —
- // the exact defect class's own report names in `tagFacets`.
+		// the exact defect class's own report names in `tagFacets`.
 		expect(SRC).not.toContain('The SQL narrows to separated songs');
 		expect(docAbove('listReady')).toMatch(/readySongs/);
 	});

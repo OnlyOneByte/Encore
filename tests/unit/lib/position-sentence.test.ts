@@ -98,9 +98,7 @@ test('no reachable wait ever renders a zero or a NaN', () => {
 
 test('place 1 says "up next" only when the pick can actually play', () => {
 	expect(positionWords({ place: 1, nowRemainingSec: 30 })!.lead).toBe("You're up next.");
-	expect(positionWords({ place: 1, nowRemainingSec: 30, playable: false })!.lead).toBe(
-		"You're next once it's ready."
-	);
+	expect(positionWords({ place: 1, nowRemainingSec: 30, playable: false })!.lead).toBe("You're next once it's ready.");
 });
 
 test('an unresolved singer name degrades to a true sentence, not to "undefined"', () => {

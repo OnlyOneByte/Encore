@@ -4,12 +4,7 @@ import { test, expect, beforeEach } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-	resolveMediaStoreConfig,
-	normalizePrefix,
-	objectKey,
-	LocalMediaStore
-} from '$lib/server/media/store';
+import { resolveMediaStoreConfig, normalizePrefix, objectKey, LocalMediaStore } from '$lib/server/media/store';
 import { ObjectMediaStore, type S3Like } from '$lib/server/media/object-store';
 
 // ── pure config resolver ─────────────────────────────────────────────────────────

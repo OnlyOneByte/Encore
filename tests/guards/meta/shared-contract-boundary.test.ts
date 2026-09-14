@@ -26,7 +26,6 @@
 // BOTH SPELLINGS ARE CLOSED. An alias ban alone is trivially defeated by `../lib/x`, which resolves to
 // exactly the same module, so relative escapes out of this directory are refused too.
 
-
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { filesUnder, relative, sharedSrc } from '@encore/test-support';
@@ -137,8 +136,7 @@ test('the comment stripper does not blind the scan', () => {
 	// The other half of the prose trap: stripping must remove an EXPLANATION of the banned import without
 	// also removing a real one nearby. `code()` takes a path, so the transforms are mirrored inline here
 	// against text — kept identical to the ones above, which is what this arm is really pinning.
-	const strip = (s: string): string =>
-		s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+	const strip = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
 
 	const withRealImport = strip(
 		[

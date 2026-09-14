@@ -117,7 +117,14 @@ export class JobRepository {
 	 * (`countLiveProcessesForSinger`). Omitted by internal callers that impose no cap; a REUSED live job
 	 * keeps its original requester rather than being re-attributed to whoever tapped second.
 	 */
-	enqueue(mediaId: string, jobType: JobType, priority: number, now: number, processingId?: string, singerId?: string): Job {
+	enqueue(
+		mediaId: string,
+		jobType: JobType,
+		priority: number,
+		now: number,
+		processingId?: string,
+		singerId?: string
+	): Job {
 		const existing = this.findLive(mediaId, jobType);
 		if (existing) return existing;
 
@@ -153,7 +160,11 @@ export class JobRepository {
 
 	/** The live (slot-occupying) job for a key, if any — the dedup lookup. */
 	findLive(mediaId: string, jobType: JobType): Job | null {
-		const row = this.#db.select().from(jobs).where(and(eq(jobs.mediaId, mediaId), eq(jobs.jobType, jobType), notInArray(jobs.status, SLOT_FREEING_STATUSES))).all()[0];
+		const row = this.#db
+			.select()
+			.from(jobs)
+			.where(and(eq(jobs.mediaId, mediaId), eq(jobs.jobType, jobType), notInArray(jobs.status, SLOT_FREEING_STATUSES)))
+			.all()[0];
 		return this.#toJob(row);
 	}
 
@@ -210,7 +221,12 @@ export class JobRepository {
 	/** All jobs in any of the given statuses — feeds dispatch (queued) and the reaper. */
 	listByStatus(...statuses: JobStatus[]): Job[] {
 		if (statuses.length === 0) return [];
-		return this.#db.select().from(jobs).where(inArray(jobs.status, statuses)).all().map((r) => this.#toJob(r)!);
+		return this.#db
+			.select()
+			.from(jobs)
+			.where(inArray(jobs.status, statuses))
+			.all()
+			.map((r) => this.#toJob(r)!);
 	}
 
 	/**
@@ -244,7 +260,7 @@ export class JobRepository {
 		// now rides ENTERING the released state, so it cannot be forgotten by a new terminal path.
 		if (current.workerId && SLOT_RELEASING_EVENTS.has(event)) this.#releaseSlot?.(current.workerId);
 
-		const next = {...patch, status: to, updatedAt: now };
+		const next = { ...patch, status: to, updatedAt: now };
 		this.#db.update(jobs).set(next).where(eq(jobs.id, id)).run();
 		const updated = this.byId(id)!;
 
@@ -379,7 +395,10 @@ export class JobRepository {
 	 * longer costs the fleet) and the media being re-requested.
 	 */
 	liveProcessMediaForSinger(singerId: string): Set<string> {
-		const rows = this.#db.select({ mediaId: jobs.mediaId }).from(jobs).where(
+		const rows = this.#db
+			.select({ mediaId: jobs.mediaId })
+			.from(jobs)
+			.where(
 				and(
 					eq(jobs.singerId, singerId),
 					inArray(jobs.jobType, ['fetch', 'stems']),

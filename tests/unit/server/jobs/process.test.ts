@@ -439,7 +439,11 @@ test('a spotify-sourced media is refused a process (search-only; audio comes fro
 // no number — the stems-upgrade case where a declined re-measure arrives as undefined.
 test('setMediaGuideOffset stores a finite offset (0 included) and coerces to a whole ms', () => {
 	const mediaById = new Map<string, Media>();
-	const m = media('go1', { stemStatus: 'ready', instrumentalRef: 'stems/go1-instrumental.flac', vocalsRef: 'stems/go1-vocals.flac' });
+	const m = media('go1', {
+		stemStatus: 'ready',
+		instrumentalRef: 'stems/go1-instrumental.flac',
+		vocalsRef: 'stems/go1-vocals.flac'
+	});
 	mediaById.set('go1', m);
 	expect(setMediaGuideOffset('go1', 30.4, mediaById)).toBe(true);
 	expect(m.guideOffsetMs).toBe(30); // rounded to whole ms

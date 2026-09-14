@@ -118,9 +118,7 @@ export function loudnessNormalizationGain(input: LoudnessNormalizationInput): Lo
 	const songLufs = input.songLufs;
 	if (typeof songLufs !== 'number' || !Number.isFinite(songLufs)) return UNITY(null, 0);
 
-	const measured = input.libraryLevels.filter(
-		(v): v is number => typeof v === 'number' && Number.isFinite(v)
-	);
+	const measured = input.libraryLevels.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
 	// Below the floor the median is not a library median; apply no gain to anything.
 	if (measured.length < LOUDNESS_MEASURED_FLOOR) return UNITY(null, measured.length);
 

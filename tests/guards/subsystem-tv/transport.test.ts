@@ -68,9 +68,9 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		expect(calls.length).toBe(1); // ONE decision, derived once
 		const call = calls[0]!.slice(0, 1600);
 		// The input must compare the element's ENTRY-scoped token against the CURRENT entry's, not merely
- // ask "has this slot ever held a src" (`!!currentSrc`, stale-true across ANY change —) and not
+		// ask "has this slot ever held a src" (`!!currentSrc`, stale-true across ANY change —) and not
 		// merely "does the element hold this SONG's src" (`slotHoldsSrc`, stale-true across a SAME-SONG
- // advance because the src is byte-identical —). `slotHoldsSong(songToken(currentEntryId, ...),
+		// advance because the src is byte-identical —). `slotHoldsSong(songToken(currentEntryId, ...),
 		// songToken(entryId, ...fileSrc(media)...))` gives the `idle -> play` value edge exactly when the
 		// assign effect records the new entry, even for turn 2 of a twice-queued song.
 		expect(call).toContain('hasSrc: slotHoldsSong(');
@@ -78,7 +78,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		expect(call).toContain('songToken(entryId,');
 		expect(call).toContain('fileSrc(media)');
 		expect(call).not.toContain('hasSrc: !!currentSrc');
- // regression trap: the reader must NOT be the src-only helper — that is exactly the shape that
+		// regression trap: the reader must NOT be the src-only helper — that is exactly the shape that
 		// stayed stale-true across a same-song advance and left turn 2 silent.
 		expect(call).not.toContain('hasSrc: slotHoldsSrc(');
 		// and it must be a $derived, so both the master and the guide effect track it
@@ -124,7 +124,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	});
 
 	/*
- * . A next-up process reaching a stage rebroadcasts queue:sync; the TV rebuilds its catalog and the
+	 * . A next-up process reaching a stage rebroadcasts queue:sync; the TV rebuilds its catalog and the
 	 * PLAYING slot's media reads momentarily null / not-yet-isPlayable for a churn pass. On the old
 	 * contract the assign effect resolved that pass to '' and, since the element still held the real
 	 * src, CLEARED it (removeAttribute -> reassign -> reload at 0 — the currently-playing song jumped
@@ -149,7 +149,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 
 	test('currentSrc is not clobbered on a not-playable pass', () => {
 		// The bookkeeping the transport gates on must survive a churn pass, so its write is guarded on
- // `playable` rather than assigned unconditionally to a possibly-empty `resolved`. (moved the
+		// `playable` rather than assigned unconditionally to a possibly-empty `resolved`. (moved the
 		// write inside a `if (playable) { ... }` block that also records `currentEntryId`; the guard on the
 		// write's playability is what matters, so match the assignment inside the guarded block.)
 		expect(code).toContain('currentSrc = resolved');
@@ -167,14 +167,14 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	});
 
 	/*
- * draining the room UNMOUNTS the master (`{#if media && isPlayable(media)}`), but `currentSrc`
+	 * draining the room UNMOUNTS the master (`{#if media && isPlayable(media)}`), but `currentSrc`
 	 * is a component-level shadow that outlives the element. Re-adding the SAME just-ended song resolves
 	 * to the byte-identical src, so `slotHoldsSrc(currentSrc, …)` reads `true` on a fresh, src-less
 	 * element: the transport is `'play'` on its first pass, races the src assignment, is aborted, and —
 	 * the derived value never having changed — is never retried. The room is silent while every surface
 	 * says it is playing. The fix clears the shadow WHEN THE ELEMENT IS GONE, so a remounted element reads
 	 * `hasSrc:false` and the transport takes a genuine `idle -> play` edge once the assign effect lands the
- * new src. This is a DIFFERENT clear from the not-playable churn pass (element still bound, keep
+	 * new src. This is a DIFFERENT clear from the not-playable churn pass (element still bound, keep
 	 * the song) — it fires only on the unmount, and no such reset exists on base, so this reds today.
 	 * Comments are stripped so the prose above (which names the old and new shapes) can neither satisfy
 	 * nor trip it.
@@ -182,7 +182,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	test('both src+entry shadows are reset when the master element unmounts, not left to go stale', () => {
 		// A guard against the shadows that survive the drain. The reset must fire on the ABSENCE of the
 		// binding (`!master`) — a genuine unmount — and clear BOTH the src shadow (so a re-added same-song
- // element does not read a stale hasSrc:true —) and the entry shadow ('s held token half).
+		// element does not read a stale hasSrc:true —) and the entry shadow ('s held token half).
 		// Wrap-tolerant on whitespace between tokens.
 		expect(code).toMatch(/if\s*\(\s*!master\s*\)\s*\{[\s\S]*currentSrc\s*=\s*''[\s\S]*currentEntryId\s*=\s*null/);
 		// Not vacuous: the reader it protects is still wired to the shadow (if someone rewires the transport
@@ -319,8 +319,8 @@ describe('the transport across a SAME-SONG advance (a song queued twice)', () =>
 	 * THE NAMED GUARD, red on base. On base the transport input is `slotHoldsSrc`, which compares only
 	 * the src: for a same-song advance held===wanted===SRC on BOTH sides, so both decisions are 'play'
 	 * and there is NO edge — the exact hole. Expressed against the SRC-ONLY input this assertion FAILS
- * (both 'play'); against the ENTRY-scoped input it PASSES (idle -> play). This is what makes
- * dispatchable and is byte-for-byte the case's describe could never reach because every one of
+	 * (both 'play'); against the ENTRY-scoped input it PASSES (idle -> play). This is what makes
+	 * dispatchable and is byte-for-byte the case's describe could never reach because every one of
 	 * its cases used two DIFFERENT songs.
 	 */
 	test('the src-only input produces NO edge across a same-song advance — the bug', () => {

@@ -15,7 +15,6 @@
 // tree but declared nowhere. That resolves today only by accident of hoisting, and stops resolving the
 // moment the dependency graph shifts.
 
-
 import { test, expect } from 'bun:test';
 import { filesUnder, read, relative } from '@encore/test-support';
 
@@ -39,7 +38,7 @@ function externalImports(src: string): string[] {
 		if (/^[./]/.test(spec)) return; // relative
 		if (/^(node:|bun:)/.test(spec)) return; // builtin
 		if (/^(\$lib|\$lib\/contract|\$app|\$env|\$routes|\$setup|\$e2e)/.test(spec)) return; // tsconfig path alias. $lib covers $lib/server; $routes, $setup and $e2e are declared in
-			// tests/tsconfig.json so a test names its subject instead of counting `..` hops to it.
+		// tests/tsconfig.json so a test names its subject instead of counting `..` hops to it.
 		if (/^@encore\//.test(spec)) return; // workspace sibling, resolved by alias
 		out.push(spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]!);
 	};
@@ -79,9 +78,7 @@ test('every external package the test tree imports is declared somewhere it can 
 	const seen = new Set<string>();
 	for (const f of files) for (const p of externalImports(read(relative(f)))) seen.add(p);
 
-	const undeclared = [...seen]
-		.filter((p) => !(p in declared))
-		.sort();
+	const undeclared = [...seen].filter((p) => !(p in declared)).sort();
 
 	expect(
 		undeclared,

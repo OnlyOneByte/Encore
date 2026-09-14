@@ -74,7 +74,7 @@ test('XR-PH-19 · another guest queueing mid-drag re-orders the list, and the mo
 
 	// A DIFFERENT guest queues a song while my drag is open. This is the real op through the real hub,
 	// so the re-derivation is the server's own.
-	handleQueueCommand(addCmd('x', 'm3', 's2'), {...deps, actorSingerId: 's2' });
+	handleQueueCommand(addCmd('x', 'm3', 's2'), { ...deps, actorSingerId: 's2' });
 
 	// The flat list genuinely changed underneath: a third entry is in it, and fair rotation interleaves
 	// s2 between my two picks — so this is not a no-op dressed as a test.
@@ -115,9 +115,7 @@ test('XR-PH-19 · the moving song being removed elsewhere closes the mode with i
 	handleQueueCommand(removeCmd('a'), deps); // the row under the finger
 
 	expect(state.entries.find((e) => e.id === 'a')).toBeUndefined();
-	expect(modeInvalidation(queuedList(state), 'a', undefined)).toBe(
-		'That song left the queue — nothing was moved.'
-	);
+	expect(modeInvalidation(queuedList(state), 'a', undefined)).toBe('That song left the queue — nothing was moved.');
 });
 
 test('XR-PH-19 · the moving song starting playback closes the mode with its own reason', () => {
@@ -149,7 +147,7 @@ test('· committing a drag as move-to-index moves a song to a GLOBAL slot, jumpi
 	// capability gate is in the way.
 	const { state, deps } = harness('s1');
 	handleQueueCommand(addCmd('a', 'm1', 's1'), deps); // s1
-	handleQueueCommand(addCmd('x', 'm2', 's2'), {...deps, actorSingerId: 's2' }); // s2
+	handleQueueCommand(addCmd('x', 'm2', 's2'), { ...deps, actorSingerId: 's2' }); // s2
 	handleQueueCommand(addCmd('b', 'm3', 's1'), deps); // s1
 
 	// Fair rotation interleaves the two singers; the exact order is the server's, so read it rather than

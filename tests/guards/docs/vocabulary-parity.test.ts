@@ -704,7 +704,10 @@ describe('silence floor parity (worker processor.py vs core loudness.ts)', () =>
 		// particular shape reds, a future regex slip returning `0` or `NaN` would not necessarily. Pin
 		// that a real number was read, so the guard cannot degrade into comparing a parse failure.
 		const py = pyFloorDb();
-		expect(py, `SILENCE_FLOOR_DB not found at module level in ${SILENCE_REL} — did the constant move or get commented out?`).not.toBeNull();
+		expect(
+			py,
+			`SILENCE_FLOOR_DB not found at module level in ${SILENCE_REL} — did the constant move or get commented out?`
+		).not.toBeNull();
 		expect(Number.isFinite(py!)).toBe(true);
 		// It is a dBFS floor: negative, and in the neighbourhood a 16-bit silence measurement lives in.
 		// A regex that started matching some unrelated number would clear the finite check but not this.

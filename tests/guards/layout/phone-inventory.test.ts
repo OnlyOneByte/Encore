@@ -281,11 +281,13 @@ const LIVE_REGIONS: { file: string; purpose: string }[] = [
 	{ file: 'lib/components/ProcessingCard.svelte', purpose: 'process stage progress while the guest waits' },
 	{
 		file: 'lib/components/CodeEntry.svelte',
-		purpose: 'XR-PH-14 join-code entry — a rejected keystroke names the excluded characters (SC 3.3.1) and the disabled-Continue reason (SC 3.3.2), without interrupting typing'
+		purpose:
+			'XR-PH-14 join-code entry — a rejected keystroke names the excluded characters (SC 3.3.1) and the disabled-Continue reason (SC 3.3.2), without interrupting typing'
 	},
 	{
 		file: 'lib/components/JoinLanding.svelte',
-		purpose: 'XR-PH-14 landing — the reason Continue is disabled (enter your name / finish the code), stated in words rather than by disabled state alone (SC 3.3.2)'
+		purpose:
+			'XR-PH-14 landing — the reason Continue is disabled (enter your name / finish the code), stated in words rather than by disabled state alone (SC 3.3.2)'
 	}
 ];
 
@@ -346,7 +348,10 @@ test('XR-PH-13: every phone announcement is one of the inventoried events, and t
 	// Floor: the implemented events really are wired. Without this, deleting an announcement passes.
 	const implemented = ANNOUNCED_EVENTS.filter((e) => e.implemented);
 	for (const e of implemented) {
-		expect(sites.some((s) => e.match!.test(s)), `inventoried event "${e.event}" has no announcement site`).toBe(true);
+		expect(
+			sites.some((s) => e.match!.test(s)),
+			`inventoried event "${e.event}" has no announcement site`
+		).toBe(true);
 	}
 	expect(sites.length).toBeGreaterThanOrEqual(implemented.length);
 
@@ -504,7 +509,8 @@ test('XR-PH-02: no phone rule fixes a horizontal dimension wider than a 320px vi
 const INLINE_OPACITY_EXEMPTIONS: { file: string; reason: string }[] = [
 	{
 		file: 'lib/components/RangeBar.svelte',
-		reason: 'the `.hist` span is an empty data bar — no text and no identity dot in its subtree, so no measured contrast can drift from what is painted'
+		reason:
+			'the `.hist` span is an empty data bar — no text and no identity dot in its subtree, so no measured contrast can drift from what is painted'
 	}
 ];
 

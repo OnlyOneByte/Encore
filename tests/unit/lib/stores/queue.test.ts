@@ -3,8 +3,6 @@ import { QueueStore } from '$lib/stores/queue';
 import { expect, test } from 'bun:test';
 // done-when: add renders pre-broadcast, reconciles with zero reorder; reject rolls back.
 
-
-
 // deterministic id minting: first mint = entry id, second = clientOpId, ... (addSong mints 2)
 function makeStore() {
 	const sent: ClientCommand[] = [];
@@ -401,8 +399,6 @@ test('moveToIndex emits move-to-index and pulls the entry to the global index th
 // algorithm, not with fair rotation. A prediction made under the wrong algorithm renders the new row
 // in the wrong place and then snaps when the server patch arrives — the exact flicker `applyAndReseq`
 // is shared between the phone and the server to prevent.
-
-
 
 function makeStore_QueueOrdering(ordering?: () => Ordering) {
 	const sent: ClientCommand[] = [];

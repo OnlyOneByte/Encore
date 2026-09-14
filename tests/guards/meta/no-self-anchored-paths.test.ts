@@ -20,7 +20,6 @@
 // rather than a project, and it is the only form under which a wrong path fails LOUDLY: `read()` and
 // `filesUnder()` throw on a miss, by design and for exactly this reason.
 
-
 import { test, expect } from 'bun:test';
 import { at, filesUnder, read, relative } from '@encore/test-support';
 import { existsSync } from 'node:fs';
@@ -34,9 +33,7 @@ import { existsSync } from 'node:fs';
  * the stripper comes with a mutation arm below proving it does not also blind the scan.
  */
 function codeOnly(src: string): string {
-	return src
-		.replace(/\/\*[\s\S]*?\*\//g, ' ')
-		.replace(/(^|[\s;{(])\/\/[^\n]*/g, '$1 ');
+	return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[\s;{(])\/\/[^\n]*/g, '$1 ');
 }
 
 /** The location-deriving idioms, all of them. A grep for one spelling misses the others. */
@@ -105,9 +102,7 @@ test('no file under tests/ derives a path from its own location', () => {
 	const exempt = new Set<string>([SELF, ...ANCHORS]);
 	const offenders = files
 		.map((f) => relative(f))
-		.filter(
-			(rel) => !exempt.has(rel) && SELF_ANCHOR.test(withoutModuleResolution(codeOnly(read(rel))))
-		);
+		.filter((rel) => !exempt.has(rel) && SELF_ANCHOR.test(withoutModuleResolution(codeOnly(read(rel)))));
 
 	// The exemption must stay exactly one file wide. An exemption list is how a ban stops meaning anything.
 	expect(files.map((f) => relative(f)).filter((r) => r === SELF)).toHaveLength(1);
@@ -145,7 +140,8 @@ test('the scan reads code and not the comments that describe the defect', () => 
 	const prose = "// was `join(import.meta.dir, '..')` before the move\nconst SRC = srcDir;";
 	expect(SELF_ANCHOR.test(codeOnly(prose))).toBe(false);
 
-	const block = '/*\n * `dirname(fileURLToPath(import.meta.url))` meant the routes dir it sat in.\n */\nconst X = at("apps");';
+	const block =
+		'/*\n * `dirname(fileURLToPath(import.meta.url))` meant the routes dir it sat in.\n */\nconst X = at("apps");';
 	expect(SELF_ANCHOR.test(codeOnly(block))).toBe(false);
 
 	const real = "const SRC = join(import.meta.dir, '..');";

@@ -111,7 +111,7 @@ test('the scan reads code, not the prose that explains the removal', () => {
 	expect(HAND_ROLLED[0]!.re.test(codeOnly(version))).toBe(true);
 	expect(HAND_ROLLED[1]!.re.test(codeOnly('const ws = new WebSocket(v.webSocketDebuggerUrl);'))).toBe(true);
 	expect(HAND_ROLLED[2]!.re.test(codeOnly("await this.send('Target.createBrowserContext');"))).toBe(true);
-	expect(HAND_ROLLED[3]!.re.test(codeOnly("spawn(chrome, [`--remote-debugging-port=${port}`]);"))).toBe(true);
+	expect(HAND_ROLLED[3]!.re.test(codeOnly('spawn(chrome, [`--remote-debugging-port=${port}`]);'))).toBe(true);
 });
 
 test("Playwright's own CDP session is what the driver uses, and only for what has no API", () => {

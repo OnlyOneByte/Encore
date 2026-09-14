@@ -130,7 +130,14 @@ function walkBasenames(dir: string, out: Set<string>): void {
 		return;
 	}
 	for (const ent of ents) {
-		if (ent.name === 'node_modules' || ent.name === '.svelte-kit' || ent.name === 'build' || ent.name === 'dist' || ent.name === '.git') continue;
+		if (
+			ent.name === 'node_modules' ||
+			ent.name === '.svelte-kit' ||
+			ent.name === 'build' ||
+			ent.name === 'dist' ||
+			ent.name === '.git'
+		)
+			continue;
 		const abs = join(dir, ent.name);
 		if (ent.isDirectory()) walkBasenames(abs, out);
 		else if (ent.name.endsWith('.ts')) out.add(ent.name);
@@ -167,7 +174,10 @@ test('every in-file symbol pointer in a comment names the file whose CODE holds 
 	// (1) enough pointers extracted at all.
 	expect(pointers.length, 'pointer extraction produced too few pointers').toBeGreaterThanOrEqual(5);
 	// (1b) the scan recursed into the domain subdirs, so a nested module is covered.
-	expect(SCANNED.some((f) => f.includes('/')), 'scan did not recurse into subdirectories').toBe(true);
+	expect(
+		SCANNED.some((f) => f.includes('/')),
+		'scan did not recurse into subdirectories'
+	).toBe(true);
 	// (1c) no ambiguous duplicate basenames — the resolver assumes one path per filename.
 	expect(byBasename.size, 'duplicate module basename would make citations ambiguous').toBe(SCANNED.length);
 	// (2) the three known-true pointers still resolve (guards against a stripper/regex that resolves nothing).
@@ -194,9 +204,22 @@ test('every in-file symbol pointer in a comment names the file whose CODE holds 
 	//     This pair is also the mutation arm for the repo-wide basename walk, in BOTH directions: an empty
 	//     walk fails the `hub.ts` line, and a walk so wide it matched anything fails the `rotaton.ts` line.
 	//     An empty walk is what a hardcoded list of top-level tree names produced once already.
-	expect(repoTsBasenames.size, 'the repo-wide basename walk found almost nothing, so every cross-tree citation would read as stale').toBeGreaterThan(200); // @nvf-floor repoTsBasenames.size
-	expect(resolves({ file: 'core/ops.ts', ident: 'applyOp', target: 'rotaton.ts' }), 'a misspelled in-contract citation must be caught, not skipped').toBe(false);
-	expect(resolves({ file: 'core/ops.ts', ident: 'HubState', target: 'hub.ts' }), 'a real cross-tree citation is out of remit and must be skipped').toBe(true);
+	//
+	//     The message is hoisted so the assertion FITS ON ONE LINE at printWidth 120. Its trailing
+	//     `// @nvf-floor` tag is only recognised on a line that also carries `expect(`
+	//     (non-vacuity-floors.test.ts's `taggedFloorSubjects`), so letting prettier wrap this call moves
+	//     the tag onto the `).toBeGreaterThan(...)` line and the floor reads as unregistered.
+	const walkNonVacuity =
+		'the repo-wide basename walk found almost nothing, so every cross-tree citation would read as stale';
+	expect(repoTsBasenames.size, walkNonVacuity).toBeGreaterThan(200); // @nvf-floor repoTsBasenames.size
+	expect(
+		resolves({ file: 'core/ops.ts', ident: 'applyOp', target: 'rotaton.ts' }),
+		'a misspelled in-contract citation must be caught, not skipped'
+	).toBe(false);
+	expect(
+		resolves({ file: 'core/ops.ts', ident: 'HubState', target: 'hub.ts' }),
+		'a real cross-tree citation is out of remit and must be skipped'
+	).toBe(true);
 
 	// ── the guard itself: no pointer may name a file whose code lacks the symbol. ──
 	const offenders = pointers.filter((p) => !resolves(p)).map((p) => `${p.file}: \`${p.ident}\` claimed in ${p.target}`);

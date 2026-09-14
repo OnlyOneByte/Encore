@@ -19,9 +19,9 @@ function freshRepo() {
 
 describe('SettingsRepository', () => {
 	it('a room-scoped write addresses the given room, not the literal "main"', () => {
- // MECHANISM: every room-scoped method used to DEFAULT its roomId to the literal 'main',
+		// MECHANISM: every room-scoped method used to DEFAULT its roomId to the literal 'main',
 		// so an omitting caller silently addressed 'main' with the compiler saying nothing (12 of 13
- // production sites did exactly that; the bug shipped as). roomId is now REQUIRED, so this test
+		// production sites did exactly that; the bug shipped as). roomId is now REQUIRED, so this test
 		// pins the property that makes the requirement meaningful: a write keyed to some OTHER room lands in
 		// THAT room and is invisible to 'main'. If any method silently fell back to 'main', the two reads
 		// below would collide.
@@ -449,7 +449,7 @@ describe('SettingsRepository global scope: join origin', () => {
 describe('SettingsRepository room scope: lyrics presentation', () => {
 	it('fresh-room defaults: no marker, word highlight, 0.3s lead', () => {
 		// A brand-new room (no stored row) reads the schema column defaults. The ball default was
- // flipped to 'off' per; highlight/lead are unchanged. A room that existed BEFORE this
+		// flipped to 'off' per; highlight/lead are unchanged. A room that existed BEFORE this
 		// flip keeps its own stored 'lyrics_ball' value via the shipped baseline migration.
 		const room = freshRepo().getRoom('main');
 		expect(room.lyricsBall).toBe('off');
@@ -631,7 +631,7 @@ describe('SettingsRepository room scope: the ordering algorithm', () => {
 		// These two columns were folded into the pre-release baseline (0000) when main collapsed its
 		// thirteen-migration chain, and 0000 must NOT be re-edited afterwards: a running box keeps its DB
 		// across restarts (app.ts persists to a file), and boot re-runs runMigrations, so editing 0000 in
- // place makes drizzle replay it and throw on CREATE TABLE of an already-existing table (—
+		// place makes drizzle replay it and throw on CREATE TABLE of an already-existing table (—
 		// reproduced end to end). So the rule is: 0000 stays as shipped and CARRIES these columns, while any
 		// later schema change arrives as a NEW numbered file that only ALTERs. This asserts both halves.
 		const folder = process.env.ENCORE_MIGRATIONS_DIR ?? at('drizzle');
@@ -648,9 +648,9 @@ describe('SettingsRepository room scope: the ordering algorithm', () => {
 		// and the provenance header survived the regeneration, or the next person re-adds the chain
 		expect(sql).toContain('SINGLE PRE-RELEASE BASELINE');
 		// Any migration AFTER the baseline must never REPLAY a baseline table — a `CREATE TABLE <foo>`
- // for a table 0000 already created throws on an existing DB (the boot failure). SQLite's
+		// for a table 0000 already created throws on an existing DB (the boot failure). SQLite's
 		// only way to change a primary key, though, is the create-copy-drop-rename dance on a `__new_*`
- // TEMP table that is renamed into place ('s playback re-key), which is NOT a replay: the
+		// TEMP table that is renamed into place ('s playback re-key), which is NOT a replay: the
 		// temp name never collides with a live table. So the rule is: forbid a CREATE TABLE of a
 		// baseline table name; allow the `__new_*` rebuild idiom.
 		const baselineSql = readFileSync(join(folder, '0000_baseline.sql'), 'utf8');

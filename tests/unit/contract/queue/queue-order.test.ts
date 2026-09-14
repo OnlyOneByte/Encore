@@ -109,21 +109,12 @@ test('fair interleaves at insert: everyone’s first pick before anyone’s seco
 	]);
 	// three singers round-robin
 	expect(
-		ids(
-			build(
-				[e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3), e('c1', 'c', 4), e('b2', 'b', 5)],
-				'fair'
-			)
-		)
+		ids(build([e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3), e('c1', 'c', 4), e('b2', 'b', 5)], 'fair'))
 	).toEqual(['a1', 'b1', 'c1', 'a2', 'b2']);
 });
 
 test('manual appends and never interleaves — the room asked for no rule', () => {
-	expect(ids(build([e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3)], 'manual'))).toEqual([
-		'a1',
-		'a2',
-		'b1'
-	]);
+	expect(ids(build([e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3)], 'manual'))).toEqual(['a1', 'a2', 'b1']);
 });
 
 test('least-recently-sung puts a never-sung singer ahead of one who just sang', () => {
@@ -172,11 +163,7 @@ test('positions stay contiguous and 0-based after any op, under every policy', (
 });
 
 test('singHistoryFrom omits singers with no stamp rather than zeroing them', () => {
-	const map = singHistoryFrom([
-		{ id: 'a', lastSungAt: 10 },
-		{ id: 'b', lastSungAt: null },
-		{ id: 'c' }
-	]);
+	const map = singHistoryFrom([{ id: 'a', lastSungAt: 10 }, { id: 'b', lastSungAt: null }, { id: 'c' }]);
 	expect(map.get('a')).toBe(10);
 	expect(map.has('b')).toBe(false);
 	expect(map.has('c')).toBe(false);

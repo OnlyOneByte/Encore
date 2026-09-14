@@ -60,13 +60,7 @@ function sources(): string[] {
 	// never read it at all.
 	const appCss = at('src/app.css');
 	return [
-		...new Set([
-			...svelteFiles(LIB),
-			...svelteFiles(ROUTES),
-			...styleFiles(LIB),
-			...styleFiles(ROUTES),
-			appCss
-		])
+		...new Set([...svelteFiles(LIB), ...svelteFiles(ROUTES), ...styleFiles(LIB), ...styleFiles(ROUTES), appCss])
 	].sort();
 }
 
