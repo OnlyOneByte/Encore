@@ -17,7 +17,7 @@ import contextlib
 import os
 from collections.abc import AsyncIterator
 
-from ..analysis import measure_guide_offset_ms, wav_frame_length
+from ..analysis import wav_frame_length
 from ..processor import (
     ProgressEvent,
     guide_mix_path,
@@ -29,7 +29,7 @@ from ..processor import (
 )
 from ..retry_policy import PermanentError
 from ..runtime.ctx import Ctx
-from ..runtime.runner import run_blocking, run_capture, run_quiet, run_stage
+from ..runtime.runner import run_capture, run_quiet, run_stage
 from ..runtime.step import Step, StepResult
 from ..separation.demucs import decode_argv, encode_flac_argv, encode_guide_mix_argv
 from ..separation.engines import SeparatorEngine, engine_for
@@ -210,9 +210,12 @@ class PublishStems(Step):
         self._flac_level = flac_level
         # ENCORE_GUIDE_MIX=0 turns the extra encode off. It exists because the mix roughly DOUBLES a song's
         # derived stem bytes (it is the two stems again, in one container), and a box tight on disk has no
-        # other way to keep processing songs without paying that. Off means every song takes the two-element
-        # guide path, which is the pre-feature behaviour — so this degrades the guide's precision, never the
-        # song. Injected rather than read inline so the step stays testable without touching the environment.
+        # other way to keep processing songs without paying that. Off now means the song offers NO GUIDING
+        # TRACK — this used to fall back to a two-element guide path and merely "degrade the guide's
+        # precision", but that path was deleted (the TV carries the guide inside the master as channels
+        # 2/3), so the knob trades the guide away entirely rather than trading its accuracy. Still never
+        # degrades the SONG: the instrumental is untouched. Injected rather than read inline so the step
+        # stays testable without touching the environment.
         self._guide_mix_enabled = (
             os.environ.get("ENCORE_GUIDE_MIX", "1") != "0" if guide_mix is None else guide_mix
         )
@@ -253,76 +256,48 @@ class PublishStems(Step):
         # instrumental alone is just the instrumental, and offering one would advertise a guiding track
         # that carries nothing (the same lie the silent-stem refusal above exists to prevent).
         #
-        # Measure the guide's OFFSET against the instrumental, from the RAW scratch WAVs — the guide-
-        # alignment half of the guide feature made observable. Read the raw stems, not the encoded
-        # ones: they are the same PCM measure_guide_offset_ms reads, and doing it here means no re-decode.
-        # BEST-EFFORT and TRI-STATE, exactly like the vocals encode above: only measured when a vocals stem
-        # was actually published (a silent/absent guide has nothing to align), never fatal, and a decline
-        # reports None → the core stores null → the client holds the guide exactly as today. A
-        # freshly-processed
-        # song's two FLAC stems decode to a common start, so this is ~0 for the whole library; the non-zero
-        # case is a legacy .m4a vocals stem (from before both stems shared one codec) or a deliberately
-        # shifted one.
+        # THERE IS NO OFFSET MEASUREMENT ANY MORE, and the deletion is the point. Both stems come out of
+        # ONE separation pass over ONE decoded input, so they are sample-aligned by construction — the
+        # separator writes them from the same model output at the same rate, and nothing between that and
+        # this step can shift one relative to the other. The measurement existed for a case that can no
+        # longer occur: a legacy `.m4a` vocals stem from before both stems shared one codec, whose
+        # container priming put its content ~21 ms late. Every stem this pipeline writes today is one
+        # lossless container from one pass.
         #
-        # MEASURED BEFORE THE MIX IS BUILT, deliberately — the mix's eligibility depends on the answer. See
-        # case is a legacy pre-change .m4a vocals stem or a deliberately shifted one.
-        guide_offset_ms: int | None = None
-        if ctx.stems.published.get("vocals"):
-            try:
-                # THROUGH THE KEEPALIVE WRAPPER, not awaited inline. This is in-process numpy over a 30 s
-                # window of two stems — a blocking CPU call, the same shape as KeyAndRange. Run directly on
-                # the event loop it froze the loop for the duration, which is exactly the condition
-                # `run_blocking` documents: no websocket keepalive and no `job:progress`, so the core's 30 s
-                # progress lease could expire and the reaper requeue a job that was separating fine. Wrapping
-                # it also gives this step the only progress it emits (it had none), so the lease is held
-                # across the publish tail rather than merely not broken by it.
-                async for kind, val in run_blocking(
-                    lambda: measure_guide_offset_ms(raw_vox, raw_inst), self.stage, 100
-                ):
-                    if kind == "progress":
-                        yield val
-                    else:
-                        guide_offset_ms = val
-            except Exception:  # noqa: BLE001 — a measurement must never fail the load-bearing instrumental
-                ctx.note("guide-offset measurement failed (non-fatal) — offset left unmeasured")
-            # Log it so a wrong measurement is diagnosable WITHOUT the party box (DoD): a silent
-            # correction is its own defect class, so the number is always emitted, None included.
-            ctx.note(
-                f"guide offset: {'unmeasured' if guide_offset_ms is None else f'{guide_offset_ms} ms'}"
-                " (vocals stem vs instrumental)"
-            )
+        # What the measurement cost while it lasted was worse than nothing. Its result gated the guide mix
+        # — a non-zero reading REFUSED to build one, to route the song onto the two-element guide where a
+        # playback-time governor could still trim the offset out. `guide-sync.ts` was that governor, and it
+        # is gone: the TV now carries the guide inside the master as channels 2/3, so a song with no mix
+        # offers NO GUIDE AT ALL. The refusal therefore stopped protecting a correctable path and started
+        # withholding the only guide mechanism that exists, on the strength of a measurement of a
+        # difference that cannot arise.
 
         # The GUIDE MIX: both stems folded into ONE 4-channel FLAC (ch 0/1 instrumental, ch 2/3 vocals).
         # This is what lets the TV play the guide from a SINGLE media element, and therefore a single
         # playhead — see `encode_guide_mix_argv` for why two elements cannot be held in sync from script at
         # all, and `guide_mix_path` for why it lives beside the stems it is built from.
         #
-        # Built from the RAW scratch WAVs, not the encoded FLACs: they are the sample-exact PCM separation
+        # Built from the RAW scratch stems, not the encoded FLACs: they are the sample-exact PCM separation
         # just produced, so the mix inherits that alignment rather than trusting two decodes to agree.
         #
-        # IT IS REFUSED WHEN THE PAIR IS NOT ALIGNED, and that refusal is the point of measuring first.
-        # One playhead means the alignment becomes PERMANENT: whatever offset the two stems carry at merge
-        # time is frozen into the mix, and `guide-sync.ts`'s governor — the only thing that could trim it
-        # out — is unreachable on the mix path by construction. So a measured non-zero offset must keep its
-        # song on the two-element path, where the offset is still correctable. Absent (unmeasured) and a
-        # measured 0 both mean "no reason to refuse": a pair of same-codec FLACs from one separation is
-        # aligned by construction, which is what moving both stems to one lossless codec bought.
+        # NOT GATED ON AN ALIGNMENT MEASUREMENT. It used to be: a measured non-zero guide/instrumental
+        # offset refused the mix so the song would take the two-element guide instead, where a
+        # playback-time governor could still trim the offset out. Both halves of that reasoning are gone.
+        # The stems are sample-aligned by construction (one separation pass, one decoded input, one rate),
+        # and the two-element path no longer exists — the TV carries the guide inside the master as channels
+        # 2/3, so a song with no mix offers no guide at all. The refusal had stopped protecting anything and
+        # started withholding the only guide there is.
         #
         # Skipped entirely when there is no publishable vocals stem — a "mix" of the instrumental alone is
         # just the instrumental, and offering one would advertise a guiding track that carries nothing (the
         # same lie the silent-stem refusal above exists to prevent).
         #
         # BEST-EFFORT: the instrumental is load-bearing and the mix is not, so a failure here leaves a room
-        # that plays the song with the two-element guide rather than a room that plays nothing.
+        # that plays the song without a guiding track rather than a room that plays nothing.
         mix_wanted = bool(raw_vox) and bool(ctx.stems.published.get("vocals"))
-        if mix_wanted and guide_offset_ms not in (None, 0):
-            ctx.note(
-                f"guide mix skipped — the stems measure {guide_offset_ms} ms apart, and one playhead"
-                " cannot correct that; this song keeps the two-element guide"
-            )
-            mix_wanted = False
         if mix_wanted:
-            # `join` TRUNCATES to the shorter input and exits 0, and silently resamples a rate mismatch —
+            # The LENGTH guard stays, and it is a different question from alignment: `join` TRUNCATES to the
+            # shorter input and exits 0, and silently resamples a rate mismatch —
             # both measured. Since channels 0/1 of this file are the instrumental the TV plays as master, a
             # short vocals stem yields a mix that ENDS EARLY, and the room hears the song cut off with
             # nothing in any log. Not reachable with today's engines (all three derive both stems from one
@@ -339,7 +314,7 @@ class PublishStems(Step):
                 )
                 mix_wanted = False
         if mix_wanted and not self._guide_mix_enabled:
-            ctx.note("guide mix disabled (ENCORE_GUIDE_MIX=0) — this song keeps the two-element guide")
+            ctx.note("guide mix disabled (ENCORE_GUIDE_MIX=0) — this song will offer no guiding track")
             mix_wanted = False
         if mix_wanted:
             mix = guide_mix_path(job.media_dir, job.media_id)
@@ -369,7 +344,7 @@ class PublishStems(Step):
                 # room actually notices, so the reason belongs beside the fallback it explains.
                 ctx.note(
                     f"guide-mix encode failed (non-fatal: {type(err).__name__}: {err})"
-                    " — the TV will fall back to two elements"
+                    " — this song will offer no guiding track"
                 )
             finally:
                 # Never leave the temp behind: it is in `derived/`, so an orphan would be counted by the
@@ -385,11 +360,6 @@ class PublishStems(Step):
         # src/server/jobs/vocabulary-parity.test.ts.
         ctx.out.artifacts["stems"] = dict(ctx.stems.published)
         ctx.out.artifacts["songProfile"] = ctx.stems.song_profile
-        # guideOffsetMs rides beside them, top-level like songProfile — a measurement, not a file. Emitted
-        # only when there is a value: an absent field on the wire is the same "not measured" the core reads
-        # as null, so a decline does not need to send an explicit None.
-        if guide_offset_ms is not None:
-            ctx.out.artifacts["guideOffsetMs"] = guide_offset_ms
         ctx.out.media_uri = final
         return
         yield  # pragma: no cover - makes this an async generator

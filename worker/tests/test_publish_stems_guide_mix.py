@@ -176,34 +176,24 @@ async def test_a_length_mismatch_skips_the_mix_rather_than_truncating_the_song(t
     assert ctx.out.artifacts["stems"]["vocals"] == vocals_path(str(tmp_path), "m1")
 
 
-async def test_a_measured_non_zero_offset_skips_the_mix(tmp_path, monkeypatch) -> None:
-    """One playhead cannot correct an offset, so folding a measured-misaligned pair would FREEZE it.
+async def test_a_guide_mix_is_built_without_any_alignment_gate(tmp_path) -> None:
+    """A guide mix is built whenever both stems are publishable — no alignment gate.
 
-    This is the measured-offset half. The two-element path can still trim the offset out with its
-    governor; the mix path structurally cannot, so a song with a confident non-zero measurement must
-    keep two elements.
+    This test replaces a pair that pinned the OPPOSITE behaviour. A measured non-zero guide/instrumental
+    offset used to refuse the mix, so the song would take the two-element guide where a playback-time
+    governor could still trim the offset out. Both halves of that reasoning are gone: the stems are
+    sample-aligned by construction (one separation pass, one decoded input, one rate), and the two-element
+    path was deleted — the TV carries the guide inside the master as channels 2/3, so a song with no mix
+    offers NO guide at all. The refusal had stopped protecting a correctable path and started withholding
+    the only guide mechanism there is, on a measurement of a difference that cannot arise.
     """
-    import src.steps.separate as sep
-
-    monkeypatch.setattr(sep, "measure_guide_offset_ms", lambda *_a, **_k: 21)
-    runner = FakeRunner()
-    ctx = _ctx(tmp_path, runner, vocals=True)
-    await _run(PublishStems(), ctx)
-    assert "guideMix" not in ctx.out.artifacts["stems"]
-    assert runner.argv_for("-guidemix.") == []
-    # …and the measurement itself is still reported, so the offset still corrects the two-element guide.
-    assert ctx.out.artifacts["guideOffsetMs"] == 21
-
-
-async def test_a_measured_zero_offset_still_gets_a_mix(tmp_path, monkeypatch) -> None:
-    """A measured 0 is an explicit "aligned" — the common case, and no reason to refuse."""
-    import src.steps.separate as sep
-
-    monkeypatch.setattr(sep, "measure_guide_offset_ms", lambda *_a, **_k: 0)
     runner = FakeRunner()
     ctx = _ctx(tmp_path, runner, vocals=True)
     await _run(PublishStems(), ctx)
     assert ctx.out.artifacts["stems"]["guideMix"] == guide_mix_path(str(tmp_path), "m1")
+    assert runner.argv_for("-guidemix.") != [], "no guide-mix encode ran"
+    # The measurement is gone from the wire too: nothing measures an offset, so nothing reports one.
+    assert "guideOffsetMs" not in ctx.out.artifacts
 
 
 async def test_ENCORE_GUIDE_MIX_0_turns_the_extra_encode_off(tmp_path) -> None:

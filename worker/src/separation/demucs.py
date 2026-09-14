@@ -121,8 +121,8 @@ def encode_guide_mix_argv(
     unrepresentable.
 
     The two stems come out of separation as sample-exact siblings of one mix, so this reads the RAW
-    scratch WAVs — the same PCM `measure_guide_offset_ms` reads — rather than re-decoding the published
-    FLACs. Nothing is resampled and nothing is mixed down: each stem keeps its own two channels.
+    scratch stems rather than re-decoding the published FLACs. Nothing is resampled and nothing is mixed
+    down: each stem keeps its own two channels.
 
     CHANNEL ORDER IS THE CONTRACT, not the layout label. The browser's `ChannelSplitter` splits by
     channel INDEX in the decoded stream, and FLAC stores channels in the order written, so

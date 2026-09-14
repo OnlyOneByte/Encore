@@ -8,11 +8,11 @@ stems from here.
 WHY THIS IS NO LONGER `wave`-ONLY. This module used to be numpy + stdlib, on the stated grounds that
 "the stems are plain PCM WAV in scratch at this point in the process". That was true of demucs and
 demucs-mlx and false of audio-separator, which writes FLAC — and stdlib `wave` cannot open a FLAC. So on
-an audiosep job both readers below failed, the guide offset came back unmeasured, and the guide mix was
-refused with "stems do not match" when the real cause was a container the reader could not parse. A
-missing container is not a length mismatch, but nothing could tell the two apart. The format is now
-DECLARED by the engine (`vocabulary.StemFormat`, `SeparatorEngine.stem_format`) rather than assumed here,
-and these readers accept either container so that declaration is all a caller needs.
+an audiosep job both readers below failed, and the guide mix was refused with "stems do not match" when
+the real cause was a container the reader could not parse. A missing container is not a length mismatch,
+but nothing could tell the two apart. The format is now DECLARED by the engine
+(`vocabulary.StemFormat`, `SeparatorEngine.stem_format`) rather than assumed here, and these readers
+accept either container so that declaration is all a caller needs.
 
 WAV STAYS ON STDLIB, DELIBERATELY. The `wave` path below is unchanged — same float64 signal, same
 downmix, same supported widths, same raise on an unsupported one — because it is proven, it is what every
@@ -33,7 +33,7 @@ import numpy as np
 _STDLIB_SUFFIXES = (".wav", ".wave")
 
 
-def _read_via_wave(path: str, max_frames: int | None) -> tuple[np.ndarray, int]:
+def _read_via_wave(path: str) -> tuple[np.ndarray, int]:
     """The original stdlib reader: PCM WAV to mono float64 in [-1, 1], plus the sample rate.
 
     Byte-for-byte the behaviour this module shipped before FLAC support existed, including 8-bit WAV's
@@ -43,8 +43,7 @@ def _read_via_wave(path: str, max_frames: int | None) -> tuple[np.ndarray, int]:
         n_channels = wf.getnchannels()
         sampwidth = wf.getsampwidth()
         sample_rate = wf.getframerate()
-        want = wf.getnframes() if max_frames is None else min(wf.getnframes(), max_frames)
-        raw = wf.readframes(want)
+        raw = wf.readframes(wf.getnframes())
 
     if sampwidth == 2:
         data = np.frombuffer(raw, dtype=np.int16).astype(np.float64) / 32768.0
@@ -61,7 +60,7 @@ def _read_via_wave(path: str, max_frames: int | None) -> tuple[np.ndarray, int]:
     return data, sample_rate
 
 
-def _read_via_soundfile(path: str, max_frames: int | None) -> tuple[np.ndarray, int]:
+def _read_via_soundfile(path: str) -> tuple[np.ndarray, int]:
     """The FLAC (and anything-else) reader. Imported lazily — see the module docstring.
 
     Asks `soundfile` for float64 in [-1, 1] directly rather than scaling by hand, so per-width integer
@@ -75,27 +74,22 @@ def _read_via_soundfile(path: str, max_frames: int | None) -> tuple[np.ndarray, 
             "(pinned in worker/requirements.txt). A worker separating to FLAC must have it installed."
         ) from exc
 
-    data, sample_rate = sf.read(path, frames=-1 if max_frames is None else max_frames, dtype="float64")
+    data, sample_rate = sf.read(path, dtype="float64")
     # soundfile returns (frames,) for mono and (frames, channels) for multi-channel.
     if data.ndim > 1:
         data = data.mean(axis=1)
     return data, int(sample_rate)
 
 
-def read_wav_mono(path: str, max_frames: int | None = None) -> tuple[np.ndarray, int]:
+def read_wav_mono(path: str) -> tuple[np.ndarray, int]:
     """Read a raw stem to a mono float64 signal in [-1, 1] and its sample rate.
 
     Accepts either container the separators emit: WAV goes through stdlib `wave`, anything else (FLAC)
     through `soundfile`. Downmixes multi-channel by averaging, which is what every caller here wants —
-    key detection, pitch tracking, loudness and cross-correlation are all defined on a mono signal.
-
-    `max_frames` bounds the read to the first N frames. This exists because `measure_guide_offset_ms`
-    analyses a 30 s window and used to pay for a full decode of BOTH stems to get it — on a 4-minute
-    stereo stem that is tens of MB read and converted per call, then immediately discarded. `None` reads
-    the whole file, which is what the profile and range paths want.
+    key detection, pitch tracking and loudness are all defined on a mono signal.
     """
     reader = _read_via_wave if path.lower().endswith(_STDLIB_SUFFIXES) else _read_via_soundfile
-    return reader(path, max_frames)
+    return reader(path)
 
 
 def wav_frame_length(path: str) -> tuple[int, int] | None:
