@@ -15,6 +15,7 @@ from typing import Any
 
 from .runtime.ctx import ResolvedEngines
 from .runtime.plan import PLANS, LinearPlan
+from .separation.tuning import SeparationTuning
 from .steps.acquire import AcquireAudio
 from .steps.analysis import KeyAndRange
 from .steps.diarize import Diarize
@@ -34,7 +35,6 @@ from .vocabulary import (
     Action,
     AsrModel,
     Engine,
-    StemFormat,
     SyncMode,
     parse_asr_model,
     parse_engine,
@@ -219,18 +219,10 @@ def stems_runner(
     runner: Any,
     engine: Any = None,
     profiler: Any = None,
-    demucs_model: str | None = None,
-    demucs_bin: str = "demucs",
     ffmpeg_bin: str = "ffmpeg",
     ytdlp_bin: str = "yt-dlp",
     flac_level: int = 8,
-    device: str | None = None,
-    backend: str | None = None,
-    jobs: int | None = None,
-    overlap: float | None = None,
-    segment: int | None = None,
-    shifts: int | None = None,
-    stem_format: StemFormat = StemFormat.FLAC,
+    tuning: SeparationTuning | None = None,
 ) -> Any:
     """A PlanRunner for both separation actions, with this worker's separator configuration.
 
@@ -246,29 +238,18 @@ def stems_runner(
     from .runtime.runner import PlanRunner
     from .separation.engines import engine_for
 
+    tune = tuning if tuning is not None else SeparationTuning()
+
     def resolve(params: dict[str, Any]) -> ResolvedEngines:
-        return resolve_engines(params, ResolvedEngines(device=device))
+        return resolve_engines(params, ResolvedEngines(device=tune.device))
 
     def pick(job: Any, engines: ResolvedEngines) -> LinearPlan:
-        eng = engine or engine_for(
-            engines.separator,
-            backend=backend,
-            demucs_model=demucs_model or None,
-            demucs_bin=demucs_bin,
-            # THE JOB'S DEVICE, not the worker default. `resolve_engines` folds `params['device']` over
-            # this worker's configured one, and alignment (steps/lyrics.py) and diarization
-            # (steps/diarize.py) both read the folded value — separation read the closure instead, so one
-            # job could transcribe on the device it asked for and separate on a different one, with
-            # `facts.device` reporting whatever the engine happened to be built with. The mlx branch of
-            # `engine_for` ignores the device either way (demucs-mlx takes no torch device string), which
-            # is why this is safe to pass unconditionally.
-            device=engines.device,
-            jobs=jobs,
-            overlap=overlap,
-            segment=segment,
-            shifts=shifts,
-            stem_format=stem_format,
-        )
+        # `engine_kwargs` carries the job's resolved device, not the worker's. `resolve_engines` folds
+        # `params['device']` over this box's own, and alignment (steps/lyrics.py) and diarization
+        # (steps/diarize.py) both read the folded value — separation once read the closure instead, so one
+        # job could transcribe on the device it asked for and separate on a different one, with
+        # `facts.device` reporting whichever the engine was built with.
+        eng = engine or engine_for(engines.separator, **tune.engine_kwargs(device=engines.device))
         kwargs: dict[str, Any] = dict(
             engine=eng, profiler=profiler, ffmpeg_bin=ffmpeg_bin, flac_level=flac_level, ytdlp_bin=ytdlp_bin
         )

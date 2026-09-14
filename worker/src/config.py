@@ -26,6 +26,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .hardware import effective_cpus
+from .separation.tuning import SeparationTuning
 from .vocabulary import StemFormat, parse_stem_format
 
 
@@ -450,6 +451,39 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
     # extra `shutil.which` calls plus a `find_spec` on `whisperx` and `pyannote.audio`, and those two are
     # the expensive ones because resolving them imports their parent packages.
     return resolved, warnings, probes
+
+
+def separation_tuning(
+    cfg: WorkerConfig,
+    *,
+    device: str | None,
+    backend: str | None,
+    segment: int | None,
+) -> SeparationTuning:
+    """Fold this worker's separator settings into ONE value for `plans.stems_runner`.
+
+    Exists so the tuning knobs have a single owner. They used to be nine keyword arguments enumerated at
+    four sites — these fields, dial_home's `stems_runner(...)` call, that function's signature, and the
+    `engine_for(...)` call inside it — so adding one meant four edits and forgetting one was silent. It is
+    how `model_file_dir`, `models_dir` and `batch_size` came to exist on the engines while being reachable
+    from nowhere, leaving their checkpoint caches unused in production.
+
+    The three arguments are the values config CANNOT know: `device` and `backend` come from
+    `backends.resolve_backend` (which imports torch, so it cannot run at config-build time), and `segment`
+    may be derived from FREE accelerator memory, which is a runtime measurement rather than an
+    environment variable. Everything else is read straight off `cfg`.
+    """
+    return SeparationTuning(
+        model=cfg.demucs_model,
+        demucs_bin=cfg.demucs_bin,
+        device=device,
+        backend=backend,
+        jobs=cfg.demucs_jobs,
+        overlap=cfg.demucs_overlap,
+        segment=segment,
+        shifts=cfg.demucs_shifts,
+        stem_format=cfg.stem_format,
+    )
 
 
 def capability_probe_lines(cfg: WorkerConfig, probes: list[Any] | None = None) -> list[str]:

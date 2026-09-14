@@ -693,26 +693,18 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
                     flush=True,
                 )
 
+        # ONE value for the nine separator knobs — see `separation/tuning.py` for why they stopped being
+        # nine parameters. The three arguments are the ones config cannot know by itself: the resolved
+        # device and backend (which DRIVE the engine and reach `facts`, so the startup log and the ledger
+        # cannot disagree) and a segment that may be derived from free accelerator memory.
+        from .config import separation_tuning
+
         runner = stems_runner(
             runner=subprocess_runner,
-            demucs_model=cfg.demucs_model,
-            demucs_bin=cfg.demucs_bin,
             ffmpeg_bin=cfg.ffmpeg_bin,
             ytdlp_bin=cfg.ytdlp_bin,
             flac_level=cfg.flac_level,
-            # The declared raw-stem container, resolved once at the config boundary and threaded to the
-            # engines that can honour it. This is the value the raw-stem readers are implicitly told to
-            # expect, so it must come from ONE place rather than each engine choosing privately.
-            stem_format=cfg.stem_format,
-            device=device,
-            # The resolved backend now DRIVES the engine and is recorded into facts, not just printed:
-            # it is the same value the startup log announced, so facts.backend and the log can no longer
-            # disagree.
-            backend=backend,
-            jobs=cfg.demucs_jobs,
-            overlap=cfg.demucs_overlap,
-            segment=segment,
-            shifts=cfg.demucs_shifts,
+            tuning=separation_tuning(cfg, device=device, backend=backend, segment=segment),
         )
         by_type["stems"] = runner
         by_type["stems-upgrade"] = runner  # an upgrade is a separation job like any other

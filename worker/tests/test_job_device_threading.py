@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src import plans  # noqa: E402
 from src.processor import JobSpec  # noqa: E402
 from src.runtime.ctx import ResolvedEngines  # noqa: E402
+from src.separation.tuning import SeparationTuning  # noqa: E402
 
 
 def _job(params: dict[str, Any]) -> JobSpec:
@@ -44,7 +45,7 @@ def _engine_for_job(params: dict[str, Any], *, worker_device: str | None) -> Any
     Reaching into `_resolve_engines` / `_plan_for` is deliberate: those are the two closures the
     production path uses, and the bug lived in what one handed the other.
     """
-    runner = plans.stems_runner(runner=lambda _argv: iter(()), device=worker_device)
+    runner = plans.stems_runner(runner=lambda _argv: iter(()), tuning=SeparationTuning(device=worker_device))
     job = _job(params)
     engines = runner._resolve_engines(job.params)
     plan = runner._plan_for(job, engines)
@@ -86,3 +87,56 @@ def test_resolved_engines_no_longer_carries_a_separator_model() -> None:
     nobody checked, and it was read by nothing.
     """
     assert not hasattr(ResolvedEngines(), "separator_model")
+
+
+# ── SeparationTuning: one value for the nine knobs ────────────────────────────────────────────────
+
+
+def test_tuning_is_frozen_so_a_plan_closure_cannot_retune_the_box() -> None:
+    """It is threaded through several layers; a mutable one would let one job change every later job."""
+    import dataclasses
+
+    import pytest
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        SeparationTuning().device = "cuda"  # type: ignore[misc]
+
+
+def test_engine_kwargs_covers_every_knob_engine_for_can_honour() -> None:
+    """The whole point: adding a knob is ONE edit, and this is what proves the kwarg reaches the factory.
+
+    Nine parameters at four sites is how `model_file_dir`, `models_dir` and `batch_size` came to exist on
+    the engines while being reachable from nowhere.
+    """
+    kw = SeparationTuning(
+        model="htdemucs_ft",
+        demucs_bin="/opt/demucs",
+        device="cuda:2",
+        backend="torch",
+        jobs=4,
+        overlap=0.1,
+        segment=7,
+        shifts=2,
+    ).engine_kwargs()
+    assert kw["demucs_model"] == "htdemucs_ft"
+    assert kw["demucs_bin"] == "/opt/demucs"
+    assert kw["device"] == "cuda:2"
+    assert kw["backend"] == "torch"
+    assert (kw["jobs"], kw["overlap"], kw["segment"], kw["shifts"]) == (4, 0.1, 7, 2)
+
+
+def test_a_per_job_device_overrides_the_workers_own() -> None:
+    """`resolve_engines` folds params['device'] over the box's; this is where that answer lands."""
+    tune = SeparationTuning(device="cpu")
+    assert tune.engine_kwargs(device="mps")["device"] == "mps"
+    assert tune.engine_kwargs(device=None)["device"] == "cpu", "None must KEEP the worker's device"
+
+
+def test_config_builds_the_tuning_from_one_place() -> None:
+    """`config.separation_tuning` is the single owner of these values."""
+    from src.config import WorkerConfig, separation_tuning
+
+    cfg = WorkerConfig.from_env({"ENCORE_CORE_WS": "ws://x", "MEDIA_DIR": "/m", "ENCORE_DEMUCS_JOBS": "3"})
+    tune = separation_tuning(cfg, device="cuda", backend="torch", segment=11)
+    assert (tune.jobs, tune.device, tune.backend, tune.segment) == (3, "cuda", "torch", 11)
+    assert tune.model == cfg.demucs_model and tune.stem_format is cfg.stem_format
