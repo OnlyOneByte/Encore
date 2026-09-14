@@ -60,7 +60,7 @@ function stopChildren() {
 		const p = children.pop();
 		try {
 			p?.kill('SIGKILL');
-		} catch {}
+		} catch { /* the process may already have exited */ }
 	}
 }
 process.on('exit', stopChildren);

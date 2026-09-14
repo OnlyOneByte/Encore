@@ -15,6 +15,7 @@
 		"gate:measured": "bun run tests/e2e/gates/measured-design.mjs",
 		"lint": "eslint --cache --cache-strategy content --cache-location .eslintcache 'src/**/*.{ts,mjs,svelte}' 'server.ts' 'tests/**/*.{ts,mjs,svelte}'",
 		"format": "prettier --write 'src/**/*.{ts,svelte,mjs}' 'tests/**/*.{ts,svelte}' '*.{json,md}'",
+		"deadcode": "npm_config_registry=https://registry.npmjs.org/ bunx knip@5",
 		"format:check": "prettier --check 'src/**/*.{ts,svelte,mjs}' 'tests/**/*.{ts,svelte}' '*.{json,md}'",
 		"typecheck:root": "tsc -p tsconfig.server.json",
 		"typecheck:e2e": "tsc -p tests/tsconfig.e2e.json",

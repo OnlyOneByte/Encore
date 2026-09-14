@@ -166,10 +166,12 @@ const SURFACES = [
 /** @type {Record<string, unknown>} */
 const result = { port: PORT, surfaces: {} };
 let failed = 0;
+// Hoisted out of the try so the `finally` below can close it even when the body throws.
+let browser;
 
 try {
 	await sleep(1500);
-	const browser = await connect();
+	browser = await connect();
 	for (const s of SURFACES) {
 		try {
 			const page = await browser.newPage();
@@ -200,8 +202,11 @@ try {
 			console.log(`  ✗ ${s.name} — ${String(err).split('\n')[0]}`);
 		}
 	}
-	await browser.close?.();
 } finally {
+	// In the finally, not the try body: a throw above would otherwise leak the browser process, and
+	// the audit's own `writeFileSync` below still has to run. `browser` is undefined when `connect()`
+	// itself threw, hence the optional chain on the object as well as the method.
+	await browser?.close?.();
 }
 
 mkdirSync(dirname(OUT), { recursive: true });

@@ -105,7 +105,7 @@ try {
 			`(() => { const e=[...document.querySelectorAll('video,audio')].filter(x=>x.currentSrc||x.src); return e.length > 0; })()`,
 			{ timeout: 25000 }
 		);
-	} catch {}
+	} catch { /* best-effort cleanup */ }
 	await sleep(2000);
 
 	// -- STEP 1: the blocked state a real TV sits in --

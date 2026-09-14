@@ -210,7 +210,7 @@ async function ensurePlaying(tv, phone, attempts = 4) {
 async function seekToStart(tv, phone) {
 	try {
 		await phone.clickByLabel(SEL.restart.name);
-	} catch {}
+	} catch { /* best-effort cleanup */ }
 	await sleep(400);
 	await kickPlayback(tv);
 }
