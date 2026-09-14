@@ -432,4 +432,3 @@ test('a spotify-sourced media is refused a process (search-only; audio comes fro
 	expect(requestProcess('sp1', d)).toBeNull();
 	expect(m.stemStatus).toBe('none'); // never flipped to queued
 });
-
