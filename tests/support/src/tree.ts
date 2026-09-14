@@ -91,7 +91,12 @@ export const e2eDir: string = join(repoRoot, 'tests', 'e2e');
  * named anchor is why this move needed ONE edit here instead of one per consumer.
  */
 export const sharedSrc: string = join(srcDir, 'lib', 'contract');
-/** `worker` — the Python side. Layer 1B. Was `apps/worker` until the apps/ layer was flattened away. */
+/**
+ * `worker` — the Python side. Layer 1B. Was `apps/worker` until the apps/ layer was flattened away.
+ *
+ * @knipignore Deliberately has no consumer yet. It completes the path-anchor set, and `sharedSrc`
+ * above states the case: a named anchor is why a move costs ONE edit here instead of one per consumer.
+ */
 export const worker: string = join(repoRoot, 'worker');
 
 /** An absolute path from a repo-relative one. Does not check existence — see `read`. */
