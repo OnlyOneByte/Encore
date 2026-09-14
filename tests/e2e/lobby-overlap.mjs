@@ -197,18 +197,18 @@ try {
 		for (const s of caseSockets) {
 			try {
 				s.close();
-			} catch {}
+			} catch { /* already closed, or never opened */ }
 		}
 		await sleep(300); // let presence drop before the next case's room
 	}
 } finally {
 	try {
 		browser?.close();
-	} catch {}
+	} catch { /* already closed, or never opened */ }
 	for (const s of sockets) {
 		try {
 			s.close();
-		} catch {}
+		} catch { /* already closed, or never opened */ }
 	}
 }
 

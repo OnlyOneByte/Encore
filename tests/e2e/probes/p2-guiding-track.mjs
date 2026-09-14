@@ -111,13 +111,11 @@ function track(cmd, args, opts = {}) {
 function cleanup() {
 	try {
 		browser?.close();
-	} catch {}
-	try {
-	} catch {}
+	} catch { /* already closed, or never opened */ }
 	for (const p of childProcs) {
 		try {
 			p.kill('SIGTERM');
-		} catch {}
+		} catch { /* the process may already have exited */ }
 	}
 }
 process.on('SIGINT', () => {
@@ -235,7 +233,7 @@ async function spawnWorker(kind) {
 				console.log(`[boot] worker=${kind} welcomed (log ${logFd})`);
 				return p;
 			}
-		} catch {}
+		} catch { /* best-effort cleanup */ }
 		await sleep(150);
 	}
 	throw new Error(`worker ${kind} never welcomed (see ${logFd})`);
@@ -765,7 +763,7 @@ async function main() {
 		const shot = join(RUN_DIR, 'tv-guide.png');
 		await tv.screenshot(shot);
 		console.log(`\nTV frame: ${shot}`);
-	} catch {}
+	} catch { /* best-effort cleanup */ }
 }
 
 let exitCode;

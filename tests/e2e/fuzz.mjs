@@ -200,12 +200,12 @@ function cleanup() {
 	for (const p of owned.procs) {
 		try {
 			p.kill('SIGTERM');
-		} catch {}
+		} catch { /* the process may already have exited */ }
 	}
 	for (const d of owned.dirs) {
 		try {
 			rmSync(d, { recursive: true, force: true });
-		} catch {}
+		} catch { /* the path may already be gone */ }
 	}
 }
 process.on('SIGINT', () => {
@@ -381,7 +381,7 @@ async function catalog() {
 				for (const row of [...(r.ready ?? []), ...(r.results ?? [])]) {
 					if (row.source === 'local' && !known.has(row.id)) rawSeen.set(row.id, row);
 				}
-			} catch {}
+			} catch { /* best-effort cleanup */ }
 		}
 	}
 	const raw = [...rawSeen.values()].filter((m) => !known.has(m.id));
@@ -477,7 +477,7 @@ function serverSnapshot(timeoutMs = 4000) {
 			clearTimeout(timer);
 			try {
 				ws.close();
-			} catch {}
+			} catch { /* already closed, or never opened */ }
 			if (err) reject(err);
 			else resolve(out);
 		};
@@ -517,7 +517,7 @@ async function lyricsFor(ref) {
 	try {
 		const j = await fetch(`${base}/media/${ref}`).then((r) => (r.ok ? r.json() : null));
 		if (j && Array.isArray(j.lines)) doc = j;
-	} catch {}
+	} catch { /* best-effort cleanup */ }
 	lyricsCache.set(ref, doc);
 	return doc;
 }
@@ -1474,7 +1474,7 @@ try {
 } finally {
 	try {
 		browser?.close();
-	} catch {}
+	} catch { /* already closed, or never opened */ }
 	cleanup();
 }
 

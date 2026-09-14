@@ -32,6 +32,5 @@ try {
 } catch (e) {
 	console.error('probe error', e?.message || e);
 	code = 1;
-} finally {
 }
 process.exit(code);

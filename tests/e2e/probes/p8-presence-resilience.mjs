@@ -905,11 +905,11 @@ async function main() {
 		// Take one final TV shot to make the frame ordering legible even if a later step failed.
 		try {
 			if (tv) await tv.screenshot(join(OUT_DIR, '99-final.png'));
-		} catch {}
+		} catch { /* best-effort cleanup */ }
 		try {
 			for (const p of phones) await p.page.close();
 			if (tv) await tv.close();
-		} catch {}
+		} catch { /* already closed, or never opened */ }
 		await browser?.close();
 	}
 

@@ -96,7 +96,7 @@ function launch(cmd, args, opts = {}) {
 function killProc(p) {
 	try {
 		if (p?.pid && !p.killed) process.kill(p.pid, 'SIGKILL');
-	} catch {}
+	} catch { /* the process may already have exited */ }
 }
 function killAll() {
 	for (const p of spawned) killProc(p);
@@ -119,7 +119,7 @@ async function waitForHealth(timeoutMs = 15000) {
 		try {
 			const r = await fetch(`${BASE}/health`);
 			if (r.ok) return true;
-		} catch {}
+		} catch { /* best-effort cleanup */ }
 		await sleep(200);
 	}
 	return false;
@@ -197,7 +197,7 @@ async function openPhone(cookie) {
 	ws.onmessage = (m) => {
 		try {
 			events.push(JSON.parse(String(m.data)));
-		} catch {}
+		} catch { /* best-effort cleanup */ }
 	};
 	ws.send(JSON.stringify({ type: 'hello' }));
 	await sleep(100);
@@ -304,7 +304,7 @@ async function main() {
 	try {
 		const h = await fetch(`${BASE}/health`);
 		if (h.ok) bail(`port ${PORT} is already in use — probe requires an exclusive port`);
-	} catch {}
+	} catch { /* best-effort cleanup */ }
 
 	const chromium = findChromium();
 	if (!chromium) bail('no Chromium found; screenshots are a required deliverable of this probe');
