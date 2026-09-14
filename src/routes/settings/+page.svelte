@@ -29,6 +29,7 @@
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
 	import * as Collapsible from '$lib/components/ui/collapsible';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -479,7 +480,15 @@
 
 			<Tabs.Content value="you">
 				<!-- ── YOU ────────────────────────────────────────────────────────── -->
-				<div class="panel" id="panel-you" role="tabpanel" aria-labelledby="tab-you" tabindex="-1">
+				<!--
+					`.panel` is a LAYOUT wrapper only (flex column + gap). It deliberately carries no
+					`role="tabpanel"`, `aria-labelledby` or `tabindex`: `Tabs.Content` already renders the
+					tabpanel role, labels it from its trigger and owns focus. Declaring them again here
+					nested a second tabpanel inside the first, so every tab exposed TWO panels to a screen
+					reader. The ids were referenced by nothing — `SEL.settingsTab` resolves `#tab-<id>`, not
+					`#panel-<id>`.
+				-->
+				<div class="panel">
 					<Card.Root>
 						<Card.Header>
 							<Card.Title>Who you are</Card.Title>
@@ -521,18 +530,49 @@
 							<Card.Title>Leaving</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							{#if !confirmingLeave}
-								<button class="leave" onclick={askLeave}>Leave the room</button>
-								<Field.Description>Your queued songs go with you.</Field.Description>
-							{:else}
-								<p class="leave-warn" role="alert">{leaveWarning}</p>
-								<div class="pair">
-									<button class="stay" onclick={() => (confirmingLeave = false)}>Stay</button>
-									<button class="leave confirm" disabled={leaving} onclick={leaveRoom}>
-										{#if leaving}Leaving…{:else}Yes, leave{/if}
-									</button>
-								</div>
-							{/if}
+							<!--
+								A REAL modal, not an in-card swap. This is the only irreversible action on the phone
+								surface, and the previous form — swapping the trigger for a Stay/Yes-leave pair —
+								had no `role="dialog"`, no focus containment and no Escape: focus could tab out of
+								the confirm to the tab strip behind it, a screen reader was told nothing had changed
+								context, and the only way to back out was to find and hit Stay.
+
+								`AlertDialog` (not `Dialog`) is the right primitive: it renders `role="alertdialog"`,
+								which asks a screen reader to announce the description immediately rather than only
+								on focus, and it deliberately has no click-outside dismissal — a destructive confirm
+								should not be dismissible by a stray tap. Bits UI owns the focus trap, the Escape
+								handler and focus restoration to the trigger.
+
+								`open` is bound to `confirmingLeave` so `askLeave` still runs on OPEN and the cost is
+								fetched at the moment it is read out. Cancel and Escape both leave `leaveCost` in
+								place, which is harmless: it is re-fetched on the next open.
+							-->
+							<AlertDialog.Root bind:open={confirmingLeave}>
+								<AlertDialog.Trigger>
+									{#snippet child({ props })}
+										<Button {...props} variant="destructive" onclick={askLeave}>Leave the room</Button>
+									{/snippet}
+								</AlertDialog.Trigger>
+								<AlertDialog.Content>
+									<AlertDialog.Header>
+										<AlertDialog.Title>Leave the room?</AlertDialog.Title>
+										<!--
+											The warning is the dialog's DESCRIPTION rather than a separate
+											`role="alert"` paragraph. `role="alertdialog"` already announces the
+											description on open, so keeping the old live region would have said it
+											twice.
+										-->
+										<AlertDialog.Description>{leaveWarning}</AlertDialog.Description>
+									</AlertDialog.Header>
+									<AlertDialog.Footer>
+										<AlertDialog.Cancel variant="ghost">Stay</AlertDialog.Cancel>
+										<AlertDialog.Action variant="destructive" disabled={leaving} onclick={leaveRoom}>
+											{#if leaving}Leaving…{:else}Yes, leave{/if}
+										</AlertDialog.Action>
+									</AlertDialog.Footer>
+								</AlertDialog.Content>
+							</AlertDialog.Root>
+							<Field.Description>Your queued songs go with you.</Field.Description>
 						</Card.Content>
 					</Card.Root>
 
@@ -546,7 +586,8 @@
 			</Tabs.Content>
 			<Tabs.Content value="party">
 				<!-- ── PARTY ──────────────────────────────────────────────────────── -->
-				<div class="panel" id="panel-party" role="tabpanel" aria-labelledby="tab-party" tabindex="-1">
+				<div class="panel">
+					<!-- layout only — see the YOU panel for why no tabpanel role here -->
 					<Card.Root>
 						<Card.Header>
 							<Card.Title>Rotation</Card.Title>
@@ -944,7 +985,8 @@
 			</Tabs.Content>
 			<Tabs.Content value="server">
 				<!-- ── SERVER ─────────────────────────────────────────────────────── -->
-				<div class="panel" id="panel-server" role="tabpanel" aria-labelledby="tab-server" tabindex="-1">
+				<div class="panel">
+					<!-- layout only — see the YOU panel for why no tabpanel role here -->
 					<p class="scope-note">Affects every room on this server.</p>
 
 					<Card.Root>
@@ -1414,41 +1456,19 @@
 		margin-top: var(--space-xl);
 	}
 
-	/* ── leaving ────────────────────────────────────────────────────────── */
-	.leave {
-		width: 100%;
-		min-height: var(--tap);
-		padding: 13px;
-		border-radius: 14px;
-		cursor: pointer;
-		background: transparent;
-		color: var(--danger-ink);
-		border: 1px solid var(--danger-line);
-		font-size: 0.95rem;
-	}
-	.leave.confirm {
-		background: var(--danger-bg);
-	}
-	.leave:disabled {
-		opacity: 0.5;
-	}
-	.leave-warn {
-		margin: var(--space-2xs) 0 var(--space-md);
-		font-size: 0.88rem;
-		color: var(--danger-ink);
-	}
-	.stay {
-		flex: 1;
-		min-height: var(--tap);
-		padding: 13px;
-		border-radius: 14px;
-		cursor: pointer;
-		background: var(--card2);
-		color: var(--ink);
-		border: 1px solid var(--line);
-		font-size: 0.95rem;
-	}
-	.pair .leave {
-		flex: 1;
-	}
+	/*
+	 * ── leaving ─────────────────────────────────────────────────────────
+	 * `.leave`, `.leave.confirm`, `.leave:disabled`, `.leave-warn`, `.stay` and `.pair .leave` are
+	 * GONE with the AlertDialog adoption. Six rules, and with them two off-scale `14px` radii, a raw
+	 * `0.88rem`, a hand-rolled `opacity: 0.5` disabled state and a `padding: 13px` that was the only
+	 * thing holding these controls over the 44px tap floor. `Button variant="destructive"` (the same
+	 * variant /admin uses) and `AlertDialog.Cancel variant="ghost"` own all of it now, and
+	 * `AlertDialog.Description` owns the warning's colour and rhythm.
+	 *
+	 * They are deleted rather than left in place because a Svelte rule matching nothing is an unused
+	 * selector, which this repo treats as a typecheck failure — `bun run check` must stay 0/0.
+	 *
+	 * `.pair` STAYS: four other cards still use it, and it is a grid rather than a flex so its gap
+	 * survives the ≤380px collapse.
+	 */
 </style>
