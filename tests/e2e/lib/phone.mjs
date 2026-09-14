@@ -1,12 +1,15 @@
 /*
  * The phone's post-join step, in ONE place.
  *
- * WHY THIS FILE EXISTS. Direction A made the room's queue the home screen; the 2026-09-09 owner
- * correction then docked the search box at the bottom of it AT ALL TIMES and deleted the
- * `+ Add a turn` push. So the search box is on `/` again — but fifteen driver and probe call sites had
- * baked in the intermediate `?browse=1` assumption, and rather than edit all of them twice, the
- * sequence lives here: reaching the search box is now just waiting for it, no click. The next IA change
- * edits this one function, not fifteen call sites.
+ * WHY THIS FILE EXISTS. The phone's information architecture has moved three times now: `?browse=1`,
+ * then a box docked on home at all times, and now a `/find` ROUTE reached from the band's magnifier.
+ * Roughly twenty driver and probe call sites reach search, and this file is why the third move cost one
+ * function instead of twenty edits. It has paid for itself twice, which is the argument for keeping the
+ * indirection even though a single call site would read more plainly.
+ *
+ * Reaching search is a CLICK AND A NAVIGATION again — closer to the `?browse=1` era than to the docked
+ * box, but by a different mechanism: a route, so the phone's own back gesture is the way back and the
+ * surface is shareable.
  *
  * The selectors live in the contract; every driver calls this.
  */
@@ -18,10 +21,9 @@ const DEFAULT_TIMEOUT = 15_000;
 /**
  * From the JOINED home screen, reach the search box.
  *
- * the box is docked on home unconditionally, so there is nothing to click and no navigation:
- * this waits for the joined home to render (`homeReady`, the docked band) and then for the box itself
- * (`search`). The two waits are kept distinct so a driver can tell "home never rendered" from "the box
- * never appeared", even though today the band and the box arrive together.
+ * Search is its own route now, so this waits for the band (`homeReady`), taps its magnifier, and waits
+ * for the find surface's box. The band is app chrome mounted by the layout, which is why it is the
+ * readiness signal rather than anything `/` itself renders.
  *
  * The name is retained (not renamed to something like `reachSearch`) so the ~20 existing call sites keep
  * working; the browse MODE it once opened is gone.
@@ -33,11 +35,19 @@ const DEFAULT_TIMEOUT = 15_000;
 export async function openBrowseFromHome(page, { timeout = DEFAULT_TIMEOUT } = {}) {
 	/** @param {string} sel */
 	const has = (sel) => `document.querySelector(${JSON.stringify(sel)}) !== null`;
-	// Already showing the box? Do nothing. Cheap, and it makes the helper safe to call defensively.
-	const alreadyThere = await page.waitFor(has(SEL.search), { timeout: 250 }).catch(() => false);
+	// Already on the find surface? Do nothing. Cheap, and it makes the helper safe to call defensively.
+	const alreadyThere = await page.waitFor(has(SEL.findBox), { timeout: 250 }).catch(() => false);
 	if (alreadyThere) return;
 
+	// The band is what says the joined app has painted — the layout mounts it on every phone surface,
+	// so it is a stabler readiness signal than anything a single route renders.
 	await page.waitFor(has(SEL.homeReady), { timeout });
+	// Built from the contract's own accessible name rather than a second hard-coded string, so this
+	// button can only be addressed by the name a screen reader announces for it.
+	await page.click(`${SEL.homeReady} button[aria-label="${SEL.bandSearch.name}"]`);
+	// Two distinct waits: the surface arriving, then the control on it. A driver can tell "the
+	// navigation never happened" from "it happened and the box never rendered".
+	await page.waitFor(has(SEL.findBox), { timeout });
 	await page.waitFor(has(SEL.search), { timeout });
 }
 
@@ -57,10 +67,12 @@ export async function openBrowseFromHome(page, { timeout = DEFAULT_TIMEOUT } = {
 export async function returnHomeFromBrowse(page, { timeout = DEFAULT_TIMEOUT } = {}) {
 	/** @param {string} sel */
 	const has = (sel) => `document.querySelector(${JSON.stringify(sel)}) !== null`;
-	// Already home? The hero only renders there (i.e. with an empty box).
+	// Already home? The hero only renders on `/`.
 	const alreadyHome = await page.waitFor(has(SEL.hero), { timeout: 250 }).catch(() => false);
 	if (alreadyHome) return;
 
+	// A real navigation now, not a state clear: the header's back control is an <a href="/">, so this
+	// exercises the same route change the phone's own back gesture performs.
 	await page.click(SEL.backToQueue);
 	await page.waitFor(has(SEL.hero), { timeout });
 }

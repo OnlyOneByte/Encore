@@ -19,7 +19,19 @@ function stripComments(src: string): string {
 
 const songRow = stripComments(readFileSync(at('src/lib/components/SongRow.svelte'), 'utf8'));
 const processingCard = stripComments(readFileSync(at('src/lib/components/ProcessingCard.svelte'), 'utf8'));
+/*
+ * TWO page subjects since the phone-remote redesign, because F1 and F2 live on different surfaces now.
+ *
+ * F1 is about the SEARCH ROW's retry: `singThis` moved with search out of `routes/+page.svelte` into its
+ * own route, `routes/find/+page.svelte`, so the F1 route-side arm reads `findPage`.
+ *
+ * F2 is about the SINGER'S OWN QUEUE CARD, and the queue is exactly what stayed on home — `queueCardKind`,
+ * the card selection and the ProcessingCard call site are all still in `routes/+page.svelte`, so the F2
+ * arms keep reading `page`. Splitting the constant is what keeps each arm pointed at the surface that
+ * actually owns its claim; a single re-point would have moved F2 off its subject.
+ */
 const page = stripComments(readFileSync(at('src/routes/+page.svelte'), 'utf8'));
+const findPage = stripComments(readFileSync(at('src/routes/find/+page.svelte'), 'utf8'));
 const processAndQueue = stripComments(readFileSync(at('src/lib/process-and-queue.ts'), 'utf8'));
 const readiness = stripComments(readFileSync(at('src/lib/readiness.ts'), 'utf8'));
 
@@ -66,7 +78,9 @@ test('F1: the retry state reaches the sing markup (label, title and a visual sig
 test('F1: singThis passes hasQueuedTurn so the retry does not queue a second turn', () => {
 	// The route must thread inMyQueue into processAndQueue's hasQueuedTurn, or the queue step always
 	// runs and the double-turn bug stands regardless of the helper's logic.
-	const m = page.match(/function\s+singThis\([\s\S]*?\n\t\}/);
+	// RE-POINTED at `routes/find/+page.svelte`: singThis moved there with search when home became
+	// queue-only. Same claim, and still non-vacuous — the match must find singThis to scan it.
+	const m = findPage.match(/function\s+singThis\([\s\S]*?\n\t\}/);
 	expect(m).not.toBeNull();
 	expect(m![0]).toMatch(/hasQueuedTurn\s*:\s*inMyQueue\(mediaId\)/);
 });

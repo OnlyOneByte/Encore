@@ -79,7 +79,30 @@ type Condition = (typeof CONDITIONS)[number];
 const IDIOMS: Record<Condition, { name: string; find: (src: string) => boolean }[]> = {
 	empty: [
 		{ name: '`empty=` prop on a list primitive', find: (s) => /\bempty\s*=\s*["{]/.test(s) },
-		{ name: 'an emptyState()/readyEmptyState() builder', find: (s) => /\b(?:ready)?[Ee]mptyState\s*\(/.test(s) }
+		{ name: 'an emptyState()/readyEmptyState() builder', find: (s) => /\b(?:ready)?[Ee]mptyState\s*\(/.test(s) },
+		/*
+		 * A STRENGTHENING, not an accommodation — the same case as the sonner and `Alert.Root` idioms
+		 * under `error` below, and worth stating precisely because "add a detector" is the shape a
+		 * weakening takes when nobody checks.
+		 *
+		 * The two idioms above PREDATE this repo vendoring shadcn's `Empty` primitive
+		 * (`lib/components/ui/empty/`), which is now the codebase's actual designed empty state:
+		 * `<Empty.Root><Empty.Header><Empty.Description>` renders the heading-plus-next-action shape
+		 * XR-PH-08 asks for. A route that ships one and calls no builder was therefore reported as
+		 * having NO empty state at all — a false negative, and a live one: `routes/+page.svelte`
+		 * renders `Empty.Root` with "Queue's empty — add a song to start the party." and this guard
+		 * could not see it. Measured across the whole tree, the blind spot covered six files —
+		 * `routes/+page.svelte`, `routes/find/+page.svelte` (3 states, only one of them backed by a
+		 * builder call), `routes/metrics/+page.svelte` (4), `routes/admin/+page.svelte` (2), and
+		 * `lib/charts/{Trend,Bars}.svelte` — of which only `find` matched an existing idiom at all.
+		 *
+		 * Adding it can only ever move a pair from "reported missing" to "detected", never the
+		 * reverse: the detectors are OR'd, so nothing that matched before stops matching, and a route
+		 * with none of the three still reds. The KNOWN_ABSENT rot arm is the counterweight — an
+		 * `n/a`/`gap` entry whose route grew an `Empty.Root` now fails until the entry is deleted,
+		 * which is why this widening tightens the file rather than loosening it.
+		 */
+		{ name: 'a vendored `<Empty.Root>` state', find: (s) => /<Empty\.Root\b/.test(s) }
 	],
 	loading: [
 		{ name: 'an `aria-busy` region', find: (s) => /aria-busy\s*=\s*["{]?\s*(?:true|\{true)/.test(s) },
@@ -189,11 +212,14 @@ const PHONE_ROUTES = ALL_ROUTES.filter((r) => !isExempt(r.route));
  * new name here instead of leaving a dead exemption behind and the new surface unchecked.
  */
 test('XR-PH-08: the phone route set is derived from the filesystem, and every exemption is the spec\u2019s', () => {
-	// Re-anchored 4 -> 3 when `/join` was retired (its state is now the unjoined branch of `/`), so
-	// the real phone-route set is `/`, `/settings`, `/stats`. Still non-vacuous — a walk that enumerates
-	// 0/1/2 (an over-broad exemption or a moved routes/ dir) still fails here. Keeps the per-site
-	// floor-tag anchor (below); the value 3 is recorded to match in non-vacuity-floors.test.ts's FLOORS.
-	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(3); // @nvf-floor PHONE_ROUTES.length
+	// Re-anchored 3 -> 4 by the phone-remote rebuild, which split search out of `/` onto its own
+	// `/find` route (`/` is queue-only now, and `NowPlayingBand` moved to +layout.svelte as app chrome).
+	// So the real phone-route set is `/`, `/find`, `/settings`, `/stats`. Re-anchored UPWARD on the
+	// record rather than left slack at 3 (XR-VER-06): a floor below the measured set is a floor that
+	// would not notice the set shrinking back. Still non-vacuous — a walk that enumerates 0/1/2/3 (an
+	// over-broad exemption or a moved routes/ dir) still fails here. Keeps the per-site floor-tag anchor
+	// (below); the value 4 is recorded to match in non-vacuity-floors.test.ts's FLOORS.
+	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(4); // @nvf-floor PHONE_ROUTES.length
 
 	const known = new Set(ALL_ROUTES.map((r) => r.route));
 	for (const e of EXEMPT_ROUTES) {

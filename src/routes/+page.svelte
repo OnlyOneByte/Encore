@@ -24,7 +24,6 @@
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
 	import QueueRow from '$lib/components/QueueRow.svelte';
-	import SongRow from '$lib/components/SongRow.svelte';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
 	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
@@ -33,27 +32,15 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
-	import { processAndQueue } from '$lib/process-and-queue';
 	import { gripVisible, queueSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
-	import {
-		displayReadiness,
-		canProcess,
-		readyEmptyState,
-		nextPlayableEntryId,
-		entryPlayable,
-		processingGroupIds,
-		queueCardKind,
-		type Readiness
-	} from '$lib/readiness';
+	import { nextPlayableEntryId, entryPlayable, queueCardKind } from '$lib/readiness';
 	import { positionWords } from '$lib/phrasing/position-sentence';
 	import type { MediaStatus } from '$lib/contract';
-	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isProcessableSource } from '$lib/contract';
+	import { isPlayable, hasGuidingTrack, effectiveGuideLevel } from '$lib/contract';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import { Button } from '$lib/components/ui/button';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Empty from '$lib/components/ui/empty';
 
 	let me = $state<PublicSinger | null>(null);
@@ -105,36 +92,6 @@
 	// it is derived from `query` in the search section below.
 	/**
 	 * THE BAND CONTRACT. The docked search band's REAL rendered height, published to documentElement so
-	 * the scrolling column can reserve its band in normal flow (XR-PH-12) instead of having the band
-	 * float over the last queue row. Since an earlier change the search dock IS this band — docked on home for a
-	 * joined singer at all times, the `+ Add a turn` button it replaced is gone — so there is exactly
-	 * one band, present in both the queue and results views.
-	 *
-	 * MEASURED, not a constant, and that is the whole point: a hardcoded guess leaves the last row
-	 * bleeding under the band (or reserves dead space above it) the moment the copy, the font or the
-	 * safe-area inset changes. `main` pads by THIS measurement; the band publishes it.
-	 *
-	 * THE INSET LIVES ON THE BAND ALONE. The band's own bottom padding carries
-	 * env(safe-area-inset-bottom), and that inset reaches everything stacked above it THROUGH
-	 * --dock-h — so nothing above may add a second env() term or the gap doubles. One env(), on the one
-	 * element that actually sits at the bottom edge of the screen.
-	 *
-	 * THE TEARDOWN IS PART OF THE CONTRACT, not tidiness — leak class an earlier change §14. A custom property
-	 * written to documentElement OUTLIVES the component that wrote it, so a stale --dock-h keeps
-	 * padding every later page the app navigates to, and (because an inline property on :root outranks
-	 * a stylesheet rule) it silently defeats any media query that tries to set the same token. Hence
-	 * the removeProperty on unmount below; `design-system.test.ts` guards that every documentElement
-	 * writer in this route pairs its setProperty with a removeProperty.
-	 */
-	let dockH = $state(0);
-	$effect(() => {
-		document.documentElement.style.setProperty('--dock-h', `${dockH}px`);
-		// Tear the inline property down on unmount, or it OUTLIVES the route on documentElement and a
-		// stale --dock-h keeps padding every later page — the leak class an earlier change §14.
-		return () => {
-			document.documentElement.style.removeProperty('--dock-h');
-		};
-	});
 
 	/*
 	 * Editing your name and colour, and leaving the room, used to live in a sheet mounted here. They now
@@ -172,7 +129,6 @@
 	/** Merge media into the client catalog. The catalog is otherwise fed ONLY by queue:sync/patch, so
 	 *  a song that came from search or the library — and is not (yet) in anyone's queue — has no
 	 *  resolvable title: a processing card would render a raw ULID. */
-	const mergeMedia = (list: Media[]) => room.mergeMedia(list);
 	/*
 	 * THE ROOM LINK, MIRRORED. The socket, the QueueStore and every field the room broadcasts into used
 	 * to be CONSTRUCTED here, which made this route the owner of app-wide truth — and that is precisely
@@ -210,73 +166,16 @@
 		const stopMirror = room.subscribe(sync);
 		// The link holds no opinion about how a failure is shown, so the toast stays a route decision.
 		const stopErrors = room.onError((message) => showError(message));
-		// A process going ready means the saved library moved; only this route renders the library.
-		const stopLibrary = room.onLibraryChanged(() => loadLibrary());
 		void room.connect();
-		loadShortcuts();
-		loadLibrary();
 		return () => {
 			stopMirror();
 			stopErrors();
-			stopLibrary();
 		};
 	});
 
-	function addSong(mediaId: string) {
-		store?.addSong(mediaId);
-		if (navigator.vibrate) navigator.vibrate(8);
-		setTimeout(loadShortcuts, 300); // refresh popular/recent after the add lands
-	}
 
 	/**
-	 * "✨ Sing" — the raw row's ONE action: take the turn, then start the proc.
-	 *
-	 * Order is load-bearing, not stylistic: the core derives the process's job priority from the rotation
-	 * position of the turns pointing at that media, so processing first files the job at
-	 * NO_QUEUE_PRIORITY — behind the lyrics backfill — while a singer stands there waiting. See
-	 * $lib/process-and-queue.ts for the full reasoning and its test.
-	 *
-	 * `hasQueuedTurn` is the RETRY case and it is not an optimisation: a dead process keeps
-	 * offering Sing (the group header literally says "tap Sing to try again"), so without it the second
-	 * tap booked the singer a second turn of the same song and the room played it twice in a row. The
-	 * process step still runs — the retry must stay reachable, per readiness.ts's `canProcess('failed')`.
-	 */
-	function singThis(mediaId: string) {
-		processAndQueue({
-			queue: () => addSong(mediaId),
-			process: () => void processMedia(mediaId),
-			hasQueuedTurn: inMyQueue(mediaId)
-		});
-	}
 
-	/** Request stem-separation ("make karaoke") — flips the song to a processing file server-side; the
-	 *  live media:status broadcasts then drive the row's progress bar. */
-	async function processMedia(mediaId: string) {
-		if (navigator.vibrate) navigator.vibrate(12);
-		// optimistic: the row reads as processing immediately, before the request lands
-		room.setMediaStatus(mediaId, { status: 'queued', pct: 0 });
-		try {
-			const res = await fetch('/api/process', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ mediaId })
-			});
-			const body = await res.json().catch(() => ({}));
-			if (!res.ok) {
-				room.clearMediaStatus(mediaId);
-				showError(body.error ?? 'Could not start process');
-				return;
-			}
-			// the stems were already on disk (processed on an earlier night) — nothing to wait for
-			if (body.alreadyReady) loadLibrary();
-		} catch {
-			room.clearMediaStatus(mediaId);
-			showError('Could not start process — check your connection');
-		}
-	}
-
-	/** Re-pick a song's lyrics: pick a stored candidate by ref, or paste new words. Either way
-	 *  the server pins the choice and re-times it; the live media:status broadcasts drive the row. Like
 	 *  proc, the network call lives here and the LyricsReselect control just reports the choice. */
 	async function reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }) {
 		if (navigator.vibrate) navigator.vibrate(12);
@@ -305,147 +204,14 @@
 	// So there is no `filter` state and no `showReady`/`showProcessing`/`showRaw` gate: every group
 	// renders, every time, and the reader narrows the list by saying what they want.
 
+	/**
+	 * The rotation, in the order the room will play it. `queued` is the ONLY list this surface renders
+	 * now that search has its own route, so the queue view is no longer one arm of a two-view page.
+	 */
+	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
+
 	function liveOf(id: string) {
 		return mediaStatus.get(id);
-	}
-	function readinessFor(m: Media): Readiness {
-		return displayReadiness(m, liveOf(m.id));
-	}
-	/**
-	 * Everything a SongRow displays about a song, in ONE place.
-	 *
-	 * Spread rather than written out at each call site because there are five of them (ready, processing,
-	 * raw, popular, recently-queued) and they had already drifted: the ready group read
-	 * `artistCanonical ?? artist` while the other four read the raw `artist`, so one song showed a
-	 * different name depending on which group it happened to be in. Both canonical fields are passed
-	 * through and SongRow decides how to combine them, so that judgement lives in one component instead
-	 * of being re-made at five tag sites.
-	 */
-	const rowMeta = (m: Media) => ({
-		title: m.title,
-		artist: m.artist,
-		artistCanonical: m.artistCanonical,
-		thumbnail: m.thumbnail,
-		durationSec: m.durationSec,
-		viewCount: m.viewCount,
-		// The original detected key, spelled and confidence-gated by the shared helper (null below the
-		// floor). Added to the FIXED rowMeta shape so it reaches every SongRow call site — SongRow itself
-		// only paints the chip on a ready row, so a null here (raw/processing song, or no key) is harmless.
-		keyName: originalKeyLabel(m.songProfile) ?? undefined,
-		// The song's descriptive tags, threaded through the ONE shared row shape so every call site
-		// gets them; SongRow paints them on a READY row only, so a raw/processing row's undefined is
-		// harmless. Reads the map by id — a song with no tags is simply absent from it.
-		tags: libraryTags[m.id]
-	});
-	/** Is this song already in MY part of the rotation? Turns ＋ Turn into a ✓ Queued confirmation. */
-	function inMyQueue(mediaId: string): boolean {
-		return queued.some((e) => e.mediaId === mediaId && e.singerId === me?.id);
-	}
-
-	/**
-	 * Every song processing right now. WHEN NOT SEARCHING this is the full union — the live status map
-	 * plus anything the catalog says is processing — because this is the one place a process you started is
-	 * guaranteed to be visible, so a song you kicked off then went idle from must not disappear while
-	 * it works. WHEN SEARCHING it is scoped to the query via `processingResults`, the server's
-	 * query-matched processing group: a song someone else is processing that does not match your search must
-	 * NOT appear under it. The id-selection lives in the pure `processingGroupIds` helper so it is
-	 * unit-testable; `failed` is included and `ready`/`canceled` excluded, all inside that helper.
-	 */
-	const processingRows = $derived.by(() => {
-		const ids = processingGroupIds({
-			searchActive,
-			processingResults,
-			mediaStatus,
-			mediaCatalog,
-			readiness: readinessFor
-		});
-		return [...ids]
-			.map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) }))
-			.filter((r) => r.media)
-			.map((r) => ({
-				id: r.id,
-				media: r.media!,
-				pct: r.live?.pct ?? 0,
-				etaSec: r.live?.etaSec,
-				status: r.live?.status
-			}));
-	});
-
-	/**
-	 * The songs the readiness groups above already account for. The whole point of the readiness axis
-	 * is that a song appears EXACTLY ONCE, so the zero-query shortcut lists (popular / recently
-	 * queued) must subtract it — otherwise a processed song shows up three times on one screen, once per
-	 * list, which is precisely the confusion the source tabs used to cause.
-	 *
-	 * Unconditional since an earlier change: with the readiness chips gone, the ready and processing groups always
-	 * render, so they always account for their songs.
-	 */
-	const accountedFor = $derived.by(() => {
-		const ids = new Set<string>();
-		for (const m of searchActive ? readyResults : library) ids.add(m.id);
-		for (const c of processingRows) ids.add(c.id);
-		return ids;
-	});
-	function unaccounted(list: Media[]): Media[] {
-		return list.filter((m) => !accountedFor.has(m.id));
-	}
-
-	// ── search (debounced + cancel-in-flight) ────────────────────────────────
-	let query = $state('');
-	let readyResults = $state<Media[]>([]);
-	let rawResults = $state<Media[]>([]);
-	// The server's query-matched processing group. Held so `processingRows` can scope to the query while a
-	// search is active instead of re-deriving from the whole catalog. Cleared with the box.
-	let processingResults = $state<Media[]>([]);
-	let searching = $state(false);
-	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-	let inflight: AbortController | undefined;
-	const searchActive = $derived(query.trim().length > 0);
-
-	function onQueryInput() {
-		clearTimeout(debounceTimer);
-		const q = query.trim();
-		if (!q) {
-			readyResults = [];
-			rawResults = [];
-			processingResults = [];
-			searching = false;
-			inflight?.abort();
-			loadShortcuts();
-			return;
-		}
-		debounceTimer = setTimeout(() => runSearch(q), 150);
-	}
-
-	/** Drop the search and go back to the full library. Same teardown as clearing the box by hand. */
-	function clearSearch() {
-		query = '';
-		onQueryInput();
-		if (navigator.vibrate) navigator.vibrate(8);
-	}
-	async function runSearch(q: string) {
-		inflight?.abort();
-		const ctrl = new AbortController();
-		inflight = ctrl;
-		searching = true;
-		try {
-			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
-			if (ctrl.signal.aborted) return;
-			const j = await res.json();
-			readyResults = j.ready ?? [];
-			rawResults = j.results ?? [];
-			processingResults = j.processing ?? [];
-			mergeMedia([...readyResults, ...rawResults, ...processingResults]);
-		} catch (e) {
-			if ((e as Error).name !== 'AbortError') {
-				readyResults = [];
-				rawResults = [];
-				processingResults = [];
-				showError('Search failed — check your connection');
-			}
-		} finally {
-			if (inflight === ctrl) searching = false;
-		}
 	}
 
 	/*
@@ -482,86 +248,6 @@
 		});
 	}
 
-	// zero-keystroke shortcuts (shown when the search box is empty)
-	let recent = $state<Media[]>([]);
-	let popular = $state<Media[]>([]);
-	async function loadShortcuts() {
-		try {
-			const j = await (await fetch('/api/search?q=')).json();
-			recent = j.recent ?? [];
-			popular = j.popular ?? [];
-			mergeMedia([...recent, ...popular]);
-		} catch {
-			/* ignore */
-		}
-	}
-
-	// the saved-karaoke library + whatever is processing, for a client that just loaded
-	let library = $state<Media[]>([]);
-	// A song's descriptive tags, mediaId → its 'tag'-kind values, arriving beside `library` from
-	// /api/library. A parallel map rather than a field on Media because tags live in their own
-	// table and Media is the origin identity; the row reads its own song's entry, absent = no chips.
-	let libraryTags = $state<Record<string, string[]>>({});
-	/*
-	 * DELETED HERE (direction B): the browse disclosure and the two facet rails it hid — the
-	 * `facets` state, the `browseFilter` that held one artist OR one tag, `browseOpen`, `setBrowse`,
-	 * and the `?artist=`/`?tag=` query this page sent. They were mechanisms 2 and 3 of the four
-	 * concurrent ways to narrow one list, and the ruling was to delete them rather than tidy them.
-	 *
-	 * The SERVER half stays: /api/library still computes the facets and still honours ?artist= and
-	 * ?tag= (`server/media/repository.ts`, guarded by browse-ready-parity.test.ts and
-	 * library-tag-filter.test.ts). Nothing on the phone asks for them any more, which is the point;
-	 * removing a working, tested endpoint capability is a separate decision nobody has made.
-	 */
-
-	async function loadLibrary() {
-		try {
-			const j = await (await fetch('/api/library')).json();
-			library = j.library ?? [];
-			libraryTags = j.tags ?? {};
-			mergeMedia(library);
-			const processing: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.processing ?? [];
-			if (processing.length) {
-				mergeMedia(processing.map((c) => c.media));
-				// a live broadcast is fresher than this snapshot — seedMediaStatus never overwrites one
-				room.seedMediaStatus(processing);
-			}
-		} catch {
-			/* ignore — the library is an accelerator, never a blocker */
-		}
-	}
-
-	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
-
-	/*
-	 * DIRECTION B (docs/DECISIONS.md, issue an earlier change): on the browse screen the search box is docked in the
-	 * thumb zone and the results stack UPWARD from it, so the highest-ranked row is the one nearest the
-	 * thumb — which is the whole reason to dock the box at the bottom rather than the top. Every list
-	 * below is therefore emitted in reverse, and the column is bottom-anchored in CSS.
-	 *
-	 * A stack that grows upward has to be scrolled to. Bottom-anchored content longer than the viewport
-	 * starts at its TOP, which is the far end of the ranking: without this the best match renders below
-	 * the fold while the worst one is what you see. Keyed on the shape of the rendered set rather than
-	 * running every frame, so scrolling up to read further is not fought by the effect; instant, never
-	 * smoothed, because a scroll animation is not something a reduced-motion guest asked for.
-	 */
-	const resultShape = $derived(
-		!searchActive
-			? ''
-			: [
-					query.trim(),
-					readyResults.length,
-					processingRows.length,
-					rawResults.length,
-					library.length,
-					popular.length,
-					recent.length
-				].join('|')
-	);
-	$effect(() => {
-		if (!resultShape) return;
-		window.scrollTo({ top: document.documentElement.scrollHeight });
-	});
 
 	/*
 	 * Screen-reader announcements for the two changes that most often happen UNDER the user's hands and
@@ -1113,7 +799,6 @@
 
 <main>
 	{#if me}
-		{#if !searchActive}
 			<!--
 			HOME IS THE QUEUE (direction A, issue an earlier change). The playing song is the one thing on this screen
 			that is not a list item, so it gets a HERO rather than the docked peek row it used to share with
@@ -1370,154 +1055,9 @@
 					{/if}
 				{/each}
 			{/if}
-		{/if}
 
-		<!--
-		THE RESULTS VIEW — direction A's queue-home, direction B's layout, and
-		the 2026-09-09 owner correction: it renders IN PLACE over the queue while the box
-		has a query (`searchActive`), with NO navigation. There is no browse mode any more.
 
-		The search box is NOT in here. It is docked in the thumb zone below this column AT ALL TIMES, and
-		the results STACK UPWARD from it: the top-ranked row is the LAST one in this block, so it is the
-		row nearest the thumb. That is the whole reason to dock the box at the bottom rather than the top,
-		and it is why every list below is emitted with its ranking REVERSED and the sections run
-		least-relevant first. DOM order still matches visual order (XR-PH-12) — what is reversed is the
-		order of the list, not the direction the column paints in, which is what a `column-reverse`
-		container would have done instead and it would have inverted the focus sequence with it.
 
-		The four concurrent filter mechanisms that used to sit at the top of this block are GONE: the
-		three readiness chips, the artist rail, the genre rail, and the group headings that re-announced
-		the readiness axis in prose. Typing in the docked box is the only way to narrow the list. Four
-		ways to narrow one list was the defect; a tidier four would still have been the defect.
-
-		The empty-box shortcuts (Popular / Recently) are GONE from here too: with an empty box the
-		screen is the live QUEUE, not a shortcut list, so this whole block renders ONLY while a query is
-		present.
-
-		The "← Queue" control is first in the DOM because it is first visually (XR-PH-12). It no longer
-		navigates — with results in place there is nowhere to navigate FROM — so it clears the search,
-		which is what returns the screen to the queue underneath. It renders only while `searchActive`,
-		because with an empty box the queue is already what is showing.
-	-->
-		{#if searchActive}
-			<div class="backrow">
-				<!--
-					`data-testid` is the test hook, NOT a class. `tests/e2e/contract.ts` addresses this control as
-					`backToQueue`, and it used to do that through `class="back-btn"` — a styling class doing
-					double duty as a selector. That stopped working honestly once `<Button>` took over the
-					appearance: the class would carry no rule, which `class-reachable-alone-913.test.ts`
-					correctly refuses for a CONTROL (an unstyled control renders as raw UA chrome, so the
-					guard cannot tell "styled by a component" from "styled by nothing").
-					A dedicated attribute says what it is for, cannot be mistaken for a style handle, and
-					still fires the selector-rot guard if it is renamed. `Button` forwards it via restProps.
-				-->
-				<Button variant="ghost" size="tap" data-testid="back-to-queue" onclick={clearSearch}>
-					<Icon name="arrow-left" /> Queue
-				</Button>
-			</div>
-		{/if}
-
-		<!--
-		FURTHEST FROM THE THUMB: songs that still need karaoke made. Recently queued sits above Popular
-		tonight — but only ever as search results now; the empty-box shortcut lists were dropped in an earlier change
-		in favour of showing the live queue.
-	-->
-		{#if searchActive}
-			{#if searching && rawResults.length === 0 && readyResults.length === 0}
-				<div aria-busy="true" aria-label="Searching…">
-					{#each [0, 1, 2] as i (i)}
-						<div class="skel-row">
-							<Skeleton variant="thumb" />
-							<div class="skel-text">
-								<Skeleton />
-								<Skeleton variant="line-short" />
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
-			{#if !searching && rawResults.length === 0 && readyResults.length === 0}
-				<Empty.Root>
-					<Empty.Header>
-						<Empty.Description>No results. YouTube search needs yt-dlp installed on the server.</Empty.Description>
-					</Empty.Header>
-				</Empty.Root>
-			{/if}
-			{@const rawRows = unaccounted(rawResults).reverse()}
-			{#if rawRows.length}
-				<h2 class="grouphead">Needs karaoke · has vocals</h2>
-				{#each rawRows as m (m.id)}
-					{@const r = readinessFor(m)}
-					<SongRow
-						{...rowMeta(m)}
-						readiness={r}
-						pct={liveOf(m.id)?.pct ?? 0}
-						status={liveOf(m.id)?.status}
-						inQueue={inMyQueue(m.id)}
-						processable={isProcessableSource(m.source)}
-						onadd={() => addSong(m.id)}
-						onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
-					/>
-				{/each}
-			{/if}
-		{/if}
-
-		<!--
-		Processing, immediately above the ready rows: rotation HOLDS a processing song's slot, so it keeps its
-		fair position and plays when the stems land. Processing is not a blocked state, which is why these
-		rows sit with the singable ones rather than behind a chip. The heading that said so in prose was
-		mechanism 4 and is deleted — SongRow's own readiness chip already says it per row, and a failed
-		process says so on its own row rather than in a heading covering the whole group.
-	-->
-		{#if searchActive && processingRows.length}
-			{@const processingStack = [...processingRows].reverse()}
-			{#each processingStack as c (c.id)}
-				{@const r = displayReadiness(c.media, liveOf(c.id))}
-				<SongRow
-					{...rowMeta(c.media)}
-					readiness={r}
-					pct={c.pct}
-					status={c.status}
-					inQueue={inMyQueue(c.id)}
-					processable={isProcessableSource(c.media.source)}
-					onadd={() => addSong(c.id)}
-					onmake={canProcess(c.media, r) ? () => singThis(c.id) : undefined}
-				/>
-			{/each}
-		{/if}
-
-		<!--
-		NEAREST THE THUMB: the songs that can be sung right now, best match last. The "Ready to sing ·
-		no wait" heading that used to sit above them was mechanism 4 — it restated the readiness chip
-		directly above it — and it is deleted with the chips.
-	-->
-		{#if searchActive}
-			{@const readyStack = [...readyResults].reverse()}
-			{#each readyStack as m (m.id)}
-				<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
-			{/each}
-			<!--
-			The library HAS karaoke songs, they just do not match what is in the box. Saying so — and
-			naming the way back — is what stops a non-matching query reading as "the app threw my
-			downloads away". This used to be the Ready CHIP's empty state; the chip is gone, and the
-			condition it was really about (a query the ready library cannot answer) is stated directly.
-		-->
-			{#if searchActive && !readyStack.length && library.length}
-				{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
-				<Empty.Root>
-					<Empty.Header>
-						<Empty.Description>{empty.message}</Empty.Description>
-					</Empty.Header>
-				</Empty.Root>
-				{#if empty.showAllCount !== null}
-					<div class="showall-row">
-						<Button variant="secondary" size="tap" onclick={clearSearch}>
-							<Icon name="mic" /> Show all {empty.showAllCount}
-						</Button>
-					</div>
-				{/if}
-			{/if}
-		{/if}
 	{:else}
 		<!-- UNJOINED: `/` is the landing page. Both a scan affordance and a six-segment code entry,
 		     or — when a QR was scanned (`/?room=CODE`) — the room confirmed in words. -->
@@ -1525,36 +1065,6 @@
 	{/if}
 </main>
 
-<!--
-	THE SEARCH DOCK (direction B an earlier change, made the sole home dock by the owner correction an earlier change). ONE box
-	across every source: a singer picks by readiness ("can I sing this now?"), never by which index the
-	song came from — so there is no source switch, no readiness chips, no artist rail and no genre rail.
-	Typing is the only filter.
-
-	It is docked in the thumb zone AT ALL TIMES for a joined singer — it IS the add affordance, which is
-	why the old `+ Add a turn` CTA (and its `.cta-dock`) are gone. With an empty box the queue
-	shows above it; typing expands results upward in place. It is the ONE docked band on this route, so
-	`main` pads by the `--dock-h` this element measures and the safe-area inset lives HERE and nowhere
-	above it (XR-PH-12). LAST in the DOM, after the content it sits below.
-
-	The `aria-label` is a driven-flow anchor (`SEL.search`), not decoration: every phone probe reaches
-	the library by waiting on it, so renaming it hangs them on a timeout rather than failing an
-	assertion. Moving the box is safe; renaming the label is not.
--->
-{#if me}
-	<div class="search-dock" bind:clientHeight={dockH}>
-		<div class="searchbox">
-			<span class="search-mark"><Icon name="search" /></span>
-			<input
-				bind:value={query}
-				oninput={onQueryInput}
-				aria-label="Search a song or artist"
-				placeholder="Search a song or artist…"
-			/>
-			{#if searching}<Spinner aria-label="Searching" />{/if}
-		</div>
-	</div>
-{/if}
 
 <!--
 	One toast surface for the whole page, docked above the measured band. `richColors` is off: the error
@@ -1592,32 +1102,6 @@
 		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	/*
-	 * THE BOTTOM-ANCHORED RESULTS STACK (direction B, issue an earlier change). Results grow UPWARD from the docked
-	 * search box, so the column's content sits at its bottom edge rather than its top: with one line of
-	 * content, that line is beside the thumb instead of stranded at the top of an empty screen.
-	 *
-	 * Selected by `:has(> .backrow)` rather than by a class on `<main>` because the "← Queue" control IS
-	 * the results view — it renders on `{#if searchActive}` and nowhere else — and because `<main>`
-	 * carries no attributes today, which three separate driven-flow anchors read as the literal string
-	 * `<main>`. With an empty box there is no `.backrow`, so this rule does not match and the queue view
-	 * flows top-down as an ordinary column.
-	 *
-	 * TWO declarations, and the SECOND is the one doing the work. The auto bottom margin on the back
-	 * control both keeps it at the top of the column and pushes every later sibling to the bottom, which
-	 * is the whole anchoring. A `justify-content: flex-end` beside it was measured to change nothing —
-	 * the two always co-occur, because the selector only matches when the back control is present — so
-	 * it is not written here rather than left as a declaration no revert can falsify.
-	 */
-	main:has(> .backrow) {
-		display: flex;
-		flex-direction: column;
-	}
-	main:has(> .backrow) > .backrow {
-		margin-bottom: auto;
-	}
-	/* The way back to the queue from the results view — it clears the search. First in the DOM
-	   because it is first visually (XR-PH-12). */
-	/*
 	 * WRAPPERS FOR THE MIGRATED CONTROLS. Each holds only what a component must not: layout that belongs
 	 * to a flex ITEM, and ink that the control inherits. Neither can be a class passed to <Button> —
 	 * Tailwind scans only `components/ui/**` so a utility written here is emitted nowhere, and a class
@@ -1651,10 +1135,6 @@
 		display: flex;
 	}
 
-	.backrow {
-		display: flex;
-		margin: 0 0 var(--space-sm);
-	}
 
 	/* Visually-hidden live region: announced by assistive tech, painted nowhere (so it is
 	   screenshot-neutral). The standard clip-rect idiom, not display:none — a display:none region is
@@ -1814,89 +1294,12 @@
 			gap: 0 var(--space-xl);
 			align-content: start;
 		}
-		/*
-		 * The wide layout keeps its columns on the browse screen; only the anchoring changes. It needs its
-		 * OWN declaration: an auto margin on a grid item aligns that item inside its own area and does not
-		 * push its siblings, so the flex mechanism above does not carry over.
-		 */
-		main:has(> .backrow) {
-			display: grid;
-			align-content: end;
-		}
 		main > :global(*) {
 			grid-column: 1 / -1;
 		}
 		main > :global(.row) {
 			grid-column: auto;
 		}
-	}
-	/*
-	 * THE SEARCH DOCK (direction B an earlier change; the SOLE home dock since an earlier change). `position: fixed` is what keeps
-	 * the box reachable with one thumb wherever the stack is scrolled to, and it does not overlap content
-	 * because `main` pads by this element's own measured height (--dock-h) rather than by a guess. The
-	 * safe-area inset lives HERE, on the band that actually sits at the bottom of the screen, and reaches
-	 * the toasts THROUGH --dock-h — so do not add a second env() term to anything above.
-	 */
-	.search-dock {
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		z-index: var(--z-dock);
-		display: flex;
-		justify-content: center;
-		padding: var(--space-md) var(--space-3xl) calc(var(--space-md) + env(safe-area-inset-bottom));
-		background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 88%, transparent));
-		border-top: 1px solid var(--line);
-	}
-	/*
-	 * the dock carries the card SURFACE itself rather than the global `.card` class, and is
-	 * deliberately NOT a <Card.Root>. It is a composed control — mark, input, spinner in a row — and its
-	 * children are styled from this file by descendant selectors like `.searchbox input`. Moving the
-	 * container into a component would leave those selectors with no matching ancestor, because Svelte
-	 * scopes the page's `.searchbox` to this file and the component's element does not carry that scope.
-	 * shadcn's Card is also `flex flex-col` with its own padding, which is the opposite of what a
-	 * single-row search field needs.
-	 */
-	.searchbox {
-		background: var(--card);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		display: flex;
-		align-items: center;
-		gap: var(--space-md);
-		padding: var(--space-lg) var(--space-xl);
-		min-height: 52px;
-		width: 100%;
-		max-width: var(--max-w);
-	}
-	.searchbox input {
-		border: 0;
-		background: transparent;
-		color: var(--ink);
-		font-size: var(--ph-text-base);
-		/*
-		 * `flex: 1` with `min-width: 0`, never `width: 100%`. An <input>'s intrinsic minimum width comes
-		 * from its character size, so as a flex item with the default `min-width: auto` it refuses to
-		 * shrink below roughly 20 characters — which at 200% text on a 320px viewport pushes the row
-		 * wider than the screen and forces horizontal scrolling (SC 1.4.10). That is the exact shape
-		 * an earlier change measured at 436px against 320px on the chip row this dock replaces.
-		 */
-		flex: 1;
-		min-width: 0;
-		/*
-		 * The input, not the wrapper, is the tap target: `.searchbox` is a div, so tapping its padding
-		 * focuses nothing. Give the input the full tap floor so the hit extent at its centre is
-		 * var(--tap), not the bare 22px text line. The wrapper's own min-height (52px here, raised from
-		 * 42px at the narrow breakpoint below) already absorbs it.
-		 */
-		min-height: var(--tap);
-	}
-	/* any label that leads with a mark rather than a word */
-	.search-mark {
-		display: grid;
-		place-items: center;
-		color: var(--ink-dim);
 	}
 	.grouphead {
 		font-size: var(--ph-text-2xs);
@@ -2017,25 +1420,6 @@
 		color: var(--ink-dim);
 		margin: var(--space-2xs) 0 0;
 	}
-	.skel-row {
-		display: flex;
-		align-items: center;
-		gap: var(--space-lg);
-		padding: var(--space-lg) var(--space-xl);
-		margin-bottom: var(--space-sm);
-		/* --radius-sm, not 14px: this row stands in for a real song row while it loads, and `.card`
-		   is --radius-sm — a placeholder with a different corner than the thing it replaces
-		   announces itself as a placeholder. */
-		border-radius: var(--radius-sm);
-		background: var(--card);
-		border: 1px solid var(--line);
-	}
-	.skel-text {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-sm);
-	}
 	/*
 	 * Docked-toast stacking, measured UP from the docked primary button. --dock-h is bound to that band's
 	 * clientHeight, and the BAND's own padding already includes env(safe-area-inset-bottom), so the
@@ -2105,13 +1489,6 @@
 		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 	}
-	/* Centres the "Show all" way-back button under an empty Ready filter. Classed, not inline, so the
-	   one-off row is not stranded outside the responsive rules with hard px. */
-	.showall-row {
-		display: flex;
-		justify-content: center;
-		padding: 0 0 var(--space-sm);
-	}
 
 	/*
 	 * this file's reduce arm is GONE, because the two animations it covered left with their
@@ -2137,11 +1514,6 @@
 		}
 		main {
 			padding-top: var(--space-3xs);
-		}
-		.searchbox {
-			/* rise to hold the 44px input added in an earlier change — 42px would clip its tap target */
-			min-height: var(--tap);
-			padding: var(--space-sm) var(--space-xl);
 		}
 		.grouphead {
 			margin: var(--space-sm) var(--space-2xs) var(--space-2xs);

@@ -77,6 +77,16 @@ export class RoomLink {
 	mediaStatus = new Map<string, LiveMediaStatus>();
 	/** The room's standing guiding-track default — needed to LABEL a null (inherit) per-song override. */
 	roomGuideDefault = 0;
+	/**
+	 * THE SAVED LIBRARY. Owned here rather than by the surface that lists it, because the fetch does
+	 * two jobs for two different readers: it gives /find the rows to render, AND it seeds the media
+	 * catalog and the live process statuses that HOME reads for its queue titles and its progress bars
+	 * on a cold load. Those used to share one function body in the route, which meant the queue's
+	 * titles depended on the search surface having run — invisible while they were the same file, a
+	 * silent breakage the moment they were not.
+	 */
+	library: Media[] = [];
+	libraryTags: Record<string, string[]> = {};
 	/** The optimistic queue. Undefined until a joined singer connects. */
 	queue: QueueStore | undefined;
 	entries: QueueEntry[] = [];
@@ -86,7 +96,6 @@ export class RoomLink {
 	#ws: WsClient | undefined;
 	#subs = new Set<() => void>();
 	#errorHandlers = new Set<(message: string) => void>();
-	#libraryHandlers = new Set<() => void>();
 	/**
 	 * Failed-process scars captured once on connect. HELD, because a `queue:sync` REPLACES the
 	 * catalog and a failed song is not in the room's media (it settled to un-processed server-side) —
@@ -106,20 +115,12 @@ export class RoomLink {
 		this.#errorHandlers.add(fn);
 		return () => this.#errorHandlers.delete(fn);
 	}
-	/** The saved library changed (a process went ready). Returns a disposer. */
-	onLibraryChanged(fn: () => void): () => void {
-		this.#libraryHandlers.add(fn);
-		return () => this.#libraryHandlers.delete(fn);
-	}
 
 	#emit(): void {
 		for (const fn of this.#subs) fn();
 	}
 	#fail(message: string): void {
 		for (const fn of this.#errorHandlers) fn(message);
-	}
-	#libraryChanged(): void {
-		for (const fn of this.#libraryHandlers) fn();
 	}
 
 	/** A song's display title, for a message about it. The catalog is right here, so nothing else needs to pass it. */
@@ -191,6 +192,7 @@ export class RoomLink {
 
 		this.#state = 'live';
 		this.#ws.open();
+		void this.refreshLibrary();
 		this.#emit();
 	}
 
@@ -276,7 +278,7 @@ export class RoomLink {
 		if (status === 'ready') {
 			clearScar(mediaId);
 			this.#scarred = this.#scarred.filter((s) => s.id !== mediaId);
-			this.#libraryChanged();
+			void this.refreshLibrary();
 		}
 		// Surface a died process instead of leaving the row silently stuck, and persist a per-device
 		// scar so the failure survives a reload (the live map does not).
@@ -331,6 +333,28 @@ export class RoomLink {
 		this.mediaStatus = new Map([...this.mediaStatus].filter(([id]) => id !== mediaId));
 		this.#emit();
 	}
+	/**
+	 * Re-read the saved library. Called on connect and whenever a process goes ready, so no surface has
+	 * to remember to ask — which is what the removed `onLibraryChanged` hook existed to arrange, one
+	 * commit ago. Failure is deliberately silent: the library is an accelerator, never a blocker.
+	 */
+	async refreshLibrary(): Promise<void> {
+		try {
+			const j = await (await fetch('/api/library')).json();
+			this.library = j.library ?? [];
+			this.libraryTags = j.tags ?? {};
+			this.mergeMedia(this.library);
+			const processing: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.processing ?? [];
+			if (processing.length) {
+				this.mergeMedia(processing.map((c) => c.media));
+				this.seedMediaStatus(processing);
+			}
+			this.#emit();
+		} catch {
+			/* ignore — the library is an accelerator, never a blocker */
+		}
+	}
+
 	/** Seed statuses from a /api/library snapshot. A live broadcast is fresher, so never overwrite one. */
 	seedMediaStatus(list: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[]): void {
 		if (!list.length) return;

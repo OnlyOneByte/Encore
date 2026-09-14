@@ -31,6 +31,10 @@ import { connect, sleep } from '../driver.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SEL } from '../contract.ts';
+// The one shared post-join sequence for reaching the search box (tests/e2e/lib/phone.mjs). Imported
+// because the remote pass now measures the `/find` surface too, and a second private way to reach that
+// field is exactly the drift the helper was extracted to prevent.
+import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (following
@@ -423,12 +427,20 @@ async function measureRemote(label, w, h) {
 
 	// Contrast pairs on remote — cover the primary controls and body text.
 	const contrastPairs = await page.evaluate(`(() => {
-		// Remote contrast targets. Group E interpolates the two in-scope class hooks from SEL
-		// (.chip -> SEL.chip, .card -> SEL.dashCard); bare tags (h1/h2/p/a) and descendant selectors
-		// (.searchbox input, .row .*, .qrow .t) are not selector hooks the guard tracks here. A later
-		// repoint moved the dead '.row .a' to '.row .byline' (SongRow renders <div class="byline">, never .a)
-		// and dropped the dead '.filter-chip' and '.b' targets (no component declares either class).
-		const targets = ['h1','h2','.searchbox input','.searchbox button','.row .t','.row .byline',${JSON.stringify(SEL.addTurn)},${JSON.stringify(SEL.sing)},'.qrow .t',${JSON.stringify(SEL.chip)},${JSON.stringify(SEL.dashCard)},'p','a'];
+		// Remote contrast targets, and this array is now the QUEUE surface only. Group E interpolates the
+		// in-scope class hooks from SEL; bare tags (h1/h2/p/a) and descendant selectors (.qrow .t) are
+		// not selector hooks the guard tracks here. A later repoint moved the dead '.row .a' to
+		// '.row .byline' and dropped the dead '.filter-chip' and '.b' targets (no component declares
+		// either class).
+		//
+		// WHAT LEFT THIS ARRAY, AND WHY IT MOVED RATHER THAN BEING DROPPED. The phone-remote rebuild
+		// made '/' queue-only: search became the '/find' route, and SongRow renders THERE. So the search
+		// field (was '.searchbox input' / '.searchbox button'), the row title/byline, both row actions
+		// and the row chip cannot resolve on '/' any more — every one of them would have been a read
+		// that silently skips, which is exactly the dead-target class G1 exists to red on. They are in
+		// the find-surface array below, measured on the surface that renders them, so the coverage is
+		// unchanged rather than quietly lost.
+		const targets = ['h1','h2','.qrow .t',${JSON.stringify(SEL.dashCard)},'p','a'];
 		const out = {};
 		for (const sel of targets) {
 			const els = [...document.querySelectorAll(sel)];
@@ -448,6 +460,67 @@ async function measureRemote(label, w, h) {
 		}
 		return out;
 	})()`);
+	/*
+	 * THE FIND SURFACE, IN THE SAME PASS AND AT THE SAME SIZE.
+	 *
+	 * Search left `/` for the `/find` route, and the targets that went with it are the ones this probe
+	 * most needs at 200% text: a text FIELD (the only one on the remote), the control that clears it, and
+	 * the song row's title / byline / actions / chip. Measuring them on `/` after the move would report
+	 * nothing at all — `querySelector` returns null, the loop `continue`s, and the probe still exits 0 —
+	 * so the read follows the surface instead of the file it used to live in.
+	 *
+	 * A query is typed first, deliberately: with an empty box `/find` lists the library (ready rows
+	 * only), so the raw-row action and the clear control never render and two targets would skip.
+	 * `SEL.search` / `SEL.songRow` come from the contract, so this navigation inherits the same anchor
+	 * guarantees as everything else here.
+	 *
+	 * Its own try/catch: a find-surface hiccup must not cost the `/` measurements already in hand, which
+	 * are the whole record for this viewport size.
+	 */
+	try {
+		await page.goto(`http://127.0.0.1:${PORT}/find`);
+		// The shared post-join path, called defensively. After this navigation the field is already on
+		// screen, which is the helper's own documented no-op case (it probes for the box first and
+		// returns), so this costs one short probe — and it keeps this probe on the ONE helper every other
+		// driver reaches search through, rather than growing a second private sequence here. When that
+		// helper learns to tap the band instead of waiting, the change lands there and not here.
+		await openBrowseFromHome(page);
+		await page.fill(SEL.search, 'caroline');
+		await page
+			.waitFor(`document.querySelector(${JSON.stringify(SEL.songRow)}) !== null`, { timeout: 8000 })
+			.catch(() => {});
+		await sleep(300);
+		const findPairs = await page.evaluate(`(() => {
+			// The find surface's own contrast targets. Same shape as the queue array above: SEL hooks are
+			// interpolated, and the literals that stay literals are descendant selectors ('.findbox input',
+			// the field inside its sticky box; '.row .t' / '.row .byline') — none of which the driver ban's
+			// shape rule flags, and all of which G1 resolves against real source.
+			const targets = ['h1','.findbox input',${JSON.stringify(SEL.clearSearch)},'.row .t','.row .byline',${JSON.stringify(SEL.addTurn)},${JSON.stringify(SEL.sing)},${JSON.stringify(SEL.chip)},'p'];
+			const out = {};
+			for (const sel of targets) {
+				const els = [...document.querySelectorAll(sel)];
+				for (let i=0;i<Math.min(els.length,2);i++){
+					const el = els[i];
+					if (!el.offsetParent) continue;
+					const cs = getComputedStyle(el);
+					let bgEl = el; let bgColor = 'rgba(0,0,0,0)';
+					while (bgEl && bgEl !== document.documentElement) {
+						const c = getComputedStyle(bgEl).backgroundColor;
+						if (c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent') { bgColor = c; break; }
+						bgEl = bgEl.parentElement;
+					}
+					if (bgColor === 'rgba(0,0,0,0)') bgColor = getComputedStyle(document.body).backgroundColor;
+					out[sel+':'+i] = { fg: cs.color, bg: bgColor, fontSizePx: parseFloat(cs.fontSize), fontWeight: cs.fontWeight, text: el.textContent?.trim().slice(0,60) || '' };
+				}
+			}
+			return out;
+		})()`);
+		// Namespaced rather than merged flat: `h1` and `p` exist on both surfaces, and one key overwriting
+		// the other would report one measurement as if it covered both.
+		for (const [k, v] of Object.entries(findPairs)) contrastPairs['/find ' + k] = v;
+	} catch (err) {
+		contrastPairs['/find (unreachable)'] = { fg: '', bg: '', fontSizePx: 0, fontWeight: '', text: String(err) };
+	}
 	/** @type {Record<string, any>} */
 	const contrastReport = {};
 	for (const [k, info] of Object.entries(contrastPairs)) {

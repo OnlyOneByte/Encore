@@ -11,6 +11,12 @@
 // "＋ Turn" — and a turn on a song that can never be processed is exactly the dead end this row's
 // one-primary-action design exists to remove. The `{:else}` branch also fires `onadd?.()`, so a row
 // passed neither callback would render an enabled control that silently does nothing.
+//
+// RE-POINTED for the phone-remote redesign. The Sing / turn affordances are on the surface that lists
+// SEARCH RESULTS, and that moved out of `routes/+page.svelte` (home is queue-only now) into its own
+// route, `routes/find/+page.svelte` — carrying `singThis`, `processMedia`, `readinessFor` and both
+// SongRow blocks over unchanged. The three page-side arms below are asserted against /find; SongRow
+// itself did not move. Same requirements, new address.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,7 +33,7 @@ const ROOT = repoRoot;
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
 
 const songRowRaw = read('src/lib/components/SongRow.svelte');
-const pageRaw = read('src/routes/+page.svelte');
+const pageRaw = read('src/routes/find/+page.svelte');
 const songRow = stripComments(songRowRaw);
 const page = stripComments(pageRaw);
 

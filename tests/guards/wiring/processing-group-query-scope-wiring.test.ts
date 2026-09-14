@@ -9,7 +9,7 @@
 // THE FIX moves the id-selection into the pure `processingGroupIds` helper (unit-tested in
 // apps/core/src/lib/processing-group-query-scope.test.ts) and feeds it the server's query-matched group
 // via a new `processingResults` state. The helper carries the logic; but the LINES that wire it into
-// routes/+page.svelte — hold `j.processing`, clear it with the box, and pass it to the helper — live in
+// the search surface — hold `j.processing`, clear it with the box, and pass it to the helper — live in
 // a Svelte component bun test never imports (Encore has no jsdom; every UI invariant is a source-scan
 // guard). Without this guard, deleting any wiring line ships green: the helper keeps its own tests
 // while the component silently reverts to the query-blind union. This is the repo's most-repeated
@@ -17,7 +17,13 @@
 //
 // WHY A SOURCE SCAN. The wiring is inside a $derived.by and the runSearch closure, both of which only
 // run in a live browser page. The presence of each seam is a decidable property of the component
-// source, so this reads +page.svelte and requires each one.
+// source, so this reads the search surface and requires each one.
+//
+// RE-POINTED for the phone-remote redesign: search moved out of `routes/+page.svelte` (home is
+// queue-only now) into its own route, `routes/find/+page.svelte`, carrying `query`, `searchActive`,
+// `processingResults`, `runSearch` and `processingRows` over unchanged. The query-scoping seams are
+// properties of whichever surface owns the search box, and that is now /find. Same requirements, new
+// address.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
@@ -31,7 +37,7 @@ function stripComments(src: string): string {
 }
 
 // Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
-const PAGE = stripComments(readFileSync(at('src/routes/+page.svelte'), 'utf8'));
+const PAGE = stripComments(readFileSync(at('src/routes/find/+page.svelte'), 'utf8'));
 
 test('the page imports the query-scope helper it wires', () => {
 	expect(PAGE).toMatch(/import\s*\{[^}]*\bprocessingGroupIds\b[^}]*\}\s*from\s*'\$lib\/readiness'/);

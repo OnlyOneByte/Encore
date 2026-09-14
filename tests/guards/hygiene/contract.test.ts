@@ -990,10 +990,14 @@ test('G1 — every literal p10-scaling contrast target resolves to a real anchor
 	const { arrays, lits } = p10TargetLiterals();
 	const sources = guardSources();
 
-	// Sentinel A: both target arrays were actually found and their literals extracted. Replacing the
-	// arrays with `[]` (or a rename that hides them from the scan) makes the main arm pass vacuously —
-	// this floor reds instead. 19 distinct live literals across the two arrays at the time of writing.
-	expect(arrays.length).toBe(2);
+	// Sentinel A: every target array was found and its literals extracted. Replacing an array with `[]`
+	// (or a rename that hides it from the scan) makes the main arm pass vacuously — this floor reds
+	// instead. THREE arrays now, not two: the phone-remote rebuild moved search to the `/find` route, so
+	// the remote pass measures two surfaces — the queue on `/` and the find surface — and the targets
+	// that used to sit in the `/` array (the search field, the row title/byline/actions/chip) moved to
+	// the find array rather than being dropped. Raising this number tracks a probe that covers MORE, and
+	// it must never be lowered to accommodate an array that quietly stopped being scanned (XR-VER-06).
+	expect(arrays.length).toBe(3);
 	expect(lits.length).toBeGreaterThanOrEqual(19); // @nvf-floor lits.length
 
 	// Sentinel B: known-live anchors the arrays name must resolve, so a resolver that rejects
@@ -1013,13 +1017,17 @@ test('G1 — every literal p10-scaling contrast target resolves to a real anchor
 
 	// Sentinel C: at least six of the literals resolve as CLASS selectors specifically (not just as
 	// bare tags), so a class-blind resolver that only ever checked tags cannot pass this.
+	//
+	// `.findbox input` replaces `.searchbox input`: the search field moved from the docked box on `/` to
+	// the sticky box on `/find` (SEL.findBox), and it stays on this list because it is the one TEXT-ENTRY
+	// control the remote has — the class of control this file's sibling touch guard found sitting at 22px.
 	const classLits = [
 		'.badqr-b b',
 		'.lower-third .ls-key',
 		'.attract .jt-url',
 		'.row .t',
 		'.row .byline',
-		'.searchbox input'
+		'.findbox input'
 	];
 	for (const c of classLits) expect(selectorResolves(c, sources), c).toBe(true);
 

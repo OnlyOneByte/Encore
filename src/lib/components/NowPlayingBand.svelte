@@ -81,19 +81,26 @@
 <div class="band" class:idle={!hasSong}>
 	<div class="inner">
 		<!--
-		The pull surface. It carries the expand action and NOTHING else: XR-PH-15's prohibition is on a
+		The pull surface, rendered ONLY when there is somewhere to pull to. A labelled button that does
+		nothing is worse than an absent one: a screen reader announces "Open now playing" and the tap is
+		swallowed. So the affordance is gated on the action existing, which also means this band degrades
+		to a status-plus-transport strip wherever no drawer is wired.
+
+		It carries the expand action and NOTHING else: XR-PH-15's prohibition is on a
 		control sharing a drag surface, and a range input here would fight the gesture. The handle is a
 		real button so the band is reachable without a pointer — a drag-only affordance is unreachable
 		by keyboard and by a screen reader.
 	-->
-		<button
-			class="handle"
-			type="button"
-			aria-label={hasSong ? 'Open now playing' : 'Open the player'}
-			onclick={() => onexpand?.()}
-		>
-			<i></i>
-		</button>
+		{#if onexpand}
+			<button
+				class="handle"
+				type="button"
+				aria-label={hasSong ? 'Open now playing' : 'Open the player'}
+				onclick={() => onexpand()}
+			>
+				<i></i>
+			</button>
+		{/if}
 
 		<div class="strip">
 			<div class="meta">
