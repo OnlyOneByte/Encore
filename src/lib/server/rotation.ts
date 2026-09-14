@@ -8,7 +8,7 @@
 // setting existed — but a caller on the live path must pass the room's, or it will pick a different
 // "next" than the queue the clients are looking at.
 
-import { assignSeqs, readyToSing, type Ordering, type QueueEntry, type Media } from '$lib/contract';
+import { assignSeqs, readyToSing, type Ordering, type QueueEntry, type Media } from '../contract';
 
 /** Re-derive the room's ordering + contiguous rotationSeq. Server owns this value. */
 export function reseq(entries: QueueEntry[], ordering: Ordering = {}): QueueEntry[] {

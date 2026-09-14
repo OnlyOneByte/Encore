@@ -19,7 +19,7 @@
 // `+page.svelte` is not mountable (it imports `$app`) — that half is a source scan by necessity, and
 // says so.
 import { test, expect, afterEach } from 'bun:test';
-import { mount, unmount, flushSync } from '../../../tests/setup/svelte-client';
+import { mount, unmount, flushSync } from '$setup/svelte-client';
 import { read } from '@encore/test-support';
 import HeroControls from './hero-live-controls-835.harness.svelte';
 

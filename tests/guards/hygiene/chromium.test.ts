@@ -53,11 +53,24 @@ function e2eDrivers(): string[] {
 	return out;
 }
 
+/**
+ * Source with comments blanked, newlines preserved.
+ *
+ * Required, and it was learned the hard way HERE. Every scan below asked `src.includes('findChromium')`
+ * on raw text, so a driver whose COMMENT explained that browser discovery belongs to the shared driver
+ * was read as a driver that discovers Chromium itself — and reported for not importing the canonical
+ * module it deliberately does not use. A guard that criminalises its own documentation teaches people
+ * to delete the documentation. The mutation arm below proves the stripper does not also blind the scan.
+ */
+function codeOnly(src: string): string {
+	return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[\s;{(])\/\/[^\n]*/g, '$1 ');
+}
+
 // A findChromium DEFINITION, not a call/import: `function findChromium`, `const findChromium =`, etc.
 const DEF = /(?:function\s+findChromium\b|(?:const|let|var)\s+findChromium\s*=)/;
 
 test('findChromium is defined in exactly one file, and it is lib/chromium.mjs', () => {
-	const definers = e2eDrivers().filter((f) => DEF.test(readFileSync(join(E2E, f), 'utf8')));
+	const definers = e2eDrivers().filter((f) => DEF.test(codeOnly(readFileSync(join(E2E, f), 'utf8'))));
 	expect(definers).toEqual([CANON]);
 });
 
@@ -65,7 +78,7 @@ test('every e2e driver that discovers Chromium imports it from lib/chromium.mjs'
 	const offenders: string[] = [];
 	for (const f of e2eDrivers()) {
 		if (f === CANON) continue;
-		const src = readFileSync(join(E2E, f), 'utf8');
+		const src = codeOnly(readFileSync(join(E2E, f), 'utf8'));
 		if (!src.includes('findChromium')) continue; // driver doesn't need Chromium at all
 		// how many directory levels deep this file is, so we know the relative path back to lib/.
 		// A top-level driver (fuzz.mjs) reaches it via ./lib, a probe (probes/p1.mjs) via ../lib.
@@ -90,4 +103,23 @@ test('no e2e driver hardcodes a personal home path', () => {
 		if (/\/(?:local\/)?home\/angryang\b/.test(src)) offenders.push(f);
 	}
 	expect(offenders).toEqual([]);
+});
+
+test('the scan reads code, not a comment that merely names findChromium', () => {
+	/*
+	 * The trap this closes, in both directions. `shot.mjs` says in prose that browser discovery is the
+	 * shared driver's job — naming `findChromium` to explain why it does NOT call it. On a raw-text scan
+	 * that read as an undeclared discoverer and reported the file for a missing import it should not have.
+	 * Real code must still be caught, including on a line that also carries a comment.
+	 */
+	expect(codeOnly('// discovery is the driver\'s job, via findChromium').includes('findChromium')).toBe(false);
+	expect(
+		codeOnly('/*\n * findChromium used to be copied into every driver.\n */').includes('findChromium')
+	).toBe(false);
+
+	expect(codeOnly("import { findChromium } from '../lib/chromium.mjs';").includes('findChromium')).toBe(true);
+	expect(DEF.test(codeOnly('function findChromium() { return null; }'))).toBe(true);
+	expect(DEF.test(codeOnly('const findChromium = () => null; // the copied variant'))).toBe(true);
+	// a definition named only in prose is not a definition
+	expect(DEF.test(codeOnly('// const findChromium = () => null;'))).toBe(false);
 });

@@ -13,7 +13,7 @@
 		"test": "bun test",
 		"gates": "bun test || { echo 'gates: FAILED at leg 1/5 - bun test'; exit 1; }; (cd worker && python3 -m pytest -q) || { echo 'gates: FAILED at leg 2/5 - cd worker && python3 -m pytest -q'; exit 1; }; bun run typecheck || { echo 'gates: FAILED at leg 3/5 - bun run typecheck'; exit 1; }; bun run lint || { echo 'gates: FAILED at leg 4/5 - bun run lint'; exit 1; }; bun run build || { echo 'gates: FAILED at leg 5/5 - bun run build'; exit 1; }; echo 'gates: all 5 legs green'",
 		"gate:measured": "bun run tests/e2e/gates/measured-design.mjs",
-		"lint": "eslint --cache --cache-location .eslintcache 'src/**/*.{ts,mjs,svelte}' 'server.ts' 'tests/**/*.{ts,mjs,svelte}'",
+		"lint": "eslint --cache --cache-strategy content --cache-location .eslintcache 'src/**/*.{ts,mjs,svelte}' 'server.ts' 'tests/**/*.{ts,mjs,svelte}'",
 		"format": "prettier --write 'src/**/*.{ts,svelte,mjs}' 'tests/**/*.{ts,svelte}' '*.{json,md}'",
 		"format:check": "prettier --check 'src/**/*.{ts,svelte,mjs}' 'tests/**/*.{ts,svelte}' '*.{json,md}'",
 		"typecheck:root": "tsc -p tsconfig.server.json",
@@ -22,6 +22,7 @@
 		"e2e:seed": "bun run tests/e2e/seed-media.mjs",
 		"e2e:fuzz": "bun run tests/e2e/fuzz.mjs",
 		"e2e:lobby": "bun run tests/e2e/lobby-overlap.mjs",
+		"e2e:probes": "bun run tests/e2e/run-probes.mjs",
 		"typecheck:app": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json"
 	},
 	"dependencies": {

@@ -20,7 +20,7 @@ import {
 	DEFAULT_ROOM_SETTINGS,
 	normalizeGlobalSettings,
 	normalizeRoomSettings
-} from '$lib/contract';
+} from '../../contract';
 
 const SINGLETON = 'singleton';
 

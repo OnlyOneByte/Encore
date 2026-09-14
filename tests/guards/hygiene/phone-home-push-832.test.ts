@@ -13,7 +13,7 @@ import { test, expect } from 'bun:test';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { e2eDir } from '@encore/test-support';
-import { SEL, HOOKS } from '../../../tests/e2e/contract';
+import { SEL, HOOKS } from '$e2e/contract';
 
 const E2E = e2eDir;
 

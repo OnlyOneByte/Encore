@@ -29,8 +29,8 @@
 // PURE selector + injected IO, the shape `backfill.ts` and `retention.ts` already use: the job lookup
 // and the persistence sink are parameters, so the policy is testable without a DB, a worker or a clock.
 
-import type { Job, JobType, Media } from '$lib/contract';
-import { isTerminalJob } from '$lib/contract';
+import type { Job, JobType, Media } from '../../contract';
+import { isTerminalJob } from '../../contract';
 import { GATE_SETTLEMENT } from './process';
 
 export interface GateReconcileDeps {

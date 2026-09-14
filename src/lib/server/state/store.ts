@@ -10,7 +10,7 @@ import {
 	type QueueOp,
 	type QueueEntry,
 	type PlaybackState
-} from '$lib/contract';
+} from '../../contract';
 
 export interface StatePersistence {
 	/** Write-behind sink. Called (debounced) after mutations; must be side-effect-only. */

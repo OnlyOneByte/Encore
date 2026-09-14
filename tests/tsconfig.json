@@ -5,7 +5,7 @@
 	// importing file. Tests currently living under `src` inherit
 	// `.svelte-kit/tsconfig.json`, which SvelteKit generates with `$lib`, `$lib/server` and
 	// `$lib/contract` in it. A test moved to `tests/` leaves that context entirely, and a probe confirmed
-	// the failure is immediate and loud: `Cannot find module '$lib/position-sentence'`. So the aliases have
+	// the failure is immediate and loud: `Cannot find module '$lib/phrasing/position-sentence'`. So the aliases have
 	// to be re-declared here, once, rather than rewritten into hundreds of relative paths.
 	//
 	// WHY NOT ADD THESE TO THE ROOT tsconfig INSTEAD. The root config `include`s `src`, so a
@@ -16,6 +16,15 @@
 	// app's vite config would make it resolvable from production source and therefore bundleable, which is
 	// exactly the coupling this package exists to avoid. A test gains access to it by MOVING here, which is
 	// also what makes "adopt the helper" and "leave the source tree" the same commit.
+	// WHY `$routes`, `$setup` AND `$e2e` ARE HERE. `$lib` covers `src/lib` and nothing else, so a test
+	// naming a ROUTE handler, the Svelte client setup, or the e2e selector registry had no alias to use
+	// and counted `..` hops instead — 31 of them across 30 files, at depths from two to six. A hop count
+	// encodes the importing file's distance from its subject, which is the same fragility that left six
+	// e2e drivers anchored one hop short of the repo root. These three aliases delete the whole class.
+	//
+	// They are declared HERE, in the tests-only context, deliberately: `$routes` resolvable from
+	// production source would let a component import a route handler, and `$setup`/`$e2e` would make test
+	// scaffolding bundleable. The app's own resolution never sees them.
 	"extends": "../tsconfig.base.json",
 	"compilerOptions": {
 		"baseUrl": ".",
@@ -25,7 +34,10 @@
 			"$lib": ["../src/lib"],
 			"$lib/*": ["../src/lib/*"],
 			"$lib/server": ["../src/lib/server"],
-			"$lib/server/*": ["../src/lib/server/*"]
+			"$lib/server/*": ["../src/lib/server/*"],
+			"$routes/*": ["../src/routes/*"],
+			"$setup/*": ["./setup/*"],
+			"$e2e/*": ["./e2e/*"]
 		}
 	},
 	"include": ["**/*.ts", "./support/src/**/*.ts"]

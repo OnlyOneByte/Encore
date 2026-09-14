@@ -78,22 +78,7 @@ import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
-import { existsSync as __exists } from 'node:fs';
-import { join as __join, dirname as __dirname } from 'node:path';
-// INLINED, not imported: this driver runs under plain node with no bundler, so the
-// '@encore/test-support' alias does not exist at runtime. Walking up for bunfig.toml is the
-// same root derivation the harness uses, and unlike a hop count it survives a move.
-function __repoRoot() {
-	let d = __dirname(new URL(import.meta.url).pathname);
-	for (let i = 0; i < 12; i += 1) {
-		if (__exists(__join(d, 'bunfig.toml'))) return d;
-		d = __dirname(d);
-	}
-	throw new Error('no bunfig.toml above ' + import.meta.url);
-}
-const repoRoot = __repoRoot();
-/** @param {...string} parts @returns {string} */
-const at = (...parts) => __join(repoRoot, ...parts);
+import { atRepo as at } from './lib/repo-root.mjs';
 
 
 /**
@@ -165,7 +150,6 @@ const N_INPUTS = Number(process.env.FUZZ_INPUTS ?? 24); // tens, not thousands �
 const SETTLE_MS = 700; // let one input land before reading state
 const CROSS_MS = 3000; // budget for a cross-surface value to propagate before it counts as a violation
 const DECODE_GAP_MS = 1500; // "sample twice, seconds apart"
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9461);
 
 // ── output ───────────────────────────────────────────────────────────────────────────────────────
 /** Everything driven so far, in order — this list IS the reproduction recipe. */
@@ -1396,7 +1380,7 @@ async function maybeDeliverTap(world) {
 // ── run ──────────────────────────────────────────────────────────────────────────────────────────
 let exitCode = 0;
 try {
-	browser = await connect(undefined, { args: chromeArgs });
+	browser = await connect({ args: chromeArgs });
 
 	// Two phones, each its own isolated context and therefore its own session — two genuinely
 	// different guests, not one guest in two tabs. That is the whole point of the topology: a
@@ -1405,9 +1389,9 @@ try {
 	async function newPhone(name) {
 		const page = await /** @type {Browser} */ (browser).newPage();
 		await page.viewport(390, 844);
-		await page.goto(`${base}/join`);
+		await page.goto(`${base}/`);
 		await page.fill(SEL.nameInput, name);
-		await page.clickByText('Start singing');
+		await page.clickByRole('button', 'Start singing');
 		await page.waitFor(`location.pathname === '/'`, { timeout: 15000 });
 		await openBrowseFromHome(page, { timeout: 15000 });
 		await openWire(page);

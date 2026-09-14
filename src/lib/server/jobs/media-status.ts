@@ -36,7 +36,7 @@ import {
 	type Media,
 	type MediaStage,
 	type MediaStatus
-} from '$lib/contract';
+} from '../../contract';
 
 /**
  * Where on the media's line a job of this type sits WHILE IT RUNS — its floor.

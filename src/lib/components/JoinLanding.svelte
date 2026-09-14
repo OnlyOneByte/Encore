@@ -27,7 +27,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { safeNextPath } from '$lib/next-path';
-	import { roomPresenceSentence, type RoomPreview } from '$lib/room-presence-sentence';
+	import { roomPresenceSentence, type RoomPreview } from '$lib/phrasing/room-presence-sentence';
 	import { Input } from '$lib/components/ui/input';
 	import * as Item from '$lib/components/ui/item';
 	import { Spinner } from '$lib/components/ui/spinner';

@@ -211,7 +211,7 @@ test('the shell imports what it is built from — a missing one is a build break
 	// route no longer reads the browse query off the URL. (Asserted on the specifier alone, not the
 	// whole import statement, so this comment cannot itself read as a virtual-module import.)
 	expect(PAGE).not.toContain('$app/state');
-	expect(PAGE).toMatch(/import \{ positionWords \} from '\$lib\/position-sentence';/);
+	expect(PAGE).toMatch(/import \{ positionWords \} from '\$lib\/phrasing\/position-sentence';/);
 	expect(PAGE).toMatch(/import NowPlayingHero from '\$lib\/components\/NowPlayingHero\.svelte';/);
 	expect(PAGE).toMatch(/import MyPositionCard from '\$lib\/components\/MyPositionCard\.svelte';/);
 	// songDisplay is what keeps the hero's title and artist APART — `mediaTitle` welds them together,

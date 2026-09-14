@@ -13,7 +13,7 @@
 	import JoinBadge from './JoinBadge.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import type { RosterMember } from './screen';
-	import { processStageLabel } from '$lib/process-phrasing';
+	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 
 	interface Props {
 		qrDataUrl: string;

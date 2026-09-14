@@ -61,15 +61,16 @@ const DEFAULT_TIMEOUT = 10_000;
  * `headless_shell` and demands a ~150MB `playwright install`. Pointing at the existing binary keeps this
  * repo's "no install step" property, which was the second half of the original objection.
  *
- * The `port` argument is accepted and IGNORED. Every one of the 25 entry points passes one because it used to
- * spawn its own Chromium on that port; keeping the signature is what lets them keep working while their spawn
- * blocks are removed one at a time rather than in a single 25-file change.
+ * The `port` argument is GONE. It was accepted and ignored for the whole migration, because every entry
+ * point passed one from when it spawned its own Chromium on that port — keeping the signature let their
+ * spawn blocks come out one file at a time instead of in a single 25-file change. That migration is
+ * finished: no caller passes a port, no probe declares a CDP port constant, and nothing in this tree
+ * speaks the DevTools protocol by hand. Taking the parameter out is what stops the next reader thinking
+ * a port still means something here.
  *
- * @param {number} [port] ignored — retained so existing entry points keep their call shape
  * @param {{ args?: string[] }} [opts] extra Chromium flags, for a flow whose FLAGS ARE THE EXPERIMENT
  */
-export async function connect(port, opts = {}) {
-	void port;
+export async function connect(opts = {}) {
 	const executablePath = findChromium();
 	if (!executablePath) {
 		throw new Error('No Chromium found. Set PW_CHROMIUM, or run `npx playwright install chromium`.');
@@ -95,9 +96,16 @@ function browserApi(browser) {
 		 * A fresh, isolated context — its own cookies, so two of these are genuinely two different guests
 		 * rather than one guest in two tabs. That distinction is the whole point of the party flow, and here
 		 * it is one call instead of three CDP round-trips.
+		 *
+		 * `initScript` runs on EVERY navigation of this context BEFORE the app's own scripts, which is how
+		 * an instrument gets in early enough to wrap a WebSocket the app opens during hydration.
+		 * `context.addInitScript` is Playwright's own; `p8-presence-resilience` used to reach
+		 * `Page.addScriptToEvaluateOnNewDocument` through a private CDP socket for exactly this.
+		 * @param {{ initScript?: string | null }} [opts]
 		 */
-		async newPage() {
+		async newPage({ initScript = null } = {}) {
 			const context = await browser.newContext({ viewport: null });
+			if (initScript) await context.addInitScript({ content: initScript });
 			const page = await context.newPage();
 			return wrap(page, context);
 		},
@@ -287,6 +295,47 @@ function wrap(page, context) {
 				await sleep(settle);
 			}
 			await page.mouse.up();
+		},
+
+		/**
+		 * Take this guest's context offline, and bring it back.
+		 *
+		 * `context.setOffline` is Playwright's own, and it is why `p8-presence-resilience` no longer needs a
+		 * private CDP client: it was reaching for `Network.emulateNetworkConditions` through a hand-rolled
+		 * socket to do exactly this. Scoped to the CONTEXT, so one guest can drop while the others stay up —
+		 * which is the whole subject of a presence probe.
+		 * @param {boolean} offline
+		 */
+		async setOffline(offline) {
+			await context.setOffline(offline);
+		},
+
+		/**
+		 * Stop the browser serving a URL pattern from its HTTP cache.
+		 *
+		 * The `/media` route replies `Cache-Control: public, max-age=86400`, so a probe that overwrites an
+		 * artifact and re-tests reads yesterday's copy and reports a pass on a file that is no longer there.
+		 * `p6-lyrics` used to defeat that with `Network.setCacheDisabled` over its own CDP connection.
+		 *
+		 * Done with route interception instead: `route.fetch()` performs a fresh network request, and
+		 * re-fulfilling with `no-store` keeps the response out of the cache for next time. Both halves
+		 * matter — intercepting alone would still let a cached entry answer.
+		 * @param {string} pattern a Playwright URL glob, e.g. '**\/media\/**'
+		 */
+		async bypassCacheFor(pattern) {
+			await context.route(pattern, async (route) => {
+				try {
+					const response = await route.fetch();
+					await route.fulfill({
+						response,
+						headers: { ...response.headers(), 'cache-control': 'no-store' }
+					});
+				} catch {
+					// A route that cannot be re-fetched (aborted navigation, closed page) must not wedge the
+					// page: fall through to the browser's own handling rather than leaving the request hanging.
+					await route.fallback();
+				}
+			});
 		},
 
 		/** Close this guest's context, cookies and all. */

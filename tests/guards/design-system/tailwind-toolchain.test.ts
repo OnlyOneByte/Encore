@@ -30,7 +30,7 @@ import { expect, it } from 'bun:test';
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { repoRoot, srcDir } from '@encore/test-support';
-import { svelteFiles, styleFiles, SKIP_DIRS } from '$lib/test-helpers';
+import { svelteFiles, styleFiles, SKIP_DIRS } from '@encore/test-support/scan';
 
 // Was `at('src')` (src, from this guard's old home in src/lib)
 // and `join(SRC, '..', '..', '..')` for the repo root that the tailwind.config.* walk starts from. Both

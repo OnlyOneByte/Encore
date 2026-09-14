@@ -9,7 +9,7 @@
 // proof (measured column width / days-under-thumb) lives in the PR body via CDP.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
-import { TAP, TAP_FLOOR } from '$lib/test-helpers';
+import { TAP, TAP_FLOOR } from '@encore/test-support/scan';
 
 const TREND = read('src/lib/charts/Trend.svelte');
 const CSS = read('src/app.css');

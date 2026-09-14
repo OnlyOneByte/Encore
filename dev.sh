@@ -28,10 +28,10 @@ ROOT="$PWD"
 # ── paths pinned ABSOLUTE, deliberately ──────────────────────────────────────────────
 # The app resolves MEDIA_DIR ?? './media' and DATA_DIR ?? './data' relative to CWD (paths.ts:27,
 # db/index.ts:29). Two processes started from different directories therefore get DIFFERENT stores,
-# which is how a stray repo-root ./media appears next to apps/core/media and the worker writes stems
+# which is how a stray ./media appears beside the real one and the worker writes stems
 # the core cannot find. Pinning both here means core and worker cannot disagree.
-export MEDIA_DIR="$ROOT/apps/core/media"
-export DATA_DIR="$ROOT/apps/core/data"
+export MEDIA_DIR="$ROOT/media"
+export DATA_DIR="$ROOT/data"
 CORE_URL="http://localhost:3000"
 
 DO_PULL=0 DO_RESET=0 DO_START=1 CORE_ONLY=0 UI_MODE=0 ASSUME_YES=0 NUKE_MODELS=0
@@ -126,11 +126,11 @@ if [ "$DO_RESET" = 1 ]; then
 	# source. It CAN destroy hours of downloading and cooking: audio/ holds raw originals that are not
 	# regenerable without the network, and derived/ holds stems that cost real GPU/CPU time.
 	TARGETS=(
-		"$ROOT/apps/core/media"      # audio + derived + meta + job scratch — the whole library
-		"$ROOT/apps/core/data"       # sqlite + WAL + shm
+		"$ROOT/media"      # audio + derived + meta + job scratch — the whole library
+		"$ROOT/data"       # sqlite + WAL + shm
 		"$ROOT/media" "$ROOT/data"   # strays from a process started at the repo root
-		"$ROOT/apps/core/.svelte-kit" "$ROOT/apps/core/build"
-		"$ROOT/apps/worker/.pytest_cache"
+		"$ROOT/.svelte-kit" "$ROOT/build"
+		"$ROOT/worker/.pytest_cache"
 	)
 	if [ "$NUKE_MODELS" = 1 ]; then
 		# Demucs checkpoints (torch hub) + whisper/wav2vec2 weights (HF). Multi-GB and slow to refetch,
@@ -142,7 +142,7 @@ if [ "$DO_RESET" = 1 ]; then
 	for t in "${TARGETS[@]}"; do
 		[ -e "$t" ] && printf '  %-52s %s\n' "${t#$ROOT/}" "$(du -sh "$t" 2>/dev/null | cut -f1)"
 	done
-	echo "  (plus every __pycache__ under apps/worker)"
+	echo "  (plus every __pycache__ under worker/)"
 
 	if [ "$ASSUME_YES" != 1 ]; then
 		printf '\nthis cannot be undone. type RESET to continue: '
@@ -151,7 +151,7 @@ if [ "$DO_RESET" = 1 ]; then
 	fi
 
 	for t in "${TARGETS[@]}"; do rm -rf "$t"; done
-	find "$ROOT/apps/worker" -name '__pycache__' -type d -not -path '*/.venv/*' -exec rm -rf {} + 2>/dev/null || true
+	find "$ROOT/worker" -name '__pycache__' -type d -not -path '*/.venv/*' -exec rm -rf {} + 2>/dev/null || true
 	echo "reset done — next boot recreates the dirs and applies drizzle/0000_baseline.sql from empty."
 fi
 
@@ -161,26 +161,26 @@ if [ "$DO_PULL" = 1 ] || [ ! -d "$ROOT/node_modules" ]; then
 	bun install
 fi
 
-VENV="$ROOT/apps/worker/.venv"
+VENV="$ROOT/worker/.venv"
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
 	if [ ! -x "$VENV/bin/python" ]; then
 		say "creating worker venv (multi-GB: torch + demucs + whisperx)"
 		python3 -m venv "$VENV"
 		"$VENV/bin/pip" install --quiet --upgrade pip
-		"$VENV/bin/pip" install -r "$ROOT/apps/worker/requirements.txt"
+		"$VENV/bin/pip" install -r "$ROOT/worker/requirements.txt"
 		# Not in requirements.txt on purpose — the image installs it --no-deps because its own
 		# dependency list is 30 packages of .doc/.rtf readers we never call. Same treatment here.
 		"$VENV/bin/pip" install --quiet --no-deps karaoke-lyrics-processor==0.6.0
 	elif [ "$DO_PULL" = 1 ]; then
 		say "refreshing worker deps"
-		"$VENV/bin/pip" install --quiet -r "$ROOT/apps/worker/requirements.txt"
+		"$VENV/bin/pip" install --quiet -r "$ROOT/worker/requirements.txt"
 		"$VENV/bin/pip" install --quiet --no-deps karaoke-lyrics-processor==0.6.0
 	fi
 fi
 
 # ── build ────────────────────────────────────────────────────────────────────────────
 # server.ts serves the built SvelteKit output; without a build it starts with "ui:not built".
-if [ "$UI_MODE" != 1 ] && { [ "$DO_PULL" = 1 ] || [ "$DO_RESET" = 1 ] || [ ! -d "$ROOT/apps/core/build" ]; }; then
+if [ "$UI_MODE" != 1 ] && { [ "$DO_PULL" = 1 ] || [ "$DO_RESET" = 1 ] || [ ! -d "$ROOT/build" ]; }; then
 	say "building core"
 	bun run build
 fi
@@ -276,7 +276,7 @@ if [ "$CORE_ONLY" != 1 ]; then
 	# `exec` is load-bearing: it REPLACES the subshell with python, so $! is python's own pid. Without
 	# it $! is the subshell and cleanup kills a shell that has already forked, leaving the worker alive.
 	(
-		cd "$ROOT/apps/worker"
+		cd "$ROOT/worker"
 		exec env \
 			PATH="$VENV/bin:$PATH" \
 			ENCORE_CORE_WS="ws://localhost:3000/ws?role=worker" \

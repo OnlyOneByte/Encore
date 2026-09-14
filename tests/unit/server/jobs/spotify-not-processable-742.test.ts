@@ -21,7 +21,7 @@ import { migratedDb } from '$lib/server/db/test-db';
 import { requestProcess, processState, type ProcessDeps } from '$lib/server/jobs/process';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AuthoritativeState } from '$lib/server/state/store';
-import { nextPlayable } from '$lib/server/rotation/index';
+import { nextPlayable } from '$lib/server/rotation';
 import { processAndQueue } from '$lib/process-and-queue';
 import { canProcess, readinessOf } from '$lib/readiness';
 import { isProcessableSource, fetcherFor, DEFAULT_FETCHER, METADATA_ONLY_SOURCES } from '$lib/contract';

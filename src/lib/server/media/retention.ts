@@ -12,7 +12,7 @@
 // The planning half is pure so the policy is testable without a filesystem or a transcoder.
 
 import { existsSync, statSync, rmSync } from 'node:fs';
-import type { Media } from '$lib/contract';
+import type { Media } from '../../contract';
 import { safeMediaPath } from './local-files';
 import {
 	instrumentalKey,

@@ -17,8 +17,8 @@ import type {
 	MediaStoreConfig,
 	GlobalSettings,
 	EffectiveSettings
-} from '$lib/contract';
-import { sourceUriFor, resolveProcessSeparator } from '$lib/contract';
+} from '../../contract';
+import { sourceUriFor, resolveProcessSeparator } from '../../contract';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';
@@ -74,6 +74,23 @@ export interface WorkerHubDeps {
 	 * backfill re-adopts it, pinning the room to the superseded separation.
 	 */
 	discardGuideMix?: (mediaId: string) => void | Promise<void>;
+	/**
+	 * Measure a reported instrumental before publishing it. `'silent'` REFUSES the completion.
+	 *
+	 * DEFENCE IN DEPTH, and the reason it belongs here rather than only in the worker: separation can
+	 * succeed and still write digital silence, and the core used to verify only that a ref EXISTED. Two
+	 * songs in the live library were exactly that — both stems at the 16-bit floor — and they sat in the
+	 * Ready list ready to play four minutes of nothing. `media/loudness.ts` has measured that condition
+	 * since; it was wired into the boot backfill and never into the live publish, so a worker reporting a
+	 * silent stem still got a READY song.
+	 *
+	 * `'unknown'` publishes, deliberately. An unmeasurable file is NOT silence — see `isDigitalSilence`.
+	 * A host with no ffmpeg would otherwise refuse every process it ran, which is a self-inflicted
+	 * outage; we only ever act on a POSITIVE measurement of silence.
+	 *
+	 * Optional so the hub still unit-tests bare, and so an unwired core behaves exactly as before.
+	 */
+	verifyInstrumental?: (ref: string) => Promise<'audible' | 'silent' | 'unknown'>;
 	toWorker: ToWorker; // send a WorkerCommand to ONE worker session
 	broadcast: Broadcast; // media:status to the whole room
 	/** Fired AFTER a media flips to ready (stems done): lets the core reconcile playback so a held
@@ -288,6 +305,70 @@ export class WorkerHub {
 	/** running → ready (terminal): flip media to the playable instrumental, free the slot, broadcast
 	 *  ready, then let the core reconcile playback (a held song slots back at its fair position). */
 	#onComplete(msg: Extract<WorkerMessage, { type: 'job:complete' }>): void {
+		const job = this.#d.jobs.byId(msg.jobId);
+		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
+
+		/*
+		 * VERIFY BEFORE PUBLISHING, when a verifier is wired and this job actually reports an instrumental.
+		 *
+		 * The measurement spawns ffmpeg and decodes the whole file, so it cannot happen inline in a
+		 * synchronous frame handler. It runs as a gate IN FRONT of the completion instead: the body below
+		 * is untouched and still synchronous, and it re-checks staleness on entry because the job can be
+		 * failed by the reaper while the probe is decoding.
+		 *
+		 * Only a POSITIVE silence measurement refuses. A probe that throws, times out, or finds no ffmpeg
+		 * is unmeasurable, and unmeasurable publishes — see `verifyInstrumental` on the deps.
+		 */
+		const reported = msg.artifacts?.stems?.instrumental;
+		if (this.#d.verifyInstrumental && publishesInstrumental(job.jobType) && reported) {
+			void this.#d.verifyInstrumental(reported).then(
+				(verdict) => {
+					if (verdict === 'silent') this.#refuseSilentInstrumental(msg, reported);
+					else this.#completeVerified(msg);
+				},
+				() => this.#completeVerified(msg) // probe threw — unmeasurable, not silent
+			);
+			return;
+		}
+		this.#completeVerified(msg);
+	}
+
+	/**
+	 * A worker reported an instrumental that MEASURES as digital silence. Refuse it.
+	 *
+	 * Terminal and non-retryable on purpose: re-running the same separator over the same source produces
+	 * the same silence, so a requeue would burn every remaining attempt to arrive back here. The song
+	 * settles back to un-processed, which is the honest state — it is not singable and nothing on disk
+	 * makes it so — and `reportTerminalFailure` is what tells the room, settles the gate and reclaims the
+	 * scratch, exactly as a worker-reported failure would.
+	 */
+	#refuseSilentInstrumental(
+		msg: Extract<WorkerMessage, { type: 'job:complete' }>,
+		ref: string
+	): void {
+		const job = this.#d.jobs.byId(msg.jobId);
+		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
+		this.#unservableSince.delete(msg.jobId);
+		this.#d.registry.releaseSlot(msg.workerId);
+		const updated = this.#d.jobs.fail(
+			msg.jobId,
+			`instrumental measures as digital silence (${ref}) — refused rather than published as ready`,
+			this.#d.now(),
+			job.attempts + 1
+		);
+		console.warn(
+			`[core] refused a silent instrumental for media ${job.mediaId}: the worker reported ${ref}, ` +
+				'which measures at or below the silence floor. The song stays un-processed.'
+		);
+		reportTerminalFailure(updated, 'worker', {
+			broadcast: (e) => this.#d.broadcast(e),
+			mediaById: this.#d.mediaById,
+			persist: (mediaId) => this.#d.persistMedia?.(mediaId)
+		});
+	}
+
+	/** The completion body proper, reached once the reported instrumental is not measurably silent. */
+	#completeVerified(msg: Extract<WorkerMessage, { type: 'job:complete' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
 		this.#unservableSince.delete(msg.jobId); // terminal — prune any stale unservable tracking

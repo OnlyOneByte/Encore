@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { processStageLabel } from '$lib/process-phrasing';
+import { processStageLabel } from '$lib/phrasing/process-phrasing';
 
 describe('processStageLabel', () => {
 	it('says the guest word for a finished process', () => {

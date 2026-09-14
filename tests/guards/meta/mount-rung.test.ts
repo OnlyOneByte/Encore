@@ -32,7 +32,7 @@
 import { test, expect, beforeEach } from 'bun:test';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { mount, unmount, flushSync } from '../../../tests/setup/svelte-client';
+import { mount, unmount, flushSync } from '$setup/svelte-client';
 import { at, repoRoot, srcDir } from '@encore/test-support';
 
 // src — where routes, lib and server live. Anchored from the repo root via
@@ -64,10 +64,10 @@ const KIT_IMPORT = /import\s[^;]*?from\s*['"](\$(?:app|env)\/[^'"]+)['"]/g;
 // and still be typechecked against what the stub actually exports. `typeof import(...)` is a type-only
 // reference — it adds no second runtime import, so there is still exactly one module instance shared
 // with the component under test.
-type NavStub = typeof import('../../../tests/setup/kit/app-navigation');
-type StateStub = typeof import('../../../tests/setup/kit/app-state');
-type EnvironmentStub = typeof import('../../../tests/setup/kit/app-environment');
-type PublicEnvStub = typeof import('../../../tests/setup/kit/env-dynamic-public');
+type NavStub = typeof import('$setup/kit/app-navigation');
+type StateStub = typeof import('$setup/kit/app-state');
+type EnvironmentStub = typeof import('$setup/kit/app-environment');
+type PublicEnvStub = typeof import('$setup/kit/env-dynamic-public');
 
 const navStub = async (): Promise<NavStub> => (await import('$app/navigation')) as unknown as NavStub;
 const stateStub = async (): Promise<StateStub> => (await import('$app/state')) as unknown as StateStub;
@@ -103,10 +103,28 @@ test('every component importing a $app/$env virtual module loads under the mount
 	expect(sites).toBeGreaterThanOrEqual(5);
 
 	for (const { file } of importers) {
-		// A bare `import()` of the component is the whole assertion: before the preload aliased these
+		// A bare `import()` of the module is the whole assertion: before the preload aliased these
 		// specifiers this threw `Cannot find module '$app/navigation'` for every one of them.
-		const mod = (await import(file)) as { default: unknown };
-		expect(typeof mod.default, `${file} did not load a component`).toBe('function');
+		const mod = (await import(file)) as Record<string, unknown>;
+
+		if (file.endsWith('.svelte')) {
+			// A component's default export IS the component, so this is the strongest available check that
+			// the module not only resolved but produced something mountable.
+			expect(typeof mod.default, `${file} did not load a component`).toBe('function');
+			continue;
+		}
+
+		/*
+		 * A NON-COMPONENT importer, which this tree now has: `routes/components/+page.server.ts` reads
+		 * `dev` from `$app/environment` to 404 the dev-only gallery in production. It has no default
+		 * export and must not be asked for one — what is under test here is that the virtual module
+		 * RESOLVES under the preload, and a load module proves that by importing at all. Asserting it
+		 * exports something keeps this branch from degrading into `expect(true)`.
+		 */
+		expect(
+			Object.keys(mod).length,
+			`${file} imports a $app/$env module but exports nothing — it cannot be what resolved the alias`
+		).toBeGreaterThan(0);
 	}
 	/*
 	 * S3: 20s, up from bun's 5s default. This test imports EVERY component that touches a

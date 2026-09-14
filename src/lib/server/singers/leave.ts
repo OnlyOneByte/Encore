@@ -18,8 +18,8 @@
 // so cancelling mid-Demucs would mean partial artifacts and lease cleanup for no gain.
 
 import type { EncoreApp } from '../app';
-import type { QueueEntry, ServerEvent } from '$lib/contract';
-import { isTerminal } from '$lib/contract';
+import type { QueueEntry, ServerEvent } from '../../contract';
+import { isTerminal } from '../../contract';
 import { emitNowPlaying } from '../realtime/player';
 
 export interface LeaveResult {

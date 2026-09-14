@@ -12,7 +12,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
-import { svelteFiles, TAP, TAP_FLOOR } from '$lib/test-helpers';
+import { svelteFiles, TAP, TAP_FLOOR } from '@encore/test-support/scan';
 
 // `srcDir` (src), replacing `at('src')`. Every `join(SRC, …)` below
 // is unchanged, and so is the `f.replace(SRC, 'src')` that turns an absolute hit into an offender
@@ -389,7 +389,7 @@ test('the TV process wording comes from process-phrasing, not a hand-written str
 		['routes/tv/+page.svelte', TV_ROUTE],
 		['lib/tv/TvLobby.svelte', TV_LOBBY]
 	] as const) {
-		expect(src).toContain("from '$lib/process-phrasing'");
+		expect(src).toContain("from '$lib/phrasing/process-phrasing'");
 		expect(src.includes('processStageLabel')).toBe(true);
 	}
 	// and the retired musician's-word phrasings must be gone from the TV surfaces

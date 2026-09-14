@@ -1,8 +1,8 @@
 /*
  * Full-flow e2e: two phones and a TV, against a live server.
  *
- *   bun run e2e/party.mjs            # discovers a Chromium and starts one
- *   EPORT=3000 bun run e2e/party.mjs # against an already-running server
+ *   bun run tests/e2e/party.mjs            # discovers a Chromium and starts one
+ *   EPORT=3000 bun run tests/e2e/party.mjs # against an already-running server
  *
  * The server it runs against must have an EMPTY room and a ROUTABLE advertised join address — the
  * attract screen the first three checks measure exists only under both. A loopback origin makes the TV
@@ -44,7 +44,6 @@ import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9333);
 /*
  * How long to let the TV's `hello`→`queue:sync` round trip land after the socket opens, before trusting
  * what the screen says about the room. See the precondition block below for why the first render is not
@@ -197,11 +196,11 @@ try {
 	/** @param {string} name @param {{ colourName?: string, hue?: number }} [opts] @returns {Promise<Page>} */
 	async function joinAs(name, { colourName, hue } = {}) {
 		const page = await browser0.newPage();
-		await page.goto(`${base}/join`);
+		await page.goto(`${base}/`);
 		await page.fill(SEL.nameInput, name);
 		if (colourName) await page.clickByLabel(SEL.swatch(colourName).name);
 		if (hue !== undefined) await page.setRange(SEL.hueSlider, hue);
-		await page.clickByText('Start singing');
+		await page.clickByRole('button', 'Start singing');
 		await page.waitFor(`location.pathname === '/'`);
 		// Home is the QUEUE since an earlier change; searching is a push. openBrowseFromHome waits for the joined home,
 		// clicks the primary button and waits for the search box, so the caller lands where it used to.
@@ -242,7 +241,7 @@ try {
 			false,
 			'no rows. If the library is empty this is an environment gap, not a UI defect: the demo tracks\n' +
 				'        only index when a file exists behind them. Seed, restart the server, re-run:\n' +
-				'          bun run e2e/seed-media.mjs'
+				'          bun run tests/e2e/seed-media.mjs'
 		);
 	} else {
 		check('the unified search box returns rows', true, `${rows} rows`);

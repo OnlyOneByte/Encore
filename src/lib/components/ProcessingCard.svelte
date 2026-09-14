@@ -5,7 +5,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
 	import type { MediaStatus } from '$lib/contract';
-	import { processStageLabel } from '$lib/process-phrasing';
+	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { Progress } from '$lib/components/ui/progress';
 	import * as Item from '$lib/components/ui/item';
 	interface Props {

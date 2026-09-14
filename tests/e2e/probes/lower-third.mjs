@@ -9,7 +9,7 @@
  * This samples the truth instead: it follows which src the AUDIBLE (unpaused, advancing) element
  * carries, and asserts the name changes when that src changes. No anchoring on decode counters.
  *
- *   EPORT=<port> CDP_PORT=<port> bun e2e/probes/lower-third.mjs
+ *   EPORT=<port> bun tests/e2e/probes/lower-third.mjs
  */
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -28,7 +28,6 @@ import { SEL } from '../contract.ts';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
-const CDP = Number(process.env.CDP_PORT ?? 9390);
 
 const chrome = [
 	join(homedir(), '.cache/ms-playwright/chromium-1232/chrome-linux/chrome'),
@@ -73,7 +72,7 @@ const check = (/** @type {string} */ n, /** @type {boolean} */ ok, d = '') => {
 };
 
 try {
-	browser = await connect(CDP);
+	browser = await connect();
 	// Queue one song per singer, through each singer's own session.
 	for (const [i, s] of [a, b].entries()) {
 		const p = await browser.newPage();

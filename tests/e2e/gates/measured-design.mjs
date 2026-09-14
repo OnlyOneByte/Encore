@@ -58,21 +58,7 @@ import {
 	TEXT_INPUT_TYPES,
 	VIEWPORTS
 } from './measured-design-register.mjs';
-import { existsSync as __exists } from 'node:fs';
-import { join as __join, dirname as __dirname } from 'node:path';
-
-// INLINED, not imported: this driver runs under plain node with no bundler, so the
-// '@encore/test-support' alias does not exist at runtime. Walking up for bunfig.toml is the
-// same root derivation the harness uses, and unlike a hop count it survives a move.
-function __repoRoot() {
-	let d = __dirname(new URL(import.meta.url).pathname);
-	for (let i = 0; i < 12; i += 1) {
-		if (__exists(__join(d, 'bunfig.toml'))) return d;
-		d = __dirname(d);
-	}
-	throw new Error('no bunfig.toml above ' + import.meta.url);
-}
-const repoRoot = __repoRoot();
+import { repoRoot } from '../lib/repo-root.mjs';
 
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -241,7 +227,7 @@ const mediaDir = join(SCRATCH, 'media');
 rmSync(SCRATCH, { recursive: true, force: true });
 mkdirSync(mediaDir, { recursive: true });
 
-const seed = spawn('bun', ['run', join(CORE, 'e2e', 'seed-media.mjs')], {
+const seed = spawn('bun', ['run', join(CORE, 'tests', 'e2e', 'seed-media.mjs')], {
 	cwd: CORE,
 	env: { ...process.env, MEDIA_DIR: mediaDir },
 	stdio: 'ignore'
@@ -322,7 +308,7 @@ try {
 	await page.goto(`${base}/`);
 	const joinSweep = /** @type {Reading[]} */ (await page.evaluate(sweepExpr()));
 	await page.fill(SEL.nameInput, `Gate${Date.now() % 1000000}`);
-	await page.clickByText('Start singing');
+	await page.clickByRole('button', 'Start singing');
 	// Joining lands on the QUEUE — the search box is a screen further in. `homeReady` is the
 	// joined-home signal, and the shared step leaves the page on the browse screen the sweep below types
 	// into. Both selectors and the step come from the contract, so this does not re-spell the sequence.

@@ -38,7 +38,8 @@ function externalImports(src: string): string[] {
 	const push = (spec: string): void => {
 		if (/^[./]/.test(spec)) return; // relative
 		if (/^(node:|bun:)/.test(spec)) return; // builtin
-		if (/^(\$lib|\$lib\/contract|\$app|\$env)/.test(spec)) return; // tsconfig path alias ($lib covers $lib/server)
+		if (/^(\$lib|\$lib\/contract|\$app|\$env|\$routes|\$setup|\$e2e)/.test(spec)) return; // tsconfig path alias. $lib covers $lib/server; $routes, $setup and $e2e are declared in
+			// tests/tsconfig.json so a test names its subject instead of counting `..` hops to it.
 		if (/^@encore\//.test(spec)) return; // workspace sibling, resolved by alias
 		out.push(spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]!);
 	};

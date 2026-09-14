@@ -4,27 +4,16 @@
 //
 // Pure: no DB, no network, no clock. The route supplies the catalog + resolver results.
 
-import { isProcessing, readyToSing, type Media } from '$lib/contract';
+import { type Media } from '../../contract';
 
-/** Where a song sits on the readiness axis. */
-export type Readiness =
-	| 'ready' // stems separated and on disk — queue it and sing with no vocals, no wait
-	| 'processing' // a stems job is in flight; rotation HOLDS its slot, so it is still queueable
-	| 'unacquired'; // no instrumental yet, so nothing to play — a candidate to process, not a song to sing
+// `readinessOf` and the readiness union now live in the contract, because the client needs the same
+// classification and a hand-maintained second copy is what this used to be. Imported (not merely
+// re-exported: `partitionSearch` below calls it) and re-exported so the server-side callers that reach
+// for `media/readiness` keep one import.
+import { readinessOf, type CatalogReadiness } from '../../contract/process/readiness';
 
-export function readinessOf(m: Media): Readiness {
-	// Gate-driven, and this FUNCTION must agree with the client's copy (src/lib/readiness.ts)
-	// for every catalog media — asserted by the parity test there. The client's Readiness union carries
-	// one extra member, 'failed', which is deliberately absent here: nothing in the catalog records a
-	// failure (a dead process settles back to un-processed via settleStemsGate), so 'failed' arrives only from
-	// a live media:status event and lives in the client's displayReadiness. Adding it here would create
-	// a value this function can never return.
-	// `isProcessing` reads the process gates rather than a single `stemStatus === 'queued'` check, so a song
-	// mid-align (stems ready, lyrics queued) reads as processing instead of falling through to unacquired.
-	if (readyToSing(m)) return 'ready';
-	if (isProcessing(m)) return 'processing';
-	return 'unacquired';
-}
+export { readinessOf };
+export type Readiness = CatalogReadiness;
 
 /** Case-insensitive substring match over the fields a human would search by. */
 export function matchesQuery(m: Media, query: string): boolean {

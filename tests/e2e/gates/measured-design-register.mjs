@@ -31,21 +31,9 @@
  * on the record, never to nudge a number.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-// The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
-// and the runner agree on the root. Was `join(import.meta.dirname, …)`, which encoded this file's distance
-// from `.` and broke the moment the e2e tree moved under `tests/`.
-const REPO_ROOT = (() => {
-	let dir = import.meta.dirname;
-	for (let i = 0; i < 10; i += 1) {
-		if (existsSync(join(dir, 'bunfig.toml'))) return dir;
-		const parent = dirname(dir);
-		if (parent === dir) break;
-		dir = parent;
-	}
-	throw new Error(`no bunfig.toml above ${import.meta.dirname}`);
-})();
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { repoRoot as REPO_ROOT } from '../lib/repo-root.mjs';
 
 
 /**

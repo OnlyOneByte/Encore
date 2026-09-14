@@ -4,7 +4,7 @@
 // the soonest queue entry that needs it. worker-hub flips the media to ready on completion.
 // See ARCHITECTURE §6, §7.
 
-import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '$lib/contract';
+import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '../../contract';
 import {
 	mergeLyricsCandidate,
 	resolveLyricsRef,
@@ -14,13 +14,13 @@ import {
 	isProcessableSource,
 	needsFetch,
 	normalizeSongProfile
-} from '$lib/contract';
+} from '../../contract';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
 import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
 import { mediaStatusFor, shouldBroadcastProcess } from './media-status';
 import { cleanJobWork } from '../media/migrate-layout';
-import type { ServerEvent } from '$lib/contract';
+import type { ServerEvent } from '../../contract';
 
 export interface ProcessDeps {
 	jobs: JobRepository;

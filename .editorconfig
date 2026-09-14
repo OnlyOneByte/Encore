@@ -1,4 +1,4 @@
-# Editor defaults for the Encore monorepo. apps/core is tab-indented; this pins that so an editor
+# Editor defaults for Encore. src/ is tab-indented; this pins that so an editor
 # without the .prettierrc loaded still matches the formatter.
 root = true
 

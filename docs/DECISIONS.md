@@ -402,7 +402,7 @@ measurement claims land on **rung L**. A plan that stops at rung M has made none
 The design handoff listed these as open. They are not, and the mechanism in each case already
 ships:
 
-- **A host concept exists**, centralised in `server/auth/capabilities.ts` as `can(actor, cap)`,
+- **A host concept exists**, centralised in `server/capabilities.ts` as `can(actor, cap)`,
   carrying the owner's dated ruling: _"Today every joined singer is a host. That is Angelo's call
   (2026-09-04) … there is no operator to be, and inventing an admin password for a party is worse
   than the exposure."* Gating it later is an edit **there and nowhere else**.

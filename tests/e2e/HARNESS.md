@@ -85,7 +85,7 @@ PORT=52NN                      # yours alone
 SCRATCH=$KIROCREW_SCRATCH/e2e-$PORT
 rm -rf "$SCRATCH"; mkdir -p "$SCRATCH/media"
 
-MEDIA_DIR="$SCRATCH/media" bun run e2e/seed-media.mjs      # 4 demo tracks become indexable
+MEDIA_DIR="$SCRATCH/media" bun run tests/e2e/seed-media.mjs      # 4 demo tracks become indexable
 
 ENCORE_EPHEMERAL=1 PORT=$PORT HOST=127.0.0.1 MEDIA_DIR="$SCRATCH/media" \
   ENCORE_LYRICS_BACKFILL=0 ENCORE_VOCALS_BACKFILL=0 \
@@ -93,7 +93,7 @@ ENCORE_EPHEMERAL=1 PORT=$PORT HOST=127.0.0.1 MEDIA_DIR="$SCRATCH/media" \
 
 until curl -sf "http://127.0.0.1:$PORT/health" >/dev/null; do sleep 0.5; done
 
-EPORT=$PORT MEDIA_DIR="$SCRATCH/media" nohup bun e2e/fake-stems-worker.mjs > "$SCRATCH/worker.log" 2>&1 &
+EPORT=$PORT MEDIA_DIR="$SCRATCH/media" nohup bun tests/e2e/fake-stems-worker.mjs > "$SCRATCH/worker.log" 2>&1 &
 ```
 
 `bun run build` must have run once for the UI to exist; the server warns loudly if it has not.
@@ -164,3 +164,58 @@ because `contract.test.ts` guards those against the source and a hand-written on
 
 Exit codes: `0` all passed, `1` a real failure, `2` the environment could not host the test. Never
 conflate 2 with 0 — a skipped audio test reporting green is how this hole stayed open.
+
+## Running the probes: `bun run e2e:probes`
+
+Every driver in this tree is reachable from one command. `bun run e2e:probes` with no argument lists
+them with their mode and subject; pass a name to run one, or `all` / `boots` / `serves` for a group.
+
+Three modes, because the drivers genuinely differ:
+
+- **boots** — the probe spawns its own server and worker and cleans up after itself.
+- **serves** — the probe expects `EPORT` to name a running server. The runner boots one shared,
+  seeded, ephemeral server for the group, spawns a fake stems worker, and drives one library song to
+  READY, because that is the fixture several of them ask for and `seed-media.mjs` alone cannot supply
+  (it writes placeholder files — enough to index and queue, not to process).
+- **tool** — takes arguments and answers a question. Listed so it is discoverable, excluded from
+  `all` because no default argument would mean anything.
+
+**It is not part of `bun run gates`, deliberately.** These drive a real browser and take minutes.
+Reachability and gate membership are different things.
+
+`ran` in the summary is not `passed`. Three drivers gather EVIDENCE rather than assert an invariant —
+they write screenshots or a `findings.json` and exit 0 whatever they saw. Read their output.
+
+### State, and what was wrong with all of it
+
+Most of these were red for ONE reason, and it was not the reason any of them named.
+
+`clickByText('Start singing')` resolved to the inner text node of a button whose content is
+`Start singing <Icon/>`, so the click did nothing — no error, no submit — and every downstream wait
+then timed out on a selector that was perfectly current. Sixteen call sites across fifteen files. Use
+`clickByRole('button', …)`; it is what the driver's own comment recommends, because the accessible
+labels are the contract.
+
+Two more shared causes went with it: thirteen files navigated to `/join`, which has returned 404 since
+Q2-A retired the route and moved the join UI to `/`; and four probes counted `.qrow` while still in the
+RESULTS view, where the rotation is not rendered — `returnHomeFromBrowse` exists for exactly that and
+its docstring names the mistake.
+
+| Driver | State |
+|---|---|
+| `p8-presence-resilience` | **runs to completion.** 10/10 phones join, the duplicate-name 409 recovery arm passes (it was previously vacuous — it never resubmitted). Reports 3 HIGH and 1 MEDIUM about real behaviour: no optimistic row on an offline tap, offline reconciliation disagreeing between origin and others, and queue-length divergence after a burst of adds |
+| `tv-audiocontext-resume` | **passes** |
+| `p9-settings` | **passes** |
+| `p14-playhead-vs-process` | **passes** — playhead never stepped back, worst delta 0.000s |
+| `p15-phone-reflow` | **passes** 4/4 — needs a built UI, the runner checks for one |
+| `p16-hero-live-controls` | **passes** 11/11 |
+| `p5-process-lifecycle` | reported a real `[HIGH]`: a floor-level silent instrumental published as READY with no defence in the core. **Fixed** — the loudness probe is now wired into the live publish path, not only the boot backfill |
+| `p10-scaling`, `admin-delete-639`, `shoot-913` | capture only; they exit 0 whatever they saw, so the summary says `ran`, not `ok`. `p10` records 12 phases and 7 of them were `remote-*` timeouts worth reading |
+| `p1-gapless`, `p3-key-shift`, `p6-lyrics`, `tv-scrim-empty-lobby-736` | **still red**, all four on the same next step: the search returns 13 rows, twelve remote `.sing` and one local `.add`, and clicking the `.add` reports success while queueing nothing. Which control a READY song actually offers is the open question |
+| `p15-reload-resume` | environment bail: the server position never passes 3s, so there is no resume to test |
+
+Two things to know before touching any of them. The probes do not agree on which variable names the
+port — most read `EPORT`, two read `EPORT ?? PORT`, and `p10-scaling` reads `PORT` alone — so the runner
+passes both; passing only `EPORT` left `p10` dialling its own hardcoded 5230, where it got
+`ERR_CONNECTION_REFUSED` and still exited 0. And a probe that cannot reach the app must FAIL; if you
+find one reporting success from an unreachable server, that is the bug, not the symptom.

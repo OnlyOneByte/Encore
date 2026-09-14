@@ -19,7 +19,7 @@ import {
 	type WorkerCommand,
 	type ServerEvent,
 	type Media
-} from '$lib/contract';
+} from '../../contract';
 import type { JobRepository } from './repository';
 import { settleLyricsGate, settleStemsGate } from './process';
 
