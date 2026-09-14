@@ -162,19 +162,103 @@ if [ "$DO_PULL" = 1 ] || [ ! -d "$ROOT/node_modules" ]; then
 fi
 
 VENV="$ROOT/worker/.venv"
+REQS="$ROOT/worker/requirements.txt"
+# Not in requirements.txt on purpose — the image installs it --no-deps because its own dependency
+# list is 30 packages of .doc/.rtf readers we never call. Same treatment here.
+KLP_PIN="karaoke-lyrics-processor==0.6.0"
+# The venv is "ready" only when this file says so, and it is written LAST — see install_worker_deps.
+STAMP="$VENV/.encore-deps"
+
+# The interpreter MUST be >= 3.11, and it is deliberately NOT bare `python3`.
+#
+# scipy 1.16.2 sets that floor — it declares Requires-Python >=3.11, so on a 3.10 interpreter pip
+# resolves NO distribution for it and aborts the ENTIRE install, including websockets, which sits on
+# line 11 of requirements.txt and had already resolved. That is not theoretical: a shell exporting
+# PYENV_VERSION=3.10.13 makes `python3` a 3.10 shim, and the abort then surfaced three steps downstream
+# as the worker dying on "ModuleNotFoundError: No module named 'websockets'" — which reads like a missing
+# pin rather than a venv that was never populated.
+# 3.12 is tried FIRST because that is what the image ships (worker/Dockerfile: python:3.12-slim-bookworm),
+# so a dev venv resolves the same wheels prod does. 3.14 is deliberately NOT a candidate: torch 2.8
+# publishes no cp314 wheel and audio-separator excludes 3.14.1 outright, so preferring it would trade
+# this clear failure for an opaque one. Override with ENCORE_WORKER_PYTHON=/path/to/python.
+pick_python() {
+	local cand
+	for cand in "${ENCORE_WORKER_PYTHON:-}" python3.12 python3.13 python3.11 python3; do
+		[ -n "$cand" ] || continue
+		command -v "$cand" >/dev/null 2>&1 || continue
+		# Let python do the version comparison — a shell glob over "3.10" vs "3.9" gets it wrong.
+		"$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null || continue
+		echo "$cand"
+		return 0
+	done
+	return 1
+}
+
+# Two granularities, on purpose. py_tag is for HUMANS (log lines); py_abi is what the stamp compares.
+# The stamp must NOT carry the patch level: every wheel in requirements.txt is tagged by minor (cp312),
+# so 3.12.12 → 3.12.14 changes nothing about what is installable — but a full x.y.z in the stamp turns
+# an incidental `brew upgrade python@3.12` into a spurious multi-GB reinstall of the whole torch set.
+py_tag() { "$1" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || echo unknown; }
+py_abi() { "$1" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || echo unknown; }
+
+sha_of() {
+	if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+	else sha256sum "$1" | cut -d' ' -f1; fi
+}
+
+install_worker_deps() {
+	# Drop any previous stamp FIRST: if this install dies halfway, the next run must see an unready
+	# venv and retry, not trust a stamp describing a state that no longer exists.
+	rm -f "$STAMP"
+	"$VENV/bin/pip" install --quiet --upgrade pip
+	"$VENV/bin/pip" install -r "$REQS"
+	"$VENV/bin/pip" install --quiet --no-deps "$KLP_PIN"
+	printf 'python=%s\nrequirements=%s\nklp=%s\n' \
+		"$(py_abi "$VENV/bin/python")" "$(sha_of "$REQS")" "$KLP_PIN" > "$STAMP"
+}
+
 if [ "$CORE_ONLY" != 1 ] && [ "$UI_MODE" != 1 ]; then
+	PY="$(pick_python)" || {
+		echo "no Python >= 3.11 on PATH — scipy 1.16.2 publishes nothing below it, and pip then" >&2
+		echo "refuses the WHOLE requirements.txt (websockets included)." >&2
+		echo "  brew install python@3.12      # matches worker/Dockerfile" >&2
+		echo "  # or: ENCORE_WORKER_PYTHON=/path/to/python3.12 bash dev.sh" >&2
+		[ -n "${PYENV_VERSION:-}" ] && echo "  (note: PYENV_VERSION=$PYENV_VERSION is pinning your python3)" >&2
+		exit 1
+	}
+
+	# A venv on the wrong interpreter can never hold this dependency set, so it is rebuilt rather than
+	# reported. Safe to do unasked: a venv is a regenerable cache, and pip's wheel cache means the
+	# refetch is mostly local. Announced loudly because it is minutes, not seconds.
+	if [ -x "$VENV/bin/python" ] && ! "$VENV/bin/python" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+		say "worker venv is Python $(py_tag "$VENV/bin/python") — too old for the pinned deps, rebuilding on $PY"
+		rm -rf "$VENV"
+	fi
+
 	if [ ! -x "$VENV/bin/python" ]; then
-		say "creating worker venv (multi-GB: torch + demucs + whisperx)"
-		python3 -m venv "$VENV"
-		"$VENV/bin/pip" install --quiet --upgrade pip
-		"$VENV/bin/pip" install -r "$ROOT/worker/requirements.txt"
-		# Not in requirements.txt on purpose — the image installs it --no-deps because its own
-		# dependency list is 30 packages of .doc/.rtf readers we never call. Same treatment here.
-		"$VENV/bin/pip" install --quiet --no-deps karaoke-lyrics-processor==0.6.0
-	elif [ "$DO_PULL" = 1 ]; then
-		say "refreshing worker deps"
-		"$VENV/bin/pip" install --quiet -r "$ROOT/worker/requirements.txt"
-		"$VENV/bin/pip" install --quiet --no-deps karaoke-lyrics-processor==0.6.0
+		say "creating worker venv on $PY $(py_tag "$PY") (multi-GB: torch + demucs + whisperx)"
+		"$PY" -m venv "$VENV"
+		install_worker_deps
+	else
+		# READINESS IS THE STAMP, NOT THE DIRECTORY. The old test here was `[ -x $VENV/bin/python ]`,
+		# which `python3 -m venv` satisfies BEFORE a single package is installed — so one failed install
+		# left a venv holding nothing but pip and setuptools, and every later run skipped straight past
+		# it to launch a worker that could not import websockets. Comparing a stamp of the interpreter +
+		# a hash of requirements.txt also makes --pull's refresh automatic: a pull that changes the
+		# pins changes the hash.
+		want="python=$(py_abi "$VENV/bin/python")
+requirements=$(sha_of "$REQS")
+klp=$KLP_PIN"
+		if [ "$(cat "$STAMP" 2>/dev/null)" != "$want" ]; then
+			say "worker deps out of date (or never finished installing) — installing"
+			install_worker_deps
+		elif ! "$VENV/bin/python" -c 'import websockets' 2>/dev/null; then
+			# Cheap backstop for a venv edited by hand behind the stamp's back. websockets is the right
+			# canary: dial_home imports it lazily at connect time, so its absence is otherwise invisible
+			# until after core is already up and the log has scrolled.
+			say "worker venv is stamped but incomplete (websockets missing) — reinstalling"
+			install_worker_deps
+		fi
 	fi
 fi
 
