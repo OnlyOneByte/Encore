@@ -238,6 +238,114 @@ describe('split mode wires each channel pair to its own gain', () => {
 	});
 });
 
+// ── A2. NO WORKLET: an insecure origin must still get the guiding track ───────────────────────────
+//
+// `AudioWorklet` is a secure-context-only API, so on Encore's documented TV deployment
+// (`http://<LAN-IP>:3000/tv`) `ctx.audioWorklet` is undefined. The build used to dereference it
+// unconditionally, so the throw took the whole graph down — the splitter included — and the room lost
+// the guiding track as well as ±key, silently, on every song. Nothing in this file could see that,
+// because every test above hands the code a working worklet.
+//
+// The splitter needs no worklet at all. These pin that the guide survives without one.
+
+describe('with no AudioWorklet (insecure origin) the guide still works', () => {
+	/** A context shaped like a non-secure origin: no `audioWorklet` member at all, as the spec requires. */
+	const insecure = () =>
+		capturingCtx((c) => {
+			delete (c as unknown as Record<string, unknown>).audioWorklet;
+		});
+
+	test('the split graph still builds, and the SOURCE feeds the splitter directly', async () => {
+		G.window = { AudioContext: insecure() };
+		const g = new PitchShiftGraph(el(), { split: true });
+		await g.ensureRouted();
+
+		expect(g.isRouted).toBe(true);
+		expect(g.isSplit).toBe(true); // the gate reads this; false here withholds the mix and kills the guide
+		expect(ctx!.worklet).toBeNull(); // no shifter was constructed
+		expect(ctx!.splitters).toHaveLength(1);
+		expect(ctx!.splitters[0].outputs).toBe(4);
+		// source -> splitter, with nothing in between.
+		expect(inbound(ctx!.splitters[0], [ctx!.source!]).map(([k]) => k)).toEqual(['node']);
+	});
+
+	test('both pairs keep their own gain, exactly as with a worklet', async () => {
+		// The guide's whole value is the SEPARATE level. If the no-worklet path merged the pairs or lost a
+		// gain stage, the slider would move something that is not the vocals.
+		G.window = { AudioContext: insecure() };
+		const g = new PitchShiftGraph(el(), { split: true });
+		g.setGain(0.8);
+		g.setGuideGain(0.3);
+		await g.ensureRouted();
+
+		const [splitter] = ctx!.splitters;
+		const [instMerger, guideMerger] = ctx!.mergers;
+		expect(inbound(instMerger, [splitter])).toEqual([
+			['splitter', 0, 0],
+			['splitter', 1, 1]
+		]);
+		expect(inbound(guideMerger, [splitter])).toEqual([
+			['splitter', 2, 0],
+			['splitter', 3, 1]
+		]);
+		const instGain = soleTarget(instMerger) as StubGain;
+		const guideGain = soleTarget(guideMerger) as StubGain;
+		expect(instGain.gain.value).toBeCloseTo(0.8, 6);
+		expect(guideGain.gain.value).toBeCloseTo(0.3, 6);
+	});
+
+	test('it reports that it CANNOT shift, so the UI need not lie about ±key', async () => {
+		// The guide works and the transpose does not. Conflating the two is what made this silent: a
+		// caller reading only `isDegraded` sees a healthy graph and offers a control that does nothing.
+		G.window = { AudioContext: insecure() };
+		const g = new PitchShiftGraph(el(), { split: true });
+		await g.ensureRouted();
+		expect(g.isShiftable).toBe(false);
+		expect(g.isDegraded).toBe(false); // NOT degraded — the graph is real and doing work
+	});
+
+	test('setShift is a no-op rather than a throw', async () => {
+		G.window = { AudioContext: insecure() };
+		const g = new PitchShiftGraph(el(), { split: true });
+		await g.ensureRouted();
+		await g.setShift(2); // would previously dereference a null worklet port
+		expect(g.isRouted).toBe(true);
+		expect(g.isShiftable).toBe(false);
+	});
+
+	test('a NON-split song captures nothing — no graph is worth an irreversible capture', async () => {
+		// Without a shifter a plain song gains nothing from a graph, and `createMediaElementSource` is
+		// permanent AND bypasses the element's own `volume`. Capturing here would take over the audio path
+		// to deliver exactly nothing.
+		G.window = { AudioContext: insecure() };
+		const g = new PitchShiftGraph(el(), { split: false });
+		await g.setShift(3);
+		expect(g.isRouted).toBe(false);
+		expect(ctx!.source).toBeNull();
+		expect(ctx!.state).toBe('closed');
+	});
+
+	test('a worklet that REFUSES its module degrades the same way, not into a broken graph', async () => {
+		// Distinct from an absent worklet: the member exists and `addModule` rejects (a CSP that blocks the
+		// blob URL is the realistic case). Same outcome required — guide yes, shift no.
+		G.window = {
+			AudioContext: capturingCtx((c) => {
+				c.audioWorklet = {
+					addModule: async () => {
+						throw new Error('blocked');
+					}
+				};
+			})
+		};
+		const g = new PitchShiftGraph(el(), { split: true });
+		await g.ensureRouted();
+		expect(g.isRouted).toBe(true);
+		expect(g.isSplit).toBe(true);
+		expect(g.isShiftable).toBe(false);
+		expect(ctx!.splitters).toHaveLength(1);
+	});
+});
+
 describe('the guide pair defaults to SILENCE, not to full volume', () => {
 	test('an un-set guide gain builds at 0 — fail quiet, never loud', async () => {
 		// The precedent: a fresh graph defaulted its gain to 1, the level effect did not re-run on

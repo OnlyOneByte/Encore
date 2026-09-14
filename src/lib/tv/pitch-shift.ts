@@ -460,6 +460,20 @@ export class PitchShiftGraph {
 	/** True if we tried to build the graph and could not resume — we are in audible-fallback mode. */
 	private degraded = false;
 	/**
+	 * Can this graph change PITCH at all?
+	 *
+	 * False when the engine gives us no `AudioWorklet` — which on a correctly-built browser means the page
+	 * is not in a secure context, i.e. served over plain HTTP on anything but the `localhost` family. That
+	 * is Encore's documented TV deployment (`http://<LAN-IP>:3000/tv`), so this is the NORMAL state there,
+	 * not an exotic one.
+	 *
+	 * Kept separate from `degraded`, which means "no graph at all, element on its native output". A graph
+	 * with `canShift === false` is fully built and doing real work: it still splits the guide mix and still
+	 * owns both gain stages. Only ±key is unavailable. Callers that conflate the two would either hide a
+	 * working guiding track or advertise a transpose that cannot happen.
+	 */
+	private canShift = true;
+	/**
 	 * The single in-flight build() promise, or null when no build is running. Memoised so two
 	 * setShift(non-zero) calls landing inside the async window before `routed` flips (e.g. two
 	 * `playback:state` broadcasts ~10ms apart from a guest double-tapping ±key) SHARE one build
@@ -603,12 +617,44 @@ export class PitchShiftGraph {
 				this.degraded = true;
 				return;
 			}
-			const blob = new Blob([PITCH_WORKLET_SOURCE], { type: 'application/javascript' });
-			this.moduleUrl = URL.createObjectURL(blob);
-			await this.ctx.audioWorklet.addModule(this.moduleUrl);
+			// THE WORKLET IS OPTIONAL, AND THAT IS THE POINT OF THIS BRANCH. `AudioWorklet` is a
+			// secure-context-only API: browsers expose it on `https://` and the `localhost` family and
+			// NOWHERE else. Encore's documented deployment serves the TV at `http://<LAN-IP>:3000/tv`, which
+			// is not a secure context, so `ctx.audioWorklet` is `undefined` there. This whole build used to
+			// dereference it unconditionally, so the throw took the ENTIRE graph down — including the channel
+			// splitter, which needs no worklet at all. The room then lost the guiding track as well as ±key,
+			// with nothing logged on any surface.
+			//
+			// So a missing (or refusing) worklet now clears `canShift` and the build CONTINUES. Pitch
+			// shifting is genuinely impossible without it; splitting four channels into two gain stages is
+			// ordinary Web Audio and works fine on an insecure origin.
+			if (this.ctx.audioWorklet) {
+				const blob = new Blob([PITCH_WORKLET_SOURCE], { type: 'application/javascript' });
+				this.moduleUrl = URL.createObjectURL(blob);
+				try {
+					await this.ctx.audioWorklet.addModule(this.moduleUrl);
+				} catch {
+					// The module itself would not load. Same outcome as an absent worklet: no shifting, but
+					// everything downstream of the source can still be built.
+					this.canShift = false;
+				}
+			} else {
+				this.canShift = false;
+			}
 			// Same disposal check on the other side of the other await — this is the window the eager split
 			// build actually lands in, because it starts at mount and `addModule` is the slow step.
 			if (this.#disposed) {
+				await this.ctx.close().catch(() => {});
+				this.ctx = null;
+				return;
+			}
+
+			// NOTHING TO BUILD, AND THE CAPTURE MUST NOT HAPPEN. Without a worklet a non-split song has no
+			// reason to exist as a graph: the only thing the graph would add is the shifter it cannot have.
+			// Capturing anyway is actively harmful — `createMediaElementSource` is irreversible and bypasses
+			// the element's own `volume`, so it would take over the audio path to deliver nothing. A split
+			// song is the opposite case: its guiding track does not exist until the splitter runs.
+			if (!this.canShift && !this.split) {
 				await this.ctx.close().catch(() => {});
 				this.ctx = null;
 				return;
@@ -623,11 +669,15 @@ export class PitchShiftGraph {
 			// worklet output channels. Before split mode the only post-capture construction was a bare
 			// AudioWorkletNode, which cannot realistically throw once `addModule` has resolved — so the
 			// ordering was safe by luck rather than by design. It is now safe by design.
-			this.node = this.makeWorkletNode(this.ctx);
+			this.node = this.canShift ? this.makeWorkletNode(this.ctx) : null;
 			this.gain = this.ctx.createGain();
 			this.gain.gain.value = this.desiredGain;
 			if (this.split) {
-				// SPLIT OUTPUT STAGE. source -> shifter -> splitter(4) -> [pair -> merger -> gain] -> speakers.
+				// SPLIT OUTPUT STAGE. source -> [shifter] -> splitter(4) -> [pair -> merger -> gain] -> speakers.
+				//
+				// The shifter is in brackets because it is optional (see the worklet branch above): with no
+				// worklet the splitter hangs directly off the source instead, and everything from the splitter
+				// onward is identical. That is what lets the guiding track work on an insecure origin.
 				//
 				// Each pair is re-MERGED to stereo before its gain, which is the part that is easy to get
 				// wrong: connecting splitter outputs 0 and 1 into one GainNode SUMS them, collapsing the
@@ -638,7 +688,7 @@ export class PitchShiftGraph {
 				// 1) — the room then hears full-volume vocals with no backing track. The splitter indices
 				// alone do not pin this; `guide-mix-graph.test.ts` asserts the whole chain per pair.
 				this.splitter = this.ctx.createChannelSplitter(4);
-				this.node.connect(this.splitter);
+				if (this.node) this.node.connect(this.splitter);
 				const instMerger = this.ctx.createChannelMerger(2);
 				this.splitter.connect(instMerger, 0, 0);
 				this.splitter.connect(instMerger, 1, 1);
@@ -655,17 +705,22 @@ export class PitchShiftGraph {
 				this.mergers = [instMerger, guideMerger];
 			} else {
 				// source -> shifter -> gain -> speakers. The gain stage is what re-implements the guide's volume
-				// knob once the element property is bypassed by the source capture.
-				this.node.connect(this.gain).connect(this.ctx.destination);
+				// knob once the element property is bypassed by the source capture. Reached only WITH a shifter:
+				// the no-worklet non-split case returned above rather than capturing for nothing.
+				this.node?.connect(this.gain).connect(this.ctx.destination);
 			}
 
 			// LAST: commit the element. Everything downstream of it already exists and is wired to the
 			// destination, so from here there is nothing left that can throw and strand a captured element.
 			this.source = this.ctx.createMediaElementSource(this.el);
 			this.#captured = true;
-			this.source.connect(this.node);
+			// The source feeds the shifter when there is one, and the splitter directly when there is not.
+			// `this.splitter` is non-null whenever `split` survived the build, and the no-worklet non-split
+			// case returned before the capture, so the fallback is never null in practice — the `??` chain is
+			// spelled out so a future fourth case cannot connect the source to nothing.
+			this.source.connect(this.node ?? this.splitter ?? this.gain);
 			this.routed = true;
-			this.node.port.postMessage({ ratio: this.ratio });
+			this.node?.port.postMessage({ ratio: this.ratio });
 		} catch {
 			// A throw before the capture: close the context and leave the element on its native output
 			// (audible, unshifted). `degraded` is not terminal, so a later attempt can retry.
@@ -726,6 +781,18 @@ export class PitchShiftGraph {
 	/** True when this graph pulls a 4-channel mix apart — i.e. the guide rides inside the master element. */
 	get isSplit(): boolean {
 		return this.split;
+	}
+
+	/**
+	 * True when ±key can actually change the pitch.
+	 *
+	 * False on a page with no `AudioWorklet` — in practice, a non-secure origin. The guide is unaffected
+	 * (see `canShift`), so this is the ONE thing a caller should read before offering a transpose control:
+	 * a UI that shows `Key · +2` while this is false is telling the room something untrue, which is the
+	 * failure this getter exists to make visible rather than silent.
+	 */
+	get isShiftable(): boolean {
+		return this.canShift;
 	}
 
 	/** True if we tried and could not run a context — playback is audible but unshifted. */
