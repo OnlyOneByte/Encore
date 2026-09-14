@@ -11,12 +11,12 @@
 // mountable at all — the harness aliases neither virtual module today.
 import { test, expect, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
-import { mount, unmount, flushSync } from '../../../tests/setup/svelte-client';
+import { mount, unmount, flushSync } from '$setup/svelte-client';
 import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
 import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 import QueueRow from '$lib/components/QueueRow.svelte';
 import HeroWithControls from './phone-home-832.harness.svelte';
-import { positionWords } from '$lib/position-sentence';
+import { positionWords } from '$lib/phrasing/position-sentence';
 
 let live: Array<{ comp: unknown; host: HTMLElement }> = [];
 afterEach(() => {
@@ -267,7 +267,7 @@ test('the gallery carries the hero and BOTH position branches, adjacent', () => 
 	// this the fixtures could be orphaned by a tidy-up that no named test objects to.
 	expect(gallery).toMatch(/import NowPlayingHero from '\$lib\/components\/NowPlayingHero\.svelte';/);
 	expect(gallery).toMatch(/import MyPositionCard from '\$lib\/components\/MyPositionCard\.svelte';/);
-	expect(gallery).toMatch(/import \{ positionWords \} from '\$lib\/position-sentence';/);
+	expect(gallery).toMatch(/import \{ positionWords \} from '\$lib\/phrasing\/position-sentence';/);
 	// An idle hero too — the empty state is a designed state (XR-PH-08), not an accident of no data.
 	expect(gallery).toMatch(/<NowPlayingHero title="Nothing playing"/);
 

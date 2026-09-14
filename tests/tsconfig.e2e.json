@@ -1,7 +1,7 @@
 {
-	// Type gate for the out-of-program e2e + scripts .mjs drivers (deferred).
+	// Type gate for the out-of-program e2e .mjs drivers (deferred).
 	// Extends the server config for the same strictness. PR-1 covers only the shared spine
-	// (driver.mjs driver, contract.ts selector registry, scripts/shot.mjs); the ~760 per-probe
+	// (driver.mjs driver, contract.ts selector registry, shot.mjs); the ~760 per-probe
 	// implicit-any errors are brought in by the per-driver follow-up issues, one batch at a time,
 	// each adding its files to `include` below. As the whole out-of-program e2e set is in the
 	// gate: this final batch brought in the transport + capture + remaining probes/drivers, and the two
@@ -18,8 +18,8 @@
 		"e2e/lib/chromium.mjs",
 		"e2e/fuzz.mjs",
 		"e2e/contract.ts",
-		"scripts/shot.mjs",
-		"scripts/playwright-core.d.ts",
+		"e2e/shot.mjs",
+		"e2e/run-probes.mjs",
 		"e2e/probes/p11-dashboards.mjs",
 		"e2e/probes/p10-scaling.mjs",
 		"e2e/probes/p5-process-lifecycle.mjs",

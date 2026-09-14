@@ -17,7 +17,7 @@ outputs must be DISCOVERED rather than derived from the model name) are stated i
 
 ⚠️ A REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT. A ~45-minute CPU process plus the ~700MB first-run
 checkpoint download are needed to confirm (a) the exact output-stem filenames bs-roformer-infer
-writes into --store_dir, and (b) that each whitelist token maps to a live registry slug. The package
+writes into --store_dir, and (b) that each allowlist token maps to a live registry slug. The package
 IMPORTS and pip-checks clean on the pinned torch 2.8 stack (verified); the end-to-end process does not
 run here. Until a network-enabled worker confirms it, a roformer process only runs where an operator has
 set the `stems:roformer` capability.
@@ -31,7 +31,7 @@ from ..retry_policy import BoundaryError
 
 # ── pure helpers (no torch, no session) ──────────────────────────────────────────
 
-#: Our stable whitelist tokens (src/shared/lyrics/separators.ts) → bs-roformer-infer registry
+#: Our stable allowlist tokens (src/lib/contract/lyrics/separators.ts) → bs-roformer-infer registry
 #: slugs. Kept here, not in the shared TS, because the slug is a WORKER-side resolution detail the
 #: core never needs to know — the core only validates the token.
 #:
@@ -77,8 +77,8 @@ ROFORMER_REGISTRY_SLUGS = frozenset(
     }
 )
 
-#: Measured execution settings per whitelist token — the worker-side mirror of
-#: `SeparatorCost` in src/shared/lyrics/separators.ts. Benchmarked on the reference box
+#: Measured execution settings per allowlist token — the worker-side mirror of
+#: `SeparatorCost` in src/lib/contract/lyrics/separators.ts. Benchmarked on the reference box
 #: (32-core Graviton 3, CPU) on 2026-09-03: 26.59s per 8s window at fp32, 16.55s at bf16.
 #:
 #: `precision` is per-token and NOT globally derivable: bf16 is 1.6× faster than fp32 on this
@@ -99,7 +99,7 @@ ROFORMER_COST = {
 
 
 def roformer_cost(token: str) -> dict | None:
-    """Measured execution settings for a whitelist token, or None when the token is unknown. Returns
+    """Measured execution settings for a allowlist token, or None when the token is unknown. Returns
     None rather than a default because a fabricated cost would be indistinguishable from a measured
     one at the call site."""
     return ROFORMER_COST.get(token)
@@ -109,7 +109,7 @@ DEFAULT_ROFORMER_MODEL = "bs-roformer-1297"
 
 
 def resolve_roformer_slug(params: dict, default: str = DEFAULT_ROFORMER_MODEL) -> str:
-    """Map the job's whitelist model token to a bs-roformer-infer registry slug. An explicit-but-
+    """Map the job's allowlist model token to a bs-roformer-infer registry slug. An explicit-but-
     unknown token raises (job fails non-retryable) rather than silently separating with the default —
     same contract as resolve_demucs_model."""
     token = params.get("model") or default

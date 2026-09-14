@@ -20,7 +20,7 @@ import {
 import { pendingGates, EMPTY_SONG_PROFILE } from '$lib/contract';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AuthoritativeState } from '$lib/server/state/store';
-import { nextPlayable, isEntryReady } from '$lib/server/rotation/index';
+import { nextPlayable, isEntryReady } from '$lib/server/rotation';
 import { playbackRef, type Media, type QueueEntry } from '$lib/contract';
 
 const T0 = 1_700_000_000_000;

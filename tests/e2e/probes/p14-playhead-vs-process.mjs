@@ -24,9 +24,10 @@
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { findChromium } from '../lib/chromium.mjs';
+import { repoRoot } from '../lib/repo-root.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -46,11 +47,9 @@ import { findChromium } from '../lib/chromium.mjs';
  */
 
 const PORT = Number(process.env.PORT ?? 5241);
-const CDP_PORT = Number(process.env.CDP_PORT ?? PORT + 100);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.SCRATCH ?? join('/tmp', `e2e-${PORT}`);
 const MEDIA_DIR = join(SCRATCH, 'media');
-const CORE = resolve(new URL('../..', import.meta.url).pathname);
 
 /** @type {Child[]} */
 const children = [];
@@ -86,14 +85,14 @@ const jget = async (path) => (await fetch(BASE + path)).json();
 rmSync(SCRATCH, { recursive: true, force: true });
 mkdirSync(MEDIA_DIR, { recursive: true });
 
-const seed = launch('bun', ['run', 'e2e/seed-media.mjs'], {
-	cwd: CORE,
+const seed = launch('bun', ['run', 'tests/e2e/seed-media.mjs'], {
+	cwd: repoRoot,
 	env: {...process.env, MEDIA_DIR }
 });
 await new Promise((r) => seed.on('exit', r));
 
 launch('bun', ['run', './server.ts'], {
-	cwd: CORE,
+	cwd: repoRoot,
 	env: {...process.env,
 		ENCORE_EPHEMERAL: '1',
 		PORT: String(PORT),
@@ -111,8 +110,8 @@ for (let i = 0; i < 80; i++) {
 		await sleep(500);
 	}
 }
-launch('bun', ['e2e/fake-stems-worker.mjs'], {
-	cwd: CORE,
+launch('bun', ['tests/e2e/fake-stems-worker.mjs'], {
+	cwd: repoRoot,
 	env: {...process.env, EPORT: String(PORT), MEDIA_DIR }
 });
 await sleep(1500);

@@ -6,8 +6,8 @@
 import { eq, and, desc, isNotNull, inArray, type SQL } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { media, mediaTags } from '../db/schema';
-import type { Media, LyricsCandidate } from '$lib/contract';
-import { readyToSing, normalizeSongProfile } from '$lib/contract';
+import type { Media, LyricsCandidate } from '../../contract';
+import { readyToSing, normalizeSongProfile } from '../../contract';
 
 type MediaRow = typeof media.$inferInsert;
 

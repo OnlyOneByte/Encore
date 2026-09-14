@@ -19,7 +19,7 @@
 	//      cannot be cut off, and the title gets two lines besides.
 	//   4. THE VIEW COUNT. The tiebreaker between two lyric uploads of one song (2.1B vs 266K).
 	import type { Readiness } from '$lib/readiness';
-	import { processStageLabel } from '$lib/process-phrasing';
+	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { type MediaStatus } from '$lib/contract';
 	import { overallProcessPct } from '$lib/process-progress';
 	import Icon from '$lib/ui/Icon.svelte';

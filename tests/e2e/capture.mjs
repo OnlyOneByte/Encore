@@ -3,7 +3,7 @@
  *
  *   bun run e2e:seed                                   # or point MEDIA_DIR at a real processed library
  *   ENCORE_EPHEMERAL=1 PORT=3500 MEDIA_DIR=<media> bun run start
- *   EPORT=3500 bun run e2e/capture.mjs [outDir]
+ *   EPORT=3500 bun run tests/e2e/capture.mjs [outDir]
  *
  * This exists because a screenshot of a default page proves almost nothing: the states worth looking
  * at are the ones a guest actually hits — a queue with a song processing in it, the sheet pulled up, the
@@ -30,22 +30,7 @@ import { connect, sleep } from './driver.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
-import { existsSync as __exists } from 'node:fs';
-import { join as __join, dirname as __dirname } from 'node:path';
-// INLINED, not imported: this driver runs under plain node with no bundler, so the
-// '@encore/test-support' alias does not exist at runtime. Walking up for bunfig.toml is the
-// same root derivation the harness uses, and unlike a hop count it survives a move.
-function __repoRoot() {
-	let d = __dirname(new URL(import.meta.url).pathname);
-	for (let i = 0; i < 12; i += 1) {
-		if (__exists(__join(d, 'bunfig.toml'))) return d;
-		d = __dirname(d);
-	}
-	throw new Error('no bunfig.toml above ' + import.meta.url);
-}
-const repoRoot = __repoRoot();
-/** @param {...string} parts @returns {string} */
-const at = (...parts) => __join(repoRoot, ...parts);
+import { atRepo as at } from './lib/repo-root.mjs';
 
 
 /**
@@ -61,7 +46,6 @@ const at = (...parts) => __join(repoRoot, ...parts);
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
 const OUT = process.argv[2] ?? at('docs/mocks');
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9500);
 /*
  * The id half of `<id>-<what>-eyeson.png`. `tour` = this full-surface tour, as opposed to the older
  * per-milestone ids (m0c5-, b7c4-, ds-…) that record the work which first produced a frame.
@@ -232,7 +216,7 @@ try {
 	// `--autoplay-policy=no-user-gesture-required` is NECESSARY here, per this file's own header: without
 	// it the <video> never starts and every captured frame is the poster. The driver does not grant it by
 	// default — a flow that needs it says so, because `fuzz.mjs` and the gestureless probes need it ABSENT.
-	const browser0 = await connect(undefined, { args: ['--autoplay-policy=no-user-gesture-required'] });
+	const browser0 = await connect({ args: ['--autoplay-policy=no-user-gesture-required'] });
 	browser = browser0;
 
 	// ── TV first: attract only exists while the room is empty ─────────────────
@@ -252,7 +236,7 @@ try {
 	// ── join, both ways of picking a colour ──────────────────────────────────
 	const maya = await browser0.newPage();
 	await maya.viewport(...PHONE);
-	await maya.goto(`${base}/join`);
+	await maya.goto(`${base}/`);
 	await frame('join-presets', () => shoot(maya, 'join-presets', 'presets, with the violet default selected'));
 
 	await frame('join-hue-wheel', async () => {
@@ -265,7 +249,7 @@ try {
 	await maya.clickByLabel(SEL.swatch(PRESET_COLOUR_NAMES[1]).name); // pink
 	await sleep(250);
 	await frame('join-ready', () => shoot(maya, 'join-ready', 'name entered and a preset chosen, submit enabled'));
-	await maya.clickByText('Start singing');
+	await maya.clickByRole('button', 'Start singing');
 	await maya.waitFor(`location.pathname === '/'`);
 	await openBrowseFromHome(maya);
 	await sleep(700);
@@ -328,10 +312,10 @@ try {
 	// ── a second guest, so the roster and cross-client sync are visible ──────
 	const ada = await browser0.newPage();
 	await ada.viewport(...PHONE);
-	await ada.goto(`${base}/join`);
+	await ada.goto(`${base}/`);
 	await ada.fill(SEL.nameInput, 'Ada');
 	await ada.setRange(SEL.hueSlider, 210);
-	await ada.clickByText('Start singing');
+	await ada.clickByRole('button', 'Start singing');
 	await ada.waitFor(`location.pathname === '/'`);
 	await sleep(800);
 

@@ -9,7 +9,7 @@
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
 	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
-	import { positionWords } from '$lib/position-sentence';
+	import { positionWords } from '$lib/phrasing/position-sentence';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import {
 		LYRICS_BALL_STYLES,

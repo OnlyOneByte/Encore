@@ -7,7 +7,7 @@
 // minute count — never `Math.round(total / 60)`, which is the operation under test. That is the
 // process-bar rounding failure exactly: a test that rounds its own expected value cannot detect whether the code rounds.
 import { test, expect } from 'bun:test';
-import { positionWords, waitWords, ordinalWord } from '$lib/position-sentence';
+import { positionWords, waitWords, ordinalWord } from '$lib/phrasing/position-sentence';
 
 test('ordinalWord handles the teens, which is the whole reason it is a function', () => {
 	// Hand-written table. A naive n % 10 implementation ships "11st"/"12nd"/"13rd" and reds here.

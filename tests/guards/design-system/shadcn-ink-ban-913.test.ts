@@ -22,7 +22,7 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { at } from '@encore/test-support';
-import { svelteFiles, styleFiles } from '$lib/test-helpers';
+import { svelteFiles, styleFiles } from '@encore/test-support/scan';
 
 // Repo-root anchors. `LIB` was `join(at('src/lib'))` and `ROUTES` was `at('src/routes')` — both statements about where this test sat rather than about the two trees it scans.
 const LIB = at('src/lib');

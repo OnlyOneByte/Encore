@@ -132,7 +132,7 @@ test('isProcessing is gate-driven — it catches a song sitting between two gate
 //
 // THE DEFECT. gates.ts carried a SECOND guest-facing process vocabulary: a `pendingLabel` field
 // on ProcessGate ('Separating vocals' / 'Timing lyrics') read only by `currentGateLabel`, which itself
-// had zero non-test callers. The phone's real process sub-line is src/lib/process-phrasing.ts
+// had zero non-test callers. The phone's real process sub-line is src/lib/phrasing/process-phrasing.ts
 // (wired to SongRow, ProcessingCard, TvLobby and tv/+page.svelte) — its header asserts it is "the ONE
 // place the process is described to a guest … there is no third vocabulary to drift into", and names
 // 'Separating vocals', the exact string that was stranded in gates.ts, as copy "written for the
@@ -170,7 +170,7 @@ test('gates.ts source was read (guard is not vacuous)', () => {
 });
 
 test('gates.ts no longer carries the dead second process vocabulary', () => {
-	// The phone's process copy lives ONLY in src/lib/process-phrasing.ts. gates.ts must not
+	// The phone's process copy lives ONLY in src/lib/phrasing/process-phrasing.ts. gates.ts must not
 	// re-declare a guest-facing label field or the caller-less function that read it.
 	expect(GATES_SRC).not.toMatch(/pendingLabel/);
 	expect(GATES_SRC).not.toMatch(/currentGateLabel/);

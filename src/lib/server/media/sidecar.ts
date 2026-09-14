@@ -14,10 +14,10 @@
 
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Media, LyricsCandidate } from '$lib/contract';
-import { resolveLyricsRef } from '$lib/contract';
-import type { SongProfile } from '$lib/contract';
-import { normalizeSongProfile } from '$lib/contract';
+import type { Media, LyricsCandidate } from '../../contract';
+import { resolveLyricsRef } from '../../contract';
+import type { SongProfile } from '../../contract';
+import { normalizeSongProfile } from '../../contract';
 import { metaDir } from './paths';
 import { parseTrackTitle, type TrackParseRule } from './track-title';
 

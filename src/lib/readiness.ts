@@ -1,23 +1,19 @@
-// Client-side mirror of the server's readiness axis (src/server/media/readiness.ts). Duplicated
-// rather than imported because $lib/contract is the client/server contract and this is a derived
-// view concern — but the classification MUST agree with the server's, so it is unit-tested here too.
-import { isProcessing, isProcessableSource, readyToSing, type Media, type MediaStatus } from '$lib/contract';
+// Client-side readiness view state: display overrides, card kinds, empty states, playability.
+//
+// The CLASSIFICATION itself is not here any more. `readinessOf` used to be duplicated in this file and
+// in src/lib/server/media/readiness.ts, with a parity test asserting the two copies agreed — which is
+// the definition of one function with two homes. It now lives at $lib/contract/process/readiness and
+// both sides import it.
+//
+// What stays here is genuinely client-only: a LIVE media:status can override the catalog, and 'failed'
+// exists only as a live event, so the display union is the catalog union plus that one member.
+import { isProcessableSource, readyToSing, type Media, type MediaStatus } from '$lib/contract';
+import { readinessOf, type CatalogReadiness } from '$lib/contract/process/readiness';
 
-export type Readiness = 'ready' | 'processing' | 'failed' | 'unacquired';
+export { readinessOf };
 
-export function readinessOf(m: Media): Readiness {
-	// Gate-driven, and MUST stay byte-identical to the SERVER's copy (src/server/media/readiness.ts).
-	// `isProcessing` reads the process gates rather than a single `stemStatus === 'queued'` check, so a song
-	// mid-align (stems ready, lyrics queued) reads as processing instead of falling through to unacquired.
-	//
-	// 'failed' is deliberately absent here: nothing in the catalog Media records a failure, and it
-	// should not — a dead process settles the status back to un-processed (settleStemsGate), so the catalog's
-	// honest answer for a failed song is 'unacquired'. Failure is a LIVE event, and displayReadiness
-	// is where it belongs.
-	if (readyToSing(m)) return 'ready';
-	if (isProcessing(m)) return 'processing';
-	return 'unacquired';
-}
+/** Catalog readiness plus `failed`, which only a live `media:status` event can produce. */
+export type Readiness = CatalogReadiness | 'failed';
 
 /**
  * Readiness for display, letting a LIVE media:status override the catalog. A `media:status` arrives

@@ -3,6 +3,9 @@
 // realtime hub, so there is no network hop between layers and the authoritative in-memory state
 // lives in this one process. Prod entry (replaces the adapter's build/index.js): bun run server.ts
 
+// Every import below is RELATIVE, deliberately. `$lib` resolves only through the generated,
+// gitignored .svelte-kit/tsconfig.json, and the runtime image copies server.ts, src, build and
+// drizzle but never .svelte-kit — so an alias here type-checks locally and fails in the container.
 import {
 	graceMsOf,
 	type ClientEvent,
@@ -10,13 +13,13 @@ import {
 	type Media,
 	type WorkerMessage,
 	type WorkerCommand
-} from '$lib/contract';
+} from './src/lib/contract';
 import { handleQueueCommand, syncEvent, type HubDeps } from './src/lib/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady, nowPlayingEvent } from './src/lib/server/realtime/player';
 import { validateWorkerMessage } from './src/lib/server/jobs/worker-hub';
 import { getApp, setPublish, buildHubDeps } from './src/lib/server/app';
 import { readSessionToken } from './src/lib/server/singers/repository';
-import { can } from './src/lib/server/auth/capabilities';
+import { can } from './src/lib/server/capabilities';
 import { isForeignRoom, subscribeTopicFor, broadcastTopicFor } from './src/lib/server/realtime/room-scope';
 import { tvRoomId } from './src/lib/server/rooms/tv-room';
 import { presentTracks, type LocalTrack } from './src/lib/server/media/local';
@@ -374,7 +377,7 @@ const server = Bun.serve<SocketData>({
 				case 'player:command':
 					// Pausing or skipping is an act on the whole room's music, so it needs an actor. Every
 					// joined singer is a host today; the gate here is only that you are IN the room, which a
-					// socket that never joined is not. See src/server/auth/capabilities.ts.
+					// socket that never joined is not. See src/server/capabilities.ts.
 					if (!can({ singerId: ws.data.singerId }, 'player:control')) break;
 					handlePlayerCommand(evt.command, deps);
 					break;

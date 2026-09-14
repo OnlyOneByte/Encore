@@ -11,7 +11,7 @@
 // it by name and closes the padding-only escape hatch for THIS control.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { TAP } from '$lib/test-helpers';
+import { TAP } from '@encore/test-support/scan';
 import { at } from '@encore/test-support';
 
 // Both subjects are named absolutely. PAGE used to be `at('src/routes/+page.svelte')`

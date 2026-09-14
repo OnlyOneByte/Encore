@@ -13,7 +13,7 @@ from typing import Any
 from .vocabulary import STAGE_PLANS as _STAGE_PLANS
 from .vocabulary import Action, Stage
 
-# ── message type strings (must match src/shared/core/events.ts) ──────────────
+# ── message type strings (must match src/lib/contract/core/events.ts) ──────────────
 # worker -> core
 HELLO = "worker:hello"
 HEARTBEAT = "worker:heartbeat"

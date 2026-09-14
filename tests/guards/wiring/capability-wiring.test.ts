@@ -94,5 +94,5 @@ test("validateCommand's 'move' arm gates through can('queue:reorder-any') — ar
 });
 
 test('hub imports can from the capabilities module (the ONE decision point)', () => {
-	expect(hubSrc).toMatch(/import\s*\{\s*can\s*\}\s*from\s*'\.\.\/auth\/capabilities'/);
+	expect(hubSrc).toMatch(/import\s*\{\s*can\s*\}\s*from\s*'\.\.\/capabilities'/);
 });

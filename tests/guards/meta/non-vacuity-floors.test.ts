@@ -144,6 +144,15 @@ const FLOORS: Record<string, Floor[]> = {
 				'the citation scan across docs and tests. If it collected nothing, no citation could be dangling and the arm would pass while every Check field in the register pointed at a retired row.'
 		}
 	],
+	'tests/guards/wiring/dev-only-routes.test.ts': [
+		{
+			subject: 'FIXTURE_CONSUMERS.length',
+			min: 5,
+			count: 1,
+			guards:
+				'the list of guards that read the /components gallery as a fixture surface. The list IS the check, so a shrunken list asserts nothing: it would report that every remaining consumer still reads the gallery while saying nothing about the ones that had quietly stopped. A floor rather than an equality: a sixth guard adopting the gallery is welcome, the list quietly losing entries is not.'
+		}
+	],
 	'tests/guards/wiring/route-auth-posture.test.ts': [
 		{
 			subject: 'routes.length',
@@ -185,15 +194,31 @@ const FLOORS: Record<string, Floor[]> = {
 				'the citation regex actually matching. This is the sharper of the two: if the pattern stopped matching, the walk would still find every document and the guard would report a clean register while every path in it rotted. 38 references went stale in a single commit before this guard existed.'
 		}
 	],
+	'tests/guards/meta/no-hand-rolled-cdp.test.ts': [
+		{
+			subject: 'files.length',
+			min: 300,
+			count: 1,
+			guards:
+				'the walk that looks for a hand-rolled DevTools connection across the whole test tree. Two probes each grew a private CDP client because the shared driver lacked one verb, and the larger of the two then rotted silently: it kept dialling a debugging port after the Chromium spawn that opened it was removed, and no command ran it to say so. An empty walk here would report a clean tree in exactly that way.'
+		}
+	],
 	'tests/guards/meta/no-self-anchored-paths.test.ts': [
 		{
 			subject: 'files.length',
-			min: 100,
+			min: 300,
 			count: 1,
 			guards:
-				'the walk that looks for self-anchored path derivations across the test tree. This guard exists because 61 relocated guards passed while their scan roots pointed at the wrong tree; if its own walk found nothing it would report a clean tree in exactly that way, reproducing the defect it was written to catch. It went unregistered from the moment it was written — direction C is what surfaced it.'
+				'the walk that looks for self-anchored path derivations across the test tree. This guard exists because 61 relocated guards kept path arithmetic pointing at their old depth and reported green from the wrong tree. Raised 100 -> 300 when the walk widened from `.test.ts` (292 files) to `.ts` + `.mjs` (341), which is the extension list that would have caught the six e2e probes resolving their repo root one hop short.'
+		},
+		{
+			subject: 'mjs.length',
+			min: 30,
+			count: 1,
+			guards:
+				'that the widened walk still reaches the `.mjs` drivers specifically. The `.test.ts`-only walk is precisely why six probes anchored one hop short for as long as they did, so a future narrowing of the extension list has to fail here rather than pass quietly on a tree that no longer includes them.'
 		}
-	],
+		],
 	'tests/guards/meta/test-tree-deps.test.ts': [
 		{
 			subject: 'files.length',
@@ -745,7 +770,12 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// to the new test-tree-deps guard, one is direction C's own `filesWalked`, and one is a floor on
 	// no-self-anchored-paths that had existed UNREGISTERED since it was written — direction C is what
 	// surfaced it. Both literals were re-measured, not incremented.
-	expect(located).toBeGreaterThanOrEqual(66);
+	//
+	// Re-measured to 72: 71 when no-self-anchored-paths gained an `mjs.length` floor, then 72 when dev-only-routes registered its fixture-consumer floor, then 73 when no-hand-rolled-cdp registered its walk. The previous value
+	// of 66 was not wrong so much as SLACK: these are `>=` floors, so 66 kept passing while the real
+	// count drifted up to 70 without anything saying so. Measured by raising both to 99999 and reading
+	// `Received: N`, which is the only way to learn the actual number.
+	expect(located).toBeGreaterThanOrEqual(73);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -836,7 +866,7 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(66);
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(73);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

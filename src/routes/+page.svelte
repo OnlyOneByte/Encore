@@ -48,7 +48,7 @@
 		type Readiness
 	} from '$lib/readiness';
 	import { activeScars, recordScar, clearScar } from '$lib/stores/process-scars';
-	import { positionWords } from '$lib/position-sentence';
+	import { positionWords } from '$lib/phrasing/position-sentence';
 	import type { MediaStatus } from '$lib/contract';
 	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isProcessableSource } from '$lib/contract';
 	import { Toaster } from '$lib/components/ui/sonner';

@@ -22,37 +22,28 @@ import { execFileSync } from 'node:child_process';
 import { at, read, relative } from '@encore/test-support';
 
 /**
- * Files no command reaches, each kept deliberately. Recorded as a flat list rather than per-file comments
- * so the COUNT is visible: nineteen unrun probes is a fact about this suite, and a reader should meet it
- * as one number rather than discovering it nineteen times.
+ * Files no command reaches, each kept deliberately.
  *
- * WHY THEY ARE KEPT. Every one is a written investigation of a real defect — the tap-to-start recovery,
- * the gapless seam, the playhead-versus-process interaction — and each is runnable by hand with
- * `bun run <path>`. Deleting them would discard the analysis; wiring them all into a command would add
- * ~12,000 lines of browser-driving to a gate that currently takes 30 seconds. Neither is obviously right,
- * so the decision stays open and visible instead of being made by accident.
+ * EMPTY, AND THAT IS THE POINT. It used to hold nineteen drivers — the whole probe tree bar the four
+ * flows wired to `e2e*` scripts. They were kept because each is a written investigation of a real
+ * defect, and the recorded objection to fixing it was that wiring ~12,000 lines of browser-driving
+ * into a gate that finishes in about a minute would be the wrong trade.
+ *
+ * That objection conflated two different things. `bun run tests/e2e/run-probes.mjs` (the `e2e:probes`
+ * script) now names every one of them, so they are REACHABLE — discoverable, listed with their
+ * subject, runnable in one step, with the runner booting the shared seeded server the `serves` group
+ * used to need by hand. None of them is in `bun run gates`, so the gate is unchanged.
+ *
+ * The cost of the old list was not theoretical. Everything it held was unexecuted, and unexecuted is
+ * where six probes came to resolve their repo root one hop short, two came to call a `spawnChild`
+ * defined in no scope, and one came to test for a build directory under a path that could not exist.
+ * A list like that does not preserve an investigation; it preserves the appearance of one.
+ *
+ * An entry here is still the right answer for a driver that genuinely cannot be reached — it just has
+ * to come with the reason, because an unrun probe nobody recorded is indistinguishable from one that
+ * runs.
  */
-const UNRUN = [
-	'tests/e2e/fake-align-worker.mjs',
-	'tests/e2e/probes/admin-delete-639.mjs',
-	'tests/e2e/probes/p1-gapless.mjs',
-	'tests/e2e/probes/p10-scaling.mjs',
-	'tests/e2e/probes/p14-playhead-vs-process.mjs',
-	'tests/e2e/probes/p15-phone-reflow.mjs',
-	'tests/e2e/probes/p15-reload-resume.mjs',
-	'tests/e2e/probes/p16-hero-live-controls.mjs',
-	'tests/e2e/probes/p2-guiding-track.mjs',
-	'tests/e2e/probes/p3-key-shift.mjs',
-	'tests/e2e/probes/p5-process-lifecycle.mjs',
-	'tests/e2e/probes/p6-lyrics.mjs',
-	'tests/e2e/probes/p8-presence-resilience.mjs',
-	'tests/e2e/probes/p9-settings.mjs',
-	'tests/e2e/probes/preflight-diff.mjs',
-	'tests/e2e/probes/preflight-reset-audit.mjs',
-	'tests/e2e/probes/tv-audiocontext-resume.mjs',
-	'tests/e2e/probes/tv-scrim-empty-lobby-736.mjs',
-	'tests/e2e/shoot-913.mjs'
-] as const;
+const UNRUN: readonly string[] = [];
 
 function e2eFiles(): string[] {
 	return execFileSync('git', ['-C', at('.'), 'ls-files', 'tests/e2e'], { encoding: 'utf8' })

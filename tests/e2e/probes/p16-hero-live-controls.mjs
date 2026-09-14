@@ -64,23 +64,12 @@
  */
 import { existsSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
-// The repo root, by walking up for `bunfig.toml` — the same marker the test harness uses, so this driver
-// and the runner agree on the root. Was `join(import.meta.dirname, …)`, which encoded this file's distance
-// from `.` and broke the moment the e2e tree moved under `tests/`.
-const REPO_ROOT = (() => {
-	let dir = import.meta.dirname;
-	for (let i = 0; i < 10; i += 1) {
-		if (existsSync(join(dir, 'bunfig.toml'))) return dir;
-		const parent = dirname(dir);
-		if (parent === dir) break;
-		dir = parent;
-	}
-	throw new Error(`no bunfig.toml above ${import.meta.dirname}`);
-})();
+import { repoRoot } from '../lib/repo-root.mjs';
+import { spawnChild, killChild } from '../lib/child.mjs';
 
 
 /**
@@ -91,8 +80,7 @@ const REPO_ROOT = (() => {
 
 const PORT = process.env.EPORT ?? '5216';
 const BASE = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9356);
-const CORE_DIR = REPO_ROOT;
+const CORE_DIR = repoRoot;
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? process.env.TMPDIR ?? '/tmp';
 const RUN_DIR = join(SCRATCH, `p16-hero-controls-${process.pid}`);
 const MEDIA_DIR = join(RUN_DIR, 'media');
@@ -134,7 +122,7 @@ async function bootServer() {
 	if (await serverAlive()) bail(`something is already listening on ${BASE}; this probe owns the port and the workers`);
 	mkdirSync(MEDIA_DIR, { recursive: true });
 	await new Promise((res, rej) => {
-		const p = spawnChild('bun', ['run', 'e2e/seed-media.mjs'], { cwd: CORE_DIR, env: { ...process.env, MEDIA_DIR } });
+		const p = spawnChild('bun', ['run', 'tests/e2e/seed-media.mjs'], { cwd: CORE_DIR, env: { ...process.env, MEDIA_DIR } });
 		p.on('exit', (code) => (code === 0 ? res(null) : rej(new Error(`seed exited ${code}`))));
 	});
 	const logFd = join(RUN_DIR, 'server.log');
@@ -173,7 +161,7 @@ async function spawnWorker(kind) {
 	};
 	if (kind === 'noVocals') env.FAKE_NO_VOCALS = '1';
 	const logFd = join(RUN_DIR, `worker-${kind}.log`);
-	const p = spawnChild('bun', ['e2e/fake-stems-worker.mjs'], {
+	const p = spawnChild('bun', ['tests/e2e/fake-stems-worker.mjs'], {
 		cwd: CORE_DIR,
 		stdio: ['ignore', openSync(logFd, 'w'), openSync(logFd, 'a')],
 		env
@@ -190,14 +178,6 @@ async function spawnWorker(kind) {
 	throw new Error(`worker ${kind} never welcomed (see ${logFd})`);
 }
 
-/** @param {import('node:child_process').ChildProcess | undefined} p */
-async function kill(p) {
-	if (!p || p.exitCode !== null) return;
-	p.kill('SIGTERM');
-	const started = Date.now();
-	while (p.exitCode === null && Date.now() - started < 3000) await sleep(100);
-	if (p.exitCode === null) p.kill('SIGKILL');
-}
 
 // ── HTTP, with the probe's session cookie ──────────────────────────────────
 let COOKIE = '';
@@ -408,11 +388,11 @@ async function main() {
 	// ── two songs, two stem states, one library ──
 	worker = await spawnWorker('withVocals');
 	const withStem = await processOne('caroline');
-	await kill(worker);
+	await killChild(worker);
 
 	worker = await spawnWorker('noVocals');
 	const noStem = await processOne('bohemian');
-	await kill(worker);
+	await killChild(worker);
 
 	const wv = (await library()).find((m) => m.id === withStem.id);
 	const nv = (await library()).find((m) => m.id === noStem.id);
@@ -519,7 +499,7 @@ try {
 		// A browser that already died closes with a throw. The child processes below are killed either
 		// way, and failing teardown must not mask the verdict this probe already reported.
 	}
-	await kill(worker);
-	await kill(server);
+	await killChild(worker);
+	await killChild(server);
 }
 process.exit(code);

@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { ulid } from '../../../../src/lib/contract/core/ulid';
+import { ulid } from '$lib/contract/core/ulid';
 
 test('ulid is 26 chars, Crockford base32', () => {
 	const id = ulid();

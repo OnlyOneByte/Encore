@@ -109,15 +109,15 @@ what makes the true case population enumerable; until it lands, treat "19 at ris
 and expect the case count to be materially larger.
 
 **Helper definition sites — all five now share one home** (`XR-VER-14`). Every one is
-defined in `src/lib/test-helpers.ts` and imported; `allSvelte` is gone, having been a
+defined in `tests/support/src/scan.ts` and imported; `allSvelte` is gone, having been a
 verbatim copy of `svelteFiles` under another name.
 
 | Helper | Defined at | Shared? |
 |---|---|---|
-| `svelteFiles` | `src/lib/test-helpers.ts` | exported, shared |
-| `styleFiles` | `src/lib/test-helpers.ts` | exported, shared — `svelteFiles` deliberately widened to `.css` so `app.css` is in scope |
-| `markupControls` | `src/lib/test-helpers.ts` | exported, shared |
-| `classPresent` | `src/lib/test-helpers.ts` | exported, shared |
+| `svelteFiles` | `tests/support/src/scan.ts` | exported, shared |
+| `styleFiles` | `tests/support/src/scan.ts` | exported, shared — `svelteFiles` deliberately widened to `.css` so `app.css` is in scope |
+| `markupControls` | `tests/support/src/scan.ts` | exported, shared |
+| `classPresent` | `tests/support/src/scan.ts` | exported, shared |
 | ~~`allSvelte`~~ | — | deleted; `e2e/contract.test.ts` imports `svelteFiles` |
 
 All five walk through **one** recursive `walk()` with a single `SKIP_DIRS` set
@@ -138,7 +138,7 @@ their own globs remain out of this set and out of scope here — `e2eDrivers`, `
 
 | Helper | Defined at | Shared? |
 |---|---|---|
-| `svelteFiles` | `src/lib/test-helpers.ts:13` | exported, shared |
+| `svelteFiles` | `tests/support/src/scan.ts:13` | exported, shared |
 | `styleFiles` | `tests/guards/motion/motion.test.ts:30` | local copy |
 | `markupControls` | `tests/guards/a11y/touch-targets.test.ts:47` | local copy |
 | `allSvelte` | `tests/guards/hygiene/contract.test.ts:147` | local copy |
@@ -484,7 +484,7 @@ what is measured.
 | **Statement** | The helpers that determine a design guard's scope are defined once and imported, not copied per test file. |
 | **Surfaces** | All (harness-level) |
 | **Rationale** | Four of the five helpers are per-file copies, so a scope fix lands in one guard and silently leaves the others narrow — and a register that cannot point at one definition cannot verify scope centrally. |
-| **Source** | Definition sites enumerated above: all five are now defined once in `src/lib/test-helpers.ts` and imported; `allSvelte` was a verbatim copy of `svelteFiles` and is deleted. **DERIVED**: `motion.test.ts` needed its scope widened in isolation precisely because its `styleFiles` was private. |
+| **Source** | Definition sites enumerated above: all five are now defined once in `tests/support/src/scan.ts` and imported; `allSvelte` was a verbatim copy of `svelteFiles` and is deleted. **DERIVED**: `motion.test.ts` needed its scope widened in isolation precisely because its `styleFiles` was private. |
 | **Acceptance** | **Given** the register's implementing files, **When** each is parsed for local function declarations named in the helper set, **Then** none declares one; every use resolves to an import from the shared helper module. **And** the shared module's walk excludes `node_modules`, `build`, `.svelte-kit`, `dist`, `.git` and includes `src/lib/components/ui/`. |
 | **Check** | A source guard over the register's files. **Implemented** by `tests/guards/meta/test-helpers.test.ts`: a comment-stripped scan of the ten consumers for a local declaration of any helper name and for a call without a matching import, plus arms asserting the exported `SKIP_DIRS` set, that the module contains exactly one `readdirSync` and no directory allowlist (so `src/lib/components/ui/` is in scope by construction), and that the walk behaviourally skips `node_modules`. Note `.svelte-kit/` currently contains built copies of every component's CSS — a walk that fails to exclude it will read stale duplicates and report on colours the app no longer paints, which is XR-VER-08's failure mode arriving through the scope door. |
 | **Priority** | **SHOULD** — shipping with copies is survivable; shipping without knowing which copies exist is not, and XR-VER-13 covers that. |

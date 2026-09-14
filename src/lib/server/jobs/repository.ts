@@ -15,7 +15,7 @@ import {
 	type JobType,
 	type JobEvent,
 	type AttemptOutcome
-} from '$lib/contract';
+} from '../../contract';
 import { assertEvent } from './transitions';
 import type { AttemptLedger, AttemptFacts } from './attempts';
 

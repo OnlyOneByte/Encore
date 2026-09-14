@@ -3,7 +3,7 @@
 // it carries selection through. RED on base: toAudit has no selection field (and attemptSelection does
 // not exist), so a reverted mapper drops it.
 import { describe, expect, it } from 'bun:test';
-import { toAudit } from '../../../../../../src/routes/api/audit/[mediaId]/audit-shape';
+import { toAudit } from '$routes/api/audit/[mediaId]/audit-shape';
 import type { JobAttempt } from '$lib/contract';
 
 function attempt(over: Partial<JobAttempt> = {}): JobAttempt {

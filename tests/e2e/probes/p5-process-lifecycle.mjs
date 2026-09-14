@@ -18,7 +18,8 @@
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+import { repoRoot } from '../lib/repo-root.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -63,7 +64,6 @@ const PORT = Number(process.env.PORT ?? 5225);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.SCRATCH ?? join(process.env.KIROCREW_SCRATCH ?? '/tmp', `e2e-${PORT}`);
 const MEDIA_DIR = join(SCRATCH, 'media');
-const REPO = resolve(new URL('../..', import.meta.url).pathname); // .
 
 /** @type {Finding[]} */
 const findings = [];
@@ -131,15 +131,15 @@ async function waitForHealth(timeoutMs = 15000) {
 async function bootServer() {
 	if (existsSync(SCRATCH)) rmSync(SCRATCH, { recursive: true, force: true });
 	mkdirSync(join(MEDIA_DIR), { recursive: true });
-	const seed = launch('bun', ['run', 'e2e/seed-media.mjs'], {
-		cwd: REPO,
+	const seed = launch('bun', ['run', 'tests/e2e/seed-media.mjs'], {
+		cwd: repoRoot,
 		env: { ...process.env, MEDIA_DIR }
 	});
 	await new Promise((r) => seed.on('exit', r));
 	const serverLog = join(SCRATCH, 'server.log');
 	const serverOut = Bun.file(serverLog).writer();
 	const p = launch('bun', ['run', './server.ts'], {
-		cwd: REPO,
+		cwd: repoRoot,
 		env: {
 			...process.env,
 			ENCORE_EPHEMERAL: '1',
@@ -165,8 +165,8 @@ async function bootServer() {
 async function bootWorker(env, tag = 'worker') {
 	const workerLog = join(SCRATCH, `${tag}.log`);
 	const wOut = Bun.file(workerLog).writer();
-	const p = launch('bun', ['e2e/fake-stems-worker.mjs'], {
-		cwd: REPO,
+	const p = launch('bun', ['tests/e2e/fake-stems-worker.mjs'], {
+		cwd: repoRoot,
 		env: { ...process.env, EPORT: String(PORT), MEDIA_DIR, FAKE_WORKER_ID: tag, ...env }
 	});
 	p.stdout?.on('data', (d) => wOut.write(d));

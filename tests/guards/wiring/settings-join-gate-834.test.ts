@@ -9,7 +9,7 @@ import { test, expect, afterEach } from 'bun:test';
 // The route module under test. There is no alias for `routes/`, so this is a correct repo-relative
 // path from tests/guards/wiring/ rather than the old `./+page.server`. It fails LOUDLY with
 // `Cannot find module` if the depth is wrong.
-import { load } from '../../../src/routes/settings/+page.server';
+import { load } from '$routes/settings/+page.server';
 import { RoomRepository } from '$lib/server/rooms/repository';
 import { SingerRepository } from '$lib/server/singers/repository';
 import { SettingsRepository } from '$lib/server/state/settings-repository';

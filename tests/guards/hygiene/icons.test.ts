@@ -23,7 +23,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { srcDir } from '@encore/test-support';
 import { ICON_NAMES, ICON_PATHS } from '$lib/ui/icons';
-import { svelteFiles } from '$lib/test-helpers';
+import { svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir; // src
 

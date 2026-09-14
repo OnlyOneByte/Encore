@@ -526,7 +526,7 @@ async function runWireProbe() {
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'medium', syncMode: 'lines' } });
 
 	// Start a stems worker (fetch,stems only — leave align to the align-worker below).
-	const stems = spawn('bun', [pathJoin(process.cwd(), 'e2e/fake-stems-worker.mjs')], {
+	const stems = spawn('bun', [pathJoin(process.cwd(), 'tests/e2e/fake-stems-worker.mjs')], {
 		env: { ...process.env, EPORT: PORT, MEDIA_DIR: process.env.MEDIA_DIR ?? './media', FAKE_CAPS: 'fetch,stems' },
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
@@ -538,7 +538,7 @@ async function runWireProbe() {
 	await sleep(500);
 
 	// Start a one-shot align worker that prints the FIRST assign and exits.
-	const alignA = spawn('bun', [pathJoin(process.cwd(), 'e2e/fake-align-worker.mjs')], {
+	const alignA = spawn('bun', [pathJoin(process.cwd(), 'tests/e2e/fake-align-worker.mjs')], {
 		env: { ...process.env, EPORT: PORT },
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
@@ -596,7 +596,7 @@ async function runWireProbe() {
 	} else {
 		await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'tiny', syncMode: 'forced' } });
 		// Fresh one-shot align worker.
-		const alignB = spawn('bun', [pathJoin(process.cwd(), 'e2e/fake-align-worker.mjs')], {
+		const alignB = spawn('bun', [pathJoin(process.cwd(), 'tests/e2e/fake-align-worker.mjs')], {
 			env: { ...process.env, EPORT: PORT },
 			stdio: ['ignore', 'pipe', 'pipe']
 		});
@@ -650,7 +650,7 @@ try {
 }
 
 // ═══ 7. Security — the room's blast radius. ══════════════════════════════════
-//   Every joined singer is a host (server/auth/capabilities.ts:can()), so any phone on the LAN — a
+//   Every joined singer is a host (server/capabilities.ts:can()), so any phone on the LAN — a
 //   guest, or anyone who scanned the QR — holds the same authority as the operator. Report every
 //   consequence with plain evidence rather than editorialising.
 {
@@ -661,7 +661,7 @@ try {
 		r.status === 200 && r.body?.global?.asrModel === 'large-v3' ? 'HIGH' : 'PASS',
 		'security',
 		"ANY joined singer can PUT global settings — sets the fleet's Whisper checkpoint (1550M weights)",
-		`HTTP ${r.status} stored=${r.body?.global?.asrModel}  — server/auth/capabilities.ts:can() returns true for any singerId`
+		`HTTP ${r.status} stored=${r.body?.global?.asrModel}  — server/capabilities.ts:can() returns true for any singerId`
 	);
 	// (b) A guest can flip the JOIN QR to point at an attacker origin.
 	const rQ = await api('PUT', '/api/settings', { cookie: guestCookie, body: { joinOrigin: 'http://evil.example:80' } });

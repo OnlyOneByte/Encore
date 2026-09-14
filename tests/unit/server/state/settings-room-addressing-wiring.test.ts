@@ -115,7 +115,7 @@ test('assertNameFree reads presence grace from the ACTIVE room, not \u0027main\u
 	expect(() => assertNameFree(app, active.id, 'Maya')).not.toThrow();
 });
 
-import { PUT as putRoomHandler } from '../../../../src/routes/api/settings/room/+server';
+import { PUT as putRoomHandler } from '$routes/api/settings/room/+server';
 
 test('writer->reader seam: a param-less PUT lands where buildHubDeps().getSettings() reads', async () => {
 	// The regression the readers-only fix opened: the phone settings page fetches /api/settings/room

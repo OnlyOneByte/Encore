@@ -32,7 +32,7 @@ export default tseslint.config(
 	...tseslint.configs.recommended,
 
 	// Typed TypeScript: everything in a tsconfig's program. Type-aware rules (no-floating-promises)
-	// need this. e2e/**, scripts/** and *.config.ts are NOT in any tsconfig yet (tracked separately),
+	// need this. e2e/** and *.config.ts are NOT in the app tsconfig (tracked separately),
 	// so they are linted without the type service in the block below.
 	{
 		files: ['src/**/*.ts'],
@@ -53,7 +53,7 @@ export default tseslint.config(
 		}
 	},
 
-	// Out-of-tsconfig TypeScript (e2e/**, scripts/**, *.config.ts). Syntactic + unused rules only;
+	// Out-of-tsconfig TypeScript (e2e/**, *.config.ts). Syntactic + unused rules only;
 	// no type-aware rules because there is no program for these files (follow-up work).
 	{
 		// The `.mjs` extension is here deliberately: `tests/e2e/**` is 40 browser-driving drivers run by
@@ -66,7 +66,6 @@ export default tseslint.config(
 		// type-checked, just not by this program, so they are linted syntactically here.
 		files: [
 			'tests/e2e/**/*.{ts,mjs}',
-			'scripts/**/*.ts',
 			'*.config.ts',
 			'src/service-worker.ts',
 			'server.ts'
@@ -136,7 +135,7 @@ export default tseslint.config(
 
 	// Test HARNESS components. These are Svelte fixtures a mount test imports; they are not in any
 	// tsconfig's program, so the project service cannot resolve them and the type-aware Svelte block
-	// above fails to parse them outright. Same treatment as e2e/** and scripts/**: syntactic and
+	// above fails to parse them outright. Same treatment as e2e/**: syntactic and
 	// unused-variable rules only, no type-aware rules, and no program to build — which is also why this
 	// block is cheap.
 	{

@@ -72,7 +72,6 @@ import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 const PORT = process.env.EPORT ?? '5224';
 const base = `http://127.0.0.1:${PORT}`;
 const wsBase = `ws://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9424);
 
 /** @type {Finding[]} */
 const findings = [];
@@ -234,9 +233,9 @@ try {
 	async function newPhone(name) {
 		const page = await b.newPage();
 		await page.viewport(390, 844);
-		await page.goto(`${base}/join`);
+		await page.goto(`${base}/`);
 		await page.fill(SEL.nameInput, name);
-		await page.clickByText('Start singing');
+		await page.clickByRole('button', 'Start singing');
 		// Wait for the remote. The search field USED to be the signal the room UI mounted; now it
 		// lives on the browse screen, so the docked band is the joined-home signal and this helper also
 		// leaves the page on the browse screen, where the rest of this probe expects to be.

@@ -11,7 +11,7 @@
 import { desc, eq, gte, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { plays } from '../db/schema';
-import { ulid } from '$lib/contract';
+import { ulid } from '../../contract';
 
 /** A song and how many times it was played in the window asked for. */
 export interface PlayCount {

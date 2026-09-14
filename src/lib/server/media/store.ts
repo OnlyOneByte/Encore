@@ -17,7 +17,7 @@
 // same-origin guarantee is depended on elsewhere (docs/DECISIONS.md, deferred FFT work), so making a
 // media element cross-origin is a product decision, not a store detail.
 
-import type { MediaStoreConfig } from '$lib/contract';
+import type { MediaStoreConfig } from '../../contract';
 import { safeMediaPath } from './local-files';
 
 export type MediaStoreKind = MediaStoreConfig['kind'];

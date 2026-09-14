@@ -27,7 +27,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
-import { openBrowseFromHome } from '../lib/phone.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -37,7 +37,6 @@ import { openBrowseFromHome } from '../lib/phone.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = 'http://127.0.0.1:' + PORT;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9371);
 const SCRATCH = process.env.E2E_SCRATCH ?? '/tmp';
 const SHOTS = join(SCRATCH, 'shots-736');
 
@@ -144,7 +143,7 @@ try {
 	await phone.viewport(390, 844);
 	await phone.goto(base + '/');
 	await phone.fill(SEL.nameInput, 'Scrim' + (Date.now() % 100000));
-	await phone.clickByText('Start singing');
+	await phone.clickByRole('button', 'Start singing');
 	await phone.waitFor(`location.pathname === '/'`);
 	await openBrowseFromHome(phone);
 	await ensureProbeWs(phone);
@@ -154,6 +153,10 @@ try {
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const hasAdd = await phone.count(SEL.addTurn);
 	await phone.click(hasAdd > 0 ? SEL.addTurn : SEL.sing);
+	// Back to the queue before counting rows: the rotation is NOT rendered in the results view, so a
+	// `.qrow` count taken here reads an empty list and times out. `returnHomeFromBrowse` clears the
+	// search, which is what brings the queue back — its own docstring names this exact mistake.
+	await returnHomeFromBrowse(phone);
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 	check('a singer joins and queues the processed song — one entry, nothing behind it', true);
 

@@ -56,7 +56,13 @@ test('the two isTerminal predicates carry no dead "skipped" arm', () => {
 	expect(body).not.toContain("'skipped'");
 
 	// leave.ts must NOT re-introduce a hand-duplicated local copy — it imports the shared one.
+	// Either spelling of the barrel counts: the server tree imports the contract RELATIVELY, because
+	// `$lib` resolves only through the generated .svelte-kit tsconfig that the runtime image never
+	// copies. What this guard is about is that the predicate is imported rather than re-declared, so
+	// it matches on the contract barrel however it is spelled.
 	const leave = stripComments(readSrc('src/lib/server/singers/leave.ts'));
-	expect(leave).toMatch(/import\s*\{[^}]*\bisTerminal\b[^}]*\}\s*from\s*'\$lib\/contract'/); // uses the shared predicate
+	expect(leave).toMatch(
+		/import\s*\{[^}]*\bisTerminal\b[^}]*\}\s*from\s*'(?:\$lib\/contract|(?:\.\.\/)+contract)'/
+	); // uses the shared predicate
 	expect(leave).not.toMatch(/const isTerminal\s*=/); // no local re-definition
 });

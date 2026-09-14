@@ -14,7 +14,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
-import { TAP, TAP_FLOOR, expressesTap, restatesTapNumber, markupControls, svelteFiles } from '$lib/test-helpers';
+import { TAP, TAP_FLOOR, expressesTap, restatesTapNumber, markupControls, svelteFiles } from '@encore/test-support/scan';
 
 const SRC = srcDir; // src
 

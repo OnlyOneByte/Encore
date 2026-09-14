@@ -38,11 +38,12 @@
  */
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { findChromium } from '../lib/chromium.mjs';
 import { SEL } from '../contract.ts';
 import { openBrowseFromHome } from '../lib/phone.mjs';
+import { repoRoot } from '../lib/repo-root.mjs';
 
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -57,10 +58,8 @@ const VIEWPORT_H = 480;
 const SCALED_ROOT_FONT_SIZE = '32px';
 
 const PORT = Number(process.env.EPORT ?? 5244);
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9455);
 const BASE = `http://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.SCRATCH ?? join(process.env.KIROCREW_SCRATCH ?? '/tmp', `e2e-reflow-${PORT}`);
-const CORE = resolve(new URL('../..', import.meta.url).pathname); // .
 
 /** @type {{ name: string, ok: boolean }[]} */
 const checks = [];
@@ -81,8 +80,8 @@ const chromium = findChromium();
 if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
 // The server serves the BUILT UI, so an unbuilt tree yields pages with no app in them — which would
 // measure as a trivially-reflowing 320px and report PASS. Exit 2, loudly, rather than green.
-if (!existsSync(join(CORE, 'build', 'client')))
-	bail(`no built UI at ${join(CORE, 'build', 'client')}. Run: bun run build`);
+if (!existsSync(join(repoRoot, 'build', 'client')))
+	bail(`no built UI at ${join(repoRoot, 'build', 'client')}. Run: bun run build`);
 
 /** @type {import('node:child_process').ChildProcess[]} */
 const spawned = [];
@@ -107,7 +106,7 @@ mkdirSync(join(SCRATCH, 'media'), { recursive: true });
 
 spawned.push(
 	spawn('bun', ['run', './server.ts'], {
-		cwd: CORE,
+		cwd: repoRoot,
 		stdio: 'ignore',
 		env: {
 			...process.env,
@@ -162,7 +161,7 @@ const READ = `(() => {
 	return out;
 })()`;
 
-const browser = await connect(CDP_PORT);
+const browser = await connect();
 const page = await browser.newPage();
 await page.viewport(VIEWPORT_W, VIEWPORT_H, 2);
 

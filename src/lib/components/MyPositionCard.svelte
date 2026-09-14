@@ -11,7 +11,7 @@
 	 * The ordinal is the lead numeral, matching the ratified mockup. It is NOT aria-hidden: "3rd" read
 	 * before the sentence is exactly how the sentence is meant to start.
 	 */
-	import type { PositionWords } from '$lib/position-sentence';
+	import type { PositionWords } from '$lib/phrasing/position-sentence';
 	import * as Item from '$lib/components/ui/item';
 
 	interface Props {

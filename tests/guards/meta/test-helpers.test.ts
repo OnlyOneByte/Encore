@@ -36,7 +36,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { at } from '@encore/test-support';
-import { SKIP_DIRS, classPresent, markupControls, styleFiles, svelteFiles } from '$lib/test-helpers';
+import { SKIP_DIRS, classPresent, markupControls, styleFiles, svelteFiles } from '@encore/test-support/scan';
 
 /*
  * REPO-ROOT anchored, and the consumer list is repo-relative.
@@ -47,7 +47,16 @@ import { SKIP_DIRS, classPresent, markupControls, styleFiles, svelteFiles } from
  * re-pointed. Every entry is asserted to exist below, which is what turns a stale path into a red rather
  * than into a quietly shorter list.
  */
-const HOME = 'src/lib/test-helpers.ts';
+const HOME = 'tests/support/src/scan.ts';
+
+/**
+ * Where THE walk lives, as distinct from the module that filters it.
+ *
+ * Asserted separately because the two used to be the same file and are not any more: `scan.ts` names
+ * the extension filters, `tree.ts` owns the one `readdirSync` and the one skip-set test that decide
+ * scope for every guard in the suite.
+ */
+const WALK_HOME = 'tests/support/src/tree.ts';
 
 /** The five helpers XR-VER-14 names, and the one module allowed to declare them. */
 const HELPERS = ['svelteFiles', 'styleFiles', 'markupControls', 'allSvelte', 'classPresent'];
@@ -110,9 +119,9 @@ test('every consumer that uses a scan helper imports it from the one home', () =
 	const offenders: string[] = [];
 	for (const rel of CONSUMERS) {
 		const src = stripComments(readFileSync(at(rel), 'utf8'));
-		// the specifier differs by depth (./test-helpers, ../test-helpers, ../src/lib/test-helpers)
+		// the specifier is now depth-independent (@encore/test-support/scan), was (./test-helpers, ../src/lib/test-helpers)
 		const imported = new Set<string>();
-		for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from\s*'[^']*test-helpers'/g)) {
+		for (const m of src.matchAll(/import\s*\{([^}]*)\}\s*from\s*'@encore\/test-support\/scan'/g)) {
 			for (const part of m[1]!.split(',')) {
 				const name = part
 					.trim()
@@ -142,12 +151,21 @@ test('the shared walk excludes built and vendored trees, and allowlists no direc
 	// XR-VER-14 Acceptance, second half: `src/lib/components/ui/` — the design-library copy-in target —
 	// must be in scope BY CONSTRUCTION. It does not exist yet, so it cannot be asserted by walking for
 	// it; what is assertable is that the walk descends into every directory it is not told to skip.
-	// The source check is the honest instrument for that: exactly one `readdirSync` in the module, and
-	// no membership test on a directory name other than the skip set.
-	const home = stripComments(readFileSync(at(HOME), 'utf8'));
-	expect([...home.matchAll(/readdirSync\(/g)]).toHaveLength(1);
-	const dirTests = [...home.matchAll(/(\w+)\.(?:has|includes)\(ent\.name\)/g)].map((m) => m[1]);
+	// The source check is the honest instrument for that: exactly one `readdirSync` in the module that
+	// owns the walk, and no membership test on a directory name other than the skip set.
+	//
+	// The walk now lives in `tree.ts`, not beside these helpers. It used to be defined here while
+	// `filesUnder` in tree.ts had NO skip list — two recursive walks with different scope rules, and
+	// whichever one a guard imported decided what that guard could see. They are one walk now, so this
+	// check follows it rather than staying pointed at the module that merely filters it.
+	const walkHome = stripComments(readFileSync(at(WALK_HOME), 'utf8'));
+	expect([...walkHome.matchAll(/readdirSync\(/g)]).toHaveLength(1);
+	const dirTests = [...walkHome.matchAll(/(\w+)\.(?:has|includes)\(\w+\.name\)/g)].map((m) => m[1]);
 	expect(dirTests).toEqual(['SKIP_DIRS']);
+
+	// …and the filter module must not have grown a second walk of its own.
+	const home = stripComments(readFileSync(at(HOME), 'utf8'));
+	expect([...home.matchAll(/readdirSync\(/g)]).toHaveLength(0);
 });
 
 test('the shared walk actually skips a directory in the exclusion set', () => {

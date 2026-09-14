@@ -8,8 +8,8 @@
 // PURE selector: takes the catalog and returns the media ids that need an align job, so the policy is
 // testable without a DB, a worker, or a clock.
 
-import type { Media } from '$lib/contract';
-import { hasUsableTiming } from '$lib/contract';
+import type { Media } from '../../contract';
+import { hasUsableTiming } from '../../contract';
 
 /**
  * Priority for backfilled align jobs — the largest possible number, i.e. dead last. Priority mirrors

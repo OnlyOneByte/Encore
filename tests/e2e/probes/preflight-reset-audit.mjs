@@ -15,7 +15,7 @@
  * and the differ refuses to compare two runs whose tag sequence disagrees — if a future caller does
  * change markup, that check fails loudly rather than silently pairing the wrong elements.
  *
- *   EPORT=5911 CDP_PORT=9911 bun run e2e/probes/preflight-reset-audit.mjs <outFile.json>
+ *   EPORT=5911 CDP_PORT=9911 bun run tests/e2e/probes/preflight-reset-audit.mjs <outFile.json>
  *
  * Exit codes follow the harness contract (HARNESS.md): 0 measured, 1 a real failure, 2 the
  * environment could not host the probe.
@@ -28,7 +28,6 @@ import { findChromium } from '../lib/chromium.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
-const CDP_PORT = Number(process.env.CDP_PORT ?? 9500);
 /** Distinguishes this run's singers from any other run against the same room. */
 const RUN_TAG = process.env.RUN_TAG ?? 'x';
 const OUT = process.argv[2];
@@ -180,14 +179,14 @@ try {
 				 * The one driven step in this probe. Named per surface and per run so a re-run of the
 				 * AFTER pass cannot collide with the BEFORE pass's singer (409 → still on /join).
 				 */
-				await page.goto(`${base}/join`);
+				await page.goto(`${base}/`);
 				await page.fill(SEL.nameInput, `Pf${s.name.replace(/[^a-z]/gi, '')}${RUN_TAG}`);
 				await sleep(250);
-				await page.clickByText('Start singing');
+				await page.clickByRole('button', 'Start singing');
 				await page.waitFor(`location.pathname === '/'`);
 			}
 			await page.goto(base + s.url);
-			// a session-gated surface must not be measured as its /join redirect
+			// a session-gated surface must not be measured as the join landing it fallt
 			const landed = await page.evaluate('location.pathname');
 			if (s.join && landed !== s.url) throw new Error(`redirected to ${landed} — join did not take`);
 			// settle: fonts, the socket's first frame, and any mount-time style write (--dock-h etc.)

@@ -1,7 +1,7 @@
 // 3 singers interleave fairly; new joiner slots into next gap.
 // Plus the held-slot rule (not-ready media is skipped but keeps its position).
 import { test, expect } from 'bun:test';
-import { reseq, nextPlayable, upNextAfter, isEntryReady } from '$lib/server/rotation/index';
+import { reseq, nextPlayable, upNextAfter, isEntryReady } from '$lib/server/rotation';
 import type { QueueEntry, Media } from '$lib/contract';
 import { EMPTY_SONG_PROFILE, applyAndReseq } from '$lib/contract';
 

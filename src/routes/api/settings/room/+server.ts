@@ -6,7 +6,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
-import { can } from '$lib/server/auth/capabilities';
+import { can } from '$lib/server/capabilities';
 import { mediaFor } from '$lib/server/realtime/hub';
 import { emitNowPlaying } from '$lib/server/realtime/player';
 import type { RoomSettings } from '$lib/contract';

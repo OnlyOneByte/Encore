@@ -10,8 +10,8 @@ import {
 	type QueueEntry,
 	type PlaybackState,
 	type ServerEvent
-} from '$lib/contract';
-import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
+} from '../../contract';
+import { nextPlayable, upNextAfter, isEntryReady } from '../rotation';
 import { entryResolves } from '../state/store';
 import { mediaFor, orderingOf, type HubDeps } from './hub';
 
