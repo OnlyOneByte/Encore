@@ -222,7 +222,11 @@ or you want to deliberately limit a box:
   is the knob for a box tight on disk. Off means every song takes the older two-element guide path),
   `ENCORE_DEMUCS_MODEL`, `ENCORE_DEMUCS_JOBS` (auto-derived from usable cores),
   `ENCORE_DEMUCS_OVERLAP`/`_SEGMENT` (auto-derived from _free_ accelerator memory)/`_SHIFTS`, `ENCORE_FLAC_LEVEL`
-  (`8`)
+  (`8`), `ENCORE_STEM_FORMAT` (`flac`; the container the separator writes its **raw scratch** stems in, so
+  the whole chain is one lossless codec end to end and a stem pair costs roughly half the scratch bytes.
+  `wav` skips that encode during separation. Only the two CLIs that take a format flag honour it — torch
+  demucs and `audio-separator`; `demucs-mlx` and `bs-roformer-infer` have none, so their engines declare a
+  fixed format instead of pretending to accept one)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only
   fallbacks for a job carrying neither, `ENCORE_LRCLIB_BASE` (point at a mirror when lrclib.net is
   blocked), `ENCORE_ANNOTATE` (`1`; set `0` on a box with no outbound network), `ENCORE_KEEP_RAW_CAPTIONS` (`0`; set `1` to retain the raw `.vtt`/`.srt` caption track in `derived/captions/` for post-process diagnosis — counted and evicted by the `ENCORE_MEDIA_MAX_GB` cap)

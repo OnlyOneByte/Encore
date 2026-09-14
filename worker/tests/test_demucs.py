@@ -16,6 +16,7 @@ from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.separation import demucs  # noqa: E402
 from src.separation import mlx as mlx_mod  # noqa: E402
+from src.vocabulary import StemFormat  # noqa: E402
 from tests.cli_fakes import fake_cli_runner  # noqa: E402
 from tests.conftest import drain  # noqa: E402
 
@@ -61,9 +62,26 @@ def test_demucs_argv_and_output_path():
     assert argv[:3] == ["demucs", "-n", "htdemucs"]
     assert "--two-stems" in argv and "vocals" in argv
     assert "/w/in.wav" == argv[-1]
-    # both stem paths match the flattened --filename template
-    assert demucs.demucs_no_vocals_path("/w/sep", "htdemucs") == "/w/sep/htdemucs/no_vocals.wav"
-    assert demucs.demucs_vocals_path("/w/sep", "htdemucs") == "/w/sep/htdemucs/vocals.wav"
+    # FLAC is the default stem format, so the argv carries the flag that makes demucs' own
+    # `{ext}` template resolve to `flac`, and both stem paths agree with it.
+    assert "--flac" in argv
+    assert demucs.demucs_no_vocals_path("/w/sep", "htdemucs") == "/w/sep/htdemucs/no_vocals.flac"
+    assert demucs.demucs_vocals_path("/w/sep", "htdemucs") == "/w/sep/htdemucs/vocals.flac"
+
+
+def test_demucs_argv_and_paths_agree_on_the_declared_format():
+    """The invariant worth pinning: the argv's format flag and the derived paths never disagree.
+
+    A hardcoded extension on one side and a free-floating format flag on the other is what made an
+    audiosep job look like "the separator produced nothing" — `find_outputs` probed a path that could
+    not exist. Both sides now read the same StemFormat, so pin them together for each value.
+    """
+    for fmt, flag_present, ext in ((StemFormat.FLAC, True, ".flac"), (StemFormat.WAV, False, ".wav")):
+        argv = demucs.demucs_argv("/w/in.wav", "/w/sep", model="htdemucs", stem_format=fmt)
+        assert ("--flac" in argv) is flag_present, f"{fmt} argv flag wrong"
+        assert demucs.demucs_no_vocals_path("/w/sep", "htdemucs", fmt).endswith(f"no_vocals{ext}")
+        assert demucs.demucs_vocals_path("/w/sep", "htdemucs", fmt).endswith(f"vocals{ext}")
+        assert fmt.ext == ext
 
 
 def test_parse_ytdlp_progress():

@@ -148,7 +148,8 @@ async def test_demucs_publishes_songprofile_even_when_analysis_fails(tmp_path):
 
 @pytest.mark.asyncio
 async def test_demucs_passes_the_raw_wavs_to_the_profiler(tmp_path):
-    # Assert the wiring feeds the RAW separated WAVs (no_vocals.wav / vocals.wav) — not the encoded
+    # Assert the wiring feeds the RAW separated stems (no_vocals / vocals in the engine's DECLARED
+    # stem format, FLAC by default) — not the encoded
     # FLAC/m4a — so analysis costs no extra decode.
     seen = {}
 
@@ -166,6 +167,6 @@ async def test_demucs_passes_the_raw_wavs_to_the_profiler(tmp_path):
     )
     proc = plans.stems_runner(runner=_demucs_fake_runner(tmp_path), profiler=spy_profiler)
     await _drain(proc, job)
-    assert seen["inst"].endswith("no_vocals.wav")
-    assert seen["voc"].endswith("vocals.wav")
+    assert seen["inst"].endswith("no_vocals.flac")
+    assert seen["voc"].endswith("vocals.flac")
     assert seen["media_id"] == "m1"

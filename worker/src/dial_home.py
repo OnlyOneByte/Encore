@@ -700,6 +700,10 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             ffmpeg_bin=cfg.ffmpeg_bin,
             ytdlp_bin=cfg.ytdlp_bin,
             flac_level=cfg.flac_level,
+            # The declared raw-stem container, resolved once at the config boundary and threaded to the
+            # engines that can honour it. This is the value the raw-stem readers are implicitly told to
+            # expect, so it must come from ONE place rather than each engine choosing privately.
+            stem_format=cfg.stem_format,
             device=device,
             # The resolved backend now DRIVES the engine and is recorded into facts, not just printed:
             # it is the same value the startup log announced, so facts.backend and the log can no longer

@@ -26,6 +26,7 @@ from typing import cast
 
 from ..ffmpeg import ffmpeg_argv
 from ..retry_policy import BoundaryError, permanent_by_message
+from ..vocabulary import StemFormat
 
 DEFAULT_MODEL = "htdemucs"
 
@@ -180,9 +181,16 @@ def demucs_argv(
     overlap: float | None = None,
     segment: int | None = None,
     shifts: int | None = None,
+    stem_format: StemFormat = StemFormat.FLAC,
 ) -> list[str]:
     """demucs argv: two-stem (vocals / no_vocals) separation. `--filename {stem}.{ext}` flattens the
-    output to <out_dir>/<model>/<stem>.wav so the result path is deterministic regardless of input.
+    output to <out_dir>/<model>/<stem>.<ext> so the result path is deterministic regardless of input.
+
+    `stem_format` selects the container, and demucs fills `{ext}` to match — so the template keeps the
+    path deterministic under either format and `demucs_no_vocals_path` derives the same extension from the
+    same value. FLAC is the default because it is what the pipeline publishes and roughly halves the
+    scratch bytes of a full-rate stem pair; WAV stays selectable as the cheaper working format on a box
+    that would rather not spend the encode.
 
     Every performance flag is OPTIONAL and omitted when unset, so demucs' own defaults keep applying --
     including its cuda-if-available device pick, which is why forcing a device is opt-in rather than
@@ -205,6 +213,10 @@ def demucs_argv(
         "--filename",
         "{stem}.{ext}",
     ]
+    if stem_format is StemFormat.FLAC:
+        # demucs writes WAV unless told otherwise; `--flac` is its documented lossless option and is what
+        # makes `{ext}` resolve to `flac`, keeping the argv and `demucs_no_vocals_path` in agreement.
+        argv.append("--flac")
     if device:
         argv += ["-d", device]
     if jobs and jobs > 1:
@@ -219,15 +231,24 @@ def demucs_argv(
     return argv
 
 
-def demucs_no_vocals_path(out_dir: str, model: str = DEFAULT_MODEL) -> str:
-    """Where demucs writes the instrumental given the flattened `--filename {stem}.{ext}` template."""
-    return os.path.join(out_dir, model, "no_vocals.wav")
+def demucs_no_vocals_path(
+    out_dir: str, model: str = DEFAULT_MODEL, stem_format: StemFormat = StemFormat.FLAC
+) -> str:
+    """Where demucs writes the instrumental given the flattened `--filename {stem}.{ext}` template.
+
+    The extension comes from the SAME `stem_format` value that put the format flag in `demucs_argv`, so
+    the two cannot disagree — the failure mode this replaces was a hardcoded `.wav` here while the argv
+    was free to emit something else, which reads downstream as "the separator produced nothing".
+    """
+    return os.path.join(out_dir, model, f"no_vocals{stem_format.ext}")
 
 
-def demucs_vocals_path(out_dir: str, model: str = DEFAULT_MODEL) -> str:
+def demucs_vocals_path(
+    out_dir: str, model: str = DEFAULT_MODEL, stem_format: StemFormat = StemFormat.FLAC
+) -> str:
     """Where demucs writes the ISOLATED VOCALS given the flattened `--filename {stem}.{ext}` template.
-    `--two-stems=vocals` always emits BOTH no_vocals.wav and vocals.wav; both are published."""
-    return os.path.join(out_dir, model, "vocals.wav")
+    `--two-stems=vocals` always emits BOTH stems; both are published."""
+    return os.path.join(out_dir, model, f"vocals{stem_format.ext}")
 
 
 _TQDM_PCT = re.compile(r"(\d+)%\|")  # demucs uses a tqdm bar: "  56%|████▏     | ..."

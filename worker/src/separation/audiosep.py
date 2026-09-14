@@ -49,6 +49,7 @@ from __future__ import annotations
 import os
 
 from ..retry_policy import BoundaryError
+from ..vocabulary import StemFormat
 
 # ── pure helpers (no torch, no subprocess) ───────────────────────────────────────
 
@@ -120,6 +121,7 @@ def audiosep_argv(
     *,
     model_file_dir: str | None = None,
     bin: str = "audio-separator",
+    stem_format: StemFormat = StemFormat.FLAC,
 ) -> list[str]:
     """audio-separator CLI argv. Confirmed against docs/benchmarks/scripts/family_bench.sh:
 
@@ -128,10 +130,15 @@ def audiosep_argv(
 
     Unlike bs-roformer-infer's `--input_folder`, audio-separator takes the input FILE as its positional
     argument, so no dedicated input directory is needed. `--model_filename` auto-resolves and downloads
-    the checkpoint on first use. `--output_format FLAC` matches the lossless stem the pipeline publishes;
-    the stems still pass through the pipeline's own FLAC encode (PublishStems) for a uniform container.
-    `--model_file_dir` points at the shared host-side checkpoint cache when set, so the ~hundreds-of-MB
-    download happens once per box, not once per process."""
+    the checkpoint on first use. `--model_file_dir` points at the shared host-side checkpoint cache when
+    set, so the ~hundreds-of-MB download happens once per box, not once per process.
+
+    `--output_format` comes from the DECLARED `stem_format` rather than a literal. It was hardcoded to
+    FLAC, which was defensible on its own terms — FLAC is what the pipeline publishes — but nothing told
+    the raw-stem readers, and they assumed WAV via stdlib `wave`, which cannot open a FLAC. The result was
+    that this engine alone silently lost its guide offset and its guide mix, reported as "stems do not
+    match" rather than as an unreadable container. Driving the flag from the same value the readers consult
+    is what makes the two agree by construction."""
     argv = [
         bin,
         input_wav,
@@ -140,7 +147,7 @@ def audiosep_argv(
         "--output_dir",
         out_dir,
         "--output_format",
-        "FLAC",
+        stem_format.value.upper(),
     ]
     if model_file_dir:
         argv += ["--model_file_dir", model_file_dir]

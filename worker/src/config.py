@@ -25,6 +25,7 @@ import os
 from dataclasses import dataclass, field, replace
 
 from .hardware import effective_cpus
+from .vocabulary import StemFormat, parse_stem_format
 
 
 def _str(env: dict[str, str], key: str, default: str) -> str:
@@ -239,6 +240,13 @@ class WorkerConfig:
 
     # ── encoding ──────────────────────────────────────────────────────────────────
     flac_level: int = 8
+    #: Container the separator writes its RAW scratch stems in, for the two engines whose CLI takes a
+    #: format flag (torch demucs, audio-separator). FLAC by default: it is what the pipeline publishes, so
+    #: the whole chain is one lossless codec end to end, and it roughly halves the scratch bytes of a
+    #: full-rate stem pair. WAV is selectable for a box that would rather skip the encode during
+    #: separation. demucs-mlx and bs-roformer-infer expose no such flag, so their engines declare a fixed
+    #: format and this value does not reach them — see `SeparatorEngine.stem_format`.
+    stem_format: StemFormat = StemFormat.FLAC
     #: None => derived from the resolved device via `whisperx_device_for`. It used to default to a
     #: hardcoded "cpu", which meant a CUDA box separated on the GPU and then transcribed on the CPU
     #: unless a human set a SECOND env var — slow, correct-looking, and silent.
@@ -327,6 +335,9 @@ class WorkerConfig:
             ),
             separator_backend=(e.get("ENCORE_SEPARATOR_BACKEND", "").strip().lower() or None),
             flac_level=_int(e, "ENCORE_FLAC_LEVEL", 8, w, minimum=0),
+            # Parsed at the BOUNDARY, so an unknown value fails here rather than reaching the engines as a
+            # format the readers were never told about — which is the silent guide-mix loss this type ended.
+            stem_format=parse_stem_format(e.get("ENCORE_STEM_FORMAT", "").strip().lower() or None),
             whisperx_device=(e.get("ENCORE_WHISPERX_DEVICE", "").strip() or None),
             asr_model=_str(e, "ENCORE_ASR_MODEL", "base"),
             sync_mode=_str(e, "ENCORE_SYNC_MODE", "forced").lower(),

@@ -24,6 +24,7 @@ import os
 from typing import Protocol
 
 from ..retry_policy import PermanentError
+from ..vocabulary import StemFormat
 from . import audiosep as a
 from . import demucs as d
 from . import mlx as m
@@ -35,6 +36,16 @@ class SeparatorEngine(Protocol):
 
     id: str
     backend: str
+
+    #: The container this engine writes its RAW scratch stems in — the format `find_outputs` returns paths
+    #: to. DECLARED rather than inferred, because every consumer of a raw stem previously had to guess it
+    #: and they did not all guess the same: demucs and demucs-mlx emit PCM WAV, audio-separator emits
+    #: FLAC, and `analysis/wav.py` assumed WAV via stdlib `wave`, which cannot open a FLAC. So an audiosep
+    #: job's guide offset came back unmeasured and its guide mix was refused as "stems do not match" when
+    #: the real cause was an unreadable container. Stating it here makes the format part of the seam's
+    #: contract: a fifth engine cannot ship without answering the question, and the readers honour the
+    #: answer instead of assuming one.
+    stem_format: StemFormat
 
     def resolve_model(self, params: dict) -> str: ...
     def input_wav(self, work: str) -> str: ...
@@ -71,6 +82,7 @@ class DemucsEngine:
         segment: int | None = None,
         shifts: int | None = None,
         backend: str = "torch",
+        stem_format: StemFormat = StemFormat.FLAC,
     ) -> None:
         self._default_model = default_model
         self._bin = demucs_bin
@@ -79,6 +91,9 @@ class DemucsEngine:
         self._overlap = overlap
         self._segment = segment
         self._shifts = shifts
+        # DECLARED, and the same value reaches both the argv and the output paths below — see the Protocol's
+        # `stem_format` note for why an engine stating its own container replaced every consumer guessing.
+        self.stem_format = stem_format
         # `backend` is the RESOLVED hardware backend this process runs through (backends.resolve_backend),
         # recorded into facts so the ledger matches the startup log — not a hardcoded class constant. The
         # torch CLI is the only demucs backend actually implemented here; MLX resolves to MlxDemucsEngine,
@@ -104,14 +119,15 @@ class DemucsEngine:
             overlap=self._overlap,
             segment=self._segment,
             shifts=self._shifts,
+            stem_format=self.stem_format,
         )
 
     def parse_progress(self, line: str) -> int | None:
         return d.parse_demucs_progress(line)
 
     def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]:
-        inst = d.demucs_no_vocals_path(out_dir, model)
-        vox = d.demucs_vocals_path(out_dir, model)
+        inst = d.demucs_no_vocals_path(out_dir, model, self.stem_format)
+        vox = d.demucs_vocals_path(out_dir, model, self.stem_format)
         return {
             "instrumental": inst if os.path.exists(inst) else None,
             "vocals": vox if os.path.exists(vox) else None,
@@ -160,6 +176,14 @@ class MlxDemucsEngine:
 
     id = "demucs"
     backend = "mlx"
+
+    #: WAV, and NOT configurable — declared truthfully rather than aspirationally. demucs-mlx has no output
+    #: format flag: it writes `<out>/<track>/{vocals,drums,bass,other}.wav` and that is the whole of the
+    #: contract it offers. The instrumental this engine derives is built by our own ffmpeg mix-minus pass,
+    #: so it COULD be FLAC — but then one engine would hand back a FLAC instrumental beside a WAV vocals
+    #: stem, and the guide mix folds those two together. Matching the upstream format keeps the pair in one
+    #: container, which is the property the guide mix actually depends on.
+    stem_format = StemFormat.WAV
 
     def __init__(
         self,
@@ -232,6 +256,13 @@ class RoformerEngine:
     id = "roformer"
     backend = "bs-roformer-infer"
 
+    #: WAV, and NOT configurable: `bs-roformer-infer` takes no output-format flag, so the container is
+    #: whatever the CLI writes. Note that this engine's `find_outputs` DISCOVERS its stems by scanning for a
+    #: delimited filename (it accepts `.wav` or `.flac`), so discovery — not this value — is what actually
+    #: locates the files. The declaration is here because the Protocol requires every engine to answer the
+    #: question, and because a reader that wants to know what to expect should not have to read the glob.
+    stem_format = StemFormat.WAV
+
     def __init__(
         self,
         *,
@@ -303,10 +334,15 @@ class AudioSepEngine:
         default_model: str = a.DEFAULT_AUDIOSEP_MODEL,
         audiosep_bin: str = "audio-separator",
         model_file_dir: str | None = None,
+        stem_format: StemFormat = StemFormat.FLAC,
     ) -> None:
         self._default_model = default_model
         self._bin = audiosep_bin
         self._model_file_dir = model_file_dir
+        # This engine is why the declaration exists. Its `--output_format` used to be the literal "FLAC"
+        # while every raw-stem reader assumed WAV, so its stems were unreadable to the guide-offset and
+        # guide-mix passes and the song lost both with no error naming the container.
+        self.stem_format = stem_format
 
     def resolve_model(self, params: dict) -> str:
         return a.resolve_audiosep_checkpoint(params, self._default_model)
@@ -317,7 +353,14 @@ class AudioSepEngine:
         return os.path.join(work, "input.wav")
 
     def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:
-        return a.audiosep_argv(input_wav, out_dir, model, model_file_dir=self._model_file_dir, bin=self._bin)
+        return a.audiosep_argv(
+            input_wav,
+            out_dir,
+            model,
+            model_file_dir=self._model_file_dir,
+            bin=self._bin,
+            stem_format=self.stem_format,
+        )
 
     def parse_progress(self, line: str) -> int | None:
         return None  # tqdm output is not a stable pct source; the step emits a coarse 0→100
@@ -377,7 +420,11 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
             kw["default_model"] = given["roformer_model"]
         return RoformerEngine(**kw)
     if name == AudioSepEngine.id:
-        allowed = {"audiosep_bin", "model_file_dir"}
+        # `stem_format` is accepted here and by the torch demucs branch below, and NOWHERE else: those are
+        # the two CLIs that take an output-format flag. demucs-mlx and bs-roformer-infer do not, so their
+        # engines declare a fixed format as a class attribute and a caller cannot ask them for another one.
+        # Silently accepting-and-dropping the kwarg would advertise a choice the CLI cannot honour.
+        allowed = {"audiosep_bin", "model_file_dir", "stem_format"}
         kw = {k: v for k, v in given.items() if k in allowed}
         if "audiosep_model" in given:
             kw["default_model"] = given["audiosep_model"]
@@ -392,7 +439,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
             if "demucs_model" in given:
                 kw["default_model"] = given["demucs_model"]
             return MlxDemucsEngine(**kw)
-        allowed = {"demucs_bin", "device", "jobs", "overlap", "segment", "shifts"}
+        allowed = {"demucs_bin", "device", "jobs", "overlap", "segment", "shifts", "stem_format"}
         kw = {k: v for k, v in given.items() if k in allowed}
         if "demucs_model" in given:
             kw["default_model"] = given["demucs_model"]
