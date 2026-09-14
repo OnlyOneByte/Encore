@@ -73,6 +73,18 @@
 	// surface an on-screen affordance; TvPlayer arms a document-wide gesture listener that re-attempts
 	// playback and clears this the moment the room recovers. Only the active+visible slot reports here.
 	let autoplayBlocked = $state(false);
+	/*
+	 * A TRANSPOSE IS WAITING FOR ONE TAP. Raised by either player slot when a ± semitone shift was asked
+	 * for and its WebAudio graph could not route, which on a TV means the page has never had user
+	 * activation so the AudioContext cannot leave `suspended`.
+	 *
+	 * Distinct from `autoplayBlocked`: there the MUSIC is not playing, which is obvious in the room and
+	 * already has a full-stage affordance. Here the music plays perfectly and only the key is stuck, so
+	 * the say is a small corner pill rather than a takeover — and it is the only way anyone learns the
+	 * buttons need a tap, because the graph degrades silently by design (capturing the element into a
+	 * suspended context would cost the room ALL audio, permanently).
+	 */
+	let pitchBlocked = $state(false);
 	// The instrumental refused to start with an error NO gesture can lift (decode failure, AbortError) —
 	// distinct from `autoplayBlocked`, which a tap recovers. There is no recovery here, so the page must
 	// SAY the room is silent on screen rather than leave the only trace in the TV's devtools console
@@ -213,6 +225,9 @@
 	}
 
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {
+		// Did the TURN actually change? Compared BEFORE `current` is overwritten, and on the entry id
+		// rather than the media id, because a song queued twice is two entries over one media record.
+		const entryChanged = cur?.id !== current?.id;
 		current = cur;
 		upNext = next;
 		// Reset the drawn-position anchor on the entry change itself. Both `positionSec` and
@@ -223,8 +238,20 @@
 		// progress bar opens two-thirds full. `nowplaying:changed` is the exact event that marks the
 		// new song's zero, so re-anchor here rather than relaxing `drawPosition`'s floor (— that
 		// purity is load-bearing) or guarding inside `LyricsOverlay`. See issue an earlier change.
-		positionSec = 0;
-		durationSec = 0;
+		//
+		// THE GUARD IS THE FIX, and the comment above already claimed it. The server calls
+		// `emitNowPlaying` at the tail of EVERY player command (player.ts), not only on an advance, so
+		// this ran on every pause, resume, restart, key press and guide nudge. `positionSec = 0` flows
+		// into the overlay's anchor, `activeLineIndex(lines, 0)` returns 0, and the reel snaps back to
+		// the FIRST line while the progress bar empties — until the next `timeupdate` ~250ms later
+		// restores it. Under the guide slider's ~8 commands/second it is re-pinned to 0 faster than
+		// `timeupdate` can recover, so for the whole drag the reel parks on the opening line and stops
+		// tracking the singer, lurching because the reel's own 0.42s transform outlasts the interval.
+		// Re-anchoring is correct for a NEW turn and wrong for every other command.
+		if (entryChanged) {
+			positionSec = 0;
+			durationSec = 0;
+		}
 		// held-slot: if the server handed us a current whose media has no instrumental yet (a processing
 		// process song), show WAITING rather than a black player. Server normally skips these via
 		// nextPlayable, so this is a belt-and-suspenders guard.
@@ -739,8 +766,14 @@
 	/*
 	 * The provenance TAG shown on the now-playing card: names the source of the words
 	 * for EVERY kind, not just ASR. `null` for a pre-candidate artifact, so the card says nothing.
+	 *
+	 * GATED ON THERE BEING WORDS. `chosenCandidate` reads the media's `lyricsCandidates` + `lyricsRef`,
+	 * which is independent of whether an artifact is actually on disk — so the card cheerfully printed
+	 * "Auto-transcribed" over a completely empty stage, asserting the source of lyrics nobody could see.
+	 * A song with no `lyricsRef` has no words to attribute, so it gets no label. (A ref that exists but
+	 * fails to fetch still labels: the overlay owns that outcome and now says so itself.)
 	 */
-	const lyricsSourceLabel = $derived(provenanceLabel(lyricsProvenance));
+	const lyricsSourceLabel = $derived(mediaOf(current)?.lyricsRef ? provenanceLabel(lyricsProvenance) : null);
 	/*
 	 * What the reel actually draws, clamped against BOTH bounds — see `resolveLyricsPresentation`.
 	 *
@@ -918,6 +951,8 @@
 			sendTelemetry('playing', s);
 		}}
 		onautoplayblocked={() => (autoplayBlocked = true)}
+		onpitchblocked={() => (pitchBlocked = true)}
+		onpitchrouted={() => (pitchBlocked = false)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 		onplayingchange={(p) => (masterAdvancing = p)}
 		onplaybackfailed={(reason) => (playbackFailedReason = reason)}
@@ -951,6 +986,8 @@
 			sendTelemetry('playing', s);
 		}}
 		onautoplayblocked={() => (autoplayBlocked = true)}
+		onpitchblocked={() => (pitchBlocked = true)}
+		onpitchrouted={() => (pitchBlocked = false)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 		onplayingchange={(p) => (masterAdvancing = p)}
 		onplaybackfailed={(reason) => (playbackFailedReason = reason)}
@@ -1258,6 +1295,36 @@
 			<span class="ah-mark"><Icon name="play" /></span>
 			<span class="ah-head">Tap anywhere to <span class="grad">start the music</span></span>
 			<span class="ah-sub">This TV needs one tap before it can play sound</span>
+		</button>
+	{/if}
+
+	<!--
+		A TRANSPOSE IS WAITING FOR ONE TAP. Someone pressed ± on their phone and the key did not move,
+		because a browser will not run an AudioContext until the page has user activation and a TV that
+		autoplays correctly never receives any. The graph degrades to audible-but-unshifted on purpose —
+		the alternative costs the room all its audio permanently — so without this the ± buttons are
+		simply dead and the room has no way to know why.
+
+		A BUTTON, because the tap is the whole remedy: pressing it authorises WebAudio for the document,
+		and TvPlayer's own always-armed gesture listener re-drives the pending shift on the same gesture.
+		Deliberately NOT the full-stage treatment the autoplay block gets — the music is playing fine
+		here, so this is a corner pill that says what is stuck without covering the song. It sits at the
+		transient-overlay tier so a genuine autoplay block (which silences the whole room) still wins if
+		both are somehow up. Suppressed on the attract screen, where there is no song to transpose.
+	-->
+	{#if pitchBlocked && !autoplayBlocked && !isAttract}
+		<button
+			type="button"
+			class="pitch-hint"
+			onclick={() => {
+				// The click IS the activation. Clearing the latch optimistically is safe: if the retry does
+				// not route after all, the next pitch effect pass raises it again.
+				pitchBlocked = false;
+			}}
+			aria-label="Tap to let this TV change the key"
+		>
+			<span class="ph-head">Tap to <span class="grad">change the key</span></span>
+			<span class="ph-sub">This TV needs one tap before ± can shift the song</span>
 		</button>
 	{/if}
 
@@ -2010,6 +2077,56 @@
 		background: color-mix(in srgb, var(--bg) 82%, transparent);
 		backdrop-filter: blur(6px);
 		-webkit-backdrop-filter: blur(6px);
+	}
+
+	/*
+	 * THE KEY-IS-STUCK PILL. Not `inset: 0` like the affordance above, and that is the whole design
+	 * difference: that one exists because the room is SILENT, so covering the stage costs nothing and
+	 * being unmissable is worth everything. Here the song is playing and only the transpose is stuck, so
+	 * a takeover would be a lie about the severity — this states the problem and stays out of the way.
+	 *
+	 * TOP-CENTRE is the one free strip on this surface. The lower-third owns bottom-left, the join/QR
+	 * corner bottom-right, the score badge and fullscreen button top-right, and the `corner` progress
+	 * style top-left — so a centred top pill collides with none of them at any of those placements.
+	 * Tier 8 (transient overlays) puts it above the reel and the persistent chrome while leaving the
+	 * autoplay affordance at 10 strictly on top, which is the correct precedence: a silent room is a
+	 * bigger problem than a stuck key, and the markup's `!autoplayBlocked` term means they never race.
+	 *
+	 * Sized off the TV type ladder (`--tv-body` / `--tv-small`) rather than a viewport term, because the
+	 * `.tv` root is already vh-scaled and a per-token viewport unit multiplies the panel twice
+	 * (XR-TV-02). Kept comfortably past the 44px touch floor because it is a real target on a
+	 * touchscreen TV.
+	 */
+	.pitch-hint {
+		position: absolute;
+		top: var(--tv-safe-y);
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: var(--z-tv-interstitial);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.3em;
+		min-height: 44px;
+		max-width: 60vw;
+		padding: 0.7em 1.4em;
+		border: 0;
+		border-radius: 999px;
+		cursor: pointer;
+		color: var(--ink);
+		text-align: center;
+		background: color-mix(in srgb, var(--bg) 88%, transparent);
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
+	}
+	.ph-head {
+		font-size: var(--tv-body);
+		font-weight: 650;
+		line-height: var(--lh-snug, 1.2);
+	}
+	.ph-sub {
+		font-size: var(--tv-small);
+		color: var(--ink-dim);
 	}
 	.ah-mark {
 		display: grid;

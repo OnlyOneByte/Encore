@@ -98,6 +98,16 @@
 
 	let fetched = $state<LyricsDoc | null>(null);
 	let loadedRef: string | undefined;
+	/*
+	 * Which ref's fetch has SETTLED — resolved or failed. Reactive, unlike `loadedRef`, because the
+	 * no-lyrics notice below is derived from it.
+	 *
+	 * This exists to keep one honest distinction that `doc === null` cannot make on its own: "this song
+	 * has no words and never will" versus "the artifact is still in flight". Both render nothing, but
+	 * only the first may say so on screen — a notice that flashed during every song's load would be
+	 * worse than the silence it replaces. `undefined` means nothing has settled for the current ref.
+	 */
+	let settledRef = $state<string | undefined>(undefined);
 	// pre-parsed doc wins (gallery/tests); otherwise use whatever the fetch produced
 	const doc = $derived(docProp ?? fetched);
 
@@ -127,10 +137,15 @@
 		if (!ref) {
 			fetched = null;
 			loadedRef = undefined;
+			// No artifact at all: nothing is in flight, so this song is settled-with-no-words the moment
+			// we see it. This is the dominant no-lyrics case — an align job that never ran (no
+			// WhisperX-capable worker) settles the media's lyrics gate as done with no `lyricsRef`.
+			settledRef = undefined;
 			return;
 		}
 		if (ref === loadedRef) return;
 		loadedRef = ref;
+		settledRef = undefined;
 		// Clear the previous song's doc on the ref CHANGE, not only when the ref goes falsy. Without
 		// this the derived `doc` keeps the old artifact until the async fetch resolves, so for one
 		// frame after an entry change the reel renders the PREVIOUS song's lyrics under the NEW song's
@@ -141,10 +156,16 @@
 		fetch(`/media/${ref}`)
 			.then((r) => (r.ok ? r.json() : null))
 			.then((j) => {
-				if (!cancelled) fetched = parseLyricsDoc(j);
+				if (!cancelled) {
+					fetched = parseLyricsDoc(j);
+					settledRef = ref;
+				}
 			})
 			.catch(() => {
-				if (!cancelled) fetched = null; // dead/absent lyrics → overlay silently no-ops
+				if (!cancelled) {
+					fetched = null; // dead/absent lyrics → the notice below says so
+					settledRef = ref;
+				}
 			});
 		return () => {
 			cancelled = true;
@@ -174,6 +195,23 @@
 	const curLine = $derived(doc && lineIdx >= 0 ? doc.lines[lineIdx] : null);
 	const ballWord = $derived(curLine ? activeWordIndex(curLine, cuePos) : -1);
 	const show = $derived(visible && !!curLine);
+	/*
+	 * SAY that a song has no words, instead of implying it with an empty stage.
+	 *
+	 * The silence this replaces was the loudest half of a real report: three defects were live on the
+	 * TV at once and the stage explained none of them, so "the karaoke text isn't showing" was
+	 * indistinguishable from a broken renderer, a broken pipeline and a CSS regression. A song whose
+	 * align step never ran plays perfectly and shows nothing, and `{#if show && doc && curLine}` below
+	 * had no `{:else}` — absence had no on-screen representation anywhere.
+	 *
+	 * Deliberately narrow, so it cannot fire on the normal blank frames:
+	 *   • `visible` — never on the attract/lobby screen, which has no song at all.
+	 *   • `!doc` — a song WITH words that is merely between lines (curLine null) stays blank, which is
+	 *     correct and is most of a song's running time.
+	 *   • settled — `!lyricsRef` means no artifact exists to wait for; otherwise the fetch for THIS ref
+	 *     must have finished, so the notice cannot flash during a load.
+	 */
+	const noLyrics = $derived(visible && !doc && (!lyricsRef || settledRef === lyricsRef));
 	// Reel scrolling: measure where the current row sits and place it. Measured (not row*height) so a
 	// wrapped line cannot drift the whole column out of alignment.
 	let viewportEl = $state<HTMLElement | null>(null);
@@ -347,6 +385,21 @@
 			</div>
 		</div>
 	</div>
+{:else if noLyrics}
+	<!--
+		NO WORDS FOR THIS SONG. A plain say, not a button — there is nothing a tap can fix here, which
+		is exactly what distinguishes it from the autoplay hint on the route. It reuses `.lyrics`'s own
+		box so it inherits the reserved chrome band (`bottom: var(--tv-chrome-h)`) and therefore cannot
+		collide with the lower-third or the join corner, and it is centred where the words would be —
+		the singer looks in one place and finds either lyrics or the reason there are none.
+
+		`role="status"` + `aria-live` so a screen reader announces it once; `presentation` would hide
+		the one piece of information on the stage.
+	-->
+	<div class="lyrics no-lyrics" role="status" aria-live="polite" style={typeStyle}>
+		<span class="nl-head">No lyrics for this one</span>
+		<span class="nl-sub">The song still plays — sing from memory</span>
+	</div>
 {/if}
 
 <style>
@@ -497,6 +550,33 @@
 	 * column mid-animation and fight the transform; keeping every row the same height makes the scroll
 	 * exact, and pink/white against grey is already a stronger cue than size.
 	 */
+	/*
+	 * THE NO-WORDS SAY. Shares `.lyrics`'s box (so it inherits the reserved chrome band and the safe-x
+	 * inset, and cannot collide with the lower-third or the join corner) and its stroke/shadow pair, so
+	 * it stays legible over any video frame or stage colour exactly as the words do.
+	 *
+	 * Deliberately much smaller than a lyric line: this is a status, not something to sing. It must read
+	 * at three metres and then be ignored, so it is sized off the same `--tv-lyric` tier the reel uses —
+	 * never a px value, which would read heavy at 720p and hairline at 4K — and held well under it. The
+	 * literal whites match the reel's own convention (see `--reel-current` / `--reel-ahead`: `--ink` is
+	 * deliberately not pure white and would REDUCE contrast at that distance), and the alpha is the
+	 * "this is an aside" cue.
+	 */
+	.no-lyrics {
+		gap: 0.35em;
+		font-size: calc(var(--tv-lyric) * 0.34);
+		font-family: var(--lyrics-font, inherit);
+		line-height: var(--lh-snug, 1.2);
+	}
+	.nl-head {
+		color: rgba(255, 255, 255, 0.86);
+		font-weight: 650;
+	}
+	.nl-sub {
+		color: rgba(255, 255, 255, 0.6);
+		font-size: 0.62em;
+	}
+
 	.viewport {
 		/*
 		 * The reel's own tier, times the room's preference.
