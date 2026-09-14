@@ -57,16 +57,55 @@ class SeparatorEngine(Protocol):
         """Extra commands to run AFTER `separate_argv`, before `find_outputs` — each a full argv the
         step runs through the same runner, in order.
 
-        The seam for an engine whose CLI does not itself produce the 2-stem
-        `{no_vocals,vocals}` layout the rest of the pipeline reads. demucs and roformer produce it
-        directly and return `[]` (nothing to derive). `MlxDemucsEngine` returns the single ffmpeg
-        mix-minus pass that sums demucs-mlx's non-vocal stems into `no_vocals.wav`, because demucs-mlx
-        has no `--two-stems` flag and emits four/six stems with no instrumental file.
+        The seam for an engine whose CLI does not itself produce the 2-stem `{no_vocals,vocals}` layout
+        the rest of the pipeline reads. Only `MlxDemucsEngine` uses it: it returns the single ffmpeg
+        mix-minus pass that sums demucs-mlx's non-vocal stems into `no_vocals.wav`, because demucs-mlx has
+        no `--two-stems` flag and emits four/six stems with no instrumental file. Every other CLI writes
+        an instrumental directly, so the answer is `[]` — inherit `SeparatorDefaults` and it is free.
         """
         ...
 
 
-class DemucsEngine:
+class SeparatorDefaults:
+    """The two answers most engines give, so they are written once instead of four times.
+
+    WHY THIS IS SEPARATE FROM THE PROTOCOL ABOVE, which is the part worth reading if you came from Java.
+    In Java these would be ONE abstract class: the interface and the shared code together, and every
+    engine would extend it. Python splits the job in two, and the split buys something real:
+
+      * `SeparatorEngine` is the TYPE. It is a `Protocol`, so it matches STRUCTURALLY — anything with the
+        right methods satisfies it, no inheritance required. That is what lets the tests pass small fakes
+        (`test_demucs.py`, `test_roformer.py` and friends all do) without dragging a base class into
+        every one of them. Make it an ABC and each fake has to inherit and then implement members it
+        does not care about, which is how a suite starts describing the framework instead of behaviour.
+      * `SeparatorDefaults` is the shared CODE, and nothing more. It declares no abstract members and
+        does not restate the interface, so the contract still lives in exactly one place.
+
+    A Protocol cannot hand a default to an implementer: the `...` body means every engine writes the
+    default itself. `derive_argvs` was `return []` in three of the four engines and `input_wav` was the
+    same `os.path.join(work, "input.wav")` in three of the four — six lines a reader had to diff against
+    each other to be sure they agreed.
+
+    Inherit this for the defaults; override either one where the CLI genuinely differs. Both current
+    overrides are real and explained at the override site: `MlxDemucsEngine.derive_argvs` (no
+    `--two-stems` flag) and `RoformerEngine.input_wav` (separates every WAV in `--input_folder`, so its
+    input cannot share the scratch dir that also holds its output).
+    """
+
+    def input_wav(self, work: str) -> str:
+        """One named file in the shared scratch dir.
+
+        Right for every CLI that separates the FILE it is given. Roformer overrides it because
+        `bs-roformer-infer` separates a DIRECTORY.
+        """
+        return os.path.join(work, "input.wav")
+
+    def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
+        """Nothing to derive: this engine's CLI already wrote an instrumental stem."""
+        return []
+
+
+class DemucsEngine(SeparatorDefaults):
     """htdemucs via the Demucs CLI. The default, and the fastest measured on CPU."""
 
     id = "demucs"
@@ -105,9 +144,6 @@ class DemucsEngine:
         A raise here means the room asked for a model this build does not carry."""
         return d.resolve_demucs_model(params, self._default_model)
 
-    def input_wav(self, work: str) -> str:
-        return os.path.join(work, "input.wav")
-
     def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:
         return d.demucs_argv(
             input_wav,
@@ -133,12 +169,8 @@ class DemucsEngine:
             "vocals": vox if os.path.exists(vox) else None,
         }
 
-    def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
-        # demucs --two-stems writes no_vocals.wav directly; nothing to derive.
-        return []
 
-
-class MlxDemucsEngine:
+class MlxDemucsEngine(SeparatorDefaults):
     """The demucs family through `demucs-mlx` — Apple-Silicon Metal execution of the SAME htdemucs
     checkpoints, selected by `backends.resolve_backend` when MLX is available (Apple Silicon + the
     `demucs_mlx` package importable). an earlier change.
@@ -210,11 +242,6 @@ class MlxDemucsEngine:
     def resolve_model(self, params: dict) -> str:
         return m.resolve_mlx_model(params, self._default_model)
 
-    def input_wav(self, work: str) -> str:
-        # Same convention as the torch engine: one WAV in the shared scratch dir. demucs-mlx separates a
-        # named file (not a folder), so no dedicated directory is needed.
-        return os.path.join(work, "input.wav")
-
     def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:
         self._input_wav = input_wav
         return m.mlx_argv(
@@ -246,7 +273,7 @@ class MlxDemucsEngine:
         }
 
 
-class RoformerEngine:
+class RoformerEngine(SeparatorDefaults):
     """The BS-RoFormer family via `bs-roformer-infer`.
 
     Better on cymbal transients, and roughly 50x slower than htdemucs on CPU (measured: ~45 min against
@@ -296,12 +323,8 @@ class RoformerEngine:
             "vocals": r.find_roformer_vocals(out_dir),
         }
 
-    def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
-        # bs-roformer-infer writes an instrumental stem directly; nothing to derive.
-        return []
 
-
-class AudioSepEngine:
+class AudioSepEngine(SeparatorDefaults):
     """The MEL-BAND RoFormer family via `python-audio-separator`.
 
     The fast RoFormer path `bs-roformer-infer` cannot reach: audio-separator runs mel-band checkpoints
@@ -347,11 +370,6 @@ class AudioSepEngine:
     def resolve_model(self, params: dict) -> str:
         return a.resolve_audiosep_checkpoint(params, self._default_model)
 
-    def input_wav(self, work: str) -> str:
-        # A single named file in the shared scratch dir, like demucs — audio-separator separates the
-        # FILE passed as its positional argument, not every file in a directory, so no dedicated dir.
-        return os.path.join(work, "input.wav")
-
     def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:
         return a.audiosep_argv(
             input_wav,
@@ -370,10 +388,6 @@ class AudioSepEngine:
             "instrumental": a.find_audiosep_instrumental(out_dir),
             "vocals": a.find_audiosep_vocals(out_dir),
         }
-
-    def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
-        # audio-separator writes an instrumental stem directly; nothing to derive.
-        return []
 
 
 def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorEngine:
