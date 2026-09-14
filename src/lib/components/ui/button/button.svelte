@@ -79,6 +79,18 @@
 				 */
 				eyebrow:
 					'justify-start gap-[7px] px-[var(--space-3xs)] text-[length:var(--ph-text-2xs)] font-bold tracking-[0.14em] uppercase whitespace-normal text-[var(--ink-dim)] hover:text-[var(--ink)] hover:bg-transparent',
+				/*
+				 * SongRow's "add a turn" action. The pair it belongs to is the app's most load-bearing
+				 * hierarchy: `iconPrimary` (accent fill, sparkle) is the expensive minute-long process,
+				 * this is the free instant queue-add. They must not converge — an earlier version had the
+				 * weight INVERTED, putting the primary fill on the dead-end action, and the comment in
+				 * SongRow records why that was worse than a styling nit.
+				 *
+				 * Green ink on the icon surface rather than a fill: it reads as available without
+				 * competing with the accent. `--ok` is the readiness colour the row's "Karaoke ready"
+				 * badge already uses, so the button agrees with the chip beside it.
+				 */
+				iconReady: 'bg-[var(--card2)] border-[var(--ok)] text-[var(--ok)]',
 				default: 'bg-primary text-primary-foreground hover:bg-primary/80',
 				outline:
 					'border-border bg-background shadow-xs hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',

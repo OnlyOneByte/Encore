@@ -131,8 +131,8 @@ export const SEL = {
 	searchDock: '.search-dock',
 	songRow: '.row',
 	songTitle: '.row .t',
-	addTurn: '.row .add',
-	sing: '.row .sing',
+	addTurn: '.row [data-testid="song-add"]',
+	sing: '.row [data-testid="song-sing"]',
 	queueRow: '.qrow',
 	queueTitle: '.qrow .t',
 	/*
@@ -144,15 +144,15 @@ export const SEL = {
 	processing: '.proc',
 	/*
 	 * Bare remote-list handles the probes read directly (not scoped under .row like addTurn/sing/songTitle
-	 * above): p3/p8/p10 query `.add`, `.sing`, `.t` on their own to check an action or a title exists at all,
+	 * above): p3/p8/p10 query the row actions and `.t` on their own to check an action or a title exists at all,
 	 * and p8/p12 read the presence and empty-state chrome. Named here so those reads come through the
 	 * contract instead of being spelled out per probe (migrated from KNOWN_OFFENDERS).
 	 */
-	addAction: '.add',
-	singAction: '.sing',
+	addAction: '[data-testid="song-add"]',
+	singAction: '[data-testid="song-sing"]',
 	/** "queued or ready" in one query — p8 asks whether a row offers EITHER queue action; a comma
 	 *  union, so one branch resolving is enough. */
-	addOrSing: '.add,.sing',
+	addOrSing: '[data-testid="song-add"],[data-testid="song-sing"]',
 	rowTitle: '.t',
 	empty: '.empty',
 	/*
@@ -543,13 +543,13 @@ export const HOOKS: Hook[] = [
 	{
 		id: 'addTurn',
 		file: 'src/lib/components/SongRow.svelte',
-		anchor: 'class="add"',
+		anchor: 'data-testid="song-add"',
 		why: 'a ready song is queued with this button'
 	},
 	{
 		id: 'sing',
 		file: 'src/lib/components/SongRow.svelte',
-		anchor: 'class="sing"',
+		anchor: 'data-testid="song-sing"',
 		why: 'a raw song has ONE action that both queues and starts the process'
 	},
 	{

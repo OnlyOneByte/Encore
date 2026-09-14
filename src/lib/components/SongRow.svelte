@@ -24,6 +24,7 @@
 	import { overallProcessPct } from '$lib/process-progress';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
 	import { Progress } from '$lib/components/ui/progress';
 	import * as Item from '$lib/components/ui/item';
 	import {
@@ -373,20 +374,25 @@
 			minute-long action wearing the same clothes as a free instant one. The words survive as the
 			`aria-label`, so nothing is lost to a screen reader.
 		-->
-				<button
-					class="sing"
-					class:retry={retryProcess}
+				<Button
+					variant="iconPrimary"
+					size="icon"
+					data-testid="song-sing"
+					data-retry={retryProcess ? '' : undefined}
 					aria-label={actionLabel}
 					title={retryProcess
 						? 'Try the karaoke again — you keep the turn you already have'
 						: 'Take a turn now and strip the vocals — you keep your place in line while it processes'}
-					onclick={() => onmake?.()}><Icon name="sparkle" /></button
+					onclick={() => onmake?.()}
 				>
+					<Icon name="sparkle" />
+				</Button>
 			{:else}
-				<button
-					class="add"
-					class:queued={inQueue}
-					class:unavailable={!processable}
+				<Button
+					variant="iconReady"
+					size="icon"
+					data-testid="song-add"
+					data-row-state={inQueue ? 'queued' : !processable ? 'unavailable' : undefined}
 					aria-label={actionLabel}
 					title={!processable
 						? 'Can’t sing this one — it’s a name match only. Search for the song to make karaoke.'
@@ -395,8 +401,9 @@
 							: 'Add a turn'}
 					disabled={inQueue || !processable}
 					onclick={() => onadd?.()}
-					>{#if inQueue}<Icon name="check" />{:else}<Icon name="plus" />{/if}</button
 				>
+					{#if inQueue}<Icon name="check" />{:else}<Icon name="plus" />{/if}
+				</Button>
 			{/if}
 		</div>
 	{/snippet}
@@ -578,83 +585,41 @@
 	}
 
 	/*
-	 * The actions. The box declares the project's minimum touch target as var(--tap) — the token, not
-	 * the number (XR-PH-01) — and that is why the button is square rather than as small as its mark:
-	 * shrinking the hit area to the glyph is how a control ends up technically present and practically
-	 * unhittable.
+	 * THE TWO ROW ACTIONS ARE <Button> NOW, so their boxes, radii, fills and inks live on the size and
+	 * variant axes: `size="icon"` is the 44x44 tap box (`size-tap`), `iconPrimary` is the accent fill for
+	 * the expensive process action, and `iconReady` is the green-on-icon-surface for the free queue-add.
+	 * Twelve rules went with them.
 	 *
-	 * The class NAMES (`.sing` / `.add`) are deliberately unchanged even though the buttons no longer
-	 * carry those words: they are the anchors `e2e/contract.ts` addresses these controls by, and its
-	 * selector-rot guard fires if they move. Renaming them to match the new marks would be churn in a
-	 * browser test that cannot run in this environment — so the geometry changed and the hooks did not.
-	 */
-	.sing,
-	.add {
-		width: var(--tap);
-		height: var(--tap);
-		flex: 0 0 auto;
-		border: 0;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		display: grid;
-		place-items: center;
-		font-size: 20px; /* Icon defaults to 1em */
-	}
-	.sing:active,
-	.add:active {
-		transform: scale(0.94);
-	}
-	/*
-	 * The raw row's single primary action takes the accent fill because it IS the primary intent on this
-	 * row — and because the weight used to sit on the wrong button: `.add` was the dead end (a turn that
-	 * could never become ready) while the process was styled as a secondary outline. The hierarchy was not
-	 * missing, it was inverted.
+	 * WHAT COULD NOT MOVE, and why it is spelled like this. Three STATES remain this row's business —
+	 * a retry ring, "already queued", and "not processable" — and none can be a class passed to the
+	 * component: Tailwind scans only the components/ui directory, and a class handed to a component is
+	 * scoped to THIS file where Svelte strips it as unused. So the state arrives as a data attribute the
+	 * component forwards, and the rule reaches it with `:global()` — the sanctioned form when the element
+	 * is rendered by a child (see ui/README section 2, and the dead `min-height` that shipped on
+	 * slider.svelte for what the wrong form costs).
 	 *
-	 * Now that both are icon-only, that distinction rests on the MARK as much as the fill: `sparkle` on
-	 * accent means "this processes for a minute", `plus` outlined in green means "queue it now". Giving both
-	 * the same glyph would re-create the inversion in a new form.
+	 * The `:global()` is ANCHORED under `.row`, which is scoped to this file. Unanchored it would match
+	 * every button in the app carrying these attributes.
 	 */
-	.sing {
-		background: var(--accent);
-		color: var(--on-accent);
-	}
-	/*
-	 * The RETRY sing keeps the accent fill — it is still the primary intent on this row, and it
-	 * is the action the failed group header points the singer at — but takes the danger ring so it is
-	 * not the same button as a first tap. It sits next to that row's own red "Couldn't make karaoke"
-	 * chip, so it borrows that chip's line colour rather than inventing a fourth semantic family. The
-	 * words carry the actual difference (see `actionLabel`); this stops the two states from being
-	 * pixel-identical while the action they perform differs.
-	 */
-	.sing.retry {
+	.row :global([data-slot='button'][data-retry]) {
+		/* A retry is still the primary action — same fill — but it has failed once, and the ring says so
+		   without spending the danger family's fill on something the guest is being invited to press. */
 		box-shadow: inset 0 0 0 2px var(--danger-line);
 	}
-	.add {
-		background: var(--card2);
-		border: 1px solid var(--ok);
-		color: var(--ok);
-	}
-	.add.queued {
+	.row :global([data-slot='button'][data-row-state='queued']) {
+		/* Dimmed but still GREEN: the song is in the rotation, which is the success state. */
 		opacity: 0.7;
 	}
 	/*
-	 * The song can never be processed, so the control must not wear the "go" clothes. `disabled`
-	 * alone was not enough: `.add`'s green border and green mark are the app's actionable signal, and a
-	 * full-strength green `＋` that does nothing when tapped reads as the app being broken rather than as
-	 * an action that is unavailable. This drops the accent entirely — hairline border, dim ink — so the
-	 * row still shows its place in the list without inviting a tap.
-	 *
-	 * Deliberately NOT the `--danger` family: nothing has gone wrong, and a red row would tell a guest
-	 * their search failed. Distinct from `.queued` too, which is a SUCCESS (your turn is booked) and
-	 * keeps the green with a check.
+	 * NOT-PROCESSABLE MUST NOT WEAR "GO" CLOTHES. A Spotify-style name-only match cannot be sung,
+	 * and the disabled attribute alone is not enough of a signal — the base's `disabled:opacity-50` would
+	 * leave a dimmed GREEN button, which reads as "queued" rather than "impossible". Neutralising the
+	 * border and ink is what separates the two disabled states from each other.
 	 */
-	.add.unavailable {
+	.row :global([data-slot='button'][data-row-state='unavailable']) {
 		border-color: var(--line);
 		color: var(--ink-dim);
 		opacity: 0.65;
-	}
-	.add:disabled {
-		cursor: default;
 	}
 
 	/*
