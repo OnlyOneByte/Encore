@@ -217,9 +217,6 @@ export function originalKeyLabel(p: SongProfile | null | undefined): string | nu
 
 // ── note names ────────────────────────────────────────────────────────────────────
 
-/** MIDI note number of middle C. Scientific pitch notation, so 60 is C4 and 69 is A4 (concert A). */
-export const MIDI_C4 = 60;
-
 /**
  * MIDI number -> scientific pitch name: `50` -> `'D3'`, `69` -> `'A4'`.
  *

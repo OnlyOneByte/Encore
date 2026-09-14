@@ -29,7 +29,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { SEL, PRESET_COLOUR_NAMES } from '../contract.ts';
 import { connect } from '../driver.mjs';
-import { openBrowseFromHome } from '../lib/phone.mjs';
+import { openBrowseFromHome, joinedExpression } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -461,10 +461,7 @@ async function main() {
 						await dup.page.fill(SEL.nameInput, 'ZZReplay');
 						await dup.page.clickByRole('button', 'Start singing');
 						const recovered = await dup.page
-							.waitFor(
-								`location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`,
-								{ timeout: 8_000 }
-							)
+							.waitFor(joinedExpression(), { timeout: 8_000 })
 							.catch(() => false);
 						if (!recovered) {
 							report('HIGH', 'form did not recover after fixing name', `submit did not land in the party`);

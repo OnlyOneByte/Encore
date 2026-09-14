@@ -516,9 +516,6 @@ export function nextSwatchIndex(value: string, step: number): number {
 	return (base + step + n) % n;
 }
 
-/** A singer colour is any legible hex now, not one of eight literals. */
-export type SingerColor = string;
-
 // ── duet part colours ───────────────────────────────────────────────
 
 /**
