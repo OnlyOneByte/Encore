@@ -186,9 +186,7 @@ test('every `card` caller is enumerated, so a new one is a decision', () => {
 	// …and the other direction: a caller that migrated should leave the list, or the list rots into a
 	// record of what USED to be true, which is what makes a floor stop meaning anything.
 	const gone = [...known].filter((f) => !inTree.has(f));
-	expect(gone, 'these no longer list `card`; remove them from CALLERS in the change that migrated them').toEqual(
-		[]
-	);
+	expect(gone, 'these no longer list `card`; remove them from CALLERS in the change that migrated them').toEqual([]);
 
 	// Each entry carries a reason a reader can weigh, not a bare path.
 	for (const c of CALLERS) expect(c.why.length, `${c.file} needs a substantive reason`).toBeGreaterThan(25);

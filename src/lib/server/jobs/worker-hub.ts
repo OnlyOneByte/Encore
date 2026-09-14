@@ -342,10 +342,7 @@ export class WorkerHub {
 	 * makes it so — and `reportTerminalFailure` is what tells the room, settles the gate and reclaims the
 	 * scratch, exactly as a worker-reported failure would.
 	 */
-	#refuseSilentInstrumental(
-		msg: Extract<WorkerMessage, { type: 'job:complete' }>,
-		ref: string
-	): void {
+	#refuseSilentInstrumental(msg: Extract<WorkerMessage, { type: 'job:complete' }>, ref: string): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
 		this.#unservableSince.delete(msg.jobId);

@@ -176,7 +176,13 @@ test('media.lyrics_override_text defaults null and round-trips pasted words', ()
 			lyricsOverrideText: 'hello darkness my old friend\nive come to talk with you again'
 		})
 		.run();
-	const byId = new Map(db.select().from(media).all().map((r) => [r.id, r.lyricsOverrideText]));
+	const byId = new Map(
+		db
+			.select()
+			.from(media)
+			.all()
+			.map((r) => [r.id, r.lyricsOverrideText])
+	);
 	expect(byId.get('t0')).toBeNull(); // no pasted text — a ref pick, or no pin at all
 	// Newlines survive: the worker splits the paste into one line per lyric line.
 	expect(byId.get('t1')).toBe('hello darkness my old friend\nive come to talk with you again');

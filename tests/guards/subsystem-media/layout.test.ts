@@ -5,7 +5,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, chmodSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { audioKey, instrumentalKey, vocalsKey, lyricsKey, metaKey, classOf, toRelativeKey, mediaRoot } from '$lib/server/media/paths';
+import {
+	audioKey,
+	instrumentalKey,
+	vocalsKey,
+	lyricsKey,
+	metaKey,
+	classOf,
+	toRelativeKey,
+	mediaRoot
+} from '$lib/server/media/paths';
 import { planMigration, applyMigration, ensureLayout } from '$lib/server/media/migrate-layout';
 
 // What `migrateStorageLayout` itself checks -- asserted the same way here, so the test cannot pass
@@ -40,7 +49,7 @@ describe('keys', () => {
 		expect(audioKey('m1', 'm4a')).toBe('audio/m1.m4a');
 		// the two stems get different formats: lossless where it is heard, lossy where it is not
 		expect(instrumentalKey('m1')).toBe('derived/stems/m1-instrumental.flac');
- // both stems are lossless FLAC now: one codec, one container, a sample-exact common start
+		// both stems are lossless FLAC now: one codec, one container, a sample-exact common start
 		expect(vocalsKey('m1')).toBe('derived/stems/m1-vocals.flac');
 		// a pre-policy song keeps its own extension — the ref is stored per media, not re-derived
 		expect(instrumentalKey('m1', 'wav')).toBe('derived/stems/m1-instrumental.wav');

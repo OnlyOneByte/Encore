@@ -85,9 +85,7 @@ test('an unresolved ?room= drops to the typed path WITH a reason, not a blank fo
 	const { setPage } = await stateStub();
 	setPage({ url: '/?room=ZZZZZZ' });
 	stubFetch((u) =>
-		u.includes('/api/room-preview')
-			? jsonRes({ error: 'No room is using the code ZZZZZZ.' }, 404)
-			: jsonRes({})
+		u.includes('/api/room-preview') ? jsonRes({ error: 'No room is using the code ZZZZZZ.' }, 404) : jsonRes({})
 	);
 	const { target, instance } = await mountLanding();
 	try {

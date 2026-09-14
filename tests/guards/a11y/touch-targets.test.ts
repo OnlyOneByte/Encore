@@ -14,7 +14,14 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { srcDir } from '@encore/test-support';
-import { TAP, TAP_FLOOR, expressesTap, restatesTapNumber, markupControls, svelteFiles } from '@encore/test-support/scan';
+import {
+	TAP,
+	TAP_FLOOR,
+	expressesTap,
+	restatesTapNumber,
+	markupControls,
+	svelteFiles
+} from '@encore/test-support/scan';
 
 const SRC = srcDir; // src
 
@@ -294,8 +301,16 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 		 * variants only tweak padding and font, so the token deliberately matches the base rule too — the
 		 * check is "is the floor reached anywhere", which is why a variant needs no floor of its own.
 		 */
-		{ file: join(SRC, 'lib', 'components', 'ui', 'native-select', 'native-select.svelte'), token: /\.encore-field\b/, name: 'the settings selects (NativeSelect)' },
-		{ file: join(SRC, 'lib', 'components', 'ui', 'input', 'input.svelte'), token: /\.encore-field\b/, name: 'the settings text fields (Input)' },
+		{
+			file: join(SRC, 'lib', 'components', 'ui', 'native-select', 'native-select.svelte'),
+			token: /\.encore-field\b/,
+			name: 'the settings selects (NativeSelect)'
+		},
+		{
+			file: join(SRC, 'lib', 'components', 'ui', 'input', 'input.svelte'),
+			token: /\.encore-field\b/,
+			name: 'the settings text fields (Input)'
+		},
 		/*
 		 * ── WHY VENDORED CONTROLS MUST BE LISTED HERE BY HAND (S4) ─────────────────────────────────
 		 *
@@ -318,7 +333,7 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 		{
 			file: join(SRC, 'lib', 'components', 'ui', 'tabs', 'tabs-trigger.svelte'),
 			token: /tabs-trigger/,
-			name: "the settings scope tabs (Tabs.Trigger)"
+			name: 'the settings scope tabs (Tabs.Trigger)'
 		},
 		{
 			file: join(SRC, 'lib', 'components', 'ui', 'slider', 'slider.svelte'),
@@ -350,11 +365,14 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 			anyRule = true;
 			if (reachesFloor(body)) sized = true;
 			// a bare `44px` is the drift shape XR-PH-01 names — report it even if another rule is clean.
-			if (restatesTapNumber(body)) offenders.push(`${file.replace(SRC, 'src')}: ${name} → restates ${TAP}px instead of var(--tap)`);
+			if (restatesTapNumber(body))
+				offenders.push(`${file.replace(SRC, 'src')}: ${name} → restates ${TAP}px instead of var(--tap)`);
 		}
 		if (!anyRule) offenders.push(`${file.replace(SRC, 'src')}: ${name} → no sizing rule found (selector moved?)`);
-		else if (!sized) offenders.push(`${file.replace(SRC, 'src')}: ${name} → not sized to var(--tap) by any rule; a text field with no tap-floor height sits below 44px`);
+		else if (!sized)
+			offenders.push(
+				`${file.replace(SRC, 'src')}: ${name} → not sized to var(--tap) by any rule; a text field with no tap-floor height sits below 44px`
+			);
 	}
 	expect(offenders).toEqual([]);
 });
-

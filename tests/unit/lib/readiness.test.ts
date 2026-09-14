@@ -1,14 +1,19 @@
 import { EMPTY_SONG_PROFILE, Media, MediaStatus } from '$lib/contract';
-import { canProcess, displayReadiness, entryPlayable, nextPlayableEntryId, processingGroupIds, queueCardKind, readinessOf, readyEmptyState } from '$lib/readiness';
+import {
+	canProcess,
+	displayReadiness,
+	entryPlayable,
+	nextPlayableEntryId,
+	processingGroupIds,
+	queueCardKind,
+	readinessOf,
+	readyEmptyState
+} from '$lib/readiness';
 import { isEntryReady } from '$lib/server/rotation';
 import { expect, test } from 'bun:test';
 // The client's readiness view must agree with the server's classification, and must let a live
 // media:status win over a stale catalog copy — otherwise tapping "✨ Karaoke" leaves the row looking
 // untouched until the next full sync.
-
-
-
-
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -146,7 +151,6 @@ test('a blank query while searchActive still reads sensibly (no empty quotes)', 
 // The phone used to label the FIRST queued row "up next". The server's nextPlayable() skips an entry
 // whose stems are still processing, so whenever row 0 was processing the phone promised a song the TV was
 // about to skip past. These pin the agreement.
-
 
 const entry = (id: string, mediaId: string) => ({ id, mediaId });
 
@@ -309,8 +313,6 @@ test('a failed lyrics upgrade on a still-singable song is NOT marked broken', ()
 // someone else was processing appeared under an UNRELATED search ("I want it that way" under "never
 // gonna give you up"). The server already returns a query-scoped `processing` group; the group's
 // id-selection now lives in the pure `processingGroupIds` helper, scoped to the query when searching.
-
-
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
 	id,

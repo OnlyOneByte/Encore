@@ -14,7 +14,6 @@
 // EXEMPTIONS ARE KEYED ON CONTENT, NOT ON `path:line`. An earlier registry in this suite was keyed on
 // line numbers and broke within the hour when a sibling edit shifted two entries by one line.
 
-
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -22,7 +21,9 @@ import { at, filesUnder, relative } from '@encore/test-support';
 
 /** Every path tracked by git, which is the only definition of "exists" that survives a rename. */
 const TRACKED = new Set(
-	execFileSync('git', ['ls-files'], { cwd: at('.'), encoding: 'utf8' }).split('\n').filter(Boolean)
+	execFileSync('git', ['ls-files'], { cwd: at('.'), encoding: 'utf8' })
+		.split('\n')
+		.filter(Boolean)
 );
 
 /** Source-file references in prose: repo-relative, pointing into a real source or test tree. */
@@ -89,7 +90,9 @@ test('every exempt document still exists and still carries its stale reference',
 	 * that file would inherit a free pass nobody granted it.
 	 */
 	for (const { doc, why } of HISTORICAL) {
-		expect(TRACKED.has(doc), `exempt document \`${doc}\` is gone — delete its entry. Reason on record: ${why}`).toBe(true);
+		expect(TRACKED.has(doc), `exempt document \`${doc}\` is gone — delete its entry. Reason on record: ${why}`).toBe(
+			true
+		);
 		const src = readFileSync(at(doc), 'utf8');
 		const stale = [...src.matchAll(CITED)].filter((m) => !TRACKED.has(m[1]!));
 		expect(

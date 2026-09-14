@@ -84,7 +84,7 @@ export class AttemptLedger {
 
 	/** Offered to a worker. Records the dispatched facts — what was ASKED for (see AttemptFacts). */
 	assigned(jobId: string, workerId: string, facts: AttemptFacts, now: number): void {
-		this.#patchOpen(jobId, { workerId, assignedAt: now,...pickFacts(facts) });
+		this.#patchOpen(jobId, { workerId, assignedAt: now, ...pickFacts(facts) });
 	}
 
 	/** Worker accepted: processing begins here. `finishedAt − startedAt` is the number that matters. */
@@ -118,12 +118,22 @@ export class AttemptLedger {
 
 	/** Every attempt for one song, oldest first — the per-song audit timeline. */
 	byMedia(mediaId: string): JobAttempt[] {
-		return this.#db.select().from(jobAttempts).where(eq(jobAttempts.mediaId, mediaId)).orderBy(asc(jobAttempts.enqueuedAt)).all();
+		return this.#db
+			.select()
+			.from(jobAttempts)
+			.where(eq(jobAttempts.mediaId, mediaId))
+			.orderBy(asc(jobAttempts.enqueuedAt))
+			.all();
 	}
 
 	/** Every attempt of one process, oldest first — end-to-end spans one of these. */
 	byProcess(processingId: string): JobAttempt[] {
-		return this.#db.select().from(jobAttempts).where(eq(jobAttempts.processingId, processingId)).orderBy(asc(jobAttempts.enqueuedAt)).all();
+		return this.#db
+			.select()
+			.from(jobAttempts)
+			.where(eq(jobAttempts.processingId, processingId))
+			.orderBy(asc(jobAttempts.enqueuedAt))
+			.all();
 	}
 
 	/** The attempt still in flight for a job, if any. At most one by construction. */
@@ -140,17 +150,31 @@ export class AttemptLedger {
 	 * process is flagged `clipped` and excluded rather than counted low.
 	 */
 	finishedSince(sinceMs: number, limit = 20_000): JobAttempt[] {
-		return this.#db.select().from(jobAttempts).where(and(isNotNull(jobAttempts.outcome), gte(jobAttempts.finishedAt, sinceMs))).orderBy(desc(jobAttempts.finishedAt)).limit(limit).all();
+		return this.#db
+			.select()
+			.from(jobAttempts)
+			.where(and(isNotNull(jobAttempts.outcome), gte(jobAttempts.finishedAt, sinceMs)))
+			.orderBy(desc(jobAttempts.finishedAt))
+			.limit(limit)
+			.all();
 	}
 
 	/** How many sealed attempts exist in total — the honest denominator behind a windowed sample. */
 	countFinished(): number {
-		const row = this.#db.select({ n: sql<number>`count(*)` }).from(jobAttempts).where(isNotNull(jobAttempts.outcome)).all();
+		const row = this.#db
+			.select({ n: sql<number>`count(*)` })
+			.from(jobAttempts)
+			.where(isNotNull(jobAttempts.outcome))
+			.all();
 		return row[0]?.n ?? 0;
 	}
 
 	#findOpen(jobId: string): JobAttempt | undefined {
-		return this.#db.select().from(jobAttempts).where(and(eq(jobAttempts.jobId, jobId), isNull(jobAttempts.outcome))).all()[0];
+		return this.#db
+			.select()
+			.from(jobAttempts)
+			.where(and(eq(jobAttempts.jobId, jobId), isNull(jobAttempts.outcome)))
+			.all()[0];
 	}
 
 	#countFor(jobId: string): number {

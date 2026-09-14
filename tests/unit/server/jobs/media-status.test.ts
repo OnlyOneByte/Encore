@@ -20,7 +20,12 @@ import { migratedDb } from '$lib/server/db/test-db';
 import { WorkerHub } from '$lib/server/jobs/worker-hub';
 import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
-import { completedStatusFor, jobStageFloor, mediaStatusFor, shouldBroadcastProcess } from '$lib/server/jobs/media-status';
+import {
+	completedStatusFor,
+	jobStageFloor,
+	mediaStatusFor,
+	shouldBroadcastProcess
+} from '$lib/server/jobs/media-status';
 import {
 	mediaStagePosition,
 	pendingGates,

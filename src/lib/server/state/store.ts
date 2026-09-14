@@ -80,10 +80,10 @@ export class AuthoritativeState {
 	}
 	/** Defensive copy — callers must not mutate authoritative arrays. */
 	get entries(): QueueEntry[] {
-		return this.#entries.map((e) => ({...e }));
+		return this.#entries.map((e) => ({ ...e }));
 	}
 	get playback(): PlaybackState {
-		return {...this.#playback };
+		return { ...this.#playback };
 	}
 
 	/** Seed from durable storage on boot (does NOT bump rev or schedule a flush). */
@@ -99,7 +99,7 @@ export class AuthoritativeState {
 			if (Number.isFinite(e.addedAt) && e.addedAt > this.#lastAddedAt) this.#lastAddedAt = e.addedAt;
 		}
 		if (playback) {
-			this.#playback = {...playback };
+			this.#playback = { ...playback };
 			// Self-heal a persisted DANGLING currentEntryId: persist() snapshots entries and
 			// playback independently, so a room saved while the playing entry was already pruned stores an
 			// id that names no live entry. Left as-is it survives the reboot and keeps the `!currentEntryId`
@@ -110,7 +110,7 @@ export class AuthoritativeState {
 			// (reconcileOnReady in onMediaReady, src/lib/server/app.ts), or a manual play — the play
 			// control stays enabled because a non-empty queue satisfies its gate (routes/+page.svelte).
 			if (this.#playback.currentEntryId !== null && !entryResolves(this.#entries, this.#playback.currentEntryId)) {
-				this.#playback = {...this.#playback, currentEntryId: null, isPlaying: false };
+				this.#playback = { ...this.#playback, currentEntryId: null, isPlaying: false };
 			}
 		}
 	}
@@ -174,7 +174,7 @@ export class AuthoritativeState {
 		const defined = Object.fromEntries(
 			Object.entries(patch).filter(([, v]) => v !== undefined && !(typeof v === 'number' && !Number.isFinite(v)))
 		) as Partial<PlaybackState>;
-		this.#playback = {...this.#playback,...defined };
+		this.#playback = { ...this.#playback, ...defined };
 		this.#rev++;
 		this.#scheduleFlush();
 		return { rev: this.#rev, playback: this.playback };
@@ -198,7 +198,7 @@ export class AuthoritativeState {
 		// that window (key/guide/pause) re-seeked the master and guide back to 0. The `integer`
 		// `position_sec` column still needs a whole number, so the floor moves to the persistence
 		// boundary (persistence.ts); the negative clamp stays here (a negative playhead is nonsense).
-		this.#playback = {...this.#playback, positionSec: Math.max(0, positionSec) };
+		this.#playback = { ...this.#playback, positionSec: Math.max(0, positionSec) };
 		this.#scheduleFlush(); // still persisted (write-behind) so a resumed session is roughly correct
 	}
 

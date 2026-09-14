@@ -156,4 +156,3 @@ test('the override round-trips through the sidecar and back onto runtime Media',
 test('the sidecar schema is bumped to 5 for the additive override field', () => {
 	expect(SIDECAR_SCHEMA).toBeGreaterThanOrEqual(5);
 });
-

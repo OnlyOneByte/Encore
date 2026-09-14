@@ -119,7 +119,6 @@ test('a paste with punctuation is cleaned to the admitted characters', () => {
 	}
 });
 
-
 // ── AC2: "5 of 6 segments filled -> Continue disabled" ───────────────────────────────
 // The criterion is delivered at JoinLanding.svelte's `disabled={!canJoin}`, but nothing pinned it:
 // `canJoin` is referenced nowhere else, so `disabled={false}` left the whole suite green. This mounts

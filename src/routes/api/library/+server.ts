@@ -48,7 +48,9 @@ export const GET: RequestHandler = async ({ url }) => {
 	}
 
 	// Processing state is runtime, not durable — read it from the live catalog + job ledger.
-	const processing = [...app.mediaById.values()].filter((m) => readinessOf(m) === 'processing').map((media) => {
+	const processing = [...app.mediaById.values()]
+		.filter((m) => readinessOf(m) === 'processing')
+		.map((media) => {
 			// The OUTSTANDING step, whatever its type. This asked for a live `stems` job and nothing else,
 			// so a song mid-fetch or mid-align matched none and fell through to the hardcoded 'queued'
 			// below — a phone reloading during either step watched the progress strip jump backwards, the

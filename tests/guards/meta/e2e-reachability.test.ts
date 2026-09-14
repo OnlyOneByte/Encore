@@ -57,9 +57,9 @@ function stem(rel: string): string {
 
 /** Files reachable from a root package.json script, following imports AND spawned basenames. */
 function reachable(files: string[]): Set<string> {
-	const scripts = Object.values(
-		(JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts
-	).join(' ');
+	const scripts = Object.values((JSON.parse(read('package.json')) as { scripts: Record<string, string> }).scripts).join(
+		' '
+	);
 	const seen = new Set<string>();
 	const stack = files.filter((f) => scripts.includes(f) || scripts.includes(stem(f)));
 	while (stack.length > 0) {
@@ -122,9 +122,7 @@ test('reachability follows a spawned basename, not only a static import', () => 
 	expect(reachable(files).has(worker!)).toBe(true);
 
 	// It is genuinely not imported anywhere, so import-following alone could not have found it.
-	const importedSomewhere = files.some((f) =>
-		/from\s*'[^']*fake-stems-worker/.test(readFileSync(at(f), 'utf8'))
-	);
+	const importedSomewhere = files.some((f) => /from\s*'[^']*fake-stems-worker/.test(readFileSync(at(f), 'utf8')));
 	expect(importedSomewhere).toBe(false);
 });
 

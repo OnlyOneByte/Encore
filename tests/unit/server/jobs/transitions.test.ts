@@ -4,7 +4,14 @@
 // pair cannot express — a REJECT vs a LEASE_EXPIRED that both land on `queued`, and REPRIORITIZE as
 // a legal in-machine self-loop rather than an escape hatch.
 import { test, expect } from 'bun:test';
-import { canTransition, assertTransition, canFire, nextStatus, assertEvent, JOB_TRANSITIONS } from '$lib/server/jobs/transitions';
+import {
+	canTransition,
+	assertTransition,
+	canFire,
+	nextStatus,
+	assertEvent,
+	JOB_TRANSITIONS
+} from '$lib/server/jobs/transitions';
 import { TERMINAL_JOB_STATUSES, JOB_EVENTS, type JobStatus, type JobEvent } from '$lib/contract';
 
 // — status-pair view (the lossy projection kept for callers that only ask "is A→B legal?") —

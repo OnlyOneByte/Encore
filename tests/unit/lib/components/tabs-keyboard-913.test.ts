@@ -43,8 +43,7 @@ function render(): HTMLElement {
  * bare global builds an event the DOM under test does not recognise as a keyboard event.
  */
 function press(el: HTMLElement, key: string): void {
-	const Ctor = (globalThis as unknown as { window: { KeyboardEvent: typeof KeyboardEvent } }).window
-		.KeyboardEvent;
+	const Ctor = (globalThis as unknown as { window: { KeyboardEvent: typeof KeyboardEvent } }).window.KeyboardEvent;
 	el.dispatchEvent(new Ctor('keydown', { key, bubbles: true }));
 	flushSync();
 }

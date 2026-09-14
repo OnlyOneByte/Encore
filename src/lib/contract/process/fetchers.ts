@@ -84,7 +84,7 @@ export function fetcherFor(source: MediaSource, defaultFetcher: string = DEFAULT
 	// `isProcessableSource` reaches here and forms `youtube.com/watch?v=<spotify-track-id>` — the exact
 	// shape-inference bug this whole registry exists to kill (see the header comment). That is an earlier change.
 	if (source === 'spotify') return DEFAULT_FETCHER;
-	return isValidFetcher(defaultFetcher) && defaultFetcher !== 'local' ? defaultFetcher: DEFAULT_FETCHER;
+	return isValidFetcher(defaultFetcher) && defaultFetcher !== 'local' ? defaultFetcher : DEFAULT_FETCHER;
 }
 
 /**
@@ -122,5 +122,5 @@ export function needsFetch(source: MediaSource, defaultFetcher?: string): boolea
 /** The URI a worker pulls for this media. Replaces the core's old source-conditional. */
 export function sourceUriFor(media: { source: MediaSource; sourceRef: string }, defaultFetcher?: string): string {
 	const f = getFetcher(fetcherFor(media.source, defaultFetcher));
-	return f ? f.uri(media.sourceRef): media.sourceRef;
+	return f ? f.uri(media.sourceRef) : media.sourceRef;
 }

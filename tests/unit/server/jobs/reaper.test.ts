@@ -9,18 +9,8 @@ import { WorkerRegistry } from '$lib/server/jobs/registry';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { expect, spyOn, test } from 'bun:test';
 
-
-
-
-
-
-
 // Done-when: a stalled job requeues; boot recovery clears in-flight. Drives the real
 // JobRepository (in-memory sqlite) through the reaper with an injected clock — no wall-clock waits.
-
-
-
-
 
 function setup(now: () => number, onReaped?: () => void) {
 	const db = migratedDb();
@@ -148,7 +138,6 @@ test('onReaped fires once per tick that changed ≥1 job, and not on a no-op', (
 // instrumental on disk. The reaper has no catalog, so app.ts wires its onFailed hook to
 // settleGatesForFailedJob(job, mediaById) — this test drives that live wiring, not a reimplementation.
 
-
 const mkMedia = (id: string, over: Partial<Media> = {}): Media => ({
 	id,
 	source: 'youtube',
@@ -225,12 +214,6 @@ test('reaper: a dead align process settles the LYRICS gate so the playable song 
 // reaper.test.ts asserts the media STATE after the settle, but nothing about a broadcast — there was
 // no broadcast seam before this fix.
 
-
-
-
-
-
-
 const T0_ReaperBroadcastOnFailure = 1_700_000_000_000;
 
 const mkMedia_ReaperBroadcastOnFailure = (id: string, over: Partial<Media> = {}): Media => ({
@@ -273,7 +256,7 @@ test('reaper-killed stems process broadcasts media:status failed + logs uniforml
 		const { jobs, job, broadcasts } = exhaust('stems', { stemStatus: 'queued' });
 		// Reaper path reached terminal failed (not #onFailed).
 		expect(jobs.byId(job.id)!.status).toBe('failed');
- // The regression: before broadcasts was []. Now exactly one media:status: failed reaches the sink.
+		// The regression: before broadcasts was []. Now exactly one media:status: failed reaches the sink.
 		const statusEvents = broadcasts.filter((e) => e.type === 'media:status');
 		expect(statusEvents.length).toBe(1);
 		const ev = statusEvents[0] as Extract<ServerEvent, { type: 'media:status' }>;
@@ -358,13 +341,6 @@ test('a dead stems-upgrade on an ALREADY-singable song is NOT broadcast (no read
 // fires the machine's release hook, so slotsFree goes 0 → 1 and planAssignments lands a job on the
 // still-busy worker.
 
-
-
-
-
-
-
-
 const T0_ReaperFailNotSlotRelease = 1_700_000_000_000;
 
 /**
@@ -394,7 +370,11 @@ function busyWorkerHoldingDeadAndLive(jobs: JobRepository, registry: WorkerRegis
 	jobs.requeue(a.id, 1, T0_ReaperFailNotSlotRelease + 3, 'LEASE_EXPIRED'); // burn one attempt without releasing (reaper path)
 	jobs.assign(a.id, 'w1', null, T0_ReaperFailNotSlotRelease + 4);
 	jobs.accept(a.id, progressDeadline(T0_ReaperFailNotSlotRelease + 4), T0_ReaperFailNotSlotRelease + 5);
-	jobs.progress(a.id, { attempts: 2, leaseExpiresAt: T0_ReaperFailNotSlotRelease + 5 }, T0_ReaperFailNotSlotRelease + 5); // attempts=2, lease will be dead by trigger time
+	jobs.progress(
+		a.id,
+		{ attempts: 2, leaseExpiresAt: T0_ReaperFailNotSlotRelease + 5 },
+		T0_ReaperFailNotSlotRelease + 5
+	); // attempts=2, lease will be dead by trigger time
 	// b: dispatched + accepted, live lease well into the future
 	jobs.assign(b.id, 'w1', null, T0_ReaperFailNotSlotRelease + 6);
 	registry.claimSlot('w1');

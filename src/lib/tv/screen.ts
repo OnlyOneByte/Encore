@@ -113,8 +113,11 @@ export function lobbyRoster(
 	// A membership id with no directory entry yet (presence arrived before queue:sync) is skipped
 	// rather than rendered as "Someone" — a nameless chip is worse than one fewer chip.
 	const resolve = (ids: string[], state: 'here' | 'away'): RosterMember[] =>
-		ids.map((id) => singers.get(id)).filter((s): s is { id: string; displayName: string; color: string } => !!s).map((s) => ({...s, state }));
-	const known = [...resolve(here, 'here'),...resolve(away, 'away')];
+		ids
+			.map((id) => singers.get(id))
+			.filter((s): s is { id: string; displayName: string; color: string } => !!s)
+			.map((s) => ({ ...s, state }));
+	const known = [...resolve(here, 'here'), ...resolve(away, 'away')];
 	return { shown: known.slice(0, max), overflow: Math.max(0, known.length - max) };
 }
 

@@ -135,13 +135,7 @@ export function read(...parts: string[]): string {
  * recursive, so a new source directory is in scope by construction rather than by someone remembering
  * to add it.
  */
-export const SKIP_DIRS: ReadonlySet<string> = new Set([
-	'node_modules',
-	'build',
-	'.svelte-kit',
-	'dist',
-	'.git'
-]);
+export const SKIP_DIRS: ReadonlySet<string> = new Set(['node_modules', 'build', '.svelte-kit', 'dist', '.git']);
 
 /**
  * THE recursive walk. Every file-listing helper in this package is a filter over this one function,

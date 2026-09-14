@@ -82,7 +82,9 @@ test('no driver waits for the search box as its post-join readiness signal', () 
 				if (isExistenceWait && !line.includes('SEL.homeReady')) {
 					const prev = previousCodeLine(lines, i);
 					if (!prev.includes('openBrowseFromHome(')) {
-						offenders.push(`${path.replace(E2E, 'e2e')}:${i + 1} waits for SEL.search without reaching the browse screen`);
+						offenders.push(
+							`${path.replace(E2E, 'e2e')}:${i + 1} waits for SEL.search without reaching the browse screen`
+						);
 					}
 				}
 			}

@@ -218,7 +218,7 @@ const FLOORS: Record<string, Floor[]> = {
 			guards:
 				'that the widened walk still reaches the `.mjs` drivers specifically. The `.test.ts`-only walk is precisely why six probes anchored one hop short for as long as they did, so a future narrowing of the extension list has to fail here rather than pass quietly on a tree that no longer includes them.'
 		}
-		],
+	],
 	'tests/guards/meta/test-tree-deps.test.ts': [
 		{
 			subject: 'files.length',

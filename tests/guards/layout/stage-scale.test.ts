@@ -594,7 +594,11 @@ test('the lobby shows the whole roster with a chip step-down rule, never a "+N m
 	// count half for an ordinary party, the character half for a party of long names.
 	expect(/const\s+CHAR_BUDGET\s*=\s*\d+/.test(lobby)).toBe(true);
 	expect(/roster\.reduce\(\s*\(\s*n\s*,\s*m\s*\)\s*=>\s*n\s*\+\s*m\.displayName\.length/.test(lobby)).toBe(true);
-	expect(/const\s+dense\s*=\s*\$derived\(\s*roster\.length\s*>\s*CHIP_STEPDOWN\s*\|\|\s*rosterChars\s*>\s*CHAR_BUDGET\s*\)/.test(lobby)).toBe(true);
+	expect(
+		/const\s+dense\s*=\s*\$derived\(\s*roster\.length\s*>\s*CHIP_STEPDOWN\s*\|\|\s*rosterChars\s*>\s*CHAR_BUDGET\s*\)/.test(
+			lobby
+		)
+	).toBe(true);
 	// …and it stays a RULE derived from the DATA. A geometry read here would be the "discovery at a
 	// party" the design rejects, and would not work under the mount rung at all (XR-VER-03).
 	const denseDecl = lobby.slice(lobby.indexOf('const dense'), lobby.indexOf('const dense') + 200);

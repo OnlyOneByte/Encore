@@ -410,9 +410,7 @@ test('the data-slot reach check fails when the attribute is dropped', () => {
 
 	// The rule must not be able to vouch for itself: its own selector text contains `data-slot='…'`,
 	// so scanning the whole file would find an "emitter" that renders nothing. Markup only.
-	const emitted = new Set(
-		[...markupOnly(file).matchAll(/data-slot=["']([^"']+)["']/g)].map((m) => m[1]!)
-	);
+	const emitted = new Set([...markupOnly(file).matchAll(/data-slot=["']([^"']+)["']/g)].map((m) => m[1]!));
 	expect(emitted.has('ghost-slot')).toBe(false);
 	expect(slots.filter((x) => !emitted.has(x))).toEqual(['ghost-slot']);
 

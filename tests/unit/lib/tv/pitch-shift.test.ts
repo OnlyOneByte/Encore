@@ -1,11 +1,17 @@
-import { ALIGN_SEARCH, PITCH_WORKLET_SOURCE, PitchShiftGraph, grainLookahead, needsShift, readLag, semitonesToRatio } from '$lib/tv/pitch-shift';
+import {
+	ALIGN_SEARCH,
+	PITCH_WORKLET_SOURCE,
+	PitchShiftGraph,
+	grainLookahead,
+	needsShift,
+	readLag,
+	semitonesToRatio
+} from '$lib/tv/pitch-shift';
 import { afterEach, beforeEach, expect, test } from 'bun:test';
-
 
 // Pure-maths guard for the browser pitch shifter. The AUDIBLE behaviour cannot be tested here — there
 // is no audio hardware and no AudioContext in bun:test — so this covers only the ratio arithmetic and
 // the OLA framing/window maths, which are the parts a regression would silently get wrong.
-
 
 test('semitonesToRatio: 0 is EXACTLY 1 (bit-exact bypass check)', () => {
 	// The caller keys "bypass" off ratio === 1, so this must not be 0.9999999.
@@ -185,7 +191,6 @@ test('two concurrent setShift(non-zero) calls build the graph ONCE (no double cr
 // No audio hardware -- the defect is whether the element is ROUTED through the shifter, measured
 // directly on the class.
 
-
 // resume() reaches `running` iff this flag is set when the context is created. Toggling it models the
 // TV wall being touched (autoplay unblocked) between two setShift() calls on the same graph.
 let canResume = false;
@@ -323,7 +328,6 @@ test('safety: a retry that STILL cannot resume stays audible (degraded, not rout
 // exact text that reaches the browser, so it cannot drift from the implementation the way a
 // reimplementation of the pointer arithmetic would.
 
-
 const RATE = 48000;
 const BLOCK = 128; // what a browser hands an AudioWorkletProcessor
 
@@ -341,7 +345,6 @@ function loadProcessor(): new () => {
 	class StubProcessor {
 		port = { onmessage: null as ((e: { data: unknown }) => void) | null };
 	}
-	// eslint-disable-next-line @typescript-eslint/no-implied-eval
 	new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', PITCH_WORKLET_SOURCE)(
 		StubProcessor,
 		(_name: string, ctor: unknown) => (registered = ctor),

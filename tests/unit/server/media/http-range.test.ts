@@ -1,7 +1,12 @@
 // The range parser's contract. These are the shapes real media elements actually send — including the
 // two-byte WebKit probe whose mishandling was the whole bug.
 import { describe, test, expect } from 'bun:test';
-import { parseRangeHeader, contentRange, unsatisfiedContentRange, type RangeDecision } from '$lib/server/media/http-range';
+import {
+	parseRangeHeader,
+	contentRange,
+	unsatisfiedContentRange,
+	type RangeDecision
+} from '$lib/server/media/http-range';
 
 const SIZE = 26_218_241; // a real processed instrumental FLAC, for realism
 

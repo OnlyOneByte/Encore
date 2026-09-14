@@ -334,7 +334,7 @@ export function handleQueueCommand(
 	// the authoritative `entries` carried inline on this patch, the same one-op mispredict applyAndReseq
 	// already tolerates for a stale snapshot.
 	const op: QueueOp =
-		cmd.op.op === 'add' ? { op: 'add', entry: {...cmd.op.entry, addedAt: deps.state.nextAddedAt() } }: cmd.op;
+		cmd.op.op === 'add' ? { op: 'add', entry: { ...cmd.op.entry, addedAt: deps.state.nextAddedAt() } } : cmd.op;
 
 	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(op);
 
