@@ -66,14 +66,43 @@
 		align-items: center;
 		gap: var(--space-md);
 		padding: var(--space-2xl) var(--space-3xl) var(--space-md);
-		border-bottom: 1px solid var(--line);
+		/* The bottom edge is a box-shadow now, not a border — see the background block below. A border
+		   is a hard 1px step at full --line strength; a shadow can carry the same separation and fade,
+		   and it does not add to the header's box so nothing reflows. */
 		position: sticky;
 		/* Stick below the notch, not under it. .app-shell carries the top safe-area inset as PADDING
 		   (app.css), but a sticky offset is measured from the scrollport, so `top: 0` rode up into the
 		   inset once scrolled and sat under the status bar on a notched PWA (viewport-fit=cover +
 		   apple-mobile-web-app-status-bar-style=black-translucent are both set in app.html). */
 		top: env(safe-area-inset-top, 0px);
-		background: var(--bg);
+		/*
+		 * WHY THIS IS NOT `background: var(--bg)`.
+		 *
+		 * `body` paints `--bg` PLUS a radial stage wash — `radial-gradient(120% 80% at 50% -10%,
+		 * var(--stage-glow) 0%, var(--bg) 55%)` — whose brightest point is top-centre, which is exactly
+		 * where this header sits. A flat `--bg` fill therefore punched a DARKER rectangle out of the
+		 * brightest part of the gradient and then drew a hard 1px line under the seam: the header read as
+		 * a foreign panel dropped onto the page rather than as the top of it.
+		 *
+		 * So the header continues the wash instead of interrupting it. The vertical gradient starts at
+		 * the glow's own tint and resolves to `--bg` by its bottom edge, which does two things at once:
+		 * at rest it is tonally continuous with the page behind it, and it hands off to the content below
+		 * with no step. `--stage-glow` is the same token `body` uses, so the two cannot drift apart.
+		 *
+		 * It stays fully OPAQUE on purpose. This element is sticky, so a translucent fill would let
+		 * scrolled content read through the title, and Encore's visual language has no backdrop blur to
+		 * fall back on (one elevation token and the stage wash are the whole depth vocabulary).
+		 */
+		background: linear-gradient(to bottom, color-mix(in srgb, var(--stage-glow) 55%, var(--bg)) 0%, var(--bg) 100%);
+		/*
+		 * The soft edge, replacing `border-bottom: 1px solid var(--line)`. The hairline is still there —
+		 * at 55% strength, so it separates without ruling a line across the page — and the second,
+		 * wide-but-nearly-black shadow only becomes visible once the header is STUCK over scrolled
+		 * content, which is the one moment it genuinely needs to read as a layer above something.
+		 */
+		box-shadow:
+			0 1px 0 color-mix(in srgb, var(--line) 55%, transparent),
+			0 12px 24px -20px rgb(0 0 0 / 0.9);
 		z-index: var(--z-header);
 		/* The header caps and centres on the SAME measure as the route's content column, so the two share
 		   one width instead of the header spanning the whole shell while the body sits in a narrow column
