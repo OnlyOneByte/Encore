@@ -35,7 +35,69 @@ reached is a hard error, whereas auto-detection quietly falls back to CPU. That 
 judgement about how they want to be told, not a property of the hardware, which is why it is not baked
 in here.
 
-## Why CUDA needs no Dockerfile but Intel once did
+## The TV needs a SECURE CONTEXT, or it silently loses ±key and the guiding track
+
+**This is the one deployment fact that costs you two features without saying a word.** Serve the TV at
+`http://<LAN-IP>:3000/tv` — the address this README tells you to use everywhere else — and the room
+gets:
+
+- **no ±key transpose.** The buttons still move, the phone still reports `Key · +2`, the sounding-key
+  label and the vocal-range bar still slide. The audio does not change pitch.
+- **no guiding track.** The guide slider moves and does nothing.
+
+Neither failure prints anything, in any log, on any surface.
+
+**Why.** Both features run through one `AudioWorklet` (`src/lib/tv/pitch-shift.ts` — the SOLA pitch
+shifter, and the 4-channel splitter that pulls the guiding track out of the guide mix). `AudioWorklet`
+is a **secure-context-only API**: browsers expose it on `https://` and on the `localhost` family, and
+nowhere else. `http://192.168.1.20:3000` is not a secure context, so `ctx.audioWorklet` is `undefined`,
+the graph build throws, and the player degrades to the element's native output — audible, unshifted,
+and with the guide's channels never separated. The degrade is deliberately quiet, because its whole job
+is to keep the room's audio alive when the graph cannot be built; it was never meant to be the normal
+case.
+
+**How to confirm it in ten seconds.** On the TV, in devtools:
+
+```js
+console.log('secure:', isSecureContext, 'worklet:', !!new AudioContext().audioWorklet);
+```
+
+`secure: false, worklet: false` is this problem. Nothing else produces that pair.
+
+**Which surfaces care:** only the TV. Phones are remotes — they run no audio DSP — so they are correct
+on the LAN IP and need none of what follows.
+
+### Getting a secure context, cheapest first
+
+| Situation | What to do |
+|---|---|
+| The display is driven by the Encore host | Open **`http://localhost:3000/tv`** on that machine. Phones keep using the LAN IP. Nothing to install. |
+| The TV is a separate device with a shell | Forward the port so the **origin** is localhost: `ssh -N -L 3000:localhost:3000 user@<host>`, then open `http://localhost:3000/tv`. The browser only cares about the origin, not where the bytes come from. No certificates. |
+| The TV is a Chrome you launch yourself | `--unsafely-treat-insecure-origin-as-secure=http://<LAN-IP>:3000 --user-data-dir=/tmp/encore-tv`. Per-device, and it breaks when the host IP changes. Do not set it in a browser you also use for anything else. |
+| The TV is an appliance (Chromecast, smart-TV browser) | Real TLS is the only route. `tailscale cert` issues a genuine certificate for `<host>.<tailnet>.ts.net` with no port forwarding, or put Caddy in front. `Bun.serve` takes `tls: { cert, key }` natively and the client already switches to `wss:` on its own, but **`server.ts` is HTTP-only today** — the TLS block does not exist yet. |
+
+A self-signed certificate also works in principle and is usually not worth it: the CA has to be
+installed on the television.
+
+### Why this is not simply fixed in code
+
+There is no non-secure path to `AudioWorklet`, so nothing in this repo can lift the restriction. The
+options are all trades, and none is free:
+
+- **`ScriptProcessorNode`** is not secure-context gated and would restore instant transposition on
+  plain HTTP — but it processes on the **main thread**, competing with the lyrics reel and the
+  visualizer, and its buffer adds ~90 ms of audio delay against the words. It is also deprecated.
+- **Server-side transposition** (ffmpeg `asetrate`/`aresample`/`atempo`, cached under
+  `derived/pitch/`) works on every client with no browser requirement at all, but a key change becomes
+  a stream swap and a seek — no longer instant.
+
+The guiding track, unlike ±key, does **not** need the worklet — a `ChannelSplitter` and a `GainNode` are
+ordinary Web Audio and run happily on an insecure origin. It used to fail anyway, because the splitter
+hung off the worklet node and one missing secure-context API took the whole graph down with it. **That is
+now decoupled:** a missing or refusing worklet leaves the split graph intact, so the guide slider works on
+a plain `http://<LAN-IP>` origin. Only ±key still needs a secure context, and `PitchShiftGraph.isShiftable`
+reports when it is unavailable so the transpose control can say so instead of moving silently.
+
 
 `worker/Dockerfile` already exposes `ARG TORCH_INDEX_URL`, so switching accelerator is a wheel
 index swap. Both of these carry the exact versions `worker/requirements.txt` already pins —

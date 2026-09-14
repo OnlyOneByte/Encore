@@ -355,6 +355,15 @@ $EC exec worker python -c \
      precedence rules (the setting wins over the env var), no restart — which is the one that helps when
      you are standing in the room and the QR says `localhost`. The TV picks up the change live.
 
+   **Loading the TV at `localhost` is also what keeps ±key transpose working**, so on WSL2 the
+   `ENCORE_PUBLIC_ORIGIN` route is doubly the right one. The transpose runs through an `AudioWorklet`,
+   which browsers only expose in a **secure context** — `https://` or the `localhost` family — and on a
+   plain `http://<lan-ip>` origin it fails silently: the buttons move, the labels update, the audio does
+   not change. Since the Windows host is usually the machine attached to the TV and reaches core over the
+   portproxy at `localhost:3000` anyway, opening `/tv` there gets you a secure context for free while the
+   QR still advertises the LAN address. The guiding track is unaffected either way. See
+   [`README.md`](README.md) in this directory for the full explanation and the other routes.
+
    Check it by eye rather than inferring it: the join card on `/tv` prints the URL beneath the QR. If
    that text reads `localhost:3000`, no phone can use it.
 

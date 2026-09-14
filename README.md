@@ -43,6 +43,15 @@ Then open **`/tv`** on the television, and **scan the QR** with phones.
 > showing a QR that goes nowhere. Deploying on Windows with an NVIDIA GPU? Read
 > [`docs/deploy/WSL2.md`](docs/deploy/WSL2.md) first — WSL2's NAT is exactly the case that breaks this.
 
+> ⚠️ **The TV is the exception: on a plain `http://<LAN-IP>` origin it silently loses ±key transpose.**
+> The transpose runs through an `AudioWorklet`, which browsers only expose in a **secure context** —
+> `https://` or the `localhost` family. The buttons still move and the sounding-key label still updates;
+> the audio just never changes, and nothing is logged. The guiding track is unaffected as of the
+> guide/worklet decoupling, and phones never were (they run no audio DSP). If the display is driven by the
+> Encore host, open `http://localhost:3000/tv` on it and you are done. Otherwise see
+> **[`docs/deploy/README.md`](docs/deploy/README.md)** for the four ways to get a secure context,
+> cheapest first.
+
 > Prefer `bun run start` (→ `server.ts`) over the adapter's `build/index.js`. `server.ts` owns **both**
 > the SvelteKit handler and the WebSocket hub in one process; serving `build/index.js` directly gives
 > you a UI with no realtime at all.
