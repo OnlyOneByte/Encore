@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field, replace
+from typing import Any
 
 from .hardware import effective_cpus
+from .vocabulary import StemFormat, parse_stem_format
 
 
 def _str(env: dict[str, str], key: str, default: str) -> str:
@@ -185,9 +187,9 @@ class WorkerConfig:
     version: str = "0.1.0"
     #: The EFFECTIVE capability set — proven by probe, not declared. Empty until resolved (see
     #: capabilities.resolve), which cannot happen in from_env because probing touches PATH and imports.
-    capabilities: tuple[str,...] = ()
+    capabilities: tuple[str, ...] = ()
     #: An operator's request, which may only NARROW the proven set. None = advertise everything proven.
-    capabilities_override: tuple[str,...] | None = None
+    capabilities_override: tuple[str, ...] | None = None
     concurrency: int = 1
     media_dir: str = "/app/media"
     processor: str = "real"  # "stub" forces the no-ML path
@@ -226,7 +228,8 @@ class WorkerConfig:
     annotate: bool = True
     #: Retain the RAW caption track (the winning `.vtt`/`.srt`) in durable `derived/` storage for
     #: post-process diagnosis of a caption-parsing defect. OFF by default: retaining it puts
-    #: third-party caption text into the media volume for every process, and an earlier change's core-side change is
+    #: third-party caption text into the media volume for every process, and an earlier change's core-side
+    # change is
     #: what lets the retention cap count and evict it. Parsed at the config boundary like every other
     #: operator boolean — reading it as bare truthiness inside the step (its original form) made
     #: `ENCORE_KEEP_RAW_CAPTIONS=0` turn it ON, since "0" is a non-empty string.
@@ -238,6 +241,13 @@ class WorkerConfig:
 
     # ── encoding ──────────────────────────────────────────────────────────────────
     flac_level: int = 8
+    #: Container the separator writes its RAW scratch stems in, for the two engines whose CLI takes a
+    #: format flag (torch demucs, audio-separator). FLAC by default: it is what the pipeline publishes, so
+    #: the whole chain is one lossless codec end to end, and it roughly halves the scratch bytes of a
+    #: full-rate stem pair. WAV is selectable for a box that would rather skip the encode during
+    #: separation. demucs-mlx and bs-roformer-infer expose no such flag, so their engines declare a fixed
+    #: format and this value does not reach them — see `SeparatorEngine.stem_format`.
+    stem_format: StemFormat = StemFormat.FLAC
     #: None => derived from the resolved device via `whisperx_device_for`. It used to default to a
     #: hardcoded "cpu", which meant a CUDA box separated on the GPU and then transcribed on the CPU
     #: unless a human set a SECOND env var — slow, correct-looking, and silent.
@@ -264,7 +274,7 @@ class WorkerConfig:
     ffmpeg_bin: str = "ffmpeg"
 
     #: Human-readable problems found while parsing. Logged at startup; never fatal.
-    warnings: tuple[str,...] = field(default_factory=tuple)
+    warnings: tuple[str, ...] = field(default_factory=tuple)
 
     @staticmethod
     def from_env(env: dict[str, str] | None = None) -> WorkerConfig:
@@ -326,6 +336,9 @@ class WorkerConfig:
             ),
             separator_backend=(e.get("ENCORE_SEPARATOR_BACKEND", "").strip().lower() or None),
             flac_level=_int(e, "ENCORE_FLAC_LEVEL", 8, w, minimum=0),
+            # Parsed at the BOUNDARY, so an unknown value fails here rather than reaching the engines as a
+            # format the readers were never told about — which is the silent guide-mix loss this type ended.
+            stem_format=parse_stem_format(e.get("ENCORE_STEM_FORMAT", "").strip().lower() or None),
             whisperx_device=(e.get("ENCORE_WHISPERX_DEVICE", "").strip() or None),
             asr_model=_str(e, "ENCORE_ASR_MODEL", "base"),
             sync_mode=_str(e, "ENCORE_SYNC_MODE", "forced").lower(),
@@ -333,7 +346,8 @@ class WorkerConfig:
             ytdlp_bin=_str(e, "ENCORE_YTDLP_BIN", "yt-dlp"),
             demucs_bin=_str(e, "ENCORE_DEMUCS_BIN", "demucs"),
             ffmpeg_bin=_str(e, "ENCORE_FFMPEG_BIN", "ffmpeg"),
-            warnings=tuple(w))
+            warnings=tuple(w),
+        )
 
     def describe(self) -> str:
         """One line naming the settings that change throughput — what to check first when a box is slow."""
@@ -376,7 +390,7 @@ class WorkerConfig:
         return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
-def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConfig, list[str]]:
+def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConfig, list[str], list[Any]]:
     """Fill in everything that depends on the HOST rather than the environment.
 
     Kept out of `from_env` on purpose: that function is pure over a dict so the perf knobs stay
@@ -393,12 +407,12 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
     from . import capabilities as caps_mod
     from .hardware import default_worker_id
 
-    caps, _probes, warnings = caps_mod.resolve(
-        cfg.capabilities_override,
-        ytdlp_bin=cfg.ytdlp_bin,
-        demucs_bin=cfg.demucs_bin)
+    caps, probes, warnings = caps_mod.resolve(
+        cfg.capabilities_override, ytdlp_bin=cfg.ytdlp_bin, demucs_bin=cfg.demucs_bin
+    )
 
-    # HONESTY: `caps` proves `stems` from demucs being importable, but an earlier change made the resolved separator
+    # HONESTY: `caps` proves `stems` from demucs being importable, but an earlier change made the resolved
+    # separator
     # backend DRIVE which demucs engine runs, and only `torch` has an implementation. So a box that
     # proves `stems` but resolves its backend to one with no engine (an Apple-Silicon box with
     # `demucs-mlx` importable auto-selects `mlx`) would advertise `stems` and then fail every process it is
@@ -420,7 +434,8 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
         cfg,
         capabilities=caps,
         worker_id=cfg.worker_id or default_worker_id(),
-        whisperx_device=cfg.whisperx_device or whisperx_device_for(device))
+        whisperx_device=cfg.whisperx_device or whisperx_device_for(device),
+    )
     if (
         cfg.whisperx_device
         and cfg.whisperx_device not in ("cpu", "cuda")
@@ -430,17 +445,28 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
             f"ENCORE_WHISPERX_DEVICE={cfg.whisperx_device!r} is not a device whisperx can use "
             "(CTranslate2 supports cuda and cpu only); alignment will likely fail"
         )
-    return resolved, warnings
+    # The PROBES come back too, rather than being computed and thrown away. `capability_probe_lines` used
+    # to re-run `probe_all` purely to render the startup log, so every boot probed the box TWICE — four
+    # extra `shutil.which` calls plus a `find_spec` on `whisperx` and `pyannote.audio`, and those two are
+    # the expensive ones because resolving them imports their parent packages.
+    return resolved, warnings, probes
 
 
-def capability_probe_lines(cfg: WorkerConfig) -> list[str]:
+def capability_probe_lines(cfg: WorkerConfig, probes: list[Any] | None = None) -> list[str]:
     """One line per capability with the evidence, for the startup log. A capability that is MISSING is
     the interesting case — that is the one that leaves songs stuck at 0% — so absent ones are reported
-    just as loudly as present ones."""
+    just as loudly as present ones.
+
+    Pass the `probes` `resolve()` already returned. Without them this re-probes the box, which is what made
+    every boot probe twice for one log block; the parameter stays optional so a caller that only has a
+    config (a test, a diagnostic) still works.
+    """
     from . import capabilities as caps_mod
 
+    if probes is None:
+        probes = list(caps_mod.probe_all(ytdlp_bin=cfg.ytdlp_bin, demucs_bin=cfg.demucs_bin))
     lines = []
-    for p in caps_mod.probe_all(ytdlp_bin=cfg.ytdlp_bin, demucs_bin=cfg.demucs_bin):
+    for p in probes:
         mark = "yes" if p.available else "NO "
         lines.append(f"  {mark} {p.token}: {p.reason}")
     return lines

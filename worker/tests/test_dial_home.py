@@ -2,6 +2,7 @@
 assign -> accept -> progress* -> complete flow, capacity reject, cancel, and failure reporting."""
 
 import asyncio
+import contextlib
 import sys
 from pathlib import Path
 
@@ -50,7 +51,8 @@ def make_client(sock, tmp_path, capabilities=None, concurrency=1):
         capabilities=capabilities or ["stems"],
         concurrency=concurrency,
         media_dir=str(tmp_path),
-        version="test")
+        version="test",
+    )
 
 
 @pytest.mark.asyncio
@@ -139,7 +141,8 @@ async def test_failure_is_reported_with_retryable_flag(tmp_path):
         worker_id="w1",
         capabilities=["stems"],
         concurrency=1,
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
     await client.handle(assign())
     await client.drain()
     failed = sock.of_type(protocol.FAILED)
@@ -163,7 +166,8 @@ async def test_non_retryable_failure_for_permanent_errors(tmp_path):
         worker_id="w1",
         capabilities=["stems"],
         concurrency=1,
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
     await client.handle(assign())
     await client.drain()
     assert sock.of_type(protocol.FAILED)[0]["retryable"] is False
@@ -322,7 +326,8 @@ async def test_worker_cleans_its_own_scratch_after_a_job(tmp_path):
             job_type="stems",
             source_uri="https://y/x",
             params={},
-            media_dir=str(tmp_path))
+            media_dir=str(tmp_path),
+        )
     )
     assert not work.exists(), "job scratch must be removed once the job is terminal"
 
@@ -353,7 +358,8 @@ async def test_scratch_is_cleaned_on_a_PERMANENT_failure(tmp_path):
             job_type="stems",
             source_uri="https://y/x",
             params={},
-            media_dir=str(tmp_path))
+            media_dir=str(tmp_path),
+        )
     )
     assert not work.exists(), "a permanent (non-retryable) failure is terminal; its scratch must be reclaimed"
 
@@ -390,12 +396,13 @@ async def test_scratch_is_PRESERVED_across_a_RETRYABLE_failure_issue_469(tmp_pat
             job_type="stems",
             source_uri="https://y/x",
             params={},
-            media_dir=str(tmp_path))
+            media_dir=str(tmp_path),
+        )
     )
     # the failure was reported as retryable...
     failed = [m for m in sent if m["type"] == protocol.FAILED]
     assert len(failed) == 1 and failed[0]["retryable"] is True
-    #...and BECAUSE it is retryable, the partial scratch survives for attempt 2 to reuse.
+    # ...and BECAUSE it is retryable, the partial scratch survives for attempt 2 to reuse.
     assert work.exists(), "a retryable failure must keep scratch so the same-jobId retry reuses it"
     assert (work / "input.wav").exists(), "the completed-step artifact in scratch must survive the retry"
     # slot is still freed (the finally's state.finish is unconditional, only the rmtree is gated).
@@ -470,7 +477,8 @@ async def test_a_retried_job_REUSES_completed_step_artifacts_and_does_not_re_run
         job_type="stems",
         source_uri="https://y/x",
         params={},
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
 
     # Attempt 1: steps 1 and 2 complete (write markers), step 3 fails retryably.
     client = WorkerClient(send, processor, capabilities=["stems"], media_dir=str(tmp_path))
@@ -584,7 +592,8 @@ async def test_cancel_cancels_the_inflight_task_and_frees_the_slot(tmp_path):
         worker_id="w1",
         capabilities=["stems"],
         concurrency=1,
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
     await client.handle(assign(job_id="jX"))
     await asyncio.wait_for(started.wait(), timeout=5)
     assert client.state.slots_free == 0
@@ -765,7 +774,8 @@ async def test_object_store_with_uploader_accepts(tmp_path):
         concurrency=1,
         media_dir=str(tmp_path),
         version="test",
-        can_publish_object=True)
+        can_publish_object=True,
+    )
     await client.handle(
         {"type": protocol.WELCOME, "mediaStore": {"kind": "object", "bucket": "encore-media"}}
     )
@@ -785,7 +795,8 @@ async def test_local_store_is_unaffected_by_the_object_guard(tmp_path):
     assert sock.of_type(protocol.COMPLETE)
 
 
-# ── issue an earlier change: the worker must SEND worker:heartbeat on its own, not only answer a ping the core
+# ── issue an earlier change: the worker must SEND worker:heartbeat on its own, not only answer a ping the
+# core
 #    never emits. registry.heartbeat is the only path that reconciles slotsFree after the reaper
 #    requeues a lease-expired job, so without a periodic sender one reaped job strands the worker's
 #    capacity forever. These pin the production path (heartbeat_loop), not the passive PING responder.
@@ -872,7 +883,8 @@ async def test_welcome_ignores_a_missing_or_bad_interval(tmp_path):
 #    asyncio.create_task(client.heartbeat_loop()) — and the behavioural tests above prove the loop
 #    BEHAVES, never that it RUNS. This repo's most-repeated defect is a mechanism built, unit-tested,
 #    and never wired to the path that needs it; deleting that one line leaves the whole suite green
-#    with an earlier change fully reintroduced. Pin the wiring at the source level (ast, no async harness needed):
+# with an earlier change fully reintroduced. Pin the wiring at the source level (ast, no async harness
+# needed):
 #    _run_forever must START heartbeat_loop AND cancel that task in a finally so it dies with its socket.
 import ast as _ast  # noqa: E402
 from pathlib import Path as _Path  # noqa: E402
@@ -898,7 +910,6 @@ def test_run_forever_starts_the_heartbeat_loop():
     ]
     assert started, (
         "_run_forever never starts client.heartbeat_loop() — worker:heartbeat would never be sent "
-        ""
     )
 
 
@@ -912,13 +923,13 @@ def test_run_forever_cancels_the_heartbeat_task_in_a_finally():
                 if isinstance(stmt, _ast.Call) and getattr(stmt.func, "attr", None) == "cancel":
                     cancels_in_finally.append(stmt)
     assert cancels_in_finally, (
-        "_run_forever never cancels the heartbeat task in a finally — it would leak across "
-        "reconnects"
+        "_run_forever never cancels the heartbeat task in a finally — it would leak across reconnects"
     )
 
 
 def test_run_forever_finally_cancels_in_flight_synchronously_and_does_NOT_await_drain_inline_459():
-    # an earlier change blocking: the whole drain/redial fix lives in _run_forever's finally — cancel the in-flight
+    # an earlier change blocking: the whole drain/redial fix lives in _run_forever's finally — cancel the
+    # in-flight
     # tasks SYNCHRONOUSLY (cancel_now) and settle them in a DETACHED task, never `await client.drain(...)`
     # inline (which held the reconnect loop for a full uninterruptible ML pass while the core reaper had
     # already requeued the job). cancel_now() has a unit test, but nothing pinned that the finally USES
@@ -946,13 +957,15 @@ def test_run_forever_finally_cancels_in_flight_synchronously_and_does_NOT_await_
     )
     assert not awaits_drain_inline, (
         "_run_forever's finally awaits client.drain(...) INLINE — that is exactly the base defect "
-        "an earlier change fixed: the reconnect loop is held for a full align while the reaper has requeued the job. "
+        "an earlier change fixed: the reconnect loop is held for a full align while the reaper has "
+        "requeued the job. "
         "The drain must be DETACHED (scheduled, not awaited) so redial is concurrent with the settle"
     )
 
 
 def test_run_forever_detaches_the_drain_rather_than_awaiting_it_459():
-    # The other half of an earlier change's finally: the drain is scheduled onto a background task and pinned in a
+    # The other half of an earlier change's finally: the drain is scheduled onto a background task and pinned
+    # in a
     # module-level set so it is not GC'd. Deleting _DETACHED_DRAINS (R6) or dropping the ensure_future
     # both revert this to a blocking shape; pin that the finally SCHEDULES the drain (ensure_future/
     # create_task on a client.drain(...) call) and references the tracking set.
@@ -961,7 +974,8 @@ def test_run_forever_detaches_the_drain_rather_than_awaiting_it_459():
     for node in _ast.walk(fn):
         if isinstance(node, _ast.Call) and getattr(node.func, "attr", None) in (
             "ensure_future",
-            "create_task"):
+            "create_task",
+        ):
             for a in node.args:
                 if isinstance(a, _ast.Call) and getattr(a.func, "attr", None) == "drain":
                     schedules_drain = True
@@ -973,13 +987,13 @@ def test_run_forever_detaches_the_drain_rather_than_awaiting_it_459():
     src = _Path(dh.__file__).read_text(encoding="utf-8")
     assert "_DETACHED_DRAINS" in src, (
         "the _DETACHED_DRAINS tracking set is gone — a detached drain task could be GC'd mid-flight "
-        ""
     )
 
 
 @pytest.mark.asyncio
 async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_align_plan(tmp_path):
-    """Issue an earlier change — the wiring seam. `_build_processor` builds the align runner from a WorkerConfig; the
+    """Issue an earlier change — the wiring seam. `_build_processor` builds the align runner from a
+    WorkerConfig; the
     configured `cfg.ytdlp_bin` (ENCORE_YTDLP_BIN) must reach the FetchCaptions steps that plan actually
     runs, not stop at the capability probe. Before the fix `_build_processor` passed no yt-dlp argument
     to `align_runner` at all, so the align caption fetches ran a bare "yt-dlp" from PATH regardless of
@@ -1003,7 +1017,8 @@ async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_align_plan(tmp_
         job_type="align",
         source_uri="https://youtube.com/watch?v=abc",
         params={},
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
     plan = align._plan_for(job, None)
     caption_steps = [s for s in plan.steps() if isinstance(s, FetchCaptions)]
     assert caption_steps, "the align plan must fetch captions"
@@ -1128,7 +1143,7 @@ def test_sweep_is_a_noop_when_there_is_no_work_dir(tmp_path):
 
 # ── WIRING GUARD: _run_forever must START the periodic sweep loop — the whole reclaim path is that one
 #    create_task, and the behavioural tests prove the sweep WORKS, never that it RUNS. Deleting the
-#    line reintroduces the an earlier change leak with the suite still green. Pin it at the source level (ast).
+# line reintroduces the an earlier change leak with the suite still green. Pin it at the source level (ast).
 def test_run_forever_starts_the_periodic_scratch_sweep():
     fn = _run_forever_ast()
     started = [
@@ -1144,6 +1159,75 @@ def test_run_forever_starts_the_periodic_scratch_sweep():
         "_run_forever never starts _scratch_sweep_loop — an exhausted-retry job's preserved scratch "
         "would leak until the worker restarts"
     )
+
+
+# ── the reaper's FIRST pass must not wait out the interval, and one bad pass must not end the loop.
+#    Both were silent failures: the loop slept before sweeping (so the startup sweep three comments in
+#    dial_home.py promise did not exist, and a worker restarted to clear a stuck box reclaimed nothing for
+#    30 minutes), and an unguarded body meant a PermissionError on a shared volume ended the task with no
+#    log line and no reaper for the rest of the process's uptime.
+@pytest.mark.asyncio
+async def test_scratch_sweep_loop_sweeps_once_before_its_first_sleep(monkeypatch):
+    """The startup sweep is real: a pass happens before any interval elapses."""
+    import src.dial_home as dh
+
+    calls: list[frozenset[str]] = []
+    monkeypatch.setattr(dh, "sweep_orphaned_scratch", lambda md, live, **kw: calls.append(live) or [])
+
+    slept = asyncio.Event()
+
+    async def _fake_sleep(_secs):
+        slept.set()
+        raise asyncio.CancelledError  # end the loop at its first sleep so the test terminates
+
+    monkeypatch.setattr(dh.asyncio, "sleep", _fake_sleep)
+    with contextlib.suppress(asyncio.CancelledError):
+        await dh._scratch_sweep_loop("/media", lambda: frozenset({"live"}))
+
+    assert calls, "the reaper slept before its first sweep — the startup reclaim never runs"
+    assert slept.is_set(), "the loop never reached its interval sleep"
+
+
+@pytest.mark.asyncio
+async def test_scratch_sweep_loop_survives_a_failing_pass(monkeypatch, capsys):
+    """A raising pass is logged and the NEXT interval still runs — the reaper does not die silently."""
+    import src.dial_home as dh
+
+    passes = {"n": 0}
+
+    def _explode(md, live, **kw):
+        passes["n"] += 1
+        if passes["n"] == 1:
+            raise PermissionError("EACCES on a shared volume")
+        return ["jOrphan"]
+
+    monkeypatch.setattr(dh, "sweep_orphaned_scratch", _explode)
+
+    async def _fake_sleep(_secs):
+        if passes["n"] >= 2:
+            raise asyncio.CancelledError
+        return None
+
+    monkeypatch.setattr(dh.asyncio, "sleep", _fake_sleep)
+    with contextlib.suppress(asyncio.CancelledError):
+        await dh._scratch_sweep_loop("/media", lambda: frozenset())
+
+    assert passes["n"] >= 2, "the reaper stopped after a failing pass instead of retrying next interval"
+    out = capsys.readouterr().out
+    assert "scratch sweep failed" in out, "a failed sweep left nothing in the log"
+
+
+def test_run_forever_pins_and_observes_the_sweep_task():
+    """The reaper task is kept referenced and its end is reported.
+
+    A bare `ensure_future` leaves the task weakly referenced (collectable mid-flight) and its exception
+    unretrieved, so both ways the reaper can stop are invisible. Pinned at the source level because the
+    hazard is the ABSENCE of these two lines, which no behavioural test of a working reaper can see.
+    """
+    fn = _run_forever_ast()
+    src = _ast.dump(fn)
+    assert "_SCRATCH_SWEEPS" in src, "the sweep task is not pinned — it can be garbage-collected mid-flight"
+    assert "_on_scratch_sweep_done" in src, "nothing observes the sweep task, so a dead reaper is silent"
 
 
 @pytest.mark.asyncio
@@ -1166,7 +1250,8 @@ async def test_processing_id_from_assign_frame_reaches_the_job_spec(tmp_path):
         capabilities=["stems"],
         concurrency=1,
         media_dir=str(tmp_path),
-        version="test")
+        version="test",
+    )
     frame = assign()
     frame["processingId"] = "process-xyz"
     await client.handle(frame)
@@ -1195,7 +1280,8 @@ async def test_processing_id_defaults_empty_for_a_legacy_frame_without_it(tmp_pa
         capabilities=["stems"],
         concurrency=1,
         media_dir=str(tmp_path),
-        version="test")
+        version="test",
+    )
     await client.handle(assign())  # no processingId key
     await client.drain()
 
@@ -1204,7 +1290,8 @@ async def test_processing_id_defaults_empty_for_a_legacy_frame_without_it(tmp_pa
 
 
 def test_run_forever_reports_the_klp_line_bounder_state_at_startup():
-    # an earlier change wiring guard. `klp_probe_line()` behaves correctly (proven in test_lyrics_presplit) but that
+    # an earlier change wiring guard. `klp_probe_line()` behaves correctly (proven in test_lyrics_presplit)
+    # but that
     # is worthless unless _run_forever actually CALLS it — deleting the one startup print line would
     # otherwise leave every unit test green with the silent-disable back (this repo's most-repeated
     # defect: a mechanism built + tested + never wired). Source-level AST guard, no network/torch:
@@ -1268,7 +1355,7 @@ async def test_cancel_now_cancels_in_flight_without_awaiting_issue_459(tmp_path)
     client.cancel_now()
     # cancel_now returns without awaiting — the task is not settled yet, only asked to stop.
     assert not t.done()
-    #...and the cancellation it requested does land when the task is finally awaited.
+    # ...and the cancellation it requested does land when the task is finally awaited.
     with pytest.raises(asyncio.CancelledError):
         await t
     assert t.cancelled()
@@ -1319,7 +1406,8 @@ async def test_worker_forwards_the_processor_selection_onto_the_complete_message
         capabilities=["align"],
         concurrency=1,
         media_dir=str(tmp_path),
-        version="test")
+        version="test",
+    )
     await client.handle(assign(job_type="align"))
     await client.drain()
 

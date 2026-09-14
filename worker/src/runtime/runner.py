@@ -297,9 +297,7 @@ def _snapshot(ctx: Ctx, step: Any) -> dict[str, Any]:
         # `Outputs` grows is wire-shaped and watched with no code change.
         exempt = {"notes", "timings_sec"}
         watched_out = tuple(
-            getattr(ctx.out, f.name)
-            for f in dataclasses.fields(ctx.out)
-            if f.name not in exempt
+            getattr(ctx.out, f.name) for f in dataclasses.fields(ctx.out) if f.name not in exempt
         )
         snap["out"] = repr(watched_out)
     return snap

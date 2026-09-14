@@ -7,7 +7,6 @@ import {
 	requestProcess,
 	markMediaReady,
 	setMediaLyrics,
-	setMediaGuideOffset,
 	instrumentalKey,
 	soonestSeqFor,
 	isProcessed,
@@ -434,39 +433,3 @@ test('a spotify-sourced media is refused a process (search-only; audio comes fro
 	expect(m.stemStatus).toBe('none'); // never flipped to queued
 });
 
-// setMediaGuideOffset stores a measured guide/instrumental offset, value-or-nothing. It must
-// write a finite number (0 included), and must NOT wipe an existing measurement when the wire carries
-// no number — the stems-upgrade case where a declined re-measure arrives as undefined.
-test('setMediaGuideOffset stores a finite offset (0 included) and coerces to a whole ms', () => {
-	const mediaById = new Map<string, Media>();
-	const m = media('go1', {
-		stemStatus: 'ready',
-		instrumentalRef: 'stems/go1-instrumental.flac',
-		vocalsRef: 'stems/go1-vocals.flac'
-	});
-	mediaById.set('go1', m);
-	expect(setMediaGuideOffset('go1', 30.4, mediaById)).toBe(true);
-	expect(m.guideOffsetMs).toBe(30); // rounded to whole ms
-	expect(setMediaGuideOffset('go1', 0, mediaById)).toBe(true);
-	expect(m.guideOffsetMs).toBe(0); // a measured 0 is stored, not treated as "no value"
-	expect(setMediaGuideOffset('go1', -25, mediaById)).toBe(true);
-	expect(m.guideOffsetMs).toBe(-25);
-});
-
-test('setMediaGuideOffset leaves an existing offset untouched on a non-number (declined re-measure)', () => {
-	const mediaById = new Map<string, Media>();
-	const m = media('go2', { guideOffsetMs: 42 });
-	mediaById.set('go2', m);
-	// undefined (the wire carries no field), null, NaN, and a non-number all leave the stored value as-is
-	// rather than wiping it — the refused-upgrade / older-worker case.
-	expect(setMediaGuideOffset('go2', undefined, mediaById)).toBe(false);
-	expect(setMediaGuideOffset('go2', null, mediaById)).toBe(false);
-	expect(setMediaGuideOffset('go2', NaN, mediaById)).toBe(false);
-	expect(setMediaGuideOffset('go2', 'nope', mediaById)).toBe(false);
-	expect(m.guideOffsetMs).toBe(42);
-});
-
-test('setMediaGuideOffset is a no-op for an unknown media id', () => {
-	const mediaById = new Map<string, Media>();
-	expect(setMediaGuideOffset('missing', 30, mediaById)).toBe(false);
-});

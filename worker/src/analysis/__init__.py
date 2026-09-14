@@ -23,7 +23,6 @@ PURE by construction: numpy in, dict out. No subprocess, no network, no torch.
 
 from __future__ import annotations
 
-from .guide_offset import measure_guide_offset_ms
 from .key_detect import detect_key
 from .loudness import measure_lufs
 from .song_profile import build_song_profile, empty_profile
@@ -36,7 +35,6 @@ __all__ = [
     "detect_key",
     "empty_profile",
     "extract_pitch_track",
-    "measure_guide_offset_ms",
     "measure_lufs",
     "summarize_range",
     "wav_frame_length",

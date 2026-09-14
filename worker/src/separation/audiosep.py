@@ -12,7 +12,8 @@ through that package (see roformer.py's `#: KNOWN MISMATCH` note). audio-separat
 first-class MDXC path. The measured win is large: `mel instrumental_becruily` benchmarks at rt 1.28 on
 the reference box (32-core Graviton 3, CPU) versus `bs_roformer-1297` at rt 13.29 — a 10.4x
 RoFormer-family instrumental process, no GPU (docs/benchmarks/SUMMARY.md §4). Adopted ALONGSIDE
-`bs-roformer-infer`, not replacing it — both engines, issue an earlier change owner ruling Q1(b) (docs/DECISIONS.md).
+`bs-roformer-infer`, not replacing it — both engines, issue an earlier change owner ruling Q1(b)
+(docs/DECISIONS.md).
 
 INTEGRATION: audio-separator exposes a CLI (`audio-separator <input> --model_filename <ckpt>
 --model_file_dir <dir> --output_dir <dir> --output_format FLAC`), confirmed against the repo's own
@@ -27,7 +28,8 @@ this engine differs from demucs (its input is a single named FILE, and its outpu
 globbing the output dir rather than derived from the model name) are the same shape roformer already
 carries, stated in `engines.py`.
 
-⚠️ A REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT — the identical caveat roformer.py carries. audio-separator
+⚠️ A REAL PROCESS IS UNVERIFIED IN THIS ENVIRONMENT — the identical caveat roformer.py carries.
+audio-separator
 is not installed on the dev/CI box (aarch64), and a real process plus the first-run checkpoint download need a
 network-enabled worker. The package's CLI contract and the checkpoint filename are confirmed against the
 repo's committed benchmark scripts; the end-to-end process does not run here. Until a network-enabled worker
@@ -47,6 +49,7 @@ from __future__ import annotations
 import os
 
 from ..retry_policy import BoundaryError
+from ..vocabulary import StemFormat
 
 # ── pure helpers (no torch, no subprocess) ───────────────────────────────────────
 
@@ -72,10 +75,9 @@ def resolve_audiosep_checkpoint(params: dict, default: str = DEFAULT_AUDIOSEP_MO
     if checkpoint is None:
         # BoundaryError subclasses ValueError (drop-in for pytest.raises(ValueError)) but carries the
         # shared structured retryable = False, so an unknown token fails fast via retry_policy instead of
-        # burning three process attempts on a token that can never resolve — same as an earlier change gave demucs.
-        raise BoundaryError(
-            f"unknown audiosep model {token!r}; expected one of {sorted(AUDIOSEP_MODELS)}"
-        )
+        # burning three process attempts on a token that can never resolve — same as an earlier change gave
+        # demucs.
+        raise BoundaryError(f"unknown audiosep model {token!r}; expected one of {sorted(AUDIOSEP_MODELS)}")
     return checkpoint
 
 
@@ -118,7 +120,9 @@ def audiosep_argv(
     checkpoint: str,
     *,
     model_file_dir: str | None = None,
-    bin: str = "audio-separator") -> list[str]:
+    bin: str = "audio-separator",
+    stem_format: StemFormat = StemFormat.FLAC,
+) -> list[str]:
     """audio-separator CLI argv. Confirmed against docs/benchmarks/scripts/family_bench.sh:
 
         audio-separator <input> --model_filename <ckpt> --model_file_dir <dir> \\
@@ -126,10 +130,15 @@ def audiosep_argv(
 
     Unlike bs-roformer-infer's `--input_folder`, audio-separator takes the input FILE as its positional
     argument, so no dedicated input directory is needed. `--model_filename` auto-resolves and downloads
-    the checkpoint on first use. `--output_format FLAC` matches the lossless stem the pipeline publishes;
-    the stems still pass through the pipeline's own FLAC encode (PublishStems) for a uniform container.
-    `--model_file_dir` points at the shared host-side checkpoint cache when set, so the ~hundreds-of-MB
-    download happens once per box, not once per process."""
+    the checkpoint on first use. `--model_file_dir` points at the shared host-side checkpoint cache when
+    set, so the ~hundreds-of-MB download happens once per box, not once per process.
+
+    `--output_format` comes from the DECLARED `stem_format` rather than a literal. It was hardcoded to
+    FLAC, which was defensible on its own terms — FLAC is what the pipeline publishes — but nothing told
+    the raw-stem readers, and they assumed WAV via stdlib `wave`, which cannot open a FLAC. The result was
+    that this engine alone silently lost its guide offset and its guide mix, reported as "stems do not
+    match" rather than as an unreadable container. Driving the flag from the same value the readers consult
+    is what makes the two agree by construction."""
     argv = [
         bin,
         input_wav,
@@ -138,7 +147,7 @@ def audiosep_argv(
         "--output_dir",
         out_dir,
         "--output_format",
-        "FLAC",
+        stem_format.value.upper(),
     ]
     if model_file_dir:
         argv += ["--model_file_dir", model_file_dir]

@@ -238,13 +238,15 @@ def _rspec(tmp_path, **params):
         job_type="stems",
         source_uri="https://www.youtube.com/watch?v=rof",
         params=params,
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
 
 
 @pytest.mark.asyncio
 async def test_a_roformer_process_runs_the_real_roformer_engine_end_to_end(tmp_path):
     """Drives a stems job with engine=roformer through plans.stems_runner and asserts the four
-    documented demucs/roformer differences plus the resolved-slug fact — the coverage an earlier change is about.
+    documented demucs/roformer differences plus the resolved-slug fact — the coverage an earlier change is
+    about.
 
     No `engine=` override, so stems_runner resolves the REAL RoformerEngine from params.engine; the
     fake runner only stands in for the bs-roformer-infer SUBPROCESS, not the engine."""
@@ -304,7 +306,8 @@ async def test_a_roformer_process_runs_the_real_roformer_engine_end_to_end(tmp_p
     # leak into progress — the only NON-terminal pct run_stage may emit for this stage is a time-based
     # keepalive, and roformer's is held at 0 (its last-known pct) so the bar never moves off 0 until the
     # closing 100. The invariant is therefore: no INTERMEDIATE (0 < pct < 100) value ever appears. This
-    # does NOT pin the event COUNT — pinning [0, 100] would forbid the keepalive that an earlier change added to keep
+    # does NOT pin the event COUNT — pinning [0, 100] would forbid the keepalive that an earlier change added
+    # to keep
     # a 45-minute pass from being reaped at the 30 s lease.
     seps = [e.pct for e in events if isinstance(e, ProgressEvent) and e.stage == "separating"]
     assert 0 in seps and 100 in seps

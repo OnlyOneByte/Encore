@@ -1,13 +1,21 @@
--- SINGLE PRE-RELEASE BASELINE. Regenerated from src/server/db/schema.ts; this is the whole schema
+-- SINGLE PRE-RELEASE BASELINE. Regenerated from src/lib/server/db/schema.ts; this is the whole schema
 -- from an empty database in one migration, not incremental history.
 --
--- No production database existed when this was cut, so collapsing the prior chain stranded nothing.
+-- COLLAPSED A SECOND TIME. The chain had grown back to thirteen files (0000 plus 0001..0012) as the
+-- schema moved; owner ruling on this pass: there is still no production deployment and the dev box's
+-- database is being recreated anyway, so the whole chain folds into this file again rather than being
+-- maintained. The change that prompted it was dropping `media.guide_offset_ms` — a column whose
+-- feature was deleted (both stems come out of one separation pass, so there was no offset to measure)
+-- and which SQLite can only remove via the create-copy-drop-rename table rebuild. Folding it out of
+-- the baseline is cheaper and leaves less to explain than a rebuild migration for a dead column.
+--
 -- Anyone still holding an OLDER dev database must delete it and let the library rebuild -- the meta/
 -- sidecars are authoritative, and an old DB's __drizzle_migrations records hashes that no longer
 -- exist in this folder, so it cannot be migrated forward from.
 --
 -- Once this ships to a real box, STOP editing this file: every schema change after that is a new
--- numbered migration.
+-- numbered migration that only ALTERs. The guard in tests/guards/hygiene/settings-repository.test.ts
+-- enforces that, and it is the reason this header must survive any regeneration.
 
 CREATE TABLE `global_settings` (
 	`id` text PRIMARY KEY DEFAULT 'singleton' NOT NULL,
@@ -43,7 +51,8 @@ CREATE TABLE `job_attempts` (
 	`asr_model` text,
 	`sync_mode` text,
 	`audio_sec` integer,
-	`stages` text
+	`stages` text,
+	`selection` text
 );
 --> statement-breakpoint
 CREATE INDEX `job_attempts_media_idx` ON `job_attempts` (`media_id`,`enqueued_at`);--> statement-breakpoint
@@ -84,12 +93,15 @@ CREATE TABLE `media` (
 	`stem_status` text DEFAULT 'none' NOT NULL,
 	`instrumental_ref` text,
 	`vocals_ref` text,
+	`guide_mix_ref` text,
 	`song_profile` text,
 	`lyrics_ref` text,
 	`lyrics_candidates` text,
+	`lyrics_override_ref` text,
+	`lyrics_override_text` text,
 	`artist_canonical` text,
-	`artist_credit` text,
 	`title_canonical` text,
+	`artist_credit` text,
 	`mbid` text,
 	`annotation_source` text,
 	`annotation_confidence` text,
@@ -107,7 +119,7 @@ CREATE INDEX `media_tags_kind_value_idx` ON `media_tags` (`kind`,`value`);--> st
 CREATE INDEX `media_tags_media_idx` ON `media_tags` (`media_id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `media_tags_unique_idx` ON `media_tags` (`media_id`,`kind`,`value`);--> statement-breakpoint
 CREATE TABLE `playback_state` (
-	`id` text PRIMARY KEY DEFAULT 'singleton' NOT NULL,
+	`room_id` text PRIMARY KEY NOT NULL,
 	`current_entry_id` text,
 	`position_sec` integer DEFAULT 0 NOT NULL,
 	`is_playing` integer DEFAULT false NOT NULL,
@@ -133,20 +145,22 @@ CREATE TABLE `queue_entries` (
 	`status` text DEFAULT 'queued' NOT NULL,
 	`rotation_seq` integer NOT NULL,
 	`added_at` integer NOT NULL,
-	`pinned_seq` integer
+	`room_id` text NOT NULL
 );
 --> statement-breakpoint
+CREATE INDEX `queue_entries_room_idx` ON `queue_entries` (`room_id`);--> statement-breakpoint
 CREATE TABLE `room_settings` (
 	`room_id` text PRIMARY KEY NOT NULL,
 	`queue_order` text DEFAULT 'fair' NOT NULL,
 	`tv_progress_style` text DEFAULT 'card' NOT NULL,
 	`tv_background_style` text DEFAULT 'off' NOT NULL,
-	`tv_background_hue` integer DEFAULT 240 NOT NULL,
+	`tv_background_color` text DEFAULT '#001d31' NOT NULL,
+	`tv_background_dim` real DEFAULT 0 NOT NULL,
 	`tv_visualizer` text DEFAULT 'plasma' NOT NULL,
 	`song_intro_enabled` integer DEFAULT true NOT NULL,
 	`song_intro_ms` integer DEFAULT 2500 NOT NULL,
 	`max_quality_rank` integer,
-	`lyrics_ball` text DEFAULT 'bounce' NOT NULL,
+	`lyrics_ball` text DEFAULT 'off' NOT NULL,
 	`lyrics_highlight` text DEFAULT 'word' NOT NULL,
 	`lyrics_lead_ms` integer DEFAULT 300 NOT NULL,
 	`lyrics_scale_pct` integer DEFAULT 100 NOT NULL,
@@ -155,6 +169,7 @@ CREATE TABLE `room_settings` (
 	`lyrics_lines_before` integer DEFAULT 2 NOT NULL,
 	`lyrics_lines_after` integer DEFAULT 2 NOT NULL,
 	`guide_level_default` real DEFAULT 0 NOT NULL,
+	`loudness_normalization` integer DEFAULT false NOT NULL,
 	`presence_grace_minutes` integer DEFAULT 90 NOT NULL
 );
 --> statement-breakpoint
@@ -171,7 +186,9 @@ CREATE TABLE `singers` (
 	`color` text NOT NULL,
 	`session_token` text NOT NULL,
 	`joined_at` integer NOT NULL,
-	`last_sung_at` integer
+	`last_sung_at` integer,
+	`room_id` text NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `singers_session_token_idx` ON `singers` (`session_token`);
+CREATE UNIQUE INDEX `singers_session_token_idx` ON `singers` (`session_token`);--> statement-breakpoint
+CREATE INDEX `singers_room_idx` ON `singers` (`room_id`);

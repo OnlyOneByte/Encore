@@ -1,6 +1,7 @@
 """AcquireAudio must find a pre-an earlier change legacy vocals stem.
 
-an earlier change switched VOCALS_EXT from `m4a` to `flac` for NEW processes, but the worker never receives the stored
+an earlier change switched VOCALS_EXT from `m4a` to `flac` for NEW processes, but the worker never receives
+the stored
 vocals ref — it re-derives the path from the CURRENT VOCALS_EXT on every align job. Every song processed in
 the interim era has its vocals stem on disk as `<id>-vocals.m4a`, so a lookup that only tries the current
 extension loses it and align silently degrades to aligning against the mix.
@@ -41,8 +42,10 @@ def _drive_acquire(tmp_path) -> Ctx:
             job_type="align",
             source_uri="lib/m1.flac",
             params={"fetcher": "local"},
-            media_dir=str(tmp_path)),
-        work=str(tmp_path))
+            media_dir=str(tmp_path),
+        ),
+        work=str(tmp_path),
+    )
 
     async def _run():
         async for _ in AcquireAudio().run(ctx):

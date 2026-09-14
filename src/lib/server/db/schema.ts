@@ -91,13 +91,6 @@ export const media = sqliteTable('media', {
 	// encode failed)", which guidePath() maps to the legacy two-element path, so every song already in the
 	// library keeps today's behaviour after the upgrade with no backfill required.
 	guideMixRef: text('guide_mix_ref'),
-	// Signed millisecond offset of the vocals stem against the instrumental, measured at process time.
-	// INTEGER (whole ms is all the alignment ever needs — the client divides by 1000), and NULLABLE with a
-	// meaningful null: null ⇔ "never measured / row predates the feature", which guideOffsetSec() maps to 0
-	// so the song is held exactly as today. It is deliberately NOT `.notNull().default(0)` — a stored 0 and
-	// an absent value are the same behaviour, and keeping null distinct lets the operator surface tell
-	// "measured, and it was 0" apart from "we never measured this one".
-	guideOffsetMs: integer('guide_offset_ms'),
 	// The stems job's THIRD artifact: what the process learned about the song's music — its key and the
 	// sung range — as one JSON blob (see src/lib/contract/process/song-profile.ts, SongProfile). Stored the
 	// same way as lyrics_candidates: nothing queries INSIDE it (transposition and range math all happen

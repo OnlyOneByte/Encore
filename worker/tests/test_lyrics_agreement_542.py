@@ -27,21 +27,6 @@ import random
 import re
 from pathlib import Path
 
-def _repo_root() -> Path:
-    """The repo root, by walking up for `bunfig.toml`.
-
-    Not a hop count: `parents[N]` encodes this file's distance from the root, and flattening the `apps/`
-    layer changed that distance for every worker test at once — 15 of them failed reading files that had
-    moved outside their computed root. The marker is the same file the TypeScript harness uses, so both
-    sides of the repo agree on the answer by construction.
-    """
-    here = Path(__file__).resolve()
-    for candidate in [here.parent, *here.parents]:
-        if (candidate / "bunfig.toml").is_file():
-            return candidate
-    raise SystemExit(f"no bunfig.toml above {here}")
-
-
 from src.lyrics.chain import (
     MIN_TOKENS_TO_COMPARE,
     ROLE_BASELINE,
@@ -60,6 +45,21 @@ from src.lyrics.chain import (
     select_by_baselines,
 )
 from src.lyrics.chain import agreement as _chain_agreement
+
+
+def _repo_root() -> Path:
+    """The repo root, by walking up for `bunfig.toml`.
+
+    Not a hop count: `parents[N]` encodes this file's distance from the root, and flattening the `apps/`
+    layer changed that distance for every worker test at once — 15 of them failed reading files that had
+    moved outside their computed root. The marker is the same file the TypeScript harness uses, so both
+    sides of the repo agree on the answer by construction.
+    """
+    here = Path(__file__).resolve()
+    for candidate in [here.parent, *here.parents]:
+        if (candidate / "bunfig.toml").is_file():
+            return candidate
+    raise SystemExit(f"no bunfig.toml above {here}")
 
 
 _REPO = _repo_root()
@@ -107,9 +107,7 @@ def _ts_corpus() -> list[dict[str, object]]:
         assert pair, f"expected `[numerator, denominator]` or `null`, got {raw!r}"
         return int(pair.group(1)) / int(pair.group(2))
 
-    body = re.search(
-        r"export const AGREEMENT_PARITY_CORPUS[^=]*=\s*\[(.*)\];\s*$", text, re.DOTALL
-    )
+    body = re.search(r"export const AGREEMENT_PARITY_CORPUS[^=]*=\s*\[(.*)\];\s*$", text, re.DOTALL)
     assert body, f"could not find `export const AGREEMENT_PARITY_CORPUS = [...]` in {_CORPUS_TS.name}"
     cases: list[dict[str, object]] = []
     for block in re.findall(r"\{(.*?)\n\t\}", body.group(1), re.DOTALL):
@@ -238,7 +236,8 @@ def test_argument_order_is_load_bearing():
 
 # ── 3. the measured band SUSPECT_COVERAGE sits in ────────────────────────────────────
 #
-# A synthetic corpus with an explicit degradation model, all original text. Not a calibration set (the real corpus
+# A synthetic corpus with an explicit degradation model, all original text. Not a calibration set (the real
+# corpus
 # is still open); it measures how the METRIC behaves on the three pair shapes that matter, which is what
 # choosing the judgement axis and its threshold needs.
 
@@ -274,15 +273,41 @@ OTHER_SONG = (
 
 #: Plausible mishearings, so a degraded baseline looks like ASR rather than like noise.
 _MISHEARD = {
-    "harbour": "arbour", "lights": "light", "tuesday": "choose day", "rain": "reign",
-    "ferry": "fairy", "horn": "warn", "calling": "call in", "name": "aim",
-    "standing": "stand in", "crossing": "cross in", "coat": "code", "thin": "tin",
-    "snow": "no", "ending": "end in", "door": "doe", "close": "clothes",
-    "carry": "carrie", "water": "waterer", "line": "lion", "morning": "mourning",
-    "still": "steel", "mine": "mind", "letters": "letting", "attic": "add it",
-    "learned": "learnt", "send": "sent", "photograph": "photo graph", "corner": "cornea",
-    "bend": "bent", "left": "lift", "behind": "be hind", "over": "of a",
-    "one": "won", "told": "toad", "every": "ever",
+    "harbour": "arbour",
+    "lights": "light",
+    "tuesday": "choose day",
+    "rain": "reign",
+    "ferry": "fairy",
+    "horn": "warn",
+    "calling": "call in",
+    "name": "aim",
+    "standing": "stand in",
+    "crossing": "cross in",
+    "coat": "code",
+    "thin": "tin",
+    "snow": "no",
+    "ending": "end in",
+    "door": "doe",
+    "close": "clothes",
+    "carry": "carrie",
+    "water": "waterer",
+    "line": "lion",
+    "morning": "mourning",
+    "still": "steel",
+    "mine": "mind",
+    "letters": "letting",
+    "attic": "add it",
+    "learned": "learnt",
+    "send": "sent",
+    "photograph": "photo graph",
+    "corner": "cornea",
+    "bend": "bent",
+    "left": "lift",
+    "behind": "be hind",
+    "over": "of a",
+    "one": "won",
+    "told": "toad",
+    "every": "ever",
 }
 
 
@@ -309,8 +334,7 @@ def _coverage(candidate: str, baseline: str) -> float:
 def test_a_different_song_stays_below_the_threshold_with_margin():
     """The UPPER tail of the different-song band: measured ceiling 0.300, threshold 0.40."""
     worst = max(
-        _coverage(OTHER_SONG, SONG if wer == 0 else asr_baseline(SONG, wer))
-        for wer in (0.0, 0.10, 0.25)
+        _coverage(OTHER_SONG, SONG if wer == 0 else asr_baseline(SONG, wer)) for wer in (0.0, 0.10, 0.25)
     )
     assert worst < SUSPECT_COVERAGE, worst
     assert worst < 0.32, f"the different-song ceiling moved: {worst:.3f} (was 0.300 when 0.40 was chosen)"
@@ -489,6 +513,7 @@ def test_the_package_root_re_exports_the_new_agreement_surface():
     the root, not merely shadowed, or a caller keeps importing a name whose axis silently changed.
     """
     import src.lyrics as pkg
+    from src.lyrics import SUSPECT_COVERAGE as root_threshold
 
     # Reached through the package root on purpose — `from .chain import ...` is the thing under test.
     from src.lyrics import (  # noqa: F401  — imported for the surface, not to be called
@@ -496,7 +521,6 @@ def test_the_package_root_re_exports_the_new_agreement_surface():
         Composite,
         agreement,
     )
-    from src.lyrics import SUSPECT_COVERAGE as root_threshold
 
     assert root_threshold == SUSPECT_COVERAGE
     assert agreement is _chain_agreement, "the root must re-export chain's agreement, not a copy"

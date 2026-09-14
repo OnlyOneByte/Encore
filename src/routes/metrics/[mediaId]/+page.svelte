@@ -54,7 +54,6 @@
 			// The guiding-track fields: whether this song has a vocals stem to align, and the
 			// measured guide/instrumental offset in signed ms (undefined = never measured).
 			vocalsRef?: string;
-			guideOffsetMs?: number;
 			// Present ⇔ this song plays through the ONE-file guide path, which changes what the offset above
 			// means (frozen at merge, not applied live).
 			guideMixRef?: string;
@@ -170,33 +169,17 @@
 
 				{#if audit.media?.vocalsRef}
 					<!--
-				The MEASURED guide/instrumental offset (an earlier change), so a wrong alignment is diagnosable here rather
-				than only by ear on the party box. Shown only when this song has a guiding track (a vocals
-				stem) — the only case an offset means anything. `undefined` ⇔ never measured (an older process);
-				a number, 0 included, ⇔ measured, so the two read differently.
-			-->
-					<p class="note">
-						Guide offset:
-						{#if typeof audit.media.guideOffsetMs === 'number'}
-							<strong>{audit.media.guideOffsetMs} ms</strong>
-							{audit.media.guideOffsetMs === 0 ? '(vocals aligned with instrumental)' : '(vocals vs instrumental)'}
-						{:else}
-							<strong>not measured</strong> (processed before this was recorded)
-						{/if}
-					</p>
-					<!--
-						WHICH GUIDE PATH the TV takes for this song, because the offset above means two different
-						things depending on it and an operator cannot otherwise tell. On the mix path the offset was
-						measured and then FROZEN into the file at merge time, and `guide-sync.ts`'s governor is
-						unreachable; on the element path the offset is applied live at three sites and the governor is
-						what holds the two elements together. Same number, opposite significance.
+						WHETHER THIS SONG HAS A GUIDING TRACK AT ALL, which an operator cannot otherwise tell. The
+						guide rides inside the master as channels 2/3 of the 4-channel mix, and that is now the ONLY
+						path: the two-element player was deleted, so a song with no mix offers no guide. This row is
+						therefore the answer to "why can this singer not fade the original vocals in".
 					-->
 					<p class="note">
 						Guide path:
 						{#if audit.media.guideMixRef}
-							<strong>one 4-channel file</strong> (one playhead — drift is impossible; the offset above was frozen at merge)
+							<strong>one 4-channel file</strong> (one playhead — drift is impossible)
 						{:else}
-							<strong>two elements</strong> (drift-governed; the offset above is applied live)
+							<strong>none</strong> (no mix was built, so this song offers no guiding track)
 						{/if}
 					</p>
 				{/if}

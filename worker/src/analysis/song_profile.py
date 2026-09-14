@@ -58,11 +58,32 @@ def build_song_profile(
     """
     profile = empty_profile()
 
-    # ── key (instrumental) ──────────────────────────────────────────────────────────
+    # ── the instrumental, decoded ONCE ──────────────────────────────────────────────
+    # Both halves below measure the same file, and each used to read it for itself: the key path called
+    # `wav.read_wav_mono` and `measure_lufs(path)` re-opened and re-decoded the very same stem. That was
+    # two full decodes of a multi-minute file inside one function for two measurements over identical
+    # samples. One decode, shared.
+    #
+    # A DECODE failure is distinct from a MEASUREMENT failure and degrades both halves, which is what
+    # happened before too (the key path logged and nulled; the loudness path returned None from its own
+    # failed read). A measurement failure still degrades only its own half — an unreadable chromagram must
+    # not throw away a good level, nor the reverse — which is why the two try blocks stay separate below.
+    inst_samples = None
+    inst_rate = 0
     if instrumental_wav:
         try:
-            samples, sample_rate = wav.read_wav_mono(instrumental_wav)
-            tonic, mode, confidence = key_detect.detect_key(samples, sample_rate)
+            inst_samples, inst_rate = wav.read_wav_mono(instrumental_wav)
+        except Exception as exc:  # noqa: BLE001 — analysis must never fail the process
+            log(
+                f"[worker] could not read the instrumental for {media_id} "
+                f"({type(exc).__name__}: {exc}); publishing null key and null loudness",
+                flush=True,
+            )
+
+    # ── key (instrumental) ──────────────────────────────────────────────────────────
+    if inst_samples is not None:
+        try:
+            tonic, mode, confidence = key_detect.detect_key(inst_samples, inst_rate)
             profile["keyTonic"] = tonic
             profile["keyMode"] = mode
             profile["keyConfidence"] = confidence
@@ -87,7 +108,7 @@ def build_song_profile(
     # stem (silence / shorter than one gating block / unreadable) stores None, never a fabricated
     # level. A stored 0.0 would read as a deafening master and be attenuated into inaudibility.
     if instrumental_wav:  # measured and STORED here; the log line is for the operator, not the room
-        measured_lufs = loudness.measure_lufs(instrumental_wav)
+        measured_lufs = loudness.measure_lufs_samples(inst_samples, inst_rate)
         profile["loudnessLufs"] = measured_lufs
         log(
             f"[worker] instrumental loudness for {media_id}: "

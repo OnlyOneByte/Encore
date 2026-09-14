@@ -30,7 +30,16 @@ from .steps.lyrics import (
 )
 from .steps.metadata import Annotate, PublishOriginal
 from .steps.separate import DecodeToWav, ProbeSilence, PublishStems, Separate
-from .vocabulary import Action, AsrModel, Engine, SyncMode, parse_asr_model, parse_engine, parse_sync_mode
+from .vocabulary import (
+    Action,
+    AsrModel,
+    Engine,
+    StemFormat,
+    SyncMode,
+    parse_asr_model,
+    parse_engine,
+    parse_sync_mode,
+)
 
 
 def align_plan(
@@ -222,6 +231,7 @@ def stems_runner(
     overlap: float | None = None,
     segment: int | None = None,
     shifts: int | None = None,
+    stem_format: StemFormat = StemFormat.FLAC,
 ) -> Any:
     """A PlanRunner for both separation actions, with this worker's separator configuration.
 
@@ -251,6 +261,7 @@ def stems_runner(
             overlap=overlap,
             segment=segment,
             shifts=shifts,
+            stem_format=stem_format,
         )
         kwargs: dict[str, Any] = dict(
             engine=eng, profiler=profiler, ffmpeg_bin=ffmpeg_bin, flac_level=flac_level, ytdlp_bin=ytdlp_bin
