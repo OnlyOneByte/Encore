@@ -1,6 +1,6 @@
 import { expect, it } from 'bun:test';
 import { read } from '@encore/test-support';
-import { GUIDE_PREROLL_ALIGN_SEC, SEEK_JUMP_SEC, resumeSeekTarget } from '$lib/tv/guide-sync';
+import { PLAYHEAD_ALIGN_SEC, SEEK_JUMP_SEC, resumeSeekTarget } from '$lib/tv/playhead-sync';
 
 /*
  * — reloading the TV page mid-song desynced audio playback.
@@ -43,7 +43,7 @@ it('resumeSeekTarget — a cold-mounted master resumes to the room position: doe
 	// for nothing, the same cost the pre-roll and drift governor both refuse to pay.
 	expect(resumeSeekTarget(0, 0).seek).toBe(false);
 	expect(resumeSeekTarget(6, 6).seek).toBe(false);
-	expect(resumeSeekTarget(6, 6 + GUIDE_PREROLL_ALIGN_SEC / 2).seek).toBe(false);
+	expect(resumeSeekTarget(6, 6 + PLAYHEAD_ALIGN_SEC / 2).seek).toBe(false);
 });
 
 it('resumeSeekTarget — a cold-mounted master resumes to the room position: never hands a non-finite value to currentTime (NaN reaching the element throws)', () => {

@@ -40,35 +40,40 @@ export function effectiveGuideLevel(playback: Pick<PlaybackState, 'guideLevel'>,
  * HOW the TV should play this song's guide — the one decision that replaces a branch scattered across
  * the player.
  *
- * Three answers, and the ordering between the first two is the whole point:
+ * Two answers, and the absence of a third is the design decision:
  *
  *   `mix`     — ONE 4-channel file through ONE media element. Channels 0/1 are the instrumental, 2/3 the
  *               vocals, split apart in WebAudio and given their own gains. One decoder means one playhead,
- *               so the guide CANNOT drift from the instrumental. Preferred whenever a mix exists.
- *   `element` — the legacy two-element path: instrumental in the master, vocals in a second element held
- *               in time by `guide-sync.ts`'s governor. Correct as far as it can be, and structurally
- *               unable to be exact — see `Media.guideMixRef`. Kept for songs with no mix.
- *   `none`    — not playable, or no vocals to offer.
+ *               so the guide CANNOT drift from the instrumental. This is the ONLY way a guide is played.
+ *   `none`    — not playable, or no mix to play.
  *
- * Returned as a discriminated union rather than a pair of booleans so the two paths cannot BOTH be taken:
- * mounting a second element beside the mix would play the vocals twice, once in the mix at the room's
- * level and once at the element's — audibly a doubled, flanged vocal, which is precisely the defect class
- * this feature exists to remove. The type makes that state unrepresentable.
+ * THE TWO-ELEMENT PATH IS GONE, and it was removed rather than fixed because it could not be fixed.
+ * It played the vocals stem in a SECOND media element held against the instrumental by a drift
+ * governor, and that governor could only ever compare the two elements' reported `currentTime` — the
+ * spec's official playback position, which EXCLUDES each element's output latency. So it converged on
+ * "aligned" using a signal that does not describe what the ear hears, and then correctly stopped
+ * correcting, leaving an audible offset no tuning could reach. Two decoders cannot be sample-locked
+ * from script; one file does not need to be.
+ *
+ * Returned as a discriminated union rather than a boolean so that adding a second audible path back
+ * requires changing this type — the two-decoder design cannot creep in as an `if` somewhere in the
+ * player, which is how it arrived the first time.
  */
 export type GuidePath =
 	/** One 4-channel file, one playhead. `ref` is the mix. */
 	| { kind: 'mix'; ref: string }
-	/** Two elements and a drift governor. `ref` is the vocals stem. */
-	| { kind: 'element'; ref: string }
 	/** No guide is on offer. */
 	| { kind: 'none' };
 
-export function guidePath(m: Pick<Media, 'stemStatus' | 'instrumentalRef' | 'vocalsRef' | 'guideMixRef'>): GuidePath {
+export function guidePath(m: Pick<Media, 'stemStatus' | 'instrumentalRef' | 'guideMixRef'>): GuidePath {
 	// Playability first: the guide is an overlay on something, and there is nothing to overlay until the
 	// song plays at all. This mirrors hasGuidingTrack rather than re-deriving it.
 	if (!isPlayable(m)) return { kind: 'none' };
 	if (m.guideMixRef) return { kind: 'mix', ref: m.guideMixRef };
-	if (m.vocalsRef) return { kind: 'element', ref: m.vocalsRef };
+	// NO SECOND-ELEMENT FALLBACK. A song with a vocals stem but no mix offers NO guide — deliberately.
+	// See the header: a `vocalsRef` is still the stem the mix is BUILT from, so it is not evidence that
+	// this song can be guided from one playhead, and reading it here is what re-opens the two-decoder
+	// path this type exists to make unrepresentable.
 	return { kind: 'none' };
 }
 

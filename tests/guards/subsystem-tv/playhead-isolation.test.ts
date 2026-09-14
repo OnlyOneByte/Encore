@@ -182,12 +182,10 @@ describe('the seek effect depends on playback intent, never on the catalog', () 
 			player.split('function applySeek(seekTarget: number): void {')[1]?.split('\n\t}')[0] ?? ''
 		);
 		expect(body).not.toBe('');
-		for (const read of [
-			'untrack(() => master)',
-			'untrack(() => media)',
-			'untrack(() => active)',
-			'untrack(() => vocals)'
-		]) {
+		// `untrack(() => vocals)` was the FOURTH read here, and the original case for this whole rule: the
+		// guide element MOUNTING re-ran the seek effect and yanked the master to a stale position. The
+		// element is gone, so the read is too — the rule it established still governs the three that remain.
+		for (const read of ['untrack(() => master)', 'untrack(() => media)', 'untrack(() => active)']) {
 			expect(body).toContain(read);
 		}
 	});

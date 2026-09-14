@@ -72,8 +72,15 @@ describe('effectiveGuideLevel', () => {
 });
 
 describe('hasGuidingTrack', () => {
-	it('is true only for a playable song that also has a vocals stem', () => {
-		expect(hasGuidingTrack(processed({ vocalsRef: 'derived/stems/m1-vocals.m4a' }))).toBe(true);
+	it('is true only for a playable song that also has a guide MIX', () => {
+		// The gate moved from "has a vocals stem" to "has a mix" when the two-element path was deleted.
+		// This is the phone-facing consequence: the guide slider is offered exactly when the TV has a
+		// single-playhead file to play, never on the strength of a stem that is only mix INPUT.
+		expect(hasGuidingTrack(processed({ guideMixRef: 'derived/stems/m1-guidemix.flac' }))).toBe(true);
+	});
+
+	it('is false with a vocals stem but no mix — a stem is not a playable guide', () => {
+		expect(hasGuidingTrack(processed({ vocalsRef: 'derived/stems/m1-vocals.m4a' }))).toBe(false);
 	});
 
 	it('is false without a vocals stem (processed before the ref existed, or a silent stem)', () => {

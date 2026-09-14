@@ -123,29 +123,10 @@ test("control: WITHOUT the pre-set level, a freshly built graph's GainNode defau
 	expect(lastCtx!.gains[0].gain.value).toBeCloseTo(1, 6);
 });
 
-// -- B. Source-scan: the pitch effect re-applies the room level after (re)building the guide graph -
+// -- B. Source-scan: the pitch effect re-applies the room level after (re)building the graph --------
 
 function stripComments(s: string): string {
 	return s.replace(/[/][*][\s\S]*?[*][/]/g, '').replace(/(^|[^:])[/][/][^\n]*/g, '$1');
-}
-
-// The guide branch of the pitch $effect: `if (g) { ... }`, sitting after `masterGraph?.setShift`.
-function guideBranchBody(s: string): string {
-	const anchor = 'if (needsShift(shift) && !guideGraph)';
-	const at = s.indexOf(anchor);
-	expect(at).toBeGreaterThanOrEqual(0);
-	// Walk back to the opening `{` of the enclosing `if (g) {` and forward to its close.
-	const open = s.lastIndexOf('{', at);
-	let i = open;
-	let depth = 0;
-	for (; i < s.length; i++) {
-		if (s[i] === '{') depth++;
-		else if (s[i] === '}') {
-			depth--;
-			if (depth === 0) break;
-		}
-	}
-	return s.slice(open, i + 1);
 }
 
 // A SIBLING READ, re-anchored explicitly. This was `at('src/lib/tv/TvPlayer.svelte')` — "the
@@ -154,22 +135,34 @@ function guideBranchBody(s: string): string {
 // the two scans below an empty string they would both pass on.
 const TV = read('src/lib/tv/TvPlayer.svelte');
 
-test('guard: the pitch effect re-applies the room level to the guide graph via setGain(effectiveGuide)', () => {
-	const body = stripComments(guideBranchBody(TV));
-	// It must build/keep the graph AND set its gain from the resolved level in the same branch.
-	expect(body).toMatch(/guideGraph\s*=\s*new PitchShiftGraph/);
-	expect(body).toMatch(/guideGraph[?][.]setGain[(]\s*effectiveGuide\s*[)]/);
+/*
+ * WHAT MOVED. These two guards used to scan the pitch effect's GUIDE BRANCH (`if (g) { ... }`) for a
+ * second `PitchShiftGraph` built on the vocals element, and the level effect for the matching
+ * `vocals.volume` write. Both are gone with the second element: the guide is a channel pair inside the
+ * master, so its level is `setGuideGain` on the ONE split graph.
+ *
+ * The DEFECT they exist for is unchanged, which is why they are rewritten rather than deleted: a freshly
+ * built graph does not inherit the room's level (`desiredGuideGain` defaults to 0 — deliberately, so a
+ * missed call yields a guide nobody hears rather than one that drowns the singer), and the level effect's
+ * tracked deps do not include the plain `masterGraph` variable. So the pitch effect, which is where the
+ * graph gets built, must re-assert the level itself or the first transpose silences the guide.
+ */
+test('guard: the pitch effect re-applies the room guide level via setGuideGain(effectiveGuide)', () => {
+	const stripped = stripComments(TV);
+	// Anchor on the pitch effect's own master-level re-apply, then require the guide's beside it — the two
+	// re-applies exist for the same reason and must not drift apart.
+	const at = stripped.indexOf('masterGraph?.setGain(effectiveMasterLevel)');
+	expect(at).toBeGreaterThanOrEqual(0);
+	const region = stripped.slice(at, at + 300);
+	expect(region).toMatch(/masterGraph[?][.]setGuideGain[(]\s*effectiveGuide\s*[)]/);
 });
 
-test('guard (not-vacuous): the level effect still owns the level for the native/pre-build path', () => {
-	// The graph-path reapply (test above) is ADDITIVE: the original gain effect must keep setting the
-	// guide gain too, so the level is applied on the native path and remembered before any graph is
-	// built. Its body reads `vocals` and `effectiveGuide` and sets BOTH the element volume and the
-	// graph gain. This makes test 1's guide-branch assertion a genuinely NEW site, not the only one.
+test('guard (not-vacuous): the level effect still owns the level before any graph exists', () => {
+	// The pitch-effect reapply above is ADDITIVE: the dedicated level effect must keep pushing the guide
+	// gain too, so the room's level is remembered on a graph that is not built yet (`setGuideGain` stores
+	// it and the build applies whatever is remembered). Without this second site the level set BEFORE a
+	// transpose is lost. Assert it is a DISTINCT occurrence from the pitch-effect one.
 	const stripped = stripComments(TV);
-	const anchor = 'vocals.volume = effectiveGuide';
-	const at = stripped.indexOf(anchor);
-	expect(at).toBeGreaterThanOrEqual(0);
-	const region = stripped.slice(at, at + 200);
-	expect(region).toMatch(/guideGraph[?][.]setGain[(]\s*effectiveGuide\s*[)]/);
+	const hits = [...stripped.matchAll(/masterGraph[?][.]setGuideGain[(]\s*effectiveGuide\s*[)]/g)];
+	expect(hits.length).toBeGreaterThanOrEqual(2);
 });
