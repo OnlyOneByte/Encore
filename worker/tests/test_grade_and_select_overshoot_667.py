@@ -23,6 +23,7 @@ from src.lyrics.chain import (
     LyricsText,
     candidate_last_end,
     composite_score,
+    overshoot_penalized,
     select_by_baselines,
 )
 from src.processor import JobSpec
@@ -282,3 +283,44 @@ def test_a_tolerated_overshoot_on_a_rejected_candidate_says_it_was_not_published
     # RED ON BASE: base's verdict is the bare string "within tolerance" with nothing after it
     assert "NOT published" in note, note
     assert "fits-the-audio" in note, note
+
+
+# ── the penalty must not sink a JUDGED candidate below the UNJUDGEABLE sentinel ────────────────
+#
+# `select_by_baselines` ranks an unjudgeable version (score None — no baseline could grade it) as the
+# constant -1.0, and both its comment and `overshoot_penalized`'s state the invariant plainly: "an
+# unjudged candidate (-1.0) never displaces a judged one", and the penalty "only ever touches a real
+# score". The subtraction was unclamped, so the invariant was arithmetic-dependent rather than true: an
+# overshoot fraction above ~1.0 (a candidate timed to more than double the audio's length, which is what
+# a full-album or wrong-master LRC looks like) drives a real score below -1.0 and the unjudgeable rival
+# wins a comparison it is documented to lose.
+
+
+def test_overshoot_penalty_never_ranks_a_judged_candidate_below_the_unjudgeable_sentinel():
+    """A judged score, however badly it overshoots, must stay above the -1.0 unjudgeable sentinel."""
+    # 60 s of audio against a candidate timed to 300 s — +400%, the wrong-master shape.
+    huge = _timed(SOURCE_LRCLIB, SHARED, "album-master", per_word_end=300.0)
+    penalised = overshoot_penalized(0.40, huge, 60.0)
+    assert penalised > -1.0, (
+        f"a judged candidate ranked {penalised}, below the -1.0 unjudgeable sentinel — an ungradeable "
+        "version would displace a real one, which select_by_baselines documents as impossible"
+    )
+
+
+def test_overshoot_penalty_floors_at_zero_so_a_score_stays_a_score():
+    """The penalty keeps the composite in [0, 1]: a demotion cannot make a score negative."""
+    huge = _timed(SOURCE_LRCLIB, SHARED, "album-master", per_word_end=300.0)
+    assert overshoot_penalized(0.40, huge, 60.0) == 0.0
+    # A tolerated overshoot (inside OVERSHOOT_FRACTION_MAX) is still untouched, and a real demotion
+    # inside the clamp still lands where the docstring says it does (+39% on 0.45 → ~0.06).
+    mild = _timed(SOURCE_LRCLIB, SHARED, "trailing-cue", per_word_end=64.0)  # +6.7%, tolerated
+    assert overshoot_penalized(0.45, mild, 60.0) == 0.45
+    demoted = _timed(SOURCE_LRCLIB, SHARED, "wrong-version", per_word_end=83.4)  # +39%
+    assert 0.0 < overshoot_penalized(0.45, demoted, 60.0) < 0.10
+
+
+def test_a_wildly_overshooting_judged_pick_still_loses_to_a_fitting_rival():
+    """The clamp must not cost the penalty its job: a fitting rival still wins the comparison."""
+    fits = _timed(SOURCE_CAPTIONS, SHARED, "fits", per_word_end=58.0)
+    overshoots = _timed(SOURCE_LRCLIB, SHARED, "album-master", per_word_end=300.0)
+    assert overshoot_penalized(0.90, overshoots, 60.0) < overshoot_penalized(0.50, fits, 60.0)

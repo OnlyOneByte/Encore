@@ -516,7 +516,19 @@ def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float
     fraction = max(0.0, last_end - duration_sec) / duration_sec
     if fraction <= OVERSHOOT_FRACTION_MAX:
         return score
-    return score - fraction
+    # FLOORED AT ZERO, so a demoted score is still a score. The subtraction used to be unclamped, which
+    # made the module's own invariant arithmetic-dependent: `select_by_baselines` ranks an UNJUDGEABLE
+    # version (no baseline could grade it) as the constant -1.0 and states that such a candidate "never
+    # displaces a judged one", but an overshoot fraction above 1.0 — a candidate timed to more than twice
+    # the audio, which is what a full-album or wrong-master LRC looks like — pushed a real score below
+    # -1.0 and handed the comparison to the ungradeable rival. Clamping keeps every judged score inside
+    # [0, 1] where the sentinel sits strictly beneath all of them.
+    #
+    # The clamp does collapse the ordering AMONG candidates that overshoot this catastrophically (two
+    # such both land on 0.0 and the tie falls to the earlier, better-metadata pick). That is the right
+    # trade: neither fits the audio, so "which is less wildly wrong" is not a ranking worth preserving,
+    # and any rival that does fit still outranks both — which is the penalty's actual job.
+    return max(0.0, score - fraction)
 
 
 # ── selection: candidates are judged, baselines do the judging ─────────────────────────

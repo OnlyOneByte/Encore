@@ -2,6 +2,7 @@
 assign -> accept -> progress* -> complete flow, capacity reject, cancel, and failure reporting."""
 
 import asyncio
+import contextlib
 import sys
 from pathlib import Path
 
@@ -1144,6 +1145,75 @@ def test_run_forever_starts_the_periodic_scratch_sweep():
         "_run_forever never starts _scratch_sweep_loop — an exhausted-retry job's preserved scratch "
         "would leak until the worker restarts"
     )
+
+
+# ── the reaper's FIRST pass must not wait out the interval, and one bad pass must not end the loop.
+#    Both were silent failures: the loop slept before sweeping (so the startup sweep three comments in
+#    dial_home.py promise did not exist, and a worker restarted to clear a stuck box reclaimed nothing for
+#    30 minutes), and an unguarded body meant a PermissionError on a shared volume ended the task with no
+#    log line and no reaper for the rest of the process's uptime.
+@pytest.mark.asyncio
+async def test_scratch_sweep_loop_sweeps_once_before_its_first_sleep(monkeypatch):
+    """The startup sweep is real: a pass happens before any interval elapses."""
+    import src.dial_home as dh
+
+    calls: list[frozenset[str]] = []
+    monkeypatch.setattr(dh, "sweep_orphaned_scratch", lambda md, live, **kw: calls.append(live) or [])
+
+    slept = asyncio.Event()
+
+    async def _fake_sleep(_secs):
+        slept.set()
+        raise asyncio.CancelledError  # end the loop at its first sleep so the test terminates
+
+    monkeypatch.setattr(dh.asyncio, "sleep", _fake_sleep)
+    with contextlib.suppress(asyncio.CancelledError):
+        await dh._scratch_sweep_loop("/media", lambda: frozenset({"live"}))
+
+    assert calls, "the reaper slept before its first sweep — the startup reclaim never runs"
+    assert slept.is_set(), "the loop never reached its interval sleep"
+
+
+@pytest.mark.asyncio
+async def test_scratch_sweep_loop_survives_a_failing_pass(monkeypatch, capsys):
+    """A raising pass is logged and the NEXT interval still runs — the reaper does not die silently."""
+    import src.dial_home as dh
+
+    passes = {"n": 0}
+
+    def _explode(md, live, **kw):
+        passes["n"] += 1
+        if passes["n"] == 1:
+            raise PermissionError("EACCES on a shared volume")
+        return ["jOrphan"]
+
+    monkeypatch.setattr(dh, "sweep_orphaned_scratch", _explode)
+
+    async def _fake_sleep(_secs):
+        if passes["n"] >= 2:
+            raise asyncio.CancelledError
+        return None
+
+    monkeypatch.setattr(dh.asyncio, "sleep", _fake_sleep)
+    with contextlib.suppress(asyncio.CancelledError):
+        await dh._scratch_sweep_loop("/media", lambda: frozenset())
+
+    assert passes["n"] >= 2, "the reaper stopped after a failing pass instead of retrying next interval"
+    out = capsys.readouterr().out
+    assert "scratch sweep failed" in out, "a failed sweep left nothing in the log"
+
+
+def test_run_forever_pins_and_observes_the_sweep_task():
+    """The reaper task is kept referenced and its end is reported.
+
+    A bare `ensure_future` leaves the task weakly referenced (collectable mid-flight) and its exception
+    unretrieved, so both ways the reaper can stop are invisible. Pinned at the source level because the
+    hazard is the ABSENCE of these two lines, which no behavioural test of a working reaper can see.
+    """
+    fn = _run_forever_ast()
+    src = _ast.dump(fn)
+    assert "_SCRATCH_SWEEPS" in src, "the sweep task is not pinned — it can be garbage-collected mid-flight"
+    assert "_on_scratch_sweep_done" in src, "nothing observes the sweep task, so a dead reaper is silent"
 
 
 @pytest.mark.asyncio

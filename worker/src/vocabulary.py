@@ -185,6 +185,46 @@ class Backend(_StrEnum):
     OPENVINO = "openvino"
 
 
+class StemFormat(_StrEnum):
+    """The container a separator writes its RAW scratch stems in, declared rather than inferred.
+
+    Every engine used to decide this privately in its own argv: demucs and demucs-mlx emitted PCM WAV
+    (`no_vocals.wav`), audio-separator was handed a hardcoded `--output_format FLAC`, and roformer's real
+    output format was never asserted anywhere. Nothing carried the answer, so every CONSUMER of a raw
+    stem had to assume one — and `analysis/wav.py` assumed WAV via stdlib `wave`, which cannot open a
+    FLAC. The result was a silent capability loss on exactly one engine: an audiosep job's guide offset
+    came back unmeasured and its guide mix was refused as "stems do not match", because the reader could
+    not open either file. A missing container is not a mismatch, but nothing could tell them apart.
+
+    Declaring it on the engine (`SeparatorEngine.stem_format`) makes the format part of the seam's
+    contract: `find_outputs` returns paths in the format the engine states, and the readers honour that
+    statement instead of guessing. A fifth engine cannot ship without answering the question.
+
+    FLAC is the default and what the pipeline publishes — one lossless codec end to end, which is what
+    lets a freshly separated pair be aligned by construction (see `separation/__init__.py`). WAV remains
+    selectable because it is a legitimate WORKING format: it skips an encode on a box that is CPU-bound
+    during separation, and it is the format demucs natively emits, so it is the cheaper path when the
+    published artifact is being rebuilt anyway.
+    """
+
+    WAV = "wav"
+    FLAC = "flac"
+
+    @property
+    def ext(self) -> str:
+        """Filename extension, leading dot included — `.flac`. What `find_outputs` builds paths with."""
+        return f".{self.value}"
+
+    @property
+    def ffmpeg_codec(self) -> str:
+        """The ffmpeg `-c:a` codec that WRITES this format.
+
+        `pcm_s16le` rather than a bare "wav": ffmpeg names the codec, not the container, and 16-bit
+        little-endian PCM is what the separators consume and what `read_wav_mono` decodes.
+        """
+        return "flac" if self is StemFormat.FLAC else "pcm_s16le"
+
+
 #: Ordered stage plan per action. An action absent here falls back to download+separate.
 STAGE_PLANS: dict[Action, list[Stage]] = {
     # Acquisition only -- no separation. Its own action so a box that can download and a box that can
@@ -264,6 +304,17 @@ def parse_sync_mode(value: str | None, default: SyncMode = SyncMode.FORCED) -> S
 def parse_backend(value: str | None, default: Backend = Backend.TORCH) -> Backend:
     """Coerce a configured backend to a Backend. Absent means the portable default; unknown raises."""
     return _parse(Backend, value, default, "backend")
+
+
+def parse_stem_format(value: str | None, default: StemFormat = StemFormat.FLAC) -> StemFormat:
+    """Coerce a configured stem format to a StemFormat. Absent means FLAC; unknown RAISES.
+
+    Raising matters more here than the noun suggests. The format is what every raw-stem READER is told
+    to expect, so a typo that fell through to a default would not fail loudly — it would produce stems
+    in one container and readers looking for another, which is the silent guide-mix refusal this type
+    was introduced to end. Failing at the config boundary keeps that class of bug unreachable.
+    """
+    return _parse(StemFormat, value, default, "stem format")
 
 
 def stages_for(action: Action | str) -> list[Stage]:

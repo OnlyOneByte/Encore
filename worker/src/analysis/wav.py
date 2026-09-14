@@ -1,13 +1,26 @@
-"""PCM WAV reading for the analysis domain.
+"""Raw-stem audio reading for the analysis domain — WAV *or* FLAC, whichever the separator declared.
 
 `read_wav_mono` lived in `vocal_range.py` and `song_profile.py` reached into that module for it, coupling
 the key/range builder to the range module for a helper that is neither. Its own module makes the
-dependency honest — both `vocal_range` (the range summary) and `song_profile` (the key path) now read WAVs
-from here — while the function's behaviour is UNCHANGED (a straight move: same float64 signal, same
-downmix, same supported widths, same raise on an unsupported one).
+dependency honest — both `vocal_range` (the range summary) and `song_profile` (the key path) read raw
+stems from here.
 
-numpy + stdlib only (`wave` is stdlib); no torch, no soundfile — the stems are plain PCM WAV in scratch at
-this point in the process.
+WHY THIS IS NO LONGER `wave`-ONLY. This module used to be numpy + stdlib, on the stated grounds that
+"the stems are plain PCM WAV in scratch at this point in the process". That was true of demucs and
+demucs-mlx and false of audio-separator, which writes FLAC — and stdlib `wave` cannot open a FLAC. So on
+an audiosep job both readers below failed, the guide offset came back unmeasured, and the guide mix was
+refused with "stems do not match" when the real cause was a container the reader could not parse. A
+missing container is not a length mismatch, but nothing could tell the two apart. The format is now
+DECLARED by the engine (`vocabulary.StemFormat`, `SeparatorEngine.stem_format`) rather than assumed here,
+and these readers accept either container so that declaration is all a caller needs.
+
+WAV STAYS ON STDLIB, DELIBERATELY. The `wave` path below is unchanged — same float64 signal, same
+downmix, same supported widths, same raise on an unsupported one — because it is proven, it is what every
+existing measurement was calibrated against, and it needs no dependency at all. `soundfile` is imported
+LAZILY and only for a container `wave` cannot open. That ordering is what keeps this module importable on
+a box carrying nothing but numpy: the worker's own unit suite runs on exactly such a box (no torch, no
+ffmpeg, no soundfile — every heavy seam is faked), so a module-level `import soundfile` would break the
+suite everywhere to serve a path most jobs never take.
 """
 
 from __future__ import annotations
@@ -16,16 +29,22 @@ import wave
 
 import numpy as np
 
+#: Containers stdlib `wave` handles. Anything else goes to the lazy `soundfile` path.
+_STDLIB_SUFFIXES = (".wav", ".wave")
 
-def read_wav_mono(path: str) -> tuple[np.ndarray, int]:
-    """Read a PCM WAV to a mono float64 signal in [-1, 1] and its sample rate. Downmixes multi-channel
-    by averaging. stdlib `wave` only — the vocals stem at this process stage is uncompressed PCM. Supports
-    8/16/32-bit integer PCM (what ffmpeg's pcm_s16le decode produces); an unsupported width raises."""
+
+def _read_via_wave(path: str, max_frames: int | None) -> tuple[np.ndarray, int]:
+    """The original stdlib reader: PCM WAV to mono float64 in [-1, 1], plus the sample rate.
+
+    Byte-for-byte the behaviour this module shipped before FLAC support existed, including 8-bit WAV's
+    unsigned centre-128 encoding — the one PCM width that is not signed.
+    """
     with wave.open(path, "rb") as wf:
         n_channels = wf.getnchannels()
         sampwidth = wf.getsampwidth()
         sample_rate = wf.getframerate()
-        raw = wf.readframes(wf.getnframes())
+        want = wf.getnframes() if max_frames is None else min(wf.getnframes(), max_frames)
+        raw = wf.readframes(want)
 
     if sampwidth == 2:
         data = np.frombuffer(raw, dtype=np.int16).astype(np.float64) / 32768.0
@@ -42,8 +61,45 @@ def read_wav_mono(path: str) -> tuple[np.ndarray, int]:
     return data, sample_rate
 
 
+def _read_via_soundfile(path: str, max_frames: int | None) -> tuple[np.ndarray, int]:
+    """The FLAC (and anything-else) reader. Imported lazily — see the module docstring.
+
+    Asks `soundfile` for float64 in [-1, 1] directly rather than scaling by hand, so per-width integer
+    normalisation is the library's problem rather than a table this module has to keep correct.
+    """
+    try:
+        import soundfile as sf
+    except ImportError as exc:  # pragma: no cover — depends on the box, not the logic
+        raise RuntimeError(
+            f"cannot read {path!r}: reading a non-WAV stem needs the `soundfile` package "
+            "(pinned in worker/requirements.txt). A worker separating to FLAC must have it installed."
+        ) from exc
+
+    data, sample_rate = sf.read(path, frames=-1 if max_frames is None else max_frames, dtype="float64")
+    # soundfile returns (frames,) for mono and (frames, channels) for multi-channel.
+    if data.ndim > 1:
+        data = data.mean(axis=1)
+    return data, int(sample_rate)
+
+
+def read_wav_mono(path: str, max_frames: int | None = None) -> tuple[np.ndarray, int]:
+    """Read a raw stem to a mono float64 signal in [-1, 1] and its sample rate.
+
+    Accepts either container the separators emit: WAV goes through stdlib `wave`, anything else (FLAC)
+    through `soundfile`. Downmixes multi-channel by averaging, which is what every caller here wants —
+    key detection, pitch tracking, loudness and cross-correlation are all defined on a mono signal.
+
+    `max_frames` bounds the read to the first N frames. This exists because `measure_guide_offset_ms`
+    analyses a 30 s window and used to pay for a full decode of BOTH stems to get it — on a 4-minute
+    stereo stem that is tens of MB read and converted per call, then immediately discarded. `None` reads
+    the whole file, which is what the profile and range paths want.
+    """
+    reader = _read_via_wave if path.lower().endswith(_STDLIB_SUFFIXES) else _read_via_soundfile
+    return reader(path, max_frames)
+
+
 def wav_frame_length(path: str) -> tuple[int, int] | None:
-    """`(frames, sample_rate)` for a WAV, or `None` when it cannot be read.
+    """`(frames, sample_rate)` for a raw stem, or `None` when it cannot be read.
 
     Exists for ONE caller: the guide mix has to know whether its two source stems are the same length
     before it folds them together. `join` TRUNCATES to the shorter input and exits 0 — measured: a 3 s
@@ -51,12 +107,18 @@ def wav_frame_length(path: str) -> tuple[int, int] | None:
     as MASTER it owns `duration`, so a short one cuts the song off with nothing in any log. It also
     silently resamples a rate mismatch, so the rate is returned too.
 
-    Reads the header only (`wave` does not decode frames for `getnframes`), so this is cheap enough to run
+    Header only — neither backend decodes frames to answer this — so it is cheap enough to run
     unconditionally. `None` rather than a raise: an unreadable header is a reason to skip the mix, not a
-    reason to fail a job whose instrumental is fine.
+    reason to fail a job whose instrumental is fine. Now that the format is declared rather than assumed,
+    a `None` means genuinely unreadable rather than merely "not the container I expected".
     """
     try:
-        with wave.open(path, "rb") as w:
-            return w.getnframes(), w.getframerate()
+        if path.lower().endswith(_STDLIB_SUFFIXES):
+            with wave.open(path, "rb") as w:
+                return w.getnframes(), w.getframerate()
+        import soundfile as sf
+
+        info = sf.info(path)
+        return int(info.frames), int(info.samplerate)
     except Exception:  # noqa: BLE001 — an unreadable header must not fail the load-bearing instrumental
         return None

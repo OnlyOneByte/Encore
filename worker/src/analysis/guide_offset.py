@@ -44,6 +44,12 @@ _MAX_LAG_SEC = 0.5
 _MIN_ANALYSIS_SEC = 2.0
 _ANALYSIS_WINDOW_SEC = 30.0
 
+# Upper bound on a stem's sample rate, used only to size the BOUNDED read above — the reads happen before
+# the rate is known, so the cap is expressed in frames at the highest rate a separator plausibly emits.
+# High is safe (a lower-rate stem simply reads its whole window and stops); low would truncate the window
+# and quietly shorten the correlation, so this errs upward. 192 kHz covers every separator output today.
+_MAX_EXPECTED_RATE = 192_000
+
 # Digital silence on this box sits at the 16-bit floor (see the silence-probe work). A stem whose peak is
 # at or below one LSB carries nothing to correlate; treat it as unmeasurable rather than correlating noise.
 _SILENCE_PEAK = 1.0 / 32768.0  # one 16-bit LSB
@@ -67,8 +73,13 @@ def measure_guide_offset_ms(vocals_wav: str | None, instrumental_wav: str | None
     if not vocals_wav or not instrumental_wav:
         return None
     try:
-        vox, vox_rate = read_wav_mono(vocals_wav)
-        inst, inst_rate = read_wav_mono(instrumental_wav)
+        # Read only as far as the correlation can use. The window below is _ANALYSIS_WINDOW_SEC long, so
+        # decoding a whole four-minute stem read tens of MB per stem and threw most of it away. The cap is
+        # generous by one window so a rate we have not learned yet (read below) still fills the window.
+        # `_MAX_LAG_SEC` of headroom keeps the lag search from running off the end of the shorter read.
+        frame_cap = int((_ANALYSIS_WINDOW_SEC + _MAX_LAG_SEC) * _MAX_EXPECTED_RATE)
+        vox, vox_rate = read_wav_mono(vocals_wav, max_frames=frame_cap)
+        inst, inst_rate = read_wav_mono(instrumental_wav, max_frames=frame_cap)
     except Exception:  # noqa: BLE001 — an unreadable stem is "cannot measure", never fatal to the process
         return None
 
@@ -119,35 +130,59 @@ def _best_lag(a: np.ndarray, b: np.ndarray, max_lag: int) -> int | None:
     """The lag (in samples, within ±max_lag) at which `a` best matches `b`, or None when no lag decisively
     beats leaving the two where they are.
 
-    Both inputs are already zero-mean/unit-norm, so a dot product at a lag is a normalized correlation in
+    Both inputs are already zero-mean/unit-norm, so a correlation at a lag is a normalized correlation in
     [-1, 1]. We compare the strongest lag to the zero-lag correlation: a real offset makes some non-zero
     lag beat zero by at least _PEAK_MARGIN, while two aligned stems peak at zero and fall through to a
     measured 0.
+
+    COMPUTED BY FFT, not by a loop over lags. The straightforward version — a `np.dot` per candidate lag —
+    is O(max_lag × n) and at the real parameters that is 44,101 lags × ~1.3 M samples ≈ 5.8e10
+    multiply-adds per song, minutes of wall clock, and it ran on the event loop where it starved the
+    progress keepalive the runner uses to hold its lease (so a healthy job could be reaped and requeued
+    mid-separation). One zero-padded rFFT pair plus an inverse gives EVERY lag at once in O(N log N).
+    `vocal_range._detect_f0` already made this exact trade for its autocorrelation and measured 17×.
+
+    The transform computes r[L] = Σ a[i]·b[i+L] over the overlapping region — the same quantity the loop
+    formed with truncated slices, since both operands were normalised over the whole window — so this is a
+    faster route to the same numbers, not a different measure. Zero padding to ≥ 2n keeps the circular
+    correlation from wrapping one stem's tail onto the other's head.
     """
-    n = min(a.size, b.size)
-    zero_corr = abs(float(np.dot(a[:n], b[:n])))
+    n = int(min(a.size, b.size))
+    a = a[:n]
+    b = b[:n]
+    zero_corr = abs(float(np.dot(a, b)))
 
-    best_lag = 0
-    best_corr = zero_corr
-    for lag in range(-max_lag, max_lag + 1):
-        if lag == 0:
-            continue
-        if lag > 0:
-            # Shift a later: compare a[0:] against b[lag:].
-            m = n - lag
-            if m <= 0:
-                break
-            corr = abs(float(np.dot(a[:m], b[lag : lag + m])))
-        else:
-            m = n + lag  # lag negative
-            if m <= 0:
-                break
-            corr = abs(float(np.dot(a[-lag : -lag + m], b[:m])))
-        if corr > best_corr:
-            best_corr = corr
-            best_lag = lag
+    # The loop this replaced iterated lag from -max_lag upward and broke as soon as the overlap ran out,
+    # so a max_lag at or beyond the window length left lag 0 the only candidate. Clamping reproduces that
+    # without a special case; in production max_lag (0.5 s) is far below the window (≥ 2 s) anyway.
+    lag_limit = min(int(max_lag), n - 1)
+    if lag_limit <= 0:
+        return 0
 
-    if best_lag == 0:
+    # Zero-pad to ≥ n + lag_limit + 1 rather than the reflexive 2n. The circular correlation only
+    # contaminates lag L with the wrapped lag L − size, so once size exceeds n + lag_limit that wrapped
+    # term has no overlap and contributes nothing to any lag we read. At the real parameters that is the
+    # difference between a 2^21 and a 2^22 transform — half the work for identical numbers.
+    size = 1 << int(np.ceil(np.log2(n + lag_limit + 1)))
+    corr = np.fft.irfft(np.conj(np.fft.rfft(a, size)) * np.fft.rfft(b, size), size)
+
+    # r[L] for L ≥ 0 sits at the head; negative lags wrap to the tail, so r[-k] is corr[size - k].
+    pos = np.abs(corr[: lag_limit + 1])  # lags 0 … +lag_limit
+    neg = np.abs(corr[size - lag_limit :])  # lags -lag_limit … -1, ascending
+    # One array indexed by the same order the loop visited: -lag_limit … -1, 0, +1 … +lag_limit. Keeping
+    # that order is what preserves the original tie-break (the earliest — most negative — lag wins).
+    corrs = np.concatenate((neg, pos))
+    lags = np.arange(-lag_limit, lag_limit + 1)
+
+    # The loop seeded its incumbent with lag 0 and required a STRICT improvement to displace it, so a
+    # non-zero lag merely equalling zero-lag left the answer at 0. Masking lag 0 out of the search and
+    # comparing the winner against zero_corr below reproduces that exactly.
+    non_zero = lags != 0
+    idx = int(np.argmax(corrs[non_zero]))  # argmax returns the FIRST maximum → most negative on a tie
+    best_corr = float(corrs[non_zero][idx])
+    best_lag = int(lags[non_zero][idx])
+
+    if best_corr <= zero_corr:
         return 0  # aligned — a measured zero, not an unmeasurable None
     if zero_corr <= 0.0 or best_corr < zero_corr * _PEAK_MARGIN:
         return None  # nothing beat zero-lag decisively — decline rather than invent an offset

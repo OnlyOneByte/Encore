@@ -49,6 +49,11 @@ RECONNECT_BACKOFF_SEC = 3.0
 # subprocess step still propagates the instant the socket drops.
 _DETACHED_DRAINS: set[asyncio.Task] = set()
 
+#: Pins the scratch-reaper task. `ensure_future` returns a task the event loop only weakly references, so
+#: without a strong reference here the reaper could be garbage-collected mid-flight and the process would
+#: stop reclaiming orphaned scratch with nothing in the log — the same hazard `_DETACHED_DRAINS` guards.
+_SCRATCH_SWEEPS: set[asyncio.Task] = set()
+
 
 def _on_detached_drain_done(task: asyncio.Task) -> None:
     """Discard the finished detached drain AND retrieve its exception, so a drain that raised is logged
@@ -482,12 +487,47 @@ async def _scratch_sweep_loop(media_dir: str, live_job_ids: Callable[[], frozens
     A one-shot startup sweep left a long-lived worker (restart: unless-stopped can mean weeks of
     uptime) accumulating one orphaned scratch dir per exhausted-retry job until it restarted. Running
     on an interval closes that. `live_job_ids` is a callable so each pass reads the CURRENT in-flight
-    set rather than a snapshot taken when the loop started."""
+    set rather than a snapshot taken when the loop started.
+
+    SWEEPS BEFORE IT SLEEPS. The interval used to come first, which quietly removed the startup sweep
+    that three separate comments in this module still promised: a worker restarted to clear a stuck box
+    reclaimed nothing for the first `SCRATCH_SWEEP_INTERVAL_SEC`, and a worker restarted again inside
+    that window reclaimed nothing at all — the exact leak the reaper exists to stop, at exactly the
+    moment an operator is trying to fix it. Doing the pass first makes "runs at startup" true again while
+    keeping the interval behaviour for the rest of the process's life.
+
+    ONE PASS CANNOT KILL THE LOOP. The body is guarded because it is filesystem work on a volume this
+    worker may share: `sweep_orphaned_scratch` only tolerates a missing `work/`, so a PermissionError or
+    an ENOSPC-adjacent error on one entry used to escape, end the task, and leave the process with no
+    reaper and nothing in the log saying so — the silent-failure shape `_on_detached_drain_done` was
+    written to close. A failed pass is logged and the next one still runs.
+    """
     while True:
+        try:
+            reclaimed = sweep_orphaned_scratch(media_dir, live_job_ids())
+            if reclaimed:
+                print(f"[worker] reclaimed {len(reclaimed)} aged scratch dir(s): {reclaimed}", flush=True)
+        except Exception as exc:  # noqa: BLE001 — tidying must never end the reaper or the worker
+            print(f"[worker] scratch sweep failed ({exc!r}) — retrying next interval", flush=True)
         await asyncio.sleep(SCRATCH_SWEEP_INTERVAL_SEC)
-        reclaimed = sweep_orphaned_scratch(media_dir, live_job_ids())
-        if reclaimed:
-            print(f"[worker] reclaimed {len(reclaimed)} aged scratch dir(s): {reclaimed}", flush=True)
+
+
+def _on_scratch_sweep_done(task: asyncio.Task) -> None:
+    """Log a reaper that ended, for the same reason `_on_detached_drain_done` exists.
+
+    `_scratch_sweep_loop` is meant to outlive every job, so its task finishing at all is news: without
+    this the only trace would be asyncio's "Task exception was never retrieved" at GC, and a worker
+    silently accumulating scratch for the rest of its uptime. CancelledError is expected at shutdown and
+    stays quiet.
+    """
+    _SCRATCH_SWEEPS.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    print(
+        f"[worker] scratch sweep loop ENDED unexpectedly ({exc!r}) — orphaned scratch will accumulate",
+        flush=True,
+    )
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -747,7 +787,12 @@ async def _run_forever() -> None:
 
     # Lives for the whole process — the reconnect loop below never exits, so there is no teardown path
     # to cancel it from, and a leaked reference would only pin it. Fire-and-forget on purpose.
-    asyncio.ensure_future(_scratch_sweep_loop(cfg.media_dir, _active))
+    # Pinned and observed, not fired and forgotten: the bare `ensure_future` left the reaper weakly
+    # referenced (collectable mid-flight) and its exceptions unretrieved, so the two ways it could stop
+    # were both silent. See `_SCRATCH_SWEEPS` and `_on_scratch_sweep_done`.
+    _sweep_task = asyncio.ensure_future(_scratch_sweep_loop(cfg.media_dir, _active))
+    _SCRATCH_SWEEPS.add(_sweep_task)
+    _sweep_task.add_done_callback(_on_scratch_sweep_done)
 
     while True:
         client: WorkerClient | None = None

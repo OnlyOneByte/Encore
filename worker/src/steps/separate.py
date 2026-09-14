@@ -29,7 +29,7 @@ from ..processor import (
 )
 from ..retry_policy import PermanentError
 from ..runtime.ctx import Ctx
-from ..runtime.runner import run_capture, run_quiet, run_stage
+from ..runtime.runner import run_blocking, run_capture, run_quiet, run_stage
 from ..runtime.step import Step, StepResult
 from ..separation.demucs import decode_argv, encode_flac_argv, encode_guide_mix_argv
 from ..separation.engines import SeparatorEngine, engine_for
@@ -267,7 +267,20 @@ class PublishStems(Step):
         guide_offset_ms: int | None = None
         if ctx.stems.published.get("vocals"):
             try:
-                guide_offset_ms = measure_guide_offset_ms(raw_vox, raw_inst)
+                # THROUGH THE KEEPALIVE WRAPPER, not awaited inline. This is in-process numpy over a 30 s
+                # window of two stems — a blocking CPU call, the same shape as KeyAndRange. Run directly on
+                # the event loop it froze the loop for the duration, which is exactly the condition
+                # `run_blocking` documents: no websocket keepalive and no `job:progress`, so the core's 30 s
+                # progress lease could expire and the reaper requeue a job that was separating fine. Wrapping
+                # it also gives this step the only progress it emits (it had none), so the lease is held
+                # across the publish tail rather than merely not broken by it.
+                async for kind, val in run_blocking(
+                    lambda: measure_guide_offset_ms(raw_vox, raw_inst), self.stage, 100
+                ):
+                    if kind == "progress":
+                        yield val
+                    else:
+                        guide_offset_ms = val
             except Exception:  # noqa: BLE001 — a measurement must never fail the load-bearing instrumental
                 ctx.note("guide-offset measurement failed (non-fatal) — offset left unmeasured")
             # Log it so a wrong measurement is diagnosable WITHOUT the party box (DoD): a silent
