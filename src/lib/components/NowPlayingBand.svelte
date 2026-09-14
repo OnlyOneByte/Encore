@@ -52,8 +52,14 @@
 
 	const hasSong = $derived(title !== null && title !== '');
 
-	// r=24 in a 52-unit box, so the ring sits just outside a var(--tap) disc.
-	const CIRCUMFERENCE = 2 * Math.PI * 24;
+	/*
+	 * r=22 in a 52-unit viewBox, NOT 24 — measured, not chosen. An SVG defaults to
+	 * `overflow: hidden`, so a stroke that reaches the viewBox boundary is CLIPPED there: at r=24 the
+	 * 3.4-wide stroke's outer edge lands at 25.7 against a 26-unit half-extent, and the ring rendered
+	 * with four flat sides — a circle that read as a rounded square. At r=22 the outer edge is 23.7,
+	 * clear of the boundary, and the ring sits on the disc's rim.
+	 */
+	const CIRCUMFERENCE = 2 * Math.PI * 22;
 	const dashOffset = $derived(
 		progress === null ? CIRCUMFERENCE : CIRCUMFERENCE * (1 - Math.max(0, Math.min(1, progress)))
 	);
@@ -119,12 +125,12 @@
 				<span class="art"></span>
 				<span class="mark"><Icon name={isPlaying ? 'pause' : 'play'} /></span>
 				<svg class="ring" viewBox="0 0 52 52" aria-hidden="true">
-					<circle class="ring-track" cx="26" cy="26" r="24" />
+					<circle class="ring-track" cx="26" cy="26" r="22" />
 					<circle
 						class="ring-fill"
 						cx="26"
 						cy="26"
-						r="24"
+						r="22"
 						stroke-dasharray={CIRCUMFERENCE}
 						stroke-dashoffset={dashOffset}
 						transform="rotate(-90 26 26)"
@@ -293,8 +299,13 @@
 		display: grid;
 		place-items: center;
 		border-radius: var(--radius-pill);
-		/* A scrim, so the glyph reads over artwork of any brightness once real art lands here. */
-		background: var(--scrim-strong);
+		/*
+		 * NO SCRIM. `--scrim-strong` is 85% black and exists to lift text off a photo or video; over
+		 * `--card-tint2` it made a 44px control read as a black hole rather than as artwork with a
+		 * glyph on it. The art surface is already dark, so `--ink` on it clears AA comfortably. When
+		 * real cover art lands here this needs a LIGHTER scrim chosen against measured artwork
+		 * brightness, not the video one reused.
+		 */
 		color: inherit;
 	}
 	.ring {
