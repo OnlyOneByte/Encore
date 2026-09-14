@@ -21,13 +21,6 @@
 
 	const shown = $derived(Math.max(0, Math.min(100, Math.round(pct))));
 	const valueLabel = $derived(!available || shown === 0 ? 'Off' : `${shown}%`);
-	// The hint narrates only what the control DOES. The out-of-place "No isolated vocals for this song
-	// yet" line was removed: when the control is disabled the greyed-out slider and "Off" readout
-	// already say it is dead, and telling a singer to re-process a song from the performance surface was
-	// noise. So the hint is empty when unavailable and otherwise explains the effect.
-	const hint = $derived(
-		available ? "Fades the original singer back in, quietly, for a song you don't quite know." : ''
-	);
 </script>
 
 <div class="gt" class:disabled={!available}>
@@ -61,12 +54,6 @@
 		onValueChange={(v) => oninput?.(v)}
 		onValueCommit={(v) => oncommit?.(v)}
 	/>
-	<!--
-		NOT <Field.Description>: `drawer-ui-cleanup-253.test.ts:50` pins this hint as
-		`{#if hint}<p class="gt-hint">`, and that guard is not editable here. The class would also have to
-		ride on the component to keep resolving, which a scoped rule cannot reach.
-	-->
-	{#if hint}<p class="gt-hint">{hint}</p>{/if}
 </div>
 
 <style>
@@ -116,11 +103,5 @@
 		font-weight: 700;
 		color: var(--ink);
 		font-variant-numeric: tabular-nums;
-	}
-	.gt-hint {
-		font-size: 0.7rem;
-		color: var(--ink-dim);
-		margin: var(--space-xs) 0 0;
-		line-height: var(--lh-normal);
 	}
 </style>

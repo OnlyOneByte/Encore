@@ -796,19 +796,26 @@ test('Group C — the resolver still models a `tag.class` compound part (re-anch
 	// test looking authoritative while asserting nothing.
 	//
 	// What must NOT rot with them is the RESOLVER EXTENSION they were built on: modelling a `tag.class`
-	// compound part — a bare tag anchored by a class, mid-selector — which no other test exercises. A
-	// surviving real instance of that shape is `.showall-row button.chip`, the way back out of a
-	// non-matching search, so the positive arm re-anchors there and the negatives are unchanged.
+	// compound part — a bare tag anchored by a class, mid-selector — which no other test exercises.
+	//
+	// RE-ANCHORED A SECOND TIME. The previous instance was `.showall-row button.chip`, the way back out
+	// of a non-matching search. That control is now `<Button variant="secondary" size="tap">`, so the
+	// `chip` class is gone and a component renders the tag — which is exactly the shape this compound
+	// cannot see across. The surviving real instance is SongRow's `.row button.add`: the row is a real
+	// `<div class="row card list-row">` and the action is still a raw `<button class="add">` in the SAME
+	// file, which is what the resolver needs. SongRow's two action buttons are the last raw controls on
+	// the phone surface and are pinned by `e2e/contract.ts`, so this anchor is stable until they migrate
+	// — and when they do, this test must be re-anchored again rather than lowered.
 	const sources = guardSources();
-	expect(selectorResolves('.showall-row button.chip', sources)).toBe(true);
+	expect(selectorResolves('.row button.add', sources)).toBe(true);
 
 	// The resolver extension must be REAL, not a widening that accepts any `tag.class` shape:
 	//   • a wrong CLASS must still fail — no source renders a `button.nope-not-a-class`;
-	//   • a wrong TAG must still fail — no component renders a `<marquee`, so `marquee.chip` fails;
-	//   • the bare-tag part is load-bearing — a class-only handle would match a SongRow's own
-	//     `<span class="chip state">` too, which is why the shape keeps the `button` anchor.
-	expect(selectorResolves('.showall-row button.nope-not-a-class', sources)).toBe(false);
-	expect(selectorResolves('.showall-row marquee.chip', sources)).toBe(false);
+	//   • a wrong TAG must still fail — no component renders a `<marquee`, so `marquee.add` fails;
+	//   • the bare-tag part is load-bearing — a class-only handle would match a non-button element
+	//     carrying the same class, which is why the shape keeps the `button` anchor.
+	expect(selectorResolves('.row button.nope-not-a-class', sources)).toBe(false);
+	expect(selectorResolves('.row marquee.add', sources)).toBe(false);
 });
 
 test('Group D — p11-dashboards card/tile/chart selectors moved from KNOWN_OFFENDERS into SEL', () => {
@@ -888,7 +895,10 @@ test('Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS in
 	// no component renders.
 	expect(SEL.attract).toBe('.attract');
 	expect(SEL.dashCard).toBe('.card');
-	expect(SEL.chip).toBe('.chip');
+	// `.encore-chip`, not `.chip`: Badge's base class. See the re-anchor note on SEL.chip — `.chip` had
+	// stopped naming a SongRow chip when Badge took them over, and was matching the phone home's chip
+	// BUTTONS instead until those became <Button>.
+	expect(SEL.chip).toBe('.encore-chip');
 	expect(SEL.badQrTitle).toBe('.badqr-t');
 	expect(SEL.badQrBody).toBe('.badqr-b');
 	expect(SEL.badQrFix).toBe('.badqr-fix');

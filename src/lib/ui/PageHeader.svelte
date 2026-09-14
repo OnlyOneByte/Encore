@@ -44,7 +44,7 @@
 
 			The wrapper carries what the component must not: the optical `-10px` pull that aligns the
 			mark with the column edge, and the dim ink. Neither can be a class passed to `Button` —
-			Tailwind scans only `components/ui/**`, and a class handed to a component is scoped to THIS
+			Tailwind scans only the `components/ui` directory, and a class handed to a component is scoped to THIS
 			file, where Svelte strips it as unused. `ghost` sets no base text colour (only
 			`hover:text-foreground`), so the inherited `--ink-dim` reaches the mark and hover still
 			brightens it.

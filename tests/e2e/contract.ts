@@ -119,7 +119,7 @@ export const SEL = {
 	/** Back to the queue from the results view — it CLEARS the search. Renders only while a query
 	 *  is present; with an empty box the queue is already showing. The phone's own Back gesture at the
 	 *  empty-box home leaves the room, as it always has under direction A. */
-	backToQueue: '.back-btn',
+	backToQueue: '[data-testid="back-to-queue"]',
 	search: 'input[aria-label="Search a song or artist"]',
 	/**
 	 * The docked search band (the SOLE home band, now that the readiness chips and the browse disclosure are gone). Search is bottom-anchored in the
@@ -163,11 +163,15 @@ export const SEL = {
 	 * which is the condition that empty state was always really about. `browseToggle` ('.browse-toggle')
 	 * went with the same diff and for the same reason: the disclosure it opened is gone.
 	 */
-	/** A SongRow status/kind chip (`<span class="chip state">` / `<span class="chip kind ...">` in
-	 *  SongRow.svelte) — the SCALING probe (p10) contrast-checks its text on the remote. Migrated from
-	 *  KNOWN_OFFENDERS (Group E). This is the per-row label chip; the readiness FILTER chip it
-	 *  used to be distinguished from was deleted with direction B. */
-	chip: '.chip',
+	/** A SongRow status/kind chip — the SCALING probe (p10) contrast-checks its text on the remote.
+	 *  Migrated from KNOWN_OFFENDERS (Group E).
+	 *
+	 *  RE-ANCHORED to `.encore-chip`, which is what the control actually carries. `<Badge>` owns these
+	 *  chips and its base class is `encore-chip`, so `.chip` never matched a SongRow chip after that
+	 *  migration — it was resolving against the phone home's chip BUTTONS instead, which are a different
+	 *  control and are now `<Button>`. The mis-anchor only surfaced when those buttons migrated and the
+	 *  selector suddenly matched nothing at all. */
+	chip: '.encore-chip',
 	away: '.away',
 	/* Attract-only markup used as a freshness gate by p8: the fixed `Karaoke` label on the split attract
 	   panel (the old `.is-label` "Nobody here yet" strip was removed with the previous attract design). */
@@ -292,8 +296,12 @@ export const SEL = {
 	   so the roster must not paint a chip UNDER it (XR-TV-14) — the measured gate and lobby-overlap
 	   probe sweep the roster against this. */
 	fsBtn: '.fs-btn',
-	/* KEY-SHIFT control the transpose probe reads: the +/- buttons and the current-key label. */
-	keyBtn: '.key .key-btn',
+	/* KEY-SHIFT control the transpose probe reads: the +/- buttons and the current-key label.
+	   RE-ANCHORED from `.key .key-btn` when the pair became `<Button variant="keycap">`. The class went
+	   with the hand-rolled rule; `.key-cell` is the page-rendered wrapper that survives, and the tag is
+	   what the component renders, so this addresses the same two controls without depending on a class
+	   the component would have to carry for the test's benefit. */
+	keyBtn: '.key-cell button',
 	keyLabel: '.key .lab',
 	/* The remote's app shell (p10 measures its width to catch a capped grid leaving a void). */
 	appShell: '.app-shell',
@@ -492,7 +500,7 @@ export const HOOKS: Hook[] = [
 	{
 		id: 'backToQueue',
 		file: 'src/routes/+page.svelte',
-		anchor: 'class="back-btn" onclick={clearSearch}',
+		anchor: 'data-testid="back-to-queue" onclick={clearSearch}',
 		why: 'a driver that queued a song returns to the queue through this control, which now clears the search'
 	},
 	{

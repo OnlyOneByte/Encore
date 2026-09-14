@@ -218,10 +218,23 @@ test('the key row wraps and its ±semitone buttons can shrink at 200% text', () 
 	// …and each button must free its flex minimum so the shrink is allowed at all. A bare `flex: 1`
 	// (basis 0 but min-width:auto) cannot go below the word's min-content width — the exact shape that
 	// overflowed. `min-width: 0` is the load-bearing declaration.
-	const keyBtnRule = PAGE.match(/\.key button\s*\{([^}]*)\}/)?.[1] ?? '';
-	expect(keyBtnRule).toMatch(/min-width:\s*0/);
+	//
+	// RE-ANCHORED when the pair became `<Button variant="keycap">`. The claim is unchanged; both
+	// declarations moved, because the flex ITEM is now an element Button renders and a class passed to a
+	// component is stripped in the caller. So the flex behaviour lives on the page-rendered `.key-cell`
+	// wrapper, and the word-breaking lives in the variant. Reading the old `.key button` / `.key-btn`
+	// rules here would now be asserting against rules that no longer exist — a guard that could only
+	// fail, never bite.
+	const keyCellRule = PAGE.match(/\.key-cell\s*\{([^}]*)\}/)?.[1] ?? '';
+	expect(keyCellRule).toMatch(/min-width:\s*0/);
+	expect(keyCellRule).toMatch(/flex:\s*1\s+1\s+40%/);
 	// A single full-width button can still be narrower than "semitone", so the word itself must be able
 	// to break — otherwise a one-per-row wrap still overflows by the width of the word minus the button.
-	const keyBtnClassRule = PAGE.match(/\.key-btn\s*\{([^}]*)\}/)?.[1] ?? '';
-	expect(keyBtnClassRule).toMatch(/overflow-wrap:\s*anywhere/);
+	// The base sets `whitespace-nowrap`, so the variant has to undo that as well as allow the break.
+	const BUTTON = stripComments(
+		readFileSync(join(CORE, 'src', 'lib', 'components', 'ui', 'button', 'button.svelte'), 'utf8')
+	);
+	const keycap = BUTTON.match(/keycap:\s*\n?\s*'([^']*)'/)?.[1] ?? '';
+	expect(keycap).toMatch(/\[overflow-wrap:anywhere\]/);
+	expect(keycap).toMatch(/whitespace-normal/);
 });

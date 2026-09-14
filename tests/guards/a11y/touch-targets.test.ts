@@ -195,11 +195,29 @@ test('the controls that previously fell short declare the tap standard as the to
 	const declares = (src: string, cls: string, prop: string) =>
 		new RegExp(`\\.${cls}\\s*\\{[^}]*${prop}:\\s*${SIZE}`, 's').test(src);
 
-	// the settings gear was ~18px, under even the 24px WCAG minimum
-	expect(declares(phone, 'gear', 'min-(?:width|height)')).toBe(true);
-	// the readiness chips were ~30px. Those chips are deleted, but the `.chip` rule and this pin
-	// stay: the way back out of a non-matching search ("Show all N") is a `chip ok chip-icon` button.
-	expect(declares(phone, 'chip', 'min-height')).toBe(true);
+	// RE-ANCHORED: the `.gear` and `.chip` pins. Both controls became `<Button>`, so neither rule exists
+	// in the phone stylesheet any more and asserting against them could only fail, never bite. The boxes
+	// did not go away — they moved into the component's size axis, so the pins follow them there:
+	//
+	//   the settings gear (~18px before, under even the 24px WCAG minimum) is `size="icon"`
+	//   the search-escape "Show all N" and the reorder Done/Cancel (~30px before) are `size="tap"`
+	//
+	// Asserted against the SIZE STRINGS rather than the call sites, because that is where the box is
+	// decided; and still in terms of the token, which is what the original pins were protecting — a
+	// `--tap` lowered to 40 must not leave a green guard behind.
+	//
+	// `size="tap"` exists BECAUSE of this pin: every registry size is under the floor (xs 24, sm 32,
+	// default 36, lg 40), so migrating these controls to `sm` would have dropped a 44px hand-rolled
+	// control to 32px. This assertion is what caught that.
+	const button = readFileSync(join(SRC, 'lib/components/ui/button/button.svelte'), 'utf8');
+	const sizeRule = (name: string) => new RegExp(`${name}:\\s*'([^']*)'`).exec(button)?.[1] ?? '';
+	// `size-tap` and `min-h-tap` are the `--spacing-tap` bridge, which is `var(--tap)`.
+	expect(sizeRule('icon')).toMatch(/\bsize-tap\b/);
+	expect(sizeRule('tap')).toMatch(/\bmin-h-tap\b/);
+	// …and the two call sites really do ask for those sizes, so the pins above are not measuring a size
+	// nothing uses.
+	expect(phone).toMatch(/<Button[^>]*size="icon"[^>]*href="\/settings"/s);
+	expect(phone).toMatch(/<Button[^>]*size="tap"[^>]*onclick=\{clearSearch\}/s);
 	// RETIRED: the `.browse-toggle` pin. Direction B deleted the browse disclosure along with the
 	// artist and genre rails it hid, so the rule it named is gone from the phone stylesheet — the
 	// assertion could only fail, never bite. The token-only conversion had just re-pointed this pin at `var(--tap)`; that

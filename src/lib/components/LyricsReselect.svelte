@@ -80,7 +80,6 @@
 		</button>
 		{#if open}
 			<div class="reselect-body" id={bodyId}>
-				<p class="reselect-hint">Wrong words, or the wrong version? Pick another set — it gets re-timed.</p>
 				<!--
 					The shadcn migration: the list is Item.Group / Item.Root / Item.Content / Item.Description / Badge — the same
 					row grammar the admin library list uses, so `.reselect-list`, `.reselect-opt`'s box, `.opt-timing`
@@ -205,11 +204,6 @@
 	}
 	.reselect.newer .reselect-peek {
 		color: var(--accent-ink);
-	}
-	.reselect-hint {
-		color: var(--ink-dim);
-		font-size: var(--ph-text-sm);
-		margin: var(--space-2xs) 0 var(--space-xs);
 	}
 	/*
 	 * Item.Root supplies this row's BOX — the flex line, the radius, the 1px border, the padding and the

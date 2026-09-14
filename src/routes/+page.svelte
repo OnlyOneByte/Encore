@@ -54,6 +54,7 @@
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import * as Collapsible from '$lib/components/ui/collapsible';
+	import { Button } from '$lib/components/ui/button';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Empty from '$lib/components/ui/empty';
@@ -1196,17 +1197,31 @@
 			  that can disagree about what your name is. One editor, reached from both entry points: the
 			  gear opens the room scope, this opens `?tab=you`.
 			-->
-			<a class="me-btn" href="/settings?tab=you" aria-label="Your profile">
-				<span class="me-name">{me.displayName}</span>
-				<span class="me-dot" style="--singer:{me.color};"></span>
-			</a>
+			<!--
+			  `.me-slot` / `.gear-slot` are page-rendered wrappers, and that is forced rather than stylistic:
+			  Tailwind scans only the `components/ui` directory, so a utility written here is emitted
+			  nowhere, and a
+			  class handed to a component is scoped to THIS file where Svelte strips it as unused. So
+			  layout and inherited ink stay on a wrapper, appearance moves into the variant.
+			-->
+			<div class="me-slot">
+				<Button variant="identity" href="/settings?tab=you" aria-label="Your profile">
+					<span class="me-name">{me.displayName}</span>
+					<span class="me-dot" style="--singer:{me.color};"></span>
+				</Button>
+			</div>
 			<!--
 			  Was a bare ⚙️ at font-size 1.05rem in ~18px of padding: a forced-colour-emoji glyph (the
 			  trailing U+FE0F requests emoji presentation outright) in a target under even the 24px WCAG
 			  2.5.8 floor, in an app that had already adopted 44px everywhere else. Now a real mark in a
-			  real target.
+			  real target — `size="icon"` IS that target: it compiles to `size-tap grid place-items-center`
+			  over `--tap: 44px`.
 			-->
-			<a class="gear" href="/settings" aria-label="Settings" title="Settings"><Icon name="gear" /></a>
+			<div class="gear-slot">
+				<Button variant="ghost" size="icon" href="/settings" aria-label="Settings" title="Settings">
+					<Icon name="gear" />
+				</Button>
+			</div>
 		</div>
 	{/if}
 </header>
@@ -1272,18 +1287,33 @@
 
 					<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
 						<span class="lab">{keyLabel}</span>
-						<button
-							class="key-btn"
-							disabled={!keyShiftEnabled || playback.keyShift <= -7}
-							onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}
-							><Icon name="minus" /> semitone</button
-						>
-						<button
-							class="key-btn"
-							disabled={!keyShiftEnabled || playback.keyShift >= 7}
-							onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}
-							><Icon name="plus" /> semitone</button
-						>
+						<!--
+							`.key-cell` carries the flex behaviour, which cannot move into the component: `flex: 1 1 40%`
+							and `min-width: 0` belong to the FLEX ITEM, and the item is now an element Button renders.
+							The basis lets the pair sit two-up when they fit and wrap to their own rows when they cannot;
+							`min-width: 0` frees the flex minimum so the shrink is allowed at all, and the variant's
+							`overflow-wrap` breaks "semitone" if even a full-width button is too narrow for it.
+						-->
+						<div class="key-cell">
+							<Button
+								variant="keycap"
+								size="block"
+								disabled={!keyShiftEnabled || playback.keyShift <= -7}
+								onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}
+							>
+								<Icon name="minus" /> semitone
+							</Button>
+						</div>
+						<div class="key-cell">
+							<Button
+								variant="keycap"
+								size="block"
+								disabled={!keyShiftEnabled || playback.keyShift >= 7}
+								onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}
+							>
+								<Icon name="plus" /> semitone
+							</Button>
+						</div>
 					</div>
 
 					<!--
@@ -1300,11 +1330,11 @@
 							<Collapsible.Root bind:open={rangeOpen}>
 								<Collapsible.Trigger>
 									{#snippet child({ props })}
-										<button class="range-toggle" {...props}>
+										<Button variant="eyebrow" size="block" {...props}>
 											<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
 											Vocal range
 											<span class="range-peek">{rangeText}</span>
-										</button>
+										</Button>
 									{/snippet}
 								</Collapsible.Trigger>
 								<Collapsible.Content>
@@ -1364,8 +1394,8 @@
 				<div class="reorder-bar card" role="group" aria-label="Reordering your songs">
 					<p class="reorder-hint">Drag to any position in the queue.</p>
 					<div class="reorder-acts">
-						<button class="chip" onclick={() => exitReorder(hoverSlot)}>Done</button>
-						<button class="chip" onclick={() => exitReorder(null)}>Cancel</button>
+						<Button variant="secondary" size="tap" onclick={() => exitReorder(hoverSlot)}>Done</Button>
+						<Button variant="ghost" size="tap" onclick={() => exitReorder(null)}>Cancel</Button>
 					</div>
 				</div>
 			{/if}
@@ -1486,7 +1516,19 @@
 	-->
 		{#if searchActive}
 			<div class="backrow">
-				<button class="back-btn" onclick={clearSearch}><Icon name="arrow-left" /> Queue</button>
+				<!--
+					`data-testid` is the test hook, NOT a class. `tests/e2e/contract.ts` addresses this control as
+					`backToQueue`, and it used to do that through `class="back-btn"` — a styling class doing
+					double duty as a selector. That stopped working honestly once `<Button>` took over the
+					appearance: the class would carry no rule, which `class-reachable-alone-913.test.ts`
+					correctly refuses for a CONTROL (an unstyled control renders as raw UA chrome, so the
+					guard cannot tell "styled by a component" from "styled by nothing").
+					A dedicated attribute says what it is for, cannot be mistaken for a style handle, and
+					still fires the selector-rot guard if it is renamed. `Button` forwards it via restProps.
+				-->
+				<Button variant="ghost" size="tap" data-testid="back-to-queue" onclick={clearSearch}>
+					<Icon name="arrow-left" /> Queue
+				</Button>
 			</div>
 		{/if}
 
@@ -1584,9 +1626,9 @@
 				</Empty.Root>
 				{#if empty.showAllCount !== null}
 					<div class="showall-row">
-						<button class="chip ok chip-icon" onclick={clearSearch}
-							><Icon name="mic" /> Show all {empty.showAllCount}</button
-						>
+						<Button variant="secondary" size="tap" onclick={clearSearch}>
+							<Icon name="mic" /> Show all {empty.showAllCount}
+						</Button>
 					</div>
 				{/if}
 			{/if}
@@ -1690,23 +1732,43 @@
 	}
 	/* The way back to the queue from the results view — it clears the search. First in the DOM
 	   because it is first visually (XR-PH-12). */
+	/*
+	 * WRAPPERS FOR THE MIGRATED CONTROLS. Each holds only what a component must not: layout that belongs
+	 * to a flex ITEM, and ink that the control inherits. Neither can be a class passed to <Button> —
+	 * Tailwind scans only `components/ui/**` so a utility written here is emitted nowhere, and a class
+	 * handed to a component is scoped to this file where Svelte strips it as unused. The appearance of
+	 * all nine controls now lives in a Button variant.
+	 */
+	.me-slot {
+		/* Frees the flex minimum the name's ellipsis depends on. The `identity` variant restores `shrink`
+		   that the Button base removes; without both, a long name pushes the gear off the row. */
+		min-width: 0;
+		display: flex;
+	}
+	.gear-slot {
+		/* Optical pull to the column edge, and the dim ink the mark inherits — `ghost` sets no base text
+		   colour, only `hover:text-foreground`, so hover still brightens it. */
+		margin-right: -10px;
+		color: var(--ink-dim);
+		display: flex;
+	}
+	.key-cell {
+		/*
+		 * `1 1 40%`, not `1`: at 200% text a nowrap `flex: 1` pair could not shrink below the min-content
+		 * width of "semitone" (~172px each), so the two buttons plus the label forced the row — and the
+		 * sheet around it — past 320px. A 40% basis lets both sit two-up when they fit and wrap to their
+		 * own rows when they cannot; `min-width: 0` frees the flex minimum so the shrink is allowed at
+		 * all, and the `keycap` variant's `overflow-wrap` breaks the single word if even a full-width
+		 * button is too narrow for it. The row's own `flex-wrap` is what catches them.
+		 */
+		flex: 1 1 40%;
+		min-width: 0;
+		display: flex;
+	}
+
 	.backrow {
 		display: flex;
 		margin: 0 0 var(--space-sm);
-	}
-	.back-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-xs);
-		min-height: var(--tap);
-		padding: 0 var(--space-md) 0 0;
-		background: none;
-		border: 0;
-		color: var(--ink-dim);
-		font: inherit;
-		font-size: 0.85rem;
-		font-weight: 600;
-		cursor: pointer;
 	}
 
 	/* Visually-hidden live region: announced by assistive tech, painted nowhere (so it is
@@ -1849,19 +1911,6 @@
 		white-space: nowrap;
 	}
 	/* var(--tap), matching every other control in the app. The emoji gear this replaced was ~18px. */
-	.gear {
-		display: grid;
-		place-items: center;
-		min-width: var(--tap);
-		min-height: var(--tap);
-		margin-right: -10px;
-		font-size: 1.15rem;
-		color: var(--ink-dim);
-		text-decoration: none;
-	}
-	.gear:hover {
-		color: var(--ink);
-	}
 
 	/*
 	 * Wide viewports spend the extra room on MORE SONGS, not longer rows. Only song rows flow into
@@ -1958,41 +2007,11 @@
 		 */
 		min-height: var(--tap);
 	}
-	.chip {
-		/* var(--tap), matching the queue actions and the row buttons. The readiness chips this was
-		   written for were ~30px — above the 24px WCAG floor, but below the threshold this app had
-		   already set for itself everywhere else. Those chips are deleted; the rule stays because
-		   the way back out of a non-matching search ("Show all N") is a `chip ok chip-icon` and is just
-		   as tappable. The TOKEN, never the number: the control has to move with `--tap`. */
-		min-height: var(--tap);
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-xs);
-		padding: 7px var(--space-xl);
-		border-radius: 22px;
-		font-size: 0.82rem;
-		font-weight: 600;
-		cursor: pointer;
-		background: var(--card);
-		border: 1px solid var(--line);
-		color: var(--ink-dim);
-	}
-	.chip.ok {
-		color: var(--ok);
-	}
 	/* any label that leads with a mark rather than a word */
-	.chip-icon {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-xs);
-	}
 	.search-mark {
 		display: grid;
 		place-items: center;
 		color: var(--ink-dim);
-	}
-	.chip:active {
-		transform: scale(0.95);
 	}
 	.grouphead {
 		font-size: var(--ph-text-2xs);
@@ -2029,48 +2048,8 @@
 	.key.shifted .lab {
 		color: var(--warn);
 	}
-	.key button {
-		/*
-		 * `1 1 40%`, not `1`: at 200% text a nowrap `flex: 1` pair could not shrink below the
-		 * min-content width of "semitone" (~172px each), so the two buttons plus the label forced the
-		 * row — and the sheet around it — past 320px. A 40% basis lets both sit two-up when they
-		 * fit and wrap to their own rows when they cannot; `min-width: 0` frees the flex minimum so the
-		 * shrink is allowed at all, and `.key-btn`'s `overflow-wrap` breaks the single word if even a
-		 * full-width button is too narrow for it. The row's own `flex-wrap` (above) is what catches them.
-		 */
-		flex: 1 1 40%;
-		min-width: 0;
-		border: 1px dashed var(--line-strong);
-		background: transparent;
-		color: var(--ink-dim);
-		border-radius: var(--radius-btn);
-		padding: var(--space-xs);
-		font-size: var(--ph-text-sm);
-		cursor: pointer;
-		min-height: var(--tap);
-	}
 	/* Centre the mark with its word. The glyphs these replaced were U+2212 and U+FF0B — the fullwidth
 	   plus carries CJK metrics, so it sat off-baseline beside Latin text at every size. */
-	.key-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-xs);
-		/* "semitone" is one unbreakable token; at 200% text a full-width button can still be narrower
-		   than it, so allow the word to break rather than force the row wider than the viewport. */
-		overflow-wrap: anywhere;
-	}
-	.key:not(.disabled) button:not(:disabled) {
-		border-style: solid;
-		border-color: var(--line);
-		color: var(--ink);
-	}
-	.key:not(.disabled) button:not(:disabled):active {
-		transform: scale(0.95);
-	}
-	.key button:disabled {
-		cursor: default;
-	}
 
 	/*
 	 * The key head line. Sits ABOVE the ± buttons (see the markup comment for why it cannot be inline).
@@ -2119,25 +2098,6 @@
 	 */
 	.range {
 		margin: var(--space-sm) 0 var(--space-3xs);
-	}
-	.range-toggle {
-		width: 100%;
-		min-height: var(--tap);
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		background: none;
-		border: 0;
-		padding: 0 var(--space-3xs);
-		cursor: pointer;
-		color: var(--ink-dim);
-		font-size: var(--ph-text-2xs);
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-	}
-	.range-toggle:hover {
-		color: var(--ink);
 	}
 	/* The collapsed-row peek of the range, pushed to the right. Not uppercase — it is data, not a label. */
 	.range-peek {
@@ -2222,23 +2182,6 @@
 	/* Matches the gear beside it: a real var(--tap) target, not text that happens to be tappable. An
 	   anchor now (it navigates to /settings?tab=you), so the underline a link would default to is
 	   dropped — the affordance here is the var(--tap) box and the colour dot, as it was as a button. */
-	.me-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-sm);
-		min-width: 0;
-		min-height: var(--tap);
-		padding: 0 var(--space-xs);
-		background: none;
-		border: 0;
-		cursor: pointer;
-		color: inherit;
-		font: inherit;
-		text-decoration: none;
-	}
-	.me-btn:active {
-		opacity: 0.7;
-	}
 
 	/* --warn, not --danger: a dropped socket is a transient degraded state that self-heals on the next
 	   backoff tick, not a failure the guest has to act on. */
