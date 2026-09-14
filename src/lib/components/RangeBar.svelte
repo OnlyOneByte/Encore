@@ -114,6 +114,13 @@
 
 <style>
 	/*
+	 * SUB-TOKEN RADII ARE DELIBERATE HERE. The 2px whisker, 3px axis hairline, 6px lives-here block
+	 * and 8px strip are drawing geometry inside an `aria-hidden` visualization, not surfaces on the
+	 * app`s radius scale — whose smallest step is --radius-xs (4px). Snapping a 2px hairline to 4px
+	 * would round it into a lozenge and change what the strip depicts, so these stay literals. The
+	 * scale governs SURFACES; this component is a chart.
+	 */
+	/*
 	 * A short, wide strip. Height carries the whiskers + block + shading in one band; the phone gives
 	 * it full column width inside the disclosure. Everything positions absolutely off this box, so the
 	 * fractions from the helpers land as left/width percentages directly.

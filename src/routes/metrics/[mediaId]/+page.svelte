@@ -207,7 +207,7 @@
 							<Card.Title>Run {i + 1}</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<header>
+							<Card.Action>
 								<Badge
 									variant={process.outcome === 'ready'
 										? 'ok'
@@ -215,7 +215,7 @@
 											? 'bad'
 											: 'warn'}>{outcomeLabel(process.outcome)}</Badge
 								>
-							</header>
+							</Card.Action>
 							<p class="note">
 								{stamp(process.startedAt)}{#if process.totalMs !== null}{' · took '}{dur(
 										process.totalMs
@@ -245,7 +245,7 @@
 												<Item.Content>
 													<div class="row">
 														<strong>{stepLabel(a.jobType)}</strong>
-														{#if a.attempt > 1}<span class="retry">try {a.attempt}</span>{/if}
+														{#if a.attempt > 1}<Badge variant="warn">try {a.attempt}</Badge>{/if}
 														<Badge
 															variant={a.outcome === 'ready'
 																? 'ok'
@@ -363,12 +363,9 @@
 	 * S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
 	 * title where this was hand-styled, which is part of the visual change accepted for S4.
 	 */
-	header {
-		display: flex;
-		align-items: center;
-		gap: 0.6rem;
-		margin-bottom: 0.3rem;
-	}
+	/* The bare `header {}` element selector is GONE with the element: the run's outcome badges are
+	   `<Card.Action>`, Card's own trailing-content slot. An element selector on a generic tag is
+	   fragile — it would silently restyle any future <header> added to this route. */
 	.sub {
 		margin: 0;
 		color: var(--ink-dim);
@@ -434,6 +431,16 @@
 		color: var(--ink-dim);
 	}
 	/*
+	 * `.suspect` STAYS, deliberately, while `.retry` became a Badge. The difference is shape, not tone:
+	 * "try 2" is a token and reads correctly as a pill, but this is a full SENTENCE — "winner disagreed
+	 * with every baseline — probably the wrong song" — and a pill wrapping a sentence reads as a broken
+	 * token. It also composes with `.secondary`, so the warn ink is an override on inline metric text
+	 * rather than a surface of its own.
+	 */
+	.suspect {
+		color: var(--warn);
+	}
+	/*
 	 * The shadcn migration: `.facts` and its three descendant rules are GONE from this file. They were duplicated
 	 * VERBATIM in routes/metrics/+page.svelte — four rules and seven lines of markup in each, already
 	 * diverging by one `overflow-wrap` — and are now lib/components/FactList.svelte, which both pages
@@ -457,13 +464,6 @@
 	.kept {
 		font-size: 0.78rem;
 		color: var(--ink);
-	}
-	.suspect {
-		color: var(--warn);
-	}
-	.retry {
-		font-size: 0.72rem;
-		color: var(--warn);
 	}
 	/*
 	 * S6: `.pill` and its three outcome tones are ui/badge's now. The outcome→tone mapping moved to

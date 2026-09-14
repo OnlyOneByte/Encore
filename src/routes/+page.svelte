@@ -2138,7 +2138,10 @@
 		gap: var(--space-lg);
 		padding: var(--space-lg) var(--space-xl);
 		margin-bottom: var(--space-sm);
-		border-radius: 14px;
+		/* --radius-sm, not 14px: this row stands in for a real song row while it loads, and `.card`
+		   is --radius-sm — a placeholder with a different corner than the thing it replaces
+		   announces itself as a placeholder. */
+		border-radius: var(--radius-sm);
 		background: var(--card);
 		border: 1px solid var(--line);
 	}

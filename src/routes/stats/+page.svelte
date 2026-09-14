@@ -147,8 +147,8 @@
 						</Card.Header>
 						<Card.Content>
 							<Bars rows={stats.topRecent.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" />
-							<p class="note">Last {stats.window.days} days.</p>
 						</Card.Content>
+						<Card.Footer><p class="note">Last {stats.window.days} days.</p></Card.Footer>
 					</Card.Root>
 				{/if}
 
@@ -164,8 +164,8 @@
 						/>
 						<!-- Honest about the gap rather than silently short: the normalizer stores null instead of
 			     guessing a low-confidence artist, so some sung songs cannot be attributed at all. -->
-						<p class="note">Songs we couldn't match to an artist aren't counted.</p>
 					</Card.Content>
+					<Card.Footer><p class="note">Songs we couldn't match to an artist aren't counted.</p></Card.Footer>
 				</Card.Root>
 
 				<Card.Root>
@@ -174,8 +174,10 @@
 					</Card.Header>
 					<Card.Content>
 						<Trend points={stats.perDay} since={stats.window.since} until={now} />
-						<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
 					</Card.Content>
+					<Card.Footer>
+						<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
+					</Card.Footer>
 				</Card.Root>
 			{/if}
 		{/if}

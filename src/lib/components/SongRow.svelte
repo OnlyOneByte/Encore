@@ -431,7 +431,7 @@
 		position: relative;
 		width: 84px;
 		height: 47px;
-		border-radius: 8px;
+		border-radius: var(--radius-btn);
 		flex: 0 0 auto;
 		overflow: hidden;
 		background: linear-gradient(135deg, var(--track-bg), var(--card));
@@ -474,7 +474,7 @@
 		font-size: 0.62rem;
 		font-weight: 700;
 		padding: 1px var(--space-2xs);
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		font-variant-numeric: tabular-nums;
 		letter-spacing: 0.01em;
 	}
@@ -591,7 +591,7 @@
 		height: var(--tap);
 		flex: 0 0 auto;
 		border: 0;
-		border-radius: 12px;
+		border-radius: var(--radius-sm);
 		cursor: pointer;
 		display: grid;
 		place-items: center;

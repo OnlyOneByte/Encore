@@ -14,6 +14,7 @@
 	import { dur, stepLabel, stageLabel, rate } from '$lib/metrics-format';
 	import * as Card from '$lib/components/ui/card';
 	import * as Alert from '$lib/components/ui/alert';
+	import { Badge } from '$lib/components/ui/badge';
 	import * as Item from '$lib/components/ui/item';
 	import * as Table from '$lib/components/ui/table';
 	import FactList from '$lib/components/FactList.svelte';
@@ -207,7 +208,8 @@
 										{#each m.steps as s (s.jobType)}
 											<Table.Row>
 												<Table.Cell
-													>{stepLabel(s.jobType)}{#if s.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
+													>{stepLabel(s.jobType)}{#if s.provisional}<Badge variant="warn">few runs</Badge
+														>{/if}</Table.Cell
 												>
 												<Table.Cell>{s.n}</Table.Cell>
 												<Table.Cell><span class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</span></Table.Cell>
@@ -253,7 +255,7 @@
 										{#each m.models as r (String(r.engine) + String(r.model))}
 											<Table.Row>
 												<Table.Cell
-													>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span
+													>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<Badge variant="warn">few runs</Badge
 														>{/if}</Table.Cell
 												>
 												<Table.Cell>{r.n}</Table.Cell>
@@ -305,7 +307,7 @@
 										{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
 											<Table.Row>
 												<Table.Cell
-													>{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
+													>{r.asrModel ?? '—'}{#if r.provisional}<Badge variant="warn">few runs</Badge>{/if}</Table.Cell
 												>
 												<Table.Cell class="name">{r.syncMode ?? '—'}</Table.Cell>
 												<Table.Cell>{r.n}</Table.Cell>
@@ -513,16 +515,6 @@
 	 * Reads as its own meaning. This was a bare "?" whose sole explanation was a title attribute —
 	 * invisible on touch, hover-only on desktop, and undiscoverable to a keyboard or screen reader.
 	 */
-	.flag {
-		margin-left: 0.4rem;
-		padding: 0.05rem 0.3rem;
-		border: 1px solid var(--warn);
-		border-radius: var(--radius-sm);
-		color: var(--warn);
-		font-size: var(--ph-text-2xs);
-		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
-	}
 	/*
 	 * The shadcn migration: considered for <Item.Group> and REJECTED. Item.Group is `flex w-full flex-col` — a vertical
 	 * stack of rows — and this is a horizontal strip of four small stat cells in an auto-fit grid, so the

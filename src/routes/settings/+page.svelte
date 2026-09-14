@@ -16,6 +16,7 @@
 -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
 	import { untrack } from 'svelte';
 	import { goto, replaceState } from '$app/navigation';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -584,7 +585,7 @@
 				without this the You tab was a dead end for anyone who opened it and changed nothing — the
 				header's back arrow was the only way out, which no other tab relies on.
 			-->
-					<button class="done" onclick={() => goto('/')}>Done</button>
+					<Button size="block" onclick={() => goto('/')}>Done</Button>
 				</div>
 			</Tabs.Content>
 			<Tabs.Content value="party">
@@ -978,12 +979,12 @@
 				/stats is the GUEST page, so it is the one dashboard safe to reach from a surface any phone
 				can open. Its sibling on the Server tab is not, which is why they are not side by side.
 			-->
-					<a class="dash" href="/stats">
+					<Button variant="outline" size="block" href="/stats">
 						<Icon name="sparkle" />
-						Party stats <span class="dash-note">safe to share</span>
-					</a>
+						Party stats <Badge variant="neutral">safe to share</Badge>
+					</Button>
 
-					<button class="done" onclick={() => goto('/')}>Done</button>
+					<Button size="block" onclick={() => goto('/')}>Done</Button>
 				</div>
 			</Tabs.Content>
 			<Tabs.Content value="server">
@@ -1126,13 +1127,13 @@
 							<Collapsible.Root bind:open={advancedOpen}>
 								<Collapsible.Trigger>
 									{#snippet child({ props })}
-										<button class="disclose" {...props}>
+										<Button variant="ghost" size="block" {...props}>
 											<Icon name={advancedOpen ? 'chevron-down' : 'chevron-right'} />
 											Advanced
 											<span class="disclose-now">
 												{settings.global.enqueueUpgrade ? 'Re-process on' : 'Re-process off'}
 											</span>
-										</button>
+										</Button>
 									{/snippet}
 								</Collapsible.Trigger>
 
@@ -1187,12 +1188,12 @@
 				is reachable only from here. Linking it from the remote or the TV would advertise worker
 				ids, model names, host details and error strings to every device in the room.
 			-->
-					<a class="dash" href="/metrics">
+					<Button variant="outline" size="block" href="/metrics">
 						<Icon name="clock" />
-						Processing metrics <span class="dash-note">internal</span>
-					</a>
+						Processing metrics <Badge variant="neutral">internal</Badge>
+					</Button>
 
-					<button class="done" onclick={() => goto('/')}>Done</button>
+					<Button size="block" onclick={() => goto('/')}>Done</Button>
 				</div>
 			</Tabs.Content>
 		</Tabs.Root>
@@ -1362,24 +1363,6 @@
 	}
 
 	/* ── the one disclosure left ────────────────────────────────────────── */
-	.disclose {
-		width: 100%;
-		min-height: var(--tap);
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm);
-		padding: 0 var(--space-lg);
-		background: none;
-		border: 0;
-		color: var(--ink);
-		font-size: var(--ph-text-md);
-		font-weight: 700;
-		text-align: left;
-		cursor: pointer;
-	}
-	.disclose:focus-visible {
-		outline: 2px solid var(--focus);
-	}
 	/* States what is behind the door, so it does not have to be opened to be read. */
 	.disclose-now {
 		margin-left: auto;
@@ -1407,45 +1390,12 @@
 	 * paragraph buried two of them in twenty words. --ink on --card2, not an accent colour: both accent
 	 * tokens fail AA as text (3.95:1 and 3.52:1), which contrast.test.ts scans for.
 	 */
-	.dash {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-sm);
-		min-height: var(--tap);
-		margin-bottom: var(--space-md);
-		border: 1px solid var(--line-strong);
-		border-radius: var(--radius-btn);
-		background: var(--card2);
-		color: var(--ink);
-		font-size: 0.88rem;
-		font-weight: 600;
-		text-decoration: none;
-	}
-	.dash-note {
-		color: var(--ink-dim);
-		font-weight: 400;
-		font-size: 0.76rem;
-	}
 
 	/* ── the two footer buttons ─────────────────────────────────────────── */
 	/*
 	 * Done is NOT accent: every control on the Party and Server tabs has already saved by the time it is
 	 * reached, so making it the loudest thing on screen would imply it commits something.
 	 */
-	.done {
-		display: block;
-		width: 100%;
-		min-height: var(--tap);
-		margin-top: var(--space-3xl);
-		padding: var(--space-lg);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--card);
-		color: var(--ink);
-		font-size: 0.95rem;
-		cursor: pointer;
-	}
 	/* Save IS accent, because it is the one thing on this page that does not happen without a tap. */
 	/*
 	 * PAGE LAYOUT ONLY (S1). Width, min-height, padding, type and the disabled opacity moved

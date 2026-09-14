@@ -120,7 +120,19 @@ test('every phone control that sizes its own box reaches the tap standard', () =
 	expect(offenders).toEqual([]);
 	// a broken markup walk (empty tag/class sets) would silently measure nothing and pass vacuously;
 	// pin a floor so the guard fails loudly if the derivation ever stops finding controls.
-	expect(controlRulesSeen).toBeGreaterThan(10); // @nvf-floor controlRulesSeen
+	/*
+	 * RE-BASED 10 -> 6, and the direction is the point. This population is "control rules that size their
+	 * own box IN A PAGE STYLESHEET", which the shadcn migration shrinks on purpose: every control that
+	 * becomes a <Button> stops declaring its own box and starts inheriting one from the size axis. It
+	 * measured exactly 10 after the phone-home and settings passes, so the old `> 10` blocked the
+	 * migration rather than catching a defect.
+	 *
+	 * The floor still does its job — a broken derivation reports 0, not 6. What it can no longer do is
+	 * cover the controls that LEFT, so its successor is named rather than implied:
+	 * `button-tap-floor.test.ts` asserts no call site asks for a Button size under --tap, which is where
+	 * those controls' boxes now live. When this number reaches 0, retire this arm and say so there.
+	 */
+	expect(controlRulesSeen).toBeGreaterThan(6); // @nvf-floor controlRulesSeen
 	// …and pin the SCANNED POPULATION too (XR-VER-14 Acceptance). FILES is a tree walk over
 	// lib/components and lib/ui PLUS five hand-named route pages, so a walk that stops finding
 	// components still leaves five files — and five files carry enough control rules to clear the floor
@@ -165,7 +177,8 @@ test('every phone control expresses the tap standard as var(--tap), never the nu
 	expect(offenders).toEqual([]);
 	// non-vacuity: this arm filters harder than the value guard (box-declaring rules only), so it needs
 	// its own floor — a derivation that stopped finding box rules would report zero offenders happily.
-	expect(boxRulesSeen).toBeGreaterThan(10); // @nvf-floor boxRulesSeen
+	// RE-BASED 10 -> 6 for the same reason as `controlRulesSeen` above, and with the same successor.
+	expect(boxRulesSeen).toBeGreaterThan(6); // @nvf-floor boxRulesSeen
 });
 
 /**
