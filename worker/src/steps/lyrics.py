@@ -329,7 +329,7 @@ class GradeAndSelect(Step):
     # timings run past the end of the audio. `runtime/plan.py` fails plan validation for a key nothing
     # produces, so this must be declared, not read implicitly.
     reads = frozenset({"lyrics.texts", "audio.duration_sec"})
-    writes = frozenset({"lyrics.selection", "lyrics.texts"})
+    writes = frozenset({"lyrics.selection", "lyrics.texts", "lyrics.baselines"})
 
     def applies(self, ctx: Ctx) -> bool:
         """Skip comparative selection on a pinned re-time.
@@ -468,6 +468,13 @@ class GradeAndSelect(Step):
             # the demotion local to the published list — see presplit.py's replace() note.
             sel.publish[0] = replace(sel.publish[0], text_confidence="low")
         ctx.lyrics.selection = sel
+        # Preserve the BASELINES before narrowing `texts` to what publishes. `sel.publish` is normally the
+        # single winning candidate, so a baseline survives this assignment only on the suspect/fallback
+        # paths — which meant TimeTexts, whose LRC-placement series comes from baselines, had no input on
+        # any ordinary job and silently skipped the placement. Read from `ctx.lyrics.texts` while it is
+        # still the PRE-selection pool: `select_by_baselines` does not mutate its input (it rebinds via
+        # `replace`), and the narrowing happens on the very next line.
+        ctx.lyrics.baselines = baselines_of(ctx.lyrics.texts)
         ctx.lyrics.texts = sel.publish
         return
         yield  # pragma: no cover - makes this an async generator
@@ -497,7 +504,15 @@ class TimeTexts(Step):
     name = "time-texts"
     stage = Stage.ALIGNING
     reads = frozenset(
-        {"job", "engines", "lyrics.texts", "lyrics.selection", "audio.path", "audio.vocals_path"}
+        {
+            "job",
+            "engines",
+            "lyrics.texts",
+            "lyrics.baselines",
+            "lyrics.selection",
+            "audio.path",
+            "audio.vocals_path",
+        }
     )
     writes = frozenset({"out"})
 
@@ -524,9 +539,20 @@ class TimeTexts(Step):
         # candidate — compute it ONCE. A synced LRC's windows are then placed onto this recording
         # against it before alignment (see `_shift_for`). Baselines carry line starts only
         # (whisper's `transcribe()` returns segment bounds, not word bounds), which is exactly what the
-        # fit needs. Empty when no baseline spoke, which makes every shift a no-op.
+        # fit needs.
+        #
+        # READ FROM `lyrics.baselines`, not from `lyrics.texts`. This used to be
+        # `baselines_of(ctx.lyrics.texts)`, and its comment claimed the series was "empty when no baseline
+        # spoke" — but GradeAndSelect narrows `texts` to `sel.publish` one step earlier, which is normally
+        # the single winning candidate. So the series was empty on every ORDINARY job, not just a silent
+        # one, and the placement below could never run however badly an LRC needed placing. The dedicated
+        # slot carries the evidence past that narrowing.
+        #
+        # The `or` fallback covers the pinned re-time, where `GradeAndSelect.applies()` is False and so
+        # nothing populates the slot; there `texts` is a single hand-built text and both sides are empty,
+        # which is the same no-op as before.
         baseline_lines: list[dict[str, Any]] = []
-        for b in baselines_of(ctx.lyrics.texts):
+        for b in ctx.lyrics.baselines or baselines_of(ctx.lyrics.texts):
             baseline_lines.extend(b.segments)
 
         def _shift_for(t: Any) -> LrcShift | None:
