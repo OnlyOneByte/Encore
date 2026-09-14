@@ -39,8 +39,15 @@ class ResolvedEngines:
     asr_model: str = AsrModel.BASE.value
     sync_mode: SyncMode = SyncMode.FORCED
     separator: str = Engine.DEMUCS.value
-    separator_model: str | None = None
     device: str | None = None
+
+    # NO `separator_model` HERE, deliberately. It used to sit beside `separator`, was filled in by
+    # `resolve_engines` from `params['model']`, was declared plan-visible in `runtime/plan.py`… and was
+    # read by nothing. `Separate` resolves the checkpoint itself with `engine.resolve_model(ctx.params)`,
+    # which is the better mechanism precisely because it is PER ENGINE: each one checks the request
+    # against its own allowlist and raises a BoundaryError on a token it cannot run, where one shared
+    # field could only ever hold a string nobody validated. Two owners for one decision is how they
+    # drift; the field went rather than the resolver.
 
 
 @dataclass

@@ -158,7 +158,6 @@ def resolve_engines(params: dict[str, Any], defaults: ResolvedEngines | None = N
         asr_model=parse_asr_model(params.get("asrModel"), AsrModel(base.asr_model)).value,
         sync_mode=parse_sync_mode(params.get("syncMode"), base.sync_mode),
         separator=str(parse_engine(params.get("engine"), Engine(base.separator))),
-        separator_model=params.get("model") or base.separator_model,
         device=params.get("device") or base.device,
     )
 
@@ -256,7 +255,14 @@ def stems_runner(
             backend=backend,
             demucs_model=demucs_model or None,
             demucs_bin=demucs_bin,
-            device=device,
+            # THE JOB'S DEVICE, not the worker default. `resolve_engines` folds `params['device']` over
+            # this worker's configured one, and alignment (steps/lyrics.py) and diarization
+            # (steps/diarize.py) both read the folded value — separation read the closure instead, so one
+            # job could transcribe on the device it asked for and separate on a different one, with
+            # `facts.device` reporting whatever the engine happened to be built with. The mlx branch of
+            # `engine_for` ignores the device either way (demucs-mlx takes no torch device string), which
+            # is why this is safe to pass unconditionally.
+            device=engines.device,
             jobs=jobs,
             overlap=overlap,
             segment=segment,
