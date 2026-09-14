@@ -86,12 +86,19 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	});
 
 	/*
-	 * The master and the guide must read the SAME decision. Two copies of the same condition is how a
-	 * silent master still produced an audible vocals-only mix: the guide's own `active && visible &&
+	 * There is now ONE consumer of the decision, because there is one element. This used to assert the
+	 * master and the guide read the SAME `transport` value — two copies of the condition is how a silent
+	 * master once produced an audible vocals-only mix, since the guide's own `active && visible &&
 	 * playing` check did not know the master had never started.
+	 *
+	 * The guide element is gone, so that divergence is unrepresentable. What still matters is that the
+	 * ONE transport consumer reads the shared derived rather than re-deriving the condition inline — so
+	 * the ban on the hand-rolled check stays, and is what would red if someone reintroduced a second
+	 * consumer with its own copy.
 	 */
-	test('the guide reads the same transport as the master, not its own copy', () => {
-		expect(src).toContain("if (transport === 'play') {");
+	test('the transport is read from the shared derived, never re-derived inline', () => {
+		expect(src).toContain("if (transport === 'pause') {");
+		expect(src).toContain("if (transport === 'idle') return;");
 		expect(src).not.toContain('if (active && visible && playing) {');
 	});
 

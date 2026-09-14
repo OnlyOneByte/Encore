@@ -466,7 +466,11 @@ test('the pitch-shift graph teardown runs per song change — and not on media i
 	// effect). Stronger lifecycle assertions live in pitch-shift-graph-lifetime.test.ts.
 	expect(/masterGraph\?\.setShift\(\s*0\s*\)/.test(teardown)).toBe(true);
 	expect(/masterGraph\?\.detach\(/.test(teardown)).toBe(false);
-	expect(/guideGraph\?\.setShift\(\s*0\s*\)/.test(teardown)).toBe(true);
+	// ONE graph to reset. This also asserted `guideGraph?.setShift(0)` while the guide was a second
+	// <audio> with its own graph; both are gone, so a reappearance here would mean the two-decoder path
+	// came back. The reset must still re-assert the guide PAIR's gain, which now lives on this same graph.
+	expect(/guideGraph/.test(teardown)).toBe(false);
+	expect(/masterGraph\?\.setGuideGain\(\s*effectiveGuide\s*\)/.test(teardown)).toBe(true);
 	expect(/guideGraph\?\.detach\(/.test(teardown)).toBe(false);
 });
 

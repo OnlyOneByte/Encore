@@ -8,6 +8,17 @@ build/
 dist/
 vite.config.ts.timestamp-*
 
+# stray tsc emit — compiled .js/.js.map next to a .ts source (e.g. `server.js`,
+# `src/lib/contract/**/*.js`). Sources are .ts/.svelte only; any emitted .js/.map is build junk.
+/server.js
+/server.js.map
+/src/**/*.js
+/src/**/*.js.map
+
+# orphaned pre-flatten layout — the repo moved apps/core/src -> src/ in the
+# test-architecture restructure; a stale apps/ tree is leftover, never source.
+/apps/
+
 # data + media (runtime volumes — never commit)
 # ANCHORED to repo root (leading /) so these only match the runtime volume dirs, NOT source
 # directories like src/lib/server/media/ or src/routes/media/. An un-anchored

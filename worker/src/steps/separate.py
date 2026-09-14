@@ -345,8 +345,17 @@ class PublishStems(Step):
                 )
                 os.replace(tmp, mix)
                 ctx.stems.published["guideMix"] = mix
-            except Exception:  # noqa: BLE001 — an enhancement must never fail the job
-                ctx.note("guide-mix encode failed (non-fatal) — the TV will fall back to two elements")
+            except Exception as err:  # noqa: BLE001 — an enhancement must never fail the job
+                # NAME THE REASON. This note used to carry none, and that is why a guide mix which
+                # failed on EVERY song — for one fixable reason, an output name ffmpeg could not
+                # mux — read in the log as an unremarkable fallback line and stayed unfixed while
+                # every room heard a drifting two-element guide. Non-fatal is a statement about the
+                # JOB, not a licence to discard the cause: the guide is the part of the pipeline the
+                # room actually notices, so the reason belongs beside the fallback it explains.
+                ctx.note(
+                    f"guide-mix encode failed (non-fatal: {type(err).__name__}: {err})"
+                    " — the TV will fall back to two elements"
+                )
             finally:
                 # Never leave the temp behind: it is in `derived/`, so an orphan would be counted by the
                 # retention cap forever while naming no artifact any media owns.

@@ -152,6 +152,17 @@ def encode_guide_mix_argv(
             str(level),
             "-sample_fmt",
             "s16",
+            # THE MUXER IS DECLARED, NEVER INFERRED — and this flag is the whole reason the feature
+            # works at all. ffmpeg picks its output container from the output FILENAME's extension
+            # when no `-f` is given. The caller (PublishStems) deliberately encodes to a temp sibling
+            # and renames it, so the name it passes ends in `.tmp` (`<id>-guidemix.flac.<pid>.tmp`) —
+            # an extension that maps to no container. Without `-f` ffmpeg aborts before encoding a
+            # frame with "Unable to find a suitable output format", the mix fails for EVERY song, and
+            # the caller's `except` turns that into one non-fatal note while every room silently falls
+            # back to the two-element guide. The sibling encodes (`encode_flac_argv`, `decode_argv`)
+            # never hit this because they write their real `.flac`/`.wav` paths directly.
+            "-f",
+            "flac",
         ],
         [out_path],
     )

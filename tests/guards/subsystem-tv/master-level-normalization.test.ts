@@ -149,9 +149,11 @@ function pitchEffectMasterRegion(s: string): string {
 	const anchor = 'if (needsShift(shift) && !masterGraph)';
 	const at = s.indexOf(anchor);
 	expect(at, 'expected the master graph build in the pitch effect').toBeGreaterThanOrEqual(0);
-	// From the build up to (but not into) the guide branch `if (g) {`.
-	const guideAt = s.indexOf('if (g)', at);
-	return s.slice(at, guideAt >= 0 ? guideAt : at + 400);
+	// From the build to the end of the effect. This used to stop at the guide branch `if (g) {`, which no
+	// longer exists (the second element is gone) — leaving the slice ~80 chars long and blind to the very
+	// re-applies it exists to check. Anchor on the effect's closing `});` instead.
+	const endAt = s.indexOf('\n\t});', at);
+	return s.slice(at, endAt >= 0 ? endAt : at + 900);
 }
 
 test('guard: the pitch effect re-applies the master level after (re)building the master graph', () => {

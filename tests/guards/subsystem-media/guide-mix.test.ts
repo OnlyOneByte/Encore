@@ -54,9 +54,14 @@ describe('guidePath — which guide the TV plays, and never both', () => {
 		expect(guidePath(m)).toEqual({ kind: 'mix', ref: 'derived/stems/m1-guidemix.flac' });
 	});
 
-	test('no mix falls back to the two-element path — today’s behaviour, unchanged', () => {
+	test('no mix means NO guide — a vocals stem is not a second audible path', () => {
+		// THE INVARIANT OF THE SINGLE-PATH DESIGN. A `vocalsRef` is the stem the mix is BUILT from, so it
+		// is not evidence that this song can be guided from one playhead. Returning it here is what
+		// re-opens the two-decoder path: a second media element whose drift governor could only compare
+		// `currentTime` — which excludes each element's output latency — and so converged on "aligned"
+		// while the room heard an offset. Deleted rather than tuned, because no tuning reaches it.
 		const m = ready({ vocalsRef: 'derived/stems/m1-vocals.flac' });
-		expect(guidePath(m)).toEqual({ kind: 'element', ref: 'derived/stems/m1-vocals.flac' });
+		expect(guidePath(m)).toEqual({ kind: 'none' });
 	});
 
 	test('a mix on a song that is NOT playable offers nothing — the guide is an overlay on something', () => {
@@ -72,7 +77,8 @@ describe('guidePath — which guide the TV plays, and never both', () => {
 
 	test('an empty-string mix ref is not a mix — it would resolve to /media/ and 404', () => {
 		const m = ready({ vocalsRef: 'derived/stems/m1-vocals.flac', guideMixRef: '' });
-		expect(guidePath(m)).toEqual({ kind: 'element', ref: 'derived/stems/m1-vocals.flac' });
+		// Falsy ref → no mix → no guide at all. The vocals stem beside it is deliberately NOT a fallback.
+		expect(guidePath(m)).toEqual({ kind: 'none' });
 	});
 });
 
@@ -156,12 +162,16 @@ describe('setMediaGuideMix ties the mix to the stem generation that produced it'
 		expect(map.get('m1')!.guideMixRef).toBeUndefined();
 	});
 
-	test('clearing falls back to the two-element path, which is why it is safe', () => {
-		// The whole reason clearing is safe where preserving is not: the song still has a guide, just the
-		// drift-governed one, instead of a mix built from stems that no longer exist.
+	test('clearing leaves NO guide, and that is still safer than preserving a stale one', () => {
+		// The safety argument, restated for the single-path design. Clearing used to be justified by "the
+		// song still has a guide, just the drift-governed one" — there is no such fallback any more, so
+		// clearing now means the song offers no guide until it is re-processed. That is STILL the right
+		// trade: the mix on disk was built from stems this frame just superseded, so preserving the ref
+		// would play the room a guide that no longer matches the instrumental beside it. Silence about a
+		// guide is recoverable by re-processing; a confidently-wrong guide is not diagnosable by ear.
 		const map = withMix();
 		setMediaGuideMix('m1', undefined, map);
-		expect(guidePath(map.get('m1')!)).toEqual({ kind: 'element', ref: 'derived/stems/m1-vocals.flac' });
+		expect(guidePath(map.get('m1')!)).toEqual({ kind: 'none' });
 	});
 
 	test('an unknown media is a no-op, not a throw', () => {
