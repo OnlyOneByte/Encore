@@ -139,8 +139,14 @@ def test_profile_wire_shape_carries_exactly_the_nine_declared_keys(tmp_path):
     _write_wav(tmp_path / "inst.wav", _tone(44100, 3.0, 1000.0, 0.5))
     prof = song_profile.build_song_profile(str(tmp_path / "inst.wav"), None, "m1")
     assert set(prof) == {
-        "keyTonic", "keyMode", "keyConfidence",
-        "lowMidi", "highMidi", "p05Midi", "p95Midi", "histogram",
+        "keyTonic",
+        "keyMode",
+        "keyConfidence",
+        "lowMidi",
+        "highMidi",
+        "p05Midi",
+        "p95Midi",
+        "histogram",
         "loudnessLufs",
     }
 
@@ -151,7 +157,6 @@ def test_measure_lufs_is_reexported_from_the_analysis_package():
     # measure_lufs` works and the symbol is a declared part of the domain (matches detect_key /
     # summarize_range). Reverting either __init__ hunk reds one of these.
     import src.analysis as analysis
-
     from src.analysis import measure_lufs as reexported  # noqa: F401 -- import itself is the assertion
 
     assert "measure_lufs" in analysis.__all__

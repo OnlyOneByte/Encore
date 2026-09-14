@@ -63,7 +63,8 @@ class DecodeToWav(Step):
             # "ffmpeg: : No such file or directory"; name the missing key instead.
             # PermanentError (retryable=False): a step running out of order with no audio.path is a
             # deterministic plan error — every retry re-runs the same passes and fails identically, so
-            # it must fail fast rather than burn three attempts (the same class as a CLI that exits 0 with no output).
+            # it must fail fast rather than burn three attempts (the same class as a CLI that exits 0 with no
+            # output).
             raise PermanentError("decode-to-wav: audio.path is empty (AcquireAudio did not run or failed)")
         await run_quiet(ctx.runner, decode_argv(ctx.audio.path, out, self._ffmpeg))
         ctx.audio.decoded_wav = out
@@ -257,7 +258,8 @@ class PublishStems(Step):
         # ones: they are the same PCM measure_guide_offset_ms reads, and doing it here means no re-decode.
         # BEST-EFFORT and TRI-STATE, exactly like the vocals encode above: only measured when a vocals stem
         # was actually published (a silent/absent guide has nothing to align), never fatal, and a decline
-        # reports None → the core stores null → the client holds the guide exactly as today. A freshly-processed
+        # reports None → the core stores null → the client holds the guide exactly as today. A
+        # freshly-processed
         # song's two FLAC stems decode to a common start, so this is ~0 for the whole library; the non-zero
         # case is a legacy .m4a vocals stem (from before both stems shared one codec) or a deliberately
         # shifted one.

@@ -35,7 +35,8 @@ def test_acquisition_is_DECLARED_not_inferred_from_the_uri_shape():
             job_type="stems",
             source_uri="spotify:track:4cOdK2wGLETKBW3PvgPWqT",
             params=params,
-            media_dir="/m")
+            media_dir="/m",
+        )
 
     # a non-http scheme is NOT local just because it lacks an http prefix
     assert job_fetcher(spec({"fetcher": "ytdlp"})) is Fetcher.YTDLP
@@ -98,7 +99,8 @@ def fake_runner(
     *,
     fail_on: str | None = None,
     exit_text: str = "",
-    write_vocals: bool = True):
+    write_vocals: bool = True,
+):
     """Build a runner that emits canned lines keyed by the binary name (argv[0]), optionally raising
     a ProcessError for one binary. It also CREATES the files the real CLIs would, so the processor's
     existence checks + move succeed. `--two-stems=vocals` writes BOTH stems; `write_vocals=False`
@@ -120,10 +122,8 @@ def fake_runner(
         yield  # pragma: no cover — makes this an async generator; the return above wins
 
     return fake_cli_runner(
-        scripted=scripted,
-        fail_on=fail_on,
-        exit_text=exit_text,
-        handlers={"demucs": demucs_handler})
+        scripted=scripted, fail_on=fail_on, exit_text=exit_text, handlers={"demucs": demucs_handler}
+    )
 
 
 def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m1", **params):
@@ -133,7 +133,8 @@ def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m
         job_type="stems",
         source_uri=source_uri,
         params=params,
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
 
 
 @pytest.mark.asyncio
@@ -192,7 +193,8 @@ async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_pa
             "yt-dlp": ["[download] 100% of 4MiB"],
             "demucs": ["100%|██| 2/2"],
         },
-        write_vocals=False)
+        write_vocals=False,
+    )
     proc = plans.stems_runner(runner=runner)
     events = await drain(proc, spec(tmp_path))
     completes = [e for e in events if isinstance(e, CompleteResult)]
@@ -545,7 +547,8 @@ def test_engine_for_mlx_backend_builds_the_mlx_engine_not_torch():
     torch DemucsEngine under an mlx label.
 
     This is the machine-checkable form of the log-lies-to-you bug: an mlx resolution must not
-    silently produce a torch process. an earlier change implemented the MLX engine, so it now builds and runs rather than
+    silently produce a torch process. an earlier change implemented the MLX engine, so it now builds and runs
+    rather than
     refusing — but it is still a distinct engine reporting backend 'mlx', never the torch DemucsEngine.
     """
     from src.separation.engines import DemucsEngine, MlxDemucsEngine, engine_for
@@ -578,7 +581,8 @@ async def test_an_mlx_resolved_stems_process_runs_demucs_mlx_and_derives_the_ins
     torch `demucs` CLI), derives the instrumental with an ffmpeg mix-minus pass over the non-vocal
     stems, publishes it, and records facts.backend == 'mlx' because MLX actually RAN.
 
-    Before an earlier change this process failed loudly at construction ('demucs-mlx engine is not implemented'); the
+    Before an earlier change this process failed loudly at construction ('demucs-mlx engine is not
+    implemented'); the
     MLX runtime is now implemented, so it completes. The torch demucs CLI must still never run for an
     mlx process — that is the an earlier change honesty contract preserved.
     """
@@ -595,8 +599,8 @@ async def test_an_mlx_resolved_stems_process_runs_demucs_mlx_and_derives_the_ins
         yield "100%|██| 2/2"
 
     inner = fake_cli_runner(
-        scripted={"yt-dlp": ["[download] 100% of 4MiB"]},
-        handlers={"demucs-mlx": mlx_handler})
+        scripted={"yt-dlp": ["[download] 100% of 4MiB"]}, handlers={"demucs-mlx": mlx_handler}
+    )
 
     async def tracking_runner(argv):
         ran.append(argv[0])

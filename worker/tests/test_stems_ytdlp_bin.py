@@ -1,6 +1,7 @@
 """ENCORE_YTDLP_BIN must reach the STEMS plan too, not only align and fetch.
 
-An earlier change threaded the configured yt-dlp binary into `align_plan` and `fetch_plan`, and `dial_home` passed
+An earlier change threaded the configured yt-dlp binary into `align_plan` and `fetch_plan`, and `dial_home`
+passed
 `cfg.ytdlp_bin` to `align_runner`/`fetch_runner`. `stems_runner` was not part of that fix: `stems_plan`
 built `AcquireAudio()` with the hardcoded default and neither `stems_plan` nor `stems_runner` had a
 `ytdlp_bin` parameter at all, so `dial_home._build_processor` could not pass one. The step honours a bin

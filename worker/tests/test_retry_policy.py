@@ -227,7 +227,8 @@ def test_every_separation_raise_carries_a_structured_retryable():
 
     # Not-vacuous sentinel: the census must actually have SEEN the domain's raise sites, so an empty
     # scan (wrong glob, moved dir) fails loudly instead of passing on nothing. The domain currently has
-    # 6 structured raise sites (demucs.py x3, engines.py x1, mlx.py x1, roformer.py x1); an earlier change replaced
+    # 6 structured raise sites (demucs.py x3, engines.py x1, mlx.py x1, roformer.py x1); an earlier change
+    # replaced
     # MlxDemucsEngine's construction-refusal stub (which raised) with the working demucs-mlx engine, so
     # the count dropped from its earlier value — the floor tracks the true count rather than a stale one.
     assert raise_sites >= 5, f"census saw only {raise_sites} raise sites — scan is not reaching the domain"

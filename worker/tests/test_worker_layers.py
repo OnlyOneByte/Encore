@@ -412,14 +412,16 @@ def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
     of a caller-owned domain dataclass.
 
     Recognises the reaching-in write by its TARGET, in any of the spellings that share the blind spot
-    (— the original guard saw only `<subscript>.attr`, so `x = sel.publish[0]; x.text_confidence =...` walked straight past it): any assignment whose target is `<expr>.<field>` where `<field>` is a
+    (— the original guard saw only `<subscript>.attr`, so `x = sel.publish[0]; x.text_confidence =...` walked
+    straight past it): any assignment whose target is `<expr>.<field>` where `<field>` is a
     real LyricsText field name and `<expr>` is NOT a bare `self`. `self.<x> = ...` is a step owning its
     OWN attribute in a constructor and is allowed; every other object bearing a LyricsText field in a step
     module is a domain dataclass the step does not own. The forbidden field names are read from the
     LyricsText dataclass itself so this cannot drift as fields are added. AST, not a substring scan,
     because these names appear all over the module in reads and in `replace(..., text_confidence=...)`.
 
-    Scans ALL of `src/steps` via `_py_files` (which carries its own an earlier change non-vacuity floor), not one
+    Scans ALL of `src/steps` via `_py_files` (which carries its own an earlier change non-vacuity floor), not
+    one
     hardcoded file, so a step added elsewhere in the layer is covered too.
     """
     from src.lyrics.chain import LyricsText
@@ -560,7 +562,8 @@ def test_the_blocking_bypass_guard_actually_detects_a_direct_call(tmp_path: Path
         "    asyncio.to_thread(lambda: torch.zeros(1))\n"
         "    subprocess.run(['ffmpeg'])\n"
         "    proc = await asyncio.create_subprocess_exec('yt-dlp')\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     found = _blocking_offenders_in(fake)
     joined = " | ".join(found)
     assert any("import torch" in f for f in found), f"missed a blocking import: {joined}"
@@ -596,7 +599,8 @@ def _run_stage_class_methods(source: str) -> list[str]:
 def test_run_stage_is_defined_once_and_only_as_a_free_function():
     """`runtime/runner.py`'s header (`:3-10`) promises `run_stage` "lives here and nowhere else" — one
     implementation for the four actions that used to hand-roll their own copies (demucs/whisperx/roformer,
-    the S0-S6 refactor). Issue an earlier change: it shipped TWO — the real module-level free function AND a callerless
+    the S0-S6 refactor). Issue an earlier change: it shipped TWO — the real module-level free function AND a
+    callerless
     `PlanRunner.run_stage` shim, re-opening the "which run_stage do I call?" ambiguity the file exists to
     kill (the drift that once double-fired a stage's completion event).
 

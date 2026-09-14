@@ -36,11 +36,11 @@ class SeparatorEngine(Protocol):
     id: str
     backend: str
 
-    def resolve_model(self, params: dict) -> str:...
-    def input_wav(self, work: str) -> str:...
-    def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:...
-    def parse_progress(self, line: str) -> int | None:...
-    def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]:...
+    def resolve_model(self, params: dict) -> str: ...
+    def input_wav(self, work: str) -> str: ...
+    def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]: ...
+    def parse_progress(self, line: str) -> int | None: ...
+    def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]: ...
 
     def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
         """Extra commands to run AFTER `separate_argv`, before `find_outputs` — each a full argv the
@@ -70,7 +70,8 @@ class DemucsEngine:
         overlap: float | None = None,
         segment: int | None = None,
         shifts: int | None = None,
-        backend: str = "torch") -> None:
+        backend: str = "torch",
+    ) -> None:
         self._default_model = default_model
         self._bin = demucs_bin
         self._device = device
@@ -102,7 +103,8 @@ class DemucsEngine:
             jobs=self._jobs,
             overlap=self._overlap,
             segment=self._segment,
-            shifts=self._shifts)
+            shifts=self._shifts,
+        )
 
     def parse_progress(self, line: str) -> int | None:
         return d.parse_demucs_progress(line)
@@ -129,7 +131,8 @@ class MlxDemucsEngine:
     rather than silently building `DemucsEngine` under an "mlx" label, so `facts.backend` matches the
     startup log instead of announcing `mlx` while recording `torch`.
 
-    THE CLI CONTRACT, measured, is CASE C (owner ruling on an earlier change): `demucs-mlx` has NO `--two-stems` and
+    THE CLI CONTRACT, measured, is CASE C (owner ruling on an earlier change): `demucs-mlx` has NO
+    `--two-stems` and
     NO `--filename` flag, so it emits every source the model carries (4 for htdemucs/_ft, 6 for
     htdemucs_6s) into the demucs-native nested layout `<out>/<track-stem>/<source>.wav`, and there is no
     instrumental file. The instrumental is DERIVED by an ffmpeg mix-minus pass that sums the non-vocal
@@ -144,7 +147,8 @@ class MlxDemucsEngine:
     box advertises `stems` (`capabilities.narrow_for_backend` reads `demucs_engine_backed_by("mlx")`,
     now True). A box without MLX either resolves to `torch` (never builds this) or, if `mlx` was
     explicitly configured on unsupported hardware, `resolve_backend` raises at worker startup before any
-    engine is built. So the honest-degradation contract an earlier change established is preserved: an `mlx` label
+    engine is built. So the honest-degradation contract an earlier change established is preserved: an `mlx`
+    label
     never runs a torch process, and unavailable MLX fails loud rather than downgrading silently.
 
     `input_wav` is stashed on the instance at `separate_argv` time so `derive_argvs` and `find_outputs`
@@ -166,7 +170,8 @@ class MlxDemucsEngine:
         overlap: float | None = None,
         segment: int | None = None,
         shifts: int | None = None,
-        batch_size: int | None = None) -> None:
+        batch_size: int | None = None,
+    ) -> None:
         self._default_model = default_model
         self._bin = mlx_bin
         self._ffmpeg = ffmpeg_bin
@@ -196,7 +201,8 @@ class MlxDemucsEngine:
             overlap=self._overlap,
             segment=self._segment,
             shifts=self._shifts,
-            batch_size=self._batch_size)
+            batch_size=self._batch_size,
+        )
 
     def parse_progress(self, line: str) -> int | None:
         # demucs-mlx renders a tqdm bar (separate.py, `tqdm(...)`), same shape demucs uses, so reuse the
@@ -231,7 +237,8 @@ class RoformerEngine:
         *,
         default_model: str = r.DEFAULT_ROFORMER_MODEL,
         roformer_bin: str = "bs-roformer-infer",
-        device: str | None = None) -> None:
+        device: str | None = None,
+    ) -> None:
         self._default_model = default_model
         self._bin = roformer_bin
         self._device = device
@@ -295,7 +302,8 @@ class AudioSepEngine:
         *,
         default_model: str = a.DEFAULT_AUDIOSEP_MODEL,
         audiosep_bin: str = "audio-separator",
-        model_file_dir: str | None = None) -> None:
+        model_file_dir: str | None = None,
+    ) -> None:
         self._default_model = default_model
         self._bin = audiosep_bin
         self._model_file_dir = model_file_dir
@@ -345,7 +353,8 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
 
     The model default is per ENGINE, not shared: a caller passes `demucs_model` and/or `roformer_model`,
     and only the matching engine's value is mapped to its `default_model`. A single engine-agnostic
-    `default_model` slot let a caller hand one engine the OTHER engine's checkpoint name (issue an earlier change: the
+    `default_model` slot let a caller hand one engine the OTHER engine's checkpoint name (issue an earlier
+    change: the
     lone production caller supplied the demucs default, which reached `RoformerEngine` and made
     `DEFAULT_ROFORMER_MODEL` unreachable — a roformer process without a `model` then raised naming a demucs
     checkpoint). Keeping the names engine-specific makes that cross-wiring inexpressible. `audiosep_model`

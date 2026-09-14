@@ -134,7 +134,8 @@ async def test_demucs_publishes_songprofile_even_when_analysis_fails(tmp_path):
         job_type="stems",
         source_uri="https://youtube.com/watch?v=x",
         params={},
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
     proc = plans.stems_runner(runner=_demucs_fake_runner(tmp_path))  # default (real) profiler
     events = await _drain(proc, job)
     complete = [e for e in events if isinstance(e, CompleteResult)][0]
@@ -161,7 +162,8 @@ async def test_demucs_passes_the_raw_wavs_to_the_profiler(tmp_path):
         job_type="stems",
         source_uri="https://youtube.com/watch?v=x",
         params={},
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
     proc = plans.stems_runner(runner=_demucs_fake_runner(tmp_path), profiler=spy_profiler)
     await _drain(proc, job)
     assert seen["inst"].endswith("no_vocals.wav")

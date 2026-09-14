@@ -80,7 +80,8 @@ def test_dropping_a_requested_capability_is_never_silent(monkeypatch, tmp_path):
 
 # ── specific tokens ─────────────────────────────────────────────────────────────────
 def test_ensemble_is_never_advertised_because_no_engine_implements_it(monkeypatch, tmp_path):
-    # issue an earlier change: the worker used to advertise `stems:ensemble` whenever both engines were present, but
+    # issue an earlier change: the worker used to advertise `stems:ensemble` whenever both engines were
+    # present, but
     # NO ensemble engine exists — `engine_for("ensemble")` raises. So the core would route an ensemble
     # upgrade to this box and the job would die at plan selection with "no separator engine: ensemble",
     # which is the exact "claim the box cannot honour" failure this module exists to remove, and it
@@ -218,14 +219,18 @@ def test_advertised_order_is_stable_across_restarts(monkeypatch, tmp_path):
     assert first == second == tuple(sorted(first))
 
 
-# ── issue an earlier change / an earlier change: advertise `stems` only when the RESOLVED backend has a demucs engine ──────
+# ── issue an earlier change / an earlier change: advertise `stems` only when the RESOLVED backend has a
+# demucs engine ──────
 def test_stems_survives_on_an_mlx_box(monkeypatch):
-    """Issue an earlier change established that `stems` is dropped when the resolved backend has no demucs engine.
-    an earlier change IMPLEMENTED the MLX engine, so an Apple-Silicon box that auto-resolves its backend to `mlx`
+    """Issue an earlier change established that `stems` is dropped when the resolved backend has no demucs
+    engine.
+    an earlier change IMPLEMENTED the MLX engine, so an Apple-Silicon box that auto-resolves its backend to
+    `mlx`
     now HAS a demucs engine and must KEEP advertising `stems` — the box can genuinely run the process
     (demucs-mlx CLI + mix-minus derivation), so dropping it would refuse work it can do.
 
-    This is the inverse of the pre-an earlier change pin: before, an mlx box dropped `stems` (advertise -> process ->
+    This is the inverse of the pre-an earlier change pin: before, an mlx box dropped `stems` (advertise ->
+    process ->
     die at the unimplemented engine); now it keeps it and no drop warning fires.
 
     Simulates the box exactly as test_backends.py does: patch platform to Darwin/arm64 and make the

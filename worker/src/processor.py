@@ -84,7 +84,7 @@ class Processor(Protocol):
     """Process one job, yielding ProgressEvents and finally a CompleteResult. Raising signals a
     failure to the caller, which decides retryable-or-not."""
 
-    def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:...
+    def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]: ...
 
 
 class StubProcessor:
@@ -160,9 +160,11 @@ def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt")
     `.vtt` is tens of kilobytes of text, unlike the hundreds of megabytes of decoded audio that made
     `work/` need cleaning. Eviction here is REF-DRIVEN, not directory-driven, so a `derived/`
     file is only bounded by the `ENCORE_MEDIA_MAX_GB` cap once its key is enumerated in the core's
-    `derivedRefsOf`; an earlier change added that enumeration (this path is keyed per media id, so `derivedRefsOf`
+    `derivedRefsOf`; an earlier change added that enumeration (this path is keyed per media id, so
+    `derivedRefsOf`
     reconstructs it from CAPTION_KINDS x KNOWN_CAPTION_EXTS via `rawCaptionKey` in paths.ts). Before
-    an earlier change it inherited none of that and was orphaned on eviction. It is NOT a lyrics candidate and is
+    an earlier change it inherited none of that and was orphaned on eviction. It is NOT a lyrics candidate and
+    is
     never recorded in the sidecar; it is debugging evidence of what the parser was handed, which is
     otherwise destroyed with the job scratch and cannot be re-fetched reliably (the upload may be gone
     or the box rate-limited).

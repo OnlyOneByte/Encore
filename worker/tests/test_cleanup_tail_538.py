@@ -1,5 +1,6 @@
 """Regression pins for the worker-cleanup tail (the lower-consequence behavior fixes deferred
-from the worker-cleanup change). Each test fails when its production hunk is reverted to the pre-change form, so the fix is
+from the worker-cleanup change). Each test fails when its production hunk is reverted to the pre-change form,
+so the fix is
 mutation-provable rather than asserted.
 
   item 1  resolve_engines parses `engine` at the boundary (unknown -> BoundaryError), like asrModel/syncMode
@@ -17,6 +18,9 @@ import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+import pytest
+
+
 def _repo_root() -> Path:
     """The repo root, by walking up for `bunfig.toml`.
 
@@ -32,8 +36,6 @@ def _repo_root() -> Path:
     raise SystemExit(f"no bunfig.toml above {here}")
 
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 REPO_ROOT = _repo_root()
@@ -43,7 +45,6 @@ from src.retry_policy import BoundaryError  # noqa: E402
 from src.runtime import Ctx  # noqa: E402
 from src.runtime.ctx import ResolvedEngines  # noqa: E402
 from src.steps.separate import DecodeToWav, PublishStems  # noqa: E402
-
 
 
 # ── engine parsed at the boundary ────────────────────────────────────────────────
@@ -140,7 +141,8 @@ def test_dial_home_has_no_dead_config_snapshot_globals():
 
 def test_worker_client_resolves_config_on_call_when_kwargs_omitted():
     """Behavioural half of item 5: a client built with no id/concurrency/media_dir/version/caps kwargs must
-    pick up CONFIG's live values, not a stale import snapshot. Before the cleanup this worked via the globals; the
+    pick up CONFIG's live values, not a stale import snapshot. Before the cleanup this worked via the globals;
+    the
     point of the pin above is that it now works WITHOUT them, reading CONFIG in __init__."""
     from src import dial_home
     from src.dial_home import WorkerClient
@@ -180,7 +182,8 @@ def _ctx(job_params=None, audio_path=None):
 
 
 async def test_decode_to_wav_raises_named_error_when_audio_path_is_empty():
-    """MUTATION PIN for item 9a. Before the cleanup `decode_argv(ctx.audio.path or "", ...)` handed ffmpeg an empty
+    """MUTATION PIN for item 9a. Before the cleanup `decode_argv(ctx.audio.path or "", ...)` handed ffmpeg an
+    empty
     input and died as 'ffmpeg: : No such file or directory'. Now it raises a named error first.
     Restoring `or ""` makes the raise disappear (ffmpeg would be invoked) -> RED."""
     ctx = _ctx(audio_path="")  # empty, as if AcquireAudio never ran
@@ -195,7 +198,8 @@ async def test_decode_to_wav_raises_named_error_when_audio_path_is_empty():
 
 
 async def test_publish_stems_raises_named_error_when_instrumental_is_missing():
-    """MUTATION PIN for item 9b. Before the cleanup `encode_flac_argv(raw_inst or "", ...)` encoded an empty path.
+    """MUTATION PIN for item 9b. Before the cleanup `encode_flac_argv(raw_inst or "", ...)` encoded an empty
+    path.
     Now a missing instrumental raises a named error before any ffmpeg call."""
     ctx = _ctx()
     ctx.stems.raw = {}  # no instrumental — Separate would have raised, but pin the guard anyway

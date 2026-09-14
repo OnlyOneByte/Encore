@@ -71,7 +71,8 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
 
 
 # History: the vocals stem used to be stored as stereo AAC-in-m4a at 192k, on the argument that a
-# guiding track mixed UNDER the instrumental master tolerates lossy compression. An earlier change replaced that with
+# guiding track mixed UNDER the instrumental master tolerates lossy compression. An earlier change replaced
+# that with
 # lossless FLAC for both stems (see encode_flac_argv below and PublishStems in steps/separate.py): the
 # offset argument won -- an AAC-in-m4a encoder adds priming samples (~21 ms) that shift the vocals start
 # relative to the FLAC instrumental, so sharing one codec removes the need for a startup rate-trim. The

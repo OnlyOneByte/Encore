@@ -199,9 +199,7 @@ class RepairReport:
         if self.flashed_extended:
             bits.append(f"{len(self.flashed_extended)} flash(es) extended to {MIN_WORD_SEC * 1000:.0f}ms")
         if self.flashed_uncorrectable:
-            bits.append(
-                f"{len(self.flashed_uncorrectable)} flash(es) left — no room before the next word"
-            )
+            bits.append(f"{len(self.flashed_uncorrectable)} flash(es) left — no room before the next word")
         return " · ".join(bits)
 
 
@@ -428,9 +426,7 @@ def _pair_lrc_to_baseline(
     return lrc_out, base_out
 
 
-def estimate_lrc_shift(
-    lrc_lines: list[dict[str, Any]], baseline_lines: list[dict[str, Any]]
-) -> LrcShift:
+def estimate_lrc_shift(lrc_lines: list[dict[str, Any]], baseline_lines: list[dict[str, Any]]) -> LrcShift:
     """Estimate how far the LRC sits from THIS audio, from a baseline measured on this audio.
 
     `lrc_lines` are the source's own timed lines ({start, text, ...}); `baseline_lines` are a Whisper

@@ -127,7 +127,6 @@ def test_the_registry_still_holds_two_candidates_and_three_baselines():
     assert sum(1 for s in SPECS if s.is_baseline) == 3
 
 
-
 def test_a_hand_built_text_with_no_role_is_NON_publishable_fail_closed():
     """The LyricsText.role default is fail-CLOSED. A text built without an explicit role (a test,
     or one rehydrated from disk) must NOT be treated as publishable — it belongs to neither the candidate
@@ -166,12 +165,19 @@ def test_select_by_baselines_does_not_mutate_a_caller_held_candidate_alternates(
 
     RED ON BASE: on base the in-place assignment empties `winner.alternates`, so the caller's candidate
     loses its alternates after selection."""
-    alt = LyricsText(text_source="lrclib", role=ROLE_CANDIDATE, variant="v2",
-                     segments=[{"text": "other version words"}])
-    cand = LyricsText(text_source="lrclib", role=ROLE_CANDIDATE, variant="v1",
-                      segments=[{"text": "the winning words"}], alternates=[alt])
-    baseline = LyricsText(text_source="asr", role=ROLE_BASELINE, baseline_rank=0,
-                          segments=[{"text": "the winning words"}])
+    alt = LyricsText(
+        text_source="lrclib", role=ROLE_CANDIDATE, variant="v2", segments=[{"text": "other version words"}]
+    )
+    cand = LyricsText(
+        text_source="lrclib",
+        role=ROLE_CANDIDATE,
+        variant="v1",
+        segments=[{"text": "the winning words"}],
+        alternates=[alt],
+    )
+    baseline = LyricsText(
+        text_source="asr", role=ROLE_BASELINE, baseline_rank=0, segments=[{"text": "the winning words"}]
+    )
     before = list(cand.alternates)
     select_by_baselines([cand, baseline])
     assert cand.alternates == before, "selection must not clear the caller's candidate.alternates in place"

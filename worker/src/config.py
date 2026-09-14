@@ -185,9 +185,9 @@ class WorkerConfig:
     version: str = "0.1.0"
     #: The EFFECTIVE capability set — proven by probe, not declared. Empty until resolved (see
     #: capabilities.resolve), which cannot happen in from_env because probing touches PATH and imports.
-    capabilities: tuple[str,...] = ()
+    capabilities: tuple[str, ...] = ()
     #: An operator's request, which may only NARROW the proven set. None = advertise everything proven.
-    capabilities_override: tuple[str,...] | None = None
+    capabilities_override: tuple[str, ...] | None = None
     concurrency: int = 1
     media_dir: str = "/app/media"
     processor: str = "real"  # "stub" forces the no-ML path
@@ -226,7 +226,8 @@ class WorkerConfig:
     annotate: bool = True
     #: Retain the RAW caption track (the winning `.vtt`/`.srt`) in durable `derived/` storage for
     #: post-process diagnosis of a caption-parsing defect. OFF by default: retaining it puts
-    #: third-party caption text into the media volume for every process, and an earlier change's core-side change is
+    #: third-party caption text into the media volume for every process, and an earlier change's core-side
+    # change is
     #: what lets the retention cap count and evict it. Parsed at the config boundary like every other
     #: operator boolean — reading it as bare truthiness inside the step (its original form) made
     #: `ENCORE_KEEP_RAW_CAPTIONS=0` turn it ON, since "0" is a non-empty string.
@@ -264,7 +265,7 @@ class WorkerConfig:
     ffmpeg_bin: str = "ffmpeg"
 
     #: Human-readable problems found while parsing. Logged at startup; never fatal.
-    warnings: tuple[str,...] = field(default_factory=tuple)
+    warnings: tuple[str, ...] = field(default_factory=tuple)
 
     @staticmethod
     def from_env(env: dict[str, str] | None = None) -> WorkerConfig:
@@ -333,7 +334,8 @@ class WorkerConfig:
             ytdlp_bin=_str(e, "ENCORE_YTDLP_BIN", "yt-dlp"),
             demucs_bin=_str(e, "ENCORE_DEMUCS_BIN", "demucs"),
             ffmpeg_bin=_str(e, "ENCORE_FFMPEG_BIN", "ffmpeg"),
-            warnings=tuple(w))
+            warnings=tuple(w),
+        )
 
     def describe(self) -> str:
         """One line naming the settings that change throughput — what to check first when a box is slow."""
@@ -394,11 +396,11 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
     from .hardware import default_worker_id
 
     caps, _probes, warnings = caps_mod.resolve(
-        cfg.capabilities_override,
-        ytdlp_bin=cfg.ytdlp_bin,
-        demucs_bin=cfg.demucs_bin)
+        cfg.capabilities_override, ytdlp_bin=cfg.ytdlp_bin, demucs_bin=cfg.demucs_bin
+    )
 
-    # HONESTY: `caps` proves `stems` from demucs being importable, but an earlier change made the resolved separator
+    # HONESTY: `caps` proves `stems` from demucs being importable, but an earlier change made the resolved
+    # separator
     # backend DRIVE which demucs engine runs, and only `torch` has an implementation. So a box that
     # proves `stems` but resolves its backend to one with no engine (an Apple-Silicon box with
     # `demucs-mlx` importable auto-selects `mlx`) would advertise `stems` and then fail every process it is
@@ -420,7 +422,8 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
         cfg,
         capabilities=caps,
         worker_id=cfg.worker_id or default_worker_id(),
-        whisperx_device=cfg.whisperx_device or whisperx_device_for(device))
+        whisperx_device=cfg.whisperx_device or whisperx_device_for(device),
+    )
     if (
         cfg.whisperx_device
         and cfg.whisperx_device not in ("cpu", "cuda")

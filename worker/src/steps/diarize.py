@@ -33,7 +33,8 @@ class Diarize(Step):
 
     Reads the published candidates TimeTexts wrote (`out.artifacts.lyrics.candidates`) and re-writes the
     word-timed ones on disk with parts added. Only word-timed docs: a line-synced fallback has no
-    per-line words for the render layer to colour per part, and the same feature's precedent (`romanization`) is
+    per-line words for the render layer to colour per part, and the same feature's precedent (`romanization`)
+    is
     likewise carried only where the timing supports it.
 
     Best-effort throughout. No vocals stem, no diarizer on this box, a diarizer that raises, or a song

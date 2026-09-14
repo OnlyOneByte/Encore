@@ -97,7 +97,8 @@ class WorkerClient:
         concurrency: int | None = None,
         media_dir: str | None = None,
         version: str | None = None,
-        can_publish_object: bool = False) -> None:
+        can_publish_object: bool = False,
+    ) -> None:
         # Read config ON CALL, not captured at import: default each kwarg to None and
         # resolve it against CONFIG here, so a test (or a future caller) that constructs a
         # client without an argument still gets the worker's configured value — and there is
@@ -123,7 +124,8 @@ class WorkerClient:
         self.state = protocol.WorkerState(
             worker_id=worker_id,
             capabilities=list(capabilities if capabilities is not None else CONFIG.capabilities),
-            concurrency=concurrency)
+            concurrency=concurrency,
+        )
         # jobId -> its in-flight processing task, so a cancel can reach the RIGHT task (and through
         # it, with the subprocess_runner kill-on-GeneratorExit, the child process). A bare set could
         # only be drained, not cancelled by job.
@@ -142,7 +144,8 @@ class WorkerClient:
                 self.state.capabilities,
                 self.state.concurrency,
                 self._version,
-                protocol.host_facts())
+                protocol.host_facts(),
+            )
         )
 
     async def send_heartbeat(self) -> None:
@@ -200,7 +203,8 @@ class WorkerClient:
                     f"{self.media_store.bucket!r}) but no S3 uploader is wired; this worker will "
                     "REJECT every job until it runs with MEDIA_STORE=local against a shared MEDIA_DIR "
                     "or a build with the object uploader wired",
-                    flush=True)
+                    flush=True,
+                )
             return
         if t == protocol.PING:
             return await self.send_heartbeat()
@@ -274,7 +278,8 @@ class WorkerClient:
             params=params,
             media_dir=self._media_dir,
             # Trace id for this process. Absent on a frame from a core that predates it -> "".
-            processing_id=msg.get("processingId", ""))
+            processing_id=msg.get("processingId", ""),
+        )
         # run processing concurrently so the loop keeps reading ping/cancel
         task = asyncio.ensure_future(self._run_job(job))
         self._tasks[job_id] = task
@@ -317,7 +322,8 @@ class WorkerClient:
                     result.artifacts,
                     facts=result.facts,
                     stages=timer.finish(),
-                    selection=result.selection)
+                    selection=result.selection,
+                )
             )
         except Exception as exc:  # noqa: BLE001 — report ANY failure to the core, which decides retry
             retryable = _is_retryable(exc)
@@ -336,7 +342,8 @@ class WorkerClient:
             # job failing at 99% every attempt looked identical to one still processing.
             print(
                 f"[worker] job {job.job_id} ({job.job_type}) FAILED retryable={retryable}: {exc!r}",
-                flush=True)
+                flush=True,
+            )
             await self._send(protocol.failed(self.state.worker_id, job.job_id, str(exc), retryable=retryable))
         finally:
             self.state.finish(job.job_id)
@@ -348,7 +355,7 @@ class WorkerClient:
             # Delete EXACTLY what the runner created — call scratch_for, don't rebuild its layout by
             # hand: a hand-rebuilt copy silently drifts from the producer and leaks every job's scratch.
             #
-            #...but NOT between attempts of the same job: on a retryable failure the scratch is
+            # ...but NOT between attempts of the same job: on a retryable failure the scratch is
             # this attempt's completed work, and the next attempt reuses it in place. Cleaned on every
             # outcome the worker can SEE as terminal: success, permanent (non-retryable) failure, and a
             # cancel (CancelledError derives from BaseException, so `except Exception` above does not
@@ -437,7 +444,8 @@ def sweep_orphaned_scratch(
     live_job_ids: frozenset[str],
     *,
     min_age_sec: float = SCRATCH_MIN_AGE_SEC,
-    now: float | None = None) -> list[str]:
+    now: float | None = None,
+) -> list[str]:
     """Reclaim work/<jobId> scratch dirs that no longer belong to a job, returning what was removed.
 
     The worker's per-job finally (_run_job) cleans scratch on every TERMINAL outcome it can see, but
@@ -682,7 +690,8 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
                     f"[worker] demucs segment: {segment}s — derived from "
                     f"{free / (1024**3):.1f}GiB free accelerator memory "
                     f"(set ENCORE_DEMUCS_SEGMENT to override)",
-                    flush=True)
+                    flush=True,
+                )
 
         runner = stems_runner(
             runner=subprocess_runner,
@@ -699,7 +708,8 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             jobs=cfg.demucs_jobs,
             overlap=cfg.demucs_overlap,
             segment=segment,
-            shifts=cfg.demucs_shifts)
+            shifts=cfg.demucs_shifts,
+        )
         by_type["stems"] = runner
         by_type["stems-upgrade"] = runner  # an upgrade is a separation job like any other
     if "align" in cfg.capabilities:
@@ -722,7 +732,8 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             model=cfg.asr_model,
             sync_mode=cfg.sync_mode,
             ytdlp_bin=cfg.ytdlp_bin,
-            keep_raw=cfg.keep_raw_captions)
+            keep_raw=cfg.keep_raw_captions,
+        )
     return RoutingProcessor(by_type)
 
 
@@ -762,7 +773,7 @@ async def _run_forever() -> None:
         print(f"[worker] config warning: {warning}", flush=True)
 
     # Probe the optional line-bounder ONCE and say which of absent / broken / available it resolved to
-    #. Left silent, "not installed" and "installed but the shim broke" are one observation: the
+    # . Left silent, "not installed" and "installed but the shim broke" are one observation: the
     # deploy box installs karaoke-lyrics-processor --no-deps while the dev box has it absent, so a
     # regression on deploy would look exactly like the always-absent dev box. This line makes it legible.
     from .lyrics import klp_probe_line
@@ -808,12 +819,14 @@ async def _run_forever() -> None:
                     capabilities=list(cfg.capabilities),
                     concurrency=cfg.concurrency,
                     media_dir=cfg.media_dir,
-                    version=cfg.version)
+                    version=cfg.version,
+                )
                 await client.hello()
                 _current["client"] = client  # the sweep loop's live-set reads THIS connected client
                 print(
                     f"[worker] {cfg.worker_id} connected to {cfg.core_ws} (caps={client.state.capabilities})",
-                    flush=True)
+                    flush=True,
+                )
                 # The message pump below only ever REACTS to inbound frames (async for raw in ws), so a
                 # periodic heartbeat has to run as its own task alongside it — otherwise worker:heartbeat
                 # is never sent and the core can never reconcile this worker's slotsFree after a reaped

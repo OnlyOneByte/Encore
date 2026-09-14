@@ -28,7 +28,8 @@ from src.runtime import (  # noqa: E402
     StepResult,
     scratch_for,
     stages_of,
-    validate_plan)
+    validate_plan,
+)
 from src.runtime import runner as runner_mod  # noqa: E402
 from src.vocabulary import Stage  # noqa: E402
 from tests.conftest import drain  # noqa: E402
@@ -41,7 +42,8 @@ def job(tmp_path, job_type="align") -> JobSpec:
         job_type=job_type,
         source_uri="https://yt/x",
         params={},
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
 
 
 async def noop_runner(argv):  # pragma: no cover - most toy steps never shell out
@@ -87,7 +89,8 @@ def test_the_same_plan_in_the_RIGHT_order_validates():
         [
             Writes("first", writes={"lyrics.texts"}),
             Writes("second", writes=set(), reads={"lyrics.texts"}),
-        ])
+        ],
+    )
     validate_plan(plan)  # must not raise
 
 
@@ -158,7 +161,8 @@ def test_stages_are_DERIVED_from_the_plan():
             Writes("a", writes=set()),
             Writes("b", writes=set()),
             _Aligning("c"),
-        ])
+        ],
+    )
     assert stages_of(plan) == [Stage.DOWNLOADING, Stage.ALIGNING]
 
 
@@ -355,7 +359,9 @@ async def test_a_step_publishing_to_ctx_out_without_declaring_it_is_caught(tmp_p
 async def test_a_step_publishing_ctx_out_facts_without_declaring_it_is_caught(tmp_path, monkeypatch):
     """`facts` is watched with the same field granularity as `artifacts`. A step that resolves an
     engine/model/device onto `ctx.out.facts` without declaring `out` must be caught: `facts` is what
-    the per-attempt audit page shows, and letting it slip is the exact undeclared-publisher defect an earlier change was filed for. Companion to the `artifacts` case; every wire-shaped `Outputs` field has one such pin.
+    the per-attempt audit page shows, and letting it slip is the exact undeclared-publisher defect an earlier
+    change was filed for. Companion to the `artifacts` case; every wire-shaped `Outputs` field has one such
+    pin.
     """
     monkeypatch.setattr(runner_mod, "STRICT_WRITES", True)
 
@@ -564,7 +570,9 @@ async def test_run_blocking_survives_a_second_cancel_during_the_shielded_await(m
     # aclose() -> GeneratorExit -> finally -> suspends on `await asyncio.shield(asyncio.wait({task}))`.
     close_task = asyncio.ensure_future(gen.aclose())
     await asyncio.sleep(0.05)  # let the unwind reach the shielded await
-    assert not finished.is_set(), "thread finished too soon — the shield window closed before cancel an earlier change"
+    assert not finished.is_set(), (
+        "thread finished too soon — the shield window closed before cancel an earlier change"
+    )
     assert not close_task.done(), "aclose settled before the second cancel — cannot exercise the path"
 
     # Second cancel lands on the shielded await inside the finally.

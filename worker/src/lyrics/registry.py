@@ -183,7 +183,8 @@ class _Classified:
         # unspecified — the exact fail-open the role default exists to prevent. In-place is
         # correct here specifically: `got` and its alternates were just built by the source inside
         # this call and are held by nobody else, which is why the two lines above already mutate in
-        # place. This is NOT the cross-object write an earlier change removed (that was the step layer reaching
+        # place. This is NOT the cross-object write an earlier change removed (that was the step layer
+        # reaching
         # into a domain dataclass the caller owned).
         for alt in got.alternates:
             alt.role = self.role

@@ -90,7 +90,8 @@ def test_step_passes_duration_through_so_overcovered_candidate_is_demoted(tmp_pa
     """F1: the pin must BITE. A rival exists whose RAW agreement is LOWER than the over-covered
     candidate's, so ONLY the overshoot penalty can flip the pick to it. On base the step never
     passes a duration, so the penalty never fires and the higher-raw over-covered candidate wins — this
-    reds on the variant assertion. The fixture is the discriminating one committed at the time; the overshooter
+    reds on the variant assertion. The fixture is the discriminating one committed at the time; the
+    overshooter
     is timed to 330s (+23% of 268s) so it clears OVERSHOOT_FRACTION_MAX and its raw lead (0.646 vs 0.506)
     is what the penalty has to overturn."""
     over = _timed(SOURCE_LRCLIB, LONGER_MASTER_300, "longer-master", per_word_end=330.0)
@@ -173,7 +174,8 @@ def test_an_overshooting_published_pick_is_not_reported_as_demoted(tmp_path):
 # --- F2: the DEMOTED arm claimed the overshoot penalty CAUSED the pick, from `is_published`, which
 # cannot say so. A wrong-song candidate loses on AGREEMENT by a margin the comparative penalty never
 # comes near — switch the penalty off and the SAME winner publishes — yet the base note printed the
-# causal "DEMOTED, published X instead". This is the third arm of the ladder an earlier change corrected the other
+# causal "DEMOTED, published X instead". This is the third arm of the ladder an earlier change corrected the
+# other
 # two of.
 
 #: A genuinely DIFFERENT song, and a LONGER one (its own timings run to 180s against 100s of audio).

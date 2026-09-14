@@ -24,7 +24,8 @@ Four things are guarded.
    constant's comment never had.
 
 3. **The overshoot demotion flips a real pair.** A wrong-version pick scoring higher than a clean rival
-   is the outcome the overshoot penalty exists to prevent, and the two real specimens make that argmax measurable.
+   is the outcome the overshoot penalty exists to prevent, and the two real specimens make that argmax
+   measurable.
 
 4. **The coverage threshold is honestly NOT calibrated here.** `chain.py` says to re-derive
    `SUSPECT_COVERAGE` once this corpus lands. It cannot be: the archive holds exactly one same-audio
