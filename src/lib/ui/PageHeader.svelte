@@ -13,6 +13,7 @@
 	 * the anchor is the sole carrier and screen readers announce the control once.
 	 */
 	import Icon from '$lib/ui/Icon.svelte';
+	import { Button } from '$lib/components/ui/button';
 	import type { IconName } from '$lib/ui/icons';
 
 	let {
@@ -31,8 +32,28 @@
 
 <header class="page-header">
 	{#if back}
-		<!-- A real link, so back is the browsers back and the route is shareable. -->
-		<a class="back" href={back.href} aria-label={back.label}><Icon name="arrow-left" /></a>
+		<!--
+			Still a real link — `Button` renders an `<a href>` (not a history.back() button) whenever
+			`href` is set, so everything the comment above argues for survives: the browser's own back,
+			a shareable route, and an in-app exit on a home-screen PWA with no back gesture.
+
+			`size="icon"` IS the 44px box. It compiles to `size-tap grid place-items-center`, and
+			`.size-tap` emits `width: var(--tap); height: var(--tap)` with `--tap: 44px` — verified in the
+			built CSS rather than assumed, because this migration's sibling found `max-w-xs` silently
+			resolving to 6px through the spacing bridge.
+
+			The wrapper carries what the component must not: the optical `-10px` pull that aligns the
+			mark with the column edge, and the dim ink. Neither can be a class passed to `Button` —
+			Tailwind scans only `components/ui/**`, and a class handed to a component is scoped to THIS
+			file, where Svelte strips it as unused. `ghost` sets no base text colour (only
+			`hover:text-foreground`), so the inherited `--ink-dim` reaches the mark and hover still
+			brightens it.
+		-->
+		<div class="back-slot">
+			<Button variant="ghost" size="icon" href={back.href} aria-label={back.label}>
+				<Icon name="arrow-left" />
+			</Button>
+		</div>
 	{/if}
 	<h1>
 		{#if icon}<Icon name={icon} />{/if}{title}
@@ -64,25 +85,31 @@
 		margin-inline: auto;
 		box-sizing: border-box;
 	}
-	.back {
-		color: var(--ink-dim);
-		text-decoration: none;
-		font-size: 1.2rem;
-		/* var(--tap), never the number (XR-PH-01). The comment here used to say the literal
-		   was kept BECAUSE touch-targets.test.ts pinned this control "by the literal string" — that
-		   stopped being true once the pin accepted either form, so the note was defending a constraint
-		   the guard no longer had while the control silently held the old value. */
-		display: grid;
-		place-items: center;
-		min-width: var(--tap);
-		min-height: var(--tap);
+	/*
+	 * LAYOUT AND INHERITED INK ONLY. The box, the focus ring and the centring moved into
+	 * `Button variant="ghost" size="icon"`:
+	 *   - `min-width`/`min-height`/`display:grid`/`place-items:center` → `size-tap grid place-items-center`
+	 *   - `border-radius: 8px` (off-scale) → the component's `rounded-md`
+	 *   - `.back:focus-visible { outline: 2px solid var(--focus) }` → the base's
+	 *     `focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50`, and `--ring` is
+	 *     `var(--focus)`, so the ring keeps the colour the old comment insisted on. app.css's global
+	 *     `:focus-visible` rule still reaches the anchor too.
+	 *
+	 * TWO DELIBERATE VISUAL CHANGES, both toward consistency rather than away from it:
+	 *   1. The mark is 16px, not 19.2px. `font-size: 1.2rem` here used to size the Icon (it renders at
+	 *      `1em`); the component's base declares `[&_svg:not([class*='size-'])]:size-4`. Every other
+	 *      icon Button in the app — the transport, the reorder pair, the remove control — is already
+	 *      16px, so the back arrow was the odd one out.
+	 *   2. The corner is `--radius-md`, not a hand-written 8px.
+	 */
+	.back-slot {
+		/* Optical alignment: pulls the 44px box's left edge back to the text column, since the mark sits
+		   centred inside a target much wider than itself. */
 		margin-left: -10px;
-		border-radius: 8px;
-	}
-	.back:focus-visible {
-		/* --focus, not --accent: app.css defines a global :focus-visible ring in --focus and this control
-		   is inside its selector list, so ringing in --accent here would contradict every other control. */
-		outline: 2px solid var(--focus);
+		/* Inherited by the mark: `ghost` sets no base text colour, so this is what makes the arrow dim,
+		   and the variant's `hover:text-foreground` still brightens it on hover. */
+		color: var(--ink-dim);
+		display: flex;
 	}
 	h1 {
 		margin: 0;
