@@ -58,7 +58,26 @@ bs-roformer-infer==0.1.5
 # loads it (capabilities.py probes for it), so the default (demucs-only) worker never pays its startup
 # cost. Pinned like everything else here (no bare latest); NOT the `[cpu]` extra, which pins its own
 # torch — this rides the existing torch 2.8 set above, adds no numpy rebuild.
-python-audio-separator==0.47.0
+#
+# THE DISTRIBUTION IS `audio-separator`, NOT `python-audio-separator`. The latter is the project/repo
+# name (used in the prose above and throughout src/separation/audiosep.py); it is not a name on PyPI, so
+# a requirement spelled that way resolves to NOTHING — "No matching distribution found ... (from
+# versions: none)" — on every platform and every Python version, and pip then abandons the WHOLE file.
+# That is not a partial install: websockets sits on line 11, had already resolved, and got dropped with
+# the rest, so the first visible symptom was the worker dying at connect on
+# `ModuleNotFoundError: No module named 'websockets'`. The import the code probes is `audio_separator`
+# and the CLI it shells is `audio-separator` (capabilities.py:80) — both ship in this distribution.
+#
+# EXCLUDED ON APPLE SILICON by upstream's own constraint, not ours. audio-separator 0.47.0 declares
+# `torch<3,>=2.13; sys_platform == "darwin" and platform_machine == "arm64"` (and `torch<3,>=2.3`
+# everywhere else). No released torch satisfies >=2.13, so on an arm64 Mac this package is
+# unsatisfiable against ANY torch — pinning around it would mean abandoning the coupled torch 2.8 set
+# that demucs/whisperx/pyannote share, to gain an engine that has never run here anyway (see
+# audiosep.py's "UNVERIFIED IN THIS ENVIRONMENT" warning). The marker mirrors upstream's exactly, so
+# linux — the image, CI, and every deploy — installs it unchanged; only a dev Mac skips it, and
+# capabilities.py then simply does not advertise `stems:audiosep`, which is the honesty contract that
+# probe already implements. Drop the marker the moment upstream's darwin-arm64 floor becomes reachable.
+audio-separator==0.47.0; sys_platform != "darwin" or platform_machine != "arm64"
 
 # ── lyrics line-splitting ──────────────────────────────────────────────────────────────
 # `karaoke-lyrics-processor` supplies the LENGTH-BOUNDING half of re-lineating an ASR blob (hard char

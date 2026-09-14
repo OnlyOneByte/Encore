@@ -1,13 +1,96 @@
-# Dev/CI-only tooling for the Encore worker — the reproducible form of the by-hand
-# `pip install pytest pytest-asyncio` that README.md documented. Pinned like requirements.txt
-# (no bare latest) so the gate is byte-reproducible from the repo alone.
+# Encore worker (container 2) — pinned deps for reproducible builds (no bare latest; Finding #4).
+# Torch + Demucs + WhisperX are multi-GB ML; quarantined in this container, never in the MVP image.
+# CPU wheels by default; a GPU image overrides the torch index at build time.
 #
-# Install:  pip install -r requirements.txt -r requirements-dev.txt
-# Gates:    pytest -q  ·  ruff check  ·  ruff format --check  ·  mypy
-pytest==8.4.2
-pytest-asyncio==1.2.0
-# per-test wall-clock backstop for the worker suite so a wedged/hung test fails with a
-# signal (names file:line, fails only that test) instead of hanging the whole run.
-pytest-timeout==2.4.0
-ruff==0.14.4
-mypy==1.19.0
+# COUPLED VERSION-SET (resolved 2026-07-01): demucs (stems) and whisperx (forced-align lyrics)
+# share one torch. whisperx 3.8.6 pins torch~=2.8 / torchaudio~=2.8 / torchvision~=0.23 / numpy>=2.1
+# / faster-whisper>=1.2 / pyannote-audio>=4; demucs 4.0.1 is torch>=2.0 so it rides torch 2.8 fine.
+# torchaudio/torchvision MUST match torch's minor exactly (an unpinned torchaudio drifts to a newer
+# wheel with an incompatible C++ ABI → ImportError undefined symbol). pip's resolver produced this
+# exact conflict-free set on py3.12/aarch64 — do NOT single-pin any one of these without re-resolving.
+websockets==15.0.1
+# yt-dlp is the SOURCE FETCHER, and it belongs in the image. It used to be pip-installed into
+# a running container by hand, so `docker rm` silently removed it and every later download failed with
+# "yt-dlp: not found" — the worker shells out BY NAME via PATH, so a missing binary is not a config
+# error it can report, it is a broken cook. Pinned like everything else here (no bare latest): yt-dlp
+# ships breaking extractor changes often, so the version that was verified against real YouTube is the
+# version the image gets. Bump deliberately when extraction breaks upstream, not incidentally.
+yt-dlp==2026.8.19
+torch==2.8.0
+torchaudio==2.8.0
+torchvision==0.23.0
+demucs==4.0.1
+# EXPLICIT, not incidental: torchaudio 2.8 ships NO audio-write backend of its own, so demucs's
+# save_audio() raises "Couldn't find appropriate backend to handle uri .../vocals.wav" — AFTER
+# separating to 100%. soundfile arrives transitively via whisperx, so the full install hid this and
+# only a stems-only worker (capabilities=stems, no align) hit it. The failure is maximally
+# misleading: three attempts each burn a full separation pass, and with the job's error only sent
+# over the wire the song just sat at "separating 100%" forever. Pin it here so `stems` alone works.
+soundfile>=0.13
+# WhisperX — forced-alignment mode: we feed it KNOWN lyrics text (from LRCLIB) + audio and
+# use its wav2vec2 align() to produce WORD timings, rather than trusting ASR to transcribe sung
+# vocals. 3.8.6 is the modern line that installs on py3.12 and matches faster-whisper 1.2's API.
+whisperx==3.8.6
+# pyannote.audio — SPEAKER DIARIZATION for duet part attribution. It already arrives
+# TRANSITIVELY via whisperx 3.8.6 (which pins pyannote-audio>=4, see the coupled version-set note
+# above); pinned EXPLICITLY here — the soundfile precedent — because the `diarize` capability now
+# depends on it directly, so its version is ours to control, not an incidental of whisperx's resolver.
+# Only a worker that advertises `diarize` loads it (the pipeline is HF-gated and lazy-imported), so a
+# demucs/align-only box never pays its startup cost. 4.0 is the line whisperx 3.8.6 resolved on the
+# pinned torch 2.8 / py3.12 stack — do NOT re-pin without re-resolving the whole ML set.
+pyannote.audio==4.0.0
+# BS-RoFormer separation engine, inference-only. Adopted ALONGSIDE python-audio-separator (issue
+# , owner ruling Q1(b): both engines, not one over the other) — kept for its load/infer/release
+# session lifecycle (load the ~700MB checkpoint ONCE per long-lived worker, not per cook) and its
+# repointable sha256-verified checkpoint registry. Resolves in 8 small pure-Python deps on the pinned
+# torch 2.8 stack — it rides the existing torch, adds no numpy rebuild. Only a worker that advertises
+# the `stems:roformer` capability loads it, so the default (demucs-only) worker never pays its startup
+# cost.
+bs-roformer-infer==0.1.5
+
+# python-audio-separator — the MEL-BAND RoFormer engine, adopted ALONGSIDE bs-roformer-infer (issue
+# , owner ruling Q1(b): both engines, not one over the other — docs/DECISIONS.md). It reaches the
+# fast mel-band checkpoints bs-roformer-infer cannot (bs_roformer's get_model_from_config implements
+# only model_type=='bs_roformer' and ships no mel_band module), running them as a first-class MDXC path.
+# The win is large and measured: `mel instrumental_becruily` benchmarks rt 1.28 vs bs_roformer-1297's
+# rt 13.29 on the reference box (32-core Graviton 3, CPU) — a 10.4x RoFormer-family instrumental cook,
+# no GPU (docs/benchmarks/SUMMARY.md §4). Only a worker that advertises the `stems:audiosep` capability
+# loads it (capabilities.py probes for it), so the default (demucs-only) worker never pays its startup
+# cost. Pinned like everything else here (no bare latest); NOT the `[cpu]` extra, which pins its own
+# torch — this rides the existing torch 2.8 set above, adds no numpy rebuild.
+python-audio-separator==0.47.0
+
+# ── lyrics line-splitting ──────────────────────────────────────────────────────────────
+# `karaoke-lyrics-processor` supplies the LENGTH-BOUNDING half of re-lineating an ASR blob (hard char
+# budget with an iteration cap, nested-parenthesis isolation, punctuation cleanup); src/lyrics_presplit
+# supplies the boundary half, which upstream measurably gets wrong. It is installed --no-deps in the
+# Dockerfile, NOT listed here, because of what its own dependency list drags in:
+#
+#   MEASURED 2026-09-03 (`pip install --dry-run` against this venv): 30 packages, 29 of them unused.
+#   `textract-py3` roots almost all of it — SpeechRecognition, pdfminer.six, python-pptx, extract-msg
+#   → oletools + pcodedmp (a VBA macro deobfuscator), cryptography, easygui (Tkinter), xlrd pinned
+#   <2.0, ebcdic — and `python-docx`, which is DECLARED but never imported anywhere in upstream's
+#   source, solely drags lxml. All of it serves .doc/.docx/.rtf ingestion and a clipboard copy: two
+#   features we never call, since our text arrives in memory from an HTTP response or from whisper.
+#   pip did resolve the full tree cleanly against the torch/whisperx set above — this is unused weight
+#   and supply-chain surface, not a version conflict.
+#
+# These three ARE imported at upstream's module top level and each has zero transitive dependencies,
+# so they are cheaper to install for real than to stub. The one remaining top-level import, `textract`,
+# is stubbed in src/lyrics_presplit._load_klp.
+pyperclip==1.11.0
+docx2txt==0.9
+striprtf==0.0.33
+
+# ── loudness analysis ──────────────────────────────────────────────────────
+# pyloudnorm is a small, standard MIT implementation of EBU R128 / ITU-R BS.1770-4 integrated
+# loudness. It runs over the mono float64 array analysis/wav.py already decodes (numpy in, a number
+# out — no ffmpeg, no torch), honouring analysis/__init__.py's "numpy in, dict out, no subprocess"
+# contract. Its only runtime dep is scipy (numpy is already pinned via the torch/whisperx set above).
+pyloudnorm==0.2.0
+# scipy is the ONE genuinely new transitive dep pyloudnorm pulls in — it is NOT already present in
+# this venv (verified: `import scipy` fails on the current worker image). Pinned exactly per the
+# no-bare-latest rule. 1.16.2 ships a prebuilt cp312 manylinux2014_aarch64 wheel (no source build,
+# so the image's toolchain is irrelevant) and its numpy constraint (>=1.25.2,<2.6) is satisfied by
+# the pinned numpy 2.5 — no numpy rebuild, no conflict with the torch 2.8 set.
+scipy==1.16.2
