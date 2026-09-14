@@ -91,3 +91,19 @@ registry to be tracked and its regeneration to be checkable. The HTML mockups st
 takeovers). Its six frames were verified numerically in-browser — every element's rect against its
 frame bounds, plus `scrollWidth` vs `clientWidth` for clipped text — rather than by eye, which is
 the mechanism `XR-TV-19` generalises.
+
+## The migration pair (not yet numbered sections)
+
+[`component-migration.md`](component-migration.md) and its
+[inventory](component-migration-inventory.md) cover **migrating the app onto the vendored component
+layer**: what migrates, what stays hand-rolled, and how a step proves it broke nothing. They are the
+only documents here written *after* an implementation existed, so the first names a record of what the
+migration actually hit rather than a forecast.
+
+They are deliberately distinct from `06`, which owns the component **contract** — `06` wins on
+contract, these win on sequencing.
+
+**They carry no section number and no `XR-` prefix on purpose.** Their 25 rules are written as compact
+table rows keyed `LIB-NN`, not in this tree's `### XR-<AREA>-NN` + seven-field form, so `register-index-matches.test.ts` would count
+zero rows against whatever the index claimed. Converting them is the remaining step; numbering them
+before that would put a false count in the table above, which is the one thing an index must not do.

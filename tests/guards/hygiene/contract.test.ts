@@ -796,19 +796,31 @@ test('Group C — the resolver still models a `tag.class` compound part (re-anch
 	// test looking authoritative while asserting nothing.
 	//
 	// What must NOT rot with them is the RESOLVER EXTENSION they were built on: modelling a `tag.class`
-	// compound part — a bare tag anchored by a class, mid-selector — which no other test exercises. A
-	// surviving real instance of that shape is `.showall-row button.chip`, the way back out of a
-	// non-matching search, so the positive arm re-anchors there and the negatives are unchanged.
-	const sources = guardSources();
-	expect(selectorResolves('.showall-row button.chip', sources)).toBe(true);
+	// compound part — a bare tag anchored by a class, mid-selector — which no other test exercises.
+	//
+	// RE-ANCHORED TWICE, AND NOW OFF REAL SOURCE ALTOGETHER. The instances were `.chips button.ok`, then
+	// `.showall-row button.chip`, then SongRow's `.row button.add`. All three are gone: every one of those
+	// controls is a `<Button>` now, and the app has no `tag.class` compound left to point at.
+	//
+	// THE THIRD RE-ANCHOR WAS PASSING VACUOUSLY, which is why this arm no longer reads app source at all.
+	// `selectorResolves` looks for the anchor `.add` as TEXT, and `routes/+page.svelte` contains
+	// `ids.add(m.id)` — a Set method call. So the assertion went green against JavaScript rather than
+	// markup: exactly the failure mode this file exists to prevent, introduced by its own re-anchor.
+	//
+	// The arm's subject was always the RESOLVER, not the app, so it now tests the resolver directly
+	// against synthetic sources. That removes the re-anchor treadmill and the false-positive surface in
+	// one move: a compound the app no longer has cannot be proven from source that no longer contains it.
+	const synthetic = ['<div class="row"><button class="add">＋</button></div>'];
+	expect(selectorResolves('.row button.add', synthetic)).toBe(true);
 
 	// The resolver extension must be REAL, not a widening that accepts any `tag.class` shape:
-	//   • a wrong CLASS must still fail — no source renders a `button.nope-not-a-class`;
-	//   • a wrong TAG must still fail — no component renders a `<marquee`, so `marquee.chip` fails;
-	//   • the bare-tag part is load-bearing — a class-only handle would match a SongRow's own
-	//     `<span class="chip state">` too, which is why the shape keeps the `button` anchor.
-	expect(selectorResolves('.showall-row button.nope-not-a-class', sources)).toBe(false);
-	expect(selectorResolves('.showall-row marquee.chip', sources)).toBe(false);
+	//   • a wrong CLASS must still fail;
+	//   • a wrong TAG must still fail — the synthetic source renders no <marquee>;
+	//   • the bare-tag part is load-bearing — a class-only handle would match a <span class="add"> too,
+	//     which is why the shape keeps the `button` anchor.
+	expect(selectorResolves('.row button.nope-not-a-class', synthetic)).toBe(false);
+	expect(selectorResolves('.row marquee.add', synthetic)).toBe(false);
+	expect(selectorResolves('.row button.add', ['<div class="row"><span class="add">＋</span></div>'])).toBe(false);
 });
 
 test('Group D — p11-dashboards card/tile/chart selectors moved from KNOWN_OFFENDERS into SEL', () => {
@@ -888,7 +900,10 @@ test('Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS in
 	// no component renders.
 	expect(SEL.attract).toBe('.attract');
 	expect(SEL.dashCard).toBe('.card');
-	expect(SEL.chip).toBe('.chip');
+	// `.encore-chip`, not `.chip`: Badge's base class. See the re-anchor note on SEL.chip — `.chip` had
+	// stopped naming a SongRow chip when Badge took them over, and was matching the phone home's chip
+	// BUTTONS instead until those became <Button>.
+	expect(SEL.chip).toBe('.encore-chip');
 	expect(SEL.badQrTitle).toBe('.badqr-t');
 	expect(SEL.badQrBody).toBe('.badqr-b');
 	expect(SEL.badQrFix).toBe('.badqr-fix');

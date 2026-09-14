@@ -283,7 +283,7 @@
 		display: flex;
 		align-items: center;
 		gap: 7px;
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 		margin-top: var(--space-3xs);
 		min-width: 0;

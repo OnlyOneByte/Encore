@@ -104,7 +104,22 @@ const IDIOMS: Record<Condition, { name: string; find: (src: string) => boolean }
 		 * designed error state as having none. This recognises a new spelling of the same claim rather than
 		 * loosening it: a route with neither an alert region nor an error toast still reds.
 		 */
-		{ name: 'a sonner `toast.error(...)` call', find: (s) => /\btoast\.error\s*\(/.test(s) }
+		{ name: 'a sonner `toast.error(...)` call', find: (s) => /\btoast\.error\s*\(/.test(s) },
+		/*
+		 * The same case as the sonner idiom directly above, for the same reason. `ui/alert` sets
+		 * `role="alert"` on the element IT renders, so a source scan of the CALL SITE sees only
+		 * `<Alert.Root variant="destructive">` and would report a route with a working designed error
+		 * state as having none. `/stats`, `/metrics`, `/metrics/[mediaId]`, `/admin` and `/settings`
+		 * all moved their load-failure copy onto it.
+		 *
+		 * Still not a loosening: the variant is required, so a neutral `<Alert.Root>` used as a plain
+		 * info panel does NOT satisfy the error condition, and a route with none of the three idioms
+		 * still reds.
+		 */
+		{
+			name: 'an `<Alert.Root variant="destructive">` region',
+			find: (s) => /<Alert\.Root[^>]*variant\s*=\s*["']destructive["']/.test(s)
+		}
 	],
 	offline: [
 		{

@@ -375,9 +375,10 @@ const FLOORS: Record<string, Floor[]> = {
 	'tests/guards/a11y/touch-targets.test.ts': [
 		{
 			subject: 'controlRulesSeen',
-			min: 10,
+			min: 6,
 			count: 1,
-			guards: 'control-rule derivation from markup; an empty tag/class set measured nothing'
+			guards:
+				'control-rule derivation from markup; an empty tag/class set measured nothing. RE-BASED 10\u21926: the population is control rules that size their own box IN A PAGE STYLESHEET, which the shadcn migration shrinks BY DESIGN as each control adopts a Button size. It measured exactly 10 after the phone-home and settings passes, so `> 10` blocked the migration rather than catching a defect. A broken derivation still reports 0. Successor for the controls that left: button-tap-floor.test.ts.'
 		},
 		{
 			subject: 'FILES.length',
@@ -388,7 +389,7 @@ const FLOORS: Record<string, Floor[]> = {
 		},
 		{
 			subject: 'boxRulesSeen',
-			min: 10,
+			min: 6,
 			count: 1,
 			guards:
 				'the population of the EXPRESSION arm (XR-PH-01), which filters harder than the value arm above \u2014 control rules that declare a width/height, not merely a box. A derivation that stopped finding box rules would report zero bare-literal offenders and pass, which is the exact vacuity that let 15 hand-written `44px` declarations sit under a green value guard.'

@@ -120,7 +120,19 @@ test('every phone control that sizes its own box reaches the tap standard', () =
 	expect(offenders).toEqual([]);
 	// a broken markup walk (empty tag/class sets) would silently measure nothing and pass vacuously;
 	// pin a floor so the guard fails loudly if the derivation ever stops finding controls.
-	expect(controlRulesSeen).toBeGreaterThan(10); // @nvf-floor controlRulesSeen
+	/*
+	 * RE-BASED 10 -> 6, and the direction is the point. This population is "control rules that size their
+	 * own box IN A PAGE STYLESHEET", which the shadcn migration shrinks on purpose: every control that
+	 * becomes a <Button> stops declaring its own box and starts inheriting one from the size axis. It
+	 * measured exactly 10 after the phone-home and settings passes, so the old `> 10` blocked the
+	 * migration rather than catching a defect.
+	 *
+	 * The floor still does its job — a broken derivation reports 0, not 6. What it can no longer do is
+	 * cover the controls that LEFT, so its successor is named rather than implied:
+	 * `button-tap-floor.test.ts` asserts no call site asks for a Button size under --tap, which is where
+	 * those controls' boxes now live. When this number reaches 0, retire this arm and say so there.
+	 */
+	expect(controlRulesSeen).toBeGreaterThan(6); // @nvf-floor controlRulesSeen
 	// …and pin the SCANNED POPULATION too (XR-VER-14 Acceptance). FILES is a tree walk over
 	// lib/components and lib/ui PLUS five hand-named route pages, so a walk that stops finding
 	// components still leaves five files — and five files carry enough control rules to clear the floor
@@ -165,7 +177,8 @@ test('every phone control expresses the tap standard as var(--tap), never the nu
 	expect(offenders).toEqual([]);
 	// non-vacuity: this arm filters harder than the value guard (box-declaring rules only), so it needs
 	// its own floor — a derivation that stopped finding box rules would report zero offenders happily.
-	expect(boxRulesSeen).toBeGreaterThan(10); // @nvf-floor boxRulesSeen
+	// RE-BASED 10 -> 6 for the same reason as `controlRulesSeen` above, and with the same successor.
+	expect(boxRulesSeen).toBeGreaterThan(6); // @nvf-floor boxRulesSeen
 });
 
 /**
@@ -195,11 +208,29 @@ test('the controls that previously fell short declare the tap standard as the to
 	const declares = (src: string, cls: string, prop: string) =>
 		new RegExp(`\\.${cls}\\s*\\{[^}]*${prop}:\\s*${SIZE}`, 's').test(src);
 
-	// the settings gear was ~18px, under even the 24px WCAG minimum
-	expect(declares(phone, 'gear', 'min-(?:width|height)')).toBe(true);
-	// the readiness chips were ~30px. Those chips are deleted, but the `.chip` rule and this pin
-	// stay: the way back out of a non-matching search ("Show all N") is a `chip ok chip-icon` button.
-	expect(declares(phone, 'chip', 'min-height')).toBe(true);
+	// RE-ANCHORED: the `.gear` and `.chip` pins. Both controls became `<Button>`, so neither rule exists
+	// in the phone stylesheet any more and asserting against them could only fail, never bite. The boxes
+	// did not go away — they moved into the component's size axis, so the pins follow them there:
+	//
+	//   the settings gear (~18px before, under even the 24px WCAG minimum) is `size="icon"`
+	//   the search-escape "Show all N" and the reorder Done/Cancel (~30px before) are `size="tap"`
+	//
+	// Asserted against the SIZE STRINGS rather than the call sites, because that is where the box is
+	// decided; and still in terms of the token, which is what the original pins were protecting — a
+	// `--tap` lowered to 40 must not leave a green guard behind.
+	//
+	// `size="tap"` exists BECAUSE of this pin: every registry size is under the floor (xs 24, sm 32,
+	// default 36, lg 40), so migrating these controls to `sm` would have dropped a 44px hand-rolled
+	// control to 32px. This assertion is what caught that.
+	const button = readFileSync(join(SRC, 'lib/components/ui/button/button.svelte'), 'utf8');
+	const sizeRule = (name: string) => new RegExp(`${name}:\\s*'([^']*)'`).exec(button)?.[1] ?? '';
+	// `size-tap` and `min-h-tap` are the `--spacing-tap` bridge, which is `var(--tap)`.
+	expect(sizeRule('icon')).toMatch(/\bsize-tap\b/);
+	expect(sizeRule('tap')).toMatch(/\bmin-h-tap\b/);
+	// …and the two call sites really do ask for those sizes, so the pins above are not measuring a size
+	// nothing uses.
+	expect(phone).toMatch(/<Button[^>]*size="icon"[^>]*href="\/settings"/s);
+	expect(phone).toMatch(/<Button[^>]*size="tap"[^>]*onclick=\{clearSearch\}/s);
 	// RETIRED: the `.browse-toggle` pin. Direction B deleted the browse disclosure along with the
 	// artist and genre rails it hid, so the rule it named is gone from the phone stylesheet — the
 	// assertion could only fail, never bite. The token-only conversion had just re-pointed this pin at `var(--tap)`; that

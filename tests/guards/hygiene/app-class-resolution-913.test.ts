@@ -99,8 +99,13 @@ function globallyDefined(): Set<string> {
 const PRE_EXISTING: Record<string, string> = {
 	qrow: 'QueueRow.svelte — only `.qrow.proc` exists, and it is scoped to ProcessingCard, so the bare token has never resolved',
 	'reselect-body': 'LyricsReselect.svelte — dialog body wrapper, no rule on main',
-	'reselect-paste': 'LyricsReselect.svelte — paste affordance, no rule on main',
 	meta: 'tv/JoinBadge.svelte — the TV badge lays out by its own grid; this token adds nothing on main either'
+	// `reselect-paste` was here, unresolved because the wrapper carried no rule of its own. Vendoring
+	// `ui/textarea` gave it one: the paste field's top margin is the call site's spacing rather than the
+	// field's, so it stays in LyricsReselect on the wrapper as `.reselect-paste > :global(…)`. The token
+	// now resolves, so the entry had to go — which the both-directions arm below detected and refused to
+	// let pass, exactly as it did for `stub-controls`.
+	//
 	// `stub-controls` was here, justified by phone-home-832.harness.svelte. That harness moved out of
 	// src with its test, so the token is no longer in this scan's population and the entry had to
 	// go — which the both-directions arm below detected and refused to let pass. If a harness ever returns

@@ -253,7 +253,7 @@
 		justify-content: center;
 		gap: var(--space-md);
 		font-weight: 800;
-		font-size: 1.6rem;
+		font-size: var(--ph-text-2xl);
 		letter-spacing: 0.5px;
 		margin: 0;
 		line-height: inherit;
@@ -322,7 +322,7 @@
 		gap: var(--space-sm);
 	}
 	.name-label {
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 		color: var(--ink-dim);

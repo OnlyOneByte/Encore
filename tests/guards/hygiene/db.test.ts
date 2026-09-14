@@ -12,23 +12,8 @@ import {
 	jobAttempts,
 	roomSettings
 } from '$lib/server/db/schema';
-import { mkdtempSync, mkdirSync, cpSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { at, read } from '@encore/test-support';
 import { sqlitePersistence } from '$lib/server/state/persistence';
-import { SingerRepository } from '$lib/server/singers/repository';
-import { SettingsRepository } from '$lib/server/state/settings-repository';
-import { MediaRepository } from '$lib/server/media/repository';
-import { DEFAULT_STAGE_COLOR, STAGE_BG_C, STAGE_BG_L, hueToHex, stageHueToHex, guidePath } from '$lib/contract';
 import type { PlaybackState, QueueEntry } from '$lib/contract';
-
-/**
- * The real migration folder. Was `at('drizzle')` at seven sites,
- * counted out from this test's old home in src/lib/server/db; it is drizzle, named once
- * here and anchored on the repo root.
- */
-const DRIZZLE = at('drizzle');
 
 test('migrations create all tables and every entity round-trips', () => {
 	// in-memory bun:sqlite — no disk, fully isolated per test run

@@ -8,9 +8,13 @@
 // two drafts that re-seed at different moments -- so a rename typed in one could be silently reverted
 // by a stale echo from the other. Nothing in the type system objects to that; a source scan does.
 //
-// The tab/panel assertions are the cheap half: `aria-controls` pointing at an id that does not exist is
-// invisible to svelte-check and to every unit test, and it degrades exactly one class of user -- a
-// screen-reader user, who is also the least likely to be sitting next to the developer.
+// The tab/panel assertions are the cheap half, and they now guard the OPPOSITE spelling from the one
+// they were written for. Originally the page hand-rolled `id="panel-<id>"` + `aria-labelledby="tab-<id>"`
+// and the risk was an `aria-controls` pointing at an id that does not exist. `Tabs.Content` owns the
+// panel role and its labelling now, so the risk inverted: re-declaring either on an inner wrapper nests
+// a second tabpanel inside the first and every tab exposes two panels. Both failure modes are invisible
+// to svelte-check and to every unit test, and both degrade exactly one class of user -- a screen-reader
+// user, who is also the least likely to be sitting next to the developer.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -65,12 +69,25 @@ test('every scope tab controls a panel that exists, and vice versa', () => {
 	expect(ids.length).toBeGreaterThan(1);
 
 	for (const id of ids) {
-		// One panel per tab, labelled BY that tab -- the association a screen reader reads out.
-		expect(src, `panel-${id} is missing`).toContain(`id="panel-${id}"`);
-		expect(src, `panel-${id} is not labelled by its tab`).toContain(`aria-labelledby="tab-${id}"`);
-		// And the branch that renders it. A tab that selects nothing renders an empty page.
-		expect(src, `no branch renders the ${id} panel`).toMatch(new RegExp(`tab === '${id}'|\\{:else\\}`));
+		// One panel per tab. `Tabs.Content` OWNS the panel: it renders `role="tabpanel"` and labels it
+		// from its own trigger, so the page no longer spells either. This assertion moved from
+		// `id="panel-<id>"` + `aria-labelledby="tab-<id>"` when those were deleted -- the page had been
+		// re-declaring both on an inner `<div>`, which nested a SECOND tabpanel inside the primitive's
+		// and made every tab expose two panels to a screen reader. Asserting the old hand-rolled ids
+		// here would now be asserting the defect.
+		expect(src, `no Tabs.Content renders the ${id} scope`).toContain(`<Tabs.Content value="${id}">`);
 	}
+
+	// The defect above, stated as an invariant rather than left to the reviewer's memory: this page must
+	// not re-declare the tabpanel contract that `Tabs.Content` already provides. Comments are stripped
+	// first so the note explaining WHY does not trip the rule it explains.
+	const markup = stripComments(src);
+	expect(markup, 'the page re-declares role="tabpanel" that Tabs.Content already renders').not.toContain(
+		'role="tabpanel"'
+	);
+	expect(markup, 'the page re-declares aria-labelledby that Tabs.Content already renders').not.toMatch(
+		/aria-labelledby="tab-/
+	);
 
 	// The server resolves the tab so first paint is already correct; its list must match the page's.
 	const server = readFileSync(join(SRC, 'routes/settings/+page.server.ts'), 'utf8');

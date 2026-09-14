@@ -325,6 +325,13 @@
 	--ph-text-lg: 1.1rem;
 	--ph-text-xl: 1.25rem;
 	--ph-text-2xl: 1.5rem;
+	/*
+	 * A DISPLAY step, added by the type-literal pass. /stats's headline figure was the ladder's only
+	 * genuine gap: at 2.6rem it is not a heading, it is the number the page exists to show, and every
+	 * other step is body-or-heading scale. It carries the incumbent value exactly, so adding it moved
+	 * no pixels — the point was to stop the one display size in the app being a literal.
+	 */
+	--ph-text-3xl: 2.6rem;
 
 	/*
 	 * ── LINE HEIGHT ───────────────────────────────────────────────────────────────────────────────
@@ -869,6 +876,7 @@
 	--text-ph-lg: var(--ph-text-lg);
 	--text-ph-xl: var(--ph-text-xl);
 	--text-ph-2xl: var(--ph-text-2xl);
+	--text-ph-3xl: var(--ph-text-3xl);
 
 	/*
 	 * SPACING SCALE — mints p-sm / gap-lg / m-2xl and the rest, beside the three semantic
