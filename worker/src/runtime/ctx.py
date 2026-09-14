@@ -78,6 +78,19 @@ class LyricsCtx:
     machine_cues: list[dict[str, Any]] = field(default_factory=list)
     #: Everything every source yielded, before grading.
     texts: list[Any] = field(default_factory=list)
+    #: The BASELINE texts — what was actually audible, as measured on this recording — kept for their own
+    #: sake rather than read back out of `texts`.
+    #:
+    #: They need their own slot because `texts` is NARROWED by GradeAndSelect to what publishes
+    #: (`sel.publish`, normally the single winning candidate), while a baseline only survives that
+    #: narrowing on the two unusual paths that deliberately publish one: a SUSPECT winner, or a
+    #: baseline-only fallback. TimeTexts derives its LRC-placement line series from baselines, so reading
+    #: them out of `texts` meant the series was empty on every ordinary job and `estimate_lrc_shift` /
+    #: `shift_segments` — and the whole "the provider's master starts earlier than this upload" correction
+    #: — could not run at all. The mechanism was never broken; it was simply never handed its input.
+    #: Carrying them separately keeps `publish` meaning exactly "what the room gets" while the evidence
+    #: that graded it stays available to later steps.
+    baselines: list[Any] = field(default_factory=list)
     #: What grading chose, and why. None until GradeAndSelect runs.
     selection: Any | None = None
 

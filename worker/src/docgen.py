@@ -28,6 +28,7 @@ from .vocabulary import Action
 BEGIN = "<!-- BEGIN generated:worker-pipeline -->"
 END = "<!-- END generated:worker-pipeline -->"
 
+
 def _repo_root() -> Path:
     """The repo root, by walking up for `bunfig.toml`.
 

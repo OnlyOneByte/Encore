@@ -31,10 +31,7 @@ def test_the_default_token_is_the_measured_becruily_checkpoint():
     """The owner ruled Option A on `instrumental_becruily` specifically; the default token must be
     that model and resolve to the exact checkpoint the benchmark measured (checkpoint_cost.py)."""
     assert audiosep.DEFAULT_AUDIOSEP_MODEL == "instrumental_becruily"
-    assert (
-        audiosep.resolve_audiosep_checkpoint({})
-        == "mel_band_roformer_instrumental_becruily.ckpt"
-    )
+    assert audiosep.resolve_audiosep_checkpoint({}) == "mel_band_roformer_instrumental_becruily.ckpt"
 
 
 def test_resolve_audiosep_checkpoint_rejects_unknown():
@@ -45,7 +42,9 @@ def test_resolve_audiosep_checkpoint_rejects_unknown():
 
 
 def test_resolve_audiosep_checkpoint_defaults_when_unset():
-    assert audiosep.resolve_audiosep_checkpoint({}) == audiosep.AUDIOSEP_MODELS[audiosep.DEFAULT_AUDIOSEP_MODEL]
+    assert (
+        audiosep.resolve_audiosep_checkpoint({}) == audiosep.AUDIOSEP_MODELS[audiosep.DEFAULT_AUDIOSEP_MODEL]
+    )
 
 
 def test_find_audiosep_stems_matches_case_insensitively(tmp_path):
@@ -168,7 +167,8 @@ def _aspec(tmp_path, **params):
         job_type="stems",
         source_uri="https://www.youtube.com/watch?v=asep",
         params=params,
-        media_dir=str(tmp_path))
+        media_dir=str(tmp_path),
+    )
 
 
 @pytest.mark.asyncio
@@ -192,7 +192,9 @@ async def test_an_audiosep_process_runs_the_real_audiosep_engine_end_to_end(tmp_
 
     # model is the RESOLVED CHECKPOINT filename, never the token (the reason facts.model exists)
     assert facts["model"] == "mel_band_roformer_instrumental_becruily.ckpt"
-    assert facts["model"] != "instrumental_becruily", "facts must record the resolved checkpoint, not the token"
+    assert facts["model"] != "instrumental_becruily", (
+        "facts must record the resolved checkpoint, not the token"
+    )
 
     # locate the audio-separator invocation: the decoded input WAV is the POSITIONAL argument (a file,
     # not a folder), and --output_dir is where stems land

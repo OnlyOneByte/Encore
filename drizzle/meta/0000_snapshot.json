@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5ffa4ef6-10d9-4300-82d7-bfe306b9dae7",
+  "id": "bf6d91e4-e353-4b22-b043-4472e022e577",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "global_settings": {
@@ -240,6 +240,13 @@
         },
         "stages": {
           "name": "stages",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "selection": {
+          "name": "selection",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -516,6 +523,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "guide_mix_ref": {
+          "name": "guide_mix_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "song_profile": {
           "name": "song_profile",
           "type": "text",
@@ -537,6 +551,20 @@
           "notNull": false,
           "autoincrement": false
         },
+        "lyrics_override_ref": {
+          "name": "lyrics_override_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lyrics_override_text": {
+          "name": "lyrics_override_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "artist_canonical": {
           "name": "artist_canonical",
           "type": "text",
@@ -544,15 +572,15 @@
           "notNull": false,
           "autoincrement": false
         },
-        "artist_credit": {
-          "name": "artist_credit",
+        "title_canonical": {
+          "name": "title_canonical",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "title_canonical": {
-          "name": "title_canonical",
+        "artist_credit": {
+          "name": "artist_credit",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -659,13 +687,12 @@
     "playback_state": {
       "name": "playback_state",
       "columns": {
-        "id": {
-          "name": "id",
+        "room_id": {
+          "name": "room_id",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
-          "autoincrement": false,
-          "default": "'singleton'"
+          "autoincrement": false
         },
         "current_entry_id": {
           "name": "current_entry_id",
@@ -826,15 +853,23 @@
           "notNull": true,
           "autoincrement": false
         },
-        "pinned_seq": {
-          "name": "pinned_seq",
-          "type": "integer",
+        "room_id": {
+          "name": "room_id",
+          "type": "text",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "queue_entries_room_idx": {
+          "name": "queue_entries_room_idx",
+          "columns": [
+            "room_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -874,13 +909,21 @@
           "autoincrement": false,
           "default": "'off'"
         },
-        "tv_background_hue": {
-          "name": "tv_background_hue",
-          "type": "integer",
+        "tv_background_color": {
+          "name": "tv_background_color",
+          "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 240
+          "default": "'#001d31'"
+        },
+        "tv_background_dim": {
+          "name": "tv_background_dim",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         },
         "tv_visualizer": {
           "name": "tv_visualizer",
@@ -919,7 +962,7 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'bounce'"
+          "default": "'off'"
         },
         "lyrics_highlight": {
           "name": "lyrics_highlight",
@@ -984,6 +1027,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": 0
+        },
+        "loudness_normalization": {
+          "name": "loudness_normalization",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         },
         "presence_grace_minutes": {
           "name": "presence_grace_minutes",
@@ -1083,6 +1134,13 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "room_id": {
+          "name": "room_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -1092,6 +1150,13 @@
             "session_token"
           ],
           "isUnique": true
+        },
+        "singers_room_idx": {
+          "name": "singers_room_idx",
+          "columns": [
+            "room_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {},

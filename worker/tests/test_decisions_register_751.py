@@ -2,7 +2,8 @@
 was not.
 
 THE DEFECT. `roformer.py`'s `ROFORMER_MODELS` block told the reader that the engine-package ruling
-from the engine ruling — adopt `python-audio-separator` ALONGSIDE `bs-roformer-infer`, both engines, owner ruling
+from the engine ruling — adopt `python-audio-separator` ALONGSIDE `bs-roformer-infer`, both engines, owner
+ruling
 Q1(b) — "is recorded in docs/DECISIONS.md". Measured on `c23ba69`, that register held ZERO matches for
 `bs-roformer-infer`, `both engines`, `alongside`, `483`, `Q1` or `owner ruling`; the ruling existed only
 as a comment in `requirements.txt`. Worse, the register read the other way: `python-audio-separator`
@@ -46,6 +47,7 @@ FOUR ARMS, one per production site plus the class guard:
 import re
 from pathlib import Path
 
+
 def _repo_root() -> Path:
     """The repo root, by walking up for `bunfig.toml`.
 
@@ -59,7 +61,6 @@ def _repo_root() -> Path:
         if (candidate / "bunfig.toml").is_file():
             return candidate
     raise SystemExit(f"no bunfig.toml above {here}")
-
 
 
 WORKER = Path(__file__).resolve().parents[1]  # worker

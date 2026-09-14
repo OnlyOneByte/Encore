@@ -126,7 +126,6 @@ const EXPECTED = [
 	'getTvProgressStyle',
 	'getTvVisualizer',
 	'graceMsOf',
-	'guideOffsetSec',
 	'guidePath',
 	'hasGuidingTrack',
 	'hasKey',

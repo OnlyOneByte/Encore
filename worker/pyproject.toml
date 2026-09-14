@@ -52,5 +52,6 @@ module = [
     "karaoke_lyrics_processor",
     "pyloudnorm",
     "pyloudnorm.*",
+    "soundfile",
 ]
 ignore_missing_imports = true

@@ -50,9 +50,29 @@ def measure_lufs(wav_path: str | None) -> float | None:
     if not wav_path:
         return None
     try:
+        samples, sample_rate = read_wav_mono(wav_path)
+    except Exception:  # noqa: BLE001 — an unreadable stem is unmeasurable, never fatal
+        return None
+    return measure_lufs_samples(samples, sample_rate)
+
+
+def measure_lufs_samples(samples: np.ndarray | None, sample_rate: int) -> float | None:
+    """The measurement itself, over samples a caller has ALREADY decoded.
+
+    Exists so `build_song_profile` can decode the instrumental ONCE and hand the same array to both key
+    detection and this meter. It used to call `measure_lufs(path)`, which re-opened and re-decoded the
+    very file the key path had just read — two full decodes of a multi-minute stem inside one function,
+    for two measurements over identical samples.
+
+    Same tri-state contract as the path form: `None` for absent samples, a stem shorter than one 400 ms
+    gating block, digital silence, or any meter failure. Never a fabricated level — a stored 0.0 would
+    read as a deafening master and be attenuated into inaudibility.
+    """
+    if samples is None or sample_rate <= 0:
+        return None
+    try:
         import pyloudnorm as pyln
 
-        samples, sample_rate = read_wav_mono(wav_path)
         if samples.size < int(_MIN_GATING_BLOCK_SEC * sample_rate):
             return None
         if float(np.max(np.abs(samples))) <= _SILENCE_PEAK:

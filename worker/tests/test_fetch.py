@@ -385,7 +385,8 @@ def test_read_info_json_degrades_to_none_on_absence_or_garbage(tmp_path):
 
 @pytest.mark.asyncio
 async def test_a_fetch_captures_the_youtube_credit_and_publishes_it_as_the_annotation(tmp_path):
-    # The whole point of the declared-credit path: when the upload declares track/artist, that citation is published as the
+    # The whole point of the declared-credit path: when the upload declares track/artist, that citation is
+    # published as the
     # annotation — with NO MusicBrainz query needed to reach it.
     audio = tmp_path / "audio" / "m1.m4a"
     info = tmp_path / "audio" / "m1.info.json"

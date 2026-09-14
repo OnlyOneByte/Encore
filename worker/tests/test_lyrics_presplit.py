@@ -23,7 +23,9 @@ from src.lyrics.chain import (  # noqa: E402
     TIMING_LINE,
     TIMING_WORD,
     LyricsText,
-    is_authoritative_text)
+    is_authoritative_text,
+)
+
 
 # ── the TypeScript authority ─────────────────────────────────────────────────────────
 # The four values below are declared TWICE — once in TypeScript (the authority) and once in
@@ -72,7 +74,8 @@ def _ts_is_authoritative(text_source: str, text_confidence: str) -> bool:
     body = re.search(
         r"export function isAuthoritativeText\([^)]*\)\s*:\s*boolean\s*\{\s*"
         r"return\s+c\.textSource\s*!==\s*'([^']+)'\s*&&\s*c\.textConfidence\s*!==\s*'([^']+)'\s*;\s*\}",
-        text)
+        text,
+    )
     assert body, (
         "isAuthoritativeText in src/lib/contract/lyrics/lyrics.ts no longer matches the mirrored shape "
         "`c.textSource !== '<x>' && c.textConfidence !== '<y>'` — the Python mirror in chain.py must "
@@ -118,7 +121,8 @@ def test_agreement_thresholds_mirror_the_ts_authority():
     # MIN_TOKENS_TO_COMPARE / SUSPECT_COVERAGE are declared authoritative in src/lib/contract/
     # lyrics.ts (chain.py calls itself their mirror) but nothing cross-checked them. Read the TS
     # values and assert the Python copies equal them, so a threshold change on the authority side reds.
-    # SUSPECT_COVERAGE replaced SUSPECT_AGREEMENT in an earlier change — a different metric on a different axis, so
+    # SUSPECT_COVERAGE replaced SUSPECT_AGREEMENT in an earlier change — a different metric on a different
+    # axis, so
     # the constant was renamed rather than re-valued. tests/test_lyrics_agreement_542.py carries the
     # behavioural half of that parity guard (a shared corpus both suites assert against).
     assert MIN_TOKENS_TO_COMPARE == _ts_number(_SHARED_LYRICS_TS, "MIN_TOKENS_TO_COMPARE")
@@ -151,8 +155,10 @@ LONG_AUTHORITATIVE = "and I will wait right here for you until the very last lig
 
 
 def test_presplit_length_bounds_authoritative_text_INTO_ALIGNER_WINDOWS_not_segments():
-    # THE an earlier change fix started length-bounding LRCLIB synced/plain text (before it, only the display-time
-    # LINE_MAX_CHARS fallback caught an over-long human line). an earlier change: that bounding must NOT rewrite the
+    # THE an earlier change fix started length-bounding LRCLIB synced/plain text (before it, only the
+    # display-time
+    # LINE_MAX_CHARS fallback caught an over-long human line). an earlier change: that bounding must NOT
+    # rewrite the
     # source's own line timings. An over-long authoritative line yields tight per-row ALIGNER WINDOWS
     # (`align_windows`) while `segments` stay the human lines verbatim — because the line-sync fallback
     # publishes `segments` as `high`, and a character-count-derived boundary shipped there is a
@@ -171,7 +177,8 @@ def test_presplit_length_bounds_authoritative_text_INTO_ALIGNER_WINDOWS_not_segm
 
 
 def test_line_sync_publishes_the_authoritative_source_OWN_timings_not_a_char_count_guess():
-    # THE an earlier change regression. The line-sync fallback publishes `line_synced_lyrics(text.segments)` as
+    # THE an earlier change regression. The line-sync fallback publishes `line_synced_lyrics(text.segments)`
+    # as
     # timingConfidence "high" ("the source's own timings, unmodified"). If presplit subdivides an
     # over-long authoritative line, the interior boundary it invents is `start + (chars/total)*span`
     # — a character count, not a timestamp — and it ships as the human source's own. This pins that
@@ -239,7 +246,8 @@ def test_bound_blob_text_preserves_provenance_and_does_not_mutate_input():
         SOURCE_LRCLIB,
         TIMING_LINE,
         "high",
-        "en")
+        "en",
+    )
 
 
 def test_bound_blob_text_passes_a_WORD_TIMED_authoritative_segment_through_whole():
@@ -387,7 +395,8 @@ def test_subdivided_bounds_are_ordered_and_span_exactly_the_original_window():
         text_source=SOURCE_ASR,
         segments=[{"start": 10.0, "end": 20.0, "text": BLOB, "words": []}],
         timing=TIMING_LINE,
-        text_confidence="low")
+        text_confidence="low",
+    )
     segs = lp.split_blob_text(asr, bounder=passthrough).segments
     assert len(segs) == 5
     assert segs[0]["start"] == 10.0
@@ -402,7 +411,8 @@ def test_a_segment_with_no_numeric_bounds_keeps_its_missing_bounds():
         text_source=SOURCE_ASR,
         segments=[{"text": BLOB, "words": []}],
         timing=TIMING_LINE,
-        text_confidence="low")
+        text_confidence="low",
+    )
     segs = lp.split_blob_text(asr, bounder=passthrough).segments
     assert len(segs) == 5
     assert all(s["start"] is None and s["end"] is None for s in segs)
@@ -433,7 +443,8 @@ def test_split_does_not_mutate_its_input_and_preserves_provenance():
         SOURCE_ASR,
         TIMING_LINE,  # subdividing line-timed segments yields line-timed segments — still true
         "low",
-        "en")
+        "en",
+    )
 
 
 # ── the upstream seam ────────────────────────────────────────────────────────────────
@@ -448,7 +459,8 @@ def test_the_bounder_receives_the_boundary_split_pieces_and_the_char_budget():
         text_source=SOURCE_ASR,
         segments=[{"start": 0.0, "end": 8.0, "text": BLOB, "words": []}],
         timing=TIMING_LINE,
-        text_confidence="low")
+        text_confidence="low",
+    )
     lp.split_blob_text(asr, max_chars=42, bounder=spy)
     assert seen["max_chars"] == 42
     assert seen["lines"] == lp.boundary_split(BLOB)
@@ -459,7 +471,8 @@ def test_a_bounder_that_splits_further_is_honoured():
         text_source=SOURCE_ASR,
         segments=[{"start": 0.0, "end": 6.0, "text": "one. two.", "words": []}],
         timing=TIMING_LINE,
-        text_confidence="low")
+        text_confidence="low",
+    )
     out = lp.split_blob_text(asr, bounder=lambda lines, _m: [w for ln in lines for w in ln.split()])
     assert [s["text"] for s in out.segments] == ["one.", "two."]
 
@@ -509,7 +522,8 @@ LONG_ALTERNATE = "so hold my hand and don't you ever let it go no matter what th
 
 
 def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
-    # THE an earlier change fix. presplit runs BEFORE select_by_baselines, which grades `[cand, *cand.alternates]`
+    # THE an earlier change fix. presplit runs BEFORE select_by_baselines, which grades `[cand,
+    # *cand.alternates]`
     # and may publish an alternate (a normal two-tier outcome — the version that best matches what was
     # heard wins). presplit_texts used to map over the top-level list only, so an alternate winner
     # reached the aligner with align_windows=None — the whole song then re-split by display-time
@@ -519,12 +533,14 @@ def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
         text_source=SOURCE_LRCLIB,
         segments=[{"start": 10.0, "end": 40.0, "text": LONG_AUTHORITATIVE, "words": []}],
         timing=TIMING_LINE,
-        text_confidence="high")
+        text_confidence="high",
+    )
     alt = LyricsText(
         text_source=SOURCE_LRCLIB,
         segments=[{"start": 10.0, "end": 40.0, "text": LONG_ALTERNATE, "words": []}],
         timing=TIMING_LINE,
-        text_confidence="high")
+        text_confidence="high",
+    )
     cand.alternates = [alt]
 
     out = lp.presplit_texts([cand], bounder=bound_only)
@@ -556,12 +572,14 @@ def test_presplit_leaves_a_SHORT_alternate_unwindowed_246():
         text_source=SOURCE_LRCLIB,
         segments=[{"start": 0.0, "end": 4.0, "text": short, "words": []}],
         timing=TIMING_LINE,
-        text_confidence="high")
+        text_confidence="high",
+    )
     alt = LyricsText(
         text_source=SOURCE_LRCLIB,
         segments=[{"start": 0.0, "end": 4.0, "text": short, "words": []}],
         timing=TIMING_LINE,
-        text_confidence="high")
+        text_confidence="high",
+    )
     cand.alternates = [alt]
 
     out = lp.presplit_texts([cand], bounder=bound_only)
@@ -570,12 +588,14 @@ def test_presplit_leaves_a_SHORT_alternate_unwindowed_246():
     assert out[0].alternates[0].align_windows is None
 
 
-# ── an earlier change: absent / broken / no-op must be THREE distinguishable observations, not one ────────────
+# ── an earlier change: absent / broken / no-op must be THREE distinguishable observations, not one
+# ────────────
 #
 # The defect: `_load_klp` cached `_KLP = None` on ANY failure with no report, so "package absent",
 # "stub broke on import" and "no line was over-long" (a legitimate no-op of a WORKING package) all
 # looked identical to an operator — the same "a dead provider looks like a song with no lyrics"
-# conflation an earlier change killed for LRCLIB. klp is installed --no-deps on the deploy box and absent on the
+# conflation an earlier change killed for LRCLIB. klp is installed --no-deps on the deploy box and absent on
+# the
 # dev box, so a regression on deploy would look exactly like the always-absent dev box. The fix keeps
 # the three facts distinct in `klp_status()` and reports one at startup via `klp_probe_line()`.
 
@@ -607,7 +627,7 @@ def test_klp_status_BROKEN_when_installed_but_the_import_raises(monkeypatch):
     # Pretend the package IS installed...
     monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _name: object())
 
-    #...but importing it raises. A module object whose attribute access raises makes
+    # ...but importing it raises. A module object whose attribute access raises makes
     # `from karaoke_lyrics_processor import KaraokeLyricsProcessor` fail at the attribute bind.
     class _Broken(types.ModuleType):
         def __getattr__(self, _n):
@@ -694,7 +714,7 @@ def test_bound_blob_text_emits_align_window_opens_mapping_each_segment_to_its_op
     assert out.align_window_opens is not None
     # one open per human segment...
     assert len(out.align_window_opens) == len(out.segments)
-    #...strictly increasing, first at 0, and each opening window's start equals its segment's start
+    # ...strictly increasing, first at 0, and each opening window's start equals its segment's start
     # (the opening window is the one carrying the source's own timestamp).
     assert out.align_window_opens[0] == 0
     assert out.align_window_opens == sorted(out.align_window_opens)

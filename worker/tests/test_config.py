@@ -351,11 +351,11 @@ def test_whisperx_device_for_maps_only_cuda_to_cuda():
 def test_resolve_derives_the_align_device_from_the_separation_device():
     # The wiring at config.py:391. A GPU box with no explicit override must align on cuda, NOT fall back
     # to a hardcoded cpu — that fallback is the exact bug this code exists to prevent.
-    resolved, _warnings = resolve(WorkerConfig.from_env({}), device="cuda:0")
+    resolved, _warnings, _p = resolve(WorkerConfig.from_env({}), device="cuda:0")
     assert resolved.whisperx_device == "cuda"
 
     # No accelerator resolved: alignment stays on cpu.
-    resolved_cpu, _w = resolve(WorkerConfig.from_env({}), device=None)
+    resolved_cpu, _w, _p2 = resolve(WorkerConfig.from_env({}), device=None)
     assert resolved_cpu.whisperx_device == "cpu"
 
 
@@ -363,19 +363,21 @@ def test_resolve_lets_an_explicit_operator_override_win_over_the_derivation():
     # An operator who sets ENCORE_WHISPERX_DEVICE must have it honoured, not silently replaced by the
     # derived value. `cpu` on a cuda box is a real choice (e.g. the GPU is reserved for separation), so
     # the override has to survive resolve().
-    resolved, _warnings = resolve(WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "cpu"}), device="cuda:0")
+    resolved, _warnings, _p = resolve(
+        WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "cpu"}), device="cuda:0"
+    )
     assert resolved.whisperx_device == "cpu"
 
 
 def test_resolve_warns_on_an_align_device_ctranslate2_cannot_use():
     # A typo like ENCORE_WHISPERX_DEVICE=mps must not be swallowed: CTranslate2 supports only cuda and
     # cpu, so alignment would fail, and the one message explaining why must be emitted.
-    _resolved, warnings = resolve(WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "mps"}), device=None)
+    _resolved, warnings, _p = resolve(WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "mps"}), device=None)
     assert any("CTranslate2" in w for w in warnings), warnings
 
     # A valid override (cuda / cuda:N / cpu) must NOT trigger that warning.
     for good in ("cpu", "cuda", "cuda:1"):
-        _r, w = resolve(WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": good}), device=None)
+        _r, w, _p = resolve(WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": good}), device=None)
         assert not any("CTranslate2" in m for m in w), (good, w)
 
 

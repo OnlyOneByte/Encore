@@ -37,6 +37,7 @@ out — an accepted, small loss versus the correctness risk of a misaligned subt
 from __future__ import annotations
 
 import os
+from typing import cast
 
 from ..retry_policy import BoundaryError
 
@@ -65,7 +66,7 @@ def resolve_mlx_model(params: dict, default: str = DEFAULT_MODEL) -> str:
         return default
     if requested not in MLX_MODELS:
         raise BoundaryError(f"unknown demucs-mlx model {requested!r}; expected one of {MLX_MODELS}")
-    return requested
+    return cast(str, requested)
 
 
 def mlx_instrumental_sources(model: str = DEFAULT_MODEL) -> tuple[str, ...]:

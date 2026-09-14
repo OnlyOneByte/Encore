@@ -243,7 +243,7 @@ describe('the seek effect depends on playback intent, never on the catalog', () 
 			['the seam itself — the whole point of the boundary', "import type { PlaybackSnapshot } from './catalog';"],
 			[
 				'the contract helpers this component does take',
-				"import { playbackRef, isPlayable, guideOffsetSec } from '$lib/contract';"
+				"import { playbackRef, isPlayable } from '$lib/contract';"
 			],
 			[
 				'a sibling seam whose list is multi-line',

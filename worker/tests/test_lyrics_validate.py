@@ -321,8 +321,10 @@ def test_estimate_lrc_shift_measures_a_late_vocal_and_flags_it_applied():
     The baseline heard the same four lines 2.5s later on the real audio. The estimator must recover
     +2.5s and mark it worth applying."""
     lrc = _lrc((1.0, _L1), (4.0, _L2), (7.0, _L3), (10.0, _L4))
-    baseline = [{"start": s + 2.5, "end": s + 4.5, "text": t} for s, t in
-                ((1.0, _L1), (4.0, _L2), (7.0, _L3), (10.0, _L4))]
+    baseline = [
+        {"start": s + 2.5, "end": s + 4.5, "text": t}
+        for s, t in ((1.0, _L1), (4.0, _L2), (7.0, _L3), (10.0, _L4))
+    ]
     sh = estimate_lrc_shift(lrc, baseline)
     assert sh.applied
     assert sh.pairs >= 3
@@ -350,8 +352,10 @@ def test_estimate_lrc_shift_is_a_noop_when_the_lrc_is_already_placed():
     """A song already on this audio's timeline (offset within noise) must NOT be perturbed —
     `applied` is False so the caller leaves the windows untouched."""
     lrc = _lrc((1.0, _L1), (4.0, _L2), (7.0, _L3), (10.0, _L4))
-    baseline = [{"start": s + 0.05, "end": s + 2.05, "text": t} for s, t in
-                ((1.0, _L1), (4.0, _L2), (7.0, _L3), (10.0, _L4))]
+    baseline = [
+        {"start": s + 0.05, "end": s + 2.05, "text": t}
+        for s, t in ((1.0, _L1), (4.0, _L2), (7.0, _L3), (10.0, _L4))
+    ]
     sh = estimate_lrc_shift(lrc, baseline)
     assert not sh.applied
     assert abs(sh.offset_sec) < MIN_SHIFT_SEC
@@ -399,8 +403,10 @@ def test_shift_segments_applies_the_affine_model_without_mutating_the_source():
     src = [{"start": 1.0, "end": 3.0, "text": "a"}, {"start": 5.0, "end": 7.0, "text": "b"}]
     sh = estimate_lrc_shift(
         _lrc((1.0, _L1), (4.0, _L2), (7.0, _L3), (10.0, _L4)),
-        [{"start": s + 2.5, "end": s + 4.5, "text": t} for s, t in
-         ((1.0, _L1), (4.0, _L2), (7.0, _L3), (10.0, _L4))],
+        [
+            {"start": s + 2.5, "end": s + 4.5, "text": t}
+            for s, t in ((1.0, _L1), (4.0, _L2), (7.0, _L3), (10.0, _L4))
+        ],
     )
     out = shift_segments(src, sh)
     assert out[0]["start"] > src[0]["start"]  # moved later

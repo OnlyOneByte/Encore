@@ -45,7 +45,8 @@ from ..lyrics import (
     read_captions,
     repair_word_spans,
     select_by_baselines,
-    validate_timing)
+    validate_timing,
+)
 from ..lyrics.captions import find_caption_file
 
 # _opening_window_indices moved to lyrics/validate.py; re-imported so `_opens_for`'s
@@ -113,7 +114,8 @@ class FetchCaptions(Step):
             ctx.job.source_uri,
             os.path.join(out_dir, "captions.%(ext)s"),
             str(ctx.params.get("ytdlpBin") or self.ytdlp_bin),
-            auto=self.auto)
+            auto=self.auto,
+        )
         try:
             # yt-dlp caption fetch emits no parseable progress, so the parser is constant-None: the
             # shared run_stage then brackets the drain with pct=0 and a single pct=100 — exactly the
@@ -216,7 +218,8 @@ class AcquireTexts(Step):
             client=self._client or LrclibClient(),
             to_segments=lrclib_to_segments,
             transcriber=self._transcriber or _default_transcriber(ctx),
-            normalize=normalize_lyrics)
+            normalize=normalize_lyrics,
+        )
         for note in notes:
             ctx.note(note)
         return sources
@@ -238,7 +241,8 @@ class AcquireTexts(Step):
             yield StepResult(
                 outcome=Outcome.STOP,
                 reason=f"REFUSING pinned ref {asked!r}: it leaves the media directory. Completing with "
-                "no lyrics rather than reading or writing outside the store")
+                "no lyrics rather than reading or writing outside the store",
+            )
             return
         if pinned_ref:
             pinned = _pinned_lyrics_text(ctx, pinned_ref)
@@ -246,7 +250,8 @@ class AcquireTexts(Step):
                 yield StepResult(
                     outcome=Outcome.STOP,
                     reason=f"pinned lyrics {pinned_ref} carry no readable text — leaving the stored "
-                    "candidate exactly as it is rather than re-picking behind the operator")
+                    "candidate exactly as it is rather than re-picking behind the operator",
+                )
                 return
             ctx.lyrics.texts = [pinned]
             ctx.note(
@@ -263,7 +268,8 @@ class AcquireTexts(Step):
             audio_path=ctx.audio.path or "",
             vocals_path=ctx.audio.vocals_path,
             caption_segments=ctx.lyrics.authored_cues,
-            auto_caption_segments=ctx.lyrics.machine_cues)
+            auto_caption_segments=ctx.lyrics.machine_cues,
+        )
         sources = self._build_sources(ctx, req)
         texts: list[LyricsText] = []
         run_notes: list[str] = []
@@ -281,7 +287,8 @@ class AcquireTexts(Step):
             yield StepResult(
                 outcome=Outcome.STOP,
                 reason="no text from any source (instrumental, or every tier missed) "
-                "— completing with no lyrics")
+                "— completing with no lyrics",
+            )
 
 
 class PresplitTexts(Step):
@@ -322,7 +329,7 @@ class GradeAndSelect(Step):
     # timings run past the end of the audio. `runtime/plan.py` fails plan validation for a key nothing
     # produces, so this must be declared, not read implicitly.
     reads = frozenset({"lyrics.texts", "audio.duration_sec"})
-    writes = frozenset({"lyrics.selection", "lyrics.texts"})
+    writes = frozenset({"lyrics.selection", "lyrics.texts", "lyrics.baselines"})
 
     def applies(self, ctx: Ctx) -> bool:
         """Skip comparative selection on a pinned re-time.
@@ -344,7 +351,8 @@ class GradeAndSelect(Step):
         # report from the candidates as they were BEFORE selection, not from `sel.publish`. A
         # candidate DEMOTED for overshoot (chain.py overshoot_penalized) is not among the survivors, so
         # iterating `sel.publish` fired the note exactly when the demotion changed nothing and stayed
-        # SILENT exactly when it changed the outcome — the one case an earlier change piece 2 exists for. Walk every
+        # SILENT exactly when it changed the outcome — the one case an earlier change piece 2 exists for. Walk
+        # every
         # pre-selection candidate (each source's own text plus its alternates); `select_by_baselines`
         # does not mutate its input (it rebinds via `replace`), so `ctx.lyrics.texts` still carries them.
         # Published-vs-demoted is decided by identity against `sel.publish` on (text_source, variant),
@@ -385,7 +393,8 @@ class GradeAndSelect(Step):
                 is_published = key in published_keys
                 if over / duration_sec <= OVERSHOOT_FRACTION_MAX:
                     # A small, tolerated overshoot the demotion did not act on — still worth seeing,
-                    # but an earlier change F2: say WHOSE. This is the only arm that can fire for a candidate the
+                    # but an earlier change F2: say WHOSE. This is the only arm that can fire for a candidate
+                    # the
                     # operator has no other way to place — `sel.choices` names a winner only when one
                     # source offered several versions — so worded bare it read as an overshoot on the
                     # SHIPPED lyrics when it was on a rejected rival, a false alarm about a process whose
@@ -397,8 +406,10 @@ class GradeAndSelect(Step):
                         else f"within tolerance — NOT published, {winner_label} was"
                     )
                 elif is_published:
-                    # Over the limit and it WON: an earlier change's own stated cost (owner ruling B fixes some
-                    # cases, not all). an earlier change F1: whether a fitting candidate existed is decided from the
+                    # Over the limit and it WON: an earlier change's own stated cost (owner ruling B fixes
+                    # some
+                    # cases, not all). an earlier change F1: whether a fitting candidate existed is decided
+                    # from the
                     # POOL, never from `is_published`, which says only that THIS text is in
                     # `sel.publish`. `overshoot_penalized` (lyrics/chain.py) subtracts the overshoot
                     # FRACTION from the composite score — a COMPARATIVE penalty — so an overshooter
@@ -414,14 +425,17 @@ class GradeAndSelect(Step):
                         else ", no candidate that fits the audio"
                     )
                 else:
-                    # Over the limit and NOT published — the case an earlier change piece 2 was written to surface.
-                    # an earlier change F2: this is the third arm of the ladder an earlier change corrected the other two of, and
+                    # Over the limit and NOT published — the case an earlier change piece 2 was written to
+                    # surface.
+                    # an earlier change F2: this is the third arm of the ladder an earlier change corrected
+                    # the other two of, and
                     # it repeated their exact defect. `is_published` False means only that THIS text is
                     # not in `sel.publish`; it does NOT mean the overshoot penalty is why. The wrong-song
                     # case loses on AGREEMENT by a margin the comparative `overshoot_penalized` never came
                     # near — the winner is identical with the penalty switched off — so "DEMOTED" here
                     # asserted a causation the step cannot see, and did so on the one line an operator
-                    # reads to decide whether an earlier change's demotion did anything. Word it from the fact the step
+                    # reads to decide whether an earlier change's demotion did anything. Word it from the fact
+                    # the step
                     # actually has, mirroring the `PUBLISHED anyway` / `within tolerance` sibling arms.
                     verdict = f"past the OVERSHOOT limit — NOT published, {winner_label} was"
                 ctx.note(
@@ -449,10 +463,18 @@ class GradeAndSelect(Step):
             )
             # Demote via replace rather than `sel.publish[0].text_confidence = "low"`: that reached from
             # the step layer straight into a domain LyricsText, mutating a caller-owned object in place
-            # (the same cross-object write an earlier change fixes in chain.py). Rebinding the list slot to a copy keeps
+            # (the same cross-object write an earlier change fixes in chain.py). Rebinding the list slot to a
+            # copy keeps
             # the demotion local to the published list — see presplit.py's replace() note.
             sel.publish[0] = replace(sel.publish[0], text_confidence="low")
         ctx.lyrics.selection = sel
+        # Preserve the BASELINES before narrowing `texts` to what publishes. `sel.publish` is normally the
+        # single winning candidate, so a baseline survives this assignment only on the suspect/fallback
+        # paths — which meant TimeTexts, whose LRC-placement series comes from baselines, had no input on
+        # any ordinary job and silently skipped the placement. Read from `ctx.lyrics.texts` while it is
+        # still the PRE-selection pool: `select_by_baselines` does not mutate its input (it rebinds via
+        # `replace`), and the narrowing happens on the very next line.
+        ctx.lyrics.baselines = baselines_of(ctx.lyrics.texts)
         ctx.lyrics.texts = sel.publish
         return
         yield  # pragma: no cover - makes this an async generator
@@ -482,7 +504,15 @@ class TimeTexts(Step):
     name = "time-texts"
     stage = Stage.ALIGNING
     reads = frozenset(
-        {"job", "engines", "lyrics.texts", "lyrics.selection", "audio.path", "audio.vocals_path"}
+        {
+            "job",
+            "engines",
+            "lyrics.texts",
+            "lyrics.baselines",
+            "lyrics.selection",
+            "audio.path",
+            "audio.vocals_path",
+        }
     )
     writes = frozenset({"out"})
 
@@ -509,9 +539,20 @@ class TimeTexts(Step):
         # candidate — compute it ONCE. A synced LRC's windows are then placed onto this recording
         # against it before alignment (see `_shift_for`). Baselines carry line starts only
         # (whisper's `transcribe()` returns segment bounds, not word bounds), which is exactly what the
-        # fit needs. Empty when no baseline spoke, which makes every shift a no-op.
+        # fit needs.
+        #
+        # READ FROM `lyrics.baselines`, not from `lyrics.texts`. This used to be
+        # `baselines_of(ctx.lyrics.texts)`, and its comment claimed the series was "empty when no baseline
+        # spoke" — but GradeAndSelect narrows `texts` to `sel.publish` one step earlier, which is normally
+        # the single winning candidate. So the series was empty on every ORDINARY job, not just a silent
+        # one, and the placement below could never run however badly an LRC needed placing. The dedicated
+        # slot carries the evidence past that narrowing.
+        #
+        # The `or` fallback covers the pinned re-time, where `GradeAndSelect.applies()` is False and so
+        # nothing populates the slot; there `texts` is a single hand-built text and both sides are empty,
+        # which is the same no-op as before.
         baseline_lines: list[dict[str, Any]] = []
-        for b in baselines_of(ctx.lyrics.texts):
+        for b in ctx.lyrics.baselines or baselines_of(ctx.lyrics.texts):
             baseline_lines.extend(b.segments)
 
         def _shift_for(t: Any) -> LrcShift | None:
@@ -615,7 +656,8 @@ class TimeTexts(Step):
             # TIMING, which catches the case where a different master shifts or stretches every line.
             if timing == TIMING_WORD and text.timing == TIMING_LINE:
                 # Compute the OPENING-window index of each human line, then hand the fit decision
-                # to lyrics/validate.lrc_fit_notes (an earlier change moved the ~45-line decision + its two pairing
+                # to lyrics/validate.lrc_fit_notes (an earlier change moved the ~45-line decision + its two
+                # pairing
                 # helpers into the domain package; this step now owns only the windows/opens the
                 # decision needs). `_opens_for` prefers presplit's EMITTED opens map over re-deriving by
                 # float-equality — that preference is pinned HERE, in the step layer, which is
@@ -691,7 +733,8 @@ class TimeTexts(Step):
         # Persist WHY this lyric won, not just which one. `sel.choices` already carries every rejected
         # label with its score, `decided_by` and the baseline vote count; those reach the process log via
         # summary() above but the log rotates and is per-container. Crossing them to durable state here
-        # is the whole of an earlier change — the audit trail can then say which of an earlier change's arms fired for a mis-pick.
+        # is the whole of an earlier change — the audit trail can then say which of an earlier change's arms
+        # fired for a mis-pick.
         if sel is not None:
             ctx.out.selection = sel.to_record()
         yield ProgressEvent(stage=self.stage, pct=100)

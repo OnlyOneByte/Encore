@@ -65,7 +65,8 @@ TIMING_NONE = Timing.NONE.value
 # that produced a silent vocals stem, an upload YouTube captioned badly, a passage no model hears.
 # Averaging over independent errors is what makes the ruler steadier than any of its parts.
 #
-# The role constants themselves now live in src/vocabulary.py beside TextSource/Timing (moved in an earlier change)
+# The role constants themselves now live in src/vocabulary.py beside TextSource/Timing (moved in an earlier
+# change)
 # and are re-exported here — imported above — so every importer of chain.py is unchanged. ROLE_UNSPECIFIED
 # is the fail-closed default for a hand-built text: see LyricsText.role and vocabulary.py's ROLES note.
 
@@ -279,7 +280,8 @@ MIN_TOKENS_TO_COMPARE = 12
 #: lyrics is the failure this whole tier exists to avoid.
 #:
 #: NOT A CORPUS CALIBRATION. The corpus is synthetic (original text, an explicit ASR-degradation model)
-#: because an earlier change — commit a real lyrics corpus from the prod snapshot — is still open. What it measures
+#: because an earlier change — commit a real lyrics corpus from the prod snapshot — is still open. What it
+# measures
 #: is the metric's own systematic behaviour, which is what choosing between two axes needs; it is not
 #: evidence about the real distribution of songs. Re-derive this number once an earlier change lands.
 SUSPECT_COVERAGE = 0.40
@@ -297,7 +299,8 @@ SEQUENCE_WEIGHT = 0.5
 #: wrong-version cases overshoot by +39% (Total Eclipse, 268s->374s) and +27% (Friends in Low
 #: Places, 281s->357s), so 10% clears both with margin while leaving room for the owner's stated
 #: trap — a legitimate LRC for the SAME recording carrying a short trailing artefact cue, which is
-#: seconds, not tens of percent. PROPOSED FOR REVIEW: Q2 of an earlier change was ruled "a percentage, proposed
+#: seconds, not tens of percent. PROPOSED FOR REVIEW: Q2 of an earlier change was ruled "a percentage,
+# proposed
 #: by the implementer" — 0.10 is that proposal. Raise it if a same-recording false positive appears.
 OVERSHOOT_FRACTION_MAX = 0.10
 
@@ -396,24 +399,83 @@ def agreement(candidate: str, baseline: str) -> Agreement | None:
     tokens_c, tokens_b = lyrics_tokens(candidate), lyrics_tokens(baseline)
     if len(set(tokens_c)) < MIN_TOKENS_TO_COMPARE or len(set(tokens_b)) < MIN_TOKENS_TO_COMPARE:
         return None
-    shared = _multiset_overlap(tokens_c, tokens_b)
-    pairs_c, pairs_b = _adjacent_pairs(tokens_c), _adjacent_pairs(tokens_b)
-    shared_pairs = _multiset_overlap(pairs_c, pairs_b)  # type: ignore[arg-type]
+    # Delegates to the view form so there is ONE implementation of the arithmetic. The string entry point
+    # stays because tests and any one-off comparison read better with it; the hot path (composite_score
+    # over a candidate pool) builds its views once and calls `agreement_of` directly.
+    return agreement_of(TokenView.of(candidate), TokenView.of(baseline))
+
+
+@dataclass(frozen=True)
+class TokenView:
+    """One text, tokenized ONCE, with everything `agreement` needs precomputed.
+
+    `agreement` used to take two strings and derive all of this on every call — `lyrics_tokens` (an NFKC
+    fold plus two regex substitutions plus a split), a `set` for the comparability floor, a `Counter` for
+    the multiset overlap, the adjacent-pair list, and a second `Counter` for the pair overlap. It is called
+    once per (candidate, baseline) PAIR, so with five candidates and three baselines every text was
+    tokenized three (or five) times over: thirty tokenizations, thirty pair-list builds and sixty Counters
+    for eight texts' worth of distinct work, over strings that run to thousands of tokens.
+
+    Deriving it once per TEXT and reusing it across pairs makes the cost O(C + B) instead of O(C × B). The
+    numbers are unchanged — this is the same arithmetic reading precomputed operands.
+
+    Deliberately NOT a module-level cache keyed on the text. Holding a job's lyrics in a global for the
+    lifetime of a long-running worker is a retention surprise, and the sharing that actually matters is
+    within one selection, which the caller can express by building the views once.
+    """
+
+    tokens: tuple[str, ...]
+    counts: Counter[str]
+    pair_counts: Counter[tuple[str, str]]
+    distinct: int
+    pair_total: int
+
+    @classmethod
+    def of(cls, text: str) -> TokenView:
+        tokens = lyrics_tokens(text)
+        pairs = _adjacent_pairs(tokens)
+        return cls(
+            tokens=tuple(tokens),
+            counts=Counter(tokens),
+            pair_counts=Counter(pairs),
+            distinct=len(set(tokens)),
+            pair_total=len(pairs),
+        )
+
+
+def _counter_overlap(a: Counter, b: Counter) -> int:
+    """Σ min(count_a, count_b) over precomputed counters — the multiset overlap `_multiset_overlap`
+    computes, without rebuilding either side."""
+    return sum(min(n, b.get(token, 0)) for token, n in a.items())
+
+
+def agreement_of(candidate: TokenView, baseline: TokenView) -> Agreement | None:
+    """`agreement` over precomputed views. The string form delegates here, so there is one implementation.
+
+    Returns None when either side is below MIN_TOKENS_TO_COMPARE distinct tokens — the comparability floor,
+    unchanged.
+    """
+    if candidate.distinct < MIN_TOKENS_TO_COMPARE or baseline.distinct < MIN_TOKENS_TO_COMPARE:
+        return None
+    shared = _counter_overlap(candidate.counts, baseline.counts)
+    shared_pairs = _counter_overlap(candidate.pair_counts, baseline.pair_counts)
     sequence = (
-        min(shared_pairs / len(pairs_b), shared_pairs / len(pairs_c))
-        if pairs_c and pairs_b
+        min(shared_pairs / baseline.pair_total, shared_pairs / candidate.pair_total)
+        if candidate.pair_total and baseline.pair_total
         else 0.0
     )
     return Agreement(
-        coverage=shared / len(tokens_b),
-        fidelity=shared / len(tokens_c),
-        sequence=sequence)
+        coverage=shared / len(baseline.tokens),
+        fidelity=shared / len(candidate.tokens),
+        sequence=sequence,
+    )
 
 
 def agreement_score(candidate: str, baseline: str) -> float | None:
     """The 0..1 ranking score for one candidate against one baseline, or None when not comparable.
 
-    Count- and position-aware since an earlier change; it was symmetric Jaccard over token SETS, which scored the
+    Count- and position-aware since an earlier change; it was symmetric Jaccard over token SETS, which scored
+    the
     reported wrong-version mis-pick at 0.448 — above the old 0.25 threshold, so it was accepted. See
     `Agreement` for why the three numbers are kept apart and `SUSPECT_COVERAGE` for which of them the
     absolute judgement reads.
@@ -449,7 +511,12 @@ class Composite(NamedTuple):
     votes: list[float]
 
 
-def composite_score(candidate: LyricsText, baselines: list[LyricsText]) -> Composite:
+def composite_score(
+    candidate: LyricsText,
+    baselines: list[LyricsText],
+    *,
+    baseline_views: list[TokenView] | None = None,
+) -> Composite:
     """Mean agreement of one candidate against every baseline that can speak, plus the votes cast.
 
     Returns (None, None, []) when NO baseline is comparable — nothing was audible enough to judge with,
@@ -467,17 +534,29 @@ def composite_score(candidate: LyricsText, baselines: list[LyricsText]) -> Compo
 
     The two means are taken over the SAME set of speaking baselines, so `coverage` cannot be formed from
     a different quorum than `score` — a baseline that abstains abstains on both axes.
+
+    `baseline_views` lets the caller tokenize the baselines ONCE for a whole candidate pool instead of once
+    per candidate — see `TokenView`. Omitting it is correct and self-contained, just O(C × B) again.
     """
+    candidate_view = TokenView.of(candidate.plain_text)
     spoke = [
-        got for got in (agreement(candidate.plain_text, b.plain_text) for b in baselines) if got is not None
+        got
+        for got in (
+            agreement_of(candidate_view, bv)
+            for bv in (
+                baseline_views
+                if baseline_views is not None
+                else [TokenView.of(b.plain_text) for b in baselines]
+            )
+        )
+        if got is not None
     ]
     if not spoke:
         return Composite(None, None, [])
     votes = [got.rank_score for got in spoke]
     return Composite(
-        score=sum(votes) / len(votes),
-        coverage=sum(got.coverage for got in spoke) / len(spoke),
-        votes=votes)
+        score=sum(votes) / len(votes), coverage=sum(got.coverage for got in spoke) / len(spoke), votes=votes
+    )
 
 
 def candidate_last_end(candidate: LyricsText) -> float | None:
@@ -487,7 +566,8 @@ def candidate_last_end(candidate: LyricsText) -> float | None:
     `segments`; a text-only source does not. Overshoot is only defined for the former — a text without
     its own timings cannot be "timed past the audio" until it is force-aligned, which happens after
     selection. Reads `end` off segments directly (not the flattened word list) because at SELECTION time
-    the line timing is what a wrong-version LRC carries, and an earlier change's two real cases are `lrclib-word`.
+    the line timing is what a wrong-version LRC carries, and an earlier change's two real cases are
+    `lrclib-word`.
     """
     ends = [float(seg["end"]) for seg in candidate.segments if isinstance(seg.get("end"), (int, float))]
     return max(ends) if ends else None
@@ -516,7 +596,19 @@ def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float
     fraction = max(0.0, last_end - duration_sec) / duration_sec
     if fraction <= OVERSHOOT_FRACTION_MAX:
         return score
-    return score - fraction
+    # FLOORED AT ZERO, so a demoted score is still a score. The subtraction used to be unclamped, which
+    # made the module's own invariant arithmetic-dependent: `select_by_baselines` ranks an UNJUDGEABLE
+    # version (no baseline could grade it) as the constant -1.0 and states that such a candidate "never
+    # displaces a judged one", but an overshoot fraction above 1.0 — a candidate timed to more than twice
+    # the audio, which is what a full-album or wrong-master LRC looks like — pushed a real score below
+    # -1.0 and handed the comparison to the ungradeable rival. Clamping keeps every judged score inside
+    # [0, 1] where the sentinel sits strictly beneath all of them.
+    #
+    # The clamp does collapse the ordering AMONG candidates that overshoot this catastrophically (two
+    # such both land on 0.0 and the tie falls to the earlier, better-metadata pick). That is the right
+    # trade: neither fits the audio, so "which is less wildly wrong" is not a ranking worth preserving,
+    # and any rival that does fit still outranks both — which is the penalty's actual job.
+    return max(0.0, score - fraction)
 
 
 # ── selection: candidates are judged, baselines do the judging ─────────────────────────
@@ -534,7 +626,8 @@ def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float
 # it (measured: baseline coverage 0.857 for the reported wrong-version mis-pick). What separates them is
 # not an absolute score but the COMPARISON. Argmax needs no threshold at all — only a difference.
 #
-# So the two mechanisms are complementary, both run, and since an earlier change they read DIFFERENT AXES of the same
+# So the two mechanisms are complementary, both run, and since an earlier change they read DIFFERENT AXES of
+# the same
 # comparison rather than sharing one averaged number:
 #   SELECT   comparative, no threshold — `Composite.score`, the weaker count direction blended with the
 #            adjacent-pair term. Harsh and discriminating on purpose: the wrong-version fingerprint is
@@ -583,7 +676,8 @@ class VariantChoice:
         `summary()` renders these for the process log, which rotates and is per-container; this crosses
         the wire and lands in the job_attempts audit trail so a mis-pick is diagnosable from state
         weeks later. Deliberately NOT the lyric bodies — label + composite score is enough to
-        say which of an earlier change's three arms fired (metadata fallback vs a real disagreement), and storing
+        say which of an earlier change's three arms fired (metadata fallback vs a real disagreement), and
+        storing
         four rejected full texts per song would multiply the lyrics footprint for triage-only data.
         """
         return {
@@ -623,7 +717,8 @@ class Selection:
         None when no source offered a choice among versions (`choices` empty): there is no pick to
         explain, so nothing is persisted rather than an empty shell that reads as a lost record. When
         a decision happened this carries every source's `VariantChoice` plus the two facts that tell
-        an earlier change's arm (b) from arm (c) at a glance: whether a baseline actually voted, and on what basis.
+        an earlier change's arm (b) from arm (c) at a glance: whether a baseline actually voted, and on what
+        basis.
         """
         if not self.choices:
             return None
@@ -667,8 +762,14 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
     candidates = candidates_of(texts)
     sel = Selection()
 
-    for b in baselines:
-        tokens = len(set(lyrics_tokens(b.plain_text)))
+    # Tokenize each baseline ONCE for the whole selection — the notes below and every candidate
+    # comparison then read the same precomputed view instead of re-deriving it. See `TokenView`: this is
+    # what turns the grading cost from O(candidates × baselines) tokenizations into O(candidates +
+    # baselines), and the `distinct` count the note wants is already on the view.
+    baseline_views = [TokenView.of(b.plain_text) for b in baselines]
+
+    for b, bv in zip(baselines, baseline_views, strict=False):
+        tokens = bv.distinct
         sel.baseline_notes.append(
             f"{b.variant or b.text_source}: {tokens} distinct words"
             + ("" if tokens >= MIN_TOKENS_TO_COMPARE else " — too few to judge with, ABSTAINS")
@@ -686,7 +787,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
     best_rank: float | None = None
     for cand in candidates:
         pool = [cand, *cand.alternates]
-        scored = [composite_score(c, baselines) for c in pool]
+        scored = [composite_score(c, baselines, baseline_views=baseline_views) for c in pool]
         # The RANKING key demotes a version timed past audio-end; `scored` itself keeps the raw
         # agreement so provenance and `winner_score` report what the words actually matched, not the
         # penalty. A None-scored (unjudgeable) version stays -1.0 and is never penalised into a lower
@@ -699,9 +800,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
         if any(s is not None for s in ranked):
             # max on (score, negative index) so an exact tie keeps the earlier — i.e. the better
             # metadata match. `-1.0` sorts an unjudgeable version below every judged one.
-            pick = max(
-                range(len(pool)), key=lambda i: (ranked[i] if ranked[i] is not None else -1.0, -i)
-            )
+            pick = max(range(len(pool)), key=lambda i: (ranked[i] if ranked[i] is not None else -1.0, -i))
             decided_by = "agreement"
         else:
             decided_by = "metadata"
@@ -710,7 +809,8 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
         # The choice is made; the winner should no longer carry the losers. Rebind via replace rather
         # than assigning `winner.alternates = []`: `winner` is a caller-owned object (an element of the
         # candidate list passed in, or one of its `alternates`), and mutating it in place reaches across
-        # the module boundary into the step layer's data — the same class of cross-object write an earlier change fixes
+        # the module boundary into the step layer's data — the same class of cross-object write an earlier
+        # change fixes
         # at steps/lyrics.py. See presplit.py's replace() note on why copy-with-replacement is the rule here.
         winner = replace(winner, alternates=[])
         if len(pool) > 1:
@@ -726,7 +826,8 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
                         if i != pick
                     ],
                     decided_by=decided_by,
-                    votes=len(votes))
+                    votes=len(votes),
+                )
             )
         # Across sources, the same comparison decides — on the PENALISED rank of the pick, so a source
         # whose only version overshoots audio-end loses to a source that fits. An unjudged
@@ -763,7 +864,8 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
 # ── sources: re-exported from lyrics/sources.py ────────────────────────────────────
 #
 # The four source adapters, the ``LyricsSource`` protocol and ``_source_name`` were extracted to
-# lyrics/sources.py in an earlier change (the ``sources/*`` seam of the declared split). They are imported here at
+# lyrics/sources.py in an earlier change (the ``sources/*`` seam of the declared split). They are imported
+# here at
 # the foot of the module -- AFTER LyricsRequest / LyricsText and the SOURCE_* / TIMING_* vocabulary are
 # defined above -- so that ``from .chain import AsrSource``, lyrics/registry.py's import group and the
 # package surface keep resolving unchanged, and there is no import cycle. ``acquire_with_notes`` above
@@ -775,4 +877,5 @@ from .sources import (  # noqa: E402, F401 — deliberate re-export of the extra
     LrclibSource,
     LyricsSource,
     _CaptionsSource,
-    _source_name)
+    _source_name,
+)
