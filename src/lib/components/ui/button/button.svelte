@@ -23,6 +23,10 @@
 	 * guarded by `reorder-mode-source-836.test.ts`).
 	 * 4. An `iconPrimary` variant for NowPlayingHero's transport: accent fill while actionable, falling
 	 * back to the icon surface when disabled, which is what says the transport is dead not idle.
+	 * 5. Three more role-named variants for the phone home's controls — `identity`, `keycap`, `eyebrow`.
+	 * Each is documented at its own entry below, and each exists because a REQUIREMENT of its call site
+	 * contradicts the base: `shrink-0` defeats an ellipsis, and `whitespace-nowrap` defeats the 320px
+	 * reflow floor for a button whose label is one unbreakable word.
 	 *
 	 * NOT a deviation: colour. `app.css`'s semantic layer aliases `--primary`, `--muted`, `--ring` and
 	 * friends onto Encore's tokens, so every stock class here resolves untouched. That layer is why this
@@ -38,6 +42,55 @@
 			variant: {
 				iconPrimary:
 					'bg-[var(--accent)] text-[var(--on-accent)] disabled:bg-[var(--card2)] disabled:text-[var(--ink-dim)] disabled:opacity-35',
+				/*
+				 * The phone home's identity control (name + colour dot -> /settings?tab=you). Role-named
+				 * like `iconPrimary` above, because what it encodes is a call site's requirement rather
+				 * than a general appearance.
+				 *
+				 * It exists for ONE reason the stock variants cannot give: the base sets `shrink-0`, and
+				 * this control wraps a name that must ELLIPSIS. A non-shrinking button inside the header's
+				 * flex row cannot narrow, so `text-overflow` never engages and a long name pushes the gear
+				 * off the row instead. `min-w-0 shrink` restores the flex minimum the ellipsis depends on.
+				 * `justify-start` because the label leads; `font-normal` and `text-[length:inherit]`
+				 * because the name's size is the header's, not the button's (the old rule said
+				 * `font: inherit`).
+				 */
+				identity:
+					'min-w-0 shrink justify-start gap-[var(--space-sm)] px-[var(--space-xs)] font-normal text-[length:inherit] hover:bg-muted',
+				/*
+				 * The +/- semitone pair. Two requirements the stock variants actively fight:
+				 *
+				 * 1. The base sets `whitespace-nowrap`, but "semitone" is one unbreakable token and at
+				 *    200% text a full-width button is still narrower than it — so nowrap forced the row,
+				 *    and the sheet around it, past 320px. `whitespace-normal` plus
+				 *    `[overflow-wrap:anywhere]` lets the word break instead of the layout (XR-PH-02).
+				 * 2. DASHED means inert. The incumbent drew a dashed border while the shift was clamped
+				 *    at +/-7 and switched to solid when actionable, which reads as "no further" without
+				 *    relying on colour. Expressed here as the RESTING state upgraded by `enabled:`,
+				 *    rather than as a `disabled:` override, so it does not depend on utility ordering to
+				 *    beat the base's own disabled rule.
+				 */
+				keycap:
+					'border-dashed border-[var(--line-strong)] bg-transparent text-[var(--ink-dim)] whitespace-normal [overflow-wrap:anywhere] enabled:border-solid enabled:border-[var(--line)] enabled:text-[var(--ink)]',
+				/*
+				 * A disclosure trigger styled as a section eyebrow — the "Vocal range" toggle. Uppercase,
+				 * letter-spaced and 2xs, which is a LABEL treatment rather than a button treatment, so no
+				 * stock variant is close. `whitespace-normal` for the same 200%-text reason as `keycap`.
+				 */
+				eyebrow:
+					'justify-start gap-[7px] px-[var(--space-3xs)] text-[length:var(--ph-text-2xs)] font-bold tracking-[0.14em] uppercase whitespace-normal text-[var(--ink-dim)] hover:text-[var(--ink)] hover:bg-transparent',
+				/*
+				 * SongRow's "add a turn" action. The pair it belongs to is the app's most load-bearing
+				 * hierarchy: `iconPrimary` (accent fill, sparkle) is the expensive minute-long process,
+				 * this is the free instant queue-add. They must not converge — an earlier version had the
+				 * weight INVERTED, putting the primary fill on the dead-end action, and the comment in
+				 * SongRow records why that was worse than a styling nit.
+				 *
+				 * Green ink on the icon surface rather than a fill: it reads as available without
+				 * competing with the accent. `--ok` is the readiness colour the row's "Karaoke ready"
+				 * badge already uses, so the button agrees with the chip beside it.
+				 */
+				iconReady: 'bg-[var(--card2)] border-[var(--ok)] text-[var(--ok)]',
 				default: 'bg-primary text-primary-foreground hover:bg-primary/80',
 				outline:
 					'border-border bg-background shadow-xs hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
@@ -59,6 +112,21 @@
 				 * because a vendored component elsewhere happened to use the same class.
 				 */
 				block: 'w-full min-h-tap',
+				/*
+				 * A content-hugging size that CLEARS THE TAP FLOOR, and it exists because none of the
+				 * registry's sizes do: `xs` is h-6 (24px), `sm` h-8 (32px), `default` h-9 (36px), `lg` h-10
+				 * (40px) — all under Encore's `--tap: 44px`. Only `icon` (`size-tap`) and `block`
+				 * (`min-h-tap`) comply, and both force a shape: a square, or the full column width.
+				 *
+				 * So every inline control that is neither — the reorder Done/Cancel, the search-escape
+				 * "Show all N", the back-to-queue link — had no compliant size to migrate onto, and reaching
+				 * for `sm` would have silently dropped a 44px hand-rolled control to 32px. That is the
+				 * regression touch-targets.test.ts caught during the phone-home migration.
+				 *
+				 * `min-h-tap`, not `h-tap`: the label must be allowed to grow the box at 200% text rather
+				 * than overflow a fixed height.
+				 */
+				tap: 'min-h-tap gap-[var(--space-xs)] px-[var(--space-xl)]',
 				/*
 				 * The same shape one step up, for a page whose primary action IS the page's purpose — the
 				 * landing screen's join button. Padding and type keep it well over the tap floor, and the

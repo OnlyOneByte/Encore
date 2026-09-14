@@ -178,7 +178,7 @@
 	}
 	/* Eyebrow label, matching the /settings + ColourPicker field idiom (0.78rem / 0.12em / uppercase). */
 	.code-label {
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 		color: var(--ink-dim);

@@ -114,6 +114,13 @@
 
 <style>
 	/*
+	 * SUB-TOKEN RADII ARE DELIBERATE HERE. The 2px whisker, 3px axis hairline, 6px lives-here block
+	 * and 8px strip are drawing geometry inside an `aria-hidden` visualization, not surfaces on the
+	 * app`s radius scale — whose smallest step is --radius-xs (4px). Snapping a 2px hairline to 4px
+	 * would round it into a lozenge and change what the strip depicts, so these stay literals. The
+	 * scale governs SURFACES; this component is a chart.
+	 */
+	/*
 	 * A short, wide strip. Height carries the whiskers + block + shading in one band; the phone gives
 	 * it full column width inside the disclosure. Everything positions absolutely off this box, so the
 	 * fractions from the helpers land as left/width percentages directly.
@@ -227,6 +234,10 @@
 	.axis-ends {
 		display: flex;
 		justify-content: space-between;
+		/* 0.6rem, below the ladder's smallest step (--ph-text-2xs, 0.68rem), for the same reason the radii
+		   here are sub-token: these are axis end-labels on an `aria-hidden` chart, and the strip has to fit
+		   C2..C6 across a phone. The ladder governs READABLE copy; this is chart furniture, and the facts
+		   it labels are stated in text beside it. */
 		font-size: 0.6rem;
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;

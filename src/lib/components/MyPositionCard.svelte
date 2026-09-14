@@ -69,7 +69,7 @@
 		margin: 0 0 var(--space-md);
 		border-color: var(--line-tint);
 		background: linear-gradient(var(--card), var(--card-tint));
-		font-size: 0.82rem;
+		font-size: var(--ph-text-sm);
 	}
 	.big {
 		font-size: var(--ph-text-2xl);

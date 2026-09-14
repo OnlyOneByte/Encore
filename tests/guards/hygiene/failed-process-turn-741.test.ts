@@ -35,11 +35,16 @@ test('F1: the .sing button consumes inQueue via a retryProcess term (was silentl
 	expect(m![1]).toMatch(/\binQueue\b/); // …and only when a turn is already queued
 });
 
-test('F1: the retry state reaches the .sing markup (label, title and class)', () => {
+test('F1: the retry state reaches the sing markup (label, title and a visual signal)', () => {
 	// The derived term is dead unless the template reads it. Its aria-label must change (a bare mark
-	// otherwise announces "Sing this", promising a turn the action no longer takes), and it must carry
-	// a class so the two states are not pixel-identical.
-	expect(songRow).toMatch(/class:retry=\{retryProcess\}/);
+	// otherwise announces "Sing this", promising a turn the action no longer takes), and it must carry a
+	// visual signal so the two states are not pixel-identical.
+	//
+	// RE-ANCHORED when the control became `<Button variant="iconPrimary">`. `class:retry` could not
+	// survive: a `class:` directive is invalid on a component, and a class passed to one is scoped to the
+	// caller where Svelte strips it. The state now rides on a DATA ATTRIBUTE the component forwards, and
+	// the rule reaches it with an anchored `:global()`. Same claim, two new spellings.
+	expect(songRow).toMatch(/data-retry=\{retryProcess \? '' : undefined\}/);
 	// actionLabel branches on retryProcess, so the screen-reader text differs on the retry.
 	const label = songRow.match(/const\s+actionLabel\s*=\s*\$derived\(([\s\S]*?)\);/);
 	expect(label).not.toBeNull();
@@ -47,12 +52,15 @@ test('F1: the retry state reaches the .sing markup (label, title and class)', ()
 	// and the retry keeps the button ENABLED — the whole point of showing the failed state is that
 	// the process can be retried (readiness.ts canProcess('failed')). A `disabled` on the sing button would
 	// break the fix in the other direction.
-	const singBtn = songRow.match(/<button\s+class="sing"[\s\S]*?<\/button/);
+	const singBtn = songRow.match(/<Button\s+variant="iconPrimary"[\s\S]*?<\/Button>/);
 	expect(singBtn).not.toBeNull();
 	expect(singBtn![0]).not.toMatch(/\bdisabled\b/);
-	// the retry state is also visually distinct — a .sing.retry rule so a first tap and a re-process are
-	// not pixel-identical. Reverting the CSS alone leaves class:retry inert.
-	expect(songRow).toMatch(/\.sing\.retry\s*\{[^}]*box-shadow[^}]*var\(--danger-line\)/);
+	// the retry state is also visually distinct, so a first tap and a re-process are not pixel-identical.
+	// Reverting the CSS alone leaves the data attribute inert. The rule must stay ANCHORED under `.row`:
+	// an unanchored :global() would ring every retrying button in the app.
+	expect(songRow).toMatch(
+		/\.row :global\(\[data-slot='button'\]\[data-retry\]\)\s*\{[^}]*box-shadow[^}]*var\(--danger-line\)/
+	);
 });
 
 test('F1: singThis passes hasQueuedTurn so the retry does not queue a second turn', () => {

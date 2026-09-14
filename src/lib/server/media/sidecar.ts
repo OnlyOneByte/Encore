@@ -225,11 +225,11 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			// Same runtime-first / preserve-prior rule as lyricsCandidates: an index-only hydrate that has
 			// not read the sidecar yet carries no profile on the Media, so falling back to the prior
 			// write is what stops a sidecar rewrite from erasing an already-recorded key/range.
-			songProfile: m.songProfile ?? prev?.artifacts.songProfile,
+			songProfile: m.songProfile ?? prev?.artifacts.songProfile
 			// Same runtime-first / preserve-prior rule, with `??` (never `||`) because a MEASURED 0 is a
 			// real offset — an aligned stem — that `||` would discard as falsy and re-read from the prior
 			// write. An index-only hydrate carries no offset on the Media, so falling back to prior is what
-			},
+		},
 		library: {
 			tags: prev?.library.tags ?? [],
 			addedAt: prev?.library.addedAt ?? now,

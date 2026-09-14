@@ -942,17 +942,30 @@ test('the phone header truncates a long display name instead of growing the row'
 	const cluster = page.match(/\.me-cluster\s*\{([^}]*)\}/);
 	expect(cluster).not.toBeNull();
 	expect(cluster![1]!).toMatch(/min-width:\s*0/);
-	const btn = page.match(/\.me-btn\s*\{([^}]*)\}/);
-	expect(btn).not.toBeNull();
-	expect(btn![1]!).toMatch(/min-width:\s*0/);
+	//
+	// RE-ANCHORED when the control became `<Button variant="identity">`. The chain is unchanged in
+	// SUBSTANCE and now spans two files, because the button element is rendered by the component while
+	// the flex item it sits in is rendered here. So the page keeps the wrapper's `min-width: 0`…
+	const slot = page.match(/\.me-slot\s*\{([^}]*)\}/);
+	expect(slot).not.toBeNull();
+	expect(slot![1]!).toMatch(/min-width:\s*0/);
+	// …and the variant must BOTH free its own minimum and undo the base's `shrink-0`. Dropping either
+	// half re-breaks the ellipsis: a non-shrinking button cannot narrow, so text-overflow never fires
+	// and a long name carries the gear off the viewport again — the exact bug this test exists for.
+	const button = stripComments(readFileSync(join(SRC, 'lib/components/ui/button/button.svelte'), 'utf8'));
+	const identity = button.match(/identity:\s*\n?\s*'([^']*)'/)?.[1] ?? '';
+	expect(identity).toMatch(/\bmin-w-0\b/);
+	expect(identity).toMatch(/\bshrink\b/);
 
 	// The dot and the gear must stay unshrinkable so the tap target and the colour dot survive.
 	const dot = page.match(/\.me-dot\s*\{([^}]*)\}/);
 	expect(dot![1]!).toMatch(/flex:\s*0 0 auto/);
-	const gear = page.match(/\.gear\s*\{([^}]*)\}/);
-	// var(--tap), not the number: touch-targets.test.ts owns the spelling rule and this pin must
-	// not be the one place a bare literal still satisfies a guard.
-	expect(gear![1]!).toMatch(/min-width:\s*var\(--tap\)/);
+	// The gear is `size="icon"` now. That size IS the tap box — `size-tap` resolves through the
+	// `--spacing-tap` bridge to `var(--tap)` — which keeps the original intent of this clause: the token,
+	// never a bare literal, and touch-targets.test.ts still owns the spelling rule.
+	expect(page).toMatch(/<Button[^>]*size="icon"[^>]*href="\/settings"/s);
+	const iconSize = button.match(/icon:\s*'([^']*)'/)?.[1] ?? '';
+	expect(iconSize).toMatch(/size-tap/);
 });
 
 test('every identity-dot rule declares a non-shrinking flex basis', () => {

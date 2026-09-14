@@ -157,7 +157,7 @@ test('the results view is driven by the query in place, with no browse mode or ?
 	// The back-gesture role is reassigned explicitly (not silently dropped): the "← Queue" control
 	// clears the search rather than navigating, which is what brings the queue back in place. It is
 	// still first in the DOM because it is first visually.
-	expect(PAGE).toMatch(/<button class="back-btn" onclick=\{clearSearch\}>/);
+	expect(PAGE).toMatch(/<Button[^>]*data-testid="back-to-queue"[^>]*onclick=\{clearSearch\}/s);
 	// The upward-stack auto-scroll is gated on `!searchActive` too, not the retired `browsing`: an empty
 	// box shows the queue and must NOT force-scroll to the bottom on every queue change. Reverting this
 	// gate to `!browsing` references an identifier this route no longer declares.

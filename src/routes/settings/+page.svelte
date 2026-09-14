@@ -16,6 +16,7 @@
 -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
 	import { untrack } from 'svelte';
 	import { goto, replaceState } from '$app/navigation';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -23,12 +24,14 @@
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { NativeSelect } from '$lib/components/ui/native-select';
-	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Switch } from '$lib/components/ui/switch';
 	import { Slider } from '$lib/components/ui/slider';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
 	import * as Collapsible from '$lib/components/ui/collapsible';
+	import * as AlertDialog from '$lib/components/ui/alert-dialog';
+	import * as Alert from '$lib/components/ui/alert';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -447,7 +450,9 @@
 
 	<main>
 		{#if failed}
-			<p class="warn banner" role="alert">That change could not be saved. Reverted to the last good value.</p>
+			<Alert.Root variant="destructive">
+				<Alert.Title>That change could not be saved. Reverted to the last good value.</Alert.Title>
+			</Alert.Root>
 		{/if}
 
 		<!--
@@ -479,7 +484,15 @@
 
 			<Tabs.Content value="you">
 				<!-- ── YOU ────────────────────────────────────────────────────────── -->
-				<div class="panel" id="panel-you" role="tabpanel" aria-labelledby="tab-you" tabindex="-1">
+				<!--
+					`.panel` is a LAYOUT wrapper only (flex column + gap). It deliberately carries no
+					`role="tabpanel"`, `aria-labelledby` or `tabindex`: `Tabs.Content` already renders the
+					tabpanel role, labels it from its trigger and owns focus. Declaring them again here
+					nested a second tabpanel inside the first, so every tab exposed TWO panels to a screen
+					reader. The ids were referenced by nothing — `SEL.settingsTab` resolves `#tab-<id>`, not
+					`#panel-<id>`.
+				-->
+				<div class="panel">
 					<Card.Root>
 						<Card.Header>
 							<Card.Title>Who you are</Card.Title>
@@ -521,18 +534,49 @@
 							<Card.Title>Leaving</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							{#if !confirmingLeave}
-								<button class="leave" onclick={askLeave}>Leave the room</button>
-								<Field.Description>Your queued songs go with you.</Field.Description>
-							{:else}
-								<p class="leave-warn" role="alert">{leaveWarning}</p>
-								<div class="pair">
-									<button class="stay" onclick={() => (confirmingLeave = false)}>Stay</button>
-									<button class="leave confirm" disabled={leaving} onclick={leaveRoom}>
-										{#if leaving}Leaving…{:else}Yes, leave{/if}
-									</button>
-								</div>
-							{/if}
+							<!--
+								A REAL modal, not an in-card swap. This is the only irreversible action on the phone
+								surface, and the previous form — swapping the trigger for a Stay/Yes-leave pair —
+								had no `role="dialog"`, no focus containment and no Escape: focus could tab out of
+								the confirm to the tab strip behind it, a screen reader was told nothing had changed
+								context, and the only way to back out was to find and hit Stay.
+
+								`AlertDialog` (not `Dialog`) is the right primitive: it renders `role="alertdialog"`,
+								which asks a screen reader to announce the description immediately rather than only
+								on focus, and it deliberately has no click-outside dismissal — a destructive confirm
+								should not be dismissible by a stray tap. Bits UI owns the focus trap, the Escape
+								handler and focus restoration to the trigger.
+
+								`open` is bound to `confirmingLeave` so `askLeave` still runs on OPEN and the cost is
+								fetched at the moment it is read out. Cancel and Escape both leave `leaveCost` in
+								place, which is harmless: it is re-fetched on the next open.
+							-->
+							<AlertDialog.Root bind:open={confirmingLeave}>
+								<AlertDialog.Trigger>
+									{#snippet child({ props })}
+										<Button {...props} variant="destructive" onclick={askLeave}>Leave the room</Button>
+									{/snippet}
+								</AlertDialog.Trigger>
+								<AlertDialog.Content>
+									<AlertDialog.Header>
+										<AlertDialog.Title>Leave the room?</AlertDialog.Title>
+										<!--
+											The warning is the dialog's DESCRIPTION rather than a separate
+											`role="alert"` paragraph. `role="alertdialog"` already announces the
+											description on open, so keeping the old live region would have said it
+											twice.
+										-->
+										<AlertDialog.Description>{leaveWarning}</AlertDialog.Description>
+									</AlertDialog.Header>
+									<AlertDialog.Footer>
+										<AlertDialog.Cancel variant="ghost">Stay</AlertDialog.Cancel>
+										<AlertDialog.Action variant="destructive" disabled={leaving} onclick={leaveRoom}>
+											{#if leaving}Leaving…{:else}Yes, leave{/if}
+										</AlertDialog.Action>
+									</AlertDialog.Footer>
+								</AlertDialog.Content>
+							</AlertDialog.Root>
+							<Field.Description>Your queued songs go with you.</Field.Description>
 						</Card.Content>
 					</Card.Root>
 
@@ -541,12 +585,13 @@
 				without this the You tab was a dead end for anyone who opened it and changed nothing — the
 				header's back arrow was the only way out, which no other tab relies on.
 			-->
-					<button class="done" onclick={() => goto('/')}>Done</button>
+					<Button size="block" onclick={() => goto('/')}>Done</Button>
 				</div>
 			</Tabs.Content>
 			<Tabs.Content value="party">
 				<!-- ── PARTY ──────────────────────────────────────────────────────── -->
-				<div class="panel" id="panel-party" role="tabpanel" aria-labelledby="tab-party" tabindex="-1">
+				<div class="panel">
+					<!-- layout only — see the YOU panel for why no tabpanel role here -->
 					<Card.Root>
 						<Card.Header>
 							<Card.Title>Rotation</Card.Title>
@@ -725,7 +770,7 @@
 							{/if}
 
 							<label class="check" for="song-intro-on">
-								<Checkbox
+								<Switch
 									id="song-intro-on"
 									checked={settings.room.songIntroEnabled}
 									onCheckedChange={(v) => onroom({ songIntroEnabled: v })}
@@ -916,7 +961,7 @@
 							{/if}
 
 							<label class="check" for="loudness-norm">
-								<Checkbox
+								<Switch
 									id="loudness-norm"
 									checked={settings.room.loudnessNormalization}
 									onCheckedChange={(v) => onroom({ loudnessNormalization: v })}
@@ -934,17 +979,18 @@
 				/stats is the GUEST page, so it is the one dashboard safe to reach from a surface any phone
 				can open. Its sibling on the Server tab is not, which is why they are not side by side.
 			-->
-					<a class="dash" href="/stats">
+					<Button variant="outline" size="block" href="/stats">
 						<Icon name="sparkle" />
-						Party stats <span class="dash-note">safe to share</span>
-					</a>
+						Party stats <Badge variant="neutral">safe to share</Badge>
+					</Button>
 
-					<button class="done" onclick={() => goto('/')}>Done</button>
+					<Button size="block" onclick={() => goto('/')}>Done</Button>
 				</div>
 			</Tabs.Content>
 			<Tabs.Content value="server">
 				<!-- ── SERVER ─────────────────────────────────────────────────────── -->
-				<div class="panel" id="panel-server" role="tabpanel" aria-labelledby="tab-server" tabindex="-1">
+				<div class="panel">
+					<!-- layout only — see the YOU panel for why no tabpanel role here -->
 					<p class="scope-note">Affects every room on this server.</p>
 
 					<Card.Root>
@@ -1081,13 +1127,13 @@
 							<Collapsible.Root bind:open={advancedOpen}>
 								<Collapsible.Trigger>
 									{#snippet child({ props })}
-										<button class="disclose" {...props}>
+										<Button variant="ghost" size="block" {...props}>
 											<Icon name={advancedOpen ? 'chevron-down' : 'chevron-right'} />
 											Advanced
 											<span class="disclose-now">
 												{settings.global.enqueueUpgrade ? 'Re-process on' : 'Re-process off'}
 											</span>
-										</button>
+										</Button>
 									{/snippet}
 								</Collapsible.Trigger>
 
@@ -1095,7 +1141,7 @@
 									{#snippet child({ props })}
 										<Card.Content id="advanced-body" {...props}>
 											<label class="check" for="enqueue-upgrade">
-												<Checkbox
+												<Switch
 													id="enqueue-upgrade"
 													checked={settings.global.enqueueUpgrade}
 													onCheckedChange={(v) => onglobal({ enqueueUpgrade: v })}
@@ -1142,12 +1188,12 @@
 				is reachable only from here. Linking it from the remote or the TV would advertise worker
 				ids, model names, host details and error strings to every device in the room.
 			-->
-					<a class="dash" href="/metrics">
+					<Button variant="outline" size="block" href="/metrics">
 						<Icon name="clock" />
-						Processing metrics <span class="dash-note">internal</span>
-					</a>
+						Processing metrics <Badge variant="neutral">internal</Badge>
+					</Button>
 
-					<button class="done" onclick={() => goto('/')}>Done</button>
+					<Button size="block" onclick={() => goto('/')}>Done</Button>
 				</div>
 			</Tabs.Content>
 		</Tabs.Root>
@@ -1201,13 +1247,12 @@
 	/* Only the server scope needs saying out loud; "You" and "Party" say it in the tab. */
 	.scope-note {
 		margin: 0 0 var(--space-md) var(--space-3xs);
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 	}
 	/* A failed write is about the page, not one card, so it sits above them all. */
-	.banner {
-		margin: 0 0 var(--space-md);
-	}
+	/* `.banner` is GONE: the save-failure line is `Alert variant="destructive"`, which owns its own
+	   block spacing. Deleted rather than kept, because an unused selector is a typecheck failure here. */
 
 	/*
 	 * Two controls per row where they are genuinely a pair (highlight + marker, font + case, splitter +
@@ -1313,33 +1358,15 @@
 	 */
 	.warn {
 		margin: var(--space-xs) 0 0;
-		font-size: 0.76rem;
+		font-size: var(--ph-text-xs);
 		color: var(--warn);
 	}
 
 	/* ── the one disclosure left ────────────────────────────────────────── */
-	.disclose {
-		width: 100%;
-		min-height: var(--tap);
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm);
-		padding: 0 var(--space-lg);
-		background: none;
-		border: 0;
-		color: var(--ink);
-		font-size: var(--ph-text-md);
-		font-weight: 700;
-		text-align: left;
-		cursor: pointer;
-	}
-	.disclose:focus-visible {
-		outline: 2px solid var(--focus);
-	}
 	/* States what is behind the door, so it does not have to be opened to be read. */
 	.disclose-now {
 		margin-left: auto;
-		font-size: 0.72rem;
+		font-size: var(--ph-text-xs);
 		font-weight: 600;
 		color: var(--ink-dim);
 	}
@@ -1348,10 +1375,10 @@
 		align-items: center;
 		gap: var(--space-sm);
 		min-height: var(--tap);
-		font-size: 0.86rem;
+		font-size: var(--ph-text-md);
 	}
 	/*
-	 * S3: was `.check input { width: 18px; height: 18px }`. The glyph is now <Checkbox>, which
+	 * S3: was `.check input { width: 18px; height: 18px }`. The control is now <Switch> (<Checkbox> in between), which
 	 * carries its own `size-[18px]` — scoped CSS cannot reach inside a child component, so the size had
 	 * to move with it. The TAP TARGET is unchanged and still this label's `min-height: var(--tap)`,
 	 * which is what the tap-floor ruling settled and what touch-targets.test.ts examines.
@@ -1363,45 +1390,12 @@
 	 * paragraph buried two of them in twenty words. --ink on --card2, not an accent colour: both accent
 	 * tokens fail AA as text (3.95:1 and 3.52:1), which contrast.test.ts scans for.
 	 */
-	.dash {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-sm);
-		min-height: var(--tap);
-		margin-bottom: var(--space-md);
-		border: 1px solid var(--line-strong);
-		border-radius: var(--radius-btn);
-		background: var(--card2);
-		color: var(--ink);
-		font-size: 0.88rem;
-		font-weight: 600;
-		text-decoration: none;
-	}
-	.dash-note {
-		color: var(--ink-dim);
-		font-weight: 400;
-		font-size: 0.76rem;
-	}
 
 	/* ── the two footer buttons ─────────────────────────────────────────── */
 	/*
 	 * Done is NOT accent: every control on the Party and Server tabs has already saved by the time it is
 	 * reached, so making it the loudest thing on screen would imply it commits something.
 	 */
-	.done {
-		display: block;
-		width: 100%;
-		min-height: var(--tap);
-		margin-top: var(--space-3xl);
-		padding: var(--space-lg);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		background: var(--card);
-		color: var(--ink);
-		font-size: 0.95rem;
-		cursor: pointer;
-	}
 	/* Save IS accent, because it is the one thing on this page that does not happen without a tap. */
 	/*
 	 * PAGE LAYOUT ONLY (S1). Width, min-height, padding, type and the disabled opacity moved
@@ -1414,41 +1408,19 @@
 		margin-top: var(--space-xl);
 	}
 
-	/* ── leaving ────────────────────────────────────────────────────────── */
-	.leave {
-		width: 100%;
-		min-height: var(--tap);
-		padding: 13px;
-		border-radius: 14px;
-		cursor: pointer;
-		background: transparent;
-		color: var(--danger-ink);
-		border: 1px solid var(--danger-line);
-		font-size: 0.95rem;
-	}
-	.leave.confirm {
-		background: var(--danger-bg);
-	}
-	.leave:disabled {
-		opacity: 0.5;
-	}
-	.leave-warn {
-		margin: var(--space-2xs) 0 var(--space-md);
-		font-size: 0.88rem;
-		color: var(--danger-ink);
-	}
-	.stay {
-		flex: 1;
-		min-height: var(--tap);
-		padding: 13px;
-		border-radius: 14px;
-		cursor: pointer;
-		background: var(--card2);
-		color: var(--ink);
-		border: 1px solid var(--line);
-		font-size: 0.95rem;
-	}
-	.pair .leave {
-		flex: 1;
-	}
+	/*
+	 * ── leaving ─────────────────────────────────────────────────────────
+	 * `.leave`, `.leave.confirm`, `.leave:disabled`, `.leave-warn`, `.stay` and `.pair .leave` are
+	 * GONE with the AlertDialog adoption. Six rules, and with them two off-scale `14px` radii, a raw
+	 * `0.88rem`, a hand-rolled `opacity: 0.5` disabled state and a `padding: 13px` that was the only
+	 * thing holding these controls over the 44px tap floor. `Button variant="destructive"` (the same
+	 * variant /admin uses) and `AlertDialog.Cancel variant="ghost"` own all of it now, and
+	 * `AlertDialog.Description` owns the warning's colour and rhythm.
+	 *
+	 * They are deleted rather than left in place because a Svelte rule matching nothing is an unused
+	 * selector, which this repo treats as a typecheck failure — `bun run check` must stay 0/0.
+	 *
+	 * `.pair` STAYS: four other cards still use it, and it is a grid rather than a flex so its gap
+	 * survives the ≤380px collapse.
+	 */
 </style>

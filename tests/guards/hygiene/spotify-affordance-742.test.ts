@@ -79,7 +79,8 @@ test('every row that can offer a turn also declares whether the song is processa
 test('SongRow disables the add button when the song can never be processed', () => {
 	// Without this the row falls through from the withheld Sing branch to a live "＋ Turn" and books the
 	// dead turn anyway — the fix would be cosmetic.
-	const addBtn = songRow.match(/<button\s+class="add"[\s\S]*?<\/button/);
+	// RE-ANCHORED when the control became `<Button variant="iconReady">`. Same claim, new spelling.
+	const addBtn = songRow.match(/<Button\s+variant="iconReady"[\s\S]*?<\/Button>/);
 	expect(addBtn).not.toBeNull();
 	expect(addBtn![0]).toMatch(/disabled=\{inQueue\s*\|\|\s*!processable\}/);
 	// the exact base shape must be gone, or the guard above could pass on a second add button elsewhere
@@ -89,13 +90,18 @@ test('SongRow disables the add button when the song can never be processed', () 
 });
 
 test('the disabled add also LOOKS unavailable — disabled alone reads as broken', () => {
-	// `.add` carries the app's actionable signal (a green border and a green mark). A full-strength green
-	// ＋ that does nothing when tapped reads as the app being broken, not as an action that is
-	// unavailable — and on a phone there is no hover to reveal the `title` that explains it. So the
-	// state needs a class AND a rule; reverting either leaves the other inert.
-	const addBtn = songRow.match(/<button\s+class="add"[\s\S]*?<\/button/);
-	expect(addBtn![0]).toMatch(/class:unavailable=\{!processable\}/);
-	const rule = songRow.match(/\.add\.unavailable\s*\{[^}]*\}/);
+	// The add action carries the app's actionable signal (a green border and a green mark). A
+	// full-strength green ＋ that does nothing when tapped reads as the app being broken, not as an action
+	// that is unavailable — and on a phone there is no hover to reveal the `title` that explains it. So
+	// the state needs a MARKER and a rule; reverting either leaves the other inert.
+	//
+	// RE-ANCHORED: `class:unavailable` could not survive the move to <Button> — a `class:` directive is
+	// invalid on a component, and a class passed to one is stripped in the caller. The state is a data
+	// attribute the component forwards, and the rule reaches it with an anchored `:global()`. The rule
+	// must stay anchored under `.row`: unanchored it would neutralise every button in the app.
+	const addBtn = songRow.match(/<Button\s+variant="iconReady"[\s\S]*?<\/Button>/);
+	expect(addBtn![0]).toMatch(/data-row-state=\{inQueue \? 'queued' : !processable \? 'unavailable' : undefined\}/);
+	const rule = songRow.match(/\.row :global\(\[data-slot='button'\]\[data-row-state='unavailable'\]\)\s*\{[^}]*\}/);
 	expect(rule).not.toBeNull();
 	// it must drop the accent, which is the whole point — a border colour change, not just opacity
 	expect(rule![0]).toMatch(/border-color:\s*var\(--line\)/);

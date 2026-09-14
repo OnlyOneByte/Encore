@@ -296,7 +296,7 @@
 		display: flex;
 		align-items: center;
 		gap: 7px;
-		font-size: 0.78rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 		margin-top: var(--space-3xs);
 	}
@@ -345,7 +345,7 @@
 	.stage {
 		display: flex;
 		justify-content: space-between;
-		font-size: 0.74rem;
+		font-size: var(--ph-text-xs);
 		color: var(--warn);
 		margin-top: 7px;
 	}

@@ -428,7 +428,7 @@ async function measureRemote(label, w, h) {
 		// (.searchbox input, .row .*, .qrow .t) are not selector hooks the guard tracks here. A later
 		// repoint moved the dead '.row .a' to '.row .byline' (SongRow renders <div class="byline">, never .a)
 		// and dropped the dead '.filter-chip' and '.b' targets (no component declares either class).
-		const targets = ['h1','h2','.searchbox input','.searchbox button','.row .t','.row .byline','.row .add','.row .sing','.qrow .t',${JSON.stringify(SEL.chip)},${JSON.stringify(SEL.dashCard)},'p','a'];
+		const targets = ['h1','h2','.searchbox input','.searchbox button','.row .t','.row .byline',${JSON.stringify(SEL.addTurn)},${JSON.stringify(SEL.sing)},'.qrow .t',${JSON.stringify(SEL.chip)},${JSON.stringify(SEL.dashCard)},'p','a'];
 		const out = {};
 		for (const sel of targets) {
 			const els = [...document.querySelectorAll(sel)];

@@ -160,7 +160,10 @@ function matchable(list: string[], reqs: Set<string>[]): boolean {
  */
 const ALLOWED_UNSTYLED: Record<string, string> = {
 	'reselect-body': 'LyricsReselect.svelte — a layout-neutral disclosure body wrapper; its children carry every rule',
-	'reselect-paste': 'LyricsReselect.svelte — wrapper around the textarea + actions, which are styled themselves',
+	// `reselect-paste` was here as an unstyled wrapper. Vendoring `ui/textarea` gave it a rule: the paste
+	// field's top margin is the call site's spacing, not the field's, so it stays in LyricsReselect as
+	// `.reselect-paste > :global([data-slot='textarea'])`. The margin is the incumbent's own value, kept
+	// so the swap moves nothing. The wrapper is styled now, so this entry is stale and had to go.
 	meta: 'tv/JoinBadge.svelte — the TV badge lays its own children out by grid; this wrapper adds nothing'
 };
 

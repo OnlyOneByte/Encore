@@ -229,7 +229,7 @@
 	   cannot push the transport off screen. */
 	.song {
 		margin: var(--space-xs) 0 0;
-		font-size: 1.35rem;
+		font-size: var(--ph-text-xl);
 		font-weight: 800;
 		line-height: 1.15;
 		display: -webkit-box;
@@ -240,7 +240,7 @@
 	}
 	.byline {
 		margin: var(--space-2xs) 0 0;
-		font-size: 0.82rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -300,7 +300,7 @@
 	:global(.tools-toggle) {
 		gap: var(--space-sm);
 		justify-content: flex-start;
-		font-size: 0.82rem;
+		font-size: var(--ph-text-sm);
 		font-weight: 600;
 		text-align: left;
 	}
@@ -325,7 +325,7 @@
 	   painted. This is the same reason the sentence sits outside the snippet at all (XR-PH-03). */
 	.tools-note {
 		margin: var(--space-3xs) 0 0;
-		font-size: 0.7rem;
+		font-size: var(--ph-text-2xs);
 		line-height: var(--lh-normal);
 		color: var(--ink-dim);
 	}

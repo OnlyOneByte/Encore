@@ -11,6 +11,7 @@
 	import Trend from '$lib/charts/Trend.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import * as Card from '$lib/components/ui/card';
+	import * as Alert from '$lib/components/ui/alert';
 
 	interface Stats {
 		library: { ready: number; catalog: number };
@@ -68,7 +69,7 @@
 	-->
 	<main aria-label="Party stats">
 		{#if failed}
-			<p class="note" role="alert">Could not load stats.</p>
+			<Alert.Root variant="destructive"><Alert.Title>Could not load stats.</Alert.Title></Alert.Root>
 		{:else}
 			<!--
 				ONE live region that EXISTS BEFORE ITS CONTENT CHANGES (the shadcn migration). This was
@@ -146,8 +147,8 @@
 						</Card.Header>
 						<Card.Content>
 							<Bars rows={stats.topRecent.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" />
-							<p class="note">Last {stats.window.days} days.</p>
 						</Card.Content>
+						<Card.Footer><p class="note">Last {stats.window.days} days.</p></Card.Footer>
 					</Card.Root>
 				{/if}
 
@@ -163,8 +164,8 @@
 						/>
 						<!-- Honest about the gap rather than silently short: the normalizer stores null instead of
 			     guessing a low-confidence artist, so some sung songs cannot be attributed at all. -->
-						<p class="note">Songs we couldn't match to an artist aren't counted.</p>
 					</Card.Content>
+					<Card.Footer><p class="note">Songs we couldn't match to an artist aren't counted.</p></Card.Footer>
 				</Card.Root>
 
 				<Card.Root>
@@ -173,8 +174,10 @@
 					</Card.Header>
 					<Card.Content>
 						<Trend points={stats.perDay} since={stats.window.since} until={now} />
-						<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
 					</Card.Content>
+					<Card.Footer>
+						<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
+					</Card.Footer>
 				</Card.Root>
 			{/if}
 		{/if}
@@ -320,10 +323,10 @@
 		line-height: var(--lh-tight);
 	}
 	.primary .n {
-		font-size: 2.6rem;
+		font-size: var(--ph-text-3xl);
 	}
 	.k {
-		font-size: 0.88rem;
+		font-size: var(--ph-text-md);
 	}
 	.sub,
 	.note {
