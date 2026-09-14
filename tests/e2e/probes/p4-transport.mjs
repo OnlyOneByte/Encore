@@ -120,7 +120,7 @@ async function readServerPlayback(timeoutMs = 2500) {
 				done = true;
 				try {
 					ws.close();
-				} catch {}
+				} catch { /* already closed, or never opened */ }
 				reject(new Error('WS probe timeout'));
 			}
 		}, timeoutMs);
@@ -132,7 +132,7 @@ async function readServerPlayback(timeoutMs = 2500) {
 				clearTimeout(t);
 				try {
 					ws.close();
-				} catch {}
+				} catch { /* already closed, or never opened */ }
 				resolve({ state: e.state, rev: e.rev });
 			}
 		};
@@ -293,7 +293,7 @@ try {
 				(/** @type {ReadyRow} */ row) => row.id !== firstReady.id && !extras.some((e) => e.id === row.id)
 			);
 			if (alt) extras.push(alt);
-		} catch {}
+		} catch { /* best-effort cleanup */ }
 		if (extras.length >= 2) break;
 	}
 	// The FIRST extra is bohemian (or the first available) — queued from phone2 so the "credit the
@@ -693,9 +693,7 @@ try {
 } finally {
 	try {
 		browser?.close();
-	} catch {}
-	try {
-	} catch {}
+	} catch { /* already closed, or never opened */ }
 }
 
 // ── report ───────────────────────────────────────────────────────────────────

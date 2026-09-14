@@ -323,7 +323,7 @@ async function subscribeMediaStatus(mediaId, timeoutMs = 20_000) {
 						resolve('done');
 					}
 				}
-			} catch {}
+			} catch { /* best-effort cleanup */ }
 		};
 		ws.onerror = () => resolve('ws-error');
 	});
@@ -442,7 +442,7 @@ if (processableCandidate) {
 				timeoutMs: 15_000,
 				name: `${processableCandidate.title} ready`
 			});
-		} catch {}
+		} catch { /* best-effort cleanup */ }
 	} else {
 		record(
 			'MEDIUM',

@@ -98,6 +98,11 @@
 	 * Returns just "violet", NOT "violet swatch": this is used as each preset radio's aria-label, and
 	 * the element is ALREADY announced as a radio by its role, so appending "swatch" makes a reader
 	 * say "violet swatch, radio button" — the noun is redundant control-type noise.
+	 *
+	 * @knipignore Used only by this component's own markup (`aria-label={colorName(c)}`), which knip
+	 * cannot see: knip.ts's compiler hands it just the `<script>` blocks. The `export` is also
+	 * load-bearing — two source scans match on it (tests/guards/hygiene/contract.test.ts and the
+	 * anchor in tests/e2e/contract.ts).
 	 */
 	export function colorName(hex: string): string {
 		const i = presetIndex(hex);

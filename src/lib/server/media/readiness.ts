@@ -9,11 +9,11 @@ import { type Media } from '../../contract';
 // `readinessOf` and the readiness union now live in the contract, because the client needs the same
 // classification and a hand-maintained second copy is what this used to be. Imported (not merely
 // re-exported: `partitionSearch` below calls it) and re-exported so the server-side callers that reach
-// for `media/readiness` keep one import.
-import { readinessOf, type CatalogReadiness } from '../../contract/process/readiness';
+// for `media/readiness` keep one import. The union itself is imported straight from the contract by the
+// callers that need it — a local alias here had no reader.
+import { readinessOf } from '../../contract/process/readiness';
 
 export { readinessOf };
-export type Readiness = CatalogReadiness;
 
 /** Case-insensitive substring match over the fields a human would search by. */
 export function matchesQuery(m: Media, query: string): boolean {
