@@ -5,6 +5,7 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
+	import NowPlayingBand from '$lib/components/NowPlayingBand.svelte';
 	import type { SongProfile } from '$lib/contract';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
@@ -674,6 +675,73 @@
 		canUp
 		canDown
 	/>
+
+	<h2 class="section">NowPlayingBand · every state</h2>
+	<!--
+		The band, which on the phone is DOCKED to the bottom of the viewport and (from phase 1b) lives in
+		the layout as app chrome. Here it renders inline, so its top border and shadow read as a seam
+		rather than as a lift off the page — that is the gallery's cost, not a defect.
+
+		Each state is captioned with what it proves. Two of them are the ones a screenshot is for:
+		`progress={null}` must draw an EMPTY ring rather than one pinned at zero (a 0% ring reads as a
+		stalled song), and the long-title case must ellipsise inside the band instead of sizing it, which
+		is only true while `.meta` keeps its `min-width: 0`.
+	-->
+	<!--
+		CONSTRAINED TO PHONE WIDTH ON PURPOSE. The gallery's column is desktop-wide, and the band is a
+		phone surface whose two controls are pinned right — demoed full-width they fall off the edge and
+		the long-title case stops proving anything, because a 900px band fits any title. 390px is the
+		reference device, so these five read as they will on the thing they are for.
+	-->
+	<div style="display:grid;gap:20px;max-width:390px;">
+		<div>
+			<p class="caption">Playing, mid-song — the canonical state</p>
+			<NowPlayingBand
+				title="Sweet Caroline"
+				singerName="Maya"
+				singerColor={SINGER_COLORS[0]}
+				artist="Neil Diamond"
+				progress={0.38}
+				isPlaying
+			/>
+		</div>
+		<div>
+			<p class="caption">Duration unknown (progress=null) — empty ring, NOT a zeroed one</p>
+			<NowPlayingBand
+				title="Africa"
+				singerName="Ada"
+				singerColor={SINGER_COLORS[2]}
+				artist="Toto"
+				progress={null}
+				isPlaying
+			/>
+		</div>
+		<div>
+			<p class="caption">Paused — the glyph swaps, the ring holds its position</p>
+			<NowPlayingBand
+				title="Mr. Brightside"
+				singerName="Liam"
+				singerColor={SINGER_COLORS[3]}
+				artist="The Killers"
+				progress={0.72}
+			/>
+		</div>
+		<div>
+			<p class="caption">Nothing playing — the disc is disabled and states why in words</p>
+			<NowPlayingBand />
+		</div>
+		<div>
+			<p class="caption">Long title + long name — both ellipsise, the band does not grow</p>
+			<NowPlayingBand
+				title="Don't Stop Believin' (Live at the Budokan, Remastered)"
+				singerName="Bartholomew"
+				singerColor={SINGER_COLORS[1]}
+				artist="Journey featuring absolutely everybody"
+				progress={0.11}
+				isPlaying
+			/>
+		</div>
+	</div>
 
 	<h2 class="section">GuidingTrack · every state</h2>
 	<!-- Off (the shipped default), a faint guide, halfway, full sing-along, and unavailable because the
