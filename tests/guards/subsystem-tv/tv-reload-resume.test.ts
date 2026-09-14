@@ -78,14 +78,26 @@ it('TvPlayer.svelte is wired to resume on a cold mount: imports and calls the re
 	expect(fn).toContain('resumeSeekTarget(');
 });
 
-it('TvPlayer.svelte is wired to resume on a cold mount: holds the room position in the seek effect so a cold mount can take it later', () => {
-	// The seek effect stashes seekSec into resumeTarget BEFORE applySeek — without the stash, a
-	// mount-time frame is lost the moment applySeek early-returns on a null master.
-	expect(src).toContain('resumeTarget = target;');
-	// applySeek must still run for the warm scrub path.
+it('TvPlayer.svelte is wired to resume on a cold mount: holds the room position ONLY when there is no element to take it', () => {
+	// The hold is CONDITIONAL on the element, and it lives inside `applySeek` beside the `master` read
+	// it depends on — not in the effect body, whose dependency set the playhead-isolation guard keeps
+	// down to "what a playback command asked for".
+	//
+	// THIS ASSERTION WAS INVERTED, and that is worth stating: it used to require the unconditional
+	// `resumeTarget = target;` in the effect body, so it actively pinned the defect. An unconditional
+	// hold survives a declined (sub-threshold) seek, and any later `canplay` — which fires on every
+	// readyState rise, not once per mount — applies it and rewinds the song. See
+	// tests/unit/lib/tv/playhead-canplay-jump.test.ts for the behavioural proof.
+	const fn = src.split('function applySeek(')[1]?.split('\n\tfunction ')[0] ?? '';
+	expect(fn).not.toBe('');
+	// Conditional on the element: held when there is none, CLEARED when there is one.
+	expect(fn).toMatch(/resumeTarget\s*=\s*el\s*\?\s*undefined\s*:\s*seekTarget/);
+	// The element is read through untrack, like every other input to this decision.
+	expect(fn).toContain('untrack(() => master)');
+	// The effect still drives it, and still holds no target of its own.
 	const effectBody = src.split('const target = seekSec;')[1]?.split('});')[0] ?? '';
-	expect(effectBody).toContain('resumeTarget = target;');
 	expect(effectBody).toContain('applySeek(target)');
+	expect(effectBody).not.toMatch(/resumeTarget\s*=/);
 });
 
 it('TvPlayer.svelte is wired to resume on a cold mount: takes the resume on the master canplay and CONSUMES it (once per load, stale seeks stay shut)', () => {
