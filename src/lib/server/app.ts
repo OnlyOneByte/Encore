@@ -478,7 +478,6 @@ export function getApp(): EncoreApp {
 					live.vocalsRef = undefined;
 					// The mix IS those two stems in one file — evicting them evicts it.
 					live.guideMixRef = undefined;
-					live.guideOffsetMs = undefined;
 					live.lyricsRef = undefined;
 					live.lyricsCandidates = [];
 					live.stemStatus = 'none';

@@ -88,9 +88,6 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 			const assigns = [...src.matchAll(/out\.artifacts\[["'](\w+)["']\]\s*=/g)].map((m) => m[1]!);
 			expect(assigns).toContain('stems');
 			expect(assigns).toContain('songProfile');
-			// guideOffsetMs is a SIBLING too — a measurement, not a file — and is guarded the same
-			// way, so a future edit that nested it inside `stems` reds here instead of at a party.
-			expect(assigns).toContain('guideOffsetMs');
 			// ...and never reaches through stems to do it.
 			expect(/artifacts\[["']stems["']\]\[["']songProfile["']\]/.test(src)).toBe(false);
 		});
@@ -108,9 +105,6 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 		expect(hub).toContain('artifacts?.songProfile');
 		// The exact drift that shipped once. Guard the shape, not just the presence of a read.
 		expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*songProfile/);
-		// guideOffsetMs is read the same way — top-level, never through stems.
-		expect(hub).toContain('artifacts?.guideOffsetMs');
-		expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*guideOffsetMs/);
 	});
 });
 
