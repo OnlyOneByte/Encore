@@ -233,25 +233,35 @@
 	 * `--dock-h`, so every scrolling column would reserve 24px of empty chrome to make one grab bar
 	 * easier to hit. An inset pseudo-element costs no layout at all.
 	 *
-	 * It expands SYMMETRICALLY, which puts 12px of it over the top of the strip below. The first version
-	 * of this comment claimed that was "safe by paint order rather than by luck", because the strip's
-	 * buttons are later siblings — and the measured gate disproved it on the next run: the magnifier read
-	 * a 32px hit extent inside a 44px box, having lost exactly those 12px. A POSITIONED pseudo-element
-	 * outranks a later sibling that establishes no stacking context of its own, so DOM order was never
-	 * doing the work. The buttons now say so explicitly (`.btn`/`.disc` below), which is the difference
-	 * between a guarantee and a coincidence.
-	 *
-	 * The 12px it legitimately owns belongs to the inert title text, where a tap opening the now-playing
-	 * detail is what a mini-player does anyway.
+	 * It expanded SYMMETRICALLY at first, and that was wrong twice over — both times caught by the
+	 * measured gate rather than by reading. The first version's comment claimed the overlap onto the
+	 * strip was "safe by paint order rather than by luck", because the strip's buttons are later
+	 * siblings; the magnifier then read a 32px hit extent inside a 44px box, because a POSITIONED
+	 * pseudo-element outranks a later sibling that establishes no stacking context of its own. DOM order
+	 * was never doing the work, so `.btn`/`.disc` below say it explicitly. The second problem was the
+	 * other direction and worse — see the rule itself.
 	 */
 	.handle::after {
 		content: '';
 		position: absolute;
 		left: 0;
 		right: 0;
-		/* (44 - 20) / 2 = 12px each way. Both terms are tokens, so this tracks either one moving. */
-		top: calc((var(--tap) - var(--space-4xl)) / -2);
-		bottom: calc((var(--tap) - var(--space-4xl)) / -2);
+		/*
+		 * DOWNWARD ONLY, and that asymmetry is the whole correctness of it. This expanded symmetrically
+		 * (±12px) until gate:measured named the blocker: a 44px control on /settings read a 0px hit
+		 * extent, "blocked by button.handle". The band is FIXED to the viewport, so 12px above it lands
+		 * on whatever page content is scrolled under it — on every phone surface. A control that steals
+		 * taps from the page it floats over is a worse defect than the small target this was fixing.
+		 *
+		 * Downward, the 44px fits entirely inside the band (20px of handle + 24 = 44, of the band's 77),
+		 * so it can never reach the page. It does overlap the strip below, and the two real controls
+		 * there declare --z-band-control to sit above it — measured, not assumed: the magnifier read 32px
+		 * of its 44px box until they did. What it legitimately owns is the inert title text, where a tap
+		 * opening the now-playing detail is what a mini-player does anyway.
+		 */
+		top: 0;
+		/* 20px of handle plus this reaches var(--tap); both terms are tokens, so it tracks either move. */
+		bottom: calc(var(--space-4xl) - var(--tap));
 	}
 	/*
 	 * ABOVE THE HANDLE'S HIT BOX, explicitly. Both are later siblings than `.handle`, which is NOT enough:

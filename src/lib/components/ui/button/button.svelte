@@ -38,7 +38,21 @@
 	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
 	export const buttonVariants = tv({
-		base: "rounded-md border border-transparent bg-clip-padding text-sm font-medium focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap outline-none select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+		/*
+		 * `no-underline text-inherit` ARE HERE BECAUSE A BUTTON MAY RENDER AS AN ANCHOR, and six of them
+		 * do — the identity control, the page-header back arrow, the drawer's "···" door, the settings
+		 * links. Tailwind's Preflight is OFF in this app (app.css is `source(none)`), so the UA's own
+		 * `a:link` style is never reset: every one of those was painted underlined, in the browser's link
+		 * colour, instead of taking the surface it was given. The phone header's own name button was the
+		 * visible case — a violet, underlined username sitting in a row of `--ink` text.
+		 *
+		 * On the BASE rather than on the identity variant, because it is a property of being a control
+		 * that happens to navigate, not of one call site. `tailwind-merge` resolves the colour against a
+		 * variant that sets its own (`iconPrimary`'s `text-[var(--on-accent)]`, `keycap`'s ink pair) by
+		 * keeping the variant's, so this changes nothing for a variant that already had an opinion — it
+		 * only stops an anchor falling back to the UA's.
+		 */
+		base: "rounded-md border border-transparent bg-clip-padding text-sm font-medium focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap outline-none select-none no-underline text-inherit disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
 			variant: {
 				iconPrimary:

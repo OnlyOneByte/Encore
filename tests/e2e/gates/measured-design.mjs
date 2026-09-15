@@ -63,7 +63,7 @@ import { repoRoot } from '../lib/repo-root.mjs';
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
- * @typedef {{ tag: string, type: string | null, cls: string, near: string, offscreen: boolean, boxH: number, hitH: number, occluded: number, fontSize: number }} Reading
+ * @typedef {{ tag: string, type: string | null, cls: string, near: string, offscreen: boolean, blockedBy: string | null, boxH: number, hitH: number, occluded: number, fontSize: number }} Reading
  */
 
 const CORE = repoRoot;
@@ -187,10 +187,27 @@ function sweepExpr(scope) {
 			// unmeetable by construction. Kept as an occlusion probe, which is what a far-edge reading
 			// is actually good for: an overlay covering part of a control.
 			let occluded = 0;
+			// WHAT blocked it, not just that something did. "something else is topmost" told a reader
+			// there was a problem and nothing about where to look — three separate investigations of this
+			// gate's own output ended in a hand-written probe to answer the same question. Naming the
+			// topmost element makes the failure message the diagnosis. null means the point had no element
+			// at all, which after the offscreen guard above can only mean a gap in the target's own paint.
+			let blockedBy = null;
 			if (onScreen) {
 				for (const f of [0.25, 0.5, 0.75]) {
 					const x = Math.min(Math.max(Math.round(tr.left + tr.width * f), 0), innerWidth - 1);
-					if (!inTarget(document.elementFromPoint(x, cy))) occluded++;
+					const hit = document.elementFromPoint(x, cy);
+					if (!inTarget(hit)) {
+						occluded++;
+						if (!blockedBy) {
+							blockedBy = hit
+								? hit.tagName.toLowerCase() +
+									(hit.className && hit.className.toString ? '.' + hit.className.toString().replace(/svelte-[\w-]+/g, '').trim().split(/\s+/).slice(0, 2).join('.') : '') +
+									' pe=' + getComputedStyle(hit).pointerEvents +
+									(hit === target.parentElement ? ' (the target OWN PARENT)' : '')
+								: 'nothing (no element at that point)';
+						}
+					}
 				}
 			}
 			const label = el.closest(${JSON.stringify(LABEL_SELECTOR)});
@@ -202,6 +219,7 @@ function sweepExpr(scope) {
 				cls: ((el.className && el.className.toString) ? el.className.toString() : '').replace(/svelte-[\\w-]+/g, '').trim().replace(/\\s+/g, ' '),
 				near,
 				offscreen: !onScreen,
+				blockedBy,
 				boxH: Math.round(r.height * 10) / 10,
 				hitH,
 				occluded,
@@ -374,7 +392,7 @@ try {
 			const q = QUARANTINE.find((e) => covers(e.where, label) && matches(r, e));
 			if (r.occluded > 0) {
 				occludedControls.push(
-					`${id}: something else is topmost at ${r.occluded} of 3 x positions along the control's own centre line`
+					`${id}: blocked by ${r.blockedBy} at ${r.occluded} of 3 x positions along the control's own centre line`
 				);
 			}
 			if (r.hitH >= TAP) {
@@ -382,7 +400,9 @@ try {
 				continue;
 			}
 			if (!q) {
-				newOffenders.push(`${id}: hit extent ${r.hitH}px (box ${r.boxH}px) < ${TAP}px`);
+				newOffenders.push(
+					`${id}: hit extent ${r.hitH}px (box ${r.boxH}px) < ${TAP}px${r.blockedBy ? ` — blocked by ${r.blockedBy}` : ''}`
+				);
 			} else if (r.hitH < q.measured - 1) {
 				worsened.push(`${id}: ${q.measured}px when quarantined, now ${r.hitH}px`);
 			}

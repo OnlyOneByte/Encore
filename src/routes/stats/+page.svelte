@@ -204,8 +204,15 @@
 	.stats {
 		display: grid;
 		gap: 1rem;
-		/* 3rem (48px) is off-scale — the scale stops at --space-4xl (20px) — so it stays a literal. */
-		padding: 1rem 0 3rem;
+		/*
+		 * 3rem (48px) is off-scale — the scale stops at --space-4xl (20px) — so it stays a literal, and
+		 * --dock-h is added to it to RESERVE THE BAND (XR-PH-12). The band became app chrome on every
+		 * phone surface, so this column has fixed chrome at its bottom edge where it previously had none;
+		 * without the reservation the last tile sits under it with no way to scroll clear. No env() term
+		 * here: the band carries the only home-indicator inset and it reaches this column through
+		 * --dock-h, so a second one would double the gap.
+		 */
+		padding: 1rem 0 calc(var(--dock-h, 0px) + 3rem);
 		max-width: 720px;
 		/* The PageHeader inside this block caps on --page-measure; match it to the content width so the
 		   header and the content share one measure at every viewport (and the header never caps below
