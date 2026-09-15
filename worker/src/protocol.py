@@ -167,8 +167,10 @@ class WorkerState:
         served by a `stems`/`stems:*` token — then match. Unknown/unnamespaced actions keep the
         plain prefix behaviour, so an action the worker cannot run is still refused.
         """
-        served_by = self._serving_action(job_type)
-        return served_by in self.capabilities or any(c.startswith(f"{served_by}:") for c in self.capabilities)
+        from .vocabulary import serves_family
+
+        # Same rule as every worker-local family check — stated once in the vocabulary.
+        return serves_family(self.capabilities, self._serving_action(job_type))
 
     @staticmethod
     def _serving_action(job_type: str) -> str:

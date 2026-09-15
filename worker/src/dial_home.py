@@ -25,6 +25,7 @@ from .mediastore import MediaStoreConfig, parse_media_store
 from .processor import CompleteResult, JobSpec, Processor, ProgressEvent, StubProcessor
 from .retry_policy import is_retryable
 from .runtime import scratch_for
+from .vocabulary import Capability, serves_family
 
 # All environment reading lives in config.py, so there is ONE place to look for "what is this worker
 # actually configured to do" — and so the perf knobs are testable without mutating os.environ.
@@ -640,7 +641,10 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     # `device` so it is unconditionally defined, then threaded into stems_runner below so it drives the
     # engine and is recorded into facts — not merely printed.
     backend: str | None = None
-    if any(c in cfg.capabilities for c in ("stems", "stems:roformer", "stems:ensemble", "align")):
+    # Any separation-family capability, or alignment, means this box does heavy ML and needs a resolved
+    # backend. Derived from the vocabulary rather than a literal list — the literal list here omitted
+    # `stems:audiosep`, so an audio-separator-only box never resolved a backend or printed the line.
+    if serves_family(cfg.capabilities, Capability.STEMS.family) or Capability.ALIGN in cfg.capabilities:
         from .backends import resolve_backend
         from .vocabulary import Engine
 
@@ -649,7 +653,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         backend = choice.backend.value
         print(f"[worker] separator backend: {choice.backend.value} — {choice.reason}", flush=True)
 
-    if any(c.startswith("fetch:") for c in cfg.capabilities):
+    if serves_family(cfg.capabilities, Capability.FETCH_YTDLP.family):
         from .plans import fetch_runner
         from .separation.demucs import subprocess_runner
 
@@ -663,7 +667,12 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         by_type["fetch"] = fetch_runner(
             runner=subprocess_runner, annotator=annotator, ytdlp_bin=cfg.ytdlp_bin
         )
-    if "stems" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
+    # THE BUG THIS FIXES: the two tokens were listed literally, so `stems:audiosep` — added to the
+    # probes later — never reached here. A box with audio-separator and no demucs proved
+    # `stems:audiosep`, advertised it, matched the core's `stems` routing on the `stems:` prefix, and
+    # bound NO stems runner: it accepted separation work it could not run a single job of. Asking the
+    # vocabulary which tokens serve the stems family means a new engine token cannot be missed here.
+    if serves_family(cfg.capabilities, Capability.STEMS.family):
         from .plans import stems_runner
         from .separation.demucs import subprocess_runner
 
@@ -708,7 +717,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         )
         by_type["stems"] = runner
         by_type["stems-upgrade"] = runner  # an upgrade is a separation job like any other
-    if "align" in cfg.capabilities:
+    if Capability.ALIGN in cfg.capabilities:
         from .config import whisperx_device_for
         from .lyrics import LrclibClient
         from .plans import align_runner
