@@ -464,11 +464,64 @@
 	 * than decoration: the 34rem minimum that makes eight numeric columns scroll instead of crushing,
 	 * and the sticky first column that keeps the step name beside its numbers while they do. `.scroller`
 	 * stays HERE because it is this page's layout, and the component's rules key off it as an ancestor.
+	 *
+	 * ONE SCROLL CONTAINER, AND IT IS THIS ONE. shadcn's <Table> renders its own
+	 * `<div data-slot="table-container" class="relative w-full overflow-x-auto">` around the <table>, so
+	 * before the rule below there were TWO nested scroll boxes: the inner one, being `w-full`, was
+	 * exactly as wide as `.scroller`, took all the overflow, and did all the scrolling — while
+	 * `.scroller` reported `scrollWidth === clientWidth` and looked broken to anyone measuring it (it
+	 * cost this author a wrong diagnosis). Nothing was unreachable, but the page could not own the
+	 * scroll state of a box it does not render, which is what the shadow affordance below needs.
+	 * Neutralising the inner container hands the overflow back to `.scroller`; the sticky first column
+	 * follows, because sticky resolves against the nearest scrolling ancestor.
 	 */
+	:global(.scroller [data-slot='table-container']) {
+		overflow-x: visible;
+		width: auto;
+	}
 	.scroller {
 		overflow-x: auto;
 		/* Room for the sticky column's own background to cover what slides under it. */
 		margin: 0 -0.1rem;
+		/*
+		 * SAY that it scrolls. Eight columns on a phone are cut at the card's edge with no hint that
+		 * anything is past it, and a touch browser's overlay scrollbar is invisible until you already
+		 * guessed and swiped — so the discoverability gap is exactly on the surface that needs it most.
+		 *
+		 * The classic four-layer technique, and the reason it is worth the density: it is HONEST with no
+		 * JavaScript and no resize observer. The two `local` layers are painted in the CONTENT's
+		 * coordinate space, so they travel with the table and sit OVER the `scroll` shadows at each end,
+		 * hiding a shadow exactly when there is nothing further that way. A table that fits shows
+		 * neither; a table scrolled to its end shows only the left one. An always-on fade would claim
+		 * there is more to see when there is not.
+		 *
+		 * RIGHT SIDE ONLY, and the left pair is deliberately absent rather than forgotten. The sticky
+		 * first column is `background: var(--card)` pinned at `left: 0`, so it paints over the scroller's
+		 * own background at exactly the place a left shadow would go — verified by sampling the pixels
+		 * after scrolling to the end: the left edge stayed rgb(26,26,40) with the pair present. CSS that
+		 * cannot render is worse than none, because the next reader debugs it instead of reading this.
+		 * Rightwards is also the direction that needs the hint: it is where the unseen columns are.
+		 *
+		 * LINEAR, not radial. The usual recipe reaches for `radial-gradient(farthest-side at 100% 50%)`
+		 * and it is invisible here — measured, not guessed: in a band 8.8px wide and ~200px tall,
+		 * `farthest-side` resolves to the VERTICAL half-height, so across the band's 8.8px the colour
+		 * barely leaves its start, and the edge pixel came back rgb(24,24,38) against a card of
+		 * rgb(26,26,40). A linear gradient falls off across the axis that is actually narrow: the same
+		 * pixel now reads rgb(12,12,19).
+		 *
+		 * KNOWN, and measured: when scrolled fully right, ONE pixel of shadow survives at the very edge.
+		 * `scrollLeft` clamps to the integer 342 while the true maximum is fractional, so the content —
+		 * and the `local` cover riding on it — stops a fraction of a pixel short. A `right -1px` offset on
+		 * the cover was tried and moved nothing. It reads as a hairline on the card's inner edge, it only
+		 * appears for a table that actually overflows, and it is not worth more than this paragraph.
+		 *
+		 * The shadow is --bg (#0b0b12) rather than a glow token: it has to read as depth against --card
+		 * (#1a1a28), and --stage-glow is the same lightness as the card, so it would have been invisible
+		 * for a second, unrelated reason. The cover is wider than the shadow it has to hide.
+		 */
+		background:
+			linear-gradient(to left, var(--card) 55%, transparent) right center / 1.5rem 100% no-repeat local,
+			linear-gradient(to left, var(--bg), transparent) right center / 1.25rem 100% no-repeat scroll;
 	}
 	/* .card in app.css has no padding — see the note in routes/stats/+page.svelte. */
 	/*

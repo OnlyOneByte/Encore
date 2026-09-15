@@ -15,10 +15,11 @@ const base = `http://127.0.0.1:${PORT}`;
 const OUT = process.env.OUT ?? '/tmp/metrics-shots';
 const TAG = process.env.TAG ?? 'shot';
 
-// This is an operator page with a 900px measure, so it is shot at desktop width. DPR 1 and a 1400px
-// height keep both axes under the 2000px an agent can read back.
-const W = 1000;
-const H = 1400;
+// This is an operator page with a 900px measure, so it is shot at desktop width by default. DPR 1 and
+// a 1400px height keep both axes under the 2000px an agent can read back. `SHOT_W` narrows it to a
+// phone, which is the case the tables' horizontal scroll exists for.
+const W = Number(process.env.SHOT_W ?? 1000);
+const H = Number(process.env.SHOT_H ?? 1400);
 
 const FIXTURE = {
 	sample: { attempts: 47, processes: 19, provisional: false },
