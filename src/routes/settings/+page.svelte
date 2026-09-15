@@ -589,7 +589,7 @@
 							
 
 							<Field.Label for="presence-grace">
-								Drop quiet phones after · {graceLabel}
+								Kick out after · {graceLabel}
 							</Field.Label>
 							<Slider
 								id="presence-grace"

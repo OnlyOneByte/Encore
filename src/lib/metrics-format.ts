@@ -9,6 +9,8 @@
 // readers (an operator debugging throughput vs a singer waiting on their song), so they are kept
 // apart on purpose rather than forced into one table.
 
+import { SEPARATOR_ENGINES } from '$lib/contract';
+
 /**
  * ms to a human duration. Null renders as an em dash, never as 0 — a missing timing is "not
  * recorded", not "took no time".
@@ -89,6 +91,25 @@ export const STAGE_LABELS: Record<string, string> = {
 	aligning: 'timing lyrics'
 };
 export const stageLabel = (stage: string): string => STAGE_LABELS[stage] ?? stage;
+
+/**
+ * A separator pairing as a person reads it: `demucs` + `bs-roformer-1297` is `BS-RoFormer 1297`, not
+ * `audio-separator / bs-roformer-1297`.
+ *
+ * Two reasons, and the second is why this is not merely cosmetic. The raw form printed the DATABASE's
+ * engine and model ids, which are implementation names — the same class of leak `STEP_LABELS` exists
+ * to stop one column to the left. And it was the widest cell on the page: the registry label is half
+ * the characters, which is the difference between a table that fits a phone and one that scrolls.
+ *
+ * The registry's own `label` is the source, so a model cannot be added without one. An id the
+ * registry does not know falls through to the raw pair rather than vanishing — an operator reading a
+ * row written by an older build must still be able to tell what ran.
+ */
+export function separatorLabel(engineId: string | null, modelId: string | null): string {
+	const model = SEPARATOR_ENGINES.flatMap((e) => e.models).find((m) => m.id === modelId);
+	if (model) return model.label;
+	return `${engineId ?? '—'} / ${modelId ?? '—'}`;
+}
 
 /**
  * A wall-clock timestamp in the viewer's LOCAL zone, as `YYYY-MM-DD HH:MM:SS`.

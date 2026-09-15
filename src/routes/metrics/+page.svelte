@@ -11,7 +11,7 @@
 	import { onMount } from 'svelte';
 	import Bars from '$lib/charts/Bars.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import { dur, stepLabel, stageLabel, pct, vsClaimed } from '$lib/metrics-format';
+	import { dur, stepLabel, stageLabel, pct, vsClaimed, separatorLabel } from '$lib/metrics-format';
 	import * as Card from '$lib/components/ui/card';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
@@ -210,10 +210,11 @@
 									<Table.Body>
 										{#each m.steps as s (s.jobType)}
 											<Table.Row>
-												<Table.Cell
-													>{stepLabel(s.jobType)}{#if s.provisional}<Badge variant="warn">few runs</Badge
-														>{/if}</Table.Cell
-												>
+												<Table.Cell>
+													<span class="named"
+														>{stepLabel(s.jobType)}{#if s.provisional}<Badge variant="warn">few runs</Badge>{/if}</span
+													>
+												</Table.Cell>
 												<Table.Cell>{s.n}</Table.Cell>
 												<Table.Cell><span class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</span></Table.Cell>
 												<Table.Cell>{dur(s.p50Ms)}</Table.Cell>
@@ -257,10 +258,12 @@
 									<Table.Body>
 										{#each m.models as r (String(r.engine) + String(r.model))}
 											<Table.Row>
-												<Table.Cell
-													>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<Badge variant="warn">few runs</Badge
-														>{/if}</Table.Cell
-												>
+												<Table.Cell>
+													<span class="named"
+														>{separatorLabel(r.engine, r.model)}{#if r.provisional}<Badge variant="warn">few runs</Badge
+														>{/if}</span
+													>
+												</Table.Cell>
 												<Table.Cell>{r.n}</Table.Cell>
 												<Table.Cell>{pct(r.meanRtFactor)}</Table.Cell>
 												<Table.Cell>{pct(r.declared?.rtFactor ?? null)}</Table.Cell>
@@ -307,9 +310,11 @@
 									<Table.Body>
 										{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
 											<Table.Row>
-												<Table.Cell
-													>{r.asrModel ?? '—'}{#if r.provisional}<Badge variant="warn">few runs</Badge>{/if}</Table.Cell
-												>
+												<Table.Cell>
+													<span class="named"
+														>{r.asrModel ?? '—'}{#if r.provisional}<Badge variant="warn">few runs</Badge>{/if}</span
+													>
+												</Table.Cell>
 												<Table.Cell class="name">{r.syncMode ?? '—'}</Table.Cell>
 												<Table.Cell>{r.n}</Table.Cell>
 												<Table.Cell>{dur(r.meanMs)}</Table.Cell>
@@ -499,6 +504,17 @@
 	 * scoped rule here cannot reach. What stays below is this page's own MEANING, not table styling.
 	 */
 	/* The dominant step, so "what is slow" is a glance rather than a comparison. */
+	/*
+	 * A name and its "few runs" qualifier were touching, because the badge followed the label text with
+	 * no separator at all. inline-flex rather than a margin on the Badge: the badge is a component, so a
+	 * class from here would be scoped to this file and stripped, and the gap belongs to the pairing
+	 * rather than to either half of it.
+	 */
+	.named {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2xs);
+	}
 	.lead {
 		color: var(--ink);
 		font-weight: 700;
