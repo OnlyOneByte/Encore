@@ -184,7 +184,7 @@ def test_line_sync_publishes_the_authoritative_source_OWN_timings_not_a_char_cou
     # — a character count, not a timestamp — and it ships as the human source's own. This pins that
     # the boundaries published for a bounded authoritative text are EXACTLY the source's own line
     # starts, no invented interior boundary between them.
-    from src.lyrics.lrclib import line_synced_lyrics
+    from src.lyrics.lrc import line_synced_lyrics
 
     over_long = "I walked the empty harbour road until the very morning came around again"  # > MAX_LINE_CHARS
     assert len(over_long) > lp.MAX_LINE_CHARS

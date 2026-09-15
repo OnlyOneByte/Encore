@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..vocabulary import Timing
-from .lrclib import entries_to_segments, fold_romanization_entries, parse_lrc, plain_lyrics_to_segments
+from .lrc import entries_to_segments, fold_romanization_entries, parse_lrc, plain_lyrics_to_segments
 from .model import LyricsDoc
 
 

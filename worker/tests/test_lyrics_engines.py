@@ -23,7 +23,7 @@ from src.lyrics.grading import (
     TIMING_WORD,
     LyricsText,
 )
-from src.lyrics.lrclib import plain_lyrics_to_segments  # noqa: E402
+from src.lyrics.lrc import plain_lyrics_to_segments  # noqa: E402
 from src.runtime.ctx import ResolvedEngines  # noqa: E402
 from src.steps.lyrics import _time_one  # noqa: E402
 from src.vocabulary import AsrModel, SyncMode, parse_asr_model, parse_sync_mode
@@ -183,13 +183,13 @@ def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, 
     import threading
     import time
 
-    import src.lyrics.aligner as aligner_mod
+    import src.lyrics.aligner as timing_mod
     import src.lyrics.asr as asr_mod
     from src.lyrics import aligner_for, transcriber_for
 
     if factory == "aligner":
-        cls = aligner_mod.WhisperxForcedAligner
-        cache = aligner_mod._ALIGNERS
+        cls = timing_mod.WhisperxForcedAligner
+        cache = timing_mod._ALIGNERS
         call = lambda: aligner_for("cpu")  # noqa: E731
     else:
         cls = asr_mod.WhisperxTranscriber
