@@ -239,7 +239,7 @@ def test_build_processor_routes_by_capability(monkeypatch):
     # config.resolve() fills it from probes, so a test that wants the full process states the full process.
     # (That is the point — the routing table is built from what the box can prove, and this box has
     # neither demucs nor whisperx installed.)
-    from src.config import WorkerConfig as _WC
+    from src.host.config import WorkerConfig as _WC
 
     full_process = _WC(capabilities=("fetch:ytdlp", "stems", "align"))
     p = _build_processor(full_process)
@@ -258,14 +258,14 @@ def test_build_processor_routes_by_capability(monkeypatch):
 
     # A fetch-ONLY worker is legitimate: it downloads and cannot separate. That asymmetry is why
     # acquisition routes on its own capability instead of riding along with stems.
-    from src.config import WorkerConfig
+    from src.host.config import WorkerConfig
 
     pf = _build_processor(WorkerConfig(capabilities=("fetch:ytdlp",)))
     assert isinstance(pf._by_type["fetch"], PlanRunner)
     assert "stems" not in pf._by_type
 
     # Capabilities come from the CONFIG seam, not a mutable module global — pass one explicitly.
-    from src.config import WorkerConfig
+    from src.host.config import WorkerConfig
 
     p2 = _build_processor(WorkerConfig(capabilities=("stems", "align")))
     assert isinstance(p2._by_type["align"], PlanRunner)
@@ -503,7 +503,7 @@ def test_torch_threads_exports_omp_for_the_demucs_SUBPROCESS(monkeypatch):
     The cap has to ride os.environ, which the child inherits."""
     import os
 
-    from src.config import WorkerConfig
+    from src.host.config import WorkerConfig
 
     monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
     monkeypatch.delenv("MKL_NUM_THREADS", raising=False)
@@ -516,7 +516,7 @@ def test_torch_threads_exports_omp_for_the_demucs_SUBPROCESS(monkeypatch):
 def test_no_torch_threads_leaves_the_environment_alone(monkeypatch):
     import os
 
-    from src.config import WorkerConfig
+    from src.host.config import WorkerConfig
 
     monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
     # jobs=1 with concurrency=1 means nothing can contend, which is the one case that keeps torch's own
@@ -528,7 +528,7 @@ def test_no_torch_threads_leaves_the_environment_alone(monkeypatch):
 def test_threads_are_capped_automatically_once_separations_can_contend(monkeypatch):
     import os
 
-    from src.config import WorkerConfig
+    from src.host.config import WorkerConfig
 
     monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
     # The knob no longer has to be set by hand: concurrency x jobs > 1 derives a cap, and the cap has
@@ -542,7 +542,7 @@ def test_threads_are_capped_automatically_once_separations_can_contend(monkeypat
 
 
 def test_oversubscription_warns_when_concurrency_times_jobs_exceeds_cores():
-    from src.config import WorkerConfig
+    from src.host.config import WorkerConfig
 
     cfg = WorkerConfig.from_env({"ENCORE_WORKER_CONCURRENCY": "4", "ENCORE_DEMUCS_JOBS": "4"})
     warns = dh.oversubscription_warnings(cfg, 10)
@@ -553,7 +553,7 @@ def test_oversubscription_warns_when_concurrency_times_jobs_exceeds_cores():
 
 
 def test_oversubscription_silent_when_it_fits_and_threads_are_capped():
-    from src.config import WorkerConfig
+    from src.host.config import WorkerConfig
 
     cfg = WorkerConfig.from_env(
         {"ENCORE_WORKER_CONCURRENCY": "2", "ENCORE_DEMUCS_JOBS": "4", "ENCORE_TORCH_THREADS": "1"}
@@ -562,7 +562,7 @@ def test_oversubscription_silent_when_it_fits_and_threads_are_capped():
 
 
 def test_oversubscription_is_a_noop_when_cores_are_unknown():
-    from src.config import WorkerConfig
+    from src.host.config import WorkerConfig
 
     cfg = WorkerConfig.from_env({"ENCORE_WORKER_CONCURRENCY": "8", "ENCORE_DEMUCS_JOBS": "8"})
     assert dh.oversubscription_warnings(cfg, None) == []
@@ -1003,7 +1003,7 @@ async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_align_plan(tmp_
     plan it builds, runs it through a recording runner, and asserts the configured binary lands at
     argv[0]. `/opt/encore/bin/yt-dlp` is a literal path the code never constructs.
     """
-    from src.config import WorkerConfig
+    from src.host.config import WorkerConfig
     from src.runtime import Ctx
     from src.steps.lyrics import FetchCaptions
 

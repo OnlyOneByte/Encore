@@ -2424,7 +2424,7 @@ def test_Selection_to_record_persists_the_coverage_winnerSuspect_was_decided_on_
 # Injecting it straight into the step ctor (as test_captions does) proves the STEP honours it but leaves
 # every wiring hunk unpinned — the built-and-not-wired hazard. These pin each seam of the chain: revert
 # any threading hunk and a FetchCaptions step stops carrying the flag, reddening exactly one of these.
-from src.config import WorkerConfig  # noqa: E402
+from src.host.config import WorkerConfig  # noqa: E402
 from src.steps.lyrics import FetchCaptions as _FetchCaptions  # noqa: E402
 
 

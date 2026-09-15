@@ -259,7 +259,7 @@ def host_facts() -> dict[str, Any]:
     """
     import platform
 
-    from .hardware import probe
+    from .host.hardware import probe
 
     try:
         report = probe()

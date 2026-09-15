@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest  # noqa: E402
 
-from src.config import WorkerConfig  # noqa: E402
+from src.host.config import WorkerConfig  # noqa: E402
 from src.retry_policy import BoundaryError  # noqa: E402
 from src.separation import demucs as d  # noqa: E402
 from src.separation.engines import (  # noqa: E402

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from . import protocol
-from .ffmpeg import ffmpeg_argv
+from .host.ffmpeg import ffmpeg_argv
 
 # Stored stem formats — BOTH stems are lossless FLAC:
 #   instrumental -> FLAC (lossless). It comes out of the speakers at volume, and it is the one place

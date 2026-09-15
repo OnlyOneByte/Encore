@@ -289,7 +289,7 @@ import pytest  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.config import WorkerConfig  # noqa: E402
+from src.host.config import WorkerConfig  # noqa: E402
 from src.processor import JobSpec  # noqa: E402
 from src.runtime import Ctx  # noqa: E402
 from src.steps.lyrics import AUTHORED, MACHINE, FetchCaptions  # noqa: E402
