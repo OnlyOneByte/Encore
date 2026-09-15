@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.lyrics import lrc as lf  # the FORMAT half
 from src.lyrics import lrclib as ls  # the CLIENT half  # noqa: E402
+from src.lyrics import model as lm  # the artifact-shape predicates
 
 # ── LRC parsing ──────────────────────────────────────────────────────────────────
 LRC = """[ar:a-ha]
@@ -99,9 +100,9 @@ def test_line_synced_lyrics_shape_and_validity():
     assert [ln["text"] for ln in doc["lines"]] == ["a", "b"]
     assert all(ln["words"] == [] for ln in doc["lines"])  # line-synced → NO word timings
     assert doc["words"] == []
-    assert lf.is_line_synced(doc) is True  # ≥1 line with numeric start + text (words NOT required)
-    assert lf.is_line_synced({"lines": []}) is False
-    assert lf.is_line_synced({"lines": [{"text": "x"}]}) is False  # no numeric start
+    assert lm.is_line_synced(doc) is True  # ≥1 line with numeric start + text (words NOT required)
+    assert lm.is_line_synced({"lines": []}) is False
+    assert lm.is_line_synced({"lines": [{"text": "x"}]}) is False  # no numeric start
 
 
 # ── LRCLIB URL + response parse ──────────────────────────────────────────────────────

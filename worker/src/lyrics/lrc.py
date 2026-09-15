@@ -14,8 +14,6 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from .model import LyricsDoc
-
 # A line-level LRC timestamp: [mm:ss], [mm:ss.xx], [mm:ss.xxx], or the [mm:ss:xx] colon variant.
 # Anchored per-scan so we can peel MULTIPLE leading stamps off one line ([00:12][00:47]repeat).
 _LRC_STAMP_RE = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]")
@@ -212,9 +210,3 @@ def line_synced_lyrics(segments: list[dict[str, Any]], language: str | None = No
             line["romanization"] = seg["romanization"]
         lines.append(line)
     return {"language": language, "lines": lines, "words": []}
-
-
-def is_line_synced(doc: dict[str, Any]) -> bool:
-    """A usable line-synced artifact: a line with a numeric start and text. Word timings NOT required —
-    that is the distinction from `is_valid_lyrics`, which demands words."""
-    return LyricsDoc(doc).is_line_synced()

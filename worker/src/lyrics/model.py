@@ -13,6 +13,8 @@ shape independently:
   * `validate.line_starts` re-derived the same `lines`-or-`segments` read for line starts.
   * `artifact.is_valid_lyrics` read `doc["lines"]` alone and asked whether any line had words.
   * `source.is_line_synced` read `doc["lines"]` alone and asked whether any line had a start and text.
+    (That file is `lrc.py` now, and the predicate itself has since moved HERE — see the bottom of this
+    module. It judges the artifact's shape, which is this module's subject.)
 
 Two of them tolerated the alternate `segments` key and two did not, and nothing said which was right —
 so the answer to "what counts as a line here" depended on which function you happened to call.
@@ -286,3 +288,17 @@ class LyricsText:
 
     def is_usable(self) -> bool:
         return any(str(s.get("text") or "").strip() for s in self.segments)
+
+
+def is_line_synced(doc: dict[str, Any]) -> bool:
+    """A usable line-synced artifact: a line with a numeric start and text.
+
+    Word timings NOT required — that is the whole distinction from `is_valid_lyrics`, which demands words.
+
+    A free function beside the class because its CALLERS hold a plain dict: `_time_one` asks this of a doc
+    it just built, and wrapping one in `LyricsDoc` at every call site to ask a single question reads worse
+    than a named predicate. It lives here rather than in `lrc.py` because it judges the ARTIFACT's shape,
+    which is this module's subject — an LRC file is one thing that can produce such a doc, not the only
+    thing, and `lrc.py` was simply where the function happened to be written.
+    """
+    return LyricsDoc(doc).is_line_synced()

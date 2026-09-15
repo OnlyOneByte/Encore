@@ -66,8 +66,9 @@ from .grading import (
     lyrics_tokens,
     select_by_baselines,
 )
-from .lrc import entries_to_segments, is_line_synced, line_synced_lyrics, parse_lrc, plain_lyrics_to_segments
+from .lrc import entries_to_segments, line_synced_lyrics, parse_lrc, plain_lyrics_to_segments
 from .lrclib import LRCLIB_BASE, LrclibClient, LrclibResult, LyricsFetchError, rank_lrclib_candidates
+from .model import is_line_synced
 from .presplit import klp_probe_line, klp_status, presplit_texts
 from .registry import SPECS, SourceSpec, build_sources, unmet
 from .validate import (

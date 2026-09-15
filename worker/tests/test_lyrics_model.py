@@ -18,8 +18,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.lyrics.artifact import is_valid_lyrics  # noqa: E402
-from src.lyrics.lrc import is_line_synced  # noqa: E402
-from src.lyrics.model import LyricsDoc  # noqa: E402
+from src.lyrics.model import (
+    LyricsDoc,  # noqa: E402
+    is_line_synced,  # noqa: E402
+)
 from src.lyrics.validate import _words_of  # noqa: E402
 
 TIMED = [{"start": 0.0, "end": 0.5, "word": "a"}, {"start": 0.5, "end": 1.0, "word": "b"}]
