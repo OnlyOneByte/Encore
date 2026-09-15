@@ -253,6 +253,34 @@
 	--max-w: 480px;
 
 	/*
+	 * ══ THE TWO PAGE MEASURES ════════════════════════════════════════════════════════
+	 *
+	 * Every route used to pick its own desktop column width by hand, and six routes picked six
+	 * different ones: /stats 720, /metrics 900, /metrics/[mediaId] 760, /admin 44rem, /settings and
+	 * /song 560, while /, /find and /join inherited the shell's --max-w. On a phone this is invisible
+	 * (every one of them collapses to the viewport) but on a monitor the app read as six pages from
+	 * different products, and nothing in the tree explained why 720 rather than 760.
+	 *
+	 * There are genuinely TWO answers, not one, so this is a scale of two and not a single constant:
+	 *
+	 *   --measure-grid  the surfaces that WANT the width — card grids and metric tables, which fill
+	 *                   whatever they are given. This is --max-w itself, so they widen in the same two
+	 *                   steps as the shell and as anything docked to the bottom, and a route that
+	 *                   simply does not opt out already has it.
+	 *
+	 *   --measure-prose the surfaces that must NOT take the width — a settings form or a song page,
+	 *                   where the line length and the run between a label and its control are the
+	 *                   thing being protected. /settings already argued this in its own comment: it
+	 *                   opted out of the 480px phone cap because paired controls need room, then
+	 *                   capped itself well under the shell so a <select> never spans a monitor.
+	 *
+	 * A route picks a ROLE. It does not pick a number, and `design-system.test.ts` can see a literal
+	 * that duplicates one of these.
+	 */
+	--measure-grid: var(--max-w);
+	--measure-prose: 560px;
+
+	/*
 	 * ══ THE FIVE NON-COLOUR SCALES ═══════════════════════════════════════════════════
 	 *
 	 * WHY THESE EXIST AT ALL, WHICH IS NOT "TIDINESS". `design-system.test.ts` enforces one decidable
@@ -1063,6 +1091,25 @@ body {
 }
 
 /* mobile-first app shell: centered column, safe-area aware (notches/home indicator) */
+/*
+ * THE INLINE GUTTER LIVES HERE, and it is a `max()` against the safe-area inset rather than a
+ * replacement for it.
+ *
+ * This used to be the bare `env(safe-area-inset-*)` on all four sides, which is 0px on every screen
+ * without a notch — so the shell supplied NO horizontal gutter and each route was left to invent one.
+ * Most did; `/stats` did not (`padding: 1rem 0 …`), so at phone width its cards ran flush into both
+ * screen edges and its intro line began at x=0. Measured: `.stats` at [0, 390] in a 390px viewport with
+ * `paddingLeft/Right: 0px/0px`. Nothing was clipped and nothing overflowed — `scrollWidth` equalled
+ * `clientWidth` — the tiles simply ended exactly ON the edge, which is what reads as a cut-off card.
+ *
+ * A gutter on the shell fixes it for every route at once instead of adding a padding literal to each,
+ * and `max()` keeps the original job: in landscape on a notched phone the inset can exceed the gutter,
+ * and then the inset wins. The header is a child of this box and takes `width: 100%`, so it stays
+ * exactly as wide as the content column rather than double-counting the gutter.
+ *
+ * Bottom-docked chrome (the band, the drawer) deliberately does NOT inherit this: it caps on --max-w
+ * and spans the full column edge to edge, because a docked bar is chrome rather than content.
+ */
 .app-shell {
 	width: 100%;
 	max-width: var(--max-w);
@@ -1070,7 +1117,8 @@ body {
 	margin: 0 auto;
 	display: flex;
 	flex-direction: column;
-	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+	padding: env(safe-area-inset-top) max(var(--space-2xl), env(safe-area-inset-right))
+		env(safe-area-inset-bottom) max(var(--space-2xl), env(safe-area-inset-left));
 }
 
 /* shared primitives used across surfaces */

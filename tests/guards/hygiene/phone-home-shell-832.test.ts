@@ -66,6 +66,34 @@
 //      the drawer IS the act of revealing, so a disclosure inside it would be a second tap to see what
 //      the first tap was for. The nested "Vocal range" disclosure went with it: the range visualizer now
 //      sits DIRECTLY BELOW the key row, which is what it answers about.
+//
+// ══ THE MERGE PHASE, AND WHAT IT REVERSED (§5) ══════════════════════════════════════════════════
+//
+// §1 and §4 above are both written about a phone with TWO bottom surfaces — a docked band, and a drawer
+// it raised through a callback. There is ONE now, at two heights, and the arms that described the pair
+// are re-pointed or retired below rather than dropped:
+//
+//   5. THERE IS NO `.dock` WRAPPER, NO `drawerOpen`, AND NO `onexpand`. `NowPlayingBand` is COMPOSED
+//      inside `NowPlayingDrawer` as the first child of its content (`.band-slot`), which is snap point
+//      0 of a permanently-mounted vaul sheet, and vaul supplies the `position: fixed; bottom: 0` the
+//      wrapper used to. So the layout mounts one component, and the two-surface handshake —
+//      `let drawerOpen = $state(false)`, `bind:open={drawerOpen}`, `onexpand={() => (drawerOpen =
+//      true)}` — is BANNED rather than re-pointed: a sheet that never closes has no open state, and a
+//      band that IS the sheet needs nothing to raise it. What forced the change is a gesture: an
+//      outside element can START a pointer gesture but cannot hand the in-flight pointer to vaul, so
+//      the old band's handle advertised a drag it could only answer with a jump.
+//
+//      THE `class:covered={drawerOpen}` FADE IS RETIRED, and it is the one mechanism here that loses
+//      its assertions outright. It existed only because two surfaces of the same colour with matching
+//      top edges had to step out from under each other for the length of the open; one surface at two
+//      heights has nothing to hide. Its `opacity`-never-`visibility` rider goes with it — the docked-
+//      band arm below records that deletion where the assertion used to be.
+//
+//      `--dock-h` KEEPS ITS MEANING AND ITS SINGLE WRITER, published in two named steps instead of one
+//      binding: `.band-slot` measures itself with `bind:clientHeight={bandH}` inside the drawer (that
+//      height IS snap 0), the layout takes it back with `bind:bandH={dockH}`, and the layout alone
+//      calls `setProperty('--dock-h', …)` and removes it on teardown. `showBand` keeps its name and its
+//      definition, so the "joined singer on a phone surface" gate is unchanged.
 import { test, expect } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { at, read } from '@encore/test-support';
@@ -106,24 +134,49 @@ test('home renders NO now-playing surface — the layout owns the drawer, and th
 	 *       still resolves — a deletion is invisible to a suite where nothing imports the route.
 	 *   (b) home mounts NO now-playing surface OF ANY KIND — not the hero, not the band, not the
 	 *       drawer — so the route cannot grow a second one beside the layout's and disagree with it.
-	 *   (c) the drawer is mounted EXACTLY ONCE, in the layout, bound to the layout's own open state and
-	 *       opened by the band's pull handle. A drawer nothing opens is the same defect as no drawer,
-	 *       and it is the defect the count alone would miss.
+	 *   (c) the drawer is mounted EXACTLY ONCE, in the layout, permanently, with the band composed
+	 *       INSIDE it as snap point 0. A drawer with no band in it is the same defect as no band, and it
+	 *       is the defect the count alone would miss.
 	 */
 	// (a) gone from the tree, not merely unmounted.
 	expect(existsSync(at('src/lib/components/NowPlayingHero.svelte'))).toBe(false);
 	// (b) no now-playing surface on this route, in either direction — element or import.
 	for (const surface of ['NowPlayingHero', 'NowPlayingBand', 'NowPlayingDrawer'])
 		expect(PAGE, `home must not mount \`${surface}\`: the layout is the one owner`).not.toContain(surface);
-	// (c) one drawer, in the layout, wired to the state the band's handle raises.
+	// (c) one drawer, in the layout, permanently mounted.
 	expect(LAYOUT).toMatch(/import NowPlayingDrawer from '\$lib\/components\/NowPlayingDrawer\.svelte';/);
 	expect((LAYOUT.match(/<NowPlayingDrawer\b/g) ?? []).length).toBe(1);
-	expect(LAYOUT).toMatch(/let drawerOpen = \$state\(false\)/);
-	expect(LAYOUT).toMatch(/<NowPlayingDrawer\s+bind:open=\{drawerOpen\}/);
-	expect(LAYOUT).toMatch(/onexpand=\{\(\) => \(drawerOpen = true\)\}/);
-	// …and the handle exists only when there is somewhere to pull to, which is the band's own gate: an
-	// affordance whose destination is absent is worse than no affordance.
-	expect(BAND).toContain('{#if onexpand}');
+	/*
+	 * RE-POINTED (§5), and what changed is the WIRING rather than the count. These three arms used to be
+	 * `let drawerOpen = $state(false)`, `bind:open={drawerOpen}` and `onexpand={() => (drawerOpen =
+	 * true)}` — the handshake between two surfaces. All three become BANS instead of moving to new
+	 * names, because the merge IS their removal: the sheet never closes, so there is no open state, and
+	 * the band is snap 0 of the sheet, so nothing raises it. Re-pointing them at some replacement name
+	 * would pin a handshake the design deleted.
+	 */
+	expect(LAYOUT, 'a permanently-mounted sheet has no open state').not.toMatch(/\bdrawerOpen\b/);
+	expect(LAYOUT, 'the band raises nothing now — it IS the sheet at snap 0').not.toContain('onexpand');
+	expect(LAYOUT, 'the layout mounts the drawer; the drawer mounts the band').not.toContain('<NowPlayingBand');
+	// …and the band really is in there, once, as the content's FIRST child, measuring itself into the
+	// height that IS snap 0. Ordered against the header so "first child" is a claim and not a hope.
+	expect((DRAWER.match(/<NowPlayingBand\b/g) ?? []).length).toBe(1);
+	expect(DRAWER).toMatch(/<div class="band-slot"[^>]*bind:clientHeight=\{bandH\}>/);
+	expect(DRAWER.indexOf('class="band-slot"')).toBeGreaterThan(-1);
+	expect(DRAWER.indexOf('class="band-slot"')).toBeLessThan(DRAWER.indexOf('<Drawer.Header'));
+	// The drag affordance inside that slot is vaul's own Handle — the element `handleOnly` restricts
+	// dragging TO. This is what the band's click-only button could not be: a click cannot track a thumb.
+	expect(DRAWER).toMatch(/<div class="band-slot"[\s\S]{0,200}?<Drawer\.Handle \/>/);
+	/*
+	 * RETIRED, WITH THE SOURCE FLAGGED. This arm required `{#if onexpand}` in `NowPlayingBand` — "the
+	 * handle exists only when there is somewhere to pull to, and an affordance whose destination is
+	 * absent is worse than no affordance". Nothing passes `onexpand` any more, so the band's gate is not
+	 * WRONG, it is DEAD: the prop, its `{#if}` and its `.handle` button are unreachable from the app,
+	 * and only /components still renders a band standalone. Asserting the gate's presence would pin dead
+	 * code in place; asserting its absence would demand a source edit this guard is not the place to
+	 * make. So it is recorded here and neither is asserted. NOTE for a source owner: `NowPlayingBand`'s
+	 * `onexpand` prop and handle button, and `routes/+layout.svelte`'s now-unreferenced
+	 * `import NowPlayingBand`, are all reachable only from /components. Flagged, not fixed.
+	 */
 
 	// The whole sheet rationale ("at a party you are either browsing or checking the queue, so the two
 	// should not fight over one scroll") is what direction A INVERTS, so the sheet must not still be here
@@ -280,18 +333,24 @@ test('the wait is summed from the CATALOG, with an absent media reported as unkn
 // ── the docked band reserves its space (XR-PH-12) ────────────────────────────────────────────────
 test('the docked band reserves its band in flow instead of overlapping rows (XR-PH-12)', () => {
 	/*
-	 * RE-POINTED, AND THE OWNERSHIP IS WHAT MOVED (header note §1). XR-PH-12 itself is untouched: the
-	 * band's height is MEASURED and reserved in normal flow, never guessed at with a constant. What
-	 * changed is who measures and who reserves. `.search-dock` in this route used to do both; the bottom
-	 * edge is `NowPlayingBand`'s now, so `routes/+layout.svelte` binds the `.dock` wrapper's
-	 * clientHeight and publishes `--dock-h`, and there are TWO consumers reserving it instead of one.
-	 * Asserted at both ends at the same strength, plus the new negative — this route must NOT publish
-	 * the token, because two writers of an inline `:root` property fight silently.
+	 * RE-POINTED, AND THE OWNERSHIP IS WHAT MOVED (header note §1, then §5). XR-PH-12 itself is
+	 * untouched: the band's height is MEASURED and reserved in normal flow, never guessed at with a
+	 * constant. What changed is who measures and who reserves. `.search-dock` in this route used to do
+	 * both; then a `.dock` wrapper in `routes/+layout.svelte` bound the band's clientHeight; now the band
+	 * is snap 0 of the drawer, so `.band-slot` measures ITSELF inside `NowPlayingDrawer` and the layout
+	 * takes that number back through `bind:bandH={dockH}` to stay the single publisher. Two steps, one
+	 * measurement, TWO consumers reserving it — asserted at every end, plus the negative: this route must
+	 * NOT publish the token, because two writers of an inline `:root` property fight silently.
 	 */
-	// The measured height, published — by the LAYOUT now, off the dock that actually holds the band.
-	expect(LAYOUT).toMatch(/bind:clientHeight=\{dockH\}/);
+	// The measured height — taken off the rendered band row, then published by the LAYOUT.
+	expect(DRAWER).toMatch(/<div class="band-slot"[^>]*bind:clientHeight=\{bandH\}>/);
+	expect(LAYOUT).toMatch(/bind:bandH=\{dockH\}/);
 	expect(LAYOUT).toMatch(/setProperty\(\s*'--dock-h'/);
-	expect(PAGE).not.toMatch(/bind:clientHeight=\{dockH\}/);
+	// MEASURED, not a constant, and this is where that word is falsifiable: the published value
+	// interpolates the bound state rather than naming a height.
+	expect(LAYOUT).toMatch(/setProperty\('--dock-h', `\$\{dockH\}px`\)/);
+	expect(PAGE).not.toContain('bind:clientHeight');
+	expect(PAGE).not.toContain('bind:bandH');
 	expect(PAGE).not.toMatch(/setProperty\(\s*'--dock-h'/);
 	// …and consumed by EVERY scrolling column. A constant here is the mockup's own bug: the docked band
 	// occluded queue row 5 because a disclosure grew inside a fixed shell.
@@ -304,7 +363,8 @@ test('the docked band reserves its band in flow instead of overlapping rows (XR-
 		);
 	}
 	// The band is LAST in the DOM, after the content it sits below, so tab order follows visual order.
-	expect(LAYOUT.indexOf('class="dock"')).toBeGreaterThan(LAYOUT.indexOf('{@render children()}'));
+	// RE-POINTED (§5): the thing mounted after the children is the drawer, which contains the band.
+	expect(LAYOUT.indexOf('<NowPlayingDrawer')).toBeGreaterThan(LAYOUT.indexOf('{@render children()}'));
 	// Nothing may dock off the retired sheet's token, or it reserves 132px of nothing.
 	for (const src of [PAGE, FIND, LAYOUT, BAND]) expect(src).not.toContain('var(--peek-h)');
 });
@@ -322,9 +382,43 @@ test('the now-playing band is docked for a joined singer, and the + Add a turn C
 	 * checked on all three surfaces rather than one — the find route is where a `browseToggle` would most
 	 * plausibly come back, since it IS the browse view.
 	 */
-	// Docked, gated on a joined singer, and it is the BAND that is mounted there.
-	expect(LAYOUT).toMatch(/\{#if showBand\}\s*<div class="dock" bind:clientHeight=\{dockH\}>/);
-	expect(LAYOUT).toContain('<NowPlayingBand');
+	// Docked, gated on a joined singer — and it is ONE component now (§5): the drawer, with the band
+	// composed inside it as snap point 0. `bind:bandH={dockH}` is the hop that carries the band's real
+	// rendered height back to the layout, which is still the only writer of --dock-h. Written with a
+	// bounded window rather than `[^>]*` because the tag's own props contain `>` (`() => goto(…)`), so a
+	// negated-class run would stop at the first arrow rather than at the end of the tag.
+	expect(LAYOUT).toMatch(/\{#if showBand\}\s*<NowPlayingDrawer\b[\s\S]{0,200}?bind:bandH=\{dockH\}/);
+	/*
+	 * RETIRED (§5) — two positive arms, recorded here because the mechanism is GONE rather than moved:
+	 *
+	 *     expect(LAYOUT).toMatch(/class:covered=\{drawerOpen\}/);
+	 *     expect(LAYOUT).toMatch(/\.dock\.covered \{\s*opacity: 0;/);
+	 *
+	 * They pinned the fade that took the band out from under the opening drawer. It was real: both
+	 * surfaces were `--card` with a 1px top border and a 12px top radius, so a sheet rising over the band
+	 * showed two matching top edges at once and read as a second copy of the same panel arriving rather
+	 * than as the panel growing. With one surface at two heights there is no second edge, nothing to
+	 * step out from under, and no state to drive a fade from.
+	 *
+	 * DELETED AS VACUOUS, not left green — the rider that travelled with them:
+	 *
+	 *     expect(LAYOUT).not.toMatch(/\.dock\.covered \{[^}]*visibility/s);
+	 *
+	 * WHAT IT PROTECTED: the fade had to be `opacity` and never `visibility` or a height change. The band
+	 * stayed in the layout while the drawer was open, so --dock-h must not move or every scrolling column
+	 * reflows behind it; and `visibility: hidden` would have cut the cross-fade to a pop.
+	 * WHY IT IS DELETED RATHER THAN RE-POINTED: there is no `.dock.covered` rule left for the negative to
+	 * examine, so it passes while looking at nothing — enforcement in appearance only. And the rule has no
+	 * successor to re-point it at: no fade means no property to insist on, so nothing can regress into
+	 * `visibility`. The bans below carry what is left of the claim, which is that the two-surface
+	 * arrangement itself must not come back.
+	 */
+	expect(LAYOUT, 'the retired fade: no class, no rule, no state named `covered`').not.toContain('covered');
+	expect(LAYOUT, 'the retired positioning wrapper — vaul fixes the drawer content itself').not.toContain(
+		'class="dock"'
+	);
+	// The band is mounted by the DRAWER now, which is the only place it can be and still be snap 0.
+	expect(DRAWER).toContain('<NowPlayingBand');
 	// `showBand` is what carries "joined singer" — a guest on the landing page gets no band, and the
 	// television (which is not a phone surface) gets none either.
 	expect(LAYOUT).toMatch(/const showBand = \$derived\(isPhoneSurface && me !== null\)/);
@@ -345,26 +439,53 @@ test('the now-playing band is docked for a joined singer, and the + Add a turn C
 		expect(src, `${where}: the retired browse toggle`).not.toContain('browseToggle');
 	}
 
-	// EXACTLY ONE fixed docked band across the phone surfaces, and it measures into --dock-h. Two bands
-	// both binding dockH was the shape BEFORE the owner correction (`.cta-dock` on home, `.search-dock`
-	// on browse); collapsing to one survived the band phase and is counted across all three files.
-	const bandBinds = [LAYOUT, PAGE, FIND].join('\n').match(/bind:clientHeight=\{dockH\}/g) ?? [];
-	expect(bandBinds.length).toBe(1);
 	/*
-	 * THE ONE-env() RULE, unchanged in substance and re-pointed to the three files it now spans. The
-	 * inset lives on the element that actually sits at the bottom edge of the screen — the BAND's own
-	 * padding — and reaches everything stacked above it THROUGH --dock-h, which is bound to the wrapper's
-	 * clientHeight and so includes that padding. A second env() term anywhere above doubles the gap on a
-	 * notched phone. So: one on the band, none on the `.dock` wrapper (positioning only), none on either
-	 * column's reserve.
+	 * EXACTLY ONE, RE-EXPRESSED AGAINST THE NEW IDIOM (§5) rather than deleted — the COUNT is the point of
+	 * this arm. Two bands both binding `dockH` was the shape BEFORE the owner correction (`.cta-dock` on
+	 * home, `.search-dock` on browse); collapsing to one survived the band phase and it survives the
+	 * merge. The single binding is now a two-step publish, so both steps are counted: one MEASUREMENT
+	 * (`bind:clientHeight={bandH}` on `.band-slot`, inside the drawer, which is also snap 0) and one HOP
+	 * (`bind:bandH={dockH}`, in the layout). A second of either forks the geometry the measurement exists
+	 * to keep single.
+	 */
+	const measured = DRAWER.match(/bind:clientHeight=\{bandH\}/g) ?? [];
+	expect(measured.length).toBe(1);
+	const hops = [LAYOUT, PAGE, FIND].join('\n').match(/bind:bandH=\{dockH\}/g) ?? [];
+	expect(hops.length).toBe(1);
+	// …and no phone surface measures a band of its own. WIDENED from the old `={dockH}` form: any
+	// clientHeight binding on one of these three is a second measurement competing with the band's.
+	for (const [where, src] of [
+		['routes/+layout.svelte', LAYOUT],
+		['routes/+page.svelte', PAGE],
+		['routes/find/+page.svelte', FIND]
+	] as const)
+		expect(src, `${where} must not measure a second docked band`).not.toContain('bind:clientHeight');
+	/*
+	 * THE ONE-env() RULE, unchanged in substance and re-pointed at the element that now sits between the
+	 * band and the bottom edge. The inset lives on the BAND's own padding and reaches everything stacked
+	 * above it THROUGH --dock-h, which is bound to `.band-slot`'s clientHeight and so includes it. A
+	 * second env() term ON OR INSIDE that measured element doubles the gap on a notched phone. So: one on
+	 * the band, none on `.band-slot` (height and clipping only), none on either column's reserve, and none
+	 * at all in the layout — which declares no CSS whatsoever now.
 	 */
 	const bandCss = BAND.slice(BAND.indexOf('.band {'), BAND.indexOf('.inner {'));
 	expect((bandCss.match(/env\(safe-area-inset-bottom/g) ?? []).length).toBe(1);
-	// Non-vacuity on the two slices below: an unmatchable selector slices to nothing, and a
-	// `not.toContain` over nothing passes while examining nothing.
-	const dockCss = LAYOUT.slice(LAYOUT.indexOf('.dock {'));
-	expect(LAYOUT.indexOf('.dock {'), '.dock must still be the positioning wrapper rule').toBeGreaterThan(-1);
-	expect(dockCss).not.toContain('env(safe-area-inset-bottom');
+	// Non-vacuity on the slices below: an unmatchable selector slices to nothing, and a `not.toContain`
+	// over nothing passes while examining nothing.
+	expect(DRAWER.indexOf('.band-slot {'), '.band-slot must still be the measured band row').toBeGreaterThan(-1);
+	const slotCss = DRAWER.slice(DRAWER.indexOf('.band-slot {'), DRAWER.indexOf('.band-slot :global(.band)'));
+	expect(slotCss.length).toBeGreaterThan(0);
+	expect(slotCss).not.toContain('env(safe-area-inset-bottom');
+	/*
+	 * The drawer CONTENT does carry an inset of its own, and it is not a second term in this stack: it is
+	 * an ANCESTOR of `.band-slot`, so its padding is outside the measured clientHeight, and it is the
+	 * bottom-most element only while the sheet is pulled up — which is exactly when the band is not.
+	 * Counted rather than named, so a THIRD env() cannot appear in this file unnoticed.
+	 */
+	expect((DRAWER.match(/env\(safe-area-inset-bottom/g) ?? []).length).toBe(1);
+	expect(LAYOUT, 'the layout declares no CSS at all now — vaul positions the content').not.toContain(
+		'env(safe-area-inset-bottom'
+	);
 	for (const [where, src] of [
 		['routes/+page.svelte', PAGE],
 		['routes/find/+page.svelte', FIND]
@@ -524,13 +645,19 @@ test('the shell imports what it is built from — a missing one is a build break
 	expect(PAGE).toMatch(/import MyPositionCard from '\$lib\/components\/MyPositionCard\.svelte';/);
 	/*
 	 * RE-POINTED (header note §4). The now-playing surface is the LAYOUT's, so the import this arm used
-	 * to pin here — `NowPlayingHero` — is pinned there instead, as the two components the layout mounts.
-	 * Same claim at the same strength, one address up: the layout has no unit harness either (it imports
+	 * to pin here — `NowPlayingHero` — is pinned there instead, as the component the layout mounts. Same
+	 * claim at the same strength, one address up: the layout has no unit harness either (it imports
 	 * `$app/state` and `$app/navigation`, neither of which the test harness aliases), so a dropped import
 	 * reds `build`/`typecheck` and leaves the suite green exactly as it did on the route.
+	 *
+	 * …and RE-POINTED ONE ADDRESS FURTHER for the band (§5). Its import used to be pinned here because the
+	 * layout mounted it; the DRAWER composes it now, so the drawer is where dropping it is a build break.
+	 * The layout's own `import NowPlayingBand` still exists and is UNREFERENCED — a leftover of the merge —
+	 * so this arm deliberately asserts neither its presence (which would pin dead code in place) nor its
+	 * absence (which would demand a source edit from a guard). Flagged for a source owner, not fixed.
 	 */
-	expect(LAYOUT).toMatch(/import NowPlayingBand from '\$lib\/components\/NowPlayingBand\.svelte';/);
 	expect(LAYOUT).toMatch(/import NowPlayingDrawer from '\$lib\/components\/NowPlayingDrawer\.svelte';/);
+	expect(DRAWER).toMatch(/import NowPlayingBand from '\$lib\/components\/NowPlayingBand\.svelte';/);
 	// songDisplay is what keeps the song's title and artist APART — `mediaTitle` welds them together,
 	// and the cards' own history is that the uploader ended up rendered as the artist. RE-POINTED with
 	// the mirror it serves: the layout is the one place that reads the room for the band and the drawer,
@@ -566,7 +693,18 @@ test('the route no longer declares the transport styles the drawer now owns', ()
 	 */
 	const DRAWER_SRC = read('src/lib/components/NowPlayingDrawer.svelte');
 	expect(DRAWER_SRC).toContain('aria-label="play/pause"');
-	expect(DRAWER_SRC).not.toContain('44px');
+	/*
+	 * RE-POINTED AT THE COMMENT-STRIPPED SOURCE (§5), and this one is a false positive rather than a moved
+	 * claim. `44px` is an assertion about a DECLARATION — a control sized by the number instead of by
+	 * `--tap`, which is XR-PH-01's whole point. The drawer's snap-point rationale now records its measured
+	 * symptoms in an "844px viewport", which CONTAINS that substring, so a raw scan reds on prose
+	 * documenting vaul's translate arithmetic. `DRAWER` is the same production file with its comments
+	 * blanked, which is the only text where a literal-versus-token claim can be about code.
+	 */
+	expect(DRAWER).not.toContain('44px');
+	// Non-vacuity: the transport really is in the stripped text, so the negative examines the file that
+	// declares it rather than an empty string.
+	expect(DRAWER).toContain('class="transport"');
 });
 
 // ── the docked-band token has ONE meaning, and the prose says which ──────────────────────────────

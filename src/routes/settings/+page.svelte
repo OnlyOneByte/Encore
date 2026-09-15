@@ -1210,7 +1210,7 @@
 	 * the two share one column, while the shell stays uncapped so nothing else is constrained.
 	 */
 	.settings-page {
-		--page-measure: 560px;
+		--page-measure: var(--measure-prose);
 	}
 	:global(.app-shell:has(.settings-page)) {
 		max-width: none;
@@ -1220,7 +1220,7 @@
 		/* A single readable column. Wider than the 480px phone cap so a desktop operator gets room for
 		   the paired controls, narrower than the shell's 1080px so a select never spans a monitor.
 		   Kept in sync with --page-measure above so the header aligns with this column. */
-		max-width: 560px;
+		max-width: var(--measure-prose);
 		margin: 0 auto;
 		/*
 		 * RESERVES THE BAND (XR-PH-12), and drops the env() term it used to carry itself.

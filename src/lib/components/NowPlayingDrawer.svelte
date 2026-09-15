@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount, tick } from 'svelte';
 	/*
 	 * THE NOW-PLAYING DRAWER — what the band pulls up into.
 	 *
@@ -46,6 +47,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Progress } from '$lib/components/ui/progress';
 	import Icon from '$lib/ui/Icon.svelte';
+	import NowPlayingBand from '$lib/components/NowPlayingBand.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
@@ -62,10 +64,27 @@
 
 	interface Props {
 		open?: boolean;
+		/**
+		 * The band's measured height, which IS snap point 0 — bindable so the layout can publish it as
+		 * `--dock-h` and keep exactly one writer of that token. The default is a plausible band height
+		 * rather than 0: snap 0 is `${bandH}px`, so a first paint at 0 would collapse the sheet to
+		 * nothing before the measurement lands.
+		 */
+		bandH?: number;
+		/**
+		 * Which snap point the sheet is at — the value (`'80px'` or `0.82`), not an index, because that is
+		 * what vaul writes. Bindable so a MOUNT-RUNG harness can put the sheet at a height: `open` no
+		 * longer distinguishes anything (the sheet is permanently mounted), so this is the only handle a
+		 * test has on collapsed-versus-pulled-up. Safe to bind now that snap 0 is a constant; binding a
+		 * re-measured value is what broke the snap lookup in the first place.
+		 */
+		activeSnapPoint?: number | string | null;
 		title?: string | null;
 		artist?: string | null;
 		singerName?: string | null;
 		singerColor?: string | null;
+		/** The band row's magnifier. */
+		onsearch?: () => void;
 		/** The song's musical profile — this component derives every key and range string from it. */
 		profile?: SongProfile | null;
 		keyShift?: number;
@@ -97,11 +116,14 @@
 	}
 
 	let {
-		open = $bindable(false),
+		open = $bindable(true),
+		bandH = $bindable(72),
+		activeSnapPoint = $bindable(null),
 		title = null,
 		artist = null,
 		singerName = null,
 		singerColor = null,
+		onsearch = undefined,
 		profile = null,
 		keyShift = 0,
 		keyShiftEnabled = false,
@@ -126,8 +148,69 @@
 		onpastelyrics
 	}: Props = $props();
 
+	/*
+	 * WHICH HEIGHT THE SHEET IS AT, and the replacement for the old `open` boolean.
+	 *
+	 * `open` no longer means anything a driver can read: the sheet is permanently mounted, so presence
+	 * of `.np-drawer` is TRUE at all times. This is the state that distinguishes collapsed from pulled
+	 * up, and vaul writes it as the snap VALUE (the `${bandH}px` string or the 0.82 fraction), not an
+	 * index. `null` lets vaul seat it on the first snap point itself rather than guessing a string that
+	 * has to stay byte-equal to the one in `snapPoints` as `bandH` is re-measured.
+	 */
+	/*
+	 * SNAP 0 IS A CONSTANT, and that is a correctness requirement rather than a simplification.
+	 *
+	 * Building snap 0 from the band's MEASURED height cannot work against this version of vaul. Two
+	 * mechanisms in `use-snap-points.svelte.js` decide it:
+	 *
+	 *   1. `snapToPoint()` does `set(drawerNode(), { transform: … })` with NO null guard, and its only
+	 *      trigger is `watch([activeSnapPoint, open])` — runed's LAZY watcher, which fires on change and
+	 *      never retries. Seat the snap point before `Drawer.Content` has bound its ref and the write
+	 *      lands on `null`, silently, forever. Measured symptom: content parked at top 850 in an 844px
+	 *      viewport with the correct 692px height, and a drag on the handle moving it DOWN.
+	 *   2. `snapPoints.findIndex((p) => p === activeSnapPoint)` is strict equality on the string. A
+	 *      re-measured height updates this component's state before the prop reaches vaul's box, so
+	 *      `'78px'` is looked up in `['72px', 0.82]`, returns -1, and no snap happens — also silently.
+	 *
+	 * So the band's height is FIXED here and `.band-slot` is given that exact height in CSS from this one
+	 * constant, rather than the constant being copied into a stylesheet where the two could drift. The
+	 * band's height was never really variable: it is a `--tap`-sized control row plus its padding, and
+	 * pinning it also stops the strip growing by a line when a byline appears.
+	 *
+	 * `--dock-h` is still MEASURED off the rendered `.band-slot` (see the layout), so the reservation
+	 * contract every docked control offsets from is unchanged — it just now measures an element whose
+	 * height is deterministic.
+	 */
+	const BAND_SNAP_PX = 80;
+	const SNAP_BAND = `${BAND_SNAP_PX}px`;
+	const SNAP_OPEN = 0.82;
+
+	/*
+	 * WHICH HEIGHT THE SHEET IS AT, and the replacement for the old `open` boolean. `open` no longer
+	 * means anything a driver can read: the sheet is permanently mounted, so `.np-drawer` is present at
+	 * all times. vaul writes this as the snap VALUE, not an index.
+	 */
+
+	/*
+	 * Seated ONCE, after mount, which is the whole point of `onMount` + `tick` here rather than an
+	 * `$effect`: the write has to happen when `drawerNode` is non-null, and it must be a CHANGE
+	 * (null → '80px') for the lazy watch to see it at all. `tick()` covers the ref binding landing
+	 * a microtask after the children mount.
+	 */
+	onMount(() => {
+		void tick().then(() => {
+			activeSnapPoint = SNAP_BAND;
+		});
+	});
+
+	/** Collapse to the band. What `open = false` used to do, expressed as a height. */
+	const collapse = () => (activeSnapPoint = SNAP_BAND);
+
 	// null (not 0) for an unknown length, so the seek row HIDES rather than pinning a bar at zero,
 	// which reads as a stalled song.
+	/* One fraction, two consumers: the seek bar at snap 1 and the transport arc on the band row at
+	   snap 0. The band used to be handed a separately-computed `progress` by the layout; deriving it
+	   once here is what stops the arc and the bar disagreeing mid-song. */
 	const progress = $derived(progressFraction(elapsedSec, durationSec));
 
 	// Every music string comes from the shared pure helpers; this file only decides WHEN to show each.
@@ -196,8 +279,75 @@
 	);
 </script>
 
-<Drawer.Root bind:open handleOnly>
-	<Drawer.Content class="np-drawer">
+<!--
+	ONE SURFACE AT TWO HEIGHTS, NOT TWO SURFACES.
+
+	The band used to be its own fixed element in `+layout.svelte` and this drawer its separate
+	expansion, wired together by an `onexpand` callback. That arrangement could not be dragged open:
+	an outside element can START a pointer gesture, but it cannot hand the in-flight pointer to vaul,
+	so the sheet jumped to its open height instead of tracking the thumb. The band's handle therefore
+	carried `cursor: grab` while only accepting a click — the affordance was a lie.
+
+	So the band is now snap point 0 OF THIS DRAWER. `snapPoints` accepts px strings ("You can also use
+	px values, which doesn't take screen height into account" — vaul-svelte's own types), which is what
+	lets snap 0 be the band's measured height rather than a fraction of the viewport. Dragging the
+	handle moves one element between two heights, which is why it can track the thumb.
+
+	The band is COMPOSED, not absorbed: `<NowPlayingBand>` renders as the content's first child and
+	keeps its own file, its own surface and its own `env(safe-area-inset-bottom)`. Inlining its markup
+	here would have moved ~200 lines of CSS whose rationale is written against `.band`, and /components
+	still renders five bands side by side to show every state — which a fixed, snap-pointed drawer
+	cannot do.
+
+	`dismissible={false}` with `open` is vaul's own documented pairing for a sheet that must never
+	close ("Use this in combination with the `open` prop"). `modal={false}` keeps the collapsed band
+	from trapping focus behind a scrim on every phone surface. `fadeFromIndex={1}` starts the overlay
+	at the SECOND snap point, so there is no scrim while the band is just sitting there.
+
+	`handleOnly` stays, and it is load-bearing rather than decorative: the body carries sliders, so a
+	drag started anywhere on the content would fight them (XR-PH-15). The handle exists at both
+	heights and is the one drag surface.
+-->
+<Drawer.Root
+	{open}
+	dismissible={false}
+	modal={false}
+	snapPoints={[SNAP_BAND, SNAP_OPEN]}
+	fadeFromIndex={1}
+	bind:activeSnapPoint
+	handleOnly
+>
+	<!--
+		`aria-label` IS THE IDLE FALLBACK NAME, and it is here because the head's title is now
+		conditional (see `.titlecol` below). bits-ui sets `aria-labelledby` only once a `Drawer.Title`
+		has mounted and registered its id (`dialog.svelte.js:207`), so with nothing playing the
+		attribute is absent and this is what names the dialog. With a song it is inert: `aria-labelledby`
+		wins the accessible-name cascade, so the song title still names the surface.
+	-->
+	<Drawer.Content class="np-drawer" aria-label="Now playing">
+		<!--
+			SNAP 0 — the band row, and the only thing on screen when the sheet is collapsed. It is the
+			content's FIRST child because vaul sizes the content to the largest snap point and translates
+			it down: what shows at snap 0 is the TOP of this element, so anything below the band row is
+			simply past the fold.
+
+			`bind:clientHeight` here is what makes snap 0 equal the band's REAL rendered height instead of
+			a guess, and the layout re-publishes it as `--dock-h` so every docked control still offsets
+			from one measured number (XR-VER-11).
+		-->
+		<div class="band-slot" style="--snap-band: {SNAP_BAND}" bind:clientHeight={bandH}>
+			<Drawer.Handle />
+			<NowPlayingBand
+				{title}
+				{artist}
+				{singerName}
+				{singerColor}
+				{progress}
+				{isPlaying}
+				{onsearch}
+				{ontoggleplay}
+			/>
+		</div>
 		<Drawer.Header class="np-head">
 			{#if singerName}
 				<div class="eyebrow">
@@ -207,7 +357,26 @@
 			{/if}
 			<div class="titlerow">
 				<div class="titlecol">
-					<Drawer.Title class="np-song">{hasSong ? title : 'Nothing playing'}</Drawer.Title>
+					<!--
+						THE HEAD NAMES THE SONG; IT DOES NOT RESTATE THE ROOM'S STATE.
+
+						This used to render `hasSong ? title : 'Nothing playing'`, which was correct while the
+						drawer was a SEPARATE surface that mounted on open — the band was a different element and
+						only one of the two was ever in the document. Now the band row is this sheet's own first
+						child and a snap-pointed sheet keeps its whole body mounted below the fold, so
+						"Nothing playing" was in the tree TWICE: once in `.band-slot`'s `.title` and once here.
+						Nothing on screen showed it twice — the head is past the fold at snap 0 — but a screen
+						reader reads the whole dialog, so it announced the same three words twice in a row.
+
+						The band row is the collapsed FACE of this surface and it already states the idle case, so
+						the head is the half that gives it up: with no song there is no song identity for the head
+						to carry, and its only remaining job was repetition. With a song the head keeps the title,
+						because that is the dialog's accessible name (`aria-labelledby`, see `Drawer.Content`) and
+						the band row's copy of it is a one-line glance rather than the heading.
+					-->
+					{#if hasSong}
+						<Drawer.Title class="np-song">{title}</Drawer.Title>
+					{/if}
 					<!-- No filler when there is nothing to say. "Adjust while you sing" described the drawer to the
 					     person who had just opened it, and "Queue a song to start the party" repeated the title
 					     back with encouragement attached. -->
@@ -222,7 +391,7 @@
 							size="icon"
 							href={`/song/${mediaId}`}
 							aria-label="More about this song"
-							onclick={() => (open = false)}
+							onclick={collapse}
 						>
 							<Icon name="dots" />
 						</Button>
@@ -347,7 +516,71 @@
 	 * pointing at nothing. The surface stays full-bleed (the vendored Content paints it) and only the
 	 * inner measure is capped.
 	 */
+	/*
+	 * THE BAND ROW AT SNAP 0. Layout only — plus one job: stopping the band painting a SECOND surface
+	 * inside the one that already exists.
+	 *
+	 * `NowPlayingBand` was the app's bottom chrome in its own right, so it carries a `--card` fill, a
+	 * 1px top border and `var(--shadow)`. The drawer content carries all three too. Composed one inside
+	 * the other, that put a hairline straight across the sheet just below the drag handle and stacked
+	 * two shadows on one edge. The content is the surface now, so the band goes transparent within it.
+	 *
+	 * Reached with `:global()` on purpose rather than by editing `NowPlayingBand.svelte`: the band still
+	 * renders standalone in /components, five of them side by side to show every state, and there it
+	 * genuinely needs its own surface. Suppressing the paint at the composition site is what lets both
+	 * call sites be right — and it keeps every guard that reads `.band`'s own rule green.
+	 *
+	 * `padding-bottom: env(safe-area-inset-bottom)` is deliberately NOT suppressed. It is the app's only
+	 * home-indicator inset, and this element's measured height is what becomes `--dock-h`, so the inset
+	 * has to be inside the measurement.
+	 */
+	.band-slot {
+		position: relative;
+		/* From the component's own BAND_SNAP_PX, so the rendered strip and snap 0 cannot drift. */
+		height: var(--snap-band);
+		overflow: hidden;
+	}
+	.band-slot :global(.band) {
+		background: transparent;
+		border-top: 0;
+		box-shadow: none;
+	}
+	/*
+	 * FULL-HEIGHT CONTENT, AND `max-height` DEFEATED — this is what makes the snap offsets land.
+	 *
+	 * vaul positions a snap point by TRANSLATING the content down by `containerHeight - snapHeight`.
+	 * That arithmetic assumes the content spans the viewport, so translating it by 764 leaves the top
+	 * 80px showing. The vendored `drawer-content.svelte` instead sets `h-auto` with
+	 * `max-h-[82dvh]` and anchors it `bottom-0`, which is right for a plain sheet and wrong here twice
+	 * over.
+	 *
+	 * Measured, in an 844px viewport: with `h-auto` the box was 214px and went wholesale off-screen.
+	 * With `height: 82dvh` it was the right 692px but its STATIC top was 152px, so vaul's correct 764px
+	 * transform put it at 916 — still below the fold. The transform was never the problem; the box it
+	 * was applied to was 692px tall instead of 844.
+	 *
+	 * So the content spans the viewport and `max-height` is released, and the OPEN height comes from the
+	 * snap point itself (`0.82`) rather than from a CSS cap. Snap 0 then shows exactly the band strip,
+	 * and snap 1 shows 82% of the screen.
+	 */
 	:global([data-slot='drawer-content'].np-drawer) {
+		height: 100dvh;
+		max-height: none;
+	}
+	:global([data-slot='drawer-content'].np-drawer) {
+		/*
+		 * ELEVATION, because without it the drawer read as a DUPLICATE of the band rather than as its
+		 * expansion. Both surfaces are `--card`, both carry a 1px top border and a 12px top radius, so a
+		 * sheet sliding up over the band showed two matching top edges for the length of the transition
+		 * and looked like a second copy of the same thing arriving. Nothing was duplicated — sampling the
+		 * DOM every 40ms through the open found exactly one content node and one overlay — the two
+		 * surfaces were simply indistinguishable.
+		 *
+		 * The shadow is the same `--shadow` the band itself casts, so the pair reads as one surface
+		 * lifting off another rather than two competing panels. The band also fades under it; see
+		 * `.dock.covered` in +layout.svelte.
+		 */
+		box-shadow: var(--shadow);
 		/*
 		 * THE DRAWER COVERS THE BAND, deliberately — and this reserved space for it underneath until a
 		 * captured frame showed the truth: the drawer's content is portalled to the end of the body at a
