@@ -49,6 +49,53 @@ class Diarizer(Protocol):
     def diarize(self, vocals_path: str) -> list[dict[str, Any]]: ...
 
 
+def _speaker_annotation(output: Any) -> Any:
+    """The `Annotation` carrying speaker turns, from EITHER shape a pyannote pipeline returns.
+
+    WHY THIS EXISTS. `pyannote.audio` 4.0 changed what calling a pipeline gives back. Its own release
+    notes show the new shape:
+
+        output = pipeline("/path/to/conversation.wav")
+        print(output.speaker_diarization)            # regular speaker diarization
+        print(output.exclusive_speaker_diarization)  # exclusive
+
+    Older versions returned the `Annotation` itself, which is what `itertracks` lives on. Calling
+    `itertracks` on the wrapper raises `AttributeError`, and `steps/diarize.py` catches every exception
+    and publishes single-colour lyrics — so the whole feature reads as "not a duet" rather than as
+    broken. That is exactly how the `use_auth_token` → `token` break stayed invisible for a whole
+    release: a safe fallback with no loud edge.
+
+    WHICH ATTRIBUTE WINS, and why that order. `speaker_diarization` is checked FIRST. An `Annotation`
+    does not have it, so a pre-4.0 object falls through to the `itertracks` branch untouched. An object
+    that has BOTH is a wrapper offering a compatibility shim, and the named attribute is the
+    unambiguous one — it cannot be the exclusive variant, and it will not trip a deprecation path.
+
+    `exclusive_speaker_diarization` is deliberately NOT used. pyannote describes it as a reconciliation
+    aid for imprecise transcription timestamps, which is a plausible fit for attributing lyric lines —
+    but that is a behaviour change to weigh with a real duet in front of you, not something to smuggle
+    into a compatibility shim.
+
+    A third shape raises a RuntimeError NAMING the type received. The step logs
+    `type(exc).__name__: exc`, so the next incompatible release says what it returned instead of
+    presenting as one more silently mono-coloured song.
+    """
+    inner = getattr(output, "speaker_diarization", None)
+    if inner is not None:
+        output = inner
+    if not hasattr(output, "itertracks"):
+        had_wrapper_key = hasattr(output, "speaker_diarization")
+        detail = (
+            " (it exposes `speaker_diarization`, but that was None)"
+            if had_wrapper_key
+            else " (no `itertracks`, and no `speaker_diarization` to unwrap)"
+        )
+        raise RuntimeError(
+            f"pyannote returned {type(output).__name__}, a shape this worker does not know how to "
+            f"read{detail}. Diarization is degrading to single-colour lyrics; see diarize/diarizer.py"
+        )
+    return output
+
+
 class PyannoteDiarizer:
     """Real diarization via a pyannote speaker-diarization pipeline.
 
@@ -90,7 +137,7 @@ class PyannoteDiarizer:
     def diarize(self, vocals_path: str) -> list[dict[str, Any]]:
         pipeline = self._load()
         with ML_LOCK:  # one pipeline, possibly two concurrent align jobs — see ML_LOCK
-            annotation = pipeline(vocals_path)
+            annotation = _speaker_annotation(pipeline(vocals_path))
         out: list[dict[str, Any]] = []
         # `itertracks(yield_label=True)` yields (segment, track_id, speaker_label).
         for segment, _track, speaker in annotation.itertracks(yield_label=True):
