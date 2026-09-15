@@ -1088,7 +1088,12 @@ test('a route page block that caps its width also centres it under the app-shell
 		const rule = css.match(new RegExp(`\\.${rootClass}\\s*\\{([^}]*)\\}`));
 		if (!rule) continue;
 		const body = rule[1]!;
-		const capsWidth = /(^|[;{\s])max-width:\s*\d/.test(body);
+		// A cap is a NUMBER OR A TOKEN. This began as `max-width:\s*\d`, which quietly stopped seeing
+		// every dashboard the moment the six hand-picked measures (720/900/760/44rem/560) collapsed into
+		// `var(--measure-grid)` / `var(--measure-prose)`: `checked` fell under its floor below and the
+		// non-vacuity assertion caught the disarm. `var(` is the whole addition — `none` still must not
+		// count, since removing a cap is what /settings does to the shell on purpose.
+		const capsWidth = /(^|[;{\s])max-width:\s*(\d|var\()/.test(body);
 		if (!capsWidth) continue; // no cap -> nothing to re-centre; this page fills the shell
 		checked++;
 		const autoMargin =

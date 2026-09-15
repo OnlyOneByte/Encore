@@ -209,7 +209,7 @@
 		 * range visualizer stretched to ~1300px. 560px matches /settings, the other route whose content is
 		 * a labelled fact list rather than a grid of rows.
 		 */
-		--page-measure: 560px;
+		--page-measure: var(--measure-prose);
 	}
 	main {
 		flex: 1;

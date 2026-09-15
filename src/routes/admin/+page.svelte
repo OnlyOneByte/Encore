@@ -181,10 +181,10 @@
 		   the full app-shell while the body sat in a centred 44rem column, so on desktop the title and
 		   the text it introduces had different left edges. Capping here puts both in one column, and the
 		   sticky header's background then covers the whole column width as content scrolls under it. */
-		max-width: 44rem;
+		max-width: var(--measure-grid);
 		margin: 0 auto;
 		/* Header and content share this measure via the PageHeader --page-measure cap. */
-		--page-measure: 44rem;
+		--page-measure: var(--measure-grid);
 		/* .app-shell is a centred flex column, so a cap alone takes width off the right only; width:100%
 		   keeps the stretch so margin:auto re-centres the capped block. Same reason as /stats. */
 		width: 100%;
