@@ -1,45 +1,26 @@
 <script lang="ts">
-	import {
-		SINGER_COLORS,
-		DEFAULT_EFFECTIVE_SETTINGS,
-		queueOrderLabel,
-		originalKeyLabel,
-		soundingKeyLabel,
-		rangeLabel,
-		rangeOctaves,
-		voiceBandSentence,
-		songDisplay,
-		chosenCandidate,
-		hasNewerCandidateThanOverride
-	} from '$lib/contract';
+	import { SINGER_COLORS, DEFAULT_EFFECTIVE_SETTINGS, queueOrderLabel } from '$lib/contract';
 	import { onMount, tick } from 'svelte';
 	import type {
 		QueueEntry,
 		Media,
 		PublicSinger,
 		PlaybackState,
-		PlayerCommand,
 		EffectiveSettings
 	} from '$lib/contract';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
-	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
 	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
-	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
-	import RangeBar from '$lib/components/RangeBar.svelte';
-	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { gripVisible, queueSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
 	import { nextPlayableEntryId, entryPlayable, queueCardKind } from '$lib/readiness';
 	import { positionWords } from '$lib/phrasing/position-sentence';
 	import type { MediaStatus } from '$lib/contract';
-	import { isPlayable, hasGuidingTrack, effectiveGuideLevel } from '$lib/contract';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
-	import * as Collapsible from '$lib/components/ui/collapsible';
 	import { Button } from '$lib/components/ui/button';
 	import * as Empty from '$lib/components/ui/empty';
 
@@ -157,7 +138,6 @@
 			settings = room.settings;
 			awaySingers = room.awaySingers;
 			mediaStatus = room.mediaStatus;
-			roomGuideDefault = room.roomGuideDefault;
 			entries = room.entries;
 			pendingKind = room.pendingKind;
 			store = room.queue;
@@ -173,26 +153,6 @@
 		};
 	});
 
-
-	/**
-
-	 *  proc, the network call lives here and the LyricsReselect control just reports the choice. */
-	async function reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }) {
-		if (navigator.vibrate) navigator.vibrate(12);
-		try {
-			const res = await fetch('/api/lyrics-reselect', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ mediaId, ...choice })
-			});
-			const body = await res.json().catch(() => ({}));
-			if (!res.ok) {
-				showError(body.error ?? 'Could not re-time the lyrics');
-			}
-		} catch {
-			showError('Could not re-time the lyrics — check your connection');
-		}
-	}
 
 	// ── readiness ────────────────────────────────────────────────────────────
 	// One axis, three states: ready (stems on disk, sing now), processing (stems in flight, still
@@ -521,107 +481,7 @@
 		)
 	);
 
-	function sendPlayer(command: PlayerCommand) {
-		room.command(command);
-	}
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
-	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);
-	// key-shift is available only once a song's stems are separated — there is nothing to re-pitch before
-	const keyShiftEnabled = $derived(!!nowMedia && isPlayable(nowMedia));
-	const keyLabel = $derived(
-		playback.keyShift === 0 ? 'Key' : `Key · ${playback.keyShift > 0 ? '+' : '−'}${Math.abs(playback.keyShift)}`
-	);
-
-	// ── key line + vocal range readout ──────────────────────────────────
-	// The now-playing song's musical profile, derived once. All the music judgement lives in the shared
-	// pure helpers; this file only decides WHEN to show each string. Everything that takes keyShift is
-	// re-read reactively, so tapping ±semitone slides the sounding key, the range label, the band
-	// sentence AND the bar in lockstep.
-	const profile = $derived(nowMedia?.songProfile ?? null);
-	/*
-	 * The key line: ORIGINAL → SOUNDING, collapsing to just the original at shift 0. Both helpers
-	 * return null below the confidence floor / with no detected key, so `keyOriginal` being null is the
-	 * single gate that hides the whole line — a wrong key is worse than no key (see song-profile.ts).
-	 * The arrow MUST be <Icon name="arrow-right" />, never a U+2192 glyph: icons.test.ts bans that
-	 * codepoint from every client surface. The keys themselves are ASCII 'G#'/'Ab' from the helper.
-	 */
-	const keyOriginal = $derived(originalKeyLabel(profile));
-	const keySounding = $derived(soundingKeyLabel(profile, playback.keyShift));
-	// Show the arrow + sounding key only when a shift actually changed the sounding key from the
-	// original — at shift 0 they are equal and the arrow would be noise.
-	const keyShifted = $derived(playback.keyShift !== 0 && keySounding !== null && keySounding !== keyOriginal);
-
-	// The range readout, gated on a usable measured range (null helpers = nothing to show).
-	const rangeText = $derived(rangeLabel(profile, playback.keyShift));
-	const octaves = $derived(rangeOctaves(profile));
-	const bandSentence = $derived(voiceBandSentence(profile, playback.keyShift));
-	// Is there anything at all to disclose? The section header only renders when at least one fact exists.
-	const hasRange = $derived(rangeText !== null);
-	/*
-	 * Plain $state disclosure, mirroring the 'Browse' toggle idiom in this same file (a bare boolean +
-	 * aria-expanded + {#if} + a chevron-down/right Icon swap). There is no generic Disclosure component
-	 * and the task forbids inventing one, so this is intentionally the same three-line pattern.
-	 */
-	let rangeOpen = $state(false);
-
-	// ── guiding track ──────────────────────────────────────────────────
-	// How loud the original vocals sit under the instrumental. Available only for a song that actually
-	// HAS an isolated vocals stem — the same shape as the key control being gated on separation.
-	const guideEnabled = $derived(!!nowMedia && hasGuidingTrack(nowMedia));
-	/** The room's standing default, adopted from queue:sync / settings:changed. */
-	let roomGuideDefault = $state(0);
-	/**
-	 * While a finger is on the slider we show the LOCAL value, not the server's. Without this the
-	 * thumb fights the ~throttled echo coming back over the websocket and jumps under the finger.
-	 */
-	let guideDragging = $state(false);
-	let guideDraft = $state(0);
-	const guideServerPct = $derived(
-		Math.round(effectiveGuideLevel({ guideLevel: playback.guideLevel }, roomGuideDefault) * 100)
-	);
-	const guidePct = $derived(guideDragging ? guideDraft : guideServerPct);
-
-	/**
-	 * Send at most this often while dragging. Every accepted level is authoritative playback state, so
-	 * it bumps `rev` and broadcasts to every client — an unthrottled `oninput` would emit one of those
-	 * per animation frame and churn rev hard enough to trip other clients' resync path. The `onchange`
-	 * on release always sends the final value, so throttling can never lose where the finger stopped.
-	 */
-	const GUIDE_SEND_THROTTLE_MS = 120;
-	let guideLastSent = 0;
-	let guidePending: ReturnType<typeof setTimeout> | null = null;
-
-	function sendGuide(pct: number): void {
-		guideLastSent = Date.now();
-		sendPlayer({ cmd: 'guide', level: pct / 100 });
-	}
-
-	function onGuideInput(pct: number): void {
-		guideDragging = true;
-		guideDraft = pct;
-		const since = Date.now() - guideLastSent;
-		if (since >= GUIDE_SEND_THROTTLE_MS) {
-			sendGuide(pct);
-			return;
-		}
-		// Trailing send so a slow drag that never crosses the threshold still moves the TV.
-		if (guidePending) clearTimeout(guidePending);
-		guidePending = setTimeout(() => {
-			guidePending = null;
-			sendGuide(guideDraft);
-		}, GUIDE_SEND_THROTTLE_MS - since);
-	}
-
-	function onGuideCommit(pct: number): void {
-		if (guidePending) {
-			clearTimeout(guidePending);
-			guidePending = null;
-		}
-		guideDraft = pct;
-		sendGuide(pct);
-		guideDragging = false;
-	}
-
 	// ── interpolated playback position ─────────────────────────────────
 	let posAnchor = { pos: 0, wall: 0 };
 	$effect(() => {
@@ -683,65 +543,6 @@
 		});
 	});
 
-	/*
-	 * The hero shows the song and the artist on SEPARATE lines, so it needs them apart — `mediaTitle`
-	 * welds them into one string for the queue rows. songDisplay is the shared helper that prefers the
-	 * canonical pair (a full YouTube title with the uploader as the "artist" is what the cards used to
-	 * show); the key is appended because "G major" belongs with the artist, not with the controls.
-	 */
-	const nowDisplay = $derived(songDisplay(nowMedia));
-	const heroByline = $derived.by(() => {
-		if (!nowEntry) return null;
-		const parts: string[] = [];
-		/*
-		 * `?? nowMedia?.artist` is deliberate and it is the PHONE's rule, not a weakening of songDisplay.
-		 * songDisplay is written for the TV, where the uploader must never appear as the artist; SongRow
-		 * (:143) draws a READY row as `artistCanonical ?? artist` because by then the uploader IS the
-		 * useful fact. The hero renders a PLAYING song — necessarily ready — and a hero that drops the
-		 * artist the row two taps earlier displayed is the two-surfaces-disagreeing shape this codebase
-		 * has already hit twice. Measured on a driven frame: the browse row said "Bon Jovi" and the hero
-		 * said nothing, because these demo tracks carry `artist` and no `artistCanonical`.
-		 */
-		const artist = nowDisplay.artist ?? nowMedia?.artist ?? null;
-		if (artist) parts.push(artist);
-		if (keyOriginal) parts.push(keyOriginal);
-		return parts.length ? parts.join(' · ') : null;
-	});
-
-	/**
-	 * The collapsed live-controls summary on the hero — the current values, so the disclosure still says
-	 * where the controls stand while shut (XR-PH-15). Built from the same derivations the controls
-	 * themselves render, so the two cannot disagree.
-	 */
-	const controlsSummary = $derived.by(() => {
-		const parts: string[] = [];
-		if (guideEnabled) parts.push(`Guide vocals ${guidePct}%`);
-		if (keyShiftEnabled && playback.keyShift !== 0) parts.push(keyLabel);
-		if (rangeText) parts.push(`Range ${rangeText}`);
-		return parts.length ? parts.join(' · ') : null;
-	});
-
-	/**
-	 * XR-PH-15's honest degradation, as ruled on an earlier change Q1-D: when the playing song has no isolated
-	 * vocals stem the guide control renders DISABLED rather than vanishing, and this sentence — on the
-	 * hero, beside the control group — says why and what still works. an earlier change deleted the equivalent line
-	 * from inside `GuidingTrack.svelte` and `drawer-ui-cleanup-253.test.ts` pins its absence there, so
-	 * arm D is what satisfies both rulings: the component and its guard stay untouched.
-	 *
-	 * `nowMedia && !guideEnabled` is the precise condition, not `!guideEnabled` alone. `guideEnabled`
-	 * is also false for a playing entry whose media row has not reached this client's catalog, and
-	 * there the honest answer is that we do not know yet — asserting a missing stem would be a guess.
-	 * With a media row in hand the reading is exact: a song that is PLAYING is already `isPlayable`,
-	 * so the only remaining term in `hasGuidingTrack` is `vocalsRef`, and the stem is what is absent.
-	 *
-	 * The second clause is measured, not reassurance: pitch and range are gated on `isPlayable`, which
-	 * that same playing song satisfies, so they really are still live while the guide is not.
-	 */
-	const controlsNote = $derived(
-		nowMedia && !guideEnabled
-			? 'No isolated vocals for this song, so the guiding track stays off. Key and vocal range still work.'
-			: null
-	);
 </script>
 
 <header class="topbar">
@@ -799,156 +600,6 @@
 
 <main>
 	{#if me}
-			<!--
-			HOME IS THE QUEUE (direction A, issue an earlier change). The playing song is the one thing on this screen
-			that is not a list item, so it gets a HERO rather than the docked peek row it used to share with
-			the rotation; the bottom of the screen belongs to the one primary button instead.
-
-			The live singing controls come with it, in the hero's disclosure BODY (XR-PH-15) — they are
-			controls for the song playing NOW, and the sheet that used to hold them is gone from this route.
-			A song with no isolated vocals stem keeps the guide row, disabled, and gets `controlsNote`
-			beside the group saying why and what still works (Q1-D). Who may operate the controls
-			mid-song is a separate, still-open policy row (XR-PH-16); nothing about that changes here.
-		-->
-			<NowPlayingHero
-				title={nowEntry ? nowDisplay.title || mediaTitle(nowEntry.mediaId) : 'Nothing playing'}
-				singerName={nowEntry ? (singerOf(nowEntry.singerId)?.displayName ?? 'Someone') : null}
-				singerColor={nowEntry ? (singerOf(nowEntry.singerId)?.color ?? SINGER_COLORS[0]) : null}
-				byline={heroByline}
-				hint={nowEntry ? null : queued.length === 0 ? 'Queue a song to start the party' : 'Starting the next song…'}
-				elapsedSec={displayPos}
-				durationSec={nowDurationSec}
-				isPlaying={playback.isPlaying}
-				hasSong={!!nowEntry}
-				canStart={queued.length > 0}
-				onrestart={() => sendPlayer({ cmd: 'restart' })}
-				ontoggleplay={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}
-				onskip={() => sendPlayer({ cmd: 'skip' })}
-				controlsSummary={controlsSummary}
-				controlsNote={controlsNote}
-			>
-				{#snippet controls()}
-					<!-- Guiding track: how loud the ORIGINAL vocals sit under the instrumental. Above the Key control,
-				     sharing its labelled-row idiom; both are per-song adjustments to the same playing song. -->
-					<GuidingTrack pct={guidePct} available={guideEnabled} oninput={onGuideInput} oncommit={onGuideCommit} />
-
-					<!--
-					KEY LINE. A value row ABOVE the ± buttons, NOT inline in `.key`: `.key` is a no-wrap flex with two
-					flex:1 buttons, so a third inline element crushes both below their 44px target at 480px. It
-					carries NO label of its own — `.key` already says "Key" beside the buttons it belongs to, and two
-					"KEY" labels stacked two rows apart read as two different controls. So this row is the value
-					only, right-aligned to sit over the buttons. Shows the ORIGINAL key, then an arrow, then the
-					SOUNDING key; collapses to just the original at shift 0. Renders nothing when the key is
-					undetected / low-confidence (keyOriginal === null) — a wrong key is worse than none. The arrow is
-					an Icon, not a U+2192 glyph (icons.test.ts bans that codepoint); the key names are ASCII from the
-					helper.
-				-->
-					{#if keyOriginal}
-						<div class="key-head" class:shifted={keyShifted}>
-							<span class="key-vals">
-								<span class="key-orig">{keyOriginal}</span>
-								{#if keyShifted}
-									<span class="key-arrow"><Icon name="arrow-right" /></span>
-									<span class="key-sound">{keySounding}</span>
-								{/if}
-							</span>
-						</div>
-					{/if}
-
-					<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
-						<span class="lab">{keyLabel}</span>
-						<!--
-							`.key-cell` carries the flex behaviour, which cannot move into the component: `flex: 1 1 40%`
-							and `min-width: 0` belong to the FLEX ITEM, and the item is now an element Button renders.
-							The basis lets the pair sit two-up when they fit and wrap to their own rows when they cannot;
-							`min-width: 0` frees the flex minimum so the shrink is allowed at all, and the variant's
-							`overflow-wrap` breaks "semitone" if even a full-width button is too narrow for it.
-						-->
-						<div class="key-cell">
-							<Button
-								variant="keycap"
-								size="block"
-								disabled={!keyShiftEnabled || playback.keyShift <= -7}
-								onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}
-							>
-								<Icon name="minus" /> semitone
-							</Button>
-						</div>
-						<div class="key-cell">
-							<Button
-								variant="keycap"
-								size="block"
-								disabled={!keyShiftEnabled || playback.keyShift >= 7}
-								onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}
-							>
-								<Icon name="plus" /> semitone
-							</Button>
-						</div>
-					</div>
-
-					<!--
-					VOCAL RANGE, behind a disclosure. Same idiom as the 'Browse' toggle above: a plain $state
-					boolean, a real <button> carrying aria-expanded, a chevron-down/right Icon swap, and a 44px
-					target. Only rendered when there is a measured range to show (hasRange). Everything inside reacts
-					to playback.keyShift through the shared helpers, so the ± buttons slide the bar and can flip the
-					band sentence — which is what makes transposing feel like it means something.
-				-->
-					{#if hasRange}
-						<div class="range">
-							<!-- an earlier change: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> stays
-							here via Bits UI's `child` snippet, so its scoped class in this file still applies. -->
-							<Collapsible.Root bind:open={rangeOpen}>
-								<Collapsible.Trigger>
-									{#snippet child({ props })}
-										<Button variant="eyebrow" size="block" {...props}>
-											<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
-											Vocal range
-											<span class="range-peek">{rangeText}</span>
-										</Button>
-									{/snippet}
-								</Collapsible.Trigger>
-								<Collapsible.Content>
-									{#snippet child({ props })}
-										<div class="range-body" {...props}>
-											<div class="range-facts">
-												<span class="range-label">{rangeText}</span>
-												{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
-											</div>
-											{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
-											<RangeBar profile={profile} keyShift={playback.keyShift} />
-										</div>
-									{/snippet}
-								</Collapsible.Content>
-							</Collapsible.Root>
-						</div>
-					{/if}
-
-					<!--
-					The TV stage look lives ONLY in room settings now. The per-song override that used to sit here
-					(a phone repainting the stage for the current song via sendPlayer 'background') was removed: the
-					stage is a room-wide decision, not a per-singer one, so a single writer in Settings is correct.
-					The server command, PlaybackState.background field and the TV resolver are deliberately kept —
-					with no writer the field simply stays null and the resolver already falls back to the room style.
-				-->
-
-					<!--
-					Lyrics re-select: the per-song fallback for wrong / wrongly-chosen lyrics. Any joined
-					singer may re-pick (Q1=A). Only shown once the song has candidates on disk; the control itself
-					hides when there is nothing to choose. The pick is re-timed server-side from the retained vocals.
-				-->
-					{#if nowMedia && nowMedia.lyricsCandidates?.length}
-						<LyricsReselect
-							candidates={nowMedia.lyricsCandidates}
-							chosenRef={chosenCandidate(nowMedia)?.ref}
-							overrideRef={nowMedia.lyricsOverrideRef}
-							newerExists={hasNewerCandidateThanOverride(nowMedia.lyricsCandidates, nowMedia.lyricsOverrideRef)}
-							onpick={(ref) => reselectLyrics(nowMedia.id, { ref })}
-							onpaste={(text) => reselectLyrics(nowMedia.id, { text })}
-						/>
-					{/if}
-				{/snippet}
-			</NowPlayingHero>
-
 			<!-- The guest's own place, in words, with the wait omitted rather than guessed (XR-PH-09). -->
 			<MyPositionCard words={myPosition} />
 
@@ -1121,21 +772,6 @@
 		color: var(--ink-dim);
 		display: flex;
 	}
-	.key-cell {
-		/*
-		 * `1 1 40%`, not `1`: at 200% text a nowrap `flex: 1` pair could not shrink below the min-content
-		 * width of "semitone" (~172px each), so the two buttons plus the label forced the row — and the
-		 * sheet around it — past 320px. A 40% basis lets both sit two-up when they fit and wrap to their
-		 * own rows when they cannot; `min-width: 0` frees the flex minimum so the shrink is allowed at
-		 * all, and the `keycap` variant's `overflow-wrap` breaks the single word if even a full-width
-		 * button is too narrow for it. The row's own `flex-wrap` is what catches them.
-		 */
-		flex: 1 1 40%;
-		min-width: 0;
-		display: flex;
-	}
-
-
 	/* Visually-hidden live region: announced by assistive tech, painted nowhere (so it is
 	   screenshot-neutral). The standard clip-rect idiom, not display:none — a display:none region is
 	   not announced by most screen readers. */
@@ -1312,30 +948,6 @@
 	.grouphead:first-of-type {
 		margin-top: var(--space-2xs);
 	}
-	.empty {
-		color: var(--ink-dim);
-		padding: 0 var(--space-2xs);
-		font-size: var(--ph-text-md);
-	}
-	.key {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--space-xs);
-		margin: var(--space-xs) 0 var(--space-3xs);
-		align-items: center;
-	}
-	.key.disabled {
-		opacity: 0.5;
-	}
-	.key .lab {
-		font-size: var(--ph-text-2xs);
-		color: var(--ink-dim);
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-	}
-	.key.shifted .lab {
-		color: var(--warn);
-	}
 	/* Centre the mark with its word. The glyphs these replaced were U+2212 and U+FF0B — the fullwidth
 	   plus carries CJK metrics, so it sat off-baseline beside Latin text at every size. */
 
@@ -1345,81 +957,14 @@
 	 * sounding key takes the warn colour to echo `.key.shifted .lab`, so "you have changed the key" is
 	 * signalled the same way in both places.
 	 */
-	.key-head {
-		display: flex;
-		align-items: baseline;
-		/* flex-end, not space-between: with the row's own label removed there is a single child, and
-		   space-between would push it to the START. The value belongs over the buttons on the right. */
-		justify-content: flex-end;
-		gap: var(--space-sm);
-		margin: var(--space-sm) 0 0;
-	}
-	.key-vals {
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		font-variant-numeric: tabular-nums;
-	}
-	.key-orig {
-		font-size: var(--ph-text-sm);
-		font-weight: 700;
-		color: var(--ink);
-	}
 	/* The arrow is an Icon (banned as a glyph); size it to the text and dim it so the keys read as the
 	   content and the arrow as mere connective tissue. */
-	.key-arrow {
-		display: inline-grid;
-		place-items: center;
-		color: var(--ink-dim);
-		font-size: var(--ph-text-sm);
-	}
-	.key-sound {
-		font-size: var(--ph-text-sm);
-		font-weight: 700;
-		color: var(--warn);
-	}
-
 	/*
 	 * The vocal-range disclosure: a var(--tap) min-height button, an uppercase
 	 * label, a chevron that swaps down/right with the open state, and a peek of the range value on the
 	 * collapsed row so the section states its headline fact without being opened.
 	 */
-	.range {
-		margin: var(--space-sm) 0 var(--space-3xs);
-	}
 	/* The collapsed-row peek of the range, pushed to the right. Not uppercase — it is data, not a label. */
-	.range-peek {
-		margin-left: auto;
-		color: var(--accent2);
-		text-transform: none;
-		letter-spacing: 0;
-		font-size: var(--ph-text-sm);
-		font-variant-numeric: tabular-nums;
-	}
-	.range-body {
-		padding: var(--space-3xs) var(--space-3xs) var(--space-2xs);
-	}
-	.range-facts {
-		display: flex;
-		align-items: baseline;
-		gap: var(--space-md);
-	}
-	.range-label {
-		font-size: var(--ph-text-base);
-		font-weight: 700;
-		color: var(--ink);
-		font-variant-numeric: tabular-nums;
-	}
-	.range-oct {
-		font-size: var(--ph-text-xs);
-		color: var(--ink-dim);
-		font-variant-numeric: tabular-nums;
-	}
-	.range-band {
-		font-size: var(--ph-text-xs);
-		color: var(--ink-dim);
-		margin: var(--space-2xs) 0 0;
-	}
 	/*
 	 * Docked-toast stacking, measured UP from the docked primary button. --dock-h is bound to that band's
 	 * clientHeight, and the BAND's own padding already includes env(safe-area-inset-bottom), so the

@@ -52,6 +52,37 @@ export async function openBrowseFromHome(page, { timeout = DEFAULT_TIMEOUT } = {
 }
 
 /**
+ * Open the NOW-PLAYING DRAWER, which is where the full transport lives.
+ *
+ * WHY DRIVERS NEED THIS. `restart` and `skip` exist in exactly one place on the phone now — the drawer —
+ * and `play/pause` exists there too, beside the band's own one-tap disc. Before the redesign all three
+ * sat on the hero, unconditionally rendered on home, so a driver could click them the moment it joined.
+ * Six drivers did exactly that and would now time out waiting for a label inside a closed drawer.
+ *
+ * It is IDEMPOTENT, so a driver may call it defensively before each transport interaction rather than
+ * tracking whether the drawer is still up (the drawer stays open across a skip, but nothing in the
+ * contract promises that, and a driver should not depend on it).
+ *
+ * @param {{ waitFor: (expr: string, opts?: { timeout?: number }) => Promise<unknown>,
+ *           click: (selector: string) => Promise<unknown> }} page
+ * @param {{ timeout?: number }} [opts]
+ */
+export async function openNowPlaying(page, { timeout = DEFAULT_TIMEOUT } = {}) {
+	/** @param {string} sel */
+	const has = (sel) => `document.querySelector(${JSON.stringify(sel)}) !== null`;
+	const alreadyOpen = await page.waitFor(has(SEL.npDrawer), { timeout: 250 }).catch(() => false);
+	if (alreadyOpen) return;
+
+	// The band is app chrome, so it is present on whichever phone surface the driver is on.
+	await page.waitFor(has(SEL.homeReady), { timeout });
+	// The pull handle is rendered only when there is a drawer to pull into — it is gated on `onexpand`,
+	// so waiting for it also proves the layout wired the two together.
+	await page.waitFor(has(SEL.bandExpand), { timeout });
+	await page.click(SEL.bandExpand);
+	await page.waitFor(has(SEL.npDrawer), { timeout });
+}
+
+/**
  * The other direction: from a search that is showing RESULTS back to the QUEUE, which is home.
  *
  * The rotation rows, the position line and the transport are all on home — a driver that
@@ -67,14 +98,22 @@ export async function openBrowseFromHome(page, { timeout = DEFAULT_TIMEOUT } = {
 export async function returnHomeFromBrowse(page, { timeout = DEFAULT_TIMEOUT } = {}) {
 	/** @param {string} sel */
 	const has = (sel) => `document.querySelector(${JSON.stringify(sel)}) !== null`;
-	// Already home? The hero only renders on `/`.
-	const alreadyHome = await page.waitFor(has(SEL.hero), { timeout: 250 }).catch(() => false);
+	/*
+	 * Already home? Asked of the ROUTE, not of a selector, and that is the honest form now. It used to
+	 * wait for `SEL.hero`, which worked because the hero rendered on `/` and nowhere else. The hero is
+	 * gone (the drawer replaced it, mounted by the layout), and every remaining structural anchor on
+	 * home — `main`, `.grouphead`, the band — is on `/find` too, because the band is app chrome. The one
+	 * thing that distinguishes the two surfaces is which one you are on.
+	 */
+	const alreadyHome = await page.waitFor(`location.pathname === '/'`, { timeout: 250 }).catch(() => false);
 	if (alreadyHome) return;
 
 	// A real navigation now, not a state clear: the header's back control is an <a href="/">, so this
 	// exercises the same route change the phone's own back gesture performs.
 	await page.click(SEL.backToQueue);
-	await page.waitFor(has(SEL.hero), { timeout });
+	await page.waitFor(`location.pathname === '/'`, { timeout });
+	// …and the rotation heading, so a driver that continues can count rows rather than racing the paint.
+	await page.waitFor(has(SEL.mainColumn), { timeout });
 }
 
 /**

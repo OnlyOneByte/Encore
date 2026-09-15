@@ -21,7 +21,8 @@
 	 * without it the browser claims the vertical gesture for scrolling and `onpointerdown` never
 	 * fires. `cursor: grab` must stay pinned to this control and never reach a row (XR-PH-17,
 	 * guarded by `reorder-mode-source-836.test.ts`).
-	 * 4. An `iconPrimary` variant for NowPlayingHero's transport: accent fill while actionable, falling
+	 * 4. An `iconPrimary` variant for NowPlayingDrawer's transport (NowPlayingHero's, before the drawer
+	 * replaced it): accent fill while actionable, falling
 	 * back to the icon surface when disabled, which is what says the transport is dead not idle.
 	 * 5. Three more role-named variants for the phone home's controls — `identity`, `keycap`, `eyebrow`.
 	 * Each is documented at its own entry below, and each exists because a REQUIREMENT of its call site

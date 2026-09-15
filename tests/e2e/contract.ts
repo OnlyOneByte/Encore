@@ -106,30 +106,69 @@ export const SEL = {
 	 * element and so cannot be spelled out at the call site.
 	 */
 	mainColumn: 'main',
-	/** The now-playing hero — the joined home's own surface, and where the transport lives under direction A. */
-	hero: '.hero',
-	/**
-	 * The playing song's TITLE on the hero. Load-bearing for the rotation checks: the PLAYING entry is
-	 * not a `.qrow` (its status is 'playing', which `queued` filters out), so a flow asking "is my song
-	 * in the rotation?" has to read the hero as well as the rows, or it reads zero for the very first
-	 * song of the night.
-	 */
-	heroTitle: '.hero .song',
-
 	/*
-	 * The hero's LIVE-CONTROLS disclosure and the guiding track inside it (XR-PH-15/XR-PH-03).
-	 * Added when those claims moved from the mount rung to p16: GuidingTrack's control is
-	 * Bits UI's slider now, which needs a real layout engine to exist, so `bun test` could no longer
-	 * mount the hero at all.
+	 * RETIRED: `hero` was `.hero` and `heroTitle` was `.hero .song` — NowPlayingHero.svelte, the card that
+	 * opened joined home. The component is DELETED. Everything it held (song identity, the seek row, the
+	 * transport, the live controls) moved into `NowPlayingDrawer`, a bottom drawer the layout mounts and the
+	 * band's pull handle opens; home is the queue and nothing else.
+	 *
+	 * `hero` IS THE DANGEROUS ONE, and it is why this is a retirement and not a re-point. `.hero` STILL
+	 * RESOLVES — lib/tv/JoinBadge.svelte renders `class="hero"` on the attract screen's join panel — so
+	 * the every-SEL-resolves guard would have stayed GREEN over a phone-remote selector pointing at the
+	 * TELEVISION. That is the same silent mis-resolution that left `.chip` matching the phone's chip
+	 * BUTTONS instead of a SongRow badge across two migrations, and it only surfaced when the wrong target
+	 * happened to disappear too. A selector resolving against the wrong surface is worse than one that
+	 * reds, so contract.test.ts now pins the absence rather than trusting it.
+	 *
+	 * THE TWO CLAIMS SPLIT, and neither successor is "the hero at a new address":
+	 *   • "the joined home rendered" was always really "this singer is joined", and `homeReady` — the band,
+	 *     which the layout mounts on exactly that condition — already answers it with no gesture.
+	 *   • "where the transport lives" is the drawer, `npDrawer` below. It is CLOSED by default and vaul
+	 *     does not render its content at all until it opens, so that half now takes a tap on `bandExpand`
+	 *     to reach: a state a driver has to CREATE, where the hero was simply there.
+	 *
+	 * `heroTitle`'s reason survives whole — the PLAYING entry is not a `.qrow` (its status is 'playing',
+	 * which `queued` filters out), so a flow asking "is my song in the rotation?" must read the playing
+	 * title somewhere or it counts zero for the very first song of the night. It has TWO successors, on
+	 * purpose: `bandTitle` states it permanently on every phone surface, and `npSong` states it inside the
+	 * drawer. It is not re-pointed under its old name because `heroTitle` names a PLACE that no longer
+	 * exists — the same rule that made `searchDock` become `findBox` rather than move.
+	 *
+	 * THE DRIVER MIGRATION IS NOT DONE, and recording it is the point of writing it here rather than
+	 * discovering it in a browser. `SEL.hero` is read by lib/phone.mjs, probes/p16-hero-live-controls.mjs
+	 * and shoot-913.mjs; `SEL.heroTitle` by party.mjs, probes/p4-transport.mjs and p16. Those reads now
+	 * address nothing and must become `homeReady`/`npDrawer` and `bandTitle`/`npSong` — and p16 must OPEN
+	 * the drawer before reading any of the controls, which it never had to do for a hero. Those files are
+	 * outside this change's scope; the contract records what the app IS, and the guard keeps reporting the
+	 * gap until the drivers follow.
+	 *
+	 * WHICH GATE REPORTS IT, precisely, because two of the six drivers are invisible to the loudest one:
+	 * `bun run typecheck:e2e` fails on a retired key (6 errors across measured-design.mjs's importer chain
+	 * into lib/phone.mjs, party.mjs and p4-transport.mjs). That is the SAME already-accepted red the last
+	 * retirement left — `searchDock` has been failing that gate with 3 errors since the band took the
+	 * bottom edge — so this is a known shape rather than a new one. But p16-hero-live-controls.mjs and
+	 * shoot-913.mjs are not in tests/tsconfig.e2e.json's `include`, so their reads fail SILENTLY at
+	 * runtime (`document.querySelector(undefined)` matches nothing) and only this record says so.
 	 */
-	/** The disclosure's toggle; `aria-expanded` on it is how a driver knows the panel is open. */
-	toolsToggle: '.tools-toggle',
-	/** The disclosure BODY. The explanation lives here, never in the collapsed summary. */
-	toolsBody: '.tools-body',
-	/** The sentence explaining a control that cannot work. Absent when nothing is owed. */
-	toolsNote: '.tools-note',
-	/** The collapsed summary's peek text, which must NOT carry the explanation. */
-	toolsPeek: '.tools-peek',
+	/*
+	 * RETIRED: `toolsToggle` (`.tools-toggle`) and `toolsPeek` (`.tools-peek`) — the hero's live-controls
+	 * DISCLOSURE. The toggle was a Collapsible trigger whose `aria-expanded` told a driver the panel was
+	 * open; the peek was the collapsed summary line beside it, which had to NOT carry the explanation.
+	 * Neither class exists in any source, and an anchor guard for markup nobody renders reports a permanent
+	 * failure rather than an invariant.
+	 *
+	 * The drawer REPLACED the disclosure; it did not move it. Opening the drawer is the one act of
+	 * revealing, so there is no collapsed state, no summary to keep a sentence out of, and nothing for a
+	 * second level of disclosure to do. Nothing returns in their place: "is the panel open?" became "is the
+	 * drawer open?", which `npDrawer` answers BY PRESENCE — vaul portals the content on open and destroys
+	 * it on close, so the element existing IS the open state and there is no attribute to read. p16's
+	 * `toolsOpen` (aria-expanded) and its peek-text assertion therefore have no successors: the states they
+	 * told apart no longer exist.
+	 *
+	 * `toolsBody` and `toolsNote` are NOT retired with them — both class names survived into the drawer.
+	 * See the drawer block below for the deliberate call on each, and for what changed about the body's
+	 * reason.
+	 */
 	/** GuidingTrack's root; `.gt.disabled` is the subtree dimmed with opacity — XR-PH-03's subject. */
 	guidingTrackRoot: '.gt',
 	/** Its readout, which reads 'Off' rather than a live-looking number when the track is dead. */
@@ -159,8 +198,13 @@ export const SEL = {
 	 * `.back-slot` is the part that pins THIS control; the `a` part resolves as "this tag is rendered
 	 * somewhere" (see selectorResolves — a source scan cannot see co-location).
 	 *
-	 * `returnHomeFromBrowse()` in lib/phone.mjs still works unchanged: it clicks this, then waits for
-	 * `hero`, which renders on `/` once the navigation lands.
+	 * AMENDED: the sentence that followed said "`returnHomeFromBrowse()` in lib/phone.mjs still works
+	 * unchanged: it clicks this, then waits for `hero`, which renders on `/` once the navigation lands."
+	 * There is no hero — home is the queue only. The CLICK still works; the WAIT has to change, and not to
+	 * `homeReady`: the band is app chrome on every phone surface including `/find`, so its presence cannot
+	 * prove the navigation landed. `queueRow`/`mainColumn` — or the pathname itself, which the helper's
+	 * siblings already read — is what says the flow is back on `/`. Recorded here rather than fixed there
+	 * because lib/phone.mjs is outside this change's scope.
 	 */
 	backToQueue: '.back-slot a',
 	/** The search field itself. On `/find` since the band took the bottom edge — it was on `/` when the
@@ -211,7 +255,25 @@ export const SEL = {
 	 *  union, so one branch resolving is enough. */
 	addOrSing: '[data-testid="song-add"],[data-testid="song-sing"]',
 	rowTitle: '.t',
-	empty: '.empty',
+	/*
+	 * The empty-state line — an empty rotation on `/`, and a query that matched nothing on `/find`.
+	 *
+	 * RE-ANCHORED to `.encore-empty`; `.empty` is gone. The empty state is `<Empty.Root>` now, and
+	 * ui/empty/empty.svelte keeps the registry's Root/Header/Description structure while carrying Encore's
+	 * appearance under its own base class — the old `.empty` rule (dim ink, `--space-2xs` inline padding,
+	 * `--ph-text-md`) moved there verbatim, which is why the copy the drivers read is unchanged. Same defect
+	 * shape as the `.chip` → `.encore-chip` re-anchor above: a primitive adoption took the hand-rolled class
+	 * with it and left the contract pointing at nothing. This one is NOT part of the hero move; it was
+	 * already red on this branch and is fixed here because it is this file's own broken anchor.
+	 *
+	 * NOT `[data-slot='empty']`, though the same element carries that too. The resolver's attribute anchor is
+	 * a PREFIX substring (`data-slot="empty`), and the family ships `empty-title`, `empty-header`,
+	 * `empty-description`, `empty-content` and `empty-icon` — so that spelling would keep resolving after
+	 * Root itself was deleted, off a sub-slot no driver reads. `classPresent` matches an EXACT token, which
+	 * makes the class the stronger anchor here; it is the same tightening G2 pinned when `.b` was resolving
+	 * off the `badqr-b` fragment.
+	 */
+	empty: '.encore-empty',
 	/*
 	 * RETIRED: `readyChip` was `.chips button.ok`, the Ready readiness filter chip. Direction B
 	 * deleted the readiness chip row — one of the four concurrent filter mechanisms — so the anchor no
@@ -259,14 +321,101 @@ export const SEL = {
 	 * (the guard resolves that shape by grepping for the literal attribute). The HOOK below anchors the
 	 * expression itself instead, so the pair of labels cannot be renamed unnoticed.
 	 *
-	 * NOT the same control as `play` further down: that is the HERO's `aria-label="play/pause"` on `/`.
-	 * Two transports exist, on two surfaces, and conflating them is how a driver ends up asserting the
-	 * hero's state against a tap on the band.
+	 * NOT the same control as `play` further down: that is the DRAWER's `aria-label="play/pause"`. Two
+	 * transports still exist on two surfaces, and conflating them is how a driver ends up asserting one
+	 * surface's state against a tap on the other — but the surfaces changed. It used to be the band versus
+	 * the HERO, both on `/` and both always present; it is now the band (always) versus the drawer (only
+	 * while open), so the band's disc is the only transport a flow can tap without first pulling the drawer
+	 * up.
 	 */
 	bandSearch: { role: 'button' as const, name: 'Search for a song' },
 	bandTransport: '.disc',
+	/*
+	 * The PULL HANDLE — the band's third control, and the only way into the drawer.
+	 *
+	 * Addressed by CLASS for exactly the reason `bandTransport` is: it names itself
+	 * `aria-label={hasSong ? 'Open now playing' : 'Open the player'}` — an EXPRESSION — so neither literal
+	 * exists as source text and a `{role, name}` entry here could not resolve. The HOOK anchors the
+	 * expression itself, so the pair of labels cannot be renamed unnoticed.
+	 *
+	 * It is GATED on the band being handed an `onexpand`, deliberately: a labelled button that does nothing
+	 * is worse than an absent one, because a screen reader announces "Open now playing" and the tap is
+	 * swallowed. So the band degrades to a status-plus-transport strip wherever no drawer is wired, which is
+	 * how /components renders five of them. That gating is why the WIRING in +layout.svelte is pinned as its
+	 * own HOOK: the component rendering the button is not the same claim as the app handing it an action.
+	 *
+	 * NOT the drawer's own handle — see `drawerHandle`. This one OPENS from the band; that one drags the
+	 * open drawer, and they are in different files.
+	 */
+	bandExpand: '.band .handle',
+	/*
+	 * The playing song's title on the band, and the default successor to the retired `heroTitle` (see that
+	 * record above). Reach for this one first: the band is present on every phone surface whenever a singer
+	 * is joined, so it answers "what is playing / is my song up?" with no gesture, where the drawer's
+	 * `npSong` needs a tap on `bandExpand` first. The rotation reads need it because a playing entry renders
+	 * no `.qrow` at all.
+	 */
+	bandTitle: '.band .title',
 
-	// ── transport (on the now-playing hero under direction A) ─────────────
+	// ── the now-playing drawer (app chrome: +layout.svelte → NowPlayingDrawer.svelte) ──────────
+	/*
+	 * WHERE THE HERO WENT. The drawer carries everything NowPlayingHero did — song identity, the seek row,
+	 * the transport, the live controls — with one structural difference every driver has to respect: it is
+	 * CLOSED by default, and vaul portals its content to the end of the body on open and DESTROYS it on
+	 * close. So nothing in this block can be waited on cold. Tap `bandExpand` first; a timeout here without
+	 * that tap is the drawer being shut, not the app being broken.
+	 *
+	 * `npDrawer` is addressed by Encore's OWN class rather than by the vendored `data-slot='drawer-content'`
+	 * the same element also carries — the opposite of the choice `slider` makes, and for a reason that does
+	 * not contradict it. shadcn's data-slot is the sturdier NAME, but it is not a UNIQUE one: it says "a
+	 * drawer's content", and any second drawer in the app carries it identically, where `.np-drawer` says
+	 * THIS drawer. Both halves are pinned as HOOKS, in the two files they live in.
+	 */
+	npDrawer: '.np-drawer',
+	/** The playing song's title inside the drawer — `heroTitle`'s other successor, scoped to the drawer so
+	 *  it cannot be confused with the band's copy of the same fact. */
+	npSong: '.np-drawer .np-song',
+	/*
+	 * The drawer's DRAG handle, by the `data-slot` the vendored component maintains.
+	 *
+	 * It is the only drag surface in the drawer: the Root sets `handleOnly` because the body is sliders, and
+	 * a drag-to-dismiss surface under a slider thumb is the gesture collision XR-PH-15 bans. That makes its
+	 * absence a silent failure rather than a cosmetic one — with no element carrying vaul's handle attribute
+	 * the drawer cannot be dragged AT ALL and nothing warns, which is precisely what shadcn's copy-in did
+	 * with a decorative div and why drawer-handle.svelte exists.
+	 */
+	drawerHandle: "[data-slot='drawer-handle']",
+	/*
+	 * RE-POINTED, NOT RETIRED — and this is the call the move actually turned on, because BOTH class names
+	 * survived into the drawer. A wrong decision here does not go red; it leaves a selector quietly
+	 * resolving to something it was not written for.
+	 *
+	 * `toolsNote` is unambiguous: same class, same sentence, same claim, new file. XR-PH-15 IS this sentence
+	 * ("No isolated vocals for this song…"); it is still rendered AHEAD of the control it explains, still
+	 * un-dimmed by any ancestor `opacity` (XR-PH-03), and still present exactly when something is owed and
+	 * absent when nothing is. Only the file moved, so the hook moved with it.
+	 *
+	 * `toolsBody` needed deciding. Its recorded reason was disclosure-relative — "the explanation must sit
+	 * inside the body, which is what keeps it out of the collapsed summary" — and there is no summary any
+	 * more, so half that sentence is dead. It is re-pointed anyway, because a hook's identity is its SUBJECT
+	 * and the subject moved intact: the same element, wearing the same class, holding the same children (the
+	 * note, GuidingTrack, the key head and its ±keycaps, the range, the lyrics reselect). What changed is
+	 * its CONDITION, and that is the amendment on the record: `.tools-body` used to mean "the disclosure is
+	 * open" and now means "the drawer is open AND a song is playing" — it is gated on `hasSong`, not on
+	 * being revealed, because the drawer's own presence is the revealing. A driver must NOT read it as the
+	 * open/closed signal; `npDrawer` is that signal.
+	 *
+	 * The opposite call would have been retire-and-add-fresh, which is what `searchDock` → `findBox` did.
+	 * That was right there because the NAME carried the dead claim — "docked, publishing the measured
+	 * height" — and nothing about the successor was docked. Here the name says "the body of the tools", the
+	 * element is still the body of the tools, and only a clause of the reason lapsed.
+	 */
+	toolsBody: '.tools-body',
+	toolsNote: '.tools-note',
+
+	// ── transport (in the now-playing DRAWER since the hero was deleted) ───
+	// The SELECTORS are unchanged — same three aria-labels, same three controls — so the only thing that
+	// moved is which file to look in, plus the requirement to open the drawer before driving them.
 	play: { role: 'button' as const, name: 'play/pause' },
 	skip: { role: 'button' as const, name: 'skip' },
 	restart: { role: 'button' as const, name: 'restart' },
@@ -536,41 +685,57 @@ export const HOOKS: Hook[] = [
 		anchor: '<main>',
 		why: 'the gate measures this column reserving the docked band, so the element itself is load-bearing'
 	},
+	/*
+	 * RETIRED: the `hero` hook (anchor `class="hero card"`) and the `heroTitle` hook (anchor
+	 * `class="song"`), both in src/lib/components/NowPlayingHero.svelte — a file that no longer exists, so
+	 * the file-existence test is what reported them rather than the anchor test.
+	 *
+	 * See the SEL retirement record for the two things that make these retirements rather than re-points:
+	 * `.hero` STILL RESOLVES (against the TV's JoinBadge), so a re-point at the drawer would have been
+	 * green and aimed at the television; and `heroTitle` names a place that is gone, so its surviving claim
+	 * went to `bandTitle` + `npSong` instead of moving under the old name.
+	 *
+	 * RETIRED WITH THEM: the `toolsToggle` hook (anchor `class="tools-toggle"`) and the `toolsPeek` hook
+	 * (anchor `class="tools-peek"`). The drawer replaced that disclosure rather than moving it, so neither
+	 * class exists anywhere and neither has a successor — opening the drawer is the whole of the reveal.
+	 *
+	 * `toolsBody` and `toolsNote` moved rather than died; their entries are below, under the drawer.
+	 */
 	{
-		id: 'hero',
-		file: 'src/lib/components/NowPlayingHero.svelte',
-		anchor: 'class="hero card"',
-		why: 'the rotation and the transport are read off the joined home, whose hero is what says it rendered'
+		id: 'npDrawer',
+		file: 'src/lib/components/NowPlayingDrawer.svelte',
+		anchor: 'class="np-drawer"',
+		why: 'the surface the hero became — song, seek row, transport and live controls, pulled up from the band instead of rendered at the top of home'
 	},
 	{
-		id: 'heroTitle',
-		file: 'src/lib/components/NowPlayingHero.svelte',
-		anchor: 'class="song"',
-		why: 'the playing song is read off the hero, because a playing entry renders no queue row'
+		id: 'drawerMounted',
+		file: 'src/routes/+layout.svelte',
+		anchor: '<NowPlayingDrawer',
+		why: 'npDrawer can only resolve because the LAYOUT mounts the drawer beside the band; the component rendering the class is not the same claim as the app showing it (the same pair as homeReady/bandMounted)'
 	},
 	{
-		id: 'toolsToggle',
-		file: 'src/lib/components/NowPlayingHero.svelte',
-		anchor: 'class="tools-toggle"',
-		why: 'p16 opens the live-controls disclosure through it and reads aria-expanded to know it is open'
+		id: 'npSong',
+		file: 'src/lib/components/NowPlayingDrawer.svelte',
+		anchor: 'class="np-song"',
+		why: "the playing song's title inside the drawer — one of the two successors to the retired heroTitle, for a flow that has already opened it"
+	},
+	{
+		id: 'drawerHandle',
+		file: 'src/lib/components/ui/drawer/drawer-handle.svelte',
+		anchor: 'data-slot="drawer-handle"',
+		why: 'handleOnly restricts dragging TO this element, so losing it makes the drawer silently undraggable rather than merely unadorned — shadcn ships a decorative div in its place, which is the trap this file exists to avoid'
 	},
 	{
 		id: 'toolsBody',
-		file: 'src/lib/components/NowPlayingHero.svelte',
+		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'class="tools-body"',
-		why: 'the explanation must sit inside the body, which is what keeps it out of the collapsed summary'
+		why: 'the same live-controls body, re-pointed with the move: it now means the drawer is open AND a song is playing, rather than a disclosure having been revealed'
 	},
 	{
 		id: 'toolsNote',
-		file: 'src/lib/components/NowPlayingHero.svelte',
+		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'class="tools-note"',
-		why: 'XR-PH-15 IS this sentence; p16 asserts its presence for a dead control and its absence for a live one'
-	},
-	{
-		id: 'toolsPeek',
-		file: 'src/lib/components/NowPlayingHero.svelte',
-		anchor: 'class="tools-peek"',
-		why: 'the summary must not shout the explanation at a singer who has not opened the panel'
+		why: 'XR-PH-15 IS this sentence; p16 asserts its presence for a dead control and its absence for a live one — unchanged by the move except for the file'
 	},
 	{
 		id: 'guidingTrackRoot',
@@ -625,6 +790,24 @@ export const HOOKS: Hook[] = [
 		file: 'src/lib/components/NowPlayingBand.svelte',
 		anchor: "aria-label={isPlaying ? 'Pause' : 'Play'}",
 		why: "the band's transport disc; anchored on the EXPRESSION because that is the only source text either label has, and SEL.bandTransport can only address it by class"
+	},
+	{
+		id: 'bandExpand',
+		file: 'src/lib/components/NowPlayingBand.svelte',
+		anchor: "aria-label={hasSong ? 'Open now playing' : 'Open the player'}",
+		why: 'the ONLY way into the drawer, and therefore into the transport and the live controls; anchored on the EXPRESSION for the same reason bandTransport is — neither label exists as source text'
+	},
+	{
+		id: 'bandExpandWired',
+		file: 'src/routes/+layout.svelte',
+		anchor: 'onexpand={() => (drawerOpen = true)}',
+		why: 'the pull handle is rendered only when the band is GIVEN an onexpand, so a band with no drawer wired shows no handle at all — the component rendering the button is not the same claim as the app handing it an action'
+	},
+	{
+		id: 'bandTitle',
+		file: 'src/lib/components/NowPlayingBand.svelte',
+		anchor: 'class="title"',
+		why: 'the playing song read with no gesture, on chrome present across every phone surface — the default successor to the retired heroTitle, because a playing entry renders no queue row'
 	},
 	/*
 	 * RETIRED: the `searchDock` hook (anchor `class="search-dock"`). The band owns the bottom edge and
@@ -692,17 +875,24 @@ export const HOOKS: Hook[] = [
 		anchor: '.proc',
 		why: 'a processing song holds its rotation slot; .proc is a subset of .qrow, so either class proves it'
 	},
-	// transport — on the now-playing HERO under direction A. The SELECTORS are unchanged (same
-	// aria-labels), so the driven flow is untouched; only which file to look in moved.
+	{
+		id: 'emptyState',
+		file: 'src/lib/components/ui/empty/empty.svelte',
+		anchor: "'encore-empty'",
+		why: 'SEL.empty was re-anchored here from the deleted `.empty`; the class is an Encore deviation inside a copy-in, so it is exactly the kind of thing a re-vendor drops silently'
+	},
+	// transport — in the now-playing DRAWER since NowPlayingHero.svelte was deleted. The SELECTORS are
+	// unchanged (same aria-labels on the same three controls), so the driven flow is untouched except that
+	// the drawer has to be OPEN first; only which file to look in moved.
 	{
 		id: 'play',
-		file: 'src/lib/components/NowPlayingHero.svelte',
+		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'aria-label="play/pause"',
 		why: 'the flow starts playback through the real control, not a synthetic socket message'
 	},
 	{
 		id: 'skip',
-		file: 'src/lib/components/NowPlayingHero.svelte',
+		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'aria-label="skip"',
 		why: 'the flow advances the rotation to prove round-robin ordering'
 	},

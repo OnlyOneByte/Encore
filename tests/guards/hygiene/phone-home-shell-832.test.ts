@@ -36,8 +36,39 @@
 // constant), the one-env() rule (exactly one `env(safe-area-inset-bottom)` in the docked stack, on the
 // element that actually sits at the bottom edge), the query-driven split, and the retirement of the
 // `+ Add a turn` interstitial. Each is asserted at its new address at the same or greater strength.
+//
+// ══ THE DRAWER PHASE, AND WHAT IT REVERSED (§4) ═════════════════════════════════════════════════
+//
+// Two further arms pinned a DESIGN DECISION that has now flipped outright. It is recorded here rather
+// than dropped, because the arms it produced were correct about the phone they were written for:
+//
+//   4. HOME HAS NO NOW-PLAYING SURFACE. `NowPlayingHero` is DELETED, and its job — the song identity,
+//      the seek row, the transport, and the live singing controls — moved into `NowPlayingDrawer`, a
+//      bottom drawer mounted in `routes/+layout.svelte` and opened by the band's pull handle. Home is
+//      QUEUE-ONLY. The hero was direction A's answer to "where is the song I am singing", and the band
+//      phase made it a duplicate: the band already states the song, the singer and the progress at a
+//      glance from EVERY phone surface, so a card restating all of it cost the rotation the top of the
+//      screen for nothing. Two arms move with it — "home renders the HERO" and "the controls came WITH
+//      the hero, into its DISCLOSURE BODY" — and both are replaced at greater strength rather than
+//      re-pointed, because the new arrangement supports claims the old one could not make.
+//
+//      XR-PH-15's SUBSTANCE SURVIVES UNCHANGED and is still pinned: a control must not share a drag
+//      surface. The hero satisfied it by having no drag surface at all. The drawer HAS one — vaul drags
+//      to dismiss from anywhere in its content by default — and its body is sliders, so the guiding
+//      track's thumb and the dismiss gesture would be the same gesture, with the drawer winning because
+//      it is the ancestor. `handleOnly` on the Root is the answer: dragging is restricted to the handle,
+//      a whitelist that cannot be forgotten when the next control is added. So `handleOnly` is asserted
+//      HERE, and so is the real vaul Handle it restricts dragging TO — shadcn's copy-in shipped a
+//      decorative div, and `handleOnly` with no `data-vaul-handle` in the tree makes the drawer silently
+//      undraggable, which is a worse failure than the one it prevents.
+//
+//      THE DISCLOSURE IS GONE, not relocated. The hero needed one because it lived permanently on home;
+//      the drawer IS the act of revealing, so a disclosure inside it would be a second tap to see what
+//      the first tap was for. The nested "Vocal range" disclosure went with it: the range visualizer now
+//      sits DIRECTLY BELOW the key row, which is what it answers about.
 import { test, expect } from 'bun:test';
-import { read } from '@encore/test-support';
+import { existsSync } from 'node:fs';
+import { at, read } from '@encore/test-support';
 
 function stripComments(src: string): string {
 	return src
@@ -52,14 +83,59 @@ const PAGE = stripComments(RAW);
 const LAYOUT = stripComments(read('src/routes/+layout.svelte'));
 const FIND = stripComments(read('src/routes/find/+page.svelte'));
 const BAND = stripComments(read('src/lib/components/NowPlayingBand.svelte'));
+// §4: the now-playing surface itself, plus the two vendored files `handleOnly` depends on. The drawer
+// is where the hero's content went, so every arm that used to read the hero reads this instead; the
+// `ui/drawer` pair is read because `handleOnly` is only load-bearing if a real vaul Handle exists for
+// it to restrict dragging to.
+const DRAWER = stripComments(read('src/lib/components/NowPlayingDrawer.svelte'));
+const DRAWER_CONTENT = stripComments(read('src/lib/components/ui/drawer/drawer-content.svelte'));
+const DRAWER_HANDLE = stripComments(read('src/lib/components/ui/drawer/drawer-handle.svelte'));
 
-// ── the queue IS home ────────────────────────────────────────────────────────────────────────────
-test('home renders the now-playing HERO, and the queue sheet is gone from this route', () => {
-	expect(PAGE).toContain('<NowPlayingHero');
+// ── the queue IS home, and nothing else is ───────────────────────────────────────────────────────
+test('home renders NO now-playing surface — the layout owns the drawer, and the queue sheet stays gone', () => {
+	/*
+	 * REVERSED (header note §4). This arm required `<NowPlayingHero` ON THIS ROUTE, because direction A's
+	 * answer to "where is the song I am singing" was a card at the top of the queue. The band made that
+	 * card a duplicate and the hero is DELETED; the drawer in `routes/+layout.svelte` owns the job.
+	 *
+	 * REPLACED AT GREATER STRENGTH, not re-pointed. The old arm could make one claim ("the hero is
+	 * here"). Three replace it, each falsifiable on its own, and together they say something the old one
+	 * could not: that there is EXACTLY ONE now-playing surface in the app and it is reachable.
+	 *
+	 *   (a) the hero COMPONENT IS GONE from the tree, so it cannot be re-mounted by an import that
+	 *       still resolves — a deletion is invisible to a suite where nothing imports the route.
+	 *   (b) home mounts NO now-playing surface OF ANY KIND — not the hero, not the band, not the
+	 *       drawer — so the route cannot grow a second one beside the layout's and disagree with it.
+	 *   (c) the drawer is mounted EXACTLY ONCE, in the layout, bound to the layout's own open state and
+	 *       opened by the band's pull handle. A drawer nothing opens is the same defect as no drawer,
+	 *       and it is the defect the count alone would miss.
+	 */
+	// (a) gone from the tree, not merely unmounted.
+	expect(existsSync(at('src/lib/components/NowPlayingHero.svelte'))).toBe(false);
+	// (b) no now-playing surface on this route, in either direction — element or import.
+	for (const surface of ['NowPlayingHero', 'NowPlayingBand', 'NowPlayingDrawer'])
+		expect(PAGE, `home must not mount \`${surface}\`: the layout is the one owner`).not.toContain(surface);
+	// (c) one drawer, in the layout, wired to the state the band's handle raises.
+	expect(LAYOUT).toMatch(/import NowPlayingDrawer from '\$lib\/components\/NowPlayingDrawer\.svelte';/);
+	expect((LAYOUT.match(/<NowPlayingDrawer\b/g) ?? []).length).toBe(1);
+	expect(LAYOUT).toMatch(/let drawerOpen = \$state\(false\)/);
+	expect(LAYOUT).toMatch(/<NowPlayingDrawer\s+bind:open=\{drawerOpen\}/);
+	expect(LAYOUT).toMatch(/onexpand=\{\(\) => \(drawerOpen = true\)\}/);
+	// …and the handle exists only when there is somewhere to pull to, which is the band's own gate: an
+	// affordance whose destination is absent is worse than no affordance.
+	expect(BAND).toContain('{#if onexpand}');
+
 	// The whole sheet rationale ("at a party you are either browsing or checking the queue, so the two
-	// should not fight over one scroll") is what direction A INVERTS, so the sheet must not still be
-	// here holding the rotation. Both the import and the element.
-	expect(PAGE).not.toContain('QueueSheet');
+	// should not fight over one scroll") is what direction A INVERTS, so the sheet must not still be here
+	// holding the rotation — and it must not come back on either surface that replaced the hero. Both
+	// the import and the element, on all three.
+	for (const [where, src] of [
+		['routes/+page.svelte', PAGE],
+		['routes/+layout.svelte', LAYOUT],
+		['NowPlayingDrawer.svelte', DRAWER]
+	] as const) {
+		expect(src, `${where}: the retired queue sheet`).not.toContain('QueueSheet');
+	}
 });
 
 test('the rotation rows render inside <main>, not inside a pull-up sheet', () => {
@@ -89,42 +165,97 @@ test('the rotation rows render inside <main>, not inside a pull-up sheet', () =>
 	expect(PAGE).not.toContain('findbox');
 });
 
-test('the live singing controls came WITH the hero, into its disclosure body (XR-PH-15)', () => {
-	// The sheet was their only home. Deleting it without relocating them would silently drop guide
-	// vocals, key and range from the phone — a user-facing regression no other test would see.
+test('the live singing controls live in the DRAWER, which IS the revealing, and home carries none (XR-PH-15)', () => {
 	/*
-	 * The slice counts NESTING. It used to end at the first `{/snippet}` after the opening tag, which is
-	 * correct only while `controls()` is the ONLY snippet on the page — a property of today's markup,
-	 * not of the claim.
+	 * REVERSED (header note §4), and the reversal is the DISCLOSURE rather than the controls. This arm
+	 * required guide / key / range to sit in a `controls()` snippet passed into the hero's Collapsible
+	 * body, because the hero lived permanently on home and a permanent card cannot carry knobs. The
+	 * drawer IS the act of revealing, so a disclosure inside it is a second tap to see what the first tap
+	 * was for — and the nested "Vocal range" disclosure was a third.
 	 *
-	 * S5 demonstrated the fragility: trying the vocal-range disclosure on Bits UI's Collapsible
-	 * introduced a nested `child` snippet inside `controls()`, and this arm immediately reported
-	 * <RangeBar> missing from a page that plainly renders it. That migration was reverted for unrelated
-	 * reasons, so no nested snippet exists here today — the hardening is kept because the next one will
-	 * not announce itself, and a guard that reports a false absence is worse than one that reports none.
+	 * REPLACED AT GREATER STRENGTH. The old arm asserted the controls were SOMEWHERE inside one snippet,
+	 * with a nesting-aware slice to keep that honest. Four claims replace it:
+	 *
+	 *   (1) all four controls are inside the drawer's `.tools-body`, sliced with the same nesting counter
+	 *       so a nested block cannot make the arm report a false absence;
+	 *   (2) that body is gated on a song playing NOW, so an idle room is not offered knobs with nothing
+	 *       behind them — the hero's Collapsible could not claim this, since it rendered regardless;
+	 *   (3) XR-PH-15's substance, which is what the disclosure was standing in for: the guiding-track
+	 *       slider must not share a drag surface with the drawer's dismiss gesture. `handleOnly` on the
+	 *       Root is the mechanism, AND the real vaul Handle it restricts dragging TO is pinned with it —
+	 *       shadcn's copy-in shipped a decorative div, and `handleOnly` with no `data-vaul-handle` in the
+	 *       tree makes the drawer silently undraggable, which fails worse than the defect it prevents;
+	 *   (4) the range sits DIRECTLY BELOW the key row it answers about, with no disclosure of its own.
+	 *
+	 * …and (5) home carries NONE of it, so the controls cannot exist in two places at once and drift.
 	 */
-	const snippet = (() => {
-		const start = PAGE.indexOf('{#snippet controls()}');
-		expect(start, 'the page no longer declares a `controls()` snippet').toBeGreaterThan(-1);
+	// (1) THE SLICE COUNTS NESTING, for the reason the hero's snippet slice did: a slice that stops at
+	// the first `</div>` is correct only while `.tools-body` has no nested block, which is a property of
+	// today's markup rather than of the claim. S5's precedent is why this hardening is kept — a guard
+	// that reports a false absence is worse than one that reports none.
+	const toolsBody = (() => {
+		const start = DRAWER.indexOf('<div class="tools-body">');
+		expect(start, 'the drawer no longer declares a `.tools-body` live-controls block').toBeGreaterThan(-1);
 		let depth = 0;
-		for (let i = start; i < PAGE.length; i++) {
-			if (PAGE.startsWith('{#snippet', i)) depth++;
-			else if (PAGE.startsWith('{/snippet}', i)) {
+		for (let i = start; i < DRAWER.length; i++) {
+			if (DRAWER.startsWith('<div', i)) depth++;
+			else if (DRAWER.startsWith('</div>', i)) {
 				depth--;
-				if (depth === 0) return PAGE.slice(start, i);
+				if (depth === 0) return DRAWER.slice(start, i);
 			}
 		}
-		throw new Error('the `controls()` snippet is never closed');
+		throw new Error('the `.tools-body` block is never closed');
 	})();
-	expect(snippet.length).toBeGreaterThan(0);
-	expect(snippet).toContain('<GuidingTrack');
-	expect(snippet).toContain('<RangeBar');
-	expect(snippet).toContain('class="key"');
-	// The snippet is passed to the hero, so the controls render in the hero's own body.
-	const hero = PAGE.slice(PAGE.indexOf('<NowPlayingHero'), PAGE.indexOf('</NowPlayingHero>'));
-	expect(hero).toContain('{#snippet controls()}');
-	// The collapsed summary is fed too, or the disclosure says nothing about where the controls stand.
-	expect(hero).toContain('{controlsSummary}');
+	expect(toolsBody.length).toBeGreaterThan(0);
+	// The sheet was their only home, then the hero was. Deleting the hero without relocating them would
+	// silently drop guide vocals, key and range from the phone — a user-facing regression no other test
+	// would see, which is why each is named rather than counted.
+	expect(toolsBody).toContain('<GuidingTrack');
+	expect(toolsBody).toContain('<RangeBar');
+	expect(toolsBody).toContain('class="key"');
+	expect(toolsBody).toContain('<LyricsReselect');
+	// The guide's reason-before-the-dead-row note (XR-PH-03) came with them.
+	expect(toolsBody).toContain('class="tools-note"');
+
+	// (2) gated on a song playing NOW — the transport survives an idle room, the knobs do not.
+	const hasSongGate = DRAWER.indexOf('{#if hasSong}');
+	expect(hasSongGate).toBeGreaterThan(-1);
+	expect(hasSongGate).toBeLessThan(DRAWER.indexOf('<div class="tools-body">'));
+	// …and the transport is OUTSIDE that gate, in the drawer's own body, with all three controls.
+	expect(toolsBody).not.toContain('class="transport"');
+	expect(DRAWER.indexOf('class="np-body"')).toBeLessThan(DRAWER.indexOf('<div class="transport">'));
+	for (const label of ['restart', 'play/pause', 'skip'])
+		expect(DRAWER, `the transport lost its \`${label}\` control`).toContain(`aria-label="${label}"`);
+
+	// (3) XR-PH-15, at the address the drawer answers it: dragging restricted to the handle…
+	expect(DRAWER).toMatch(/<Drawer\.Root\b[^>]*\bhandleOnly\b/);
+	// …and a REAL handle for it to be restricted to. Without these two the prop is a silent no-op that
+	// makes the drawer undraggable, so asserting `handleOnly` alone would be asserting nothing.
+	expect(DRAWER_CONTENT).toMatch(/<DrawerHandle\b/);
+	expect(DRAWER_HANDLE).toMatch(/<DrawerPrimitive\.Handle\b/);
+	// No second disclosure anywhere on this surface: the drawer is the one level of revealing.
+	expect(DRAWER).not.toContain('Collapsible');
+
+	// (4) the range is directly below the key row, in DOM order, inside the same body.
+	expect(toolsBody.indexOf('class="key"')).toBeLessThan(toolsBody.indexOf('<div class="range">'));
+
+	// (5) home carries none of it. Without this the controls could come back in two places at once —
+	// two surfaces reading the same room and writing the same commands, disagreeing under a slow socket.
+	for (const gone of [
+		'GuidingTrack',
+		'RangeBar',
+		'LyricsReselect',
+		'{#snippet controls()}',
+		'controlsSummary',
+		'class="key"',
+		'class="transport"',
+		'aria-label="restart"',
+		'aria-label="play/pause"',
+		'aria-label="skip"',
+		'keyShiftEnabled',
+		'canStart'
+	])
+		expect(PAGE, `home must not carry the live control \`${gone}\` — the drawer owns it`).not.toContain(gone);
 });
 
 // ── the position, in words, fed from real durations (XR-PH-09) ───────────────────────────────────
@@ -390,21 +521,32 @@ test('the shell imports what it is built from — a missing one is a build break
 	// whole import statement, so this comment cannot itself read as a virtual-module import.)
 	expect(PAGE).not.toContain('$app/state');
 	expect(PAGE).toMatch(/import \{ positionWords \} from '\$lib\/phrasing\/position-sentence';/);
-	expect(PAGE).toMatch(/import NowPlayingHero from '\$lib\/components\/NowPlayingHero\.svelte';/);
 	expect(PAGE).toMatch(/import MyPositionCard from '\$lib\/components\/MyPositionCard\.svelte';/);
-	// songDisplay is what keeps the hero's title and artist APART — `mediaTitle` welds them together,
-	// and the cards' own history is that the uploader ended up rendered as the artist. Asserted against
-	// the IMPORT LIST, not the file: the call site mentions the name too, so a file-wide scan would stay
-	// green with the import removed and prove nothing about the hunk that adds it.
-	const shared = PAGE.slice(PAGE.indexOf('import {'), PAGE.indexOf("} from '$lib/contract';"));
+	/*
+	 * RE-POINTED (header note §4). The now-playing surface is the LAYOUT's, so the import this arm used
+	 * to pin here — `NowPlayingHero` — is pinned there instead, as the two components the layout mounts.
+	 * Same claim at the same strength, one address up: the layout has no unit harness either (it imports
+	 * `$app/state` and `$app/navigation`, neither of which the test harness aliases), so a dropped import
+	 * reds `build`/`typecheck` and leaves the suite green exactly as it did on the route.
+	 */
+	expect(LAYOUT).toMatch(/import NowPlayingBand from '\$lib\/components\/NowPlayingBand\.svelte';/);
+	expect(LAYOUT).toMatch(/import NowPlayingDrawer from '\$lib\/components\/NowPlayingDrawer\.svelte';/);
+	// songDisplay is what keeps the song's title and artist APART — `mediaTitle` welds them together,
+	// and the cards' own history is that the uploader ended up rendered as the artist. RE-POINTED with
+	// the mirror it serves: the layout is the one place that reads the room for the band and the drawer,
+	// so it is the one place that calls songDisplay. Asserted against the IMPORT LIST, not the file: the
+	// call site mentions the name too, so a file-wide scan would stay green with the import removed and
+	// prove nothing about the hunk that adds it.
+	const shared = LAYOUT.slice(LAYOUT.indexOf('import {'), LAYOUT.indexOf("} from '$lib/contract';"));
 	expect(shared).toMatch(/(^|[\s,])songDisplay\s*(,|$)/m);
-	// …and the byline keeps the uploader fallback the browse row uses for a READY song, or the hero
-	// silently shows no artist for every song whose parse was not confident — which is most local files.
-	expect(PAGE).toMatch(/nowDisplay\.artist \?\? nowMedia\?\.artist \?\? null/);
+	// …and the byline keeps the uploader fallback the browse row uses for a READY song, or the drawer and
+	// the band both silently show no artist for every song whose parse was not confident — which is most
+	// local files.
+	expect(LAYOUT).toMatch(/display\.artist \?\? media\?\.artist \?\? null/);
 });
 
 // ── the transport's CSS went with the buttons ────────────────────────────────────────────────────
-test('the route no longer declares the transport styles the hero now owns', () => {
+test('the route no longer declares the transport styles the drawer now owns', () => {
 	// A PURE DELETION, so reverting it re-adds rules nothing selects and the suite stays green — the
 	// exit-20 case §3 names, closed by scanning the real production file. Two arms, because the finding
 	// is not only "unused": the block held four of this route's `44px` literals, and XR-PH-01's whole
@@ -412,13 +554,19 @@ test('the route no longer declares the transport styles the hero now owns', () =
 	expect(PAGE).not.toMatch(/^\s*\.ic\s*\{/m);
 	expect(PAGE).not.toMatch(/^\s*\.ic\.play\s*\{/m);
 	expect(PAGE).not.toMatch(/^\s*\.ic:disabled\s*\{/m);
-	// …and no markup left behind that would have needed them.
+	// …and no markup left behind that would have needed them, nor a second copy of the rule the
+	// transport's new home declares.
 	expect(PAGE).not.toContain('class="ic ');
 	expect(PAGE).not.toContain('no-drag');
-	// The hero owns them now, derived from the token rather than the number.
-	const HERO = read('src/lib/components/NowPlayingHero.svelte');
-	expect(HERO).toContain('aria-label="play/pause"');
-	expect(HERO).not.toContain('44px');
+	expect(PAGE).not.toMatch(/^\s*\.transport\s*\{/m);
+	/*
+	 * RE-POINTED (header note §4): the DRAWER owns them now, not the hero. Same two claims at the same
+	 * strength — the transport really renders where the rules went, and it is sized from the token rather
+	 * than the number — read off the real production file so a pure deletion cannot pass unnoticed.
+	 */
+	const DRAWER_SRC = read('src/lib/components/NowPlayingDrawer.svelte');
+	expect(DRAWER_SRC).toContain('aria-label="play/pause"');
+	expect(DRAWER_SRC).not.toContain('44px');
 });
 
 // ── the docked-band token has ONE meaning, and the prose says which ──────────────────────────────

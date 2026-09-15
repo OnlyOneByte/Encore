@@ -3,8 +3,19 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { SINGER_COLORS, songDisplay } from '$lib/contract';
+	import {
+		SINGER_COLORS,
+		songDisplay,
+		isPlayable,
+		hasGuidingTrack,
+		effectiveGuideLevel,
+		chosenCandidate,
+		hasNewerCandidateThanOverride,
+		type LyricsCandidate,
+		type SongProfile
+	} from '$lib/contract';
 	import NowPlayingBand from '$lib/components/NowPlayingBand.svelte';
+	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
 	import { room } from '$lib/stores/room';
 
 	let { children } = $props();
@@ -32,6 +43,20 @@
 	let isPlaying = $state(false);
 	let positionSec = $state(0);
 	let durationSec = $state(0);
+	// Only the drawer reads these. They cost nothing while it is closed — the drawer's content is not
+	// rendered at all until then — and mirroring them here keeps every room read in one place.
+	let profile = $state<SongProfile | null>(null);
+	let keyShift = $state(0);
+	let keyShiftEnabled = $state(false);
+	let guideServerPct = $state(0);
+	let guideEnabled = $state(false);
+	let hasSong = $state(false);
+	let canStart = $state(false);
+	let mediaId = $state<string | null>(null);
+	let candidates = $state<LyricsCandidate[]>([]);
+	let chosenRef = $state<string | undefined>(undefined);
+	let overrideRef = $state<string | undefined>(undefined);
+	let newerExists = $state(false);
 
 	onMount(() => {
 		const sync = () => {
@@ -47,6 +72,22 @@
 			isPlaying = room.playback.isPlaying;
 			positionSec = room.playback.positionSec;
 			durationSec = media?.durationSec ?? 0;
+			hasSong = !!entry;
+			canStart = room.entries.some((e) => e.status === 'queued');
+			mediaId = media?.id ?? null;
+			profile = media?.songProfile ?? null;
+			keyShift = room.playback.keyShift;
+			// ±key needs separated stems, and the guiding track needs an isolated vocals stem. Two
+			// different gates, so a song can legitimately offer one and not the other.
+			keyShiftEnabled = !!media && isPlayable(media);
+			guideEnabled = !!media && hasGuidingTrack(media);
+			guideServerPct = Math.round(
+				effectiveGuideLevel({ guideLevel: room.playback.guideLevel }, room.roomGuideDefault) * 100
+			);
+			candidates = media?.lyricsCandidates ?? [];
+			chosenRef = media ? chosenCandidate(media)?.ref : undefined;
+			overrideRef = media?.lyricsOverrideRef;
+			newerExists = media ? hasNewerCandidateThanOverride(media.lyricsCandidates, media.lyricsOverrideRef) : false;
 		};
 		sync();
 		const stop = room.subscribe(sync);
@@ -85,6 +126,12 @@
 
 	// Only a joined singer gets the band: a guest on the landing page has no room to be a remote for.
 	const showBand = $derived(isPhoneSurface && me !== null);
+	/*
+	 * The drawer's open state lives HERE, not in the band, because the band is presentational and the
+	 * drawer is its sibling rather than its child. The band raises `onexpand`; this decides what that
+	 * means. Closing is the drawer's own business (its handle, the overlay, Escape).
+	 */
+	let drawerOpen = $state(false);
 
 	/**
 	 * THE BAND CONTRACT, and it lives here now because the band is the bottom-most thing on the screen.
@@ -149,8 +196,43 @@
 			{isPlaying}
 			onsearch={() => goto('/find')}
 			ontoggleplay={() => room.command({ cmd: isPlaying ? 'pause' : 'play' })}
+			onexpand={() => (drawerOpen = true)}
 		/>
 	</div>
+
+	<!--
+		The drawer is the band's expansion, so it is a SIBLING of the band rather than a child: vaul
+		portals its content to the end of the body, and nesting it inside a `position: fixed` dock would
+		put the portal's coordinate system inside the very element it has to cover.
+	-->
+	<NowPlayingDrawer
+		bind:open={drawerOpen}
+		{title}
+		{artist}
+		{singerName}
+		{singerColor}
+		{profile}
+		{keyShift}
+		{keyShiftEnabled}
+		{guideServerPct}
+		{guideEnabled}
+		elapsedSec={livePos}
+		{durationSec}
+		{isPlaying}
+		{hasSong}
+		{canStart}
+		{candidates}
+		{chosenRef}
+		{overrideRef}
+		{newerExists}
+		onrestart={() => room.command({ cmd: 'restart' })}
+		ontoggleplay={() => room.command({ cmd: isPlaying ? 'pause' : 'play' })}
+		onskip={() => room.command({ cmd: 'skip' })}
+		onkey={(semitones) => room.command({ cmd: 'key', semitones })}
+		onguide={(level) => room.command({ cmd: 'guide', level })}
+		onpicklyrics={(ref) => mediaId && void room.reselectLyrics(mediaId, { ref })}
+		onpastelyrics={(text) => mediaId && void room.reselectLyrics(mediaId, { text })}
+	/>
 {/if}
 
 <style>

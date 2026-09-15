@@ -8,7 +8,8 @@
 	import NowPlayingBand from '$lib/components/NowPlayingBand.svelte';
 	import type { SongProfile } from '$lib/contract';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
-	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
+	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
+	import { Button } from '$lib/components/ui/button';
 	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 	import { positionWords } from '$lib/phrasing/position-sentence';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
@@ -87,6 +88,10 @@
 	};
 	// Same range, but NO histogram — the block must degrade to a flat fill (range known, weight unknown).
 	const profileNoHist: SongProfile = { ...profileFull, histogram: null };
+
+	// Drives the two drawer triggers below — a portalled overlay can only show one state at a time.
+	let drawerOpen = $state(false);
+	let drawerHasSong = $state(true);
 	// A key but NO measured range (silent/instrumental vocal stem). The bar renders NOTHING.
 	const profileKeyOnly: SongProfile = {
 		keyTonic: 2, // D
@@ -537,29 +542,51 @@
 	<SongRow title="A local file with no metadata at all" readiness="unacquired" onmake={() => {}} />
 
 	<!--
-		an earlier change, direction A. The hero and the position card, which are the two things home is now made of.
-		The position card is shown in BOTH branches, adjacent: XR-PH-09's second arm is that an unknown
-		wait renders NO minutes clause, and "no clause" is only judgeable against the clause it replaces.
-		The wait is `null` here because one entry ahead has no resolvable length — the reachable unknown,
-		since Media.durationSec is required and absence from the catalog is what produces it.
+		THE DRAWER GETS TRIGGERS, NOT A STACK OF FRAMES, and the reason is structural rather than lazy.
+		Every other entry on this page is an inline card, so five of them sit side by side and one
+		screenshot judges all five. A drawer is PORTALLED to the end of the body and fixed to the
+		viewport: two open at once occupy the same 82dvh, so a stack of them would show one frame with
+		four invisible siblings underneath. So the states are reachable one at a time, and the frame that
+		matters is captured by driving the real app.
+		(This is also the only surface here that cannot be judged without interacting — worth knowing
+		before trusting a gallery screenshot of it.)
 	-->
-	<h2 class="section">NowPlayingHero · MyPositionCard</h2>
-	<NowPlayingHero
-		title="Livin' on a Prayer"
-		singerName="Maya"
+	<h2 class="section">NowPlayingDrawer · MyPositionCard</h2>
+	<div class="row-demo">
+		<Button
+			variant="secondary"
+			size="tap"
+			onclick={() => {
+				drawerHasSong = true;
+				drawerOpen = true;
+			}}>Open · playing, full profile</Button
+		>
+		<Button
+			variant="secondary"
+			size="tap"
+			onclick={() => {
+				drawerHasSong = false;
+				drawerOpen = true;
+			}}>Open · nothing playing</Button
+		>
+	</div>
+	<NowPlayingDrawer
+		bind:open={drawerOpen}
+		title={drawerHasSong ? "Livin' on a Prayer" : null}
+		artist={drawerHasSong ? 'Bon Jovi' : null}
+		singerName={drawerHasSong ? 'Maya' : null}
 		singerColor={GREEN}
-		byline="Bon Jovi · A minor"
-		elapsedSec={104}
-		durationSec={249}
-		isPlaying
-		hasSong
-		controlsSummary="Guide vocals 20% · Key · −2"
-	>
-		{#snippet controls()}
-			<GuidingTrack pct={20} available oninput={() => {}} oncommit={() => {}} />
-		{/snippet}
-	</NowPlayingHero>
-	<NowPlayingHero title="Nothing playing" hint="Queue a song to start the party" />
+		profile={drawerHasSong ? profileFull : null}
+		keyShift={drawerHasSong ? -2 : 0}
+		keyShiftEnabled={drawerHasSong}
+		guideServerPct={20}
+		guideEnabled={drawerHasSong}
+		elapsedSec={drawerHasSong ? 104 : 0}
+		durationSec={drawerHasSong ? 249 : 0}
+		isPlaying={drawerHasSong}
+		hasSong={drawerHasSong}
+		canStart
+	/>
 	<MyPositionCard
 		words={positionWords({ place: 3, beforeName: 'Priya', nowRemainingSec: 145, aheadDurationsSec: [249, 321] })}
 	/>
@@ -1122,6 +1149,14 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 	 * LOCAL on purpose: a shared cross-file header primitive is scheduled separately, and this only
 	 * needs to make the gallery's own headers agree with each other.
 	 */
+	/* The drawer's two triggers, side by side. A portalled overlay cannot be stacked like the inline
+	   cards above it, so the states are reachable one at a time — see the note beside them. */
+	.row-demo {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
+		margin-bottom: var(--space-md);
+	}
 	.section {
 		margin-top: var(--space-3xl);
 		font-size: var(--ph-text-sm);

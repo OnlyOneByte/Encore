@@ -51,7 +51,7 @@ const PROBES = [
 	{ path: 'tests/e2e/probes/p14-playhead-vs-process.mjs', mode: 'boots', subject: 'the playhead against a concurrent process' },
 	{ path: 'tests/e2e/probes/p15-reload-resume.mjs', mode: 'boots', subject: 'reload mid-song resumes at the right position' },
 	{ path: 'tests/e2e/probes/p15-phone-reflow.mjs', mode: 'boots', subject: 'phone reflow across viewports (needs a built UI)' },
-	{ path: 'tests/e2e/probes/p16-hero-live-controls.mjs', mode: 'boots', subject: 'the now-playing hero live transport controls' },
+	{ path: 'tests/e2e/probes/p16-hero-live-controls.mjs', mode: 'boots', subject: 'the now-playing drawer: live controls, and the slider that must not dismiss it' },
 	{ path: 'tests/e2e/shoot-913.mjs', mode: 'boots', kind: 'captures', subject: 'shadcn-migration screenshots (evidence, not assertions)' },
 
 	// ── need a server this runner provides ──────────────────────────────────────────────────────────

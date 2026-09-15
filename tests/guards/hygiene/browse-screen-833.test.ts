@@ -93,6 +93,21 @@
 //      "the group headings name WHICH LIST, in one neutral treatment — never the readiness of their
 //      members". A reader who thinks "Ready to sing" over ready-chipped rows is still the banned
 //      duplication should reopen the ruling, not weaken this arm: it pins what the source does today.
+//
+//  R7. THE FIFTH SOURCE, and why `/`'s own floor came DOWN. Nothing about a browse mechanism changed
+//      here — what changed is that `/` is now QUEUE-ONLY. `NowPlayingHero` is deleted and the song
+//      identity, transport and live singing controls moved into `NowPlayingDrawer`, mounted in
+//      `+layout.svelte` and opened by the band's pull handle. `/` went from ~1520 lines to ~1070, so its
+//      non-vacuity floor fired.
+//
+//      That floor is a FINDING, not a number to adjust (`tests/guards/meta/non-vacuity-floors.test.ts`
+//      states the doctrine), and the accepted resolution here is (b) RE-ANCHOR: follow the surface. So
+//      the drawer is read as a FIFTH source, carries its own two floors, and is added to the ban loops
+//      the queue route already appears in — it is app chrome on EVERY phone surface now, which makes it
+//      the newest place a readiness chip row or a facet rail could come back WITHOUT touching `/` or
+//      /find. `/`'s floors are then set to what a queue-only route genuinely supports. The code this
+//      guard examines therefore goes UP, not down; the floor's job — proving `read()` really landed on
+//      the file and the stripper did not blank it — is unchanged at every one of the five addresses.
 
 import { test, expect } from 'bun:test';
 import { existsSync } from 'node:fs';
@@ -127,14 +142,21 @@ const ROOM = stripComments(ROOM_RAW);
 // and as the second half of every "did not creep back" ban, since `/` is where these mechanisms lived.
 const HOME_RAW = read('src/routes/+page.svelte');
 const HOME = stripComments(HOME_RAW);
+// R7: the now-playing drawer, which took the song identity, transport and live controls off `/`. Read
+// because it is app chrome on every phone surface now, so it is a third address a banned mechanism could
+// return at without touching either route.
+const DRAWER_RAW = read('src/lib/components/NowPlayingDrawer.svelte');
+const DRAWER = stripComments(DRAWER_RAW);
 
 // ── mechanism 1: the three readiness chips ───────────────────────────────────────────────────────
 test('mechanism 1 — the readiness chip row is gone, and so is the state behind it', () => {
 	// The row itself, by the group label every driven flow used to find it with. Banned on BOTH the new
 	// surface and the old one: the chips could come back either at their old address or at the new one.
+	// R7 adds the drawer, which is on every phone surface now and so is a third address for them.
 	for (const [name, src] of [
 		['find', FIND],
-		['home', HOME]
+		['home', HOME],
+		['drawer', DRAWER]
 	] as const) {
 		expect(src, name).not.toContain('Filter by readiness');
 		expect(src, name).not.toMatch(/class="chips"/);
@@ -171,10 +193,12 @@ test('mechanism 1 — every group renders unconditionally, so nothing is hidden 
 // ── mechanisms 2 and 3: the artist rail and the genre/tag rail ───────────────────────────────────
 test('mechanisms 2+3 — the browse disclosure and both facet rails are gone from the phone', () => {
 	// Banned at both addresses. The rails were markup on `/`; the surface that would host them today is
-	// /find, so a scan of only one of the two would miss a reinstatement at the other.
+	// /find, so a scan of only one of the two would miss a reinstatement at the other. R7 adds the drawer:
+	// it inherited the hero's disclosure body, which is where a facet rail would sit most plausibly now.
 	for (const [name, src] of [
 		['find', FIND],
-		['home', HOME]
+		['home', HOME],
+		['drawer', DRAWER]
 	] as const) {
 		expect(src, name).not.toContain('browse-toggle');
 		expect(src, name).not.toContain('Browse by artist');
@@ -447,7 +471,7 @@ test('the docked band survives the on-screen keyboard, by the one mechanism that
 
 // ── non-vacuity ─────────────────────────────────────────────────────────────────────────────────
 test('this guard really read every route it claims to, and really stripped their comments', () => {
-	// Every arm above is an absence, and an absence is what an empty string is full of. Four sources are
+	// Every arm above is an absence, and an absence is what an empty string is full of. FIVE sources are
 	// now read instead of one, and a re-point that lands on the wrong file would pass every ban silently —
 	// so each source carries its own floor, named, rather than one floor standing in for all of them.
 	//
@@ -455,12 +479,21 @@ test('this guard really read every route it claims to, and really stripped their
 	// spaces to preserve line numbers, so the stripped string is always the same LENGTH as the raw one —
 	// which means a length check on the stripped text is the raw check restated and could never catch a
 	// stripper that blanked everything. The non-whitespace count can.
+	//
+	// R7: `home`'s pair is RE-ANCHORED downward (40000/18000 -> 34000/11000) and `drawer` is added with
+	// its own. `/` is queue-only now — the hero's ~450 lines of song identity, transport and live controls
+	// left for `NowPlayingDrawer` — so 18000 was floored against a surface that no longer exists. This is
+	// resolution (b) of the floor doctrine, not a lowered number: the code that left `/` is read here
+	// under `drawer`, is subject to the same bans (mechanisms 1 and 2+3 above), and the total this guard
+	// examines is LARGER than before. Each floor keeps roughly the same margin under its file's real size
+	// as the three untouched entries do, so all five stay sensitive to a wrong read for the same reason.
 	for (const [name, raw, stripped, rawFloor, codeFloor] of [
 		['find', FIND_RAW, FIND, 12000, 7000],
 		['layout', LAYOUT_RAW, LAYOUT, 5000, 1800],
 		['band', BAND_RAW, BAND, 9000, 2800],
 		['room', ROOM_RAW, ROOM, 12000, 5000],
-		['home', HOME_RAW, HOME, 40000, 18000]
+		['home', HOME_RAW, HOME, 34000, 11000],
+		['drawer', DRAWER_RAW, DRAWER, 12000, 6000]
 	] as const) {
 		expect(raw.length, `${name}: file read`).toBeGreaterThan(rawFloor);
 		expect(stripped.replace(/\s+/g, '').length, `${name}: survived the stripper`).toBeGreaterThan(codeFloor);
@@ -474,10 +507,13 @@ test('this guard really read every route it claims to, and really stripped their
 	//   home   names the deleted chip state       (mechanism 1)
 	//   find   names the retired upward stacking  (R2)
 	//   layout names the retired `.search-dock`   (R1)
+	//   drawer names the retired nested disclosure the range sat behind (R7)
 	expect(HOME_RAW).toContain('`showReady`/`showProcessing`/`showRaw`');
 	expect(HOME).not.toContain('`showReady`/`showProcessing`/`showRaw`');
 	expect(FIND_RAW).toContain('results expand upward IN PLACE');
 	expect(FIND).not.toContain('results expand upward IN PLACE');
 	expect(LAYOUT_RAW).toContain('`.search-dock` in the route');
 	expect(LAYOUT).not.toContain('`.search-dock` in the route');
+	expect(DRAWER_RAW).toContain('behind a nested "Vocal range" Collapsible');
+	expect(DRAWER).not.toContain('behind a nested "Vocal range" Collapsible');
 });

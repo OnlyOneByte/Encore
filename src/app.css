@@ -1110,7 +1110,8 @@ body {
 
 /*
  * THE SINGER IDENTITY DOT (the primitive-adoption pass). Four independent copies existed — QueueRow's `.who i`,
- * ProcessingCard's `.who i`, NowPlayingHero's `.eyebrow .dot`, and ColourPicker's 14px `.colour-chip` —
+ * ProcessingCard's `.who i`, NowPlayingDrawer's `.eyebrow` dot (the hero's, before NowPlayingDrawer
+ * replaced NowPlayingHero), and ColourPicker's 14px `.colour-chip` —
  * all the same five declarations. The hue is per-singer and arrives as `--singer`, set inline at the
  * call site. It lives here for the same reason `.list-row` does: three of those four sit in the same
  * list, so a dot that differs between them is a bug rather than a variation.
@@ -1148,7 +1149,7 @@ body {
  */
 /*
  * `.icon-btn` was DELETED by the shadcn migration S1b. Its ten consumers across QueueRow, ProcessingCard and
- * NowPlayingHero are now <Button variant="icon">, whose variant carries the 44px box, the
+ * NowPlayingDrawer (which replaced NowPlayingHero) are now <Button variant="icon">, whose variant carries the 44px box, the
  * --radius-sm corner, the --card2 surface and the dimmed glyph. `display: grid` + `place-items`
  * survives as `grid place-items-center` and is still load-bearing: Icon renders as a block, and
  * without a centring context the mark sits off-centre (the reported off-centre X).

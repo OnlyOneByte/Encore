@@ -203,6 +203,28 @@ export class RoomLink {
 		this.#ws = undefined;
 	}
 
+	/**
+	 * Re-pick a song's lyrics: choose a stored candidate by ref, or paste new words. The server pins the
+	 * choice and re-times it, and the live `media:status` broadcasts drive the row.
+	 *
+	 * IT LIVES ON THE LINK because the control that calls it is app chrome now — the drawer, mounted by
+	 * the layout — and the layout should not be making fetches. A human edit must produce a NEW `manual`
+	 * candidate rather than mutate one, which is the server's rule; this only reports the choice.
+	 */
+	async reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }): Promise<void> {
+		try {
+			const res = await fetch('/api/lyrics-reselect', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ mediaId, ...choice })
+			});
+			const body = await res.json().catch(() => ({}));
+			if (!res.ok) this.#fail(body.error ?? 'Could not re-time the lyrics');
+		} catch {
+			this.#fail('Could not re-time the lyrics — check your connection');
+		}
+	}
+
 	/** Send a player command (play/pause/skip/key/guide/seek). No-op before the socket is up. */
 	command(command: PlayerCommand): void {
 		this.#ws?.send({ type: 'player:command', command });

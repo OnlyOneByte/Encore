@@ -271,6 +271,12 @@ ten-foot surface with its own type ladder has no business borrowing phone primit
 `RangeBar`, and the composites `NowPlayingHero` / `ProcessingCard` / `QueueRow` — whose _primitives_
 migrate while the components themselves remain.
 
+> **`NowPlayingHero` has since been replaced** (`ui/phone-remote-redesign`). Its job moved into
+> `src/lib/components/NowPlayingDrawer.svelte`, a bottom drawer mounted from `src/routes/+layout.svelte`,
+> so the fence above now protects one fewer composite: the drawer's shell is the vendored
+> `Drawer.Content` rather than a hand-rolled surface, which is the outcome the fence was meant to allow
+> when "something changes".
+
 Two constraints discovered while building S1, both structural rather than stylistic:
 
 - **A copied-in component cannot be styled from its call site.** `app.css` sets Tailwind to

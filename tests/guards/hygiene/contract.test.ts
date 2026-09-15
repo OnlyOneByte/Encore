@@ -413,6 +413,56 @@ test('a selector whose only occurrence is a comment does not resolve (the guard 
 	expect(selectorResolves('audio', stripped)).toBe(true);
 });
 
+test('the retired hero family stays retired — `.hero` resolves, but only against TV markup', () => {
+	/*
+	 * THE TRAP THE GUARD ABOVE CANNOT SEE. NowPlayingHero.svelte was deleted and its job moved into
+	 * NowPlayingDrawer, so every hero-anchored entry was retired or re-pointed (the records are in
+	 * contract.ts). Retiring `hero` is the part that needs a test, because `.hero` STILL RESOLVES:
+	 * lib/tv/JoinBadge.svelte renders `class="hero"` on the attract screen's join panel. So re-adding
+	 * `hero: '.hero'` to SEL — or "fixing" a failing phone read by pointing it back at that class — passes
+	 * the every-SEL-resolves guard with the phone flow aimed at the TELEVISION.
+	 *
+	 * That is not hypothetical. It is the `.chip` shape: a selector matching the wrong control across two
+	 * migrations, invisible until the wrong target happened to disappear too. A selector resolving against
+	 * the wrong surface is worse than one that reds, and only an absence assertion catches it.
+	 */
+	const sources = guardSources();
+
+	// The resolution is REAL — which is the entire reason the absence has to be asserted rather than
+	// assumed. If this ever goes false the class has left the TV as well, and this test can go with it.
+	expect(selectorResolves('.hero', sources)).toBe(true);
+
+	// ...and every source still carrying it is the TV's. Both `lib/tv/` and `routes/tv/` count as the
+	// television; a phone surface reintroducing `class="hero"` reds here, which is the point.
+	const carriers = svelteFiles(join(CORE, 'src')).filter((f) =>
+		classPresent(stripComments(readFileSync(f, 'utf8')), 'hero')
+	);
+	expect(carriers.length).toBeGreaterThan(0); // non-vacuity: `every` over [] is true
+	expect(
+		carriers.every((f) => /\/tv\//.test(f)),
+		`non-TV sources carry class="hero": ${carriers.join(', ')}`
+	).toBe(true);
+
+	// So no SEL entry may point at it, nor at the two disclosure classes the drawer replaced rather than
+	// moved. `.tools-toggle` / `.tools-peek` resolve FALSE today, so the guard above already covers them —
+	// this pins them by VALUE as well, because the failure mode for a dead disclosure is someone reviving
+	// the name against a class that has come back on some unrelated surface.
+	const values = Object.values(SEL);
+	for (const dead of ['.hero', '.hero .song', '.tools-toggle', '.tools-peek']) {
+		expect(values, `${dead} is retired and must not return to SEL`).not.toContain(dead);
+	}
+
+	// And no HOOK may name the deleted component. The file-existence test reports this too, but only while
+	// the path stays dead: a future component reusing the name would silence it, where this does not.
+	expect(HOOKS.filter((h) => h.file.includes('NowPlayingHero')).map((h) => h.id)).toEqual([]);
+
+	// The successors exist and resolve, so the retirement handed each claim on rather than dropping it:
+	// the playing title (band, no gesture / drawer, once open) and the now-playing surface itself.
+	for (const key of ['bandTitle', 'npSong', 'npDrawer', 'bandExpand', 'drawerHandle'] as const) {
+		expect(selectorResolves(SEL[key] as string, sources), key).toBe(true);
+	}
+});
+
 test('every settings id the flow drives exists as an element id', () => {
 	// SETTING_IDS is exempt from the resolver above because it is raw data; this is where each id is
 	// resolved. The flow queries `#<id>`, so the source must carry `id="<id>"`.

@@ -28,6 +28,7 @@
  */
 
 import { connect, sleep } from '../driver.mjs';
+import { openNowPlaying } from '../lib/phone.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SEL } from '../contract.ts';
@@ -117,7 +118,9 @@ async function driveRoomToPlaying() {
 	console.log('phone queue action:', clicked);
 	// Wait for the queue to actually contain a row.
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`, { timeout: 6000 });
-	// Hit play/pause.
+	// Hit play/pause. The transport lives in the drawer now, so it has to be pulled up first — the
+	// band's disc is the one-tap play, but this probe reads the drawer's own control at 200% text.
+	await openNowPlaying(phone);
 	await phone.evaluate(`document.querySelector('[aria-label="play/pause"]')?.click()`);
 	await sleep(1200);
 	return phone;

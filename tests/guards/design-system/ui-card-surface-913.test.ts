@@ -48,7 +48,20 @@ const CALLERS: { file: string; why: string }[] = [
 	{ file: 'lib/components/SongRow.svelte', why: 'a library/search row — its structure is Item, not Card' },
 	{ file: 'lib/components/QueueRow.svelte', why: 'a queue row — Item, plus its own drag and state classes' },
 	{ file: 'lib/components/ProcessingCard.svelte', why: 'a processing row — Item, plus a progress bar and stage line' },
-	{ file: 'lib/components/NowPlayingHero.svelte', why: 'the hero: a transport and a disclosure, not a titled card' },
+	/*
+	 * REMOVED, not repointed: `lib/components/NowPlayingHero.svelte` (`class="hero card"`, one of the nine
+	 * S4 survivors named at the top of this file). The hero was deleted and its job moved into
+	 * `lib/components/NowPlayingDrawer.svelte`, a bottom drawer mounted from `routes/+layout.svelte`.
+	 *
+	 * The successor does NOT belong on this list, and that is a property of what it became rather than an
+	 * omission: the drawer has no shell of its own to paint. Its outermost element is the vendored
+	 * `Drawer.Content`, whose surface comes from the registry's `bg-popover` + `border-t` + `rounded-t-xl`
+	 * (see `lib/components/ui/drawer/drawer-content.svelte`). The drawer adds only `.np-drawer`, which
+	 * sets `padding-bottom` and nothing else. So there is no element in it that wants `.card`, and adding
+	 * one would paint a second surface on top of the sheet's own.
+	 *
+	 * This is the direction the second test below is for: the caller left, so the entry leaves with it.
+	 */
 	{ file: 'lib/components/MyPositionCard.svelte', why: 'a single line telling a singer where they are' },
 	{ file: 'lib/components/CodeEntry.svelte', why: 'one character box of a room-code entry' },
 	{ file: 'lib/components/JoinLanding.svelte', why: 'the scanned-room row on the landing surface' },

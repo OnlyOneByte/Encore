@@ -2,6 +2,7 @@
 	import { Drawer as DrawerPrimitive } from "vaul-svelte";
 	import { cn } from "$lib/utils.js";
 	import type { WithoutChildrenOrChild } from "$lib/utils.js";
+	import DrawerHandle from "./drawer-handle.svelte";
 	import DrawerOverlay from "./drawer-overlay.svelte";
 	import DrawerPortal from "./drawer-portal.svelte";
 	import type { ComponentProps } from "svelte";
@@ -28,9 +29,18 @@
 		)}
 		{...restProps}
 	>
-		<div
-			class="bg-muted mx-auto mt-4 hidden h-1.5 w-[100px] shrink-0 rounded-full mx-auto hidden shrink-0 group-data-[vaul-drawer-direction=bottom]/drawer-content:block"
-		></div>
+		<!--
+			DEFECT IN THE COPY-IN, fixed here. shadcn renders a DECORATIVE div at this position — the right
+			size, the right place, and dragging nothing at all. `vaul-svelte` exports a real
+			`Drawer.Handle` (the element that carries `data-vaul-handle`), and without it `handleOnly` on
+			the Root has no handle to restrict dragging TO, so the drawer silently becomes undraggable.
+			Encore needs `handleOnly` because this drawer's body is sliders — see drawer-handle.svelte.
+
+			The visibility condition is unchanged: only a bottom drawer draws a grab bar.
+		-->
+		<DrawerHandle
+			class="hidden group-data-[vaul-drawer-direction=bottom]/drawer-content:block"
+		/>
 		{@render children?.()}
 	</DrawerPrimitive.Content>
 </DrawerPortal>
