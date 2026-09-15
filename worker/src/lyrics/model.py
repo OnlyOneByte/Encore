@@ -33,7 +33,7 @@ NOT A VALIDATOR, and not a parser. It answers questions about a doc; it never ra
 because every one of these readers is a PREDICATE whose job is to return False for junk rather than to
 reject it. `validate.py` owns the judgements about timing QUALITY; this module owns only the shape.
 
-This is also the intended home for the other types the lyrics domain shares between `chain.py` and
+This is also the intended home for the other types the lyrics domain shares between `grading.py` and
 `sources.py`, which currently reach each other through a bottom-of-file import block.
 """
 
@@ -147,20 +147,20 @@ class LyricsDoc:
 
 # ── the shared lyrics vocabulary ──────────────────────────────────────────────────────────────────
 #
-# These lived in `chain.py`, which is what made the domain's import graph a cycle: `sources.py` needs
-# `LyricsRequest`/`LyricsText` to declare what a source consumes and returns, `chain.py` needs the source
-# classes to run them — so `chain.py` imported `.sources` from the FOOT of its own file, after the two
+# These lived in `grading.py`, which is what made the domain's import graph a cycle: `sources.py` needs
+# `LyricsRequest`/`LyricsText` to declare what a source consumes and returns, `grading.py` needs the source
+# classes to run them — so `grading.py` imported `.sources` from the FOOT of its own file, after the two
 # dataclasses were defined, carrying `# noqa: E402` to silence the lint that exists to catch exactly that.
 # It worked, and it meant the two modules could not be read or imported independently.
 #
 # Nothing here depends on anything else in the package, so both sides can import it and the cycle has no
-# edge left to close. `chain.py` re-exports every name below, so `from .chain import LyricsText` — which
+# edge left to close. `grading.py` re-exports every name below, so `from .grading import LyricsText` — which
 # nine test modules and three source modules do — keeps resolving.
 
 # Text-source ids and timing tiers. Promoted to enums in src/vocabulary.py (TextSource, Timing) so the
 # TS↔Python guard in src/lib/server/jobs/vocabulary-parity.test.ts covers them — a comment saying
 # "must match LyricsTextSource" cannot fail a build; the enum can. Re-exported under the original names
-# so every importer of chain.py is unchanged, and `.value` keeps them plain strings for JSON/argv/keys.
+# so every importer of grading.py is unchanged, and `.value` keeps them plain strings for JSON/argv/keys.
 SOURCE_LRCLIB = TextSource.LRCLIB.value
 SOURCE_CAPTIONS = TextSource.CAPTIONS.value
 SOURCE_ASR = TextSource.ASR.value

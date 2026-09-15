@@ -1,15 +1,15 @@
 """Lyrics SOURCES: the four places a song's text can come from.
 
-Extracted from lyrics/chain.py. chain.py was the union of five concerns; this is the
+Extracted from lyrics/grading.py. grading.py was the union of five concerns; this is the
 ``sources/*`` seam of the declared split (see lyrics/__init__.py). Each source is a small,
 independently testable adapter that yields a ``LyricsText`` plus its provenance; the roles, the
-request/text model and the grading all stay in chain.py for now.
+request/text model and the grading all stay in grading.py for now.
 
-The classes are re-exported from chain.py so every existing importer -- lyrics/registry.py, the
-package surface in lyrics/__init__.py, and tests importing ``from src.lyrics.chain import AsrSource``
+The classes are re-exported from grading.py so every existing importer -- lyrics/registry.py, the
+package surface in lyrics/__init__.py, and tests importing ``from src.lyrics.grading import AsrSource``
 -- is unchanged; this move is behaviour-preserving. The model types these depend on
-(``LyricsRequest``, ``LyricsText``) and the source/timing vocabulary still live in chain.py and are
-imported from there. chain.py in turn imports these classes back at its foot, AFTER those definitions
+(``LyricsRequest``, ``LyricsText``) and the source/timing vocabulary still live in grading.py and are
+imported from there. grading.py in turn imports these classes back at its foot, AFTER those definitions
 exist, so there is no import cycle regardless of which module is imported first.
 """
 
@@ -18,13 +18,13 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from ..vocabulary import TextSource, Timing
+from .lrclib import MAX_VARIANTS, LyricsFetchError, rank_lrclib_candidates
 from .model import LyricsRequest, LyricsText
-from .source import MAX_VARIANTS, LyricsFetchError, rank_lrclib_candidates
 
-# Derived from ..vocabulary directly — the same origin chain.py uses — rather than from chain.py, so
+# Derived from ..vocabulary directly — the same origin grading.py uses — rather than from grading.py, so
 # the SOURCE_*/TIMING_* constants do not travel back through the chain<->sources import (which mypy
 # cannot type through the cycle: `Cannot determine type of "SOURCE_LRCLIB"`). Only LyricsRequest /
-# LyricsText, defined in chain.py before its foot-import of this module runs, come from chain.
+# LyricsText, defined in grading.py before its foot-import of this module runs, come from chain.
 SOURCE_LRCLIB = TextSource.LRCLIB.value
 SOURCE_CAPTIONS = TextSource.CAPTIONS.value
 SOURCE_ASR = TextSource.ASR.value

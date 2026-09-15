@@ -13,7 +13,7 @@ On head the duration reaches selection, the fitting rival wins, and the note nam
 
 from __future__ import annotations
 
-from src.lyrics.chain import (
+from src.lyrics.grading import (
     ROLE_BASELINE,
     ROLE_CANDIDATE,
     SOURCE_ASR,

@@ -22,8 +22,8 @@ from __future__ import annotations
 from typing import Any
 
 from ..vocabulary import Timing
+from .lrclib import entries_to_segments, fold_romanization_entries, parse_lrc, plain_lyrics_to_segments
 from .model import LyricsDoc
-from .source import entries_to_segments, fold_romanization_entries, parse_lrc, plain_lyrics_to_segments
 
 
 def candidate_key(
@@ -46,7 +46,7 @@ def candidate_key(
     without it the second write of a pair would silently destroy the first — and destroy exactly the
     independence that makes averaging baselines worth doing.
 
-    Moved here from lyrics/chain.py: the artifact key belongs beside the artifact shape this
+    Moved here from lyrics/grading.py: the artifact key belongs beside the artifact shape this
     module owns, not in the acquisition/grading module. It was the second artifact-key builder — the
     first, a dead single-file `lyrics_key`, was removed in the same change.
     """
@@ -109,7 +109,7 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
         # A romanization is a per-line SECOND SCRIPT the source shipped. This pass-through
         # copies it onto a line ONLY when the input segment already carries it, and it is defensive
         # depth today, NOT a live carrier: the one site that writes ``romanization`` INTO A SEGMENT is
-        # ``entries_to_segments`` (``source.py``: ``seg["romanization"] = e.romanization``), fed the
+        # ``entries_to_segments`` (``lrclib.py``: ``seg["romanization"] = e.romanization``), fed the
         # folded ``LrcEntry`` rows by ``fold_romanization_entries`` on the LRCLIB synced (``TIMING_LINE``)
         # path — ``fold_romanization_entries`` itself only sets ``romanization`` on an ``LrcEntry``, never
         # on a segment dict. No producer hands those segments to ``normalize_lyrics``. The two paths that
@@ -119,7 +119,7 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
         #     and drops the field, so ``_time_one`` re-attaches it by source-line position via
         #     ``_attach_romanizations`` in ``steps/lyrics.py`` AFTER ``normalize_lyrics`` has run;
         #   - the line-sync path (``lines`` mode / aligner-failure fallback) — ``line_synced_lyrics`` in
-        #     ``source.py`` has its own copy and never calls this normalizer.
+        #     ``lrclib.py`` has its own copy and never calls this normalizer.
         # The ASR (``TIMING_WORD``) path cannot carry it: whisper emits no romanization and the ASR
         # source rebuilds segments with only ``start``/``end``/``text``/``words`` (pinned by
         # ``test_asr_source_segment_keys_are_exactly_start_end_text_words`` — a fifth ``romanization`` key

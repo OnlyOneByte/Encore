@@ -4,7 +4,7 @@ The `Transcriber` seam and the real faster-whisper implementation behind it. Dis
 `timing.py` on purpose, and the distinction is the one this whole domain turns on: alignment places
 timings on text we already trust, while ASR INVENTS the text. Its output is never authoritative
 however confident the model sounds — which is why a transcript is a BASELINE (evidence of what is
-audible) and never a candidate for the song's words. See `chain.py`.
+audible) and never a candidate for the song's words. See `grading.py`.
 
 MEASURED (2026-09-02, real stem, `base` on CPU): `transcribe()` returns segment bounds and NO word
 timings. Word timings come only from the separate `align()` pass, so the aligner is the single source

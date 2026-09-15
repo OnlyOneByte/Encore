@@ -205,7 +205,7 @@ def test_a_winning_alternate_carries_the_role_the_registry_stamped():
     """
     from src.lyrics import ROLE_CANDIDATE, SOURCE_LRCLIB, select_by_baselines
     from src.lyrics.artifact import lrclib_to_segments
-    from src.lyrics.source import LrclibResult
+    from src.lyrics.lrclib import LrclibResult
 
     shared = "hello hello baby you called i cant hear a thing i have got no service in the club you say"
     guest = "boy the way you blowing up my phone wont make me leave no faster put my coat on faster"

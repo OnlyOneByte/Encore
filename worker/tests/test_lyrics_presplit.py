@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.lyrics import presplit as lp  # noqa: E402
-from src.lyrics.chain import (  # noqa: E402
+from src.lyrics.grading import (  # noqa: E402
     MIN_TOKENS_TO_COMPARE,
     SOURCE_ASR,
     SOURCE_CAPTIONS,
@@ -29,7 +29,7 @@ from src.lyrics.chain import (  # noqa: E402
 
 # ── the TypeScript authority ─────────────────────────────────────────────────────────
 # The four values below are declared TWICE — once in TypeScript (the authority) and once in
-# Python (a hand-kept mirror; see the docstrings at chain.py:80 and chain.py:431). Nothing but
+# Python (a hand-kept mirror; see the docstrings at grading.py:80 and grading.py:431). Nothing but
 # these tests keeps the copies in step. So they must read the TS SOURCE and cross-check the Python
 # constant against what the authority ACTUALLY declares today — asserting a Python literal only
 # proves Python equals itself, and every TS-side drift (the normal way any of these changes) stays
@@ -78,7 +78,7 @@ def _ts_is_authoritative(text_source: str, text_confidence: str) -> bool:
     )
     assert body, (
         "isAuthoritativeText in src/lib/contract/lyrics/lyrics.ts no longer matches the mirrored shape "
-        "`c.textSource !== '<x>' && c.textConfidence !== '<y>'` — the Python mirror in chain.py must "
+        "`c.textSource !== '<x>' && c.textConfidence !== '<y>'` — the Python mirror in grading.py must "
         "be updated to match the new definition and this parser taught the new shape"
     )
     forbidden_source, forbidden_confidence = body.group(1), body.group(2)
@@ -119,7 +119,7 @@ def test_is_authoritative_text_mirrors_the_ts_predicate():
 
 def test_agreement_thresholds_mirror_the_ts_authority():
     # MIN_TOKENS_TO_COMPARE / SUSPECT_COVERAGE are declared authoritative in src/lib/contract/
-    # lyrics.ts (chain.py calls itself their mirror) but nothing cross-checked them. Read the TS
+    # lyrics.ts (grading.py calls itself their mirror) but nothing cross-checked them. Read the TS
     # values and assert the Python copies equal them, so a threshold change on the authority side reds.
     # SUSPECT_COVERAGE replaced SUSPECT_AGREEMENT in an earlier change — a different metric on a different
     # axis, so
@@ -184,7 +184,7 @@ def test_line_sync_publishes_the_authoritative_source_OWN_timings_not_a_char_cou
     # — a character count, not a timestamp — and it ships as the human source's own. This pins that
     # the boundaries published for a bounded authoritative text are EXACTLY the source's own line
     # starts, no invented interior boundary between them.
-    from src.lyrics.source import line_synced_lyrics
+    from src.lyrics.lrclib import line_synced_lyrics
 
     over_long = "I walked the empty harbour road until the very morning came around again"  # > MAX_LINE_CHARS
     assert len(over_long) > lp.MAX_LINE_CHARS

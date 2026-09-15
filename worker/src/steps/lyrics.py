@@ -349,7 +349,7 @@ class GradeAndSelect(Step):
         # so a candidate timed past audio-end is visible in the process log rather than only on the TV.
         #
         # report from the candidates as they were BEFORE selection, not from `sel.publish`. A
-        # candidate DEMOTED for overshoot (chain.py overshoot_penalized) is not among the survivors, so
+        # candidate DEMOTED for overshoot (grading.py overshoot_penalized) is not among the survivors, so
         # iterating `sel.publish` fired the note exactly when the demotion changed nothing and stayed
         # SILENT exactly when it changed the outcome — the one case an earlier change piece 2 exists for. Walk
         # every
@@ -411,7 +411,7 @@ class GradeAndSelect(Step):
                     # cases, not all). an earlier change F1: whether a fitting candidate existed is decided
                     # from the
                     # POOL, never from `is_published`, which says only that THIS text is in
-                    # `sel.publish`. `overshoot_penalized` (lyrics/chain.py) subtracts the overshoot
+                    # `sel.publish`. `overshoot_penalized` (lyrics/grading.py) subtracts the overshoot
                     # FRACTION from the composite score — a COMPARATIVE penalty — so an overshooter
                     # leading a fitting rival by more than that fraction publishes with the fitting
                     # rival in the pool the whole time. Claiming "no candidate that fits the audio"
@@ -463,9 +463,9 @@ class GradeAndSelect(Step):
             )
             # Demote via replace rather than `sel.publish[0].text_confidence = "low"`: that reached from
             # the step layer straight into a domain LyricsText, mutating a caller-owned object in place
-            # (the same cross-object write an earlier change fixes in chain.py). Rebinding the list slot to a
-            # copy keeps
-            # the demotion local to the published list — see presplit.py's replace() note.
+            # (the same cross-object write an earlier change fixes in grading.py). Rebinding the list
+            # slot to a copy keeps the demotion local to the published list — see presplit.py's
+            # replace() note.
             sel.publish[0] = replace(sel.publish[0], text_confidence="low")
         ctx.lyrics.selection = sel
         # Preserve the BASELINES before narrowing `texts` to what publishes. `sel.publish` is normally the
@@ -684,7 +684,7 @@ def _pinned_lyrics_text(ctx: Ctx, ref: str) -> LyricsText | None:
     Two shapes, one per way an operator re-picks:
 
       * `pinnedText` — pasted words, used verbatim. The FIRST producer of SOURCE_MANUAL, which
-        `chain.py` has held reserved with no producer since the two-tier split.
+        `grading.py` has held reserved with no producer since the two-tier split.
       * `pinnedRef` alone — re-time the candidate already on disk, keeping its own `textSource`, which
         by then survives only in its artifact key.
 
@@ -1016,7 +1016,7 @@ def _write_candidate(
             # consumers need DIFFERENT ones: `breaksTie` prefers on the ranking score above,
             # while `isLikelyWrongSong` thresholds coverage — and coverage is the only one of
             # the two that separates "a different song" from "the baseline heard only part of
-            # this one" (see SUSPECT_COVERAGE in lyrics/chain.py). Publishing only the ranking
+            # this one" (see SUSPECT_COVERAGE in lyrics/grading.py). Publishing only the ranking
             # score left the TV thresholding a number that decided nothing, which convicted
             # correct lyrics graded against a partial baseline as ANOTHER SONG.
             **(

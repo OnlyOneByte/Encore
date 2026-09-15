@@ -367,7 +367,7 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
     passes on a comment that says the right thing while the code does the wrong one.
 
     Scans the WHOLE `src/lyrics` package, not one hardcoded file: `b026147` moved the source
-    classes out of `chain.py` into `sources.py`, so a guard pinned to `chain.py` scanned a file with zero
+    classes out of `grading.py` into `sources.py`, so a guard pinned to `grading.py` scanned a file with zero
     `LyricsText(...)` constructions and could never fire. The non-vacuity floor below fails loudly if the
     package ever stops constructing LyricsText where this guard can see it, so the scan cannot silently
     empty out again.
@@ -424,7 +424,7 @@ def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
     one
     hardcoded file, so a step added elsewhere in the layer is covered too.
     """
-    from src.lyrics.chain import LyricsText
+    from src.lyrics.grading import LyricsText
 
     fields = {f.name for f in __import__("dataclasses").fields(LyricsText)}
 

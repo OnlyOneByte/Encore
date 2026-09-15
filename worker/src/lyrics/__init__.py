@@ -27,7 +27,7 @@ from __future__ import annotations
 from .artifact import candidate_key, is_valid_lyrics, lrclib_to_segments, normalize_lyrics
 from .asr import DEFAULT_MODEL, Transcriber, WhisperxTranscriber, transcriber_for
 from .captions import caption_argv, is_translated_track, parse_vtt, read_captions
-from .chain import (
+from .grading import (
     MIN_TOKENS_TO_COMPARE,
     OVERSHOOT_FRACTION_MAX,
     ROLE_BASELINE,
@@ -64,9 +64,7 @@ from .chain import (
     lyrics_tokens,
     select_by_baselines,
 )
-from .presplit import klp_probe_line, klp_status, presplit_texts
-from .registry import SPECS, SourceSpec, build_sources, unmet
-from .source import (
+from .lrclib import (
     LRCLIB_BASE,
     LrclibClient,
     LrclibResult,
@@ -78,6 +76,8 @@ from .source import (
     plain_lyrics_to_segments,
     rank_lrclib_candidates,
 )
+from .presplit import klp_probe_line, klp_status, presplit_texts
+from .registry import SPECS, SourceSpec, build_sources, unmet
 from .timing import ML_LOCK, Aligner, WhisperxForcedAligner, aligner_for
 from .validate import (
     LrcFit,

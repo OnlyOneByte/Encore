@@ -119,10 +119,10 @@ class TextSource(_StrEnum):
     """Where a lyrics candidate's TEXT came from. Mirrors LyricsTextSource in
     src/lib/contract/lyrics/lyrics.ts — that union is the authority; keep the two in step.
 
-    These were plain module string constants in lyrics/chain.py (SOURCE_LRCLIB and friends) guarded only
+    These were plain module string constants in lyrics/grading.py (SOURCE_LRCLIB and friends) guarded only
     by a `# must match LyricsTextSource` comment, while the five sibling enums here got a real bilateral
     parity check. Promoted so the same guard covers them: a value added or renamed on either side now
-    reds vocabulary-parity.test.ts instead of drifting silently. chain.py re-exports these under the old
+    reds vocabulary-parity.test.ts instead of drifting silently. grading.py re-exports these under the old
     SOURCE_* names, so its importers are unchanged.
     """
 
@@ -136,7 +136,7 @@ class Timing(_StrEnum):
     """Timing fidelity a lyrics source supplies UNAIDED. Mirrors LyricsTiming in the same TS module.
 
     `line` is the floor (stanza scroll); `word` is the karaoke ideal; `none` needs the aligner. Promoted
-    from chain.py's TIMING_* constants for the same reason as TextSource — a comment cannot fail a build.
+    from grading.py's TIMING_* constants for the same reason as TextSource — a comment cannot fail a build.
     """
 
     WORD = "word"
@@ -149,10 +149,10 @@ class Timing(_StrEnum):
 # The axis that decides HOW a lyrics text is judged, orthogonal to WHERE it came from (TextSource).
 # A BASELINE is evidence of what is heard in this audio — the ruler, never scored. A CANDIDATE is
 # authored text claiming to be the song's words — scored against every baseline; the winner is what
-# gets PUBLISHED. See lyrics/chain.py for the full rationale.
+# gets PUBLISHED. See lyrics/grading.py for the full rationale.
 #
-# Promoted here beside TextSource/Timing (from bare module strings in chain.py) so all the lyrics
-# vocabulary lives in one place; chain.py re-exports them under the same names, so its importers are
+# Promoted here beside TextSource/Timing (from bare module strings in grading.py) so all the lyrics
+# vocabulary lives in one place; grading.py re-exports them under the same names, so its importers are
 # unchanged. Left as plain string constants rather than a _StrEnum: unlike TextSource/Timing these have
 # NO packages/shared mirror to bilaterally parity-check against — role is a worker-internal grading
 # axis the core never sees.
