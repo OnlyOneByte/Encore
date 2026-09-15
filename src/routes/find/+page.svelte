@@ -37,13 +37,7 @@
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import { processAndQueue } from '$lib/process-and-queue';
-	import {
-		displayReadiness,
-		canProcess,
-		readyEmptyState,
-		processingGroupIds,
-		type Readiness
-	} from '$lib/readiness';
+	import { displayReadiness, canProcess, readyEmptyState, processingGroupIds, type Readiness } from '$lib/readiness';
 
 	// ── the room, mirrored ──────────────────────────────────────────────
 	// Only what this surface renders. The link owns all of it, which is what lets this route exist at

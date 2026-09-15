@@ -133,21 +133,22 @@ async function mountLandingForAc2() {
 	const segs = () => [...target.querySelectorAll('input.segment')] as HTMLInputElement[];
 	// the field is <Input> now, so its appearance (and `.name-input`) lives in the component.
 	// `data-slot` is shadcn's own contract for the rendered element and survives a re-vendor.
-	const nameInput = target.querySelector("input[data-slot='input']") as HTMLInputElement;
 	const continueBtn = () => target.querySelector('.submit-slot button') as HTMLButtonElement;
-	return { target, instance, segs, nameInput, continueBtn };
+	return { target, instance, segs, continueBtn };
 }
 
 test('AC2 — Continue is disabled at 5 of 6 code characters, enabled at 6', async () => {
 	(await stateStub()).resetPage(); // bare `/`, no ?room — the typed path
-	const { instance, segs, nameInput, continueBtn } = await mountLandingForAc2();
+	const { instance, segs, continueBtn } = await mountLandingForAc2();
 	try {
-		// Fill the name so the code length is the only remaining gate on Continue (a missing name would
-		// disable it for a different reason and make the assertion prove nothing).
-		nameInput.focus();
-		nameInput.value = 'Maya';
-		nameInput.dispatchEvent(new win.Event('input', { bubbles: true }));
-		flushSync();
+		/*
+		 * NO NAME TO FILL ANY MORE, and that makes this assertion stronger rather than weaker.
+		 *
+		 * This used to type a name first, and said why: "a missing name would disable it for a different
+		 * reason and make the assertion prove nothing". The two-pane split removed that confound at the
+		 * source — the code pane carries no name field, so code length is the ONLY gate on Continue by
+		 * construction. The setup that compensated for the coupling goes with the coupling.
+		 */
 
 		// Type FIVE of six characters.
 		const five = 'ABCD2';

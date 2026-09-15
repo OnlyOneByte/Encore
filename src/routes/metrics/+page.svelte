@@ -261,7 +261,7 @@
 												<Table.Cell>
 													<span class="named"
 														>{separatorLabel(r.engine, r.model)}{#if r.provisional}<Badge variant="warn">few runs</Badge
-														>{/if}</span
+															>{/if}</span
 													>
 												</Table.Cell>
 												<Table.Cell>{r.n}</Table.Cell>
@@ -324,7 +324,6 @@
 									</Table.Body>
 								</Table.Root>
 							</div>
-
 						{/if}
 					</Card.Content>
 				</Card.Root>

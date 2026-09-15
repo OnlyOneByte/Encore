@@ -27,7 +27,7 @@ const TABLE = join(SRC, 'lib/components/ui/table/table.svelte');
 // ---- ARM 1: the vendored component still ships the wrapper this rule exists to neutralise ----
 test('shadcn Table still renders its own overflow-x-auto container, so the neutralising rule is not vacuous', () => {
 	const table = readFileSync(TABLE, 'utf8');
-	expect(table.includes("data-slot=\"table-container\""), 'the vendored table no longer renders a table-container').toBe(
+	expect(table.includes('data-slot="table-container"'), 'the vendored table no longer renders a table-container').toBe(
 		true
 	);
 	expect(
@@ -46,7 +46,7 @@ test('the metrics page neutralises the inner container so .scroller owns the ove
 	// Both halves are load-bearing: `overflow-x` stops it scrolling, `width: auto` stops `w-full`
 	// pinning it to the scroller's width so the table's min-width can push past it.
 	expect(/overflow-x:\s*visible/.test(body), 'the inner container still has its own overflow-x').toBe(true);
-	expect(/width:\s*auto/.test(body), "the inner container is still w-full, so it cannot overflow").toBe(true);
+	expect(/width:\s*auto/.test(body), 'the inner container is still w-full, so it cannot overflow').toBe(true);
 });
 
 // ---- ARM 3: the affordance that depends on ARM 2 is still there ----

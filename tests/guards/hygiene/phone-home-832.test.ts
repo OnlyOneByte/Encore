@@ -514,7 +514,10 @@ test('the band row is the sheet itself, and the body stays mounted at the collap
 	 * so the grab bar legitimately precedes the band row. Stated as a whitelist — the ONLY thing allowed
 	 * above the band row is a drag handle — so a card, an alert or a second row landing there reds.
 	 */
-	const above = [...collapsed.children].slice(0, [...collapsed.children].indexOf(collapsed.querySelector('.band-slot')!));
+	const above = [...collapsed.children].slice(
+		0,
+		[...collapsed.children].indexOf(collapsed.querySelector('.band-slot')!)
+	);
 	expect(above.map((el) => el.getAttribute('data-slot') ?? el.tagName)).toEqual(['drawer-handle']);
 	// …and the head and the body are BELOW it in document order rather than absent, which is the fact
 	// that replaces "closed renders nothing". Below the fold is not out of the tree.

@@ -100,7 +100,7 @@
 	 * search box is a tool; this page is about one thing, and naming it "Song details" over the top of the
 	 * title would put a label where the subject belongs.
 	 */
-	const heading = $derived(loading ? 'Song' : (display.title || media?.title || 'Unknown song'));
+	const heading = $derived(loading ? 'Song' : display.title || media?.title || 'Unknown song');
 </script>
 
 <!--
@@ -111,91 +111,93 @@
 <div class="song-page">
 	<PageHeader title={heading} back={{ href: '/', label: 'Back to the queue' }} />
 
-<main>
-	<!-- Room state is a live claim, and a stale one on this page would let the range readout describe a
+	<main>
+		<!-- Room state is a live claim, and a stale one on this page would let the range readout describe a
 	     transpose the TV has since moved off. Says so rather than looking authoritative. -->
-	{#if !connected}
-		<p class="offline-note" role="status" aria-live="polite">
-			<Icon name="warning" /> Reconnecting…
-		</p>
-	{/if}
+		{#if !connected}
+			<p class="offline-note" role="status" aria-live="polite">
+				<Icon name="warning" /> Reconnecting…
+			</p>
+		{/if}
 
-	{#if loading}
-		<div class="facts" aria-busy="true" aria-label="Loading this song…">
-			<Skeleton variant="line-short" />
-			<Skeleton />
-			<Skeleton />
-		</div>
-	{:else if loadError}
-		<p class="load-error" role="alert">{loadError}</p>
-	{:else if !media}
-		<Empty.Root>
-			<Empty.Header>
-				<Empty.Description>No song with that id.</Empty.Description>
-			</Empty.Header>
-		</Empty.Root>
-	{:else}
-		<section class="facts card" aria-label="Song details">
-			{#if display.artist ?? media.artist}
-				<p class="artist">{display.artist ?? media.artist}</p>
-			{/if}
+		{#if loading}
+			<div class="facts" aria-busy="true" aria-label="Loading this song…">
+				<Skeleton variant="line-short" />
+				<Skeleton />
+				<Skeleton />
+			</div>
+		{:else if loadError}
+			<p class="load-error" role="alert">{loadError}</p>
+		{:else if !media}
+			<Empty.Root>
+				<Empty.Header>
+					<Empty.Description>No song with that id.</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
+		{:else}
+			<section class="facts card" aria-label="Song details">
+				{#if display.artist ?? media.artist}
+					<p class="artist">{display.artist ?? media.artist}</p>
+				{/if}
 
-			{#if keyOriginal}
-				<div class="fact">
-					<span class="lab">Key</span>
-					<span class="val">
-						{keyOriginal}
-						{#if keyShifted}
-							<span class="arrow"><Icon name="arrow-right" /></span><span class="shifted">{keySounding}</span>
-						{/if}
-					</span>
-				</div>
-			{/if}
+				{#if keyOriginal}
+					<div class="fact">
+						<span class="lab">Key</span>
+						<span class="val">
+							{keyOriginal}
+							{#if keyShifted}
+								<span class="arrow"><Icon name="arrow-right" /></span><span class="shifted">{keySounding}</span>
+							{/if}
+						</span>
+					</div>
+				{/if}
 
-			<!--
+				<!--
 				THE RANGE IS THE POINT OF THIS BLOCK. It is the one fact that answers "can I sing this", and it
 				is shown in full here — label, octave span, the band sentence and the visualizer — because a
 				page has the room the drawer does not. Same components, same helpers, more space.
 			-->
-			{#if rangeText}
-				<div class="fact">
-					<span class="lab">Range</span>
-					<span class="val">{rangeText}{#if octaves !== null}<span class="oct">{octaves} oct</span>{/if}</span>
-				</div>
-				{#if bandSentence}<p class="band-sentence">{bandSentence}</p>{/if}
-				<RangeBar {profile} {keyShift} />
-			{:else}
-				<!-- A song can be perfectly singable and have no measured range: the analysis needs a vocals
+				{#if rangeText}
+					<div class="fact">
+						<span class="lab">Range</span>
+						<span class="val"
+							>{rangeText}{#if octaves !== null}<span class="oct">{octaves} oct</span>{/if}</span
+						>
+					</div>
+					{#if bandSentence}<p class="band-sentence">{bandSentence}</p>{/if}
+					<RangeBar profile={profile} keyShift={keyShift} />
+				{:else}
+					<!-- A song can be perfectly singable and have no measured range: the analysis needs a vocals
 				     stem. Stating that beats an empty strip that reads as "range = zero". -->
-				<p class="band-sentence">No vocal range yet — that needs karaoke.</p>
-			{/if}
-		</section>
+					<p class="band-sentence">No vocal range yet — that needs karaoke.</p>
+				{/if}
+			</section>
 
-		<!--
+			<!--
 			LYRICS QUICK-SELECT, and quick-select is the whole scope here. Picking among the versions the
 			ranker already found is a CHOICE and belongs on the overview; pasting or authoring a version is a
 			different act with a different surface, and it lives at /song/[mediaId]/lyrics. That route does
 			not exist yet, so there is no link to it — the same rule the band's handle and the drawer's own
 			affordances follow: no destination, no door.
 		-->
-		{#if candidates.length}
-			<!-- Bound out of the narrowed branch: an arrow function escapes Svelte's `{:else}` narrowing, so
+			{#if candidates.length}
+				<!-- Bound out of the narrowed branch: an arrow function escapes Svelte's `{:else}` narrowing, so
 			     `media.id` inside a callback is `possibly null` to the checker even though it cannot be. -->
-			{@const songId = media.id}
-			<section class="lyrics" aria-label="Lyrics">
-				<h2 class="grouphead">Lyrics</h2>
-				<LyricsReselect
-					{candidates}
-					chosenRef={chosenCandidate(media)?.ref}
-					overrideRef={media.lyricsOverrideRef}
-					newerExists={hasNewerCandidateThanOverride(media.lyricsCandidates, media.lyricsOverrideRef)}
-					onpick={(ref) => void room.reselectLyrics(songId, { ref })}
-					onpaste={(text) => void room.reselectLyrics(songId, { text })}
-				/>
-			</section>
+				{@const songId = media.id}
+				<section class="lyrics" aria-label="Lyrics">
+					<h2 class="grouphead">Lyrics</h2>
+					<LyricsReselect
+						candidates={candidates}
+						chosenRef={chosenCandidate(media)?.ref}
+						overrideRef={media.lyricsOverrideRef}
+						newerExists={hasNewerCandidateThanOverride(media.lyricsCandidates, media.lyricsOverrideRef)}
+						onpick={(ref) => void room.reselectLyrics(songId, { ref })}
+						onpaste={(text) => void room.reselectLyrics(songId, { text })}
+					/>
+				</section>
+			{/if}
 		{/if}
-	{/if}
-</main>
+	</main>
 </div>
 
 <Toaster position="bottom-center" offset="var(--dock-h, 0px)" style="--width: min(92vw, 420px);" />

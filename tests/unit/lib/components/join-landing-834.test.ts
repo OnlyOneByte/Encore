@@ -44,16 +44,40 @@ async function mountLanding() {
 	return { target, instance };
 }
 
-test('with no code, BOTH a scan affordance and the six code inputs are present', async () => {
+/*
+ * RETIRED, WITH THE RULING RECORDED: 'with no code, BOTH a scan affordance and the six code inputs
+ * are present'.
+ *
+ * That test paired `expect(target.querySelector('.scan-row')).not.toBeNull()` with the six segments
+ * and called the pair the SC 3.3.8 requirement — never one path instead of the other. The scan row is
+ * now deliberately GONE from this pane, so the paired assertion cannot be re-pointed: there is no
+ * successor element, by decision rather than by refactor.
+ *
+ * Why the decision: a scanned QR carries `?room=CODE`, resolves, and opens the IDENTITY pane, so this
+ * pane is only ever reached by a guest who did NOT scan. The row explained the one path that
+ * guarantees you never see it. It also could not have worked as a control — `navigator.mediaDevices`
+ * is secure-context gated and Encore's phones arrive over plain `http://<LAN-IP>`.
+ *
+ * What is NOT claimed any more: that this screen narrates the scan alternative. The alternative still
+ * exists in the world (the TV shows the QR and scanning is the primary path); it is no longer
+ * advertised here. If that conformance claim has to be re-made, it comes back as one line of copy in
+ * the lede, and this test comes back with it.
+ *
+ * The half that survives is below: the six segments must still be present and must still be the way
+ * in. Asserting only that would have left this file quietly weaker, so the ban is explicit — nothing
+ * may reintroduce a `.scan-row` here without also restoring the paired claim.
+ */
+test('with no code the six code inputs are the way in, and the retired scan row stays retired', async () => {
 	const { setPage } = await stateStub();
 	setPage({ url: '/' });
 	stubFetch(() => jsonRes({}));
 	const { target, instance } = await mountLanding();
 	try {
-		// Scan affordance present…
-		expect(target.querySelector('.scan-row')).not.toBeNull();
-		// …AND six segment inputs (never one path instead of the other — the SC 3.3.8 requirement).
 		expect(target.querySelectorAll('input.segment').length).toBe(6);
+		expect(
+			target.querySelector('.scan-row'),
+			'the scan row was retired by decision — reinstating it means restoring the SC 3.3.8 pair above'
+		).toBeNull();
 	} finally {
 		void unmount(instance);
 	}

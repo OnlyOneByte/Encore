@@ -273,9 +273,7 @@
 	 * information, and hiding the control would leave the singer wondering where it went.
 	 */
 	const guideNote = $derived(
-		hasSong && !guideEnabled
-			? 'No isolated vocals, so no guiding track. Key and range still work.'
-			: null
+		hasSong && !guideEnabled ? 'No isolated vocals, so no guiding track. Key and range still work.' : null
 	);
 </script>
 
@@ -309,12 +307,12 @@
 	heights and is the one drag surface.
 -->
 <Drawer.Root
-	{open}
+	open={open}
 	dismissible={false}
 	modal={false}
 	snapPoints={[SNAP_BAND, SNAP_OPEN]}
 	fadeFromIndex={1}
-	bind:activeSnapPoint
+	bind:activeSnapPoint={activeSnapPoint}
 	handleOnly
 >
 	<!--
@@ -338,14 +336,14 @@
 		<div class="band-slot" style="--snap-band: {SNAP_BAND}" bind:clientHeight={bandH}>
 			<Drawer.Handle />
 			<NowPlayingBand
-				{title}
-				{artist}
-				{singerName}
-				{singerColor}
-				{progress}
-				{isPlaying}
-				{onsearch}
-				{ontoggleplay}
+				title={title}
+				artist={artist}
+				singerName={singerName}
+				singerColor={singerColor}
+				progress={progress}
+				isPlaying={isPlaying}
+				onsearch={onsearch}
+				ontoggleplay={ontoggleplay}
 			/>
 		</div>
 		<Drawer.Header class="np-head">
@@ -489,16 +487,16 @@
 								{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
 							</div>
 							{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
-							<RangeBar {profile} {keyShift} />
+							<RangeBar profile={profile} keyShift={keyShift} />
 						</div>
 					{/if}
 
 					{#if candidates.length}
 						<LyricsReselect
-							{candidates}
-							{chosenRef}
-							{overrideRef}
-							{newerExists}
+							candidates={candidates}
+							chosenRef={chosenRef}
+							overrideRef={overrideRef}
+							newerExists={newerExists}
 							onpick={(ref) => onpicklyrics?.(ref)}
 							onpaste={(text) => onpastelyrics?.(text)}
 						/>

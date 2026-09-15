@@ -945,7 +945,7 @@ export const HOOKS: Hook[] = [
 		id: 'drawerHandleOnly',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'handleOnly',
-		why: "drawerHandle only means anything because the Root RESTRICTS dragging to it; drop this prop and vaul drags from anywhere in a body made of sliders (XR-PH-15), which is a gesture collision rather than a missing element — the successor to the retired bandExpandWired, and the same claim shape: the component renders the handle, the app decides it is the only one"
+		why: 'drawerHandle only means anything because the Root RESTRICTS dragging to it; drop this prop and vaul drags from anywhere in a body made of sliders (XR-PH-15), which is a gesture collision rather than a missing element — the successor to the retired bandExpandWired, and the same claim shape: the component renders the handle, the app decides it is the only one'
 	},
 	{
 		id: 'bandTitle',
