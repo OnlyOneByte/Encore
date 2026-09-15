@@ -128,7 +128,7 @@ What already exists, and did not when the first attempt was built:
   disk.
 - **Word-level timings.** `align` is the last step of the process and readiness waits for it, so a
   processed song has word boundaries — the exact input a note grid needs.
-- **A working precedent for deriving analysis from stems.** `KeyAndRange` (`worker/src/steps/analysis.py`)
+- **A working precedent for deriving analysis from stems.** `KeyAndRange` (`worker/src/steps/key_and_range.py`)
   computes musical key from the instrumental and sung range from the vocals by reading the **raw
   separated WAVs still sitting in scratch** — no extra separation, no extra decode, no new job type.
   It runs through the keepalive wrapper precisely because it is in-process numpy over minutes of
