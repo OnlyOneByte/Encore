@@ -13,19 +13,30 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import shutil
 import time
-from collections.abc import Callable
 from typing import Any
 
 from . import protocol
+from .bootstrap import (
+    _build_processor as _build_processor,  # noqa: F401 — re-export: tests and _run_forever build through here
+)
+from .bootstrap import (
+    oversubscription_warnings,
+)
 from .config import WorkerConfig
 from .mediastore import MediaStoreConfig, parse_media_store
-from .processor import CompleteResult, JobSpec, Processor, ProgressEvent, StubProcessor
+from .processor import CompleteResult, JobSpec, Processor, ProgressEvent
 from .retry_policy import is_retryable
 from .runtime import scratch_for
-from .vocabulary import Capability, serves_family
+from .scratch_reaper import (
+    _SCRATCH_SWEEPS,
+    _on_scratch_sweep_done,
+    _scratch_sweep_loop,
+)
+from .scratch_reaper import (
+    sweep_orphaned_scratch as sweep_orphaned_scratch,  # noqa: F401 — re-export: exercised by test_dial_home
+)
 
 # All environment reading lives in config.py, so there is ONE place to look for "what is this worker
 # actually configured to do" — and so the perf knobs are testable without mutating os.environ.
@@ -52,8 +63,6 @@ _DETACHED_DRAINS: set[asyncio.Task] = set()
 
 #: Pins the scratch-reaper task. `ensure_future` returns a task the event loop only weakly references, so
 #: without a strong reference here the reaper could be garbage-collected mid-flight and the process would
-#: stop reclaiming orphaned scratch with nothing in the log — the same hazard `_DETACHED_DRAINS` guards.
-_SCRATCH_SWEEPS: set[asyncio.Task] = set()
 
 
 def _on_detached_drain_done(task: asyncio.Task) -> None:
@@ -73,14 +82,6 @@ def _on_detached_drain_done(task: asyncio.Task) -> None:
 # handshake; this is only the floor so the leg is never fully silent. Kept below the 30s lease so a
 # reconciling frame always lands before a lease can expire.
 DEFAULT_HEARTBEAT_INTERVAL_SEC = 10.0
-# Orphaned-scratch reclaim. A retryable failure on the LAST attempt is terminal but the worker
-# cannot see it (no attempt count on the wire), so _run_job preserves that scratch and this sweep is
-# the only thing that reclaims it. Two knobs make the sweep SAFE on a media volume shared by several
-# workers: it runs PERIODICALLY (so a long-lived worker reclaims without a restart) and it only
-# removes a dir whose newest file is older than SCRATCH_MIN_AGE_SEC — a live job writes continuously,
-# so its scratch is always fresher than the threshold and can never be swept, even by another worker.
-SCRATCH_SWEEP_INTERVAL_SEC = 1800.0  # every 30 min
-SCRATCH_MIN_AGE_SEC = 6 * 3600.0  # only reclaim scratch untouched for 6h — far longer than any process
 
 
 class WorkerClient:
@@ -417,128 +418,6 @@ class WorkerClient:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-def _newest_mtime(path: str) -> float:
-    """The most-recent mtime anywhere under `path` (the dir itself and every descendant).
-
-    A separation writes ONE large file deep inside work/<jobId> over many minutes; that does not bump
-    the top dir's own mtime, so testing only os.path.getmtime(path) would call an actively-written
-    scratch "old" and sweep it. Walking for the newest mtime is what makes the age bound actually
-    track liveness. Best-effort: a file that vanishes mid-walk (a process cleaning up) is skipped."""
-    newest = 0.0
-    try:
-        newest = os.stat(path).st_mtime
-    except OSError:
-        return newest
-    for root, dirs, files in os.walk(path):
-        for name in (*dirs, *files):
-            try:
-                m = os.stat(os.path.join(root, name)).st_mtime
-            except OSError:
-                continue  # raced with a delete — ignore
-            if m > newest:
-                newest = m
-    return newest
-
-
-def sweep_orphaned_scratch(
-    media_dir: str,
-    live_job_ids: frozenset[str],
-    *,
-    min_age_sec: float = SCRATCH_MIN_AGE_SEC,
-    now: float | None = None,
-) -> list[str]:
-    """Reclaim work/<jobId> scratch dirs that no longer belong to a job, returning what was removed.
-
-    The worker's per-job finally (_run_job) cleans scratch on every TERMINAL outcome it can see, but
-    it cannot see one: a retryable failure that was the LAST attempt (retries exhausted) is terminal,
-    yet the worker has no attempt count on the wire to know that, so it preserves that scratch for a
-    retry that never comes. Nothing else reclaims it — the runner's makedirs(exist_ok=True) is what
-    makes resume work so it must NOT rmtree, a re-request mints a fresh jobId (a new work/<jobId>),
-    and core retention bounds only derived/, never work/. So without this, one exhausted-retry job
-    leaks its decoded WAV + separated stems — the pipeline's biggest intermediates — forever.
-
-    TWO guards keep it safe on a media volume SHARED by several workers (docker-compose mounts the
-    same volume into core and every worker), where "orphan for THIS worker" is not "orphan for the
-    fleet" — an early version passed frozenset() and would delete another worker's in-flight scratch:
-
-      * AGE. Only a dir whose NEWEST file is older than `min_age_sec` (default 6h, far longer than any
-        process) is removed. A live job writes its scratch continuously, so it is always fresher than the
-        threshold and can never be swept — by this worker OR another one. This is the load-bearing
-        guard on a shared volume, because it needs no cross-worker knowledge.
-      * LIVE SET. A jobId in `live_job_ids` is skipped outright. THIS worker's own in-flight jobs, so
-        a job that legitimately runs longer than the age bound is still never swept from under itself.
-
-    Runs in the worker, which owns the uid that created these dirs — a core-side sweep would get
-    EACCES in a two-container deploy (see _run_job's finally)."""
-    work_root = os.path.join(media_dir, "work")
-    removed: list[str] = []
-    try:
-        entries = os.listdir(work_root)
-    except FileNotFoundError:
-        return removed  # no work/ yet — nothing to reclaim
-    cutoff = (time.time() if now is None else now) - min_age_sec
-    for name in entries:
-        if name in live_job_ids:
-            continue  # THIS worker's in-flight job — never touch a live scratch
-        path = os.path.join(work_root, name)
-        if not os.path.isdir(path):
-            continue
-        if _newest_mtime(path) > cutoff:
-            continue  # touched recently — could be ANOTHER worker's live job on a shared volume
-        shutil.rmtree(path, ignore_errors=True)  # tidying must never crash the worker
-        removed.append(name)
-    return removed
-
-
-async def _scratch_sweep_loop(media_dir: str, live_job_ids: Callable[[], frozenset[str]]) -> None:
-    """Periodically reclaim aged-out orphaned scratch for the process's whole lifetime.
-
-    A one-shot startup sweep left a long-lived worker (restart: unless-stopped can mean weeks of
-    uptime) accumulating one orphaned scratch dir per exhausted-retry job until it restarted. Running
-    on an interval closes that. `live_job_ids` is a callable so each pass reads the CURRENT in-flight
-    set rather than a snapshot taken when the loop started.
-
-    SWEEPS BEFORE IT SLEEPS. The interval used to come first, which quietly removed the startup sweep
-    that three separate comments in this module still promised: a worker restarted to clear a stuck box
-    reclaimed nothing for the first `SCRATCH_SWEEP_INTERVAL_SEC`, and a worker restarted again inside
-    that window reclaimed nothing at all — the exact leak the reaper exists to stop, at exactly the
-    moment an operator is trying to fix it. Doing the pass first makes "runs at startup" true again while
-    keeping the interval behaviour for the rest of the process's life.
-
-    ONE PASS CANNOT KILL THE LOOP. The body is guarded because it is filesystem work on a volume this
-    worker may share: `sweep_orphaned_scratch` only tolerates a missing `work/`, so a PermissionError or
-    an ENOSPC-adjacent error on one entry used to escape, end the task, and leave the process with no
-    reaper and nothing in the log saying so — the silent-failure shape `_on_detached_drain_done` was
-    written to close. A failed pass is logged and the next one still runs.
-    """
-    while True:
-        try:
-            reclaimed = sweep_orphaned_scratch(media_dir, live_job_ids())
-            if reclaimed:
-                print(f"[worker] reclaimed {len(reclaimed)} aged scratch dir(s): {reclaimed}", flush=True)
-        except Exception as exc:  # noqa: BLE001 — tidying must never end the reaper or the worker
-            print(f"[worker] scratch sweep failed ({exc!r}) — retrying next interval", flush=True)
-        await asyncio.sleep(SCRATCH_SWEEP_INTERVAL_SEC)
-
-
-def _on_scratch_sweep_done(task: asyncio.Task) -> None:
-    """Log a reaper that ended, for the same reason `_on_detached_drain_done` exists.
-
-    `_scratch_sweep_loop` is meant to outlive every job, so its task finishing at all is news: without
-    this the only trace would be asyncio's "Task exception was never retrieved" at GC, and a worker
-    silently accumulating scratch for the rest of its uptime. CancelledError is expected at shutdown and
-    stays quiet.
-    """
-    _SCRATCH_SWEEPS.discard(task)
-    if task.cancelled():
-        return
-    exc = task.exception()
-    print(
-        f"[worker] scratch sweep loop ENDED unexpectedly ({exc!r}) — orphaned scratch will accumulate",
-        flush=True,
-    )
-
-
 def _is_retryable(exc: Exception) -> bool:
     # The retry decision lives in ONE place now: retry_policy.is_retryable. It prefers a
     # structured `.retryable` flag (ProcessError/ProcessTimeout, and the boundary errors that carry
@@ -552,194 +431,6 @@ def _is_retryable(exc: Exception) -> bool:
     # and narrowing it cleans scratch for errors nobody was thinking of as a disk decision. Weigh both
     # effects when editing the marker table.
     return is_retryable(exc)
-
-
-def oversubscription_warnings(
-    cfg: WorkerConfig, cores: int | None, memory_bytes: int | None = None
-) -> list[str]:
-    """Warn when concurrency x jobs asks for more parallel work than the box can run.
-
-    PURE (cores and memory are passed in) so it unit-tests without touching the machine. This is its
-    own check rather than part of WorkerConfig.from_env because core count is a property of the HOST,
-    not the environment, and from_env is deliberately pure over env alone.
-
-    Worth warning about because the two knobs MULTIPLY: `concurrency=4, jobs=4` is 16 concurrent
-    demucs chunk workers, each holding its own model copy, so the box thrashes and every song gets
-    slower — the opposite of what raising them looks like it should do. Never fatal: a GPU box or a
-    deliberate over-commit is the operator's call.
-
-    `cores` should be the EFFECTIVE count (hardware.effective_cpus), not os.cpu_count(): inside a
-    throttled container the host figure hides exactly the contention this is looking for.
-
-    Only MEMORY-and-scheduling contention is reported here. There is deliberately no "you forgot to
-    cap threads" warning any more: `from_env` derives `torch_threads` from concurrency x jobs whenever
-    it is unset, so the condition that warning described cannot arise, and a warning naming a fix that
-    has already been applied is worse than none. What remains is the case config cannot fix for you —
-    asking for more parallel separations than the host has cores, or than its RAM can hold.
-    """
-    out: list[str] = []
-    parallel = max(1, cfg.concurrency) * max(1, cfg.demucs_jobs)
-    if cores and parallel > cores:
-        out.append(
-            f"concurrency={cfg.concurrency} x demucs_jobs={cfg.demucs_jobs} = {parallel} parallel "
-            f"separations on {cores} usable cores; songs will contend"
-        )
-    if memory_bytes:
-        # Each parallel separation holds its own model copy plus the decoded audio it is working on.
-        # ~2 GiB is the conservative figure for htdemucs; roformer is heavier, so this under-warns
-        # rather than crying wolf.
-        need = parallel * 2 * 1024**3
-        if need > memory_bytes:
-            out.append(
-                f"{parallel} parallel separations need roughly {need // 1024**3} GiB but only "
-                f"{memory_bytes // 1024**3} GiB is available; expect the OOM killer rather than "
-                "slow processes — lower ENCORE_WORKER_CONCURRENCY or ENCORE_DEMUCS_JOBS"
-            )
-    return out
-
-
-def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
-    """Build the processor from this worker's capabilities. ENCORE_PROCESSOR=stub forces the no-ML
-    StubProcessor. Otherwise a RoutingProcessor dispatches by job type onto a PlanRunner per action —
-    fetch, stems, stems-upgrade and align — each running the declared plan for that action. Imports are
-    lazy so torch only loads for advertised capabilities.
-
-    Config is read ON CALL, not captured at import: a module-level default would silently ignore an
-    environment set after import, and be untestable.
-    """
-    cfg = cfg or WorkerConfig.from_env()
-    if cfg.processor == "stub":
-        return StubProcessor()
-
-    from .processor import RoutingProcessor
-
-    # Cap intra-op threads BEFORE any model loads. Matters when demucs_jobs > 1: N jobs each
-    # defaulting to all cores oversubscribe the box and fight instead of scaling.
-    #
-    # demucs runs as a separate CLI SUBPROCESS (see demucs.py subprocess_runner), so
-    # torch.set_num_threads() in THIS process cannot reach it — the child inherits os.environ, so
-    # OMP/MKL are how the cap crosses the process boundary. Measured on a 10-core box: `-j 1` already
-    # ran ~3.9 cores wide, so `-j 4` uncapped just oversubscribes (86s vs 99s); the cap is what lets
-    # jobs scale instead of fight. torch.set_num_threads() still applies to the IN-PROCESS consumers.
-    if cfg.torch_threads is not None:
-        os.environ["OMP_NUM_THREADS"] = str(cfg.torch_threads)
-        os.environ["MKL_NUM_THREADS"] = str(cfg.torch_threads)
-        try:
-            import torch
-
-            torch.set_num_threads(cfg.torch_threads)
-        except Exception as exc:  # noqa: BLE001 — a tuning hint must never stop the worker
-            print(f"[worker] could not set torch threads: {exc}", flush=True)
-
-    by_type: dict[str, Processor] = {}
-    # Resolve the device ONCE for the whole worker. Separation and alignment used to answer this
-    # question independently — and alignment's answer was a hardcoded "cpu" — so a CUDA box separated
-    # on the GPU and then transcribed on the CPU unless a human set a second env var. One resolution
-    # means the two cannot disagree.
-    device: str | None = None
-    # The RESOLVED separator backend for this worker (torch/mlx). Bound to None up here alongside
-    # `device` so it is unconditionally defined, then threaded into stems_runner below so it drives the
-    # engine and is recorded into facts — not merely printed.
-    backend: str | None = None
-    # Any separation-family capability, or alignment, means this box does heavy ML and needs a resolved
-    # backend. Derived from the vocabulary rather than a literal list — the literal list here omitted
-    # `stems:audiosep`, so an audio-separator-only box never resolved a backend or printed the line.
-    if serves_family(cfg.capabilities, Capability.STEMS.family) or Capability.ALIGN in cfg.capabilities:
-        from .backends import resolve_backend
-        from .vocabulary import Engine
-
-        choice = resolve_backend(cfg.separator_backend, engine=Engine.DEMUCS, device=cfg.device)
-        device = choice.device
-        backend = choice.backend.value
-        print(f"[worker] separator backend: {choice.backend.value} — {choice.reason}", flush=True)
-
-    if serves_family(cfg.capabilities, Capability.FETCH_YTDLP.family):
-        from .plans import fetch_runner
-        from .separation.demucs import subprocess_runner
-
-        # Acquisition needs no ML, so it is built whenever a fetch capability is advertised — including
-        # on a box that cannot separate at all. That asymmetry is the point of routing fetch separately.
-        annotator = None
-        if cfg.annotate:
-            from .metadata.annotate import MusicBrainzClient
-
-            annotator = MusicBrainzClient()
-        by_type["fetch"] = fetch_runner(
-            runner=subprocess_runner, annotator=annotator, ytdlp_bin=cfg.ytdlp_bin
-        )
-    # THE BUG THIS FIXES: the two tokens were listed literally, so `stems:audiosep` — added to the
-    # probes later — never reached here. A box with audio-separator and no demucs proved
-    # `stems:audiosep`, advertised it, matched the core's `stems` routing on the `stems:` prefix, and
-    # bound NO stems runner: it accepted separation work it could not run a single job of. Asking the
-    # vocabulary which tokens serve the stems family means a new engine token cannot be missed here.
-    if serves_family(cfg.capabilities, Capability.STEMS.family):
-        from .plans import stems_runner
-        from .separation.demucs import subprocess_runner
-
-        # ONE runner for both separation actions. The engine is resolved from job params into ctx.engines
-        # before the first step runs (plan SELECTION, not branching — see the spec's §5.2c), so there is no
-        # second dispatch layer: EngineRouter's job is now `engine_for` inside the Separate step.
-        #
-        # Roformer's ~700MB checkpoint machinery is still only reachable when the capability was granted:
-        # engine_for imports it lazily, and the CORE only routes a roformer process to a worker advertising
-        # stems:roformer.
-        # Segment: an explicit ENCORE_DEMUCS_SEGMENT always wins; otherwise size it to the memory the
-        # card actually has FREE right now. Measured here rather than in `WorkerConfig.from_env` on
-        # purpose — reading free VRAM imports torch, and config is built at module import, so deriving
-        # it there would pull the ML stack into every worker process including one that only fetches.
-        segment = cfg.demucs_segment
-        if segment is None:
-            from .config import auto_demucs_segment
-            from .hardware import free_vram_bytes
-
-            free = free_vram_bytes()
-            segment = auto_demucs_segment(free)
-            if segment is not None and free is not None:
-                print(
-                    f"[worker] demucs segment: {segment}s — derived from "
-                    f"{free / (1024**3):.1f}GiB free accelerator memory "
-                    f"(set ENCORE_DEMUCS_SEGMENT to override)",
-                    flush=True,
-                )
-
-        # ONE value for the nine separator knobs — see `separation/tuning.py` for why they stopped being
-        # nine parameters. The three arguments are the ones config cannot know by itself: the resolved
-        # device and backend (which DRIVE the engine and reach `facts`, so the startup log and the ledger
-        # cannot disagree) and a segment that may be derived from free accelerator memory.
-        from .config import separation_tuning
-
-        runner = stems_runner(
-            runner=subprocess_runner,
-            ffmpeg_bin=cfg.ffmpeg_bin,
-            ytdlp_bin=cfg.ytdlp_bin,
-            flac_level=cfg.flac_level,
-            tuning=separation_tuning(cfg, device=device, backend=backend, segment=segment),
-        )
-        by_type["stems"] = runner
-        by_type["stems-upgrade"] = runner  # an upgrade is a separation job like any other
-    if Capability.ALIGN in cfg.capabilities:
-        from .config import whisperx_device_for
-        from .lyrics import LrclibClient
-        from .plans import align_runner
-        from .separation.demucs import subprocess_runner
-
-        # Follows the same device decision as separation, mapped through whisperx_device_for because
-        # CTranslate2 has only cuda and cpu backends — an xpu or mps box separates on its accelerator
-        # and still aligns on the CPU, which is a real constraint rather than a missed optimisation.
-        #
-        # A PlanRunner over the declared align plan, not a bespoke processor: eight named steps rather
-        # than one 257-line method, and engines resolved per JOB rather than mutated on this instance.
-        # See docs/ARCHITECTURE.md §7.1 (the align plan).
-        by_type["align"] = align_runner(
-            runner=subprocess_runner,
-            lyrics_client=LrclibClient(base_url=cfg.lrclib_base),
-            device=cfg.whisperx_device or whisperx_device_for(device),
-            model=cfg.asr_model,
-            sync_mode=cfg.sync_mode,
-            ytdlp_bin=cfg.ytdlp_bin,
-            keep_raw=cfg.keep_raw_captions,
-        )
-    return RoutingProcessor(by_type)
 
 
 async def _run_forever() -> None:

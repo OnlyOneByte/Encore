@@ -1168,8 +1168,14 @@ def test_run_forever_starts_the_periodic_scratch_sweep():
 #    log line and no reaper for the rest of the process's uptime.
 @pytest.mark.asyncio
 async def test_scratch_sweep_loop_sweeps_once_before_its_first_sleep(monkeypatch):
-    """The startup sweep is real: a pass happens before any interval elapses."""
-    import src.dial_home as dh
+    """The startup sweep is real: a pass happens before any interval elapses.
+
+    Patches `src.scratch_reaper`, not `src.dial_home`. The loop and the sweep now live in the reaper
+    module, so the name the loop resolves is the reaper's own global — patching the re-export on
+    dial_home would leave the REAL sweep running and the fake sleep unused, which is a hang rather than
+    a failure.
+    """
+    import src.scratch_reaper as dh
 
     calls: list[frozenset[str]] = []
     monkeypatch.setattr(dh, "sweep_orphaned_scratch", lambda md, live, **kw: calls.append(live) or [])
@@ -1191,7 +1197,7 @@ async def test_scratch_sweep_loop_sweeps_once_before_its_first_sleep(monkeypatch
 @pytest.mark.asyncio
 async def test_scratch_sweep_loop_survives_a_failing_pass(monkeypatch, capsys):
     """A raising pass is logged and the NEXT interval still runs — the reaper does not die silently."""
-    import src.dial_home as dh
+    import src.scratch_reaper as dh
 
     passes = {"n": 0}
 
