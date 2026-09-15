@@ -78,7 +78,7 @@
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			media = (await res.json()).media ?? null;
 		} catch {
-			loadError = 'Could not load this song — check your connection.';
+			loadError = "Couldn't load this song.";
 			toast.error(loadError, { duration: 4000 });
 		} finally {
 			loading = false;
@@ -110,7 +110,7 @@
 	     transpose the TV has since moved off. Says so rather than looking authoritative. -->
 	{#if !connected}
 		<p class="offline-note" role="status" aria-live="polite">
-			<Icon name="warning" /> Reconnecting… the key and range below may not match the room.
+			<Icon name="warning" /> Reconnecting…
 		</p>
 	{/if}
 
@@ -125,13 +125,11 @@
 	{:else if !media}
 		<Empty.Root>
 			<Empty.Header>
-				<Empty.Description>
-					No song with that id on this server. It may have been removed from the library.
-				</Empty.Description>
+				<Empty.Description>No song with that id.</Empty.Description>
 			</Empty.Header>
 		</Empty.Root>
 	{:else}
-		<section class="facts card" aria-label="What this song asks of a singer">
+		<section class="facts card" aria-label="Song details">
 			{#if display.artist ?? media.artist}
 				<p class="artist">{display.artist ?? media.artist}</p>
 			{/if}
@@ -163,10 +161,7 @@
 			{:else}
 				<!-- A song can be perfectly singable and have no measured range: the analysis needs a vocals
 				     stem. Stating that beats an empty strip that reads as "range = zero". -->
-				<p class="band-sentence">
-					No measured vocal range yet — that comes from the separated vocals, so it appears once this song
-					has been made into karaoke.
-				</p>
+				<p class="band-sentence">No vocal range yet — that needs karaoke.</p>
 			{/if}
 		</section>
 
@@ -181,7 +176,7 @@
 			<!-- Bound out of the narrowed branch: an arrow function escapes Svelte's `{:else}` narrowing, so
 			     `media.id` inside a callback is `possibly null` to the checker even though it cannot be. -->
 			{@const songId = media.id}
-			<section class="lyrics" aria-label="Which words this song sings">
+			<section class="lyrics" aria-label="Lyrics">
 				<h2 class="grouphead">Lyrics</h2>
 				<LyricsReselect
 					{candidates}

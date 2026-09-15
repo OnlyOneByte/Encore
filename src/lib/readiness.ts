@@ -122,24 +122,21 @@ export function readyEmptyState(opts: {
 			// labelled Sing since the two half-actions were merged — so the instruction pointed at a
 			// button that does not exist. The emoji is gone too: this is a plain string, it cannot hold a
 			// mark, and platform-dependent art in an instruction is worse than no art.
-			message: 'No karaoke-ready songs yet — tap Sing on a search result to make one.',
+			message: 'No karaoke-ready songs yet.',
 			showAllCount: null
 		};
 	}
 	// The library HAS songs; they just don't match what is being searched. Say so, and name the way back.
 	if (searchActive) {
 		const q = (opts.query ?? '').trim();
-		const noun = libraryCount === 1 ? 'karaoke song' : 'karaoke songs';
 		return {
-			message: q
-				? `None of your ${libraryCount} ${noun} match “${q}”.`
-				: `None of your ${libraryCount} ${noun} match this search.`,
+			message: q ? `Nothing matches “${q}”.` : 'Nothing matches this search.',
 			showAllCount: libraryCount
 		};
 	}
 	// Not searching and the library is non-empty → the group should have rendered rows, so this is
 	// unreachable in practice. Return something honest rather than the false "none yet".
-	return { message: `Your ${libraryCount} karaoke songs are ready to sing.`, showAllCount: null };
+	return { message: `${libraryCount} karaoke ${libraryCount === 1 ? 'song' : 'songs'} ready.`, showAllCount: null };
 }
 
 /**

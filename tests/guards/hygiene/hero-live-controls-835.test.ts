@@ -87,7 +87,9 @@ const MARKUP = DRAWER.slice(DRAWER.indexOf('<Drawer.Root'), DRAWER.indexOf('</Dr
 /** The drawer's `<style>` block only, for the ancestor-opacity ban. */
 const CSS = DRAWER.slice(DRAWER.indexOf('<style>'), DRAWER.lastIndexOf('</style>'));
 
-const NOTE = 'No isolated vocals for this song, so the guiding track stays off. Key and vocal range still work.';
+// Shortened in the copy pass — two clauses instead of two sentences, same two facts: why the control is
+// dead, and what still works. The second half is the load-bearing one and is why this is not just 'off'.
+const NOTE = 'No isolated vocals, so no guiding track. Key and range still work.';
 
 /**
  * Every rule body in `css` whose selector list mentions `.cls` as a whole token.

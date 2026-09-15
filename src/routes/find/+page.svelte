@@ -138,7 +138,7 @@
 				readyResults = [];
 				rawResults = [];
 				processingResults = [];
-				showError('Search failed — check your connection');
+				showError('Search failed.');
 			}
 		} finally {
 			if (inflight === ctrl) searching = false;
@@ -231,7 +231,7 @@
 			if (body.alreadyReady) void room.refreshLibrary();
 		} catch {
 			room.clearMediaStatus(mediaId);
-			showError('Could not start process — check your connection');
+			showError("Couldn't start that.");
 		}
 	}
 
@@ -268,7 +268,7 @@
 	<!-- The room went away mid-search. Says so here rather than letting a stale list read as live. -->
 	{#if me && !connected}
 		<p class="offline-note" role="status" aria-live="polite">
-			<Icon name="warning" /> Reconnecting… what you queue will be sent when the room is back.
+			<Icon name="warning" /> Reconnecting…
 		</p>
 	{/if}
 
@@ -295,7 +295,7 @@
 			A group heading is a claim about what follows it, so it must not outlive its rows.
 		-->
 		{#if libraryRows.length}
-			<h2 class="grouphead">Ready to sing · your library</h2>
+			<h2 class="grouphead">Your library</h2>
 			{#each libraryRows as m (m.id)}
 				<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 			{/each}
@@ -303,9 +303,7 @@
 			<!-- Nothing ready AND nothing on the way: the only state where the library is genuinely empty. -->
 			<Empty.Root>
 				<Empty.Header>
-					<Empty.Description>
-						No karaoke tracks yet. Search for a song above and tap Karaoke to make one.
-					</Empty.Description>
+					<Empty.Description>No karaoke tracks yet.</Empty.Description>
 				</Empty.Header>
 			</Empty.Root>
 		{/if}
@@ -340,7 +338,7 @@
 
 		{@const rawRows = unaccounted(rawResults)}
 		{#if rawRows.length}
-			<h2 class="grouphead">Needs karaoke · has vocals</h2>
+			<h2 class="grouphead">Needs karaoke</h2>
 			{#each rawRows as m (m.id)}
 				{@const r = readinessFor(m)}
 				<SongRow
@@ -359,7 +357,7 @@
 		{#if !searching && rawResults.length === 0 && readyResults.length === 0}
 			<Empty.Root>
 				<Empty.Header>
-					<Empty.Description>No results. YouTube search needs yt-dlp installed on the server.</Empty.Description>
+					<Empty.Description>No results. YouTube search needs yt-dlp on the server.</Empty.Description>
 				</Empty.Header>
 			</Empty.Root>
 		{/if}

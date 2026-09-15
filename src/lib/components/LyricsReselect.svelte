@@ -132,7 +132,7 @@
 						<Textarea
 							bind:value={draft}
 							rows={5}
-							placeholder="Paste the correct lyrics, one line per line…"
+							placeholder="Paste the lyrics…"
 							aria-label="Paste lyrics"
 						/>
 						<div class="reselect-acts">
@@ -142,7 +142,7 @@
 					</div>
 				{:else}
 					<button class="reselect-paste-open" onclick={() => (pasting = true)}>
-						<Icon name="chevron-right" /> None of these — paste my own
+						<Icon name="chevron-right" /> Paste my own
 					</button>
 				{/if}
 			</div>

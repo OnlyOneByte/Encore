@@ -55,9 +55,15 @@
 				 * `justify-start` because the label leads; `font-normal` and `text-[length:inherit]`
 				 * because the name's size is the header's, not the button's (the old rule said
 				 * `font: inherit`).
+				 *
+				 * `min-h-tap` because it declares no height of its own and so inherited the default
+				 * `h-9` — 36px, measured on the render by `gate:measured`, which is the four pixels
+				 * XR-VER-09 is about. It is the phone's only route to the profile editor, so it is not a
+				 * control a thumb can afford to miss. The header's row height is set by the brand line
+				 * beside it, so raising this one to the floor changes no layout.
 				 */
 				identity:
-					'min-w-0 shrink justify-start gap-[var(--space-sm)] px-[var(--space-xs)] font-normal text-[length:inherit] hover:bg-muted',
+					'min-w-0 shrink justify-start gap-[var(--space-sm)] px-[var(--space-xs)] font-normal text-[length:inherit] hover:bg-muted min-h-tap',
 				/*
 				 * The +/- semitone pair. Two requirements the stock variants actively fight:
 				 *

@@ -69,8 +69,14 @@
 	 * "Maya is singing · Neil Diamond" when both are known; either alone when only one is; and the
 	 * queue-a-song prompt when nothing plays. A dangling "·" is the failure this replaces.
 	 */
+	/*
+	 * Nothing playing gets NO second line. It used to read "Queue a song to start the party", which is
+	 * three things at once: a state, an instruction, and a bit of cheer — and the state is already the
+	 * title. The instruction is unnecessary because the magnifier is right there, and the cheer is what
+	 * makes a room's software sound like it is talking to you rather than telling you something.
+	 */
 	const byline = $derived.by(() => {
-		if (!hasSong) return 'Queue a song to start the party';
+		if (!hasSong) return null;
 		const parts: string[] = [];
 		if (singerName) parts.push(`${singerName} is singing`);
 		if (artist) parts.push(artist);
@@ -105,12 +111,14 @@
 		<div class="strip">
 			<div class="meta">
 				<div class="title">{hasSong ? title : 'Nothing playing'}</div>
-				<div class="byline">
-					{#if hasSong && singerName}
-						<span class="dot" style:background={singerColor ?? 'var(--accent)'}></span>
-					{/if}
-					<span class="byline-text">{byline}</span>
-				</div>
+				{#if byline}
+					<div class="byline">
+						{#if singerName}
+							<span class="dot" style:background={singerColor ?? 'var(--accent)'}></span>
+						{/if}
+						<span class="byline-text">{byline}</span>
+					</div>
+				{/if}
 			</div>
 
 			<button class="btn" type="button" aria-label="Search for a song" onclick={() => onsearch?.()}>

@@ -191,7 +191,7 @@
 	 */
 	const guideNote = $derived(
 		hasSong && !guideEnabled
-			? 'No isolated vocals for this song, so the guiding track stays off. Key and vocal range still work.'
+			? 'No isolated vocals, so no guiding track. Key and range still work.'
 			: null
 	);
 </script>
@@ -208,9 +208,12 @@
 			<div class="titlerow">
 				<div class="titlecol">
 					<Drawer.Title class="np-song">{hasSong ? title : 'Nothing playing'}</Drawer.Title>
-					<Drawer.Description class="np-byline">
-						{hasSong ? (byline ?? 'Adjust while you sing') : 'Queue a song to start the party'}
-					</Drawer.Description>
+					<!-- No filler when there is nothing to say. "Adjust while you sing" described the drawer to the
+					     person who had just opened it, and "Queue a song to start the party" repeated the title
+					     back with encouragement attached. -->
+					{#if byline}
+						<Drawer.Description class="np-byline">{byline}</Drawer.Description>
+					{/if}
 				</div>
 				{#if hasSong && mediaId}
 					<div class="more-slot">

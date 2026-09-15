@@ -267,10 +267,10 @@ test('mechanism 4 — the group headings name which list, and the retired colour
 	// FOUR groups can be on this surface, and up to three of them at once, with no chip row anywhere to
 	// tell them apart — so each carries a name. Pinned by exact markup, because the claim is that all
 	// four share ONE neutral treatment; a heading whose class drifted is the reversion this arm catches.
-	expect(FIND).toContain('<h2 class="grouphead">Ready to sing · your library</h2>');
+	expect(FIND).toContain('<h2 class="grouphead">Your library</h2>');
 	expect(FIND).toContain('<h2 class="grouphead">Making karaoke…</h2>');
 	expect(FIND).toContain('<h2 class="grouphead">Ready to sing</h2>');
-	expect(FIND).toContain('<h2 class="grouphead">Needs karaoke · has vocals</h2>');
+	expect(FIND).toContain('<h2 class="grouphead">Needs karaoke</h2>');
 	// Exactly four, all bare: the count is what makes "one treatment" falsifiable rather than decorative,
 	// since a fifth heading or a variant class would have to pass through here.
 	expect((FIND.match(/class="grouphead"/g) ?? []).length).toBe(4);
@@ -375,7 +375,7 @@ test('the results read DOWNWARD: every result list is emitted with its best matc
 	const main = FIND.slice(FIND.indexOf('<main>'), FIND.indexOf('</main>'));
 	expect(main.indexOf('Making karaoke')).toBeLessThan(main.indexOf('{@const readyStack'));
 	expect(main.indexOf('{@const readyStack')).toBeLessThan(main.indexOf('{@const rawRows'));
-	expect(main.indexOf('>Ready to sing</h2>')).toBeLessThan(main.indexOf('Needs karaoke · has vocals'));
+	expect(main.indexOf('>Ready to sing</h2>')).toBeLessThan(main.indexOf('>Needs karaoke</h2>'));
 });
 
 test('the top-anchored column takes its back control from the page header', () => {

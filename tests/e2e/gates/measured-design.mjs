@@ -63,7 +63,7 @@ import { repoRoot } from '../lib/repo-root.mjs';
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
- * @typedef {{ tag: string, type: string | null, cls: string, near: string, boxH: number, hitH: number, occluded: number, fontSize: number }} Reading
+ * @typedef {{ tag: string, type: string | null, cls: string, near: string, offscreen: boolean, boxH: number, hitH: number, occluded: number, fontSize: number }} Reading
  */
 
 const CORE = repoRoot;
@@ -132,15 +132,50 @@ function sweepExpr(scope) {
 			// Without this, the sweep saw only the 18px glyph and read a 44px label as an 18px false floor.
 			const type = (el.getAttribute('type') || '').toLowerCase();
 			const glyph = el.tagName === 'INPUT' && (type === 'checkbox' || type === 'radio');
-			const target = glyph ? (el.closest(${JSON.stringify(LABEL_SELECTOR)}) || el) : el;
+			// A SWITCH IS THE SAME DELEGATION WEARING NEW MARKUP. The shadcn migration replaced the
+			// checkbox input with a button carrying role=switch, inside the same label.check — and that
+			// label still carries min-height: var(--tap). The Switch component's own comment says why:
+			// giving the switch a 44px box would make the row 88px and put two competing targets in it.
+			// The reader above was written for an input, stopped recognising the control, and so
+			// re-reported an already-closed false positive as an 18.4px box with a 34px hit extent. The
+			// delegation follows the CONTROL, not the tag it used to have.
+			const switchBtn = el.getAttribute('role') === 'switch';
+			// A SLIDER THUMB'S TARGET IS ITS TRACK. Bits UI moves the thumb to wherever the track is
+			// pressed, so the thumb's own 22/28px box is not what a finger has to hit — the same
+			// substitution, one level of nesting further out. If the slider ROOT is also short this still
+			// fails, which is the point: it credits a real target, it does not excuse a small one.
+			const thumb = el.matches('[data-slot="slider-thumb"]');
+			const target =
+				glyph || switchBtn
+					? el.closest(${JSON.stringify(LABEL_SELECTOR)}) || el
+					: thumb
+						? el.closest('[data-slot="slider"]') || el
+						: el;
 			const inTarget = (n) => !!n && (n === target || target.contains(n));
 			const tr = target.getBoundingClientRect();
 			const cx = Math.min(Math.max(Math.round(tr.left + tr.width / 2), 0), innerWidth - 1);
 			const cy = Math.round(tr.top + tr.height / 2);
 			// Vertical hit extent at the CENTRE x. That is the reading the 44px floor is about: WCAG
 			// 2.5.8 and Encore's own --tap are both statements about the target's box.
-			let hitH = 0;
-			if (inTarget(document.elementFromPoint(cx, cy))) {
+			/*
+			 * OFF-VIEWPORT IS NOT ZERO-HEIGHT, and conflating them fabricated failures. document
+			 * .elementFromPoint returns null for any point outside the viewport, so a control below the
+			 * fold read hitH = 0 and occluded = 3/3 — reported as an unhittable, fully covered target.
+			 * /settings' own "Start singing" button is 53px tall and sits at y=861 in an 844px viewport;
+			 * it is neither short nor covered, it is simply further down the page.
+			 *
+			 * A hit extent is a VIEWPORT-RELATIVE reading and cannot be taken for a control whose probe
+			 * point is not in the viewport. The test is on the CENTRE POINT rather than on the box, because
+			 * the centre point is what is probed: a control straddling the fold intersects the viewport and
+			 * still has no hittable centre, which is how the first version of this fix left the same
+			 * failure standing at a taller viewport. Its declared box is still credited, so the 44px floor
+			 * stays live for every control the sweep sees, and the occlusion probe — meaningless off-screen,
+			 * since nothing can cover what is not being painted — is skipped.
+			 * Counted in the reading's offscreen flag so the skip cannot quietly absorb a whole surface.
+			 */
+			const onScreen = cy >= 0 && cy < innerHeight;
+			let hitH = onScreen ? 0 : Math.round(tr.height * 10) / 10;
+			if (onScreen && inTarget(document.elementFromPoint(cx, cy))) {
 				let top = cy, bottom = cy;
 				while (top - 1 >= 0 && inTarget(document.elementFromPoint(cx, top - 1))) top--;
 				while (bottom + 1 < innerHeight && inTarget(document.elementFromPoint(cx, bottom + 1))) bottom++;
@@ -152,9 +187,11 @@ function sweepExpr(scope) {
 			// unmeetable by construction. Kept as an occlusion probe, which is what a far-edge reading
 			// is actually good for: an overlay covering part of a control.
 			let occluded = 0;
-			for (const f of [0.25, 0.5, 0.75]) {
-				const x = Math.min(Math.max(Math.round(tr.left + tr.width * f), 0), innerWidth - 1);
-				if (!inTarget(document.elementFromPoint(x, cy))) occluded++;
+			if (onScreen) {
+				for (const f of [0.25, 0.5, 0.75]) {
+					const x = Math.min(Math.max(Math.round(tr.left + tr.width * f), 0), innerWidth - 1);
+					if (!inTarget(document.elementFromPoint(x, cy))) occluded++;
+				}
 			}
 			const label = el.closest(${JSON.stringify(LABEL_SELECTOR)});
 			const near = (el.getAttribute('aria-label') || (label ? label.textContent : '') || (el.parentElement ? el.parentElement.textContent : '') || '')
@@ -164,6 +201,7 @@ function sweepExpr(scope) {
 				type: el.getAttribute('type'),
 				cls: ((el.className && el.className.toString) ? el.className.toString() : '').replace(/svelte-[\\w-]+/g, '').trim().replace(/\\s+/g, ' '),
 				near,
+				offscreen: !onScreen,
 				boxH: Math.round(r.height * 10) / 10,
 				hitH,
 				occluded,

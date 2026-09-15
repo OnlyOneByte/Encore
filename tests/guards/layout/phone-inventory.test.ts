@@ -90,7 +90,7 @@ const IDIOMS: Record<Condition, { name: string; find: (src: string) => boolean }
 		 * `<Empty.Root><Empty.Header><Empty.Description>` renders the heading-plus-next-action shape
 		 * XR-PH-08 asks for. A route that ships one and calls no builder was therefore reported as
 		 * having NO empty state at all — a false negative, and a live one: `routes/+page.svelte`
-		 * renders `Empty.Root` with "Queue's empty — add a song to start the party." and this guard
+		 * renders `Empty.Root` with "Nothing queued." and this guard
 		 * could not see it. Measured across the whole tree, the blind spot covered six files —
 		 * `routes/+page.svelte`, `routes/find/+page.svelte` (3 states, only one of them backed by a
 		 * builder call), `routes/metrics/+page.svelte` (4), `routes/admin/+page.svelte` (2), and

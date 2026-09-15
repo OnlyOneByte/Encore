@@ -613,7 +613,7 @@
 		-->
 			{#if reorderOpen}
 				<div class="reorder-bar card" role="group" aria-label="Reordering your songs">
-					<p class="reorder-hint">Drag to any position in the queue.</p>
+					<p class="reorder-hint">Drag to reorder.</p>
 					<div class="reorder-acts">
 						<Button variant="secondary" size="tap" onclick={() => exitReorder(hoverSlot)}>Done</Button>
 						<Button variant="ghost" size="tap" onclick={() => exitReorder(null)}>Cancel</Button>
@@ -628,7 +628,7 @@
 			{#if queued.length === 0}
 				<Empty.Root>
 					<Empty.Header>
-						<Empty.Description>Queue's empty — add a song to start the party.</Empty.Description>
+						<Empty.Description>Nothing queued.</Empty.Description>
 					</Empty.Header>
 				</Empty.Root>
 			{:else}

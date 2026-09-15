@@ -129,20 +129,32 @@ test('an empty library while searching still says "none yet" (it is true)', () =
 test('THE BUG: a non-empty library during a search must NOT claim there are none', () => {
 	const s = readyEmptyState({ searchActive: true, libraryCount: 5, query: 'zzzz' });
 	expect(s.message).not.toContain('No karaoke-ready songs yet');
-	expect(s.message).toContain('5');
 	expect(s.message).toContain('zzzz'); // names what was searched
+	/*
+	 * `toContain('5')` USED TO SIT HERE, as the evidence that the message acknowledged a non-empty
+	 * library. The count moved out of the sentence and onto the control that acts on it — the
+	 * "Show all 5" button, i.e. `showAllCount` below — because stating it in both places is the
+	 * duplication that made this copy read like an explanation. The invariant is unchanged and still
+	 * pinned twice over: the message must not claim there are none (above), and the count must reach
+	 * the surface (below).
+	 */
 	expect(s.showAllCount).toBe(5); // and offers the one tap back to the library
 });
 
 test('singular wording for a one-song library', () => {
-	const s = readyEmptyState({ searchActive: true, libraryCount: 1, query: 'x' });
+	/*
+	 * RE-POINTED at the branch that still counts. The searching branch names no count any more (see the
+	 * arm above), so it has no singular/plural to get wrong — and "Show all 1", which is where the
+	 * count went, needs no noun. This branch does still count, so the agreement claim lives here.
+	 */
+	const s = readyEmptyState({ searchActive: false, libraryCount: 1 });
 	expect(s.message).toContain('1 karaoke song ');
 	expect(s.message).not.toContain('songs');
 });
 
 test('a blank query while searchActive still reads sensibly (no empty quotes)', () => {
 	const s = readyEmptyState({ searchActive: true, libraryCount: 3, query: '   ' });
-	expect(s.message).toContain('match this search');
+	expect(s.message).toContain('matches this search');
 	expect(s.message).not.toContain('““');
 	expect(s.showAllCount).toBe(3);
 });

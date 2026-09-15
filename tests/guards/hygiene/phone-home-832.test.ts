@@ -336,10 +336,15 @@ test('an idle drawer says "Nothing playing" exactly once', () => {
 	const idle = openDrawer(IDLE);
 	expect(count(idle, '.eyebrow')).toBe(0);
 	expect((idle.textContent ?? '').match(/Nothing playing/g)?.length).toBe(1);
-	// TRANSFORMED (prop gone, copy unchanged). The sentence arrived as the hero's `hint` prop; the
-	// drawer owns it. Asserting it with NOTHING passed in is the stronger form — the caller can no
-	// longer forget to supply the one line that says what to do next.
-	expect(idle.textContent).toContain('Queue a song to start the party');
+	/*
+	 * AND SAYS NOTHING ELSE. This used to assert the drawer contained "Queue a song to start the party"
+	 * — a line that was three things at once: the state (already the title), an instruction (the
+	 * magnifier is right there), and a bit of cheer. The copy is deliberately gone, so the arm asserts
+	 * the decision instead of the string, which is the stronger claim: with nothing playing the drawer
+	 * renders NO second line at all, so there is nowhere for filler to come back.
+	 */
+	expect(count(idle, '[data-slot="drawer-description"]')).toBe(0);
+	expect(idle.textContent).not.toContain('start the party');
 });
 
 /*
