@@ -20,7 +20,9 @@ lets one step ask both engines the same four questions.
 
 from __future__ import annotations
 
+import inspect
 import os
+from functools import cache
 from typing import Protocol
 
 from ..retry_policy import PermanentError
@@ -402,6 +404,36 @@ class AudioSepEngine(SeparatorDefaults):
         }
 
 
+#: Constructor parameters a CALLER of `engine_for` may never set, so they are excluded from every
+#: derived allowlist below.
+#:
+#:   * `default_model` — the engine's own fallback checkpoint. The model is a per-JOB decision resolved by
+#:     `engine.resolve_model(ctx.params)` against that engine's allowlist, so letting a caller replace the
+#:     fallback at construction would put a second, unvalidated owner on the same decision.
+#:   * `backend` — `engine_for` takes it as its own named argument and passes it explicitly. Admitting it
+#:     from `**kwargs` too would be a duplicate keyword at best, and a way to override the RESOLVED
+#:     backend at worst.
+_FACTORY_OWNED = frozenset({"default_model", "backend"})
+
+
+@cache
+def _settable(cls: type) -> frozenset[str]:
+    """Which of `cls.__init__`'s parameters `engine_for` will forward from its caller.
+
+    DERIVED from the signature, not hand-listed, and that is the whole point of this function. The four
+    allowlists used to be literal sets maintained beside the constructors they mirrored, and every one of
+    them was a place to forget a parameter — the same failure the separator's nine-knob sprawl produced,
+    one layer down. It is how `model_file_dir`, `models_dir` and `batch_size` came to be unreachable, and
+    it is how `MlxDemucsEngine`'s `ffmpeg_bin` stayed unreachable after those three were fixed: the engine
+    accepted it, `mix_minus_instrumental_argv` used it, and the literal set simply did not carry it.
+
+    Cached because it reflects on four classes on a hot-ish path and the answer cannot change at runtime.
+    """
+    # `signature(cls)` is the CONSTRUCTOR's signature with `self` already removed — and unlike
+    # `signature(cls.__init__)` it does not read as an unsound `__init__` access on an instance.
+    return frozenset(inspect.signature(cls).parameters) - _FACTORY_OWNED
+
+
 def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorEngine:
     """The engine this job resolved to, executed through the resolved `backend`.
 
@@ -440,8 +472,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
     """
     given = {k: v for k, v in kwargs.items() if v is not None}
     if name == RoformerEngine.id:
-        allowed = {"roformer_bin", "device", "models_dir"}
-        kw = {k: v for k, v in given.items() if k in allowed}
+        kw = {k: v for k, v in given.items() if k in _settable(RoformerEngine)}
         if "roformer_model" in given:
             kw["default_model"] = given["roformer_model"]
         return RoformerEngine(**kw)
@@ -450,8 +481,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
         # the two CLIs that take an output-format flag. demucs-mlx and bs-roformer-infer do not, so their
         # engines declare a fixed format as a class attribute and a caller cannot ask them for another one.
         # Silently accepting-and-dropping the kwarg would advertise a choice the CLI cannot honour.
-        allowed = {"audiosep_bin", "model_file_dir", "stem_format"}
-        kw = {k: v for k, v in given.items() if k in allowed}
+        kw = {k: v for k, v in given.items() if k in _settable(AudioSepEngine)}
         if "audiosep_model" in given:
             kw["default_model"] = given["audiosep_model"]
         return AudioSepEngine(**kw)
@@ -460,13 +490,11 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
             # Wired, not silent: an mlx-resolved process builds the MLX engine, which runs demucs-mlx and
             # derives the instrumental. This is what makes facts.backend honest — a torch
             # DemucsEngine can never be built under an "mlx" label.
-            allowed = {"overlap", "segment", "shifts", "batch_size"}
-            kw = {k: v for k, v in given.items() if k in allowed}
+            kw = {k: v for k, v in given.items() if k in _settable(MlxDemucsEngine)}
             if "demucs_model" in given:
                 kw["default_model"] = given["demucs_model"]
             return MlxDemucsEngine(**kw)
-        allowed = {"demucs_bin", "device", "jobs", "overlap", "segment", "shifts", "stem_format"}
-        kw = {k: v for k, v in given.items() if k in allowed}
+        kw = {k: v for k, v in given.items() if k in _settable(DemucsEngine)}
         if "demucs_model" in given:
             kw["default_model"] = given["demucs_model"]
         # `backend` reaches facts unchanged (defaults to "torch"); an mlx process never gets here.
