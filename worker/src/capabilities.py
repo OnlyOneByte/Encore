@@ -27,12 +27,15 @@ import shutil
 from dataclasses import dataclass
 
 from .backends import _module_available
+from .vocabulary import Capability
 
 
 @dataclass(frozen=True)
 class Probe:
     """One capability and the evidence for or against it."""
 
+    #: A `Capability` in practice. Typed as `str` because an override can name a token this build
+    #: does not know, and `resolve` reports that as unprovable rather than raising — see `serves_family`.
     token: str
     available: bool
     reason: str
@@ -65,20 +68,20 @@ def probe_all(
     probes: list[Probe] = []
 
     fetch_ok, fetch_why = _either("yt_dlp", ytdlp_bin)
-    probes.append(Probe("fetch:ytdlp", fetch_ok, fetch_why))
+    probes.append(Probe(Capability.FETCH_YTDLP, fetch_ok, fetch_why))
 
     stems_ok, stems_why = _either("demucs", demucs_bin)
-    probes.append(Probe("stems", stems_ok, stems_why))
+    probes.append(Probe(Capability.STEMS, stems_ok, stems_why))
 
     rof_ok, rof_why = _either("bs_roformer", roformer_bin)
-    probes.append(Probe("stems:roformer", rof_ok, rof_why))
+    probes.append(Probe(Capability.STEMS_ROFORMER, rof_ok, rof_why))
 
     # python-audio-separator: the mel-band RoFormer engine, run through the `audio-separator`
     # CLI. Advertised only when the dep is present — the same honesty contract as every other token, so
     # the parity guard (test_every_advertised_stems_capability_resolves_to_a_real_engine) holds:
     # engine_for("audiosep") builds a real AudioSepEngine, so a box advertising this can actually run it.
     asep_ok, asep_why = _either("audio_separator", audiosep_bin)
-    probes.append(Probe("stems:audiosep", asep_ok, asep_why))
+    probes.append(Probe(Capability.STEMS_AUDIOSEP, asep_ok, asep_why))
 
     # An ensemble would run both engines and keep the better result, so it would need both present.
     # But no ensemble engine is implemented: `engine_for` (separation/engines.py) has branches for
@@ -93,7 +96,7 @@ def probe_all(
     # "engine unimplemented" from "engines absent"; neither can flip this to available.
     probes.append(
         Probe(
-            "stems:ensemble",
+            Capability.STEMS_ENSEMBLE,
             False,
             "no ensemble engine implemented"
             if stems_ok and rof_ok
@@ -104,7 +107,7 @@ def probe_all(
     align_ok = _module_available("whisperx")
     probes.append(
         Probe(
-            "align",
+            Capability.ALIGN,
             align_ok,
             "whisperx importable" if align_ok else "whisperx not importable",
         )
@@ -119,7 +122,7 @@ def probe_all(
     diarize_ok = _module_available("pyannote.audio")
     probes.append(
         Probe(
-            "diarize",
+            Capability.DIARIZE,
             diarize_ok,
             "pyannote.audio importable" if diarize_ok else "pyannote.audio not importable",
         )
@@ -232,10 +235,10 @@ def narrow_for_backend(
     """
     from .separation.engines import demucs_engine_backed_by
 
-    if "stems" not in capabilities or demucs_engine_backed_by(backend):
+    if Capability.STEMS not in capabilities or demucs_engine_backed_by(backend):
         return capabilities, []
 
-    narrowed = tuple(c for c in capabilities if c != "stems")
+    narrowed = tuple(c for c in capabilities if c != Capability.STEMS)
     warning = (
         f"dropping capability 'stems': the resolved separator backend {backend!r} has no demucs "
         "engine implementation, so this box would accept stems processes and then fail every one of them "

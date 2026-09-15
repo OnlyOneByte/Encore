@@ -26,6 +26,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from .hardware import effective_cpus
+from .separation.tuning import SeparationTuning
 from .vocabulary import StemFormat, parse_stem_format
 
 
@@ -217,6 +218,12 @@ class WorkerConfig:
     demucs_segment: int | None = None
     #: None => demucs' default. Higher averages more predictions: better and proportionally slower.
     demucs_shifts: int | None = None
+    #: demucs-mlx's batch size (`-b`). None => let demucs-mlx choose. MLX-only; see
+    #: `separation.tuning.SeparationTuning.mlx_batch_size` for why there is no default yet.
+    mlx_batch_size: int | None = None
+    #: Where the separator CLIs cache their auto-downloaded checkpoints. None => each tool's own default.
+    #: See `separation.tuning.SeparationTuning.models_dir` for why one setting covers two CLI flags.
+    models_dir: str | None = None
     #: Cap torch's intra-op threads. Matters with demucs_jobs > 1, where N jobs x all-cores oversubscribe.
     #: Defaults to `auto_torch_threads(concurrency, demucs_jobs)` — the cores divided among the
     #: separations that can actually contend — and stays None when only one can run, so a box with no
@@ -339,6 +346,14 @@ class WorkerConfig:
             # Parsed at the BOUNDARY, so an unknown value fails here rather than reaching the engines as a
             # format the readers were never told about — which is the silent guide-mix loss this type ended.
             stem_format=parse_stem_format(e.get("ENCORE_STEM_FORMAT", "").strip().lower() or None),
+            # Unset means "let each CLI use its own default location". Deliberately NOT defaulted under
+            # MEDIA_DIR: that would start writing hundreds of MB into the media volume on a box whose
+            # operator never asked for it, and the media volume has its own eviction cap
+            # (ENCORE_MEDIA_MAX_GB) that knows nothing about model weights.
+            models_dir=(e.get("ENCORE_MODELS_DIR", "").strip() or None),
+            # `_opt_int` already does the right thing with junk and with a sub-minimum value: warn, then
+            # behave as unset. A batch size below 1 is meaningless, so `minimum=1` is the real bound.
+            mlx_batch_size=_opt_int(e, "ENCORE_MLX_BATCH_SIZE", w, minimum=1),
             whisperx_device=(e.get("ENCORE_WHISPERX_DEVICE", "").strip() or None),
             asr_model=_str(e, "ENCORE_ASR_MODEL", "base"),
             sync_mode=_str(e, "ENCORE_SYNC_MODE", "forced").lower(),
@@ -450,6 +465,41 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
     # extra `shutil.which` calls plus a `find_spec` on `whisperx` and `pyannote.audio`, and those two are
     # the expensive ones because resolving them imports their parent packages.
     return resolved, warnings, probes
+
+
+def separation_tuning(
+    cfg: WorkerConfig,
+    *,
+    device: str | None,
+    backend: str | None,
+    segment: int | None,
+) -> SeparationTuning:
+    """Fold this worker's separator settings into ONE value for `plans.stems_runner`.
+
+    Exists so the tuning knobs have a single owner. They used to be nine keyword arguments enumerated at
+    four sites — these fields, dial_home's `stems_runner(...)` call, that function's signature, and the
+    `engine_for(...)` call inside it — so adding one meant four edits and forgetting one was silent. It is
+    how `model_file_dir`, `models_dir` and `batch_size` came to exist on the engines while being reachable
+    from nowhere, leaving their checkpoint caches unused in production.
+
+    The three arguments are the values config CANNOT know: `device` and `backend` come from
+    `backends.resolve_backend` (which imports torch, so it cannot run at config-build time), and `segment`
+    may be derived from FREE accelerator memory, which is a runtime measurement rather than an
+    environment variable. Everything else is read straight off `cfg`.
+    """
+    return SeparationTuning(
+        model=cfg.demucs_model,
+        demucs_bin=cfg.demucs_bin,
+        device=device,
+        backend=backend,
+        jobs=cfg.demucs_jobs,
+        overlap=cfg.demucs_overlap,
+        segment=segment,
+        shifts=cfg.demucs_shifts,
+        stem_format=cfg.stem_format,
+        models_dir=cfg.models_dir,
+        mlx_batch_size=cfg.mlx_batch_size,
+    )
 
 
 def capability_probe_lines(cfg: WorkerConfig, probes: list[Any] | None = None) -> list[str]:

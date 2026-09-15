@@ -140,9 +140,13 @@ def test_stems_runner_threads_the_configured_format_into_the_engine():
     of defect where a fix is real but only ever runs on data nobody has.
     """
     from src import plans
+    from src.separation.tuning import SeparationTuning
 
-    # `stems_runner` must ACCEPT the parameter; this is what carries cfg.stem_format from dial_home.
-    assert "stem_format" in plans.stems_runner.__code__.co_varnames
+    # The format rides on `SeparationTuning` rather than being its own parameter (it was one of nine
+    # separator kwargs enumerated at four sites). Assert the value survives the trip into engine kwargs,
+    # which is what carries cfg.stem_format from dial_home.
+    assert "tuning" in plans.stems_runner.__code__.co_varnames
+    assert SeparationTuning(stem_format=StemFormat.WAV).engine_kwargs()["stem_format"] is StemFormat.WAV
     # And the factory it calls must turn that value into an engine that declares it.
     assert [engine_for("demucs", stem_format=f).stem_format for f in (StemFormat.FLAC, StemFormat.WAV)] == [
         StemFormat.FLAC,

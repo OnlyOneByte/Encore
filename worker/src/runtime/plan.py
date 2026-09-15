@@ -73,7 +73,6 @@ SEEDED_KEYS = frozenset(
         "engines.asr_model",
         "engines.sync_mode",
         "engines.separator",
-        "engines.separator_model",
         "engines.device",
         "audio.is_local",
         "audio.duration_sec",

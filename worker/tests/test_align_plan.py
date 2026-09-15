@@ -2270,14 +2270,41 @@ def test_459_TimeTexts_run_uses_opens_for_at_the_call_site_not_inline_rederivati
                     run_fn = n
                     break
     assert run_fn is not None, "TimeTexts.run not found"
-    calls = [n for n in ast.walk(run_fn) if isinstance(n, ast.Call)]
-    names = {n.func.id for n in calls if isinstance(n.func, ast.Name)}
+
+    # Follow the delegation rather than pinning one function body. `run` was a 219-line generator and the
+    # fit block now sits in `_note_lrc_fit`, a module-level phase helper in THIS step module — the
+    # invariant was never "the call is inside run", it was "the STEP layer makes this choice, not the
+    # lyrics domain". Scanning run plus the helpers it calls keeps that strength and survives the next
+    # decomposition; scanning the whole module would not, since it would pass on a call from anywhere.
+    module_fns = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    # Do NOT descend into `_opens_for`. It is the SANCTIONED wrapper: its whole job is to prefer the
+    # emitted map and fall back to `_opening_window_indices` when there is none. Walking into it would find
+    # that fallback and fail the second assertion below on correct code.
+    opaque = {"_opens_for"}
+    reachable = [run_fn]
+    seen: set[str] = set()
+    frontier = [run_fn]
+    while frontier:
+        fn = frontier.pop()
+        for n in ast.walk(fn):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in module_fns:
+                if n.func.id not in seen and n.func.id not in opaque:
+                    seen.add(n.func.id)
+                    reachable.append(module_fns[n.func.id])
+                    frontier.append(module_fns[n.func.id])
+
+    names: set[str] = set()
+    for fn in reachable:
+        for n in ast.walk(fn):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name):
+                names.add(n.func.id)
+
     assert "_opens_for" in names, (
-        "TimeTexts.run does not call _opens_for — the consumer is not using the emitted "
+        "TimeTexts does not call _opens_for — the consumer is not using the emitted "
         "align_window_opens map; the version fit would re-derive by float-equality and strand lines"
     )
     assert "_opening_window_indices" not in names, (
-        "TimeTexts.run calls _opening_window_indices DIRECTLY — that is the base behaviour that ignores "
+        "TimeTexts calls _opening_window_indices DIRECTLY — that is the base behaviour that ignores "
         "the emitted opens map. The re-derivation must live behind _opens_for's fallback only"
     )
 

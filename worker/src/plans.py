@@ -15,6 +15,7 @@ from typing import Any
 
 from .runtime.ctx import ResolvedEngines
 from .runtime.plan import PLANS, LinearPlan
+from .separation.tuning import SeparationTuning
 from .steps.acquire import AcquireAudio
 from .steps.analysis import KeyAndRange
 from .steps.diarize import Diarize
@@ -34,7 +35,6 @@ from .vocabulary import (
     Action,
     AsrModel,
     Engine,
-    StemFormat,
     SyncMode,
     parse_asr_model,
     parse_engine,
@@ -158,7 +158,6 @@ def resolve_engines(params: dict[str, Any], defaults: ResolvedEngines | None = N
         asr_model=parse_asr_model(params.get("asrModel"), AsrModel(base.asr_model)).value,
         sync_mode=parse_sync_mode(params.get("syncMode"), base.sync_mode),
         separator=str(parse_engine(params.get("engine"), Engine(base.separator))),
-        separator_model=params.get("model") or base.separator_model,
         device=params.get("device") or base.device,
     )
 
@@ -220,18 +219,10 @@ def stems_runner(
     runner: Any,
     engine: Any = None,
     profiler: Any = None,
-    demucs_model: str | None = None,
-    demucs_bin: str = "demucs",
     ffmpeg_bin: str = "ffmpeg",
     ytdlp_bin: str = "yt-dlp",
     flac_level: int = 8,
-    device: str | None = None,
-    backend: str | None = None,
-    jobs: int | None = None,
-    overlap: float | None = None,
-    segment: int | None = None,
-    shifts: int | None = None,
-    stem_format: StemFormat = StemFormat.FLAC,
+    tuning: SeparationTuning | None = None,
 ) -> Any:
     """A PlanRunner for both separation actions, with this worker's separator configuration.
 
@@ -247,22 +238,18 @@ def stems_runner(
     from .runtime.runner import PlanRunner
     from .separation.engines import engine_for
 
+    tune = tuning if tuning is not None else SeparationTuning()
+
     def resolve(params: dict[str, Any]) -> ResolvedEngines:
-        return resolve_engines(params, ResolvedEngines(device=device))
+        return resolve_engines(params, ResolvedEngines(device=tune.device))
 
     def pick(job: Any, engines: ResolvedEngines) -> LinearPlan:
-        eng = engine or engine_for(
-            engines.separator,
-            backend=backend,
-            demucs_model=demucs_model or None,
-            demucs_bin=demucs_bin,
-            device=device,
-            jobs=jobs,
-            overlap=overlap,
-            segment=segment,
-            shifts=shifts,
-            stem_format=stem_format,
-        )
+        # `engine_kwargs` carries the job's resolved device, not the worker's. `resolve_engines` folds
+        # `params['device']` over this box's own, and alignment (steps/lyrics.py) and diarization
+        # (steps/diarize.py) both read the folded value — separation once read the closure instead, so one
+        # job could transcribe on the device it asked for and separate on a different one, with
+        # `facts.device` reporting whichever the engine was built with.
+        eng = engine or engine_for(engines.separator, **tune.engine_kwargs(device=engines.device))
         kwargs: dict[str, Any] = dict(
             engine=eng, profiler=profiler, ffmpeg_bin=ffmpeg_bin, flac_level=flac_level, ytdlp_bin=ytdlp_bin
         )

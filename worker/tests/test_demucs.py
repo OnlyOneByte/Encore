@@ -16,6 +16,7 @@ from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.separation import demucs  # noqa: E402
 from src.separation import mlx as mlx_mod  # noqa: E402
+from src.separation.tuning import SeparationTuning  # noqa: E402
 from src.vocabulary import StemFormat  # noqa: E402
 from tests.cli_fakes import fake_cli_runner  # noqa: E402
 from tests.conftest import drain  # noqa: E402
@@ -585,7 +586,7 @@ async def test_a_torch_stems_process_records_torch_because_torch_ran(tmp_path):
     """End-to-end: a stems process resolved to the torch backend records `facts.backend == 'torch'`, and
     the value came from the backend threaded through stems_runner, not a constant."""
     runner = fake_runner({"yt-dlp": ["[download] 100% of 4MiB"], "demucs": ["100%|██| 2/2"]})
-    proc = plans.stems_runner(runner=runner, backend="torch")
+    proc = plans.stems_runner(runner=runner, tuning=SeparationTuning(backend="torch"))
     events = await drain(proc, spec(tmp_path))
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1
@@ -625,7 +626,7 @@ async def test_an_mlx_resolved_stems_process_runs_demucs_mlx_and_derives_the_ins
         async for line in inner(argv):
             yield line
 
-    proc = plans.stems_runner(runner=tracking_runner, backend="mlx")
+    proc = plans.stems_runner(runner=tracking_runner, tuning=SeparationTuning(backend="mlx"))
     events = await drain(proc, spec(tmp_path))
 
     completes = [e for e in events if isinstance(e, CompleteResult)]

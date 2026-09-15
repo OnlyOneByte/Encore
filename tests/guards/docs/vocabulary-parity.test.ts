@@ -2,7 +2,7 @@
  * The TS↔Python vocabulary is enforced HERE, not by comment discipline.
  *
  * The worker is Python and cannot import $lib/contract, so every shared enum is hand-mirrored in
- * apps/worker/src/vocabulary.py and the capability strings are hand-typed in capabilities.py. Core
+ * apps/worker/src/vocabulary.py — capability tokens included, as the `Capability` enum. Core
  * then matches those capability strings by RAW STRING EQUALITY in dispatch.ts. Nothing checked that
  * the two sides agreed — the claim lived only in prose, in both files' doc comments.
  *
@@ -43,7 +43,6 @@ import { at } from '@encore/test-support';
 
 const WORKER_SRC = at('worker/src');
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
-const capabilities = readFileSync(join(WORKER_SRC, 'capabilities.py'), 'utf8');
 const protocolPy = readFileSync(join(WORKER_SRC, 'protocol.py'), 'utf8');
 
 /**
@@ -155,12 +154,14 @@ function pyEnumValues(src: string, className: string): string[] {
 	if (start === -1) throw new Error(`class ${className}(_StrEnum) not found in vocabulary.py`);
 	// Stop at the next top-level `class ` or a module-level assignment; both end the block.
 	const rest = src.slice(start + 1);
-	const endRel = rest.search(/\n(?:class |[A-Z_]+(?::[^\n=]+)? =)/);
+	// Also stop at a module-level `def `: `Capability` is followed by `serves_family`, and without this
+	// the block ran past it to the next class. Harmless today — a function body carries no 4-space
+	// `UPPER = "..."` line — but it can only ever ADD false members, never drop real ones.
+	const endRel = rest.search(/\n(?:class |def |[A-Z_]+(?::[^\n=]+)? =)/);
 	const block = endRel === -1 ? rest : rest.slice(0, endRel);
 	return [...block.matchAll(/^\s{4}[A-Z][A-Z0-9_]*\s*=\s*"([^"]+)"/gm)].map((m) => m[1]!);
 }
 
-/** Capability tokens the worker can actually advertise, as hand-typed in capabilities.py. */
 /**
  * Frame-name constants from `protocol.py`, for one direction. The file groups them under
  * `# worker -> core` / `# core -> worker` comments, so the section is the direction: reading the whole
@@ -179,7 +180,23 @@ function pyWireVerbs(section: 'worker -> core' | 'core -> worker'): string[] {
 }
 
 function pyCapabilityTokens(): string[] {
-	return [...capabilities.matchAll(/Probe\(\s*"([^"]+)"/g)].map((m) => m[1]!);
+	// Read the `Capability` enum in vocabulary.py — the capability tokens' single source of truth.
+	//
+	// This used to grep `capabilities.py` for `Probe("<token>")` string literals, because that is where
+	// the tokens were hand-typed. They are not any more: they were promoted to a `Capability(_StrEnum)`
+	// beside `Backend` and `Timing`, so the probes read `Probe(Capability.FETCH_YTDLP, ...)` and the
+	// literal grep silently matched NOTHING. An empty advertisable set makes every routed capability
+	// "missing", which is what the three assertions below reported.
+	//
+	// Reading the enum is the better contract anyway: the worker's own suite asserts the probes and the
+	// enum are the same set (test_capability_vocabulary.py::test_every_probed_token_is_a_known_capability),
+	// so this side reads the DEFINITION while that side guarantees the probes match it.
+	const tokens = pyEnumValues(vocabulary, 'Capability');
+	// Non-vacuity: an empty list would make every assertion below pass by having nothing to check —
+	// exactly how the literal grep failed OPEN when the tokens moved.
+	if (tokens.length === 0)
+		throw new Error('no Capability members found in vocabulary.py — the extraction broke');
+	return tokens;
 }
 
 describe('TS↔Python vocabulary parity', () => {
