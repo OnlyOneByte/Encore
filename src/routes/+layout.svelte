@@ -221,6 +221,7 @@
 		{isPlaying}
 		{hasSong}
 		{canStart}
+		{mediaId}
 		{candidates}
 		{chosenRef}
 		{overrideRef}

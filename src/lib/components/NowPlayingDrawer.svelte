@@ -29,9 +29,18 @@
 	 * disclosures deep to see a picture that answers "can I sing this?" in one glance. One level of
 	 * revealing is the drawer itself; a second inside it was a wall.
 	 *
-	 * NO "···" AFFORDANCE YET. The design puts one in this header, opening /song/[mediaId]. That route
-	 * does not exist, and an affordance whose destination 404s is worse than an absent one — the same
-	 * rule that gates the band's pull handle on having a drawer to pull.
+	 * THE "···" IS THE ONLY HEADER AFFORDANCE, and it is three dots rather than a cog or an ⓘ because of
+	 * where it sits, not what it means. The header already has a round icon-only control column on the
+	 * right in every other surface of this app, so a second round glyph there reads as a sibling of it —
+	 * an ⓘ was mistaken for app settings on sight. Three dots say "more about this thing" without
+	 * competing.
+	 *
+	 * It NAVIGATES, and it closes the drawer on the way. Leaving the drawer open over the song page would
+	 * cover the page it just opened, since this component lives in the layout and survives the route
+	 * change — which is the same persistence that makes the band work.
+	 *
+	 * It renders only with a `mediaId`, for the same reason the band's handle renders only with an
+	 * `onexpand`: with nothing playing there is no song to be more specific about.
 	 */
 	import * as Drawer from '$lib/components/ui/drawer';
 	import { Button } from '$lib/components/ui/button';
@@ -72,6 +81,8 @@
 		hasSong?: boolean;
 		/** Play is live with a queue but no current song: "start when ready" is a real intent. */
 		canStart?: boolean;
+		/** The playing song's id. Absent means nothing is playing, so there is nothing to open. */
+		mediaId?: string | null;
 		candidates?: LyricsCandidate[];
 		chosenRef?: string;
 		overrideRef?: string;
@@ -101,6 +112,7 @@
 		isPlaying = false,
 		hasSong = false,
 		canStart = false,
+		mediaId = null,
 		candidates = [],
 		chosenRef = undefined,
 		overrideRef = undefined,
@@ -193,10 +205,27 @@
 					<span>Now singing · {singerName}</span>
 				</div>
 			{/if}
-			<Drawer.Title class="np-song">{hasSong ? title : 'Nothing playing'}</Drawer.Title>
-			<Drawer.Description class="np-byline">
-				{hasSong ? (byline ?? 'Adjust while you sing') : 'Queue a song to start the party'}
-			</Drawer.Description>
+			<div class="titlerow">
+				<div class="titlecol">
+					<Drawer.Title class="np-song">{hasSong ? title : 'Nothing playing'}</Drawer.Title>
+					<Drawer.Description class="np-byline">
+						{hasSong ? (byline ?? 'Adjust while you sing') : 'Queue a song to start the party'}
+					</Drawer.Description>
+				</div>
+				{#if hasSong && mediaId}
+					<div class="more-slot">
+						<Button
+							variant="ghost"
+							size="icon"
+							href={`/song/${mediaId}`}
+							aria-label="More about this song"
+							onclick={() => (open = false)}
+						>
+							<Icon name="dots" />
+						</Button>
+					</div>
+				{/if}
+			</div>
 		</Drawer.Header>
 
 		<div class="np-body">
@@ -347,6 +376,24 @@
 	}
 	.np-body {
 		padding: 0 var(--space-2xl);
+	}
+	/* The title column takes the width; the affordance keeps its own box out of the text's flow. */
+	.titlerow {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-md);
+	}
+	.titlecol {
+		flex: 1;
+		/* A two-line clamped title must not set a floor this column cannot go under. */
+		min-width: 0;
+	}
+	.more-slot {
+		flex: 0 0 auto;
+		/* Optical alignment with the column edge, matching PageHeader's own back-slot pull. */
+		margin-right: -10px;
+		color: var(--ink-dim);
+		display: flex;
 	}
 	.eyebrow {
 		display: flex;

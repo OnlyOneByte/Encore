@@ -570,6 +570,9 @@
 			}}>Open · nothing playing</Button
 		>
 	</div>
+	<!-- `mediaId` is a real-shaped id so the "···" affordance renders and its href is inspectable. The
+	     affordance is gated on `hasSong && mediaId`, so the nothing-playing trigger correctly shows no
+	     door — which is the pair worth being able to see side by side. -->
 	<NowPlayingDrawer
 		bind:open={drawerOpen}
 		title={drawerHasSong ? "Livin' on a Prayer" : null}
@@ -586,6 +589,7 @@
 		isPlaying={drawerHasSong}
 		hasSong={drawerHasSong}
 		canStart
+		mediaId={drawerHasSong ? '01M2H2FVB5P1W0G7BCHC29BYFJ' : null}
 	/>
 	<MyPositionCard
 		words={positionWords({ place: 3, beforeName: 'Priya', nowRemainingSec: 145, aheadDurationsSec: [249, 321] })}

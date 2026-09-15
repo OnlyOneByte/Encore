@@ -215,11 +215,13 @@ test('XR-PH-08: the phone route set is derived from the filesystem, and every ex
 	// Re-anchored 3 -> 4 by the phone-remote rebuild, which split search out of `/` onto its own
 	// `/find` route (`/` is queue-only now, and `NowPlayingBand` moved to +layout.svelte as app chrome).
 	// So the real phone-route set is `/`, `/find`, `/settings`, `/stats`. Re-anchored UPWARD on the
-	// record rather than left slack at 3 (XR-VER-06): a floor below the measured set is a floor that
-	// would not notice the set shrinking back. Still non-vacuous — a walk that enumerates 0/1/2/3 (an
-	// over-broad exemption or a moved routes/ dir) still fails here. Keeps the per-site floor-tag anchor
-	// (below); the value 4 is recorded to match in non-vacuity-floors.test.ts's FLOORS.
-	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(4); // @nvf-floor PHONE_ROUTES.length
+	// record rather than left slack (XR-VER-06): a floor below the measured set is a floor that would not
+	// notice the set shrinking back. Re-anchored 3 -> 4 when `/find` arrived and 4 -> 5 when
+	// `/song/[mediaId]` did, so the phone-route set is `/`, `/find`, `/settings`, `/song/[mediaId]`,
+	// `/stats`. Still non-vacuous — a walk that enumerates fewer (an over-broad exemption or a moved
+	// routes/ dir) still fails here. Keeps the per-site floor-tag anchor (below); the value 5 is recorded
+	// to match in non-vacuity-floors.test.ts's FLOORS.
+	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(5); // @nvf-floor PHONE_ROUTES.length
 
 	const known = new Set(ALL_ROUTES.map((r) => r.route));
 	for (const e of EXEMPT_ROUTES) {

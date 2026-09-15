@@ -473,7 +473,12 @@ function stateExpr(expectedRange) {
 				rangeEl &&
 				(keyLab.compareDocumentPosition(rangeEl) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
 			),
-			pageTextHasFragment: (document.body.textContent ?? '').toLowerCase().includes(FRAGMENT)
+			pageTextHasFragment: (document.body.textContent ?? '').toLowerCase().includes(FRAGMENT),
+			// The "\u00b7\u00b7\u00b7" door to /song/[mediaId]. An ANCHOR, deliberately: back is then the browser's
+			// own back and the route stays shareable, which a history.back() button gives up.
+			moreHref: /** @type {HTMLAnchorElement | null} */ (document.querySelector('.more-slot a'))?.getAttribute('href') ?? null,
+			moreLabel: document.querySelector('.more-slot a')?.getAttribute('aria-label') ?? null,
+			moreIsAnchor: document.querySelector('.more-slot a')?.tagName === 'A'
 		};
 	})()`;
 }
@@ -771,6 +776,17 @@ async function main() {
 		'the vocal range is shown in the same reveal as the key row, with nothing further to open',
 		live.rangeShown && live.rangeBelowKeyRow,
 		`expected ${JSON.stringify(expectedRange)} — shown=${live.rangeShown} belowKeyRow=${live.rangeBelowKeyRow}`
+	);
+
+	/*
+	 * THE DOOR TO THE SONG PAGE. It is the drawer's only header affordance, and it is the one control here
+	 * whose correctness is a URL rather than a rendering — so it is asserted against the id of the song
+	 * actually playing, not merely for presence. A "···" pointing at the wrong song is worse than none.
+	 */
+	check(
+		'the drawer offers the "···" door, as a real anchor to THIS song',
+		live.moreIsAnchor === true && live.moreHref === `/song/${withStem.id}`,
+		`href=${JSON.stringify(live.moreHref)} (want "/song/${withStem.id}"), tag ${live.moreIsAnchor ? 'A' : 'not A'}, label=${JSON.stringify(live.moreLabel)}`
 	);
 	check(
 		'the key row is present and live for a playable song',
