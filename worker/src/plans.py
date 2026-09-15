@@ -249,7 +249,15 @@ def stems_runner(
         # (steps/diarize.py) both read the folded value — separation once read the closure instead, so one
         # job could transcribe on the device it asked for and separate on a different one, with
         # `facts.device` reporting whichever the engine was built with.
-        eng = engine or engine_for(engines.separator, **tune.engine_kwargs(device=engines.device))
+        # `ffmpeg_bin` is passed alongside the tuning, not folded into it. Only ONE engine wants it —
+        # demucs-mlx, whose instrumental is DERIVED by an ffmpeg mix-minus pass because the CLI has no
+        # `--two-stems` — while `ffmpeg_bin` itself is shared with plans that never separate anything.
+        # Before this it reached the three steps below and not the engine, so an Apple-Silicon box with
+        # ENCORE_FFMPEG_BIN set derived its instrumental with bare `ffmpeg`: the one call that has to
+        # succeed for an mlx separation to produce no_vocals.wav at all.
+        eng = engine or engine_for(
+            engines.separator, ffmpeg_bin=ffmpeg_bin, **tune.engine_kwargs(device=engines.device)
+        )
         kwargs: dict[str, Any] = dict(
             engine=eng, profiler=profiler, ffmpeg_bin=ffmpeg_bin, flac_level=flac_level, ytdlp_bin=ytdlp_bin
         )
