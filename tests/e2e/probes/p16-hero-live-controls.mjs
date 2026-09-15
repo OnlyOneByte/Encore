@@ -359,7 +359,8 @@ const PRELUDE = `
 		keyCap: ${JSON.stringify(SEL.keyBtn)},
 		keyLab: ${JSON.stringify(SEL.keyLabel)},
 		bandTitle: ${JSON.stringify(SEL.bandTitle)},
-		bandExpand: ${JSON.stringify(SEL.bandExpand)}
+		bandExpand: ${JSON.stringify(SEL.bandExpand)},
+		songDoor: ${JSON.stringify(SEL.songDoor)}
 	};
 	const q = (s) => document.querySelector(s);
 	const qq = (s) => Array.prototype.slice.call(document.querySelectorAll(s));
@@ -476,9 +477,9 @@ function stateExpr(expectedRange) {
 			pageTextHasFragment: (document.body.textContent ?? '').toLowerCase().includes(FRAGMENT),
 			// The "\u00b7\u00b7\u00b7" door to /song/[mediaId]. An ANCHOR, deliberately: back is then the browser's
 			// own back and the route stays shareable, which a history.back() button gives up.
-			moreHref: /** @type {HTMLAnchorElement | null} */ (document.querySelector('.more-slot a'))?.getAttribute('href') ?? null,
-			moreLabel: document.querySelector('.more-slot a')?.getAttribute('aria-label') ?? null,
-			moreIsAnchor: document.querySelector('.more-slot a')?.tagName === 'A'
+			moreHref: /** @type {HTMLAnchorElement | null} */ (q(S.songDoor))?.getAttribute('href') ?? null,
+			moreLabel: q(S.songDoor)?.getAttribute('aria-label') ?? null,
+			moreIsAnchor: q(S.songDoor)?.tagName === 'A'
 		};
 	})()`;
 }

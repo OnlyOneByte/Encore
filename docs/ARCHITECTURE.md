@@ -11,8 +11,10 @@
 
 Encore is a self-hosted karaoke server with two surfaces:
 
-- **Phone remote:** QR join (name + color, no signup), unified YouTube/library search grouped by
-  readiness, one-tap queue, singer-owned reordering, now-playing controls.
+- **Phone remote:** QR join (name + color, no signup), then three surfaces under one persistent
+  now-playing band: the queue at `/`, unified YouTube/library search grouped by readiness at `/find`,
+  and one song's detail at `/song/[mediaId]`. One-tap queue, singer-owned reordering, and the live
+  controls — transport, ±key, guiding track, lyrics re-pick — in the drawer the band pulls up into.
 - **TV/stage:** attract → lobby → waiting → playing, gapless two-player playback, lower-third,
   lyrics, persistent join card.
 
@@ -103,6 +105,108 @@ The mechanism is intentionally small:
 `src/lib/contract/queue/rotation.ts` is imported by both sides. Never fork its logic. Validate every
 client field before it reaches state/SQLite — one missing `singerId` once killed the whole server.
 
+### Where the client's copy of that truth lives
+
+The phone's half of the loop above is owned by ONE object rather than by a route.
+`src/lib/stores/room.ts` holds `RoomLink` and the `room` singleton: the `/api/me` probe, the
+`QueueStore`, the `WsClient`, and every field the room broadcasts into — playback, singers, the media
+catalog, effective settings, the away set, live process statuses, and the saved library. Surfaces
+**subscribe and mirror** the fields they render.
+
+All of it used to be CONSTRUCTED in `src/routes/+page.svelte`'s `onMount`, which made a route the owner
+of app-wide truth, and that had one consequence which finally forced the move: a component mounted in
+`src/routes/+layout.svelte` could not read the playback state, because the only thing that knew it was a
+sibling route component. Persistent chrome was therefore impossible rather than merely awkward, and the
+socket is simply not a property of a route — one phone joins one room once.
+
+Three properties of the owner are deliberate:
+
+- **It is a plain class with an explicit `subscribe`, not a rune-backed `.svelte.ts` store.** A
+  module-level `$state` singleton is shared across SSR requests on the server, which is a cross-request
+  leak waiting to happen; plain fields that only ever move in the browser cannot leak that way.
+  `src/lib/stores/queue.ts` beside it already established subscribe-and-mirror and is tested that way,
+  so a second idiom in one directory is a thing every reader learns twice. And mirroring per component
+  means the band does not re-render on a library merge it does not read.
+- **The socket lives for the DOCUMENT, not the route.** `connect()` is idempotent and browser-only, and
+  nothing closes the connection on navigation — the band and the drawer have to survive it. `close()`
+  exists for a test; the document closing takes the socket with it. A guest who has not joined settles
+  with no socket at all.
+- **The root layout gates connecting on a not-a-phone list.** `src/routes/+layout.svelte` is the ROOT
+  layout, so it wraps the television: an ungated `room.connect()` would open a second `role=phone`
+  socket on `/tv` — which already holds its own `role=tv` one — and register the television as a singer
+  present in the room. The list is deliberately the same four exemptions the phone-route walk already
+  enforces, rather than a second opinion about what a phone surface is.
+
+Two seams follow from single ownership, and both are the reason for it rather than a side effect. The
+**saved library** is owned here because its one fetch serves two readers: it gives `/find` its rows AND
+seeds the media catalog and live statuses the QUEUE reads for its titles and progress bars on a cold
+load. Sharing one function body inside a route meant the queue's titles depended on the search surface
+having run — invisible while they were one file, a silent breakage the moment they were not. And the
+held **failed-process scars** must be maintained rather than snapshotted at connect: the link does not
+remount, so a failure arriving after connect has to join the held list, or the next `queue:sync`
+replaces the catalog and wipes the very row the scar exists to survive a reload.
+
+### The phone's surfaces
+
+Chrome first, because it is what the ownership above bought.
+`src/lib/components/NowPlayingBand.svelte` is mounted by the layout as the bottom-most chrome of every
+phone surface: the title, who is singing, a search button, and a transport disc whose progress **ring**
+replaced both an elapsed number and a separate thumbnail — the transport button can BE the artwork.
+`progress` is a fraction **or null**, and null draws an EMPTY ring rather than one pinned at zero,
+because a 0% ring reads as a stalled song (the same null-not-zero rule the queue peek applies). The
+band is presentational — no socket, no store, no `$app/*` import — and `position: fixed` lives on the
+layout's `.dock` wrapper instead of on the component, because `/components` renders five bands to show
+every state and a fixed one would collapse all five onto the same strip. Its **measured** height is
+published as `--dock-h` on documentElement so every scrolling column reserves it in normal flow, and
+`env(safe-area-inset-bottom)` lives on the band alone and reaches everything stacked above it through
+that token — a second `env()` term higher up doubles the gap.
+
+Pulling the band up opens `src/lib/components/NowPlayingDrawer.svelte`, which holds the live controls:
+the seek row, the transport, ±key with the vocal range directly beneath it, the guiding-track level, and
+lyrics re-selection. `handleOnly` is the load-bearing prop: vaul drags to dismiss from anywhere in its
+content, and this drawer's body is sliders, so a drag surface underneath them would make the two
+gestures one gesture and the ancestor would win. Dragging is restricted to the handle — a whitelist,
+chosen over a blacklist of opt-out elements because a whitelist cannot be forgotten when a control is
+added later. The container also satisfies a mount constraint that used to be a condition someone had to
+remember: `src/lib/components/GuidingTrack.svelte` wraps a slider that reads `offsetWidth` and must not
+mount hidden, and a drawer portals its content on open and destroys it on close, where a collapsible
+renders its content always and merely hides it.
+
+The routes then divide by the question each answers:
+
+| Surface           | Answers                              | Notes                                                                                        |
+| ----------------- | ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `/`               | who is up, and where am I            | the queue and nothing else; a guest who has not joined gets the landing state instead        |
+| `/find`           | what can I sing                      | search, whose **zero-query state is the saved library**                                      |
+| `/song/[mediaId]` | can I sing THIS, are the words right | reached from the drawer's "···"; shares `GET /api/audit/[mediaId]` with `/metrics/[mediaId]` |
+
+Two of those are reversals worth recording rather than quietly dropping.
+
+**The hero is gone.** Home used to open with a card for a song someone else is singing, which spent the
+top third of the screen on the one thing a guest cannot act on, pushed the rotation down the page, and —
+once the band existed — said "Nothing playing" twice on one screen. Its content moved into the drawer,
+which is a change of PLACE and not of content: the same song identity, seek row, transport and live
+controls, none of it occupying the queue any more.
+
+**Search is a place you go, not a mode.** It used to be a box docked in the thumb zone whose results
+expanded UPWARD in place over the queue, explicitly with no browse mode and no `?browse=1`, because
+there was nothing to navigate back out of. That reasoning was about a box that lived on home; the band
+took the bottom edge, so keeping the box there would have put two surfaces on one edge. Once search is
+somewhere you GO — a tap on the band's magnifier — a route is what makes the phone's own back gesture
+the way back. Note what did not come back with it: there is still no browse TOGGLE, because the surface
+IS the browse view, and results read DOWNWARD from a header, so the best match is first and the
+scroll-to-the-end orchestration is gone rather than re-pointed. `/find` focuses its box on arrival,
+since getting there is already a deliberate tap.
+
+`/song/[mediaId]` is a route rather than a second sheet stacked on the drawer, on a forward-looking
+argument: lyrics timing and editing are becoming a comprehensive system, and a sheet that grows into a
+workspace is the wrong container to start one in — a chooser is not an editor. It **fetches** instead of
+reading the link, because the client catalog only holds songs the room has touched and this page is
+reachable for any id, including a song processed on an earlier night. It reads the link for exactly the
+live fact the audit row cannot know: the room's current `keyShift`, so its range readout describes what
+the TV is sounding rather than the song at concert pitch. The drawer closes itself as it navigates,
+since it lives in the layout and would otherwise cover the page it just opened.
+
 ## 4. Rotation, presence, and room state
 
 ### Rotation
@@ -139,10 +243,13 @@ drop behind everyone else's the moment their turn begins). It lives on the singe
 because that table deliberately carries no singer id: this records THAT someone sang and when, never
 what. With no history the policy is exactly fair, so a party starts identically either way.
 
-A drag-reorder stays policy-agnostic: `move` permutes the singer's own `addedAt` stamps rather than
-rewriting seqs, so under every addedAt-reading ordering a singer reorders their own songs within the
-slots they already hold and can never jump another singer. Under `shuffle` the rank comes from the
-entry id, so a move is a legal no-op and the phone hides the arrows (`respectsAddedAt`).
+A drag-reorder stays policy-agnostic: `reorderWithinSinger` rewrites the stored list, permuting the
+singer's own songs among the queued slots that singer already holds, so no other singer's row shifts and
+nobody can jump anybody. (`moveToIndex` is the cross-singer sibling, counting every queued entry.) The
+phone therefore offers reordering **unconditionally**. It did not always: while rank under `shuffle` was
+re-derived from the entry id a move was a legal no-op there, and the arrows were hidden for it. Nothing
+re-derives a position now — the stored list is the source of truth — so there is no ordering that can
+discard a move.
 
 ### Presence
 

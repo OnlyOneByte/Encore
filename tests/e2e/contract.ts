@@ -386,6 +386,17 @@ export const SEL = {
 	 */
 	drawerHandle: "[data-slot='drawer-handle']",
 	/*
+	 * THE DRAWER'S ONLY HEADER AFFORDANCE — the "\u00b7\u00b7\u00b7" that opens /song/[mediaId].
+	 *
+	 * Addressed as the ANCHOR inside the slot rather than as the slot, because the anchor is the claim:
+	 * it is a real `<a href>` so back is the browser's own back and the route stays shareable, which a
+	 * history.back() button gives up. A driver reading the slot would pass over a button.
+	 *
+	 * It renders only with a playing song, so a driver must open the drawer on one — its absence with
+	 * nothing playing is correct, not a missing hook.
+	 */
+	songDoor: '.more-slot a',
+	/*
 	 * RE-POINTED, NOT RETIRED — and this is the call the move actually turned on, because BOTH class names
 	 * survived into the drawer. A wrong decision here does not go red; it leaves a selector quietly
 	 * resolving to something it was not written for.
@@ -672,6 +683,12 @@ export const HOOKS: Hook[] = [
 		file: 'src/routes/find/+page.svelte',
 		anchor: 'aria-label="Search a song or artist"',
 		why: 'the flow searches the library through this field, which moved to the /find route when the band took the bottom edge — the label is unchanged, so only the FILE moved'
+	},
+	{
+		id: 'songDoor',
+		file: 'src/lib/components/NowPlayingDrawer.svelte',
+		anchor: 'class="more-slot"',
+		why: 'the \u00b7\u00b7\u00b7 door to /song/[mediaId]; SEL.songDoor addresses the anchor INSIDE this slot, because being a real <a href> is the property that matters'
 	},
 	{
 		id: 'findBox',
