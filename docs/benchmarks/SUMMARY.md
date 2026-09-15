@@ -195,6 +195,47 @@ knowingly — the whitelist already has the shape for this.
 
 ---
 
+## 7. demucs-mlx batch size — **NOT MEASURED YET** (open, needs an Apple-Silicon box)
+
+The worker can now pass demucs-mlx's `-b/--batch-size` (`ENCORE_MLX_BATCH_SIZE`), and it is **unset by
+default deliberately** — there is no number behind any value this repo could pick.
+
+**Why the existing data does not answer it.** §2 measured batching on BS-RoFormer on **G3**: batch 1 vs
+batch 4, 253s vs 247s, recorded as *"batching is worthless (1.02x — 32 cores already saturate at batch
+1)"*. That parenthesis is the reason it does not transfer. Batching pays off when the device is
+**under-utilised** at batch 1. A saturated 32-core CPU is not; a Metal GPU paying per-call launch overhead
+on small tensors plausibly is. So the honest prior is *unknown*, not *worthless* — and the box table above
+still says **M1 Pro: nothing measured yet**, which is the only hardware demucs-mlx runs on at all.
+
+**Why guessing is worse than leaving it unset.** Batching trades memory for throughput. A value that helps
+a 32 GB M-series box can OOM a 16 GB one part-way through a song, and the room sees that as a failed song,
+not as a tuning mistake. `jobs` and `segment` already expose the same trade-off for the demucs family with
+measured guidance behind them; a second knob with none is a liability.
+
+**How to close it.**
+
+```bash
+docs/benchmarks/scripts/mlx_batch_bench.sh /path/to/song.flac 30 3
+```
+
+It sweeps `control` (no flag) then `-b 1 2 4 8`, min of 3 reps, and records max RSS per row — the memory
+column is as much the result as the time column. The script refuses to run on anything that is not
+Apple Silicon rather than emit numbers that mean nothing.
+
+| batch | best wall | rt | max RSS | verdict |
+|---|---|---|---|---|
+| control (no `-b`) | — | — | — | _unmeasured_ |
+| 1 | — | — | — | _unmeasured_ |
+| 2 | — | — | — | _unmeasured_ |
+| 4 | — | — | — | _unmeasured_ |
+| 8 | — | — | — | _unmeasured_ |
+
+**A null result is a result.** If no row beats `control` by a margin worth the memory risk, record that
+here and leave the default unset — that closes the question rather than leaving it open, and it is the
+outcome §2's mechanism predicts if Metal turns out to saturate at batch 1 too.
+
+---
+
 ## Method notes, so numbers stay comparable
 
 - **Always report rt**, and state the box and date. Raw wall-clock for one song is not portable.

@@ -18,6 +18,7 @@ because a test would only have kept a dead table faithfully in sync with a live 
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import Enum
 from typing import TypeVar, cast
 
@@ -183,6 +184,70 @@ class Backend(_StrEnum):
     TORCH = "torch"
     MLX = "mlx"
     OPENVINO = "openvino"
+
+
+class Capability(_StrEnum):
+    """What a worker can PROVE it can do, and therefore what the core will route to it.
+
+    The last routing vocabulary that was still bare strings, and the omission cost something real. The
+    tokens were hand-typed at three sites that had to agree: the seven probes in `capabilities.py` that
+    author them, and two literal lists in `dial_home._build_processor` that decide which runners to
+    build. `stems:audiosep` was added to the probes and to ONE of the two lists, so a box with
+    `audio-separator` installed and demucs absent proved `stems:audiosep`, advertised it, matched the
+    core's `stems` routing on the `stems:` prefix — and bound no stems runner at all. It accepted
+    separation work and could not run a single job of it: the advertise→accept→fail failure that
+    `capabilities.py` exists to eliminate, reintroduced through the one part of it that was stringly
+    typed.
+
+    THE FAMILY IS DERIVED, which is the property that matters. A capability is `family` or
+    `family:variant`, and `in_family` computes membership from the members themselves rather than from a
+    second hardcoded list. Add a `stems:whatever` member and every stems-family check picks it up with
+    no other edit — which is exactly what did not happen for `stems:audiosep`.
+    """
+
+    FETCH_YTDLP = "fetch:ytdlp"
+    #: Plain `stems` is the demucs family; the engine is chosen per job from params, not by the token.
+    STEMS = "stems"
+    STEMS_ROFORMER = "stems:roformer"
+    STEMS_AUDIOSEP = "stems:audiosep"
+    #: In the vocabulary so configuration and routing can NAME it, but never advertised — no ensemble
+    #: engine is implemented. Same treatment as `Backend.OPENVINO`.
+    STEMS_ENSEMBLE = "stems:ensemble"
+    ALIGN = "align"
+    #: Opt-in: pyannote is HF-gated and heavy, so this reports available only when it can be imported.
+    DIARIZE = "diarize"
+
+    @property
+    def family(self) -> str:
+        """The action family this capability serves — the part before the colon.
+
+        `stems:roformer` serves `stems`, and plain `align` serves `align`. This is the same rule the
+        core routes on, so it is stated once here instead of re-spelled as a prefix test at each site.
+        """
+        return self.value.split(":", 1)[0]
+
+    @classmethod
+    def in_family(cls, family: str) -> tuple[Capability, ...]:
+        """Every member serving `family`, computed from the members.
+
+        Deliberately not a hardcoded frozenset: a second list of stems tokens is precisely what drifted
+        from the probes and lost `stems:audiosep`.
+        """
+        return tuple(c for c in cls if c.family == family)
+
+
+def serves_family(tokens: Iterable[str], family: str) -> bool:
+    """Does any advertised token serve `family`?
+
+    Takes plain strings, not members, on purpose. An advertised set can legitimately contain a token
+    this build does not know: `ENCORE_WORKER_CAPABILITIES` is free text, and `capabilities.resolve`
+    reports an unknown entry as unprovable and drops it WITH a warning rather than raising. Parsing
+    strictly here would turn that diagnosable warning into a crash at startup.
+
+    This is the same rule as `protocol.WorkerState.supports` — exact match on the family, or any token
+    namespaced under it — which is why that method now calls this instead of re-spelling it.
+    """
+    return any(str(t) == family or str(t).startswith(f"{family}:") for t in tokens)
 
 
 class StemFormat(_StrEnum):

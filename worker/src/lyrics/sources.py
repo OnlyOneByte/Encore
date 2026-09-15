@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from ..vocabulary import TextSource, Timing
-from .chain import LyricsRequest, LyricsText
+from .model import LyricsRequest, LyricsText
 from .source import MAX_VARIANTS, LyricsFetchError, rank_lrclib_candidates
 
 # Derived from ..vocabulary directly — the same origin chain.py uses — rather than from chain.py, so

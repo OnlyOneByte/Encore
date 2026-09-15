@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..vocabulary import Timing
+from .model import LyricsDoc
 from .source import entries_to_segments, fold_romanization_entries, parse_lrc, plain_lyrics_to_segments
 
 
@@ -134,11 +135,10 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def is_valid_lyrics(doc: dict[str, Any]) -> bool:
-    """A WORD-timed artifact: ≥1 line with ≥1 timed word (the forced-alignment success bar)."""
-    lines = doc.get("lines")
-    if not isinstance(lines, list) or not lines:
-        return False
-    return any(isinstance(ln, dict) and ln.get("words") for ln in lines)
+    """A WORD-timed artifact: at least one line carrying at least one word — the forced-alignment
+    success bar. Kept as a named function because that name is what the step and the tests read; the
+    shape question behind it belongs to `model.LyricsDoc`."""
+    return LyricsDoc(doc).has_timed_words()
 
 
 def lrclib_to_segments(res: Any, total_duration: float | None) -> list[dict[str, Any]]:

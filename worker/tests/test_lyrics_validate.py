@@ -12,7 +12,6 @@ from src.lyrics.validate import (
     LrcShift,
     estimate_lrc_shift,
     fit_lrc_to_aligned,
-    line_starts,
     repair_word_spans,
     shift_segments,
     validate_timing,
@@ -252,9 +251,22 @@ def test_degenerate_lrc_all_same_timestamp_is_inconclusive():
     assert fit_lrc_to_aligned([5.0, 5.0, 5.0, 5.0], [1.0, 2.0, 3.0, 4.0]).verdict == "inconclusive"
 
 
-def test_line_starts_reads_both_doc_shapes():
-    assert line_starts(multiline([1.0, 2.0])) == [1.0, 2.0]
-    assert line_starts({"segments": [{"start": 3.0}, {"start": 4.0}]}) == [3.0, 4.0]
+def test_a_doc_reads_its_lines_from_either_shape():
+    """What `line_starts` used to pin, now a property of `LyricsDoc` itself.
+
+    `line_starts` is gone: it was exported and unit-tested but had NO production caller, and its own
+    replacement's docstring (`_pair_openings_to_aligned`) explains why indexing it positionally was
+    wrong — `normalize_lyrics` drops a segment with neither timed words nor bounds, so `doc["lines"][k]`
+    is not the aligned result of `windows[k]`. Encapsulating a dead reader would have been worse than
+    deleting it; the dual-shape read it demonstrated is what actually needed keeping.
+    """
+    from src.lyrics.model import LyricsDoc
+
+    assert [ln["start"] for ln in LyricsDoc(multiline([1.0, 2.0])).lines_or_segments] == [1.0, 2.0]
+    seg = LyricsDoc({"segments": [{"start": 3.0}, {"start": 4.0}]})
+    assert [ln["start"] for ln in seg.lines_or_segments] == [3.0, 4.0]
+    # ...and the STRICT read deliberately does not see it: `segments` is raw output, not an artifact.
+    assert seg.lines == []
 
 
 # ── overshoot: lyrics timed PAST the end of the audio ──────────────────────────────────────

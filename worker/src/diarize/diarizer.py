@@ -67,8 +67,15 @@ class PyannoteDiarizer:
                 import torch  # lazy: keep the multi-GB import off the dial-home path
                 from pyannote.audio import Pipeline
 
+                # `token=`, NOT `use_auth_token=`. pyannote.audio 4.x REMOVED the older name (Hugging Face
+                # deprecated it and pyannote followed), and requirements.txt pins `pyannote.audio==4.0.0` —
+                # so the old spelling raised `TypeError: Pipeline.from_pretrained() got an unexpected
+                # keyword argument 'use_auth_token'` on every single align job. The caller catches that and
+                # degrades to one colour, so diarization had NEVER once succeeded on the pinned version
+                # while `capabilities` went on advertising `diarize` (the probe only proves
+                # `pyannote.audio` imports, which it does). Observed in a live worker log.
                 pipeline = Pipeline.from_pretrained(
-                    self._pipeline_id, use_auth_token=os.environ.get(HF_TOKEN_ENV) or None
+                    self._pipeline_id, token=os.environ.get(HF_TOKEN_ENV) or None
                 )
                 # A gated model with no/!bad token returns None rather than raising — surface it as the
                 # miss it is so the caller degrades to one colour instead of crashing on None.pipeline.

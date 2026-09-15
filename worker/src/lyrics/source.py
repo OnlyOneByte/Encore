@@ -19,6 +19,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from .model import LyricsDoc
+
 LRCLIB_BASE = "https://lrclib.net"
 # LRCLIB asks non-browser clients to identify themselves + a contact/link (their docs).
 USER_AGENT = "Encore/0.2 (+https://github.com/OnlyOneByte/Encore)"
@@ -241,15 +243,9 @@ def line_synced_lyrics(segments: list[dict[str, Any]], language: str | None = No
 
 
 def is_line_synced(doc: dict[str, Any]) -> bool:
-    """A usable line-synced artifact: ≥1 line with a numeric start + text (word timings NOT required —
-    that's the distinction from whisperx.is_valid_lyrics, which demands timed words)."""
-    lines = doc.get("lines")
-    if not isinstance(lines, list):
-        return False
-    return any(
-        isinstance(ln, dict) and isinstance(ln.get("start"), (int, float)) and bool(ln.get("text"))
-        for ln in lines
-    )
+    """A usable line-synced artifact: a line with a numeric start and text. Word timings NOT required —
+    that is the distinction from `is_valid_lyrics`, which demands words."""
+    return LyricsDoc(doc).is_line_synced()
 
 
 # ── I/O: LRCLIB client (injectable fetcher; real network deferred to the deploy box) ──
