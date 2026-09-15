@@ -2259,7 +2259,10 @@ def test_459_TimeTexts_run_uses_opens_for_at_the_call_site_not_inline_rederivati
     import ast
     from pathlib import Path
 
-    from src.steps import lyrics as _lyr
+    # The lyrics steps are a PACKAGE now; TimeTexts and its phase helpers live in `align`. Reading
+    # `src.steps.lyrics.__file__` would parse the package's __init__ and find no TimeTexts at all —
+    # a guard that passes by scanning the wrong file is worse than no guard.
+    from src.steps.lyrics import align as _lyr
 
     tree = ast.parse(Path(_lyr.__file__).read_text(encoding="utf-8"))
     run_fn = None

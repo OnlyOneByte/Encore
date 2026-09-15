@@ -270,6 +270,12 @@ def test_plans_py_is_the_ONLY_module_importing_both_sides():
     for path in _py_files(""):
         rel = str(path.relative_to(SRC))
         names = _imports(path)
+        # A module's imports of its OWN package are not a crossing. `steps/lyrics/` is a package of five
+        # modules that import each other (`align` needs `pinned`), and counting those as "imports steps"
+        # made every one of them look like a second seam. The rule is about runtime meeting the STEP LAYER
+        # in one place, not about a step file naming its sibling.
+        own = ".".join(path.relative_to(SRC).parts[:-1])
+        names = {n for n in names if not (own and (n == own or n.startswith(own + ".")))}
         touches_runtime = any(n.split(".")[0] == "runtime" for n in names)
         touches_steps = any(n.split(".")[0] == "steps" for n in names)
         if touches_runtime and touches_steps:
