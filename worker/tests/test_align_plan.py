@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import lyrics as lyrics_pkg  # noqa: E402
 from src import plans  # noqa: E402
-from src.lyrics.source import LrclibResult  # noqa: E402
+from src.lyrics.lrclib import LrclibResult  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.runtime import runner as runner_mod  # noqa: E402
 from tests.conftest import drain  # noqa: E402
@@ -29,7 +29,7 @@ from tests.conftest import drain  # noqa: E402
 
 def test_lyrics_key():
     # lyrics_key (the dead single-file key) was removed in an earlier change; candidate_key is the live
-    # per-(source,timing,tag) key builder, moved from chain.py to artifact.py in the same change.
+    # per-(source,timing,tag) key builder, moved from grading.py to artifact.py in the same change.
     assert lyrics_pkg.candidate_key("m1", "lrclib", "line") == "derived/lyrics/m1-lrclib-line.json"
 
 
@@ -157,7 +157,7 @@ def test_is_valid_lyrics():
 
 
 # ── I/O forced-alignment flow: fake LRCLIB client + fake aligner (NO network, NO torch) ─────
-from src.lyrics.source import LrclibClient  # noqa: E402
+from src.lyrics.lrclib import LrclibClient  # noqa: E402
 
 
 def fake_ytdlp_runner(*, progress=("[download]  50.0% of 1MiB", "[download] 100% of 1MiB")):
@@ -347,7 +347,7 @@ async def test_missing_params_declines_the_lookup_instead_of_erroring_on_params(
 # ── acquisition is SEPARATE from timing ────────────────────────────────
 # The bug this closes: stage 2 was hardwired to LrclibClient.get() and raised when it returned
 # nothing, so an unreachable LRCLIB meant "no lyrics" rather than "no AUTHORITATIVE lyrics".
-from src.lyrics.chain import (  # noqa: E402
+from src.lyrics.grading import (  # noqa: E402
     ROLE_CANDIDATE,
     SOURCE_ASR,
     SOURCE_LRCLIB,
@@ -437,7 +437,7 @@ class RaisingSource:
 def test_acquire_with_notes_surfaces_a_provider_transport_failure_as_a_loud_note():
     """a source that RAN and RAISED a transport failure (the sinkhole) must produce a visible
     note, not a silent drop that looks like a song with no lyrics. The surviving tier is unaffected."""
-    from src.lyrics.source import LyricsFetchError
+    from src.lyrics.lrclib import LyricsFetchError
 
     lrclib = RaisingSource(
         "lrclib", LyricsFetchError("lrclib unreachable: [Errno -2] Name or service not known")
@@ -495,7 +495,7 @@ def test_lrclib_source_propagates_a_transport_failure_from_SEARCH():
     so it
     can be noted — not fall through to a None miss. get() here would MISS (None), so if the search
     narrowing were absent this would silently return None instead of raising."""
-    from src.lyrics.source import LyricsFetchError
+    from src.lyrics.lrclib import LyricsFetchError
 
     client = _FakeLrclibClient(
         search=LyricsFetchError("lrclib unreachable: Name or service not known"), get=None
@@ -510,7 +510,7 @@ def test_lrclib_source_propagates_a_transport_failure_from_GET_fallback():
     runs; a
     LyricsFetchError there (provider down) must ALSO escape rather than becoming a None miss. Bites the
     get-branch narrowing specifically — search does not raise here."""
-    from src.lyrics.source import LyricsFetchError
+    from src.lyrics.lrclib import LyricsFetchError
 
     client = _FakeLrclibClient(search=[], get=LyricsFetchError("lrclib unreachable: connection refused"))
     src = LrclibSource(client=client, to_segments=lambda *_a, **_k: [])
@@ -642,7 +642,7 @@ async def test_untimed_text_with_a_broken_aligner_is_DROPPED_not_shipped_unsynce
 async def test_aligner_that_PLACES_NO_WORD_degrades_via_the_FAILURE_path_not_validate(tmp_path):
     """the real aligner's second failure shape, which no double in this file models. Every
     aligner double here signals failure by RAISING; whisperx does not — its own docstring at
-    lyrics/timing.py:31 names a raise as THE failure signal, while normalize_lyrics' docstring at
+    lyrics/aligner.py:31 names a raise as THE failure signal, while normalize_lyrics' docstring at
     artifact.py:47 says whisperx "leaves some tokens un-timed". When every token is un-timed the
     aligner has returned cleanly yet placed no word, so `is_valid_lyrics(doc)` is False.
 
@@ -696,7 +696,7 @@ async def test_aligner_that_PLACES_NO_WORD_degrades_via_the_FAILURE_path_not_val
 
 
 # ── the ASR tier ───────────────────────────────────────────────────────
-from src.lyrics.chain import AsrSource  # noqa: E402
+from src.lyrics.grading import AsrSource  # noqa: E402
 
 
 class FakeTranscriber:
@@ -986,8 +986,8 @@ def test_concurrent_ML_calls_are_serialized_on_the_shared_model(monkeypatch, tmp
     tree where the call sites reference the undefined `_ML_LOCK`."""
     import threading
 
+    from src.lyrics.aligner import ML_LOCK, WhisperxForcedAligner
     from src.lyrics.asr import WhisperxTranscriber
-    from src.lyrics.timing import ML_LOCK, WhisperxForcedAligner
 
     # Fail FAST on a non-reentrant lock before the threaded drive: this test also runs the real
     # transcribe()->_load() / align()->_model() nested acquisition, so a plain Lock would DEADLOCK
@@ -1040,8 +1040,8 @@ def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader(monke
     calls _model(), which takes it again. A plain Lock would deadlock the worker on the first real
     call. Drives the production methods so it exercises the real nested acquisition, and raises
     NameError on the pre-fix tree."""
+    from src.lyrics.aligner import ML_LOCK, WhisperxForcedAligner
     from src.lyrics.asr import WhisperxTranscriber
-    from src.lyrics.timing import ML_LOCK, WhisperxForcedAligner
 
     _stub_whisperx(monkeypatch)
     audio = str(tmp_path / "vocals.wav")
@@ -1070,7 +1070,7 @@ def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader(monke
 
 
 # ── the wrong-song guard, now graded against BASELINES ─────────────────────────
-from src.lyrics.chain import (  # noqa: E402
+from src.lyrics.grading import (  # noqa: E402
     ROLE_BASELINE,
     ROLE_CANDIDATE,
     SUSPECT_COVERAGE,
@@ -1389,7 +1389,7 @@ def _ctx_forced(monkeypatch, mode=None):
 
 
 def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_timings(monkeypatch):
-    from src.lyrics.chain import SOURCE_LRCLIB, TIMING_LINE, LyricsText
+    from src.lyrics.grading import SOURCE_LRCLIB, TIMING_LINE, LyricsText
     from src.steps import lyrics as steps_lyrics
 
     # An authoritative line-timed text with ONE human line at [10, 34] plus bounded windows the
@@ -1446,7 +1446,7 @@ def test_time_one_lines_mode_publishes_source_timings_not_the_aligner_windows(mo
     source's
     own timings. The forced-fallback site is pinned by the test above; this pins the lines-only site.
     """
-    from src.lyrics.chain import SOURCE_LRCLIB, TIMING_LINE, LyricsText
+    from src.lyrics.grading import SOURCE_LRCLIB, TIMING_LINE, LyricsText
     from src.steps import lyrics as steps_lyrics
     from src.vocabulary import SyncMode
 
@@ -1500,7 +1500,7 @@ def test_time_one_forced_path_keeps_dual_script_romanization(monkeypatch):
     segment through — so this test reds when the re-attachment is removed or reordered, and cannot be
     satisfied by ``normalize_lyrics`` re-emitting a spread-through segment (see an earlier change's own trap).
     """
-    from src.lyrics.chain import SOURCE_LRCLIB, TIMING_LINE, LyricsText
+    from src.lyrics.grading import SOURCE_LRCLIB, TIMING_LINE, LyricsText
     from src.steps import lyrics as steps_lyrics
 
     # A folded bilingual LRCLIB text: two lines, each the non-Latin script as ``text`` and its Latin
@@ -1580,7 +1580,7 @@ def test_asr_source_segment_keys_are_exactly_start_end_text_words():
     falsify the comment's "the ASR source rebuilds segments with only start/end/text/words" claim.
     The key set is what the comment (and an earlier change's reachability argument) rests on, so pin it
     by value."""
-    from src.lyrics.chain import LyricsRequest as _LyricsRequest
+    from src.lyrics.grading import LyricsRequest as _LyricsRequest
 
     t = FakeTranscriber(ASR_RAW)
     got = AsrSource(t, lyrics_pkg.normalize_lyrics).fetch(
@@ -1855,7 +1855,7 @@ async def test_326_a_word_only_ASR_source_with_unusable_timing_is_DROPPED_not_li
 # an earlier change (the fix for an earlier change) paired the fit with `align_windows`. But only the OPENING
 # window of each
 # human line carries the source's own timestamp; `_subdivide` (presplit.py) spreads every interior
-# window start PROPORTIONALLY TO CHARACTER COUNT across a span that `source.py` defines as ending at
+# window start PROPORTIONALLY TO CHARACTER COUNT across a span that `lrclib.py` defines as ending at
 # the NEXT line's start — so an overflowing line followed by a rest (an instrumental break, a
 # verse→chorus gap) gets interior guesses that sit late in the rest, while a faithful aligner re-times
 # the words where they are SUNG (early, right after the opening). The fit then reads that gap as a
@@ -1893,7 +1893,7 @@ def _bound_only_336(lines, max_chars):
 
 def _instrumental_break_text_336(n_lines=10):
     """A synced LRCLIB record with alternating short/overflowing lines; every OVERFLOWING line is
-    followed by an 18s rest (an instrumental break) because `source.py` sets each line's end to the
+    followed by an 18s rest (an instrumental break) because `lrclib.py` sets each line's end to the
     NEXT line's start. Built through the REAL `bound_blob_text` + `_subdivide`, so `align_windows`
     carries production-computed interior guesses (a char-count fraction of the whole 18s span, which
     lands deep inside the rest — not where the words are sung)."""
@@ -2259,7 +2259,10 @@ def test_459_TimeTexts_run_uses_opens_for_at_the_call_site_not_inline_rederivati
     import ast
     from pathlib import Path
 
-    from src.steps import lyrics as _lyr
+    # The lyrics steps are a PACKAGE now; TimeTexts and its phase helpers live in `align`. Reading
+    # `src.steps.lyrics.__file__` would parse the package's __init__ and find no TimeTexts at all —
+    # a guard that passes by scanning the wrong file is worse than no guard.
+    from src.steps.lyrics import align as _lyr
 
     tree = ast.parse(Path(_lyr.__file__).read_text(encoding="utf-8"))
     run_fn = None
@@ -2322,7 +2325,7 @@ async def test_the_variant_pick_provenance_reaches_ctx_out_selection_and_the_Com
     """
     from dataclasses import replace as _replace
 
-    from src.lyrics.chain import LyricsText
+    from src.lyrics.grading import LyricsText
 
     right = _candidate(_SUNG)
     wrong_body = "never gonna give you up let down run around desert cry say goodbye tell lie hurt now"
@@ -2359,7 +2362,7 @@ async def test_the_variant_pick_provenance_reaches_ctx_out_selection_and_the_Com
 def test_Selection_to_record_carries_every_rejected_label_and_score_669():
     """— the durable record VariantChoice/Selection produce is the same facts summary() logs, as
     data. Pins the shape the wire and the audit trail depend on, including the unjudgeable (None) score."""
-    from src.lyrics.chain import Selection, VariantChoice
+    from src.lyrics.grading import Selection, VariantChoice
 
     vc = VariantChoice(
         text_source="lrclib",
@@ -2394,7 +2397,7 @@ def test_Selection_to_record_persists_the_coverage_winnerSuspect_was_decided_on_
     record exists so a mis-pick is answerable after the process log has rotated, which it cannot be while
     the deciding number is dropped.
     """
-    from src.lyrics.chain import Selection, VariantChoice
+    from src.lyrics.grading import Selection, VariantChoice
 
     vc = VariantChoice(
         text_source="lrclib",
@@ -2424,7 +2427,7 @@ def test_Selection_to_record_persists_the_coverage_winnerSuspect_was_decided_on_
 # Injecting it straight into the step ctor (as test_captions does) proves the STEP honours it but leaves
 # every wiring hunk unpinned — the built-and-not-wired hazard. These pin each seam of the chain: revert
 # any threading hunk and a FetchCaptions step stops carrying the flag, reddening exactly one of these.
-from src.config import WorkerConfig  # noqa: E402
+from src.host.config import WorkerConfig  # noqa: E402
 from src.steps.lyrics import FetchCaptions as _FetchCaptions  # noqa: E402
 
 

@@ -35,10 +35,13 @@ MIN_LINE_COVERAGE = 0.6
 #: stray line or two", well below an even split, so a genuine lead/backing duet passes while a solo
 #: with a handful of misattributed lines does not.
 MIN_MINORITY_SHARE = 0.15
-#: Ceiling on how many parts we will colour. Diarization on overlapping sung vocals routinely
-#: over-segments into 3–5 phantom speakers; a real duet is two. More than this is treated as "not
-#: confident" and takes the single-colour fallback rather than painting a rainbow.
-MAX_PARTS = 2
+#: How many parts a confident duet has: EXACTLY two. Not a ceiling — the check below is `!= EXACT_PARTS`,
+#: so this is the required count, and naming it `EXACT_PARTS` invited a reader to "raise the limit" to allow
+#: trios. Doing that rejects every two-voice duet instead, which is the opposite of the intent and is
+#: silent: the song simply falls back to one colour. Diarization on overlapping sung vocals routinely
+#: over-segments into 3-5 phantom speakers, and anything other than two is treated as "not confident" and
+#: takes the single-colour fallback rather than painting a rainbow.
+EXACT_PARTS = 2
 
 
 def _clean_segments(raw: Any) -> list[tuple[float, float, str]]:
@@ -112,7 +115,7 @@ def attribute_parts(doc: dict[str, Any], diarization: Any) -> dict[str, Any]:
       1. Diarization produced ≥ 2 distinct, usable speakers over the vocals — else one voice, no parts.
       2. Attribution covers ≥ MIN_LINE_COVERAGE of the lines — a sparse diarization that only labels a
          few lines is not trustworthy enough to colour the reel.
-      3. Exactly 2 parts survive after mapping (MAX_PARTS) — over-segmentation on overlapping sung
+      3. Exactly 2 parts survive after mapping (EXACT_PARTS) — over-segmentation on overlapping sung
          vocals collapses to the fallback rather than a rainbow.
       4. The minority part owns ≥ MIN_MINORITY_SHARE of attributed lines — one stray mislabelled line
          on a solo does not make a duet.
@@ -139,7 +142,7 @@ def attribute_parts(doc: dict[str, Any], diarization: Any) -> dict[str, Any]:
         return doc  # layer 2: too little of the reel is covered to trust
 
     counts = Counter(attributed)
-    if len(counts) != MAX_PARTS:
+    if len(counts) != EXACT_PARTS:
         return doc  # layer 3: not exactly two voices — fall back to one colour
 
     minority = min(counts.values())

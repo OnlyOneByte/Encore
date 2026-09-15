@@ -11,7 +11,7 @@ run INDEPENDENTLY — not first-hit — because text quality and timing fidelity
 ASR runs on every process regardless (it is also the only signal that catches a confidently WRONG
 LRCLIB match; see agreementScore in src/lib/contract/lyrics/lyrics.ts).
 
-New module rather than an addition to lyrics/source.py: the LRCLIB adapter needs
+New module rather than an addition to lyrics/lrclib.py: the LRCLIB adapter needs
 `whisperx.lrclib_to_segments`, and whisperx.py already imports the lyrics package — putting the adapter
 there would close an import cycle.
 
@@ -26,7 +26,7 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from typing import NamedTuple
 
-# Several names below are UNUSED in this module by design. chain.py used to define the vocabulary
+# Several names below are UNUSED in this module by design. grading.py used to define the vocabulary
 # constants and to import the source classes from the foot of its own file; nine test modules and three
 # source modules import them from here, so they stay importable from here. The `noqa: F401` marks each one
 # as a deliberate re-export rather than leaving a reader to wonder whether a use went missing.
@@ -38,6 +38,7 @@ from ..vocabulary import (
 from .artifact import (
     candidate_key as candidate_key,  # noqa: F401 — re-export: moved to artifact.py, kept importable from chain
 )
+from .lrclib import LyricsFetchError
 from .model import (
     SOURCE_ASR,
     SOURCE_CAPTIONS,  # noqa: F401 — re-export
@@ -50,7 +51,6 @@ from .model import (
     LyricsText,
     lyrics_tokens,
 )
-from .source import LyricsFetchError
 from .sources import (
     AsrSource,  # noqa: F401 — re-export
     AutoCaptionsSource,  # noqa: F401 — re-export
@@ -81,7 +81,7 @@ from .sources import (
 #
 # The role constants themselves now live in src/vocabulary.py beside TextSource/Timing (moved in an earlier
 # change)
-# and are re-exported here — imported above — so every importer of chain.py is unchanged. ROLE_UNSPECIFIED
+# and are re-exported here — imported above — so every importer of grading.py is unchanged. ROLE_UNSPECIFIED
 # is the fail-closed default for a hand-built text: see LyricsText.role and vocabulary.py's ROLES note.
 
 #: Preference among BASELINES, lower first. Only consulted to pick a fallback to SHOW when no candidate

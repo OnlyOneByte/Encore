@@ -25,7 +25,12 @@ DOMAIN_PACKAGES = ["acquisition", "analysis", "diarize", "lyrics", "metadata", "
 #: treats them differently: a domain may not import these, and these may not import a domain.
 RUNTIME_PACKAGES = ["runtime", "steps"]
 
-ALL_PACKAGES = DOMAIN_PACKAGES + RUNTIME_PACKAGES
+#: The HOST layer: what this box is, and what the operator told it. A third category on purpose — it is
+#: neither a domain (it owns no pipeline concern) nor runtime (it executes nothing). It is measured facts
+#: plus configuration, and everything else is allowed to read it.
+HOST_PACKAGES = ["host"]
+
+ALL_PACKAGES = DOMAIN_PACKAGES + RUNTIME_PACKAGES + HOST_PACKAGES
 
 #: Modules that USED to live flat in src/ and were moved into a package. Importing one of these again
 #: means either a stale copy survived the move or someone re-created it beside its package.

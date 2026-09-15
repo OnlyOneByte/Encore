@@ -21,7 +21,7 @@ import asyncio
 import json
 from typing import Any
 
-from src.lyrics.chain import (
+from src.lyrics.grading import (
     ROLE_BASELINE,
     ROLE_CANDIDATE,
     SOURCE_ASR,

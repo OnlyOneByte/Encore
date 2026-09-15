@@ -134,7 +134,7 @@ def test_a_per_job_device_overrides_the_workers_own() -> None:
 
 def test_config_builds_the_tuning_from_one_place() -> None:
     """`config.separation_tuning` is the single owner of these values."""
-    from src.config import WorkerConfig, separation_tuning
+    from src.host.config import WorkerConfig, separation_tuning
 
     cfg = WorkerConfig.from_env({"ENCORE_CORE_WS": "ws://x", "MEDIA_DIR": "/m", "ENCORE_DEMUCS_JOBS": "3"})
     tune = separation_tuning(cfg, device="cuda", backend="torch", segment=11)

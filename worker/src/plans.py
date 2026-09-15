@@ -17,8 +17,8 @@ from .runtime.ctx import ResolvedEngines
 from .runtime.plan import PLANS, LinearPlan
 from .separation.tuning import SeparationTuning
 from .steps.acquire import AcquireAudio
-from .steps.analysis import KeyAndRange
 from .steps.diarize import Diarize
+from .steps.key_and_range import KeyAndRange
 from .steps.lyrics import (
     AUTHORED,
     MACHINE,

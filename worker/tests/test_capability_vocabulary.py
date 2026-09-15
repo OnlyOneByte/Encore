@@ -17,9 +17,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src import capabilities as caps_mod  # noqa: E402
-from src.config import WorkerConfig  # noqa: E402
 from src.dial_home import _build_processor  # noqa: E402
+from src.host import capabilities as caps_mod  # noqa: E402
+from src.host.config import WorkerConfig  # noqa: E402
 from src.protocol import WorkerState  # noqa: E402
 from src.vocabulary import Capability, serves_family  # noqa: E402
 

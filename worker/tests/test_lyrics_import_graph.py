@@ -1,12 +1,12 @@
 """The lyrics package's internal imports must stay a DAG.
 
-`chain.py` and `sources.py` used to import each other: `sources.py` needed `LyricsRequest`/`LyricsText`
-to declare what a source consumes and returns, and `chain.py` needed the source classes to run them. The
-cycle was made to work by importing `.sources` from the FOOT of chain.py — after the two dataclasses were
+`grading.py` and `sources.py` used to import each other: `sources.py` needed `LyricsRequest`/`LyricsText`
+to declare what a source consumes and returns, and `grading.py` needed the source classes to run them. The
+cycle was made to work by importing `.sources` from the FOOT of grading.py — after the two dataclasses were
 defined — carrying `# noqa: E402` to silence the lint that exists to catch exactly that.
 
 It ran correctly and cost real things: neither module could be read or imported independently, and
-`validate.py` had to hide its own `from .chain import lyrics_tokens` inside a function body to stay out of
+`validate.py` had to hide its own `from .grading import lyrics_tokens` inside a function body to stay out of
 the tangle. Moving the shared vocabulary into `model.py` — which depends on nothing in the package — left
 the cycle no edge to close.
 
@@ -74,12 +74,12 @@ def test_model_is_the_dependency_free_base():
 
 
 def test_neither_chain_nor_sources_imports_the_other_way():
-    """The specific edge that was the cycle: sources.py must not reach back into chain.py."""
+    """The specific edge that was the cycle: sources.py must not reach back into grading.py."""
     graph = _graph()
-    assert "chain" not in graph["sources"], (
-        "sources.py imports chain.py again — the shared types belong in model.py, which both can import"
+    assert "grading" not in graph["sources"], (
+        "sources.py imports grading.py again — the shared types belong in model.py, which both can import"
     )
-    assert "sources" in graph["chain"], "chain.py should still drive the sources (one-way is the point)"
+    assert "sources" in graph["grading"], "grading.py should still drive the sources (one-way is the point)"
 
 
 def test_no_sibling_import_hides_inside_a_function_body():
@@ -109,11 +109,11 @@ def test_no_sibling_import_hides_inside_a_function_body():
 def test_the_re_exports_chain_promises_still_resolve():
     """Moving definitions must not move where importers find them.
 
-    Nine test modules and three source modules do `from .chain import LyricsText`, and the vocabulary
-    constants have importers all over the suite. The names moved to `model.py`; `chain.py` re-exports every
+    Nine test modules and three source modules do `from .grading import LyricsText`, and the vocabulary
+    constants have importers all over the suite. The names moved to `model.py`; `grading.py` re-exports every
     one, so this asserts the compatibility surface rather than trusting the comment that claims it.
     """
-    from src.lyrics import chain
+    from src.lyrics import grading
 
     for name in (
         "LyricsRequest",
@@ -137,4 +137,4 @@ def test_the_re_exports_chain_promises_still_resolve():
         "_source_name",
         "_CaptionsSource",
     ):
-        assert hasattr(chain, name), f"`from .chain import {name}` no longer resolves"
+        assert hasattr(grading, name), f"`from .grading import {name}` no longer resolves"

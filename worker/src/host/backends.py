@@ -22,7 +22,7 @@ import importlib.util
 import platform
 from dataclasses import dataclass
 
-from .vocabulary import Backend, Engine, parse_backend
+from ..vocabulary import Backend, Engine, parse_backend
 
 
 def _module_available(name: str) -> bool:

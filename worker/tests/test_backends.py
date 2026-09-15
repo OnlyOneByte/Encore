@@ -14,8 +14,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import backends  # noqa: E402
-from src.backends import BackendChoice, resolve_backend  # noqa: E402
+from src.host import backends  # noqa: E402
+from src.host.backends import BackendChoice, resolve_backend  # noqa: E402
 from src.vocabulary import Backend, Engine  # noqa: E402
 
 
