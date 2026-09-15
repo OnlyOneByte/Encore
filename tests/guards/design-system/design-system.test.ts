@@ -559,7 +559,7 @@ test('each paint-order ladder still climbs in its documented order', () => {
 			'z-tv-status',
 			'z-tv-affordance'
 		],
-		phone: ['z-header', 'z-row-lifted', 'z-dock']
+		phone: ['z-header', 'z-band-control', 'z-row-lifted', 'z-dock']
 	};
 	let rungsChecked = 0;
 	for (const [name, ladder] of Object.entries(LADDERS)) {

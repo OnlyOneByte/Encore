@@ -72,7 +72,10 @@
  *
  * ── HOW THE DEGRADED STATE IS REACHED ──────────────────────────────────────────────────────────
  *
- * `hasGuidingTrack()` is `isPlayable(m) && !!m.vocalsRef`, so the degraded arm needs a song that
+ * `hasGuidingTrack()` is `isPlayable(m) && !!m.guideMixRef` — a 4-CHANNEL MIX, not the vocals stem.
+ * (It was `!!m.vocalsRef` until the two-element guide path was deleted; this header said so for longer
+ * than it was true, and that stale sentence is why the enabled arm was pointed at a fixture that could
+ * not satisfy it.) So the ENABLED arm needs `FAKE_GUIDE_MIX=1`, and the degraded arm needs a song that
  * processed successfully and reported no vocals ref. `FAKE_NO_VOCALS=1` on the fake stems worker does
  * exactly that, and it is not a fault injection: `worker-hub.ts` optional-chains
  * `artifacts?.stems?.vocals` and its own comment says a worker that could not encode vocals "reports
@@ -199,6 +202,10 @@ async function spawnWorker(kind) {
 		FAKE_SLOW_MS: '50'
 	};
 	if (kind === 'noVocals') env.FAKE_NO_VOCALS = '1';
+	// THE ENABLED ARM NEEDS A GUIDE MIX, not a vocals stem. `hasGuidingTrack` is `!!guideMixRef`, so a
+	// song with vocals and no mix is correctly un-guidable and the slider is correctly disabled — which
+	// is exactly how this probe's with-stem arm failed the first time it was run against the drawer.
+	if (kind === 'withVocals') env.FAKE_GUIDE_MIX = '1';
 	const logFd = join(RUN_DIR, `worker-${kind}.log`);
 	const p = spawnChild('bun', ['tests/e2e/fake-stems-worker.mjs'], {
 		cwd: CORE_DIR,
@@ -599,13 +606,28 @@ async function main() {
 
 	const wv = (await library()).find((m) => m.id === withStem.id);
 	const nv = (await library()).find((m) => m.id === noStem.id);
-	console.log(`\nfixture: "${withStem.title}" vocalsRef=${JSON.stringify(wv?.vocalsRef ?? null)}`);
-	console.log(`fixture: "${noStem.title}" vocalsRef=${JSON.stringify(nv?.vocalsRef ?? null)}\n`);
+	console.log(
+		`\nfixture: "${withStem.title}" vocalsRef=${JSON.stringify(wv?.vocalsRef ?? null)} guideMixRef=${JSON.stringify(wv?.guideMixRef ?? null)}`
+	);
+	console.log(
+		`fixture: "${noStem.title}" vocalsRef=${JSON.stringify(nv?.vocalsRef ?? null)} guideMixRef=${JSON.stringify(nv?.guideMixRef ?? null)}\n`
+	);
 
 	// The whole probe is meaningless if the two fixtures are not actually in different states, and a
 	// fixture that silently drifted into one state would otherwise read as a clean pass.
 	if (!wv?.vocalsRef) bail(`"${withStem.title}" processed with NO vocals ref; the with-stem arm has no subject`);
 	if (nv?.vocalsRef) bail(`FAKE_NO_VOCALS did not withhold the vocals ref (got ${nv.vocalsRef}); the degraded arm has no subject`);
+	/*
+	 * AND THE MIX, which is the ref the guide gate actually reads. Bailed on separately from vocalsRef
+	 * rather than folded into it, because the two came apart: the guide used to be played from the vocals
+	 * stem in a second media element, that path was deleted (two decoders cannot be sample-locked from
+	 * script — `guide-level.ts`), and `hasGuidingTrack` became `!!guideMixRef`. A probe that keeps
+	 * checking only the vocals ref would report a healthy fixture while the enabled arm has no subject,
+	 * which is precisely what happened here.
+	 */
+	if (!wv?.guideMixRef)
+		bail(`"${withStem.title}" processed with NO guide mix ref; the ENABLED arm has no subject (FAKE_GUIDE_MIX=1?)`);
+	if (nv?.guideMixRef) bail(`the degraded fixture got a guide mix (${nv.guideMixRef}); its arm has no subject`);
 
 	/*
 	 * The range claim needs a fixture that HAS a range, and the fake worker publishes one

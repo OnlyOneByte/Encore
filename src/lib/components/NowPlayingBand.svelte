@@ -204,13 +204,56 @@
 		align-items: center;
 		justify-content: center;
 		width: 100%;
-		/* Short by design: the handle is a grab affordance, and the disc beside it carries the tap
-		   floor for the primary action. Its hit area is widened by the full-width box, not by height. */
+		/* Short by design: the grab bar is a hint, not the target. See the ::after below for the target. */
 		min-height: var(--space-4xl);
 		padding: 0;
 		border: 0;
 		background: none;
 		cursor: grab;
+		/* Anchors the hit-area pseudo-element. */
+		position: relative;
+	}
+	/*
+	 * THE TAP TARGET, and the reason it is a pseudo-element rather than a taller button.
+	 *
+	 * The measured gate caught this: while the handle was inert (no drawer to open, so no `onexpand` and
+	 * no rendered control) a 20px box was nobody's problem. Wiring the drawer turned it into the ONLY way
+	 * to reach the transport, the key row and the guiding track — a 20px primary control, which XR-VER-09
+	 * fails on a rendered reading. The declared height looked fine; the rendered extent is what failed.
+	 *
+	 * Growing `min-height` to `--tap` would add 24px to the band, and the band's height is published as
+	 * `--dock-h`, so every scrolling column would reserve 24px of empty chrome to make one grab bar
+	 * easier to hit. An inset pseudo-element costs no layout at all.
+	 *
+	 * It expands SYMMETRICALLY, which puts 12px of it over the top of the strip below. The first version
+	 * of this comment claimed that was "safe by paint order rather than by luck", because the strip's
+	 * buttons are later siblings — and the measured gate disproved it on the next run: the magnifier read
+	 * a 32px hit extent inside a 44px box, having lost exactly those 12px. A POSITIONED pseudo-element
+	 * outranks a later sibling that establishes no stacking context of its own, so DOM order was never
+	 * doing the work. The buttons now say so explicitly (`.btn`/`.disc` below), which is the difference
+	 * between a guarantee and a coincidence.
+	 *
+	 * The 12px it legitimately owns belongs to the inert title text, where a tap opening the now-playing
+	 * detail is what a mini-player does anyway.
+	 */
+	.handle::after {
+		content: '';
+		position: absolute;
+		left: 0;
+		right: 0;
+		/* (44 - 20) / 2 = 12px each way. Both terms are tokens, so this tracks either one moving. */
+		top: calc((var(--tap) - var(--space-4xl)) / -2);
+		bottom: calc((var(--tap) - var(--space-4xl)) / -2);
+	}
+	/*
+	 * ABOVE THE HANDLE'S HIT BOX, explicitly. Both are later siblings than `.handle`, which is NOT enough:
+	 * its `::after` is positioned and these were not, so the pseudo-element won the hit test over their
+	 * top 12px. Measured before and after — the magnifier read 32px of its 44px box, and reads 44px now.
+	 */
+	.btn,
+	.disc {
+		position: relative;
+		z-index: var(--z-band-control);
 	}
 	.handle > i {
 		display: block;

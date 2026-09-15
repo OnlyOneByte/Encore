@@ -598,7 +598,11 @@ try {
 			innerHeight: window.innerHeight,
 			mainPadBottom: parseFloat(getComputedStyle(main).paddingBottom),
 			rowCount: rows.length,
-			occludedRows: rows.filter((r) => r.bottom > dr.top + 1 && r.top < dr.bottom - 1).length
+			occludedRows: rows.filter((r) => r.bottom > dr.top + 1 && r.top < dr.bottom - 1).length,
+			// The FIRST row is the best match on a list that reads downward, so its clearance is the one
+			// that can be asserted at rest — see the arm below.
+			firstRowTop: rows.length ? rows[0].top : null,
+			firstRowBottom: rows.length ? rows[0].bottom : null
 		};
 	})()`;
 	const browse = await page.evaluate(browseProbe);
@@ -665,10 +669,26 @@ try {
 			browse.rowCount >= 1,
 			`${browse.rowCount} rows rendered for the query "a"`
 		);
+		/*
+		 * RETIRED: "no result row is occluded by the band, at rest" — which required ZERO of the rendered
+		 * rows to intersect the band before any scrolling. That was satisfiable only because the browse
+		 * screen was BOTTOM-ANCHORED and scrolled itself to the end on every keystroke, so "at rest" and
+		 * "at the end of the list" were the same position. `/find` reads downward from a header, so at rest
+		 * a list longer than the viewport necessarily continues underneath the band — 2 of 28 rows did, and
+		 * the arm redded on a surface that is behaving correctly. Demanding it back would mean demanding a
+		 * list no longer than one screen.
+		 *
+		 * ITS GUARANTEE SPLITS IN TWO, and both halves are asserted rather than dropped. That no row is
+		 * PERMANENTLY hidden is the reservation arm below (the last row clears the band once scrolled to
+		 * the end) — that is the half that was ever load-bearing. What can still be said at rest is the
+		 * half a downward list gets and an upward one never had: the TOP of the ranking, the best match,
+		 * is never under the chrome. On the old screen the best match was the row nearest the thumb and
+		 * this was free; here it is a real claim about where the column starts.
+		 */
 		check(
-			'CLAIM 3 no result row is occluded by the band, at rest',
-			browse.occludedRows === 0,
-			`${browse.occludedRows} of ${browse.rowCount} rows intersect the band at ${browse.dockTop.toFixed(1)}..${browse.dockBottom.toFixed(1)}`
+			'CLAIM 3 the TOP of the ranking is clear of the band at rest — the best match is never under the chrome',
+			browse.firstRowBottom !== null && browse.firstRowBottom <= browse.dockTop + 1,
+			`best-match row occupies ${(browse.firstRowTop ?? NaN).toFixed(1)}..${(browse.firstRowBottom ?? NaN).toFixed(1)} against a band starting at y=${browse.dockTop.toFixed(1)} (${browse.occludedRows} of ${browse.rowCount} rows sit under it further down, which is what scrolling is for)`
 		);
 	}
 
