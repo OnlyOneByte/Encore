@@ -2,13 +2,16 @@
 // Guards the two /metrics route components against re-growing their OWN copy of a formatter that
 // $lib/metrics-format.ts (and $lib/clock.ts) exists to single-source.
 //
-// THE DEFECT THESE BOUND. Both routes render the realtime factor (`0.29×`) by open-coding
-// `${v.toFixed(2)}×` — it lived at four sites across the two files while a `rt()` helper sat in one
-// of them, bypassed three lines below its own call site. And the per-song audit page had a THIRD
-// mm:ss implementation, `songLength`, that dropped the hour: a >59-minute song read `62:05` there
-// while every other surface reads `1:02:05` via `formatClock`. Neither is visible to `tsc` (both are
-// template literals over a `number`) and zero behavioural tests reference either route file, so only
-// a source scan reds on the drift. This is a RUN guard, proven to red on base and green on the fix.
+// THE DEFECT THESE BOUND. Both routes rendered the realtime factor by open-coding its glyph — it
+// lived at four sites across the two files while a `rt()` helper sat in one of them, bypassed three
+// lines below its own call site. (The rate is now printed as a PERCENTAGE of the song's length,
+// `15%`, rather than the `0.15×` multiplier it started as; the scan anchor moved with it, because a
+// guard pinned to a format that no longer exists passes by being blind.) And the per-song audit page
+// had a THIRD mm:ss implementation, `songLength`, that dropped the hour: a >59-minute song read
+// `62:05` there while every other surface reads `1:02:05` via `formatClock`. Neither is visible to
+// `tsc` (both are template literals over a `number`) and zero behavioural tests reference either
+// route file, so only a source scan reds on the drift. This is a RUN guard, proven to red on base
+// and green on the fix.
 //
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -36,7 +39,7 @@ function count(src: string, re: RegExp): number {
 	return (src.match(re) ?? []).length;
 }
 
-const RATE = /toFixed\(2\)\}×/g; // the open-coded realtime-factor glyph
+const RATE = /Math\.round\([^)]*\*\s*100\)\}%/g; // the open-coded percent-of-song-length glyph
 const MMSS = /Math\.floor\([^)]*\/\s*60\)/g; // the hour-dropping mm:ss floor-divide
 
 // ---- ARM 1: the rate format is single-sourced in metrics-format.ts, not open-coded in the routes ----
@@ -67,7 +70,8 @@ test('sentinels: anchors present and the audit surface still renders', () => {
 	expect(audit.includes("from '$lib/metrics-format'")).toBe(true);
 	// the anchors the arms key on still exist
 	expect(/export function dur\(/.test(format)).toBe(true);
-	expect(/export function rate\(/.test(format)).toBe(true);
+	expect(/export function pct\(/.test(format)).toBe(true);
+	expect(/export function vsClaimed\(/.test(format)).toBe(true);
 	expect(/export function formatClock\(/.test(clock)).toBe(true);
 	// deleting the audit's song-length line must FAIL this guard, not satisfy it
 	expect(audit.includes(' long ·')).toBe(true);
@@ -75,8 +79,8 @@ test('sentinels: anchors present and the audit surface still renders', () => {
 
 test('sentinel: the comment stripper removes both banned forms so a documenting comment is safe', () => {
 	const planted = [
-		'/* was `${v.toFixed(2)}×` and `Math.floor(sec / 60)` before extraction */',
-		'// old rate: `${v.toFixed(2)}×`; old mm:ss: `Math.floor(sec / 60)`'
+		'/* was `${Math.round(v * 100)}%` and `Math.floor(sec / 60)` before extraction */',
+		'// old rate: `${Math.round(v * 100)}%`; old mm:ss: `Math.floor(sec / 60)`'
 	].join('\n');
 	// present before stripping
 	expect(count(planted, RATE)).toBe(2);

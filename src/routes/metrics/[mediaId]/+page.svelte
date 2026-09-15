@@ -10,7 +10,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import { dur, stepLabel, stageLabel, localStamp, rate } from '$lib/metrics-format';
+	import { dur, stepLabel, stageLabel, localStamp, pct } from '$lib/metrics-format';
 	import { formatClock } from '$lib/clock';
 	import type { SelectionRecord } from '$lib/contract';
 	import * as Card from '$lib/components/ui/card';
@@ -176,11 +176,11 @@
 						therefore the answer to "why can this singer not fade the original vocals in".
 					-->
 					<p class="note">
-						Guide path:
+						Guiding track:
 						{#if audit.media.guideMixRef}
-							<strong>one 4-channel file</strong> (one playhead — drift is impossible)
+							<strong>yes</strong>
 						{:else}
-							<strong>none</strong> (no mix was built, so this song offers no guiding track)
+							<strong>none</strong> — no mix was built for this song
 						{/if}
 					</p>
 				{/if}
@@ -188,17 +188,11 @@
 				{#if !audit.hasHistory}
 					<Card.Root>
 						<Card.Content>
-							<p class="note">
-								No history for this song — it was processed before this page existed, so its timings were never
-								recorded.
-							</p>
+							<p class="note">No timings were recorded for this song.</p>
 						</Card.Content>
 					</Card.Root>
 				{:else}
-					<p class="note">
-						Each <strong>run</strong> below is one attempt at making a karaoke track. A run has several steps, and a step
-						can be retried.
-					</p>
+					<p class="note">Each run below is one attempt at making the karaoke track.</p>
 				{/if}
 
 				{#each audit.processes as process, i (process.processingId)}
@@ -257,7 +251,7 @@
 													<div class="metrics-row">
 														<span class="ran">{dur(a.processingMs)}</span>
 														<span class="secondary">waited {dur(a.queueWaitMs)}</span>
-														{#if a.rtFactor !== null}<span class="secondary">{rate(a.rtFactor)} song length</span>{/if}
+														{#if a.rtFactor !== null}<span class="secondary">{pct(a.rtFactor)} of song length</span>{/if}
 														{#if a.workerId}<span class="secondary">on {a.workerId}</span>{/if}
 													</div>
 													<FactList facts={modelFacts(a.models)} />

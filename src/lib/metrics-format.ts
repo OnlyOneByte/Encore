@@ -31,13 +31,37 @@ export function dur(ms: number | null): string {
 }
 
 /**
- * A realtime factor reads as `0.29×`. Null renders as an em dash, never as `0.00×` — a rate that was
- * never measured is "no data", not "instant". Extracted here alongside `dur` so the metrics list and
- * the per-song audit cannot drift apart on how a rate reads: both pages had open-coded this glyph and
- * precision, at four sites across the two files.
+ * How much computer time a step cost, as a PERCENTAGE OF THE SONG'S OWN LENGTH — `0.15` reads as
+ * `15%`. Null renders as an em dash, never as `0%` — a rate that was never measured is "no data",
+ * not "instant".
+ *
+ * Percent rather than the `0.15×` glyph this used to print. A multiplier needs the reader to know
+ * what it multiplies, which is why every surface showing one had to caption it ("computer time per
+ * second of song, so 0.5× means twice as fast as the music"). `15%` alongside a header that names
+ * the whole — "% of song length" — needs no caption. Extracted here alongside `dur` so the metrics
+ * list and the per-song audit cannot drift apart on how a rate reads: both pages had open-coded the
+ * old glyph and precision, at four sites across the two files.
  */
-export function rate(v: number | null): string {
-	return v === null ? '—' : `${v.toFixed(2)}×`;
+export function pct(v: number | null): string {
+	return v === null ? '—' : `${Math.round(v * 100)}%`;
+}
+
+/**
+ * A measured rate against the one its model claims, as a signed difference in the reader's terms:
+ * `1.74` is `74% slower`, `0.49` is `51% faster`.
+ *
+ * The raw ratio was rendered as `1.74×`, which required a legend to say which direction was bad —
+ * and the direction was otherwise carried only by cell COLOUR, so a reader who cannot separate
+ * orange from green had nothing. Naming it makes the number self-describing and leaves colour as
+ * reinforcement rather than the sole signal.
+ *
+ * Within half a percent of parity it reads "matches": `0% slower` is a true statement that sounds
+ * like a complaint.
+ */
+export function vsClaimed(ratio: number | null): string {
+	if (ratio === null) return '—';
+	if (Math.abs(ratio - 1) < 0.005) return 'matches';
+	return ratio > 1 ? `${Math.round((ratio - 1) * 100)}% slower` : `${Math.round((1 - ratio) * 100)}% faster`;
 }
 
 /**

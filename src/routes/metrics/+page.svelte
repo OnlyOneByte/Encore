@@ -11,7 +11,7 @@
 	import { onMount } from 'svelte';
 	import Bars from '$lib/charts/Bars.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import { dur, stepLabel, stageLabel, rate } from '$lib/metrics-format';
+	import { dur, stepLabel, stageLabel, pct, vsClaimed } from '$lib/metrics-format';
 	import * as Card from '$lib/components/ui/card';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
@@ -163,14 +163,13 @@
 				{:else}
 					{m.sample.attempts} runs across {m.sample.processes} songs.
 					{#if m.sample.provisional}<strong>Too few to trust the averages yet.</strong>{/if}
-					Songs processed before this page existed have no timings.
 				{/if}
 			</p>
 
 			{#if m}
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Start to finish</Card.Title>
+						<Card.Title>From request to ready to sing</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						<div class="kv">
@@ -179,7 +178,6 @@
 							<div><span class="k">worst</span><span class="v">{dur(m.e2e.p95Ms)}</span></div>
 							<div><span class="k">songs</span><span class="v">{m.e2e.n}</span></div>
 						</div>
-						<p class="note">From asking for a song to it being ready to sing, waiting included.</p>
 					</Card.Content>
 				</Card.Root>
 
@@ -204,8 +202,8 @@
 											<Table.Head scope="col">average</Table.Head>
 											<Table.Head scope="col">typical</Table.Head>
 											<Table.Head scope="col">worst</Table.Head>
-											<Table.Head scope="col">waited</Table.Head>
-											<Table.Head scope="col">speed</Table.Head>
+											<Table.Head scope="col">wait</Table.Head>
+											<Table.Head scope="col">% of song length</Table.Head>
 											<Table.Head scope="col">failed</Table.Head>
 										</Table.Row>
 									</Table.Header>
@@ -221,25 +219,21 @@
 												<Table.Cell>{dur(s.p50Ms)}</Table.Cell>
 												<Table.Cell>{dur(s.p95Ms)}</Table.Cell>
 												<Table.Cell>{dur(s.meanQueueWaitMs)}</Table.Cell>
-												<Table.Cell>{rate(s.meanRtFactor)}</Table.Cell>
+												<Table.Cell>{pct(s.meanRtFactor)}</Table.Cell>
 												<Table.Cell>{s.failed + s.abandoned}</Table.Cell>
 											</Table.Row>
 										{/each}
 									</Table.Body>
 								</Table.Root>
 							</div>
-							<p class="note">
-								Times are work only — <strong>waited</strong> is time sitting in the queue.
-								<strong>speed</strong> is computer time per second of song, so 0.5× means twice as fast as the music.
-								<strong>failed</strong> runs are left out of the averages.
-							</p>
+							<p class="note">Failed runs are left out of the averages.</p>
 						{/if}
 					</Card.Content>
 				</Card.Root>
 
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Vocal removal — this machine vs the benchmark</Card.Title>
+						<Card.Title>Vocal removal speed</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						{#if m.models.length === 0}
@@ -255,9 +249,9 @@
 										<Table.Row>
 											<Table.Head scope="col">model</Table.Head>
 											<Table.Head scope="col">runs</Table.Head>
-											<Table.Head scope="col">here</Table.Head>
-											<Table.Head scope="col">benchmark</Table.Head>
-											<Table.Head scope="col">vs</Table.Head>
+											<Table.Head scope="col">measured here</Table.Head>
+											<Table.Head scope="col">claimed</Table.Head>
+											<Table.Head scope="col">vs claimed</Table.Head>
 										</Table.Row>
 									</Table.Header>
 									<Table.Body>
@@ -268,13 +262,13 @@
 														>{/if}</Table.Cell
 												>
 												<Table.Cell>{r.n}</Table.Cell>
-												<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
-												<Table.Cell>{rate(r.declared?.rtFactor ?? null)}</Table.Cell>
+												<Table.Cell>{pct(r.meanRtFactor)}</Table.Cell>
+												<Table.Cell>{pct(r.declared?.rtFactor ?? null)}</Table.Cell>
 												<Table.Cell
 													><span
 														class:slower={(r.ratioToDeclared ?? 1) > 1.5}
 														class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
-														>{rate(r.ratioToDeclared)}</span
+														>{vsClaimed(r.ratioToDeclared)}</span
 													></Table.Cell
 												>
 											</Table.Row>
@@ -282,13 +276,7 @@
 									</Table.Body>
 								</Table.Root>
 							</div>
-							<p class="note">
-								<strong>benchmark</strong> is the speed this model was timed at once, on a different machine.
-								<strong>vs</strong> compares it to here: 1.0× matches, <span class="slower">over 1.5×</span> is slower
-								here,
-								<span class="faster">under 0.67×</span> means the benchmark was too pessimistic. Use it to plan, not to pass
-								or fail.
-							</p>
+							<p class="note">Claimed speeds were measured once, on someone else's machine.</p>
 						{/if}
 					</Card.Content>
 				</Card.Root>
@@ -313,7 +301,7 @@
 											<Table.Head scope="col">timing</Table.Head>
 											<Table.Head scope="col">runs</Table.Head>
 											<Table.Head scope="col">average</Table.Head>
-											<Table.Head scope="col">speed</Table.Head>
+											<Table.Head scope="col">% of song length</Table.Head>
 										</Table.Row>
 									</Table.Header>
 									<Table.Body>
@@ -325,16 +313,13 @@
 												<Table.Cell class="name">{r.syncMode ?? '—'}</Table.Cell>
 												<Table.Cell>{r.n}</Table.Cell>
 												<Table.Cell>{dur(r.meanMs)}</Table.Cell>
-												<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
+												<Table.Cell>{pct(r.meanRtFactor)}</Table.Cell>
 											</Table.Row>
 										{/each}
 									</Table.Body>
 								</Table.Root>
 							</div>
-							<p class="note">
-								These models have never been timed anywhere, so there is no benchmark to compare against. This is the
-								first measurement.
-							</p>
+
 						{/if}
 					</Card.Content>
 				</Card.Root>
@@ -353,7 +338,6 @@
 								}))}
 								unit="s avg"
 							/>
-							<p class="note">Measured by the worker inside each step.</p>
 						</Card.Content>
 					</Card.Root>
 				{/if}
@@ -386,13 +370,12 @@
 													<a href="/metrics/{c.mediaId}">{c.title ?? c.mediaId}</a>
 													<Item.Description>{dur(c.workMs)} working, {c.steps} steps</Item.Description>
 												</Item.Content>
-												<Item.Actions><span class="v">{dur(c.totalMs)}</span></Item.Actions>
+												<Item.Actions><span class="v">{dur(c.totalMs)} total</span></Item.Actions>
 											</li>
 										{/snippet}
 									</Item.Root>
 								{/each}
 							</ol>
-							<p class="note">The gap between the two numbers was spent waiting for a free worker.</p>
 						</Card.Content>
 					</Card.Root>
 				{/if}
