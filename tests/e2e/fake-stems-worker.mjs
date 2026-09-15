@@ -20,10 +20,20 @@
  *                               optional-chains `artifacts?.stems?.vocals` and its own comment says a
  *                               worker that could not encode vocals "reports none". The song is still
  *                               playable; it simply has no guiding track, because
- *                               `hasGuidingTrack()` is `isPlayable(m) && !!m.vocalsRef`. This is the
+ *                               NOTE, and it is not what this line used to say: `hasGuidingTrack()` is
+ *                               `isPlayable(m) && !!m.guideMixRef` — a 4-channel MIX, not the vocals
+ *                               stem. It was `!!m.vocalsRef` until the two-element guide path was
+ *                               deleted (two decoders cannot be sample-locked from script, see
+ *                               `guide-level.ts`), and this file kept the old sentence. So withholding
+ *                               vocals is no longer what makes a song un-guidable — withholding the mix
+ *                               is, and by default this worker publishes none. Use FAKE_GUIDE_MIX=1
+ *                               below for the ENABLED arm. This is the
  *                               ONLY way to reach XR-PH-15's degraded arm on the layout rung.
  *   FAKE_SKIP_WRITE=1           report a ref for a file never written (the unservable path)
  *   FAKE_NO_PROFILE=1           complete with no songProfile (the gate must not deadlock)
+ *   FAKE_GUIDE_MIX=1            publish the 4-channel guide mix ref too, which is the ONLY thing that
+ *                               makes a song guidable — without it the phone's guiding-track slider is
+ *                               correctly disabled. Off by default so existing probes keep their arm
  *   FAKE_FAIL=stems             fail that job type instead of completing it
  *   FAKE_SLOW_MS=1500           dwell between progress frames, to watch the processing UI
  */
@@ -122,6 +132,7 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 			// and the media route maps wav → audio/wav, so this is a legal ref that a browser can play.
 			const insRef = `derived/stems/${mediaId}-instrumental.wav`;
 			const vocRef = `derived/stems/${mediaId}-vocals.wav`;
+			const mixRef = `derived/stems/${mediaId}-guide.wav`;
 			if (!process.env.FAKE_SKIP_WRITE) {
 				writeRef(
 					insRef,
@@ -131,12 +142,27 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 				if (!process.env.FAKE_NO_VOCALS) {
 					writeRef(vocRef, process.env.FAKE_SILENT_VOCALS ? silence() : tone({ seconds: 8, hz: [440], amp: 0.2 }));
 				}
+				// The guide mix is a real file so the media route can serve it; the CHANNEL COUNT is a lie
+				// (this writes the same 1-channel tone as the stems, not 4 channels). That is deliberate and
+				// sufficient: every gate that reads it — `guidePath`, `hasGuidingTrack`, the phone's slider —
+				// tests only for the ref's PRESENCE. A probe that needs real 4-channel audio needs the real
+				// worker, and no probe does.
+				if (process.env.FAKE_GUIDE_MIX) {
+					writeRef(mixRef, tone({ seconds: 8, hz: [220, 440], amp: 0.3 }));
+				}
 			}
 			await progress('separating', 90);
-			/** @type {{ stems: { instrumental: string, vocals?: string }, songProfile?: Record<string, unknown> }} */
+			/** @type {{ stems: { instrumental: string, vocals?: string, guideMix?: string }, songProfile?: Record<string, unknown> }} */
 			const artifacts = process.env.FAKE_NO_VOCALS
 				? { stems: { instrumental: insRef } }
 				: { stems: { instrumental: insRef, vocals: vocRef } };
+			// OPT-IN, and the default is off on purpose. A guide mix is what makes a song GUIDABLE
+			// (`hasGuidingTrack` is `!!guideMixRef`, NOT `!!vocalsRef` — see below), so switching it on by
+			// default would silently change which arm every existing probe exercises. A probe that wants
+			// the guide slider LIVE asks for it.
+			if (process.env.FAKE_GUIDE_MIX && !process.env.FAKE_NO_VOCALS) {
+				artifacts.stems.guideMix = mixRef;
+			}
 			// songProfile is a SIBLING of stems, never a member — the shape drift that once stalled
 			// every process at "Separating vocals" forever. Publishing it correctly here is the point.
 			//

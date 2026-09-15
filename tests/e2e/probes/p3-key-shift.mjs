@@ -42,7 +42,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
-import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -747,6 +747,7 @@ try {
 		await sleep(700);
 		const meas2a = /** @type {TapRead} */ (await tv.evaluate(READ_TAP_SRC));
 		// pause
+		await openNowPlaying(phone);
 		await phone.clickByLabel('play/pause');
 		await sleep(700);
 		const pausedEls = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
@@ -757,6 +758,7 @@ try {
 			`paused=${pausedEls?.paused}, currentTime=${pausedEls?.currentTime?.toFixed(2)}`
 		);
 		// resume
+		await openNowPlaying(phone);
 		await phone.clickByLabel('play/pause');
 		await sleep(1200);
 		const resumedEls = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
@@ -805,6 +807,7 @@ try {
 			`);
 			await sleep(1200);
 			// Skip to advance to the second song.
+			await openNowPlaying(phone);
 			await phone.clickByLabel('skip');
 			await sleep(2500);
 			// The server resets keyShift on advance, so the phone label should return to 'Key'.
@@ -842,6 +845,7 @@ try {
 		} else {
 			// Only one song processable — do a "reset without an advance target": skip past the song and
 			// verify (a) label resets, (b) the shift graph tore down (context.state === 'closed').
+			await openNowPlaying(phone);
 			await phone.clickByLabel('skip');
 			await sleep(2000);
 			const labelAfter = await phone.text(SEL.keyLabel);

@@ -5,9 +5,11 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
+	import NowPlayingBand from '$lib/components/NowPlayingBand.svelte';
 	import type { SongProfile } from '$lib/contract';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
-	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
+	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
+	import { Button } from '$lib/components/ui/button';
 	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 	import { positionWords } from '$lib/phrasing/position-sentence';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
@@ -86,6 +88,10 @@
 	};
 	// Same range, but NO histogram — the block must degrade to a flat fill (range known, weight unknown).
 	const profileNoHist: SongProfile = { ...profileFull, histogram: null };
+
+	// Drives the two drawer triggers below — a portalled overlay can only show one state at a time.
+	let drawerOpen = $state(false);
+	let drawerHasSong = $state(true);
 	// A key but NO measured range (silent/instrumental vocal stem). The bar renders NOTHING.
 	const profileKeyOnly: SongProfile = {
 		keyTonic: 2, // D
@@ -536,29 +542,55 @@
 	<SongRow title="A local file with no metadata at all" readiness="unacquired" onmake={() => {}} />
 
 	<!--
-		an earlier change, direction A. The hero and the position card, which are the two things home is now made of.
-		The position card is shown in BOTH branches, adjacent: XR-PH-09's second arm is that an unknown
-		wait renders NO minutes clause, and "no clause" is only judgeable against the clause it replaces.
-		The wait is `null` here because one entry ahead has no resolvable length — the reachable unknown,
-		since Media.durationSec is required and absence from the catalog is what produces it.
+		THE DRAWER GETS TRIGGERS, NOT A STACK OF FRAMES, and the reason is structural rather than lazy.
+		Every other entry on this page is an inline card, so five of them sit side by side and one
+		screenshot judges all five. A drawer is PORTALLED to the end of the body and fixed to the
+		viewport: two open at once occupy the same 82dvh, so a stack of them would show one frame with
+		four invisible siblings underneath. So the states are reachable one at a time, and the frame that
+		matters is captured by driving the real app.
+		(This is also the only surface here that cannot be judged without interacting — worth knowing
+		before trusting a gallery screenshot of it.)
 	-->
-	<h2 class="section">NowPlayingHero · MyPositionCard</h2>
-	<NowPlayingHero
-		title="Livin' on a Prayer"
-		singerName="Maya"
+	<h2 class="section">NowPlayingDrawer · MyPositionCard</h2>
+	<div class="row-demo">
+		<Button
+			variant="secondary"
+			size="tap"
+			onclick={() => {
+				drawerHasSong = true;
+				drawerOpen = true;
+			}}>Open · playing, full profile</Button
+		>
+		<Button
+			variant="secondary"
+			size="tap"
+			onclick={() => {
+				drawerHasSong = false;
+				drawerOpen = true;
+			}}>Open · nothing playing</Button
+		>
+	</div>
+	<!-- `mediaId` is a real-shaped id so the "···" affordance renders and its href is inspectable. The
+	     affordance is gated on `hasSong && mediaId`, so the nothing-playing trigger correctly shows no
+	     door — which is the pair worth being able to see side by side. -->
+	<NowPlayingDrawer
+		bind:open={drawerOpen}
+		title={drawerHasSong ? "Livin' on a Prayer" : null}
+		artist={drawerHasSong ? 'Bon Jovi' : null}
+		singerName={drawerHasSong ? 'Maya' : null}
 		singerColor={GREEN}
-		byline="Bon Jovi · A minor"
-		elapsedSec={104}
-		durationSec={249}
-		isPlaying
-		hasSong
-		controlsSummary="Guide vocals 20% · Key · −2"
-	>
-		{#snippet controls()}
-			<GuidingTrack pct={20} available oninput={() => {}} oncommit={() => {}} />
-		{/snippet}
-	</NowPlayingHero>
-	<NowPlayingHero title="Nothing playing" hint="Queue a song to start the party" />
+		profile={drawerHasSong ? profileFull : null}
+		keyShift={drawerHasSong ? -2 : 0}
+		keyShiftEnabled={drawerHasSong}
+		guideServerPct={20}
+		guideEnabled={drawerHasSong}
+		elapsedSec={drawerHasSong ? 104 : 0}
+		durationSec={drawerHasSong ? 249 : 0}
+		isPlaying={drawerHasSong}
+		hasSong={drawerHasSong}
+		canStart
+		mediaId={drawerHasSong ? '01M2H2FVB5P1W0G7BCHC29BYFJ' : null}
+	/>
 	<MyPositionCard
 		words={positionWords({ place: 3, beforeName: 'Priya', nowRemainingSec: 145, aheadDurationsSec: [249, 321] })}
 	/>
@@ -674,6 +706,73 @@
 		canUp
 		canDown
 	/>
+
+	<h2 class="section">NowPlayingBand · every state</h2>
+	<!--
+		The band, which on the phone is DOCKED to the bottom of the viewport and (from phase 1b) lives in
+		the layout as app chrome. Here it renders inline, so its top border and shadow read as a seam
+		rather than as a lift off the page — that is the gallery's cost, not a defect.
+
+		Each state is captioned with what it proves. Two of them are the ones a screenshot is for:
+		`progress={null}` must draw an EMPTY ring rather than one pinned at zero (a 0% ring reads as a
+		stalled song), and the long-title case must ellipsise inside the band instead of sizing it, which
+		is only true while `.meta` keeps its `min-width: 0`.
+	-->
+	<!--
+		CONSTRAINED TO PHONE WIDTH ON PURPOSE. The gallery's column is desktop-wide, and the band is a
+		phone surface whose two controls are pinned right — demoed full-width they fall off the edge and
+		the long-title case stops proving anything, because a 900px band fits any title. 390px is the
+		reference device, so these five read as they will on the thing they are for.
+	-->
+	<div style="display:grid;grid-template-columns:minmax(0,390px);gap:20px;">
+		<div>
+			<p class="caption">Playing, mid-song — the canonical state</p>
+			<NowPlayingBand
+				title="Sweet Caroline"
+				singerName="Maya"
+				singerColor={SINGER_COLORS[0]}
+				artist="Neil Diamond"
+				progress={0.38}
+				isPlaying
+			/>
+		</div>
+		<div>
+			<p class="caption">Duration unknown (progress=null) — empty ring, NOT a zeroed one</p>
+			<NowPlayingBand
+				title="Africa"
+				singerName="Ada"
+				singerColor={SINGER_COLORS[2]}
+				artist="Toto"
+				progress={null}
+				isPlaying
+			/>
+		</div>
+		<div>
+			<p class="caption">Paused — the glyph swaps, the ring holds its position</p>
+			<NowPlayingBand
+				title="Mr. Brightside"
+				singerName="Liam"
+				singerColor={SINGER_COLORS[3]}
+				artist="The Killers"
+				progress={0.72}
+			/>
+		</div>
+		<div>
+			<p class="caption">Nothing playing — the disc is disabled and states why in words</p>
+			<NowPlayingBand />
+		</div>
+		<div>
+			<p class="caption">Long title + long name — both ellipsise, the band does not grow</p>
+			<NowPlayingBand
+				title="Don't Stop Believin' (Live at the Budokan, Remastered)"
+				singerName="Bartholomew"
+				singerColor={SINGER_COLORS[1]}
+				artist="Journey featuring absolutely everybody"
+				progress={0.11}
+				isPlaying
+			/>
+		</div>
+	</div>
 
 	<h2 class="section">GuidingTrack · every state</h2>
 	<!-- Off (the shipped default), a faint guide, halfway, full sing-along, and unavailable because the
@@ -1054,6 +1153,14 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 	 * LOCAL on purpose: a shared cross-file header primitive is scheduled separately, and this only
 	 * needs to make the gallery's own headers agree with each other.
 	 */
+	/* The drawer's two triggers, side by side. A portalled overlay cannot be stacked like the inline
+	   cards above it, so the states are reachable one at a time — see the note beside them. */
+	.row-demo {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-sm);
+		margin-bottom: var(--space-md);
+	}
 	.section {
 		margin-top: var(--space-3xl);
 		font-size: var(--ph-text-sm);

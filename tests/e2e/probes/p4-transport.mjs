@@ -39,7 +39,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
-import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -275,7 +275,7 @@ try {
 		await returnHomeFromBrowse(page);
 		await page
 			.waitFor(
-				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0 || [...document.querySelectorAll(${JSON.stringify(SEL.heroTitle)})].some(el => (el.textContent || '').trim() && (el.textContent || '').trim() !== 'Nothing playing')`
+				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0 || [...document.querySelectorAll(${JSON.stringify(SEL.bandTitle)})].some(el => (el.textContent || '').trim() && (el.textContent || '').trim() !== 'Nothing playing')`
 			)
 			.catch(() => 0);
 	}
@@ -357,6 +357,7 @@ try {
 	// ── T1 · PAUSE ────────────────────────────────────────────────────────────
 	// Establish the "before pause" TV state, then click phone1's play/pause button.
 	const beforePause = /** @type {Master} */ (await readMaster(tv));
+	await openNowPlaying(phone1);
 	await phone1.clickByLabel('play/pause');
 	await sleep(800);
 	const afterPause = /** @type {Master} */ (await readMaster(tv));
@@ -421,6 +422,7 @@ try {
 	);
 
 	// ── T1 · RESUME ───────────────────────────────────────────────────────────
+	await openNowPlaying(phone1);
 	await phone1.clickByLabel('play/pause');
 	await sleep(1600);
 	const afterResume = /** @type {Master} */ (await readMaster(tv));
@@ -519,6 +521,7 @@ try {
 	// ── T7 · RESTART ─────────────────────────────────────────────────────────
 	// After seeking to ~4s we know currentTime is > ~2s, so a restart's snap to 0 will be visible.
 	const beforeRestart = await readMasterOrRetry(tv);
+	await openNowPlaying(phone1);
 	await phone1.clickByLabel('restart');
 	// The restart command sets positionSec=0 and isPlaying=true; the TV's seekSec effect jumps only
 	// when |current - target| > 1.5. We were around 4-5s, restart target is 0 → delta ~4, so the jump
@@ -555,6 +558,7 @@ try {
 	if (secondReadyId) {
 		const preSkip = await readMasterOrRetry(tv);
 		const preSkipSrc = preSkip?.src ?? '';
+		await openNowPlaying(phone1);
 		await phone1.clickByLabel('skip');
 		await sleep(1500);
 		// After a skip the visible slot changes; the master is whichever slot now carries an
@@ -613,6 +617,7 @@ try {
 		for (let i = 0; i < 5; i++) {
 			const cur = (await readServerPlayback()).state.currentEntryId;
 			if (!cur) break;
+			await openNowPlaying(phone1);
 			await phone1.clickByLabel('skip');
 			await sleep(1200);
 		}
@@ -641,6 +646,7 @@ try {
 		for (let i = 0; i < 8; i++) {
 			const cur = (await readServerPlayback()).state.currentEntryId;
 			if (!cur) break;
+			await openNowPlaying(phone1);
 			await phone1.clickByLabel('skip');
 			await sleep(1200);
 		}
@@ -658,6 +664,8 @@ try {
 	// Now nothing is playing and the queue is empty (all skipped). The phone's transport must be
 	// disabled rather than dispatching commands into the void.
 	await sleep(300);
+	// All three transport controls are in the drawer; a closed drawer reads as all three absent.
+	await openNowPlaying(phone1);
 	const disabledState = await phone1.evaluate(`(() => {
 		const grab = (label) => {
 			const el = document.querySelector('[aria-label=' + JSON.stringify(label) + ']');

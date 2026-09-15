@@ -28,6 +28,8 @@ hand-rolled.** That widens
 `DECISIONS.md`'s shadcn-composition ruling, which had also fenced off `NowPlayingHero` / `ProcessingCard` /
 `QueueRow` / `SongRow` / `RangeBar` as "not ever, unless something changes". This document is the
 "something changed", and it says so on the record rather than quietly contradicting the older text.
+(`NowPlayingHero` has since been replaced outright by `src/lib/components/NowPlayingDrawer.svelte`, so
+that name in the fenced list no longer refers to a file in the tree.)
 
 ## The one-sentence intent
 
@@ -63,7 +65,7 @@ stricter, and the strictness is the point.
 |---|---|---|---|---|---|
 | **LIB-01** | Every interactive control resolves to a component in `$lib/components/ui/`, unless it appears in the exception register (LIB-04). | phone, desktop pages | Owner ruling 2026-09-09 on shadcn composition, widened 2026-09-14 | Given any `<button>`, `<input>`, `<select>` or `<textarea>` in app source outside `ui/` and outside the TV tree, When the exception register is consulted, Then it appears there with a reason, or the requirement fails. | rung M source scan |
 | **LIB-02** | **The TV tree is exempt by name**, not by omission: `src/routes/tv/**`, `src/lib/tv/**`. | TV | `DECISIONS.md` §Component library | Given a file under the TV tree, When it hand-rolls a control, Then no requirement in this document applies to it. | path allowlist in the guard |
-| **LIB-03** | A **composite keeps its shell and migrates its interior.** The outer element stays hand-rolled where it carries state classes or a test-attributed surface; every interior control migrates. | phone | Owner ruling 2026-09-14 | Given `SongRow`, `QueueRow`, `ProcessingCard`, `NowPlayingHero`, `MyPositionCard`, `JoinLanding`, When audited, Then each interior control is a primitive or a registered exception, and the shell's `class` attribute is unchanged. | inventory row per composite |
+| **LIB-03** | A **composite keeps its shell and migrates its interior.** The outer element stays hand-rolled where it carries state classes or a test-attributed surface; every interior control migrates. | phone | Owner ruling 2026-09-14 | Given `SongRow`, `QueueRow`, `ProcessingCard`, `NowPlayingHero` (replaced by `NowPlayingDrawer`, whose shell is the vendored `Drawer.Content` and so falls outside this row), `MyPositionCard`, `JoinLanding`, When audited, Then each interior control is a primitive or a registered exception, and the shell's `class` attribute is unchanged. | inventory row per composite |
 | **LIB-04** | The **exception register is a file, not folklore.** Every hand-rolled element carries (a) a one-line reason and (b) the guard or requirement that pins it. An exception with no named pin is a defect. | all | This document | Given the inventory, When a row's Target reads `EXCEPTION`, Then its Reason and Pinned-by cells are both non-empty. | inventory lint |
 | **LIB-05** | An exception is **reviewable, not permanent.** A row whose reason is "no registry target exists" is re-checked whenever the registry gains that component (LIB-19). | all | This document | Given a registry gap listed in LIB-19, When that component is vendored, Then every exception citing it is re-adjudicated in the same change. | manual, on vendoring |
 

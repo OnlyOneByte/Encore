@@ -189,7 +189,7 @@
 	 * The state chip replaces the old prose sub-line. That line read
 	 * "<artist> · sings with the original vocals" on every raw row — repeating the same eight words
 	 * down the whole list, and consuming the width the channel name needed. It is safe to drop because
-	 * the group header above these rows says "Needs karaoke · has vocals", and the header is guaranteed
+	 * the group header above these rows says "Needs karaoke", and the header is guaranteed
 	 * to be on screen whenever raw rows are: both are gated on `filter === 'all'` (+page.svelte
 	 * `showRaw` / `showGroupHeads`), so there is no filter state that shows one without the other.
 	 *

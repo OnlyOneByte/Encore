@@ -117,12 +117,21 @@ test('the +page.svelte call sites gate pending on the real pending set, not the 
 	expect(wired.length).toBe(2);
 });
 
-test('+page.svelte declares the unconfirmed $state set and refreshes it on every store emit', () => {
+test('+page.svelte declares the unconfirmed $state set, and BOTH hops refresh it on every store emit', () => {
 	// The map the call sites read must exist as reactive state...
 	expect(PAGE).toMatch(/let\s+pendingKind\s*=\s*\$state<Map<string, 'add' \| 'move'>>\(/);
-	// ...and be re-read from the store inside the subscribe callback, or it never updates when an op is
-	// acked/rejected. A bare `store.subscribe((e) => (entries = e))` (the base form) leaves it stale.
-	expect(PAGE).toMatch(/pendingKind\s*=\s*store\.pendingKindById/);
+	// ...and be refreshed on every emit, or it never updates when an op is acked/rejected. A bare
+	// `store.subscribe((e) => (entries = e))` (the base form) leaves it stale.
+	//
+	// THE CHAIN IS TWO HOPS SINCE THE ROOM-LINK HOIST, and a break in either one is the same stale-marker
+	// defect, so both are pinned here rather than only the end the call sites can see. The QueueStore is
+	// owned by the link now (the socket is app-wide, not the route's), so: the link re-reads the kind map
+	// inside the store's subscribe, and the page mirrors the link's copy inside the link's subscribe.
+	// Pinning only the page's hop would let the link stop refreshing and this guard would stay green
+	// while every row went back to lying about whether its move had landed.
+	const LINK = read('src/lib/stores/room.ts');
+	expect(LINK).toMatch(/this\.pendingKind\s*=\s*this\.queue!\.pendingKindById/);
+	expect(PAGE).toMatch(/pendingKind\s*=\s*room\.pendingKind/);
 });
 
 test('QueueRow takes the pending KIND, defaults it, and derives one label from it', () => {

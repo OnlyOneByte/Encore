@@ -559,7 +559,7 @@ test('each paint-order ladder still climbs in its documented order', () => {
 			'z-tv-status',
 			'z-tv-affordance'
 		],
-		phone: ['z-header', 'z-row-lifted', 'z-dock']
+		phone: ['z-header', 'z-band-control', 'z-row-lifted', 'z-dock']
 	};
 	let rungsChecked = 0;
 	for (const [name, ladder] of Object.entries(LADDERS)) {
@@ -849,23 +849,50 @@ test('the bottom-docked band clears the home indicator', () => {
 	// The band is also what --dock-h measures (bound to that element's clientHeight, which includes
 	// padding), and every other docked control offsets from --dock-h with no env() of its own. So the
 	// inset belonging to the band is a contract, not a detail: move it and the toasts silently stop
-	// clearing the indicator too. Today there is ONE band — the search dock, docked on home for a
-	// joined singer and present in both views (the `.cta-dock` primary button it replaced is gone); it
-	// is a list so the next docked band must comply.
-	const page = readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8');
+	// clearing the indicator too.
+	//
+	// RE-ANCHORED AGAIN (the band phase), because the OWNER of the bottom edge changed. The list read
+	// `['search-dock']` against routes/+page.svelte: search WAS the docked band, and it both carried the
+	// inset and published --dock-h. `NowPlayingBand` is now the bottom-most app chrome on every phone
+	// surface, mounted in routes/+layout.svelte inside a `.dock` positioning wrapper, and search moved to
+	// routes/find/+page.svelte as a TOP-sticky box. `.search-dock` exists nowhere, so scanning for it
+	// would red on a stale address rather than on a real defect.
+	//
+	// The invariant is unchanged and now asserted at GREATER strength than the one-selector list it
+	// replaces, because the stack it protects has two more parts:
+	//   - the BAND carries env(safe-area-inset-bottom) itself, in its own component;
+	//   - the `.dock` wrapper that fixes it to the bottom carries NO inset (it is position and nothing
+	//     else), so there is exactly ONE env() term in the docked stack;
+	//   - the retired address is asserted absent, so this cannot pass by scanning a file that moved on.
+	// It is still a list, so the next docked band must comply.
 	let banded = 0;
-	for (const cls of ['search-dock']) {
-		const rule = page.match(new RegExp(`\\.${cls}\\s*\\{[^}]*\\}`, 's'));
-		expect(rule, `.${cls} must still be a rule in routes/+page.svelte`).not.toBeNull();
+	for (const { file, cls } of [{ file: 'lib/components/NowPlayingBand.svelte', cls: 'band' }]) {
+		const src = readFileSync(join(SRC, file), 'utf8');
+		const rule = src.match(new RegExp(`\\.${cls}\\s*\\{[^}]*\\}`, 's'));
+		expect(rule, `.${cls} must still be a rule in ${file}`).not.toBeNull();
 		expect(rule![0], `.${cls} must carry env(safe-area-inset-bottom) itself`).toMatch(/env\(safe-area-inset-bottom/);
 		banded++;
 	}
 	// Non-vacuous: if a rename makes the selector unmatchable the loop above already reds, and this
 	// floor stops the list being quietly emptied to nothing.
 	expect(banded).toBe(1);
+
+	// The wrapper that DOCKS the band adds no second inset. A second env() term doubles the gap on a
+	// notched phone, which is the failure the one-band rule exists to prevent — and it is the wrapper,
+	// not the band, that a later author is most likely to "fix" by adding one.
+	const layout = readFileSync(join(SRC, 'routes/+layout.svelte'), 'utf8');
+	const dock = layout.match(/\.dock\s*\{[^}]*\}/s);
+	expect(dock, '.dock must still be the positioning wrapper in routes/+layout.svelte').not.toBeNull();
+	expect(dock![0], '.dock must still be what fixes the band to the bottom edge').toMatch(/position:\s*fixed/);
+	expect(dock![0], '.dock must still be docked at the bottom').toMatch(/bottom:\s*0/);
+	expect(dock![0], '.dock is positioning only — the inset belongs to the band').not.toMatch(
+		/env\(safe-area-inset-bottom/
+	);
+	// …and the retired address is genuinely gone rather than merely unscanned.
+	expect(readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8')).not.toContain('search-dock');
 });
 
-test('both documentElement custom-property writes (--undo-h, --dock-h) tear down on unmount (§14/§17)', () => {
+test('every documentElement custom-property write (--dock-h) tears down on unmount (§14/§17)', () => {
 	// THE BUG THIS EXISTS FOR (sec.14). A component wrote `--peek-h` onto documentElement in an
 	// $effect but returned no cleanup, so the inline property OUTLIVED the component on the root element
 	// and kept beating a `@media` rule after it unmounted. A documentElement custom-property write is
@@ -873,24 +900,26 @@ test('both documentElement custom-property writes (--undo-h, --dock-h) tear down
 	// mount-and-unmount; comments stripped so the rationale prose cannot satisfy or trip it. Reverting
 	// any $effect teardown below reds this.
 	//
-	// SCOPE: the original --peek-h site was the queue sheet, deleted with the drawer surface, so
-	// this guard now covers the two writers that remain — routes/+page.svelte's --undo-h (the SAME leak
-	// shape: a setProperty $effect with no cleanup, skewing the --error-dock stack after the route
-	// unmounts, fixed + pinned in the leak sweep's tail §17) and its --dock-h (the docked band's measured
-	// height, the same leak shape on a third site). The leak CLASS is documented in full at --dock-h's
-	// declaration in routes/+page.svelte. Each site must both WRITE its property and RETURN a cleanup
-	// that removeProperty's it; reverting either teardown reds this.
+	// SCOPE: the original --peek-h site was the queue sheet, deleted with the drawer surface. Each site
+	// must both WRITE its property and RETURN a cleanup that removeProperty's it.
 	/*
 	 * S5 RETIRED the `--undo-h` site (XR-VER-07). It was a real instance of this leak class — a
 	 * setProperty $effect publishing the undo toast's measured height, skewing the --error-dock stack
 	 * after the route unmounted — and it no longer exists: the toasts are sonner's, sonner stacks its
 	 * own, and there is no second surface to offset. The property, its measurement and its teardown were
-	 * all deleted rather than ported, so a guard for its teardown can no longer fail.
+	 * all deleted rather than ported, so a guard for its teardown can no longer fail. The test's own name
+	 * said "both … writes (--undo-h, --dock-h)" long after that was true; a title that contradicts its
+	 * code is the same defect class as a comment that does, so it is corrected here rather than left.
 	 *
-	 * `--dock-h` is untouched and is still the site this guard protects. The leak CLASS is
-	 * documented in full at its declaration in routes/+page.svelte.
+	 * `--dock-h` is RE-POINTED, not retired: same writer, same leak shape, new address. It was published
+	 * by routes/+page.svelte, which owned the docked search band. The bottom edge belongs to
+	 * NowPlayingBand now, mounted as app chrome in routes/+layout.svelte, so the LAYOUT binds the `.dock`
+	 * wrapper's clientHeight and writes the token — and the leak CLASS is documented in full at that
+	 * $effect. The move makes the teardown MORE load-bearing, not less: the layout is the ROOT layout, so
+	 * it wraps the television too, and /tv mounts no band — a stale --dock-h there would pad the TV's
+	 * stage by a phone band's height. That is the one case that actually unmounts the writer.
 	 */
-	const sites: Array<{ file: string; prop: string }> = [{ file: 'routes/+page.svelte', prop: '--dock-h' }];
+	const sites: Array<{ file: string; prop: string }> = [{ file: 'routes/+layout.svelte', prop: '--dock-h' }];
 	/*
 	 * Non-vacuity floor: an emptied list would pass this test silently.
 	 *
@@ -898,7 +927,8 @@ test('both documentElement custom-property writes (--undo-h, --dock-h) tear down
 	 * and the whole measured-height chain it fed went with the hand-rolled toasts — so the floor is
 	 * lowered to the ONE writer that remains, on the record, in the same change that removed the other.
 	 * That is the required shape: a floor is never nudged to make a suite pass, and a writer whose
-	 * premise a slice ends is retired with its reason (XR-VER-07).
+	 * premise a slice ends is retired with its reason (XR-VER-07). The band phase changed that writer's
+	 * ADDRESS without changing the count, so the floor is untouched by it.
 	 */
 	expect(sites.length).toBeGreaterThanOrEqual(1);
 	for (const { file, prop } of sites) {
@@ -909,6 +939,18 @@ test('both documentElement custom-property writes (--undo-h, --dock-h) tear down
 		expect(src, `the ${prop} $effect in ${file} must return a cleanup that removeProperty(${prop}) on unmount`).toMatch(
 			removeRe
 		);
+	}
+	// ONE WRITER PER PROPERTY, swept rather than assumed. An inline custom property on documentElement
+	// outranks every stylesheet rule, so a second writer of the same token does not merge with the first —
+	// one of them silently loses, and which one depends on effect order. The band phase MOVED this writer
+	// between files, which is exactly the change that can leave the old one behind.
+	for (const { file, prop } of sites) {
+		const writers = FILES.filter((f) =>
+			new RegExp(`documentElement\\.style\\.setProperty\\(\\s*['"]${prop}['"]`).test(
+				stripComments(readFileSync(f, 'utf8'))
+			)
+		).map((f) => f.replace(SRC + '/', ''));
+		expect(writers, `${prop} must have exactly one writer`).toEqual([file]);
 	}
 });
 test('the phone header truncates a long display name instead of growing the row', () => {

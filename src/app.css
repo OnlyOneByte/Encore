@@ -478,7 +478,22 @@
 	 * --z-sheet-scrim (9) and --z-sheet (10) sat between them until an earlier change deleted the drawer surface
 	 * that was their only reader; the phone ladder is three rungs now, not five.
 	 */
-	--z-row-lifted: 2;
+	--z-row-lifted: 3;
+	/*
+	 * A BAND CONTROL ABOVE THE BAND'S OWN GRAB-HANDLE HIT BOX. The handle expands its 6px bar to a
+	 * var(--tap) target with an inset pseudo-element, which reaches 12px down over the strip holding the
+	 * magnifier and the transport disc — and a POSITIONED pseudo-element outranks a later sibling that
+	 * establishes no stacking context, so DOM order does not settle it. The measured gate proved that:
+	 * the magnifier read a 32px hit extent inside a 44px box until these two named a tier.
+	 *
+	 * Inserted between --z-header and --z-row-lifted, which pushed the lifted row from 2 to 3. That
+	 * re-spacing carries no meaning (the ladder's gaps are incumbent values, not claims) and its ORDER
+	 * against both neighbours is NOMINAL in the same way the lifted row's is against the header: the band
+	 * lives in the layout and the dragged row in the page, so they never share a stacking context. The
+	 * only real claim is the one that failed without it — a band control paints above the band's own
+	 * handle, and below the dock and the toasts.
+	 */
+	--z-band-control: 2;
 	--z-dock: 30;
 
 	/*
@@ -1110,7 +1125,8 @@ body {
 
 /*
  * THE SINGER IDENTITY DOT (the primitive-adoption pass). Four independent copies existed — QueueRow's `.who i`,
- * ProcessingCard's `.who i`, NowPlayingHero's `.eyebrow .dot`, and ColourPicker's 14px `.colour-chip` —
+ * ProcessingCard's `.who i`, NowPlayingDrawer's `.eyebrow` dot (the hero's, before NowPlayingDrawer
+ * replaced NowPlayingHero), and ColourPicker's 14px `.colour-chip` —
  * all the same five declarations. The hue is per-singer and arrives as `--singer`, set inline at the
  * call site. It lives here for the same reason `.list-row` does: three of those four sit in the same
  * list, so a dot that differs between them is a bug rather than a variation.
@@ -1148,7 +1164,7 @@ body {
  */
 /*
  * `.icon-btn` was DELETED by the shadcn migration S1b. Its ten consumers across QueueRow, ProcessingCard and
- * NowPlayingHero are now <Button variant="icon">, whose variant carries the 44px box, the
+ * NowPlayingDrawer (which replaced NowPlayingHero) are now <Button variant="icon">, whose variant carries the 44px box, the
  * --radius-sm corner, the --card2 surface and the dimmed glyph. `display: grid` + `place-items`
  * survives as `grid place-items-center` and is still load-bearing: Icon renders as a block, and
  * without a centring context the mark sits off-centre (the reported off-centre X).

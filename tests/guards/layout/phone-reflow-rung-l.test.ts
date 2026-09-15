@@ -167,9 +167,14 @@ test('the /stats tile grid floors its tracks in a TYPE-RELATIVE unit, never px',
 const APP_CSS_PATH = join(CORE, 'src', 'app.css');
 const PAGE_PATH = join(CORE, 'src', 'routes', '+page.svelte');
 const SONG_ROW_PATH = join(CORE, 'src', 'lib', 'components', 'SongRow.svelte');
+// The now-playing surface. `NowPlayingHero` is deleted; the transport, key row and range visualizer are
+// in a bottom drawer the band's pull handle opens, so the key row's two load-bearing rules are declared
+// here rather than on the queue route.
+const DRAWER_PATH = join(CORE, 'src', 'lib', 'components', 'NowPlayingDrawer.svelte');
 const APP_CSS = stripComments(readFileSync(APP_CSS_PATH, 'utf8'));
 const PAGE = stripComments(readFileSync(PAGE_PATH, 'utf8'));
 const SONG_ROW = stripComments(readFileSync(SONG_ROW_PATH, 'utf8'));
+const DRAWER_CSS = stripComments(readFileSync(DRAWER_PATH, 'utf8'));
 
 test('the odd-duration chip wraps its phrase instead of forcing the row wider', () => {
 	// The offender the browse arm above measures. Every other SongRow chip is a short token, so `.chip`'s
@@ -212,8 +217,21 @@ test('the key row wraps and its ±semitone buttons can shrink at 200% text', () 
 	// playback, which the probe cannot start — so it is pinned here rather than measured. `.key` is a
 	// flex row of two `flex: 1` buttons whose label is the single unbreakable word "semitone"; at 200%
 	// each is ~172px, so two-up plus the label forced the row — and the column around it — past 320px.
+	/*
+	 * RE-POINTED to `NowPlayingDrawer.svelte`. The claim is UNCHANGED; the control moved. `NowPlayingHero`
+	 * is deleted and the transport, key row and range visualizer are in a bottom drawer opened by the
+	 * band's pull handle, so both rules are declared there — reading `+page.svelte` (queue-only now) or
+	 * app.css would be matching against rules that no longer exist, a guard that could only fail, never
+	 * bite. Nothing about the reflow ruling is relaxed by the move: the drawer is still a `left:0; right:0`
+	 * box on the same 320px viewport, and the same two declarations are still what let the row give way.
+	 *
+	 * The three rules are extracted with NAMED non-vacuity floors rather than `?? ''`, so a future
+	 * re-point that lands on the wrong file reds saying WHICH rule it could not find, instead of failing
+	 * a pattern match against an empty string and reading as a production regression.
+	 */
 	// The row must be allowed to WRAP…
-	const keyRule = APP_CSS.match(/\.key\s*\{([^}]*)\}/)?.[1] ?? PAGE.match(/\.key\s*\{([^}]*)\}/)?.[1] ?? '';
+	const keyRule = DRAWER_CSS.match(/\.key\s*\{([^}]*)\}/)?.[1] ?? '';
+	expect(keyRule, 'the `.key` rule was not found where the key row now lives').not.toBe('');
 	expect(keyRule).toMatch(/flex-wrap:\s*wrap/);
 	// …and each button must free its flex minimum so the shrink is allowed at all. A bare `flex: 1`
 	// (basis 0 but min-width:auto) cannot go below the word's min-content width — the exact shape that
@@ -221,11 +239,12 @@ test('the key row wraps and its ±semitone buttons can shrink at 200% text', () 
 	//
 	// RE-ANCHORED when the pair became `<Button variant="keycap">`. The claim is unchanged; both
 	// declarations moved, because the flex ITEM is now an element Button renders and a class passed to a
-	// component is stripped in the caller. So the flex behaviour lives on the page-rendered `.key-cell`
-	// wrapper, and the word-breaking lives in the variant. Reading the old `.key button` / `.key-btn`
+	// component is stripped in the caller. So the flex behaviour lives on the `.key-cell` wrapper the
+	// drawer renders, and the word-breaking lives in the variant. Reading the old `.key button` / `.key-btn`
 	// rules here would now be asserting against rules that no longer exist — a guard that could only
 	// fail, never bite.
-	const keyCellRule = PAGE.match(/\.key-cell\s*\{([^}]*)\}/)?.[1] ?? '';
+	const keyCellRule = DRAWER_CSS.match(/\.key-cell\s*\{([^}]*)\}/)?.[1] ?? '';
+	expect(keyCellRule, 'the `.key-cell` rule was not found where the key row now lives').not.toBe('');
 	expect(keyCellRule).toMatch(/min-width:\s*0/);
 	expect(keyCellRule).toMatch(/flex:\s*1\s+1\s+40%/);
 	// A single full-width button can still be narrower than "semitone", so the word itself must be able
@@ -235,6 +254,11 @@ test('the key row wraps and its ±semitone buttons can shrink at 200% text', () 
 		readFileSync(join(CORE, 'src', 'lib', 'components', 'ui', 'button', 'button.svelte'), 'utf8')
 	);
 	const keycap = BUTTON.match(/keycap:\s*\n?\s*'([^']*)'/)?.[1] ?? '';
+	expect(keycap, 'the `keycap` Button variant was not found').not.toBe('');
 	expect(keycap).toMatch(/\[overflow-wrap:anywhere\]/);
 	expect(keycap).toMatch(/whitespace-normal/);
+	// …and the row is not left declared in two places: a stale copy on the retired surface would drift
+	// from the live one without either failing.
+	expect(PAGE).not.toMatch(/\.key-cell\s*\{/);
+	expect(APP_CSS).not.toMatch(/\.key-cell\s*\{/);
 });

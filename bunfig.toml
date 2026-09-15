@@ -1,5 +1,15 @@
 # Test harness wiring (decision B). Runs the DOM + Svelte loader preload once before
 # `bun test`, so component tests under src/lib/tv/ can mount the real player component and
-# run its effects. `bun test` stays the single gate — no second runner. See tests/setup/svelte-dom-preload.ts.
+# run its effects. `bun run test` stays the single gate — no second runner. See tests/setup/svelte-dom-preload.ts.
+#
+# WHY THE GATE IS `bun run test` AND NOT `bun test` DIRECTLY.
+# `vaul-svelte` (shadcn's drawer primitive) declares `exports["."] = { types, svelte }` — no
+# `default`, no `import`, no `require`. Vite/SvelteKit apply the `svelte` condition so the app
+# BUILDS; bun's test resolver does not, so a bare `bun test` fails with
+# `Cannot find package 'vaul-svelte'` while the build stays green — and `mount-rung.test.ts`
+# imports every component that imports a `$app/*` module, so the phone surface would go dark
+# silently. The fix is `--conditions=svelte`, which lives in package.json's `test` script so it
+# is declared exactly once. It CANNOT live here: `conditions` under [test] and at top level were
+# both measured as ignored by bun 1.3.14.
 [test]
 preload = ["./tests/setup/svelte-dom-preload.ts"]

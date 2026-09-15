@@ -32,7 +32,7 @@
 import { connect, sleep } from './driver.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
-import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from './lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver (earlier changes–an earlier change pattern). Browser/Page derive from
@@ -286,7 +286,7 @@ try {
 		 * "the singer is in the rotation", so all three count; asserting only `.qrow` would report an
 		 * empty rotation for a room whose first song is playing perfectly.
 		 */
-		const heroSong = (await maya.texts(SEL.heroTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing');
+		const heroSong = (await maya.texts(SEL.bandTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing');
 		check(
 			'queueing puts the singer in the rotation',
 			queued + processing + heroSong.length > 0,
@@ -300,11 +300,11 @@ try {
 		// The rotation AS EACH PHONE SEES IT: the playing song (hero) followed by the waiting rows. Both
 		// halves, for the same reason as above — comparing rows alone compares two empty lists and reads
 		// as agreement when neither phone has rendered anything.
-		const rotationOf = async (/** @type {typeof maya} */ page) => [...(await page.texts(SEL.heroTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing'),...(await page.texts(SEL.queueTitle))
+		const rotationOf = async (/** @type {typeof maya} */ page) => [...(await page.texts(SEL.bandTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing'),...(await page.texts(SEL.queueTitle))
 		];
 		const adaSawRotation = await ada
 			.waitFor(
-				`[...document.querySelectorAll(${JSON.stringify(SEL.heroTitle)}),...document.querySelectorAll(${JSON.stringify(SEL.queueTitle)})].some(el => (el.textContent || '').trim() && (el.textContent || '').trim() !== 'Nothing playing')`,
+				`[...document.querySelectorAll(${JSON.stringify(SEL.bandTitle)}),...document.querySelectorAll(${JSON.stringify(SEL.queueTitle)})].some(el => (el.textContent || '').trim() && (el.textContent || '').trim() !== 'Nothing playing')`,
 				{ timeout: 10_000 }
 			).then(() => true).catch(() => false);
 		const mayaQ = await rotationOf(maya);
@@ -321,12 +321,14 @@ try {
 		);
 
 		// ── the TV reacts ────────────────────────────────────────────────────
+		await openNowPlaying(maya);
 		await maya.clickByLabel('play/pause');
 		await sleep(1800);
 		const playing = (await tv.count(SEL.lowerThird)) === 1;
 		if (playing) {
 			const shownFirst = await tv.text(SEL.nowSong);
 			check('the TV names who is singing once playback starts', true, shownFirst);
+			await openNowPlaying(maya);
 			await maya.clickByLabel('skip');
 			await sleep(1800);
 			const shownSecond = await tv.text(SEL.nowSong);

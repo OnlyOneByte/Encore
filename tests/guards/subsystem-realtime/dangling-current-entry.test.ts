@@ -348,19 +348,39 @@ test('the play/pause transport button still allows a ready queue while nothing p
 	// own consequence paragraph named) leaves a boot-healed room with a phone that offers NO transport
 	// control at all — invisible to the suite until now.
 	//
-	// Since the invariant spans TWO files: the transport moved onto the now-playing hero, so the
-	// hero owns the gate's SHAPE and the route owns the value it is fed. Both halves are asserted,
-	// because either one alone can break it — a hero that ANDs the two conditions is useless if the
-	// route stops passing `canStart`, and vice versa. The behavioural half is also now covered by a
+	// Since the invariant spans TWO files: the transport moved onto the now-playing surface, so that
+	// surface owns the gate's SHAPE and its host owns the value it is fed. Both halves are asserted,
+	// because either one alone can break it — a surface that ANDs the two conditions is useless if its
+	// host stops passing `canStart`, and vice versa. The behavioural half is also now covered by a
 	// real mounted assertion (lib/components/phone-home-832.test.ts); this stays a source scan so a UI
 	// refactor reds only its own line, kept SEPARATE from the reconcile check above.
-	const HERO = stripComments(readFileSync(join(SRC_ROOT, 'lib', 'components', 'NowPlayingHero.svelte'), 'utf8'));
-	const PAGE = stripComments(readFileSync(join(SRC_ROOT, 'routes', '+page.svelte'), 'utf8'));
+	//
+	// RE-POINTED, at the same strength, because both halves moved together. `NowPlayingHero` is DELETED:
+	// the transport is in `NowPlayingDrawer`, a bottom drawer the band's pull handle opens, and the drawer
+	// is mounted by `routes/+layout.svelte` rather than by the queue route — which is what makes it app
+	// chrome on every phone surface, so a boot-healed room offers the play control wherever the singer is
+	// standing. The route half therefore reads the LAYOUT.
+	const DRAWER = stripComments(readFileSync(join(SRC_ROOT, 'lib', 'components', 'NowPlayingDrawer.svelte'), 'utf8'));
+	const LAYOUT = stripComments(readFileSync(join(SRC_ROOT, 'routes', '+layout.svelte'), 'utf8'));
+	// Read the drawer's OWN element out of the layout, not the whole file: the band mounted beside it
+	// takes the same `ontoggleplay`, so a file-wide match could be satisfied by the band alone while the
+	// drawer's transport was wired to nothing. Non-vacuous — the element must be found first.
+	const mount = (() => {
+		const start = LAYOUT.indexOf('<NowPlayingDrawer');
+		expect(start, 'the layout no longer mounts NowPlayingDrawer').toBeGreaterThanOrEqual(0);
+		const end = LAYOUT.indexOf('/>', start);
+		expect(end).toBeGreaterThan(start);
+		return LAYOUT.slice(start, end);
+	})();
 	// non-vacuous: we are looking at the play/pause control specifically.
-	expect(PAGE).toMatch(/cmd:\s*playback\.isPlaying\s*\?\s*'pause'\s*:\s*'play'/);
+	expect(mount).toMatch(/cmd:\s*isPlaying\s*\?\s*'pause'\s*:\s*'play'/);
 	// The gate must keep an allowance BEYOND "something is playing" — narrowing it to `!hasSong` (the
 	// restart/skip form) is the mutation.
-	expect(HERO).toMatch(/disabled=\{\s*!hasSong\s*&&\s*!canStart\s*\}/);
-	// …and the route must feed that allowance from the queue's own length, not from a constant.
-	expect(PAGE).toMatch(/canStart=\{\s*queued\.length\s*>\s*0\s*\}/);
+	expect(DRAWER).toMatch(/disabled=\{\s*!hasSong\s*&&\s*!canStart\s*\}/);
+	// …and the allowance must be fed from the queue's own contents, not from a constant. Read off the
+	// mount for the wiring and off the layout for the derivation, so neither half can go missing alone.
+	// STRONGER than the `queued.length > 0` form it replaces: the room mirror asks whether a QUEUED entry
+	// exists, so a queue holding only finished or skipped entries no longer lights the control.
+	expect(mount).toMatch(/\{canStart\}/);
+	expect(LAYOUT).toMatch(/canStart = room\.entries\.some\(\(e\) => e\.status === 'queued'\)/);
 });

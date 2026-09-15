@@ -7,7 +7,7 @@
     "command": "bun run gates",
     "script": "gates",
     "legs": [
-      "bun test",
+      "bun run test",
       "cd worker && python3 -m pytest -q",
       "bun run typecheck",
       "bun run lint",
@@ -15,7 +15,7 @@
     ],
     "measured_on": "2026-09-12",
     "measured": {
-      "bun test": "2672 pass / 0 fail across 292 files, ~33s (repo root only — bunfig.toml's relative preload does not resolve from a subdirectory)",
+      "bun run test": "2672 pass / 0 fail across 292 files, ~33s (repo root only — bunfig.toml's relative preload does not resolve from a subdirectory; the script carries `--conditions=svelte` so vaul-svelte resolves under bun's test resolver)",
       "cd worker && python3 -m pytest -q": "915 passed / 1 skipped, ~105s",
       "bun run typecheck": "exit 0, 0 errors (10 warnings in 1 file), ~18s",
       "bun run lint": "exit 0, 0 errors / 82 warnings, ~11s warm cache (~430s cold)",

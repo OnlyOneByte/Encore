@@ -24,7 +24,7 @@ import { join } from 'node:path';
 import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
-import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from './lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver (pattern). Browser/Page derive from
@@ -192,6 +192,7 @@ try {
 
 	// ── transport: pause must hold position, not reload to zero ────────────────
 	const before = pick(/** @type {El[]} */ (await tv.evaluate(probe)));
+	await openNowPlaying(phone);
 	await phone.clickByLabel('play/pause');
 	await sleep(1200);
 	const paused = pick(/** @type {El[]} */ (await tv.evaluate(probe)));
@@ -201,6 +202,8 @@ try {
 		before && paused && paused.currentTime > 0.5 && Math.abs(paused.currentTime - before.currentTime) < 2.5,
 		`was ${before?.currentTime?.toFixed(2)}s, after pause ${paused?.currentTime?.toFixed(2)}s — a jump to 0 is the reload bug`
 	);
+
+	await openNowPlaying(phone);
 
 	await phone.clickByLabel('play/pause');
 	await sleep(2000);
