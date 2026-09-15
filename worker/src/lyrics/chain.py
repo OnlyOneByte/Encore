@@ -22,30 +22,44 @@ authority on RANKING; this side only reports what it produced and how trustworth
 
 from __future__ import annotations
 
-import re
-import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field, replace
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
-from ..vocabulary import ROLE_BASELINE, ROLE_CANDIDATE, ROLE_UNSPECIFIED, TextSource, Timing
+# Several names below are UNUSED in this module by design. chain.py used to define the vocabulary
+# constants and to import the source classes from the foot of its own file; nine test modules and three
+# source modules import them from here, so they stay importable from here. The `noqa: F401` marks each one
+# as a deliberate re-export rather than leaving a reader to wonder whether a use went missing.
+from ..vocabulary import (
+    ROLE_BASELINE,
+    ROLE_CANDIDATE,
+    ROLE_UNSPECIFIED,  # noqa: F401 — re-export
+)
 from .artifact import (
     candidate_key as candidate_key,  # noqa: F401 — re-export: moved to artifact.py, kept importable from chain
 )
+from .model import (
+    SOURCE_ASR,
+    SOURCE_CAPTIONS,  # noqa: F401 — re-export
+    SOURCE_LRCLIB,  # noqa: F401 — re-export
+    SOURCE_MANUAL,  # noqa: F401 — re-export
+    TIMING_LINE,  # noqa: F401 — re-export
+    TIMING_NONE,  # noqa: F401 — re-export
+    TIMING_WORD,  # noqa: F401 — re-export
+    LyricsRequest,
+    LyricsText,
+    lyrics_tokens,
+)
 from .source import LyricsFetchError
-
-# Text-source ids and timing tiers. Promoted to enums in src/vocabulary.py (TextSource, Timing) so the
-# TS↔Python guard in src/lib/server/jobs/vocabulary-parity.test.ts covers them — a comment saying
-# "must match LyricsTextSource" cannot fail a build; the enum can. Re-exported under the original names
-# so every importer of chain.py is unchanged, and `.value` keeps them plain strings for JSON/argv/keys.
-SOURCE_LRCLIB = TextSource.LRCLIB.value
-SOURCE_CAPTIONS = TextSource.CAPTIONS.value
-SOURCE_ASR = TextSource.ASR.value
-SOURCE_MANUAL = TextSource.MANUAL.value
-
-TIMING_WORD = Timing.WORD.value
-TIMING_LINE = Timing.LINE.value
-TIMING_NONE = Timing.NONE.value
+from .sources import (
+    AsrSource,  # noqa: F401 — re-export
+    AutoCaptionsSource,  # noqa: F401 — re-export
+    CaptionsSource,  # noqa: F401 — re-export
+    LrclibSource,  # noqa: F401 — re-export
+    LyricsSource,
+    _CaptionsSource,  # noqa: F401 — re-export
+    _source_name,
+)
 
 # ── ROLES: the two-tier split ─────────────────────────────────────────────────────
 #
@@ -97,103 +111,6 @@ def is_authoritative_text(text_source: str, text_confidence: str) -> bool:
     "authoritative" would silently split the wrong tier.
     """
     return text_source != SOURCE_ASR and text_confidence != "low"
-
-
-@dataclass
-class LyricsRequest:
-    """Everything a source might need to find text for one song."""
-
-    media_id: str
-    #: Confidence-gated canonicals from the core. None when the parse was not confident —
-    #: a source that needs them must decline rather than look up a guess.
-    artist: str | None = None
-    track: str | None = None
-    duration: float | None = None
-    #: The FULL billing as the upload wrote it ("Lady Gaga feat. Beyoncé") when one was parsed, versus
-    #: `artist` which is only the primary. Not a lookup key — LRCLIB is queried on the primary, because
-    #: querying the full credit misses every record filed under the primary alone. It is a RANKING
-    #: signal: among records that all match "Lady Gaga / Telephone", the one whose own artist string
-    #: also mentions Beyoncé is the better metadata match.
-    artist_credit: str | None = None
-    #: The raw mixed audio (retained original). Fine for forced alignment.
-    audio_path: str = ""
-    #: The isolated vocals stem, when a stems job has already produced it. ASR wants THIS — a full mix
-    #: transcribes badly — so it may be absent for a song whose stems have not been processed.
-    vocals_path: str | None = None
-    #: Cues from the upload's own human-authored caption track, already fetched and parsed by the
-    #: processor's async stage. None/[] means the upload has no manual track. Passed in rather than
-    #: fetched by the tier so this module performs no I/O.
-    caption_segments: list[dict[str, Any]] | None = None
-    #: Cues from YouTube's AUTOMATIC caption track, fetched into a separate directory so the two can
-    #: never be confused for one another. A BASELINE input — see AutoCaptionsSource.
-    auto_caption_segments: list[dict[str, Any]] | None = None
-
-
-@dataclass
-class LyricsText:
-    """Text from one source, with the provenance the TV needs to be honest about it."""
-
-    text_source: str
-    #: [{start?, end?, text}] lines. `start`/`end` present only when the source itself is timed.
-    segments: list[dict[str, Any]] = field(default_factory=list)
-    #: What this source supplies on its own, BEFORE the timing layer runs.
-    timing: str = TIMING_NONE
-    text_confidence: str = "medium"
-    language: str | None = None
-    #: BASELINE (evidence of what is heard) or CANDIDATE (authored text to be judged). See the role
-    #: constants above — this is what decides whether a text is scored or does the scoring.
-    #:
-    #: ASSIGNED BY THE REGISTRY, not by the source that fetched the text: `lyrics/registry.py` stamps it
-    #: from the fetching source's `SourceSpec`. The sources used to set it themselves, which made the
-    #: registry's `role`/`baseline_rank` fields a second declaration of the same fact that nothing read —
-    #: so the two could disagree and every test would stay green. The default below therefore applies
-    #: only to a text built by hand (a test, or one rehydrated from disk by `split_blob_text`) — and it is
-    #: fail-CLOSED: ROLE_UNSPECIFIED is in neither `candidates_of` nor `baselines_of`, so an
-    #: unspecified text is NOT published as the song's words (and is not used as grading evidence) until a
-    #: role is stamped. The registry stamps a fetched text AND its `alternates`, because
-    #: `select_by_baselines` grades `[cand, *cand.alternates]` and may publish an alternate — so an
-    #: alternate left unspecified could win and publish as unspecified, the very hole this default guards.
-    #: The old default was ROLE_CANDIDATE — the PUBLISHABLE tier — which silently let an
-    #: unspecified construction publish, exactly the fail-open the `presplit.py` replace() note guards
-    #: against (a dropped role once turned a baseline into a candidate).
-    role: str = ROLE_UNSPECIFIED
-    #: Preference among baselines when one must be SHOWN. None for candidates. Registry-assigned, as above.
-    baseline_rank: int | None = None
-    #: A short stable id for this text WITHIN its source, so two baselines from the same source can
-    #: coexist on disk ('vocals' and 'mix' are both `asr`). Part of the artifact key; see candidate_key.
-    tag: str | None = None
-    #: Which VERSION of the song this text is, for logs. None when the source has no notion of one.
-    variant: str | None = None
-    #: Other versions of this song the same source offered, best-first by cheap metadata ranking.
-    #:
-    #: Held on the winner rather than returned alongside it because only ONE of them may ever be
-    #: published: the artifact key is (media, source, timing), so two LRCLIB candidates would collide
-    #: on disk and in the candidate set. These are the losers of a choice that has not been made yet —
-    #: `select_by_baselines` makes it once the ASR transcript exists to decide with.
-    alternates: list[LyricsText] = field(default_factory=list)
-    #: Length-bounded search WINDOWS for the forced aligner, when `segments` are the source's OWN
-    #: (human) lines and must stay un-subdivided so the line-sync fallback publishes them verbatim.
-    #: `presplit` sets this on authoritative text whose lines overflow a row: the aligner gets tight
-    #: per-row windows to search, but `segments` keeps the true human line timings for the line-sync
-    #: publish path (which would otherwise ship a character-count-derived boundary as `high`). None
-    #: means "the aligner searches `segments` as-is" — the ASR tier, where line structure is invented
-    #: anyway, subdivides `segments` directly and leaves this None.
-    align_windows: list[dict[str, Any]] | None = None
-    #: Index into ``align_windows`` of the OPENING window of each human segment — the one window
-    #: per line that carries the source's own timestamp (its ``start`` equals the segment start
-    #: exactly). Emitted by ``bound_blob_text`` when it builds the windows, because that is where
-    #: the segment->window mapping is KNOWN; re-deriving it later by float-equality strands every
-    #: line after the first start that fails to match to 1e-6. ``len`` equals the
-    #: number of segments, and index ``i`` opens segment ``i``. None whenever ``align_windows`` is.
-    align_window_opens: list[int] | None = None
-
-    @property
-    def plain_text(self) -> str:
-        """Flattened text, for ASR-vs-authoritative agreement scoring."""
-        return "\n".join(str(s.get("text") or "") for s in self.segments).strip()
-
-    def is_usable(self) -> bool:
-        return any(str(s.get("text") or "").strip() for s in self.segments)
 
 
 def acquire_with_notes(sources: list[LyricsSource], req: LyricsRequest) -> tuple[list[LyricsText], list[str]]:
@@ -303,25 +220,6 @@ SEQUENCE_WEIGHT = 0.5
 # proposed
 #: by the implementer" — 0.10 is that proposal. Raise it if a same-recording false positive appears.
 OVERSHOOT_FRACTION_MAX = 0.10
-
-_TOKEN_STRIP = re.compile(r"\[[^\]]*\]")
-_TOKEN_KEEP = re.compile(r"[^\w\s']", re.UNICODE)
-
-
-def lyrics_tokens(text: str) -> list[str]:
-    """Words, lowercased, punctuation and [bracket] markers stripped. Compares CONTENT, not form.
-
-    NFKC-normalised first so text differing only in Unicode FORM tokenises the same: full-width vs
-    half-width digits/letters, composed vs decomposed accents, ligatures. Without it "Beyonc\u00e9" (one
-    codepoint) and "Beyonce\u0301" (e + combining acute) are distinct tokens on both the intersection
-    and the union of `agreement_score`, counting a correct candidate as disagreeing twice. Idempotent
-    on ASCII (unicodedata.normalize("NFKC", ascii) == ascii), so it cannot move an all-ASCII score.
-    Mirrors src/lib/contract/lyrics/lyrics.ts:lyricsTokens (kept in one commit) and the established fold in
-    metadata/annotate.py:normalize_for_match.
-    """
-    folded = unicodedata.normalize("NFKC", text).lower()
-    cleaned = _TOKEN_KEEP.sub(" ", _TOKEN_STRIP.sub(" ", folded))
-    return [t for t in cleaned.split() if t]
 
 
 def _multiset_overlap(a: list[str], b: list[str]) -> int:
@@ -859,23 +757,3 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
         # room has a real alternative rather than only a warning label on the wrong words.
         sel.publish.append(baselines[0])
     return sel
-
-
-# ── sources: re-exported from lyrics/sources.py ────────────────────────────────────
-#
-# The four source adapters, the ``LyricsSource`` protocol and ``_source_name`` were extracted to
-# lyrics/sources.py in an earlier change (the ``sources/*`` seam of the declared split). They are imported
-# here at
-# the foot of the module -- AFTER LyricsRequest / LyricsText and the SOURCE_* / TIMING_* vocabulary are
-# defined above -- so that ``from .chain import AsrSource``, lyrics/registry.py's import group and the
-# package surface keep resolving unchanged, and there is no import cycle. ``acquire_with_notes`` above
-# still calls ``_source_name``, which is why it is re-imported alongside the classes.
-from .sources import (  # noqa: E402, F401 — deliberate re-export of the extracted source classes
-    AsrSource,
-    AutoCaptionsSource,
-    CaptionsSource,
-    LrclibSource,
-    LyricsSource,
-    _CaptionsSource,
-    _source_name,
-)

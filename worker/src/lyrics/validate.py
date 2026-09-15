@@ -36,7 +36,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
-from .model import LyricsDoc
+from .model import LyricsDoc, lyrics_tokens
 
 # ── validation thresholds ────────────────────────────────────────────────────────────────────────
 # Each is a shape a real artifact exhibited, not a guess.
@@ -383,11 +383,9 @@ def _pair_lrc_to_baseline(
     the fit needs agreement, not coverage.
 
     Returns (lrc_starts, baseline_starts), equal length, in LRC order — the two time series the fit
-    consumes. Imported lazily so the layering guard sees `validate` depend on its sibling `chain`, not
-    the reverse.
+    consumes. `lyrics_tokens` now comes from `model`, the package's dependency-free base, so this module
+    needs no import from `chain` at all — the lazy in-function import that used to dodge the cycle is gone.
     """
-    from .chain import lyrics_tokens
-
     base_tokens = [set(lyrics_tokens(str(bl.get("text") or ""))) for bl in baseline_lines]
     base_starts = [bl.get("start") for bl in baseline_lines]
 
