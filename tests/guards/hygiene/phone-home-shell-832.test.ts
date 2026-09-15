@@ -492,9 +492,7 @@ test('the now-playing band is docked for a joined singer, and the + Add a turn C
 	] as const) {
 		const mainCss = src.slice(src.indexOf('\tmain {'), src.indexOf('\tmain {') + 200);
 		expect(mainCss, `${where} must still declare a top-level main rule`).toContain('padding:');
-		expect(mainCss, `${where}'s reserve must not add a second env() term`).not.toContain(
-			'env(safe-area-inset-bottom'
-		);
+		expect(mainCss, `${where}'s reserve must not add a second env() term`).not.toContain('env(safe-area-inset-bottom');
 	}
 });
 

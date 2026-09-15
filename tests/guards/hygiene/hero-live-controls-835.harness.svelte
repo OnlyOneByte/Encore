@@ -62,7 +62,7 @@
 <output data-testid="snap">{activeSnapPoint}</output>
 
 <NowPlayingDrawer
-	bind:activeSnapPoint
+	bind:activeSnapPoint={activeSnapPoint}
 	title="Bohemian Rhapsody"
 	artist="Queen Official"
 	singerName="Maya"

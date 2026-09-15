@@ -164,7 +164,6 @@
 	let liveModels = $derived(engineOf(settings.global.defaultEngine)?.models ?? []);
 	let upgradeModels = $derived(engineOf(settings.global.upgradeEngine)?.models ?? []);
 
-
 	// A slow engine on the LIVE path is the footgun worth naming in the UI: RoFormer measured ~44min
 	// per song on CPU versus ~50s for htdemucs. Someone should learn that here, not at a party.
 	let liveSlow = $derived(engineOf(settings.global.defaultEngine)?.speed === 'slow');
@@ -212,7 +211,6 @@
 	// a CPU box. Nobody should discover that at a party.
 	let asrSlow = $derived(['slow', 'slowest'].includes(getAsrModel(settings.global.asrModel)?.speed ?? ''));
 
-
 	// The swatch and the input both show the room's stored colour directly. there is no
 	// generator between the choice and the render — the phone cannot promise a colour the TV then
 	// renders differently, because they are the same string.
@@ -238,7 +236,6 @@
 	let lyricsClamped = $derived(resolved.clamped);
 	let resolvedHighlight = $derived(getLyricsHighlight(resolved.highlight)?.label.toLowerCase() ?? resolved.highlight);
 	let resolvedBall = $derived(resolved.ball !== 'off');
-
 
 	/**
 	 * Apply a patch optimistically, then reconcile on the authoritative response — the same shape the
@@ -555,7 +552,6 @@
 									</AlertDialog.Footer>
 								</AlertDialog.Content>
 							</AlertDialog.Root>
-							
 						</Card.Content>
 					</Card.Root>
 
@@ -586,7 +582,6 @@
 									<option value={o.id}>{o.label}</option>
 								{/each}
 							</NativeSelect>
-							
 
 							<Field.Label for="presence-grace">
 								Kick out after · {graceLabel}
@@ -601,7 +596,6 @@
 								onValueChange={(v) => liveRoom('presenceGraceMinutes', v)}
 								onValueCommit={(v) => onroom({ presenceGraceMinutes: v })}
 							/>
-							
 						</Card.Content>
 					</Card.Root>
 
@@ -634,7 +628,7 @@
 						Downward-only, and this is where a party learns it: the server's default is already
 						bounded by what the worker fleet can run, so a room can only ask for the same or less.
 					-->
-							
+
 							{#if capAboveDefault}
 								<p class="warn">At or above the server default, so it changes nothing.</p>
 							{/if}
@@ -673,7 +667,6 @@
 								</div>
 							</div>
 
-
 							<!--
 						Gated, not disabled: a visualizer picker means nothing for a black stage, and a control
 						that does nothing for the current selection implies it does something.
@@ -689,7 +682,6 @@
 										<option value={v.id}>{v.label}</option>
 									{/each}
 								</NativeSelect>
-								
 							{/if}
 
 							<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
@@ -734,7 +726,6 @@
 									onValueChange={(v) => liveRoom('tvBackgroundDim', v / 100)}
 									onValueCommit={(v) => onroom({ tvBackgroundDim: v / 100 })}
 								/>
-								
 							{/if}
 
 							<label class="check" for="song-intro-on">
@@ -745,7 +736,6 @@
 								/>
 								Song intro before each turn
 							</label>
-							
 
 							<Field.Label data-dim={!settings.room.songIntroEnabled || undefined} for="song-intro-ms">
 								Song intro duration · {(settings.room.songIntroMs / 1000).toFixed(1)}s
@@ -800,7 +790,6 @@
 								</div>
 							</div>
 
-
 							<!--
 						Say when a choice is not being honoured. The server's sync mode decides whether per-word
 						timings exist at all, so under "Line sync only" a word-level treatment has nothing to
@@ -841,8 +830,9 @@
 								</div>
 							</div>
 
-
-							<Field.Label for="lyrics-scale">Lyric size · {settings.room.lyricsScalePct}% of the TV's default</Field.Label>
+							<Field.Label for="lyrics-scale"
+								>Lyric size · {settings.room.lyricsScalePct}% of the TV's default</Field.Label
+							>
 							<Slider
 								id="lyrics-scale"
 								type="single"
@@ -857,7 +847,6 @@
 						Says PERCENT OF, not a size, because that is what it is: the TV already picks a size from
 						its own height and this scales it. "48px" would mean nothing on a different screen.
 					-->
-							
 
 							<Field.Label for="lyrics-lead">
 								Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
@@ -923,7 +912,6 @@
 								onValueCommit={(v) => onroom({ guideLevelDefault: v / 100 })}
 							/>
 
-
 							<label class="check" for="loudness-norm">
 								<Switch
 									id="loudness-norm"
@@ -932,7 +920,6 @@
 								/>
 								Match song loudness
 							</label>
-							
 						</Card.Content>
 					</Card.Root>
 
@@ -952,7 +939,6 @@
 				<!-- ── SERVER ─────────────────────────────────────────────────────── -->
 				<div class="panel">
 					<!-- layout only — see the YOU panel for why no tabpanel role here -->
-					
 
 					<Card.Root>
 						<Card.Header>
@@ -981,7 +967,7 @@
 									<option value={model.id}>{model.label}</option>
 								{/each}
 							</NativeSelect>
-							
+
 							{#if liveSlow}
 								<p class="warn">~45 minutes per song on CPU.</p>
 							{/if}
@@ -996,13 +982,12 @@
 									<option value={f.id}>{f.label}</option>
 								{/each}
 							</NativeSelect>
-							
+
 							<!--
 						Explicit blast radius, matched to the splitter warning above it: this is the acquirer
 						EVERY new process downloads its source through, and a worker that cannot run it fails the
 						fetch before any separation starts.
 					-->
-							
 						</Card.Content>
 					</Card.Root>
 
@@ -1028,7 +1013,7 @@
 									<option value={model.id}>{model.label} · {model.params}</option>
 								{/each}
 							</NativeSelect>
-							
+
 							{#if asrSlow}
 								<p class="warn">Needs real memory, and minutes more per song on CPU.</p>
 							{/if}
@@ -1043,7 +1028,6 @@
 									<option value={mode.id}>{mode.label}</option>
 								{/each}
 							</NativeSelect>
-							
 						</Card.Content>
 					</Card.Root>
 
@@ -1066,7 +1050,9 @@
 								bind:value={joinDraft}
 								onchange={commitJoinOrigin}
 							/>
-							<Field.Description id="join-origin-hint">Empty means <strong>{data.joinOriginFallback}</strong>.</Field.Description>
+							<Field.Description id="join-origin-hint"
+								>Empty means <strong>{data.joinOriginFallback}</strong>.</Field.Description
+							>
 							{#if joinError}<p class="warn" role="alert">{joinError}</p>{/if}
 							{#if joinSchemeMismatch}
 								<p class="warn">This party runs over plain http — phones cannot open an https address.</p>
@@ -1105,7 +1091,6 @@
 												/>
 												Re-process at higher quality, from the saved audio
 											</label>
-											
 
 											<!-- Stacked: these default to the roformer names, the longest labels in any registry. -->
 											<Field.Label for="upgrade-engine">Upgrade splitter</Field.Label>

@@ -1,13 +1,7 @@
 <script lang="ts">
 	import { SINGER_COLORS, DEFAULT_EFFECTIVE_SETTINGS, queueOrderLabel } from '$lib/contract';
 	import { onMount, tick } from 'svelte';
-	import type {
-		QueueEntry,
-		Media,
-		PublicSinger,
-		PlaybackState,
-		EffectiveSettings
-	} from '$lib/contract';
+	import type { QueueEntry, Media, PublicSinger, PlaybackState, EffectiveSettings } from '$lib/contract';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
 	import QueueRow from '$lib/components/QueueRow.svelte';
@@ -153,7 +147,6 @@
 		};
 	});
 
-
 	// ── readiness ────────────────────────────────────────────────────────────
 	// One axis, three states: ready (stems on disk, sing now), processing (stems in flight, still
 	// queueable because rotation holds its slot), raw (plays with the original vocals).
@@ -207,7 +200,6 @@
 			action: { label: 'Undo', onClick: () => store?.addSong(mediaId) }
 		});
 	}
-
 
 	/*
 	 * Screen-reader announcements for the two changes that most often happen UNDER the user's hands and
@@ -542,24 +534,30 @@
 			playable: entryPlayable(mediaCatalog.get(myNextEntry.mediaId), liveOf(myNextEntry.mediaId))
 		});
 	});
-
 </script>
 
-<header class="topbar">
-	<h1 class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></h1>
-	<!--
+<!--
+	THE TOPBAR IS FOR A JOINED SINGER ONLY. Unjoined, `/` IS the join screen, and JoinLanding paints its
+	own brand as that screen's heading — so rendering this one too put "Encore" on screen twice, once
+	small at the top-left and once large and centred a few pixels below it. The wordmark is the join
+	screen's title, not chrome sitting above it, so the chrome is what goes.
+-->
+{#if me}
+	<header class="topbar">
+		<h1 class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></h1>
+		<!--
 	  `connected` used to be assigned `true` once and never read or reset, so a phone whose socket had
 	  died looked identical to a live one while its taps piled up in the pending queue. The store keeps
 	  accepting them on purpose (they resend on resync) — this says so instead of implying they landed.
 	-->
-	{#if me && !connected}
-		<span class="offline-pill" role="status" aria-live="polite">
-			<Icon name="warning" /> Reconnecting…
-		</span>
-	{/if}
-	{#if me}
-		<div class="me-cluster">
-			<!--
+		{#if me && !connected}
+			<span class="offline-pill" role="status" aria-live="polite">
+				<Icon name="warning" /> Reconnecting…
+			</span>
+		{/if}
+		{#if me}
+			<div class="me-cluster">
+				<!--
 			  The name + dot were inert text. They are the one place a guest already looks to check who the
 			  room thinks they are, so they are also where fixing it belongs — and a 44px target, since the
 			  gear next to it was fixed for exactly that reason.
@@ -569,73 +567,74 @@
 			  that can disagree about what your name is. One editor, reached from both entry points: the
 			  gear opens the room scope, this opens `?tab=you`.
 			-->
-			<!--
+				<!--
 			  `.me-slot` / `.gear-slot` are page-rendered wrappers, and that is forced rather than stylistic:
 			  Tailwind scans only the `components/ui` directory, so a utility written here is emitted
 			  nowhere, and a
 			  class handed to a component is scoped to THIS file where Svelte strips it as unused. So
 			  layout and inherited ink stay on a wrapper, appearance moves into the variant.
 			-->
-			<div class="me-slot">
-				<Button variant="identity" href="/settings?tab=you" aria-label="Your profile">
-					<span class="me-name">{me.displayName}</span>
-					<span class="me-dot" style="--singer:{me.color};"></span>
-				</Button>
-			</div>
-			<!--
+				<div class="me-slot">
+					<Button variant="identity" href="/settings?tab=you" aria-label="Your profile">
+						<span class="me-name">{me.displayName}</span>
+						<span class="me-dot" style="--singer:{me.color};"></span>
+					</Button>
+				</div>
+				<!--
 			  Was a bare ⚙️ at font-size 1.05rem in ~18px of padding: a forced-colour-emoji glyph (the
 			  trailing U+FE0F requests emoji presentation outright) in a target under even the 24px WCAG
 			  2.5.8 floor, in an app that had already adopted 44px everywhere else. Now a real mark in a
 			  real target — `size="icon"` IS that target: it compiles to `size-tap grid place-items-center`
 			  over `--tap: 44px`.
 			-->
-			<div class="gear-slot">
-				<Button variant="ghost" size="icon" href="/settings" aria-label="Settings" title="Settings">
-					<Icon name="gear" />
-				</Button>
+				<div class="gear-slot">
+					<Button variant="ghost" size="icon" href="/settings" aria-label="Settings" title="Settings">
+						<Icon name="gear" />
+					</Button>
+				</div>
 			</div>
-		</div>
-	{/if}
-</header>
+		{/if}
+	</header>
+{/if}
 
 <main>
 	{#if me}
-			<!-- The guest's own place, in words, with the wait omitted rather than guessed (XR-PH-09). -->
-			<MyPositionCard words={myPosition} />
+		<!-- The guest's own place, in words, with the wait omitted rather than guessed (XR-PH-09). -->
+		<MyPositionCard words={myPosition} />
 
-			<h2 class="grouphead">Up next · {orderLabel}</h2>
-			<!--
+		<h2 class="grouphead">Up next · {orderLabel}</h2>
+		<!--
 			XR-PH-19 — the mode's own chrome. Done and Cancel are REAL buttons rather than a tap-anywhere
 			dismissal, because "commit" and "abandon" are different outcomes and a mode that exits one way
 			cannot express the other. Escape is bound on <svelte:window> below and takes the Cancel path.
 			The note is a polite live region: a mode that closes ITSELF (my pick started playing, my second
 			pick was removed elsewhere) has to say why, or the list simply changes shape under the guest.
 		-->
-			{#if reorderOpen}
-				<div class="reorder-bar card" role="group" aria-label="Reordering your songs">
-					<p class="reorder-hint">Drag to reorder.</p>
-					<div class="reorder-acts">
-						<Button variant="secondary" size="tap" onclick={() => exitReorder(hoverSlot)}>Done</Button>
-						<Button variant="ghost" size="tap" onclick={() => exitReorder(null)}>Cancel</Button>
-					</div>
+		{#if reorderOpen}
+			<div class="reorder-bar card" role="group" aria-label="Reordering your songs">
+				<p class="reorder-hint">Drag to reorder.</p>
+				<div class="reorder-acts">
+					<Button variant="secondary" size="tap" onclick={() => exitReorder(hoverSlot)}>Done</Button>
+					<Button variant="ghost" size="tap" onclick={() => exitReorder(null)}>Cancel</Button>
 				</div>
-			{/if}
-			{#if !reorderOpen && reorderNote}
-				<!-- The mode closed ITSELF (XR-PH-19). Visible as well as announced: the list has just changed
+			</div>
+		{/if}
+		{#if !reorderOpen && reorderNote}
+			<!-- The mode closed ITSELF (XR-PH-19). Visible as well as announced: the list has just changed
 			     shape under the guest's hand, and a reason only a screen reader gets is not a reason. -->
-				<p class="reorder-note">{reorderNote}</p>
-			{/if}
-			{#if queued.length === 0}
-				<Empty.Root>
-					<Empty.Header>
-						<Empty.Description>Nothing queued.</Empty.Description>
-					</Empty.Header>
-				</Empty.Root>
-			{:else}
-				{#each queued as e, i (e.id)}
-					{@const s = singerOf(e.singerId)}
-					{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
-					<!--
+			<p class="reorder-note">{reorderNote}</p>
+		{/if}
+		{#if queued.length === 0}
+			<Empty.Root>
+				<Empty.Header>
+					<Empty.Description>Nothing queued.</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
+		{:else}
+			{#each queued as e, i (e.id)}
+				{@const s = singerOf(e.singerId)}
+				{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
+				<!--
 					XR-PH-18 — ONE legal drop target per queued row, drawn immediately above the row whose
 					position it represents, and rendered ONLY while the mode is open. The count equals
 					`queued.length` by construction — `slots` is derived from the queued list — so the slot at
@@ -645,77 +644,73 @@
 					(see onGripPointerDown) instead of from a geometry table, and the same index is what the
 					button's own click commits — so the keyboard path and the pointer path cannot drift apart.
 				-->
-					{#if reorderOpen && slots[i]}
-						{@const slot = slots[i]}
-						<button
-							class="dropslot"
-							class:hot={hoverSlot === slot.index}
-							data-slot={slot.index}
-							aria-label={slot.label}
-							onclick={() => exitReorder(slot.index)}>{slot.ordinal}</button
-						>
-					{/if}
-					{#if card === 'processing' || card === 'failed'}
-						{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
-						<ProcessingCard
-							seq={i + 1}
-							title={mediaTitle(e.mediaId)}
-							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-							singerColor={s?.color ?? SINGER_COLORS[0]}
-							singerAway={awaySingers.has(e.singerId)}
-							status={proc.status}
-							pct={proc.pct}
-							pending={pendingKind.get(e.id) ?? null}
-							onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
-							reorderable={!rowFrozen(e) && canReorder && !!me?.id && queued.length > 1}
-							canUp={queuedIdx(e.id) > 0}
-							canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
-							dimmed={false}
-							onup={() => moveGlobal(e.id, -1)}
-							ondown={() => moveGlobal(e.id, 1)}
-						/>
-					{:else}
-						<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
+				{#if reorderOpen && slots[i]}
+					{@const slot = slots[i]}
+					<button
+						class="dropslot"
+						class:hot={hoverSlot === slot.index}
+						data-slot={slot.index}
+						aria-label={slot.label}
+						onclick={() => exitReorder(slot.index)}>{slot.ordinal}</button
+					>
+				{/if}
+				{#if card === 'processing' || card === 'failed'}
+					{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
+					<ProcessingCard
+						seq={i + 1}
+						title={mediaTitle(e.mediaId)}
+						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+						singerColor={s?.color ?? SINGER_COLORS[0]}
+						singerAway={awaySingers.has(e.singerId)}
+						status={proc.status}
+						pct={proc.pct}
+						pending={pendingKind.get(e.id) ?? null}
+						onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
+						reorderable={!rowFrozen(e) && canReorder && !!me?.id && queued.length > 1}
+						canUp={queuedIdx(e.id) > 0}
+						canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
+						dimmed={false}
+						onup={() => moveGlobal(e.id, -1)}
+						ondown={() => moveGlobal(e.id, 1)}
+					/>
+				{:else}
+					<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
 					     safe to remove. The old `i !== 0` guard meant to protect the current song but
 					     actually froze whatever sat at position 0 — i.e. the next-up song. -->
-						<QueueRow
-							seq={i + 1}
-							title={mediaTitle(e.mediaId)}
-							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-							singerColor={s?.color ?? SINGER_COLORS[0]}
-							mine={e.singerId === me?.id}
-							singerAway={awaySingers.has(e.singerId)}
-							up={e.id === nextPlayableId}
-							pending={pendingKind.get(e.id) ?? null}
-							subtitle={e.id === nextPlayableId ? 'up next' : ''}
-							removable={e.singerId === me?.id}
-							reorderable={!rowFrozen(e) && canReorder && !!me?.id && queued.length > 1}
-							canUp={queuedIdx(e.id) > 0}
-							canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
-							grip={gripFor(e)}
-							gripId={e.id}
-							dimmed={false}
-							moving={movingId === e.id && dragging}
-							dragY={movingId === e.id && dragging ? dragY : 0}
-							ongripdown={(ev) => onGripPointerDown(e, ev)}
-							ongrip={(el) => enterReorder(e.id, el)}
-							onremove={() => removeWithUndo(e)}
-							onup={() => moveGlobal(e.id, -1)}
-							ondown={() => moveGlobal(e.id, 1)}
-						/>
-					{/if}
-				{/each}
-			{/if}
-
-
-
+					<QueueRow
+						seq={i + 1}
+						title={mediaTitle(e.mediaId)}
+						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+						singerColor={s?.color ?? SINGER_COLORS[0]}
+						mine={e.singerId === me?.id}
+						singerAway={awaySingers.has(e.singerId)}
+						up={e.id === nextPlayableId}
+						pending={pendingKind.get(e.id) ?? null}
+						subtitle={e.id === nextPlayableId ? 'up next' : ''}
+						removable={e.singerId === me?.id}
+						reorderable={!rowFrozen(e) && canReorder && !!me?.id && queued.length > 1}
+						canUp={queuedIdx(e.id) > 0}
+						canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
+						grip={gripFor(e)}
+						gripId={e.id}
+						dimmed={false}
+						moving={movingId === e.id && dragging}
+						dragY={movingId === e.id && dragging ? dragY : 0}
+						ongripdown={(ev) => onGripPointerDown(e, ev)}
+						ongrip={(el) => enterReorder(e.id, el)}
+						onremove={() => removeWithUndo(e)}
+						onup={() => moveGlobal(e.id, -1)}
+						ondown={() => moveGlobal(e.id, 1)}
+					/>
+				{/if}
+			{/each}
+		{/if}
 	{:else}
 		<!-- UNJOINED: `/` is the landing page. Both a scan affordance and a six-segment code entry,
 		     or — when a QR was scanned (`/?room=CODE`) — the room confirmed in words. -->
 		<JoinLanding />
 	{/if}
 </main>
-
 
 <!--
 	One toast surface for the whole page, docked above the measured band. `richColors` is off: the error

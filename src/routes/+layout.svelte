@@ -30,7 +30,9 @@
 	 * can disagree about that is a defect waiting for whichever one nobody updates.
 	 */
 	const NOT_PHONE = ['/tv', '/components', '/admin', '/metrics'];
-	const isPhoneSurface = $derived(!NOT_PHONE.some((r) => page.url.pathname === r || page.url.pathname.startsWith(r + '/')));
+	const isPhoneSurface = $derived(
+		!NOT_PHONE.some((r) => page.url.pathname === r || page.url.pathname.startsWith(r + '/'))
+	);
 
 	// Mirrored from the link — the same subscribe-and-mirror the route uses. Only the fields the band
 	// renders, so a library merge or a queue reorder does not touch this component.
@@ -63,7 +65,7 @@
 			const entry = room.entries.find((e) => e.id === room.playback.currentEntryId);
 			const media = entry ? room.mediaCatalog.get(entry.mediaId) : undefined;
 			const display = songDisplay(media);
-			title = entry ? (display.title || media?.title || null) : null;
+			title = entry ? display.title || media?.title || null : null;
 			artist = entry ? (display.artist ?? media?.artist ?? null) : null;
 			const singer = entry ? room.singers.get(entry.singerId) : undefined;
 			singerName = entry ? (singer?.displayName ?? 'Someone') : null;
@@ -103,16 +105,33 @@
 	 *
 	 * ONE SECOND, not one frame. The ring is 44px across, so a whole second of a four-minute song moves
 	 * its arc by well under a pixel — a rAF loop would burn a wake-up per frame to render nothing new.
+	 *
+	 * THE ANCHOR IS CAPTURED IN *THIS* EFFECT, and that is the whole correctness argument — do not lift
+	 * it back out into its own `$state` + `$effect` pair.
+	 *
+	 * It used to live in a separate effect that tracked `positionSec` ALONE. `play` and `pause` both
+	 * call `setPlayback({ isPlaying })` and never touch `positionSec` (server `player.ts`), and the
+	 * position-only telemetry path deliberately does not broadcast `playback:state` at all — so a
+	 * resume re-delivers the SAME number. Writing an equal primitive into a `$state` scalar notifies
+	 * nothing (strict `===`), so the anchor effect did not re-run while this one did, and the interval
+	 * then extrapolated from the wall clock recorded at PAUSE time. One second after every resume the
+	 * ring and the drawer's clock jumped forward by the full pause duration and stayed there; a long
+	 * enough pause clamped the ring full and drove the remaining time to zero on a song still playing.
+	 *
+	 * The route's own copy (`+page.svelte`) has the two-effect shape and is fine, because it reads
+	 * `playback.positionSec` off a whole-object `$state` that `room.ts` REPLACES on every broadcast — so
+	 * its anchor effect re-runs on any playback change. Mirroring the fields as scalars here (which is
+	 * what keeps the band cheap) is exactly what narrowed that dependency set, so this file cannot
+	 * borrow that shape. Capturing `pos`/`wall` as locals in the effect that already tracks BOTH
+	 * signals makes a stale anchor unrepresentable: every re-run re-reads the clock.
 	 */
-	let anchor = $state({ pos: 0, wall: 0 });
-	$effect(() => {
-		anchor = { pos: positionSec, wall: performance.now() };
-	});
 	let livePos = $state(0);
 	$effect(() => {
-		livePos = positionSec;
+		const pos = positionSec;
+		const wall = performance.now();
+		livePos = pos;
 		if (!isPlaying) return;
-		const id = setInterval(() => (livePos = anchor.pos + (performance.now() - anchor.wall) / 1000), 1000);
+		const id = setInterval(() => (livePos = pos + (performance.now() - wall) / 1000), 1000);
 		return () => clearInterval(id);
 	});
 
@@ -192,25 +211,25 @@
 	<NowPlayingDrawer
 		bind:bandH={dockH}
 		onsearch={() => goto('/find')}
-		{title}
-		{artist}
-		{singerName}
-		{singerColor}
-		{profile}
-		{keyShift}
-		{keyShiftEnabled}
-		{guideServerPct}
-		{guideEnabled}
+		title={title}
+		artist={artist}
+		singerName={singerName}
+		singerColor={singerColor}
+		profile={profile}
+		keyShift={keyShift}
+		keyShiftEnabled={keyShiftEnabled}
+		guideServerPct={guideServerPct}
+		guideEnabled={guideEnabled}
 		elapsedSec={livePos}
-		{durationSec}
-		{isPlaying}
-		{hasSong}
-		{canStart}
-		{mediaId}
-		{candidates}
-		{chosenRef}
-		{overrideRef}
-		{newerExists}
+		durationSec={durationSec}
+		isPlaying={isPlaying}
+		hasSong={hasSong}
+		canStart={canStart}
+		mediaId={mediaId}
+		candidates={candidates}
+		chosenRef={chosenRef}
+		overrideRef={overrideRef}
+		newerExists={newerExists}
 		onrestart={() => room.command({ cmd: 'restart' })}
 		ontoggleplay={() => room.command({ cmd: isPlaying ? 'pause' : 'play' })}
 		onskip={() => room.command({ cmd: 'skip' })}

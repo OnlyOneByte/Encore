@@ -51,8 +51,8 @@
 -->
 <header class="page-header">
 	<div class="inner">
-	{#if back}
-		<!--
+		{#if back}
+			<!--
 			Still a real link — `Button` renders an `<a href>` (not a history.back() button) whenever
 			`href` is set, so everything the comment above argues for survives: the browser's own back,
 			a shareable route, and an in-app exit on a home-screen PWA with no back gesture.
@@ -69,15 +69,15 @@
 			`hover:text-foreground`), so the inherited `--ink-dim` reaches the mark and hover still
 			brightens it.
 		-->
-		<div class="back-slot">
-			<Button variant="ghost" size="icon" href={back.href} aria-label={back.label}>
-				<Icon name="arrow-left" />
-			</Button>
-		</div>
-	{/if}
-	<h1>
-		{#if icon}<Icon name={icon} />{/if}{title}
-	</h1>
+			<div class="back-slot">
+				<Button variant="ghost" size="icon" href={back.href} aria-label={back.label}>
+					<Icon name="arrow-left" />
+				</Button>
+			</div>
+		{/if}
+		<h1>
+			{#if icon}<Icon name={icon} />{/if}{title}
+		</h1>
 	</div>
 </header>
 

@@ -446,9 +446,7 @@ test('the sentence renders BEFORE the control it explains, inside the hasSong ga
 	// The gate immediately above the tools body is the hasSong one, and nothing else stands between the
 	// two — so the block the note sits in is the block a playing song opens.
 	const TOOLS = 'class="tools-body"';
-	expect(MARKUP.slice(gate, body + TOOLS.length)).toMatch(
-		new RegExp(String.raw`^\{#if hasSong\}\s*<div ${TOOLS}$`)
-	);
+	expect(MARKUP.slice(gate, body + TOOLS.length)).toMatch(new RegExp(String.raw`^\{#if hasSong\}\s*<div ${TOOLS}$`));
 	// The idle guarantee, structurally: the note is nested inside that `{#if hasSong}` block, so a room
 	// with nothing playing cannot reach it. No `{/if}` between the two means the block is still open.
 	expect(note).toBeGreaterThan(body);

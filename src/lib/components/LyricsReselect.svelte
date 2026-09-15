@@ -129,12 +129,7 @@
 
 				{#if pasting}
 					<div class="reselect-paste">
-						<Textarea
-							bind:value={draft}
-							rows={5}
-							placeholder="Paste the lyrics…"
-							aria-label="Paste lyrics"
-						/>
+						<Textarea bind:value={draft} rows={5} placeholder="Paste the lyrics…" aria-label="Paste lyrics" />
 						<div class="reselect-acts">
 							<Button data-act="confirm" disabled={!draft.trim()} onclick={submitPaste}>Use these lyrics</Button>
 							<Button data-act="cancel" variant="outline" onclick={() => (pasting = false)}>Cancel</Button>

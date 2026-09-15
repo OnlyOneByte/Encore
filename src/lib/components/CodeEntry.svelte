@@ -156,16 +156,22 @@
 	</div>
 
 	<!--
-		The disabled-Continue reason, in TEXT (SC 3.3.2 — never disabled state alone), and the rejection
-		reason (SC 3.3.1). One polite live region so a rejected keystroke is announced without interrupting
-		typing. `rejection` wins when present; otherwise the progress-toward-six line, which itself
-		disappears once complete.
+		THE REJECTION REASON ONLY (SC 3.3.1). One polite live region so a rejected keystroke is announced
+		without interrupting typing.
+
+		The progress line that used to live here — "Enter all 6 characters to continue. N of 6 so far." —
+		is GONE. It restated what six visibly empty boxes already say, and the screen was saying the same
+		thing three times: this line, the "or type the six-character code" divider above the field, and the
+		disabled-CTA reason below it. Six boxes ARE the progress indicator; a count of them is narration.
+		The SC 3.3.2 duty it shared is still discharged, by the CTA's own reason (see JoinLanding's
+		`.cta-reason`), so nothing that was required left with it.
+
+		The region stays mounted rather than becoming conditional markup, so a rejection announces on a
+		live region the AT is already watching instead of one that appears at the moment it speaks.
 	-->
 	<p class="code-note" role="status" aria-live="polite">
 		{#if rejection}
 			{rejection}
-		{:else if !complete}
-			Enter all {CODE_LENGTH} characters to continue. {filled} of {CODE_LENGTH} so far.
 		{/if}
 	</p>
 </div>

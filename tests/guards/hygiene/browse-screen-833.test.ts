@@ -499,7 +499,9 @@ test('the top-anchored column takes its back control from the page header', () =
 	// R3. Top-anchored, and the back affordance is the shared header's rather than a row this route draws
 	// for itself: one way back on every non-/tv page, and a real `<a href>` so the browser's own back
 	// works, the route stays shareable, and a home-screen PWA with no back gesture still has an exit.
-	expect(FIND).toContain(`<PageHeader title="Find a song" icon="search" back={{ href: '/', label: 'Back to the queue' }} />`);
+	expect(FIND).toContain(
+		`<PageHeader title="Find a song" icon="search" back={{ href: '/', label: 'Back to the queue' }} />`
+	);
 	expect(FIND.indexOf('<PageHeader')).toBeLessThan(FIND.indexOf('<main>'));
 	// The bottom-anchoring mechanism is banned OUTRIGHT rather than re-pointed, so the anchoring cannot
 	// revert by halves: `.backrow` was both the selector `main:has(…)` matched on and the element whose

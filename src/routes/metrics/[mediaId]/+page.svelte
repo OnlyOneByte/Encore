@@ -251,7 +251,8 @@
 													<div class="metrics-row">
 														<span class="ran">{dur(a.processingMs)}</span>
 														<span class="secondary">waited {dur(a.queueWaitMs)}</span>
-														{#if a.rtFactor !== null}<span class="secondary">{pct(a.rtFactor)} of song length</span>{/if}
+														{#if a.rtFactor !== null}<span class="secondary">{pct(a.rtFactor)} of song length</span
+															>{/if}
 														{#if a.workerId}<span class="secondary">on {a.workerId}</span>{/if}
 													</div>
 													<FactList facts={modelFacts(a.models)} />
