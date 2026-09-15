@@ -27,7 +27,7 @@ import random
 import re
 from pathlib import Path
 
-from src.lyrics.chain import (
+from src.lyrics.grading import (
     MIN_TOKENS_TO_COMPARE,
     ROLE_BASELINE,
     ROLE_CANDIDATE,
@@ -44,7 +44,7 @@ from src.lyrics.chain import (
     lyrics_tokens,
     select_by_baselines,
 )
-from src.lyrics.chain import agreement as _chain_agreement
+from src.lyrics.grading import agreement as _chain_agreement
 
 
 def _repo_root() -> Path:
@@ -505,7 +505,7 @@ def test_the_package_root_re_exports_the_new_agreement_surface():
 
     This is deliberately an API-surface guard rather than a behavioural one. The three new names and the
     renamed threshold are re-exported by `src/lyrics/__init__.py`; dropping one of those re-export lines
-    changes NO behaviour reachable from a test that imports `src.lyrics.chain` directly (which every
+    changes NO behaviour reachable from a test that imports `src.lyrics.grading` directly (which every
     other test here does), so nothing else in either suite notices. Importing through the ROOT is what
     makes a dropped line red.
 
@@ -515,7 +515,7 @@ def test_the_package_root_re_exports_the_new_agreement_surface():
     import src.lyrics as pkg
     from src.lyrics import SUSPECT_COVERAGE as root_threshold
 
-    # Reached through the package root on purpose — `from .chain import ...` is the thing under test.
+    # Reached through the package root on purpose — `from .grading import ...` is the thing under test.
     from src.lyrics import (  # noqa: F401  — imported for the surface, not to be called
         Agreement,
         Composite,

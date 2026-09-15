@@ -24,7 +24,7 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable
 from typing import cast
 
-from ..ffmpeg import ffmpeg_argv
+from ..host.ffmpeg import ffmpeg_argv
 from ..retry_policy import BoundaryError, permanent_by_message
 from ..vocabulary import StemFormat
 

@@ -59,7 +59,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
-from .chain import LyricsText, is_authoritative_text
+from .grading import LyricsText, is_authoritative_text
 
 #: Mirror of `LINE_MAX_CHARS` in src/lib/tv/lyrics.ts — the width of one TV reel row.
 #: NOT upstream's default of 36: 42 is measured against the actual row, and upstream's bisection

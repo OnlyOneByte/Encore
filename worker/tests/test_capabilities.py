@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import stat
 
-from src import capabilities
+from src.host import capabilities
 
 
 def _fake_bin(tmp_path, name: str) -> None:
@@ -236,8 +236,8 @@ def test_stems_survives_on_an_mlx_box(monkeypatch):
     Simulates the box exactly as test_backends.py does: patch platform to Darwin/arm64 and make the
     module probe report `demucs_mlx` importable, so the backend genuinely auto-resolves to mlx.
     """
-    from src import backends, config
-    from src.config import WorkerConfig
+    from src.host import backends, config
+    from src.host.config import WorkerConfig
 
     monkeypatch.setattr("platform.system", lambda: "Darwin")
     monkeypatch.setattr("platform.machine", lambda: "arm64")
@@ -269,8 +269,8 @@ def test_stems_survives_on_a_torch_box(monkeypatch):
     """The complement: a box whose backend resolves to torch (the portable default with a real engine)
     keeps `stems` and gets no drop warning — the narrowing must not fire when an engine backs the
     resolved backend."""
-    from src import backends, config
-    from src.config import WorkerConfig
+    from src.host import backends, config
+    from src.host.config import WorkerConfig
 
     # Linux/x86_64, demucs importable, NO demucs_mlx -> AUTO resolves to torch.
     monkeypatch.setattr("platform.system", lambda: "Linux")

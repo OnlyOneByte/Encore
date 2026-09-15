@@ -241,7 +241,19 @@ def test_imports_normalises_the_src_prefixed_form_to_the_relative_one(tmp_path: 
 
 # ── E7: the layering rule ────────────────────────────────────────────────────────
 
-DOMAINS = ["lyrics", "separation", "analysis", "acquisition", "metadata"]
+#: The domain packages, DERIVED from disk rather than listed. The hardcoded list omitted `diarize` — the
+#: newest domain — so the layering assertions below never ran against it, and nothing said so. That is the
+#: same failure this whole pass is about: a list that must track reality, and did not. Deriving it means
+#: domain number seven is guarded the day it appears. `test_worker_packages.py` separately asserts the set
+#: on disk equals the set it declares, so a package cannot appear here without a decision either.
+DOMAINS = sorted(
+    p.name
+    for p in SRC.iterdir()
+    if p.is_dir()
+    and (p / "__init__.py").exists()
+    and p.name not in {"runtime", "steps", "host"}
+    and not p.name.startswith(("_", "."))
+)
 
 
 @pytest.mark.parametrize("domain", DOMAINS)
@@ -254,6 +266,31 @@ def test_a_domain_never_imports_the_runtime_or_a_step(domain: str):
     for path in _py_files(domain):
         bad = sorted(n for n in _imports(path) if n.startswith(("runtime", "steps", "plans", "dial_home")))
         assert not bad, f"{path.relative_to(SRC)} imports {bad} — a domain must not depend on the runtime"
+
+
+def test_no_domain_imports_another_domain():
+    """The six domains are siblings, not a hierarchy, and nothing shared may live inside one of them.
+
+    Until `ML_LOCK` moved out of `lyrics/aligner.py` there was exactly one violation: `diarize/diarizer.py`
+    imported `..lyrics.timing` (now `lyrics/aligner.py`) for a process-wide lock that whisperx
+    alignment, whisper ASR and pyannote
+    diarization all take. A lock two domains need is a property of the process, not a lyrics concern the
+    diarizer borrows — it lives in `src/mlrt.py` now.
+
+    No guard forbade that import, which is why it survived: the existing rules police domain-vs-runtime and
+    domain-vs-steps, and say nothing about sideways. One domain reaching into another is how a shared
+    concern ends up owned by whichever feature needed it first.
+    """
+    offenders: list[str] = []
+    for domain in DOMAINS:
+        for path in _py_files(domain):
+            for name in _imports(path):
+                top = name.split(".")[0]
+                if top in set(DOMAINS) - {domain}:
+                    offenders.append(f"{path.relative_to(SRC)} imports {name}")
+    assert not offenders, "a domain imports another domain; move the shared thing out of both: " + "; ".join(
+        offenders
+    )
 
 
 def test_the_runtime_never_imports_a_domain_or_a_step():
@@ -270,6 +307,12 @@ def test_plans_py_is_the_ONLY_module_importing_both_sides():
     for path in _py_files(""):
         rel = str(path.relative_to(SRC))
         names = _imports(path)
+        # A module's imports of its OWN package are not a crossing. `steps/lyrics/` is a package of five
+        # modules that import each other (`align` needs `pinned`), and counting those as "imports steps"
+        # made every one of them look like a second seam. The rule is about runtime meeting the STEP LAYER
+        # in one place, not about a step file naming its sibling.
+        own = ".".join(path.relative_to(SRC).parts[:-1])
+        names = {n for n in names if not (own and (n == own or n.startswith(own + ".")))}
         touches_runtime = any(n.split(".")[0] == "runtime" for n in names)
         touches_steps = any(n.split(".")[0] == "steps" for n in names)
         if touches_runtime and touches_steps:
@@ -367,7 +410,7 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
     passes on a comment that says the right thing while the code does the wrong one.
 
     Scans the WHOLE `src/lyrics` package, not one hardcoded file: `b026147` moved the source
-    classes out of `chain.py` into `sources.py`, so a guard pinned to `chain.py` scanned a file with zero
+    classes out of `grading.py` into `sources.py`, so a guard pinned to `grading.py` scanned a file with zero
     `LyricsText(...)` constructions and could never fire. The non-vacuity floor below fails loudly if the
     package ever stops constructing LyricsText where this guard can see it, so the scan cannot silently
     empty out again.
@@ -424,7 +467,7 @@ def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
     one
     hardcoded file, so a step added elsewhere in the layer is covered too.
     """
-    from src.lyrics.chain import LyricsText
+    from src.lyrics.grading import LyricsText
 
     fields = {f.name for f in __import__("dataclasses").fields(LyricsText)}
 

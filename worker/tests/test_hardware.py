@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 
-from src import hardware
+from src.host import hardware
 
 
 def _tree(tmp_path, files: dict[str, str]) -> str:

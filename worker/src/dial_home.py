@@ -24,8 +24,8 @@ from .bootstrap import (
 from .bootstrap import (
     oversubscription_warnings,
 )
-from .config import WorkerConfig
-from .mediastore import MediaStoreConfig, parse_media_store
+from .host.config import WorkerConfig
+from .host.mediastore import MediaStoreConfig, parse_media_store
 from .processor import CompleteResult, JobSpec, Processor, ProgressEvent
 from .retry_policy import is_retryable
 from .runtime import scratch_for
@@ -437,8 +437,8 @@ async def _run_forever() -> None:
     """Production entry: probe the box, connect, (re)announce, pump messages, reconnect on drop."""
     import websockets  # container-2 dependency; imported lazily so tests don't need it
 
-    from . import hardware
-    from .config import capability_probe_lines, resolve
+    from .host import hardware
+    from .host.config import capability_probe_lines, resolve
 
     # Probe the hardware FIRST: the report is both what the core is told and what the auto-sizers used,
     # so printing it makes "why is this box slow" answerable from the log alone rather than by guessing
@@ -448,7 +448,7 @@ async def _run_forever() -> None:
 
     # Then resolve what the box can prove it does. A device is resolved inside _build_processor; the
     # same value is derived here so alignment and the report agree with separation.
-    from .backends import preferred_torch_device
+    from .host.backends import preferred_torch_device
 
     try:
         device, _why = preferred_torch_device(CONFIG.device)

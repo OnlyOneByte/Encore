@@ -15,7 +15,7 @@ Two mechanisms, deliberately separate, and the distinction is the point of most 
 
 from __future__ import annotations
 
-from src.lyrics.chain import (
+from src.lyrics.grading import (
     BASELINE_CAPTIONS_AUTO,
     ROLE_BASELINE,
     ROLE_CANDIDATE,
@@ -35,14 +35,14 @@ from src.lyrics.chain import (
     composite_score,
     select_by_baselines,
 )
-from src.lyrics.registry import build_sources
-from src.lyrics.source import (
+from src.lyrics.lrclib import (
     DURATION_TOLERANCE_SEC,
     LrclibResult,
     candidate_sort_key,
     lrclib_search_url,
     rank_lrclib_candidates,
 )
+from src.lyrics.registry import build_sources
 
 # ── fixtures: two real versions of one song ───────────────────────────────────────────
 #
@@ -108,7 +108,7 @@ def test_the_wrong_version_scores_ABOVE_the_wrong_song_threshold_so_a_threshold_
     coverage now, not the ranking score — but the point stands on either, and coverage is the honest one
     to make it on, because coverage is what the threshold actually reads.)
     """
-    from src.lyrics.chain import SUSPECT_COVERAGE, agreement
+    from src.lyrics.grading import SUSPECT_COVERAGE, agreement
 
     wrong = agreement(SOLO_TEXT, ASR_OF_FEAT)
     right = agreement(FEAT_TEXT, ASR_OF_FEAT)
@@ -587,7 +587,7 @@ def test_the_REGISTRY_decides_which_tier_each_source_speaks_in():
     """The two-tier split, asserted where it is now declared — and the assertion the old pair could not
     make.
 
-    Those tests read `role` off a directly-constructed source, so they were checking that `chain.py` agreed
+    Those tests read `role` off a directly-constructed source, so they were checking that `grading.py` agreed
     with itself. The authored-captions one was worse than redundant: CANDIDATE is `LyricsText`'s default, so
     it would have passed even with the assignment deleted. This drives the real path — registry builds the
     source, source fetches, registry stamps the tier — so a source and its spec cannot disagree.
@@ -641,7 +641,7 @@ def test_captions_cannot_be_about_a_different_version_of_the_song():
 # fits wins. Comparative, not a threshold — the demotion steers the same argmax selection already runs.
 # The two real cases overshoot by +39% and +27% of duration; the tolerance band is OVERSHOOT_FRACTION_MAX.
 
-from src.lyrics.chain import OVERSHOOT_FRACTION_MAX  # noqa: E402
+from src.lyrics.grading import OVERSHOOT_FRACTION_MAX  # noqa: E402
 
 
 def timed(source, body, variant, per_word_end, *, role=ROLE_CANDIDATE):

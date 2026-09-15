@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import os
 
-from .config import WorkerConfig
+from .host.config import WorkerConfig
 from .processor import Processor, StubProcessor
 from .vocabulary import Capability, serves_family
 
@@ -117,7 +117,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     # backend. Derived from the vocabulary rather than a literal list — the literal list here omitted
     # `stems:audiosep`, so an audio-separator-only box never resolved a backend or printed the line.
     if serves_family(cfg.capabilities, Capability.STEMS.family) or Capability.ALIGN in cfg.capabilities:
-        from .backends import resolve_backend
+        from .host.backends import resolve_backend
         from .vocabulary import Engine
 
         choice = resolve_backend(cfg.separator_backend, engine=Engine.DEMUCS, device=cfg.device)
@@ -161,8 +161,8 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         # it there would pull the ML stack into every worker process including one that only fetches.
         segment = cfg.demucs_segment
         if segment is None:
-            from .config import auto_demucs_segment
-            from .hardware import free_vram_bytes
+            from .host.config import auto_demucs_segment
+            from .host.hardware import free_vram_bytes
 
             free = free_vram_bytes()
             segment = auto_demucs_segment(free)
@@ -178,7 +178,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         # nine parameters. The three arguments are the ones config cannot know by itself: the resolved
         # device and backend (which DRIVE the engine and reach `facts`, so the startup log and the ledger
         # cannot disagree) and a segment that may be derived from free accelerator memory.
-        from .config import separation_tuning
+        from .host.config import separation_tuning
 
         runner = stems_runner(
             runner=subprocess_runner,
@@ -190,7 +190,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         by_type["stems"] = runner
         by_type["stems-upgrade"] = runner  # an upgrade is a separation job like any other
     if Capability.ALIGN in cfg.capabilities:
-        from .config import whisperx_device_for
+        from .host.config import whisperx_device_for
         from .lyrics import LrclibClient
         from .plans import align_runner
         from .separation.demucs import subprocess_runner

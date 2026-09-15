@@ -1,10 +1,10 @@
 """ASR: guessing a song's words from its audio.
 
 The `Transcriber` seam and the real faster-whisper implementation behind it. Distinct from
-`timing.py` on purpose, and the distinction is the one this whole domain turns on: alignment places
+`aligner.py` on purpose, and the distinction is the one this whole domain turns on: alignment places
 timings on text we already trust, while ASR INVENTS the text. Its output is never authoritative
 however confident the model sounds — which is why a transcript is a BASELINE (evidence of what is
-audible) and never a candidate for the song's words. See `chain.py`.
+audible) and never a candidate for the song's words. See `grading.py`.
 
 MEASURED (2026-09-02, real stem, `base` on CPU): `transcribe()` returns segment bounds and NO word
 timings. Word timings come only from the separate `align()` pass, so the aligner is the single source
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, cast
 
-from .timing import ML_LOCK
+from ..mlrt import ML_LOCK
 
 DEFAULT_MODEL = "base"
 

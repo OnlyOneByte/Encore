@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.diarize import attribute_parts  # noqa: E402
-from src.diarize.attribution import MAX_PARTS, MIN_LINE_COVERAGE, MIN_MINORITY_SHARE  # noqa: E402
+from src.diarize.attribution import EXACT_PARTS, MIN_LINE_COVERAGE, MIN_MINORITY_SHARE  # noqa: E402
 
 
 def _doc(n: int, dur: float = 1.0, gap: float = 0.0) -> dict:
@@ -86,8 +86,8 @@ def test_sparse_coverage_falls_back_to_one_colour():
 
 def test_over_segmentation_into_three_voices_falls_back():
     """Layer 3: overlapping sung vocals routinely over-segment into 3+ phantom speakers; more than
-    MAX_PARTS is treated as not-confident and takes the single-colour fallback, not a rainbow."""
-    assert MAX_PARTS == 2
+    EXACT_PARTS is treated as not-confident and takes the single-colour fallback, not a rainbow."""
+    assert EXACT_PARTS == 2
     doc = _doc(3)
     diar = [_seg(0.0, 1.0, "S0"), _seg(1.0, 2.0, "S1"), _seg(2.0, 3.0, "S2")]
     out = attribute_parts(doc, diar)

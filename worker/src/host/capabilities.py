@@ -26,8 +26,8 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 
+from ..vocabulary import Capability
 from .backends import _module_available
-from .vocabulary import Capability
 
 
 @dataclass(frozen=True)
@@ -233,7 +233,7 @@ def narrow_for_backend(
     the token stays in the vocabulary, it just never reports available on this box. No new token is
     introduced — capabilities key on the engine, not the backend (test_architecture_capability_tokens).
     """
-    from .separation.engines import demucs_engine_backed_by
+    from ..separation.engines import demucs_engine_backed_by
 
     if Capability.STEMS not in capabilities or demucs_engine_backed_by(backend):
         return capabilities, []

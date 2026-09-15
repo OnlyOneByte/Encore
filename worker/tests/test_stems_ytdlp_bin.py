@@ -89,8 +89,8 @@ async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_stems_plan(tmp_
     parameter), so a stems acquire ran a bare "yt-dlp" from PATH regardless of what the operator
     configured. Driving `stems_runner` directly does NOT cover this cfg-reading call site.
     """
-    from src.config import WorkerConfig
     from src.dial_home import _build_processor
+    from src.host.config import WorkerConfig
 
     configured = "/opt/encore/bin/yt-dlp"
     cfg = WorkerConfig(capabilities=("stems",), ytdlp_bin=configured)

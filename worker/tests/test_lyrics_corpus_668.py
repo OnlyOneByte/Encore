@@ -8,7 +8,7 @@ times, how long a tail runs — so a number tuned against invented text is tuned
 `fixtures/lyrics/` now holds eight artifacts taken verbatim off a real party's media store, with
 provenance in `manifest.json` and the source snapshot in `README.md`. This file is what makes them
 load-bearing rather than eight files nobody reads: every specimen is consumed here, through the real
-production functions in `src/lyrics/chain.py` and `src/lyrics/artifact.py`, and deleting any one of them
+production functions in `src/lyrics/grading.py` and `src/lyrics/artifact.py`, and deleting any one of them
 reds this module.
 
 Four things are guarded.
@@ -27,7 +27,7 @@ Four things are guarded.
    is the outcome the overshoot penalty exists to prevent, and the two real specimens make that argmax
    measurable.
 
-4. **The coverage threshold is honestly NOT calibrated here.** `chain.py` says to re-derive
+4. **The coverage threshold is honestly NOT calibrated here.** `grading.py` says to re-derive
    `SUSPECT_COVERAGE` once this corpus lands. It cannot be: the archive holds exactly one same-audio
    pair, cross-language, measuring 0.0 — one point at the extreme, not a band. The pair count is pinned
    at one, so the day an interior pair arrives this reds and the README's calibration section has to be
@@ -48,7 +48,7 @@ from typing import Any
 import pytest
 
 from src.lyrics.artifact import is_valid_lyrics
-from src.lyrics.chain import (
+from src.lyrics.grading import (
     MIN_TOKENS_TO_COMPARE,
     OVERSHOOT_FRACTION_MAX,
     ROLE_BASELINE,
@@ -242,7 +242,7 @@ def test_the_real_overshoot_band_separates_wrong_version_from_same_recording() -
 def test_the_overshoot_demotion_flips_a_real_wrong_version_pick_against_a_real_clean_rival() -> None:
     """A wrong-version pick that RANKS HIGHER still loses, which is the outcome the overshoot penalty is for.
 
-    Detection without re-selection made things worse (`chain.py`'s own selection note), so the guarded
+    Detection without re-selection made things worse (`grading.py`'s own selection note), so the guarded
     behaviour is the argmax, not the flag. Real specimens on both sides: Total Eclipse timed to a 374s
     master against 268s of audio, versus Kelly Clarkson fitting inside her own audio. The raw scores are
     deliberately stacked AGAINST the correct pick — 0.90 for the wrong version, 0.55 for the rival — so
@@ -270,7 +270,7 @@ def test_the_overshoot_demotion_flips_a_real_wrong_version_pick_against_a_real_c
 def test_the_only_real_same_audio_pair_votes_at_coverage_zero_and_cannot_calibrate_the_threshold() -> None:
     """`SUSPECT_COVERAGE` still needs the `baselines/` half, and this is the proof.
 
-    `chain.py` says to re-derive the constant once this corpus lands. It cannot be re-derived from these
+    `grading.py` says to re-derive the constant once this corpus lands. It cannot be re-derived from these
     files: a coverage threshold needs real (candidate, baseline) pairs and the archive holds exactly one,
     whose two texts are in different languages. Measured coverage is 0.0 — one point at the extreme end,
     which constrains a threshold no better than no point at all.

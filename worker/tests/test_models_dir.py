@@ -21,7 +21,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config import WorkerConfig, separation_tuning  # noqa: E402
+from src.host.config import WorkerConfig, separation_tuning  # noqa: E402
 from src.separation.engines import engine_for  # noqa: E402
 from src.separation.tuning import SeparationTuning  # noqa: E402
 

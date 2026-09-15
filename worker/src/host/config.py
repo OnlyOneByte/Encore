@@ -25,9 +25,9 @@ import os
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from ..separation.tuning import SeparationTuning
+from ..vocabulary import StemFormat, parse_stem_format
 from .hardware import effective_cpus
-from .separation.tuning import SeparationTuning
-from .vocabulary import StemFormat, parse_stem_format
 
 
 def _str(env: dict[str, str], key: str, default: str) -> str:
@@ -436,8 +436,8 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
     # resolved SILENTLY (`_build_processor` owns the single startup print of it); this only needs its
     # value to decide, and only bothers when a stems capability was actually proven.
     if "stems" in caps:
+        from ..vocabulary import Engine
         from .backends import resolve_backend
-        from .vocabulary import Engine
 
         resolved_backend = resolve_backend(
             cfg.separator_backend, engine=Engine.DEMUCS, device=cfg.device

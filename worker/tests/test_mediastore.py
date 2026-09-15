@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import mediastore as ms  # noqa: E402
+from src.host import mediastore as ms  # noqa: E402
 
 
 def test_parse_local_default_and_garbage():

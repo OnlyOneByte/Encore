@@ -18,11 +18,11 @@ these and every tier goes through it.
 
 from __future__ import annotations
 
-import threading
 from typing import Any, Protocol, cast
 
+from ..mlrt import ML_LOCK
+
 #: See the module docstring. Public because asr.py takes the same lock.
-ML_LOCK = threading.RLock()
 
 
 class Aligner(Protocol):

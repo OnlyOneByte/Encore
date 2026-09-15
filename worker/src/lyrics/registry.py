@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from .chain import (
+from .grading import (
     BASELINE_ASR_MIX,
     BASELINE_ASR_VOCALS,
     BASELINE_CAPTIONS_AUTO,
@@ -148,7 +148,7 @@ class _Classified:
     This is what makes `SourceSpec.role` and `SourceSpec.baseline_rank` load-bearing rather than
     decorative. The source classes used to stamp their own tier — `AsrSource` even re-derived which
     baseline rank it was from its `audio` argument — so the registry's declaration was a SECOND copy of a
-    fact `chain.py` already owned, read by nothing but the registry's own self-consistency tests. Those
+    fact `grading.py` already owned, read by nothing but the registry's own self-consistency tests. Those
     two copies could drift and the suite would not notice: a source quietly returning CANDIDATE would make
     it eligible to be published as the song's words while the registry still called it a baseline.
 
@@ -177,7 +177,7 @@ class _Classified:
         got.baseline_rank = self.baseline_rank
         # The alternates are OTHER versions of this same song (LrclibSource attaches them at
         # sources.py:123, `best.alternates = rest`), and `select_by_baselines` grades the whole
-        # pool `[cand, *cand.alternates]` (chain.py) and MAY PUBLISH an alternate. So they carry the
+        # pool `[cand, *cand.alternates]` (grading.py) and MAY PUBLISH an alternate. So they carry the
         # same tier as their parent: stamping only `got` left every alternate at the fail-CLOSED
         # ROLE_UNSPECIFIED default, and a winning alternate then published as the song's words while
         # unspecified — the exact fail-open the role default exists to prevent. In-place is

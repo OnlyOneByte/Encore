@@ -17,7 +17,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.config import WorkerConfig, separation_tuning  # noqa: E402
+from src.host.config import WorkerConfig, separation_tuning  # noqa: E402
 from src.separation.engines import (  # noqa: E402
     _FACTORY_OWNED,
     AudioSepEngine,

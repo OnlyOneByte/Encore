@@ -30,7 +30,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.lyrics.chain import (  # noqa: E402
+from src.lyrics.grading import (  # noqa: E402
     ROLE_BASELINE,
     ROLE_CANDIDATE,
     SOURCE_ASR,

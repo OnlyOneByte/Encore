@@ -8,7 +8,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.lyrics import source as ls  # noqa: E402
+from src.lyrics import lrc as lf  # the FORMAT half
+from src.lyrics import lrclib as ls  # the CLIENT half  # noqa: E402
+from src.lyrics import model as lm  # the artifact-shape predicates
 
 # ── LRC parsing ──────────────────────────────────────────────────────────────────
 LRC = """[ar:a-ha]
@@ -23,7 +25,7 @@ LRC = """[ar:a-ha]
 
 
 def test_parse_lrc_extracts_timed_lines_skips_metadata():
-    entries = ls.parse_lrc(LRC)
+    entries = lf.parse_lrc(LRC)
     # metadata tags ([ar:]/[ti:]/[length:]) are skipped; 5 timed lines remain (incl. the blank gap)
     assert [round(e.start, 2) for e in entries] == [18.5, 21.9, 25.3, 29.0, 32.1]
     assert entries[0].text == "Talking away"
@@ -32,7 +34,7 @@ def test_parse_lrc_extracts_timed_lines_skips_metadata():
 
 def test_parse_lrc_timestamp_fraction_forms():
     # [mm:ss], [mm:ss.xx] centis, [mm:ss.xxx] millis, and the [mm:ss:xx] colon variant
-    e = ls.parse_lrc("[01:02]A\n[00:05.5]B\n[00:05.50]C\n[00:05.500]D\n[00:07:25]E")
+    e = lf.parse_lrc("[01:02]A\n[00:05.5]B\n[00:05.50]C\n[00:05.500]D\n[00:07:25]E")
     starts = {x.text: round(x.start, 3) for x in e}
     assert starts["A"] == 62.0
     assert starts["B"] == starts["C"] == starts["D"] == 5.5  # 5 / 50 / 500 all → 0.5s
@@ -41,14 +43,14 @@ def test_parse_lrc_timestamp_fraction_forms():
 
 def test_parse_lrc_multi_timestamp_line():
     # one text repeated at several timestamps (a repeated chorus line)
-    e = ls.parse_lrc("[00:10.00][00:47.00][01:24.00]repeat me")
+    e = lf.parse_lrc("[00:10.00][00:47.00][01:24.00]repeat me")
     assert [round(x.start) for x in e] == [10, 47, 84]
     assert all(x.text == "repeat me" for x in e)
 
 
 def test_parse_lrc_offset_tag_shifts_earlier_and_clamps():
     # [offset:+500] → lyrics display 500ms EARLIER (subtract); clamp at 0
-    e = ls.parse_lrc("[offset:+500]\n[00:02.00]late\n[00:00.20]early")
+    e = lf.parse_lrc("[offset:+500]\n[00:02.00]late\n[00:00.20]early")
     by = {x.text: x.start for x in e}
     assert by["late"] == 1.5  # 2.0 - 0.5
     assert by["early"] == 0.0  # 0.2 - 0.5 → clamped to 0
@@ -58,8 +60,8 @@ def test_parse_lrc_offset_tag_shifts_earlier_and_clamps():
 
 # ── segment building ───────────────────────────────────────────────────────────────
 def test_entries_to_segments_end_is_next_start():
-    entries = [ls.LrcEntry(1.0, "one"), ls.LrcEntry(3.0, "two"), ls.LrcEntry(6.0, "three")]
-    segs = ls.entries_to_segments(entries, total_duration=10.0)
+    entries = [lf.LrcEntry(1.0, "one"), lf.LrcEntry(3.0, "two"), lf.LrcEntry(6.0, "three")]
+    segs = lf.entries_to_segments(entries, total_duration=10.0)
     assert segs == [
         {"start": 1.0, "end": 3.0, "text": "one"},
         {"start": 3.0, "end": 6.0, "text": "two"},
@@ -68,8 +70,8 @@ def test_entries_to_segments_end_is_next_start():
 
 
 def test_entries_to_segments_blank_gap_caps_prior_line_and_is_dropped():
-    entries = [ls.LrcEntry(1.0, "sing"), ls.LrcEntry(3.0, ""), ls.LrcEntry(8.0, "again")]
-    segs = ls.entries_to_segments(entries, total_duration=12.0)
+    entries = [lf.LrcEntry(1.0, "sing"), lf.LrcEntry(3.0, ""), lf.LrcEntry(8.0, "again")]
+    segs = lf.entries_to_segments(entries, total_duration=12.0)
     # the blank at 3.0 bounds "sing" (end=3.0) but is itself dropped (no text)
     assert segs == [
         {"start": 1.0, "end": 3.0, "text": "sing"},
@@ -78,29 +80,29 @@ def test_entries_to_segments_blank_gap_caps_prior_line_and_is_dropped():
 
 
 def test_entries_to_segments_unknown_duration_last_line_gets_min():
-    segs = ls.entries_to_segments([ls.LrcEntry(1.0, "only")], total_duration=None, min_line_sec=0.5)
+    segs = lf.entries_to_segments([lf.LrcEntry(1.0, "only")], total_duration=None, min_line_sec=0.5)
     assert segs == [{"start": 1.0, "end": 1.5, "text": "only"}]
 
 
 def test_plain_lyrics_to_segments_evenly_distributes():
-    segs = ls.plain_lyrics_to_segments("l1\n\nl2\nl3\n", total_duration=30.0)
+    segs = lf.plain_lyrics_to_segments("l1\n\nl2\nl3\n", total_duration=30.0)
     assert [s["text"] for s in segs] == ["l1", "l2", "l3"]
     assert segs[0]["start"] == 0.0 and segs[0]["end"] == 10.0
     assert segs[2]["start"] == 20.0 and segs[2]["end"] == 30.0
-    assert ls.plain_lyrics_to_segments("", 30.0) == []
+    assert lf.plain_lyrics_to_segments("", 30.0) == []
 
 
 # ── line-synced artifact shape ───────────────────────────────────────────────────────
 def test_line_synced_lyrics_shape_and_validity():
-    segs = ls.entries_to_segments([ls.LrcEntry(1.0, "a"), ls.LrcEntry(2.0, "b")], total_duration=3.0)
-    doc = ls.line_synced_lyrics(segs, language="en")
+    segs = lf.entries_to_segments([lf.LrcEntry(1.0, "a"), lf.LrcEntry(2.0, "b")], total_duration=3.0)
+    doc = lf.line_synced_lyrics(segs, language="en")
     assert doc["language"] == "en"
     assert [ln["text"] for ln in doc["lines"]] == ["a", "b"]
     assert all(ln["words"] == [] for ln in doc["lines"])  # line-synced → NO word timings
     assert doc["words"] == []
-    assert ls.is_line_synced(doc) is True  # ≥1 line with numeric start + text (words NOT required)
-    assert ls.is_line_synced({"lines": []}) is False
-    assert ls.is_line_synced({"lines": [{"text": "x"}]}) is False  # no numeric start
+    assert lm.is_line_synced(doc) is True  # ≥1 line with numeric start + text (words NOT required)
+    assert lm.is_line_synced({"lines": []}) is False
+    assert lm.is_line_synced({"lines": [{"text": "x"}]}) is False  # no numeric start
 
 
 # ── LRCLIB URL + response parse ──────────────────────────────────────────────────────
@@ -381,7 +383,7 @@ MONOLINGUAL_LRC = """[ti:Take On Me]
 
 
 def test_fold_romanization_pairs_same_stamp_cjk_and_pinyin():
-    folded = ls.fold_romanization_entries(ls.parse_lrc(BILINGUAL_LRC))
+    folded = lf.fold_romanization_entries(lf.parse_lrc(BILINGUAL_LRC))
     # two logical lines, each carrying the characters as text and the pinyin as romanization
     assert [e.text for e in folded] == ["真情像草原广阔", "层层風雨不能阻隔"]
     assert [e.romanization for e in folded] == [
@@ -391,7 +393,7 @@ def test_fold_romanization_pairs_same_stamp_cjk_and_pinyin():
 
 
 def test_fold_romanization_leaves_monolingual_record_single_script():
-    folded = ls.fold_romanization_entries(ls.parse_lrc(MONOLINGUAL_LRC))
+    folded = lf.fold_romanization_entries(lf.parse_lrc(MONOLINGUAL_LRC))
     assert [e.text for e in folded] == ["Talking away", "I don't know what I'm to say"]
     assert all(e.romanization is None for e in folded)  # never fabricated — if-available only
 
@@ -399,7 +401,7 @@ def test_fold_romanization_leaves_monolingual_record_single_script():
 def test_fold_romanization_handles_romanization_first_order():
     # some uploads put the Latin line first; the CJK line is still the words, the Latin its romanization
     lrc = "[00:05.00]pinyin line here\n[00:05.00]中文歌词\n"
-    folded = ls.fold_romanization_entries(ls.parse_lrc(lrc))
+    folded = lf.fold_romanization_entries(lf.parse_lrc(lrc))
     assert len(folded) == 1
     assert folded[0].text == "中文歌词"
     assert folded[0].romanization == "pinyin line here"
@@ -408,7 +410,7 @@ def test_fold_romanization_handles_romanization_first_order():
 def test_fold_romanization_does_not_fold_same_script_same_stamp():
     # two Latin lines at one stamp (a doubled/chorus stamp) are NOT a transliteration pair
     lrc = "[00:10.00]same line\n[00:10.00]same line\n"
-    folded = ls.fold_romanization_entries(ls.parse_lrc(lrc))
+    folded = lf.fold_romanization_entries(lf.parse_lrc(lrc))
     assert len(folded) == 2
     assert all(e.romanization is None for e in folded)
 
@@ -424,7 +426,7 @@ def test_lrclib_to_segments_threads_romanization_end_to_end():
         "céng céng fēng yǔ bù néng zǔ gé",
     ]
     # the line-synced doc carries the romanization through to what the TV reads
-    doc = ls.line_synced_lyrics(segs, language="zh")
+    doc = lf.line_synced_lyrics(segs, language="zh")
     assert [ln.get("romanization") for ln in doc["lines"]] == [
         "zhēn qíng xiàng cǎo yuán guǎng kuò",
         "céng céng fēng yǔ bù néng zǔ gé",

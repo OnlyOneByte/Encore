@@ -24,10 +24,12 @@ concerns and splits into `model` / `grade` / `sources/*` in a later stage. This 
 
 from __future__ import annotations
 
+from ..mlrt import ML_LOCK
+from .aligner import Aligner, WhisperxForcedAligner, aligner_for
 from .artifact import candidate_key, is_valid_lyrics, lrclib_to_segments, normalize_lyrics
 from .asr import DEFAULT_MODEL, Transcriber, WhisperxTranscriber, transcriber_for
 from .captions import caption_argv, is_translated_track, parse_vtt, read_captions
-from .chain import (
+from .grading import (
     MIN_TOKENS_TO_COMPARE,
     OVERSHOOT_FRACTION_MAX,
     ROLE_BASELINE,
@@ -64,21 +66,11 @@ from .chain import (
     lyrics_tokens,
     select_by_baselines,
 )
+from .lrc import entries_to_segments, line_synced_lyrics, parse_lrc, plain_lyrics_to_segments
+from .lrclib import LRCLIB_BASE, LrclibClient, LrclibResult, LyricsFetchError, rank_lrclib_candidates
+from .model import is_line_synced
 from .presplit import klp_probe_line, klp_status, presplit_texts
 from .registry import SPECS, SourceSpec, build_sources, unmet
-from .source import (
-    LRCLIB_BASE,
-    LrclibClient,
-    LrclibResult,
-    LyricsFetchError,
-    entries_to_segments,
-    is_line_synced,
-    line_synced_lyrics,
-    parse_lrc,
-    plain_lyrics_to_segments,
-    rank_lrclib_candidates,
-)
-from .timing import ML_LOCK, Aligner, WhisperxForcedAligner, aligner_for
 from .validate import (
     LrcFit,
     fit_lrc_to_aligned,

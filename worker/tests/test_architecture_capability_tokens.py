@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import re
 
-from src import capabilities
 from src.docgen import ARCHITECTURE
+from src.host import capabilities
 
 
 def _maximal_box_available_tokens(monkeypatch) -> set[str]:

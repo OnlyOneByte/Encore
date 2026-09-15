@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from src import plans  # noqa: E402
-from src.lyrics.chain import (
+from src.lyrics.grading import (
     SOURCE_ASR,
     SOURCE_LRCLIB,
     TIMING_LINE,
@@ -23,7 +23,7 @@ from src.lyrics.chain import (
     TIMING_WORD,
     LyricsText,
 )
-from src.lyrics.source import plain_lyrics_to_segments  # noqa: E402
+from src.lyrics.lrc import plain_lyrics_to_segments  # noqa: E402
 from src.runtime.ctx import ResolvedEngines  # noqa: E402
 from src.steps.lyrics import _time_one  # noqa: E402
 from src.vocabulary import AsrModel, SyncMode, parse_asr_model, parse_sync_mode
@@ -183,8 +183,8 @@ def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, 
     import threading
     import time
 
+    import src.lyrics.aligner as timing_mod
     import src.lyrics.asr as asr_mod
-    import src.lyrics.timing as timing_mod
     from src.lyrics import aligner_for, transcriber_for
 
     if factory == "aligner":
@@ -344,7 +344,7 @@ def test_lines_mode_declines_a_source_with_no_timings_at_all():
     # the floor stays line-level sync rather than a wall of synthetic even spacing sold as line timing.
     #
     # The segments here are what `plain_lyrics_to_segments` REALLY emits (numeric, evenly spaced): that
-    # is the only shape a TIMING_NONE source ever reaches `_time_one` in (chain.py stamps TIMING_NONE
+    # is the only shape a TIMING_NONE source ever reaches `_time_one` in (grading.py stamps TIMING_NONE
     # exactly for a plainLyrics LRCLIB record, whose bounds go through that producer). A hand-built
     # `start=None` segment is unreachable — and it would let the guard removal pass vacuously, because
     # `is_line_synced` also rejects a non-numeric start, so `_time_one` would return None either way.
