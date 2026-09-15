@@ -186,7 +186,7 @@
 	the bottom of the gallery. Docking is a property of this being the app's chrome, not of the band.
 -->
 {#if showBand}
-	<div class="dock" bind:clientHeight={dockH}>
+	<div class="dock" class:covered={drawerOpen} bind:clientHeight={dockH}>
 		<NowPlayingBand
 			{title}
 			{artist}
@@ -244,5 +244,29 @@
 		bottom: 0;
 		/* The band paints itself and sets its own stacking context; this only says where. */
 		z-index: var(--z-dock);
+		/*
+		 * THE BAND STEPS OUT FROM UNDER THE DRAWER — see `.dock.covered` below. The duration matches
+		 * vaul's own 500ms content transform, measured off the render, so the two halves of one movement
+		 * finish together instead of one landing early.
+		 */
+		transition: opacity 500ms cubic-bezier(0.32, 0.72, 0, 1);
+	}
+	/*
+	 * The drawer covers the band once open, so this changes nothing at rest — it changes the 500ms in
+	 * between, which is where the trouble was. Band and drawer are the same surface colour with the same
+	 * top border, so a sheet rising over the band showed two matching top edges at once and read as a
+	 * second copy of the same panel arriving rather than the panel growing.
+	 *
+	 * Opacity only, and the band stays in the layout, so `--dock-h` never moves and no column reflows
+	 * while the drawer is open. `visibility` is deliberately not used: it would cut the fade to a pop.
+	 */
+	.dock.covered {
+		opacity: 0;
+	}
+	/* A guest who asked for less motion gets the state, not the movement. */
+	@media (prefers-reduced-motion: reduce) {
+		.dock {
+			transition: none;
+		}
 	}
 </style>

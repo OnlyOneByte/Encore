@@ -30,7 +30,22 @@
 	} = $props();
 </script>
 
+<!--
+	FULL-BLEED SURFACE, CAPPED INNER ROW — and the split is the whole fix.
+
+	This header used to cap its own box at `--page-measure` while painting a gradient and a shadow onto
+	it. On any viewport wider than that measure the result was a painted SLAB floating in the middle of
+	the page, ending in a hard vertical edge with nothing on either side of it. Reported as "that abrupt
+	edge cutoff", and on `/song/[mediaId]` it was worse: that route set no measure, so the header fell
+	back to `--max-w` while its content ran the full width, and the slab did not even line up with the
+	card beneath it.
+
+	The paint now spans the viewport and only the ROW inside it is capped, which is the same split the
+	now-playing band already uses for the same reason: a full-bleed surface reads as chrome, a capped
+	one reads as a floating card, and the content still aligns with the column it belongs to.
+-->
 <header class="page-header">
+	<div class="inner">
 	{#if back}
 		<!--
 			Still a real link — `Button` renders an `<a href>` (not a history.back() button) whenever
@@ -58,17 +73,11 @@
 	<h1>
 		{#if icon}<Icon name={icon} />{/if}{title}
 	</h1>
+	</div>
 </header>
 
 <style>
 	.page-header {
-		display: flex;
-		align-items: center;
-		gap: var(--space-md);
-		padding: var(--space-2xl) var(--space-3xl) var(--space-md);
-		/* The bottom edge is a box-shadow now, not a border — see the background block below. A border
-		   is a hard 1px step at full --line strength; a shadow can carry the same separation and fade,
-		   and it does not add to the header's box so nothing reflows. */
 		position: sticky;
 		/* Stick below the notch, not under it. .app-shell carries the top safe-area inset as PADDING
 		   (app.css), but a sticky offset is measured from the scrollport, so `top: 0` rode up into the
@@ -104,15 +113,28 @@
 			0 1px 0 color-mix(in srgb, var(--line) 55%, transparent),
 			0 12px 24px -20px rgb(0 0 0 / 0.9);
 		z-index: var(--z-header);
-		/* The header caps and centres on the SAME measure as the route's content column, so the two share
-		   one width instead of the header spanning the whole shell while the body sits in a narrow column
-		   (the five-different-header-widths bug). Each route sets --page-measure to its own reading width;
-		   the fallback is the shell cap for a route that sets none. margin-inline:auto centres it; the
-		   width:100% keeps the stretch so the cap takes width off both sides rather than hanging left. */
+	}
+	/*
+	 * THE CAPPED ROW. Everything that used to be measured on `.page-header` lives here instead: the flex
+	 * layout, the padding, and the `--page-measure` cap that keeps the header's content aligned with the
+	 * column beneath it. The surface above is now full-bleed, so the cap takes width off the CONTENT
+	 * rather than off the paint, and there is no edge to see.
+	 *
+	 * Each route sets `--page-measure` to its own reading width; the fallback is the shell's own cap for
+	 * a route that sets none. `width: 100%` keeps the stretch so the cap takes width off both sides
+	 * rather than letting the row hang left.
+	 */
+	.inner {
+		display: flex;
+		align-items: center;
+		gap: var(--space-md);
+		padding: var(--space-2xl) var(--space-3xl) var(--space-md);
 		width: 100%;
 		max-width: var(--page-measure, var(--max-w));
 		margin-inline: auto;
 		box-sizing: border-box;
+		/* A long title must not set a floor this row cannot go under. */
+		min-width: 0;
 	}
 	/*
 	 * LAYOUT AND INHERITED INK ONLY. The box, the focus ring and the centring moved into

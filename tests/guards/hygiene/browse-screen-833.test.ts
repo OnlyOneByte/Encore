@@ -301,7 +301,17 @@ test('the band owns the bottom edge and publishes the measured --dock-h; the fin
 	// R1. ONE band, ONE measurement, and both now live in the layout — which is what lets the band be app
 	// chrome on every phone surface instead of a home-screen element. Gated on `showBand` (a joined singer
 	// on a phone surface), so /tv never mounts it and never opens a `role=phone` socket.
-	expect(LAYOUT).toMatch(/\{#if showBand\}\s*<div class="dock" bind:clientHeight=\{dockH\}>/);
+	// The band still gates on `showBand` and still MEASURES itself into --dock-h. `class:covered` sits
+	// between them now: the band fades out under the open drawer, because the two surfaces are the same
+	// colour with the same top border and a sheet rising over the band read as a duplicate of it
+	// arriving rather than as the band growing. Written to allow attributes between the class and the
+	// binding so a third one does not red this, while both load-bearing halves stay pinned.
+	expect(LAYOUT).toMatch(/\{#if showBand\}\s*<div class="dock"[^>]*bind:clientHeight=\{dockH\}>/);
+	expect(LAYOUT).toMatch(/class:covered=\{drawerOpen\}/);
+	// Opacity, never `visibility` or a height change: --dock-h must not move while the drawer is open,
+	// or every scrolling column reflows behind it.
+	expect(LAYOUT).toMatch(/\.dock\.covered \{\s*opacity: 0;/);
+	expect(LAYOUT).not.toMatch(/\.dock\.covered \{[^}]*visibility/s);
 	expect(LAYOUT).toMatch(/const showBand = \$derived\(isPhoneSurface && me !== null\);/);
 	const docks = LAYOUT.match(/bind:clientHeight=\{dockH\}/g) ?? [];
 	expect(docks.length).toBe(1); // the band's dock, the only fixed band in the app

@@ -323,7 +323,17 @@ test('the now-playing band is docked for a joined singer, and the + Add a turn C
 	 * plausibly come back, since it IS the browse view.
 	 */
 	// Docked, gated on a joined singer, and it is the BAND that is mounted there.
-	expect(LAYOUT).toMatch(/\{#if showBand\}\s*<div class="dock" bind:clientHeight=\{dockH\}>/);
+	// The band still gates on `showBand` and still MEASURES itself into --dock-h. `class:covered` sits
+	// between them now: the band fades out under the open drawer, because the two surfaces are the same
+	// colour with the same top border and a sheet rising over the band read as a duplicate of it
+	// arriving rather than as the band growing. Written to allow attributes between the class and the
+	// binding so a third one does not red this, while both load-bearing halves stay pinned.
+	expect(LAYOUT).toMatch(/\{#if showBand\}\s*<div class="dock"[^>]*bind:clientHeight=\{dockH\}>/);
+	expect(LAYOUT).toMatch(/class:covered=\{drawerOpen\}/);
+	// Opacity, never `visibility` or a height change: --dock-h must not move while the drawer is open,
+	// or every scrolling column reflows behind it.
+	expect(LAYOUT).toMatch(/\.dock\.covered \{\s*opacity: 0;/);
+	expect(LAYOUT).not.toMatch(/\.dock\.covered \{[^}]*visibility/s);
 	expect(LAYOUT).toContain('<NowPlayingBand');
 	// `showBand` is what carries "joined singer" — a guest on the landing page gets no band, and the
 	// television (which is not a phone surface) gets none either.

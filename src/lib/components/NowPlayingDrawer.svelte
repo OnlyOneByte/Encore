@@ -349,6 +349,19 @@
 	 */
 	:global([data-slot='drawer-content'].np-drawer) {
 		/*
+		 * ELEVATION, because without it the drawer read as a DUPLICATE of the band rather than as its
+		 * expansion. Both surfaces are `--card`, both carry a 1px top border and a 12px top radius, so a
+		 * sheet sliding up over the band showed two matching top edges for the length of the transition
+		 * and looked like a second copy of the same thing arriving. Nothing was duplicated — sampling the
+		 * DOM every 40ms through the open found exactly one content node and one overlay — the two
+		 * surfaces were simply indistinguishable.
+		 *
+		 * The shadow is the same `--shadow` the band itself casts, so the pair reads as one surface
+		 * lifting off another rather than two competing panels. The band also fades under it; see
+		 * `.dock.covered` in +layout.svelte.
+		 */
+		box-shadow: var(--shadow);
+		/*
 		 * THE DRAWER COVERS THE BAND, deliberately — and this reserved space for it underneath until a
 		 * captured frame showed the truth: the drawer's content is portalled to the end of the body at a
 		 * higher stacking level, so it was never going to open ABOVE the band, and `--dock-h` of padding
