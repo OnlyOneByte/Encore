@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol, cast
 
-from .timing import ML_LOCK
+from ..mlrt import ML_LOCK
 
 DEFAULT_MODEL = "base"
 

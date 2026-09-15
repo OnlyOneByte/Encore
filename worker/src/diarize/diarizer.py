@@ -23,7 +23,7 @@ from __future__ import annotations
 import os
 from typing import Any, Protocol
 
-from ..lyrics.timing import ML_LOCK
+from ..mlrt import ML_LOCK
 
 #: The pyannote pipeline id. Gated on Hugging Face, so it only loads on a box whose operator accepted
 #: the model terms and set a token — probed for below, and absent by default (this box has nowhere for

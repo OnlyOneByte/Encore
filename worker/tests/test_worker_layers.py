@@ -241,7 +241,19 @@ def test_imports_normalises_the_src_prefixed_form_to_the_relative_one(tmp_path: 
 
 # ── E7: the layering rule ────────────────────────────────────────────────────────
 
-DOMAINS = ["lyrics", "separation", "analysis", "acquisition", "metadata"]
+#: The domain packages, DERIVED from disk rather than listed. The hardcoded list omitted `diarize` — the
+#: newest domain — so the layering assertions below never ran against it, and nothing said so. That is the
+#: same failure this whole pass is about: a list that must track reality, and did not. Deriving it means
+#: domain number seven is guarded the day it appears. `test_worker_packages.py` separately asserts the set
+#: on disk equals the set it declares, so a package cannot appear here without a decision either.
+DOMAINS = sorted(
+    p.name
+    for p in SRC.iterdir()
+    if p.is_dir()
+    and (p / "__init__.py").exists()
+    and p.name not in {"runtime", "steps", "host"}
+    and not p.name.startswith(("_", "."))
+)
 
 
 @pytest.mark.parametrize("domain", DOMAINS)
@@ -254,6 +266,30 @@ def test_a_domain_never_imports_the_runtime_or_a_step(domain: str):
     for path in _py_files(domain):
         bad = sorted(n for n in _imports(path) if n.startswith(("runtime", "steps", "plans", "dial_home")))
         assert not bad, f"{path.relative_to(SRC)} imports {bad} — a domain must not depend on the runtime"
+
+
+def test_no_domain_imports_another_domain():
+    """The six domains are siblings, not a hierarchy, and nothing shared may live inside one of them.
+
+    Until `ML_LOCK` moved out of `lyrics/timing.py` there was exactly one violation: `diarize/diarizer.py`
+    imported `..lyrics.timing` for a process-wide lock that whisperx alignment, whisper ASR and pyannote
+    diarization all take. A lock two domains need is a property of the process, not a lyrics concern the
+    diarizer borrows — it lives in `src/mlrt.py` now.
+
+    No guard forbade that import, which is why it survived: the existing rules police domain-vs-runtime and
+    domain-vs-steps, and say nothing about sideways. One domain reaching into another is how a shared
+    concern ends up owned by whichever feature needed it first.
+    """
+    offenders: list[str] = []
+    for domain in DOMAINS:
+        for path in _py_files(domain):
+            for name in _imports(path):
+                top = name.split(".")[0]
+                if top in set(DOMAINS) - {domain}:
+                    offenders.append(f"{path.relative_to(SRC)} imports {name}")
+    assert not offenders, "a domain imports another domain; move the shared thing out of both: " + "; ".join(
+        offenders
+    )
 
 
 def test_the_runtime_never_imports_a_domain_or_a_step():
