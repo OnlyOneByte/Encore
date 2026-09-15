@@ -43,16 +43,8 @@
 		// registry owns the shape and there is no parallel find to drift. (liveModels stays a plain
 		// .find — it is a runtime worker list, not a registry.)
 		getAsrModel,
-		getTvProgressStyle,
-		getTvBackgroundStyle,
-		getTvVisualizer,
 		getEngine,
-		getFetcher,
-		getSyncMode,
-		getLyricsBallStyle,
 		getLyricsHighlight,
-		getLyricsFont,
-		getLyricsCase,
 		SYNC_MODES,
 		LYRICS_BALL_STYLES,
 		LYRICS_HIGHLIGHTS,
@@ -72,7 +64,6 @@
 		MIN_PRESENCE_GRACE_MINUTES,
 		MAX_PRESENCE_GRACE_MINUTES,
 		QUEUE_ORDERS,
-		getQueueOrder,
 		FETCHERS,
 		type PublicSinger,
 		type QueueOrderId,
@@ -159,7 +150,6 @@
 
 	// The chosen algorithm's own note, so the consequence is stated by the registry rather than
 	// duplicated here — the same reason the TV-progress and lyrics pickers read theirs.
-	const queueOrderNote = $derived(getQueueOrder(settings.room.queueOrder)?.note ?? '');
 
 	let advancedOpen = $state(false);
 	let failed = $state(false);
@@ -174,7 +164,6 @@
 	let liveModels = $derived(engineOf(settings.global.defaultEngine)?.models ?? []);
 	let upgradeModels = $derived(engineOf(settings.global.upgradeEngine)?.models ?? []);
 
-	let liveNote = $derived(liveModels.find((m) => m.id === settings.global.defaultModel)?.note ?? '');
 
 	// A slow engine on the LIVE path is the footgun worth naming in the UI: RoFormer measured ~44min
 	// per song on CPU versus ~50s for htdemucs. Someone should learn that here, not at a party.
@@ -213,27 +202,21 @@
 	// media's already-present bytes, not a default a room could pick (see fetchers.ts / the schema
 	// comment). Sourced note, same as the splitter and reader pickers.
 	const defaultFetchers = FETCHERS.filter((f) => f.id !== 'local');
-	let fetcherNote = $derived(getFetcher(settings.global.defaultFetcher)?.note ?? '');
 
 	// ── lyrics ───────────────────────────────────────────────────────────────
 	// The two knobs on the words rather than the audio. Same shape as the splitter pair above: the
 	// note comes from the registry so a model cannot appear here without its tradeoff stated.
-	let asrNote = $derived(getAsrModel(settings.global.asrModel)?.note ?? '');
-	let syncNote = $derived(getSyncMode(settings.global.syncMode)?.note ?? '');
 
 	// The same footgun as a slow splitter, and worth naming in the same place: a bigger reader is the
 	// one lever on wrong words, and it is also the one that turns a two-minute process into a long wait on
 	// a CPU box. Nobody should discover that at a party.
 	let asrSlow = $derived(['slow', 'slowest'].includes(getAsrModel(settings.global.asrModel)?.speed ?? ''));
 
-	let tvProgressNote = $derived(getTvProgressStyle(settings.room.tvProgressStyle)?.note ?? '');
 
-	let tvBackgroundNote = $derived(getTvBackgroundStyle(settings.room.tvBackgroundStyle)?.note ?? '');
 	// The swatch and the input both show the room's stored colour directly. there is no
 	// generator between the choice and the render — the phone cannot promise a colour the TV then
 	// renders differently, because they are the same string.
 	let tvBackgroundPreview = $derived(settings.room.tvBackgroundColor);
-	let tvVisualizerNote = $derived(getTvVisualizer(settings.room.tvVisualizer)?.note ?? '');
 	/*
 	 * The stage picker no longer needs a painted track. It was a hue slider whose gradient had to be
 	 * generated from stageHueToHex — "what you drag through is what you can get" — precisely because a
@@ -249,8 +232,6 @@
 			qualityRank(settings.global.defaultEngine, settings.global.defaultModel)
 	);
 
-	let ballNote = $derived(getLyricsBallStyle(settings.room.lyricsBall)?.note ?? '');
-	let highlightNote = $derived(getLyricsHighlight(settings.room.lyricsHighlight)?.note ?? '');
 	// Ask the SAME resolver the TV uses, rather than re-testing syncMode here. If the two ever
 	// disagreed, this page would be confidently wrong about what is on screen.
 	let resolved = $derived(resolveLyricsPresentation(settings));
@@ -258,8 +239,6 @@
 	let resolvedHighlight = $derived(getLyricsHighlight(resolved.highlight)?.label.toLowerCase() ?? resolved.highlight);
 	let resolvedBall = $derived(resolved.ball !== 'off');
 
-	let fontNote = $derived(getLyricsFont(settings.room.lyricsFont)?.note ?? '');
-	let caseNote = $derived(getLyricsCase(settings.room.lyricsCase)?.note ?? '');
 
 	/**
 	 * Apply a patch optimistically, then reconcile on the authoritative response — the same shape the
@@ -495,10 +474,10 @@
 				<div class="panel">
 					<Card.Root>
 						<Card.Header>
-							<Card.Title>Who you are</Card.Title>
+							<Card.Title>You</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<Field.Label for="profile-name">Your name</Field.Label>
+							<Field.Label for="profile-name">Name</Field.Label>
 							<Input
 								id="profile-name"
 								variant="comfortable"
@@ -509,7 +488,7 @@
 								bind:value={name}
 							/>
 
-							<ColourPicker bind:value={colour} hint="How you'll spot yourself in the queue and on the TV." />
+							<ColourPicker bind:value={colour} />
 
 							{#if profileError}<p class="warn" role="alert">{profileError}</p>{/if}
 
@@ -576,7 +555,7 @@
 									</AlertDialog.Footer>
 								</AlertDialog.Content>
 							</AlertDialog.Root>
-							<Field.Description>Your queued songs go with you.</Field.Description>
+							
 						</Card.Content>
 					</Card.Root>
 
@@ -607,10 +586,10 @@
 									<option value={o.id}>{o.label}</option>
 								{/each}
 							</NativeSelect>
-							{#if queueOrderNote}<Field.Description>{queueOrderNote}</Field.Description>{/if}
+							
 
 							<Field.Label for="presence-grace">
-								Keep people in the room for · {graceLabel}
+								Kick out after · {graceLabel}
 							</Field.Label>
 							<Slider
 								id="presence-grace"
@@ -622,9 +601,7 @@
 								onValueChange={(v) => liveRoom('presenceGraceMinutes', v)}
 								onValueCommit={(v) => onroom({ presenceGraceMinutes: v })}
 							/>
-							<Field.Description
-								>A locked phone is not someone leaving, so they stay on the roster this long.</Field.Description
-							>
+							
 						</Card.Content>
 					</Card.Root>
 
@@ -633,7 +610,7 @@
 							<Card.Title>Process quality</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<Field.Label for="quality-ceiling">Cap this room at</Field.Label>
+							<Field.Label for="quality-ceiling">Quality ceiling</Field.Label>
 							<!--
 						A ceiling, offered as real engine+model pairings valued by their rank, not a raw
 						integer. The value is the `qualityRank`; the empty option is `null` = no cap. The
@@ -657,15 +634,9 @@
 						Downward-only, and this is where a party learns it: the server's default is already
 						bounded by what the worker fleet can run, so a room can only ask for the same or less.
 					-->
-							<Field.Description>
-								Only ever lowers process quality below the server's default, to keep a busy queue moving. It cannot
-								raise it.
-							</Field.Description>
+							
 							{#if capAboveDefault}
-								<p class="warn">
-									This cap is at or above the server's current default, so it changes nothing. Pick a lower one to
-									actually cap this room.
-								</p>
+								<p class="warn">At or above the server default, so it changes nothing.</p>
 							{/if}
 						</Card.Content>
 					</Card.Root>
@@ -701,8 +672,7 @@
 									</NativeSelect>
 								</div>
 							</div>
-							{#if tvBackgroundNote}<Field.Description>{tvBackgroundNote}</Field.Description>{/if}
-							{#if tvProgressNote}<Field.Description>{tvProgressNote}</Field.Description>{/if}
+
 
 							<!--
 						Gated, not disabled: a visualizer picker means nothing for a black stage, and a control
@@ -719,7 +689,7 @@
 										<option value={v.id}>{v.label}</option>
 									{/each}
 								</NativeSelect>
-								{#if tvVisualizerNote}<Field.Description>{tvVisualizerNote}</Field.Description>{/if}
+								
 							{/if}
 
 							<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
@@ -745,7 +715,7 @@
 								/>
 
 								<Field.Label for="tv-background-dim">
-									Dim · {Math.round(settings.room.tvBackgroundDim * 100)}%
+									Darken the stage · {Math.round(settings.room.tvBackgroundDim * 100)}%
 								</Field.Label>
 								<!--
 							Dims the stage colour toward black (an earlier change, owner ruling Q2 = A) — a lightness control, not
@@ -764,9 +734,7 @@
 									onValueChange={(v) => liveRoom('tvBackgroundDim', v / 100)}
 									onValueCommit={(v) => onroom({ tvBackgroundDim: v / 100 })}
 								/>
-								<Field.Description
-									>How far the stage colour is darkened toward black. 0% is the colour itself.</Field.Description
-								>
+								
 							{/if}
 
 							<label class="check" for="song-intro-on">
@@ -777,10 +745,10 @@
 								/>
 								Song intro before each turn
 							</label>
-							<Field.Description>A card naming the song, artist and singer.</Field.Description>
+							
 
 							<Field.Label data-dim={!settings.room.songIntroEnabled || undefined} for="song-intro-ms">
-								Intro holds for · {(settings.room.songIntroMs / 1000).toFixed(1)}s
+								Song intro duration · {(settings.room.songIntroMs / 1000).toFixed(1)}s
 							</Field.Label>
 							<!--
 					  The range MUST match the server clamp exactly (MIN/MAX_SONG_INTRO_MS). A slider narrower
@@ -831,8 +799,7 @@
 									</NativeSelect>
 								</div>
 							</div>
-							{#if highlightNote}<Field.Description>{highlightNote}</Field.Description>{/if}
-							{#if ballNote}<Field.Description>{ballNote}</Field.Description>{/if}
+
 
 							<!--
 						Say when a choice is not being honoured. The server's sync mode decides whether per-word
@@ -841,8 +808,9 @@
 					-->
 							{#if lyricsClamped}
 								<p class="warn">
-									Showing <strong>{resolvedHighlight}</strong>{resolvedBall ? '' : ' with no marker'}: the server's
-									<em>Lyrics timing</em> is set to line-only, so there are no word timings.
+									No word timings on this server, so it shows <strong>{resolvedHighlight}</strong>{resolvedBall
+										? ''
+										: ' with no marker'}.
 								</p>
 							{/if}
 
@@ -872,10 +840,9 @@
 									</NativeSelect>
 								</div>
 							</div>
-							{#if fontNote}<Field.Description>{fontNote}</Field.Description>{/if}
-							{#if caseNote}<Field.Description>{caseNote}</Field.Description>{/if}
 
-							<Field.Label for="lyrics-scale">Text size · {settings.room.lyricsScalePct}%</Field.Label>
+
+							<Field.Label for="lyrics-scale">Lyric size · {settings.room.lyricsScalePct}% of the TV's default</Field.Label>
 							<Slider
 								id="lyrics-scale"
 								type="single"
@@ -890,7 +857,7 @@
 						Says PERCENT OF, not a size, because that is what it is: the TV already picks a size from
 						its own height and this scales it. "48px" would mean nothing on a different screen.
 					-->
-							<Field.Description>Relative to the size the TV picks for its own screen.</Field.Description>
+							
 
 							<Field.Label for="lyrics-lead">
 								Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
@@ -908,7 +875,7 @@
 
 							<div class="pair">
 								<div class="cell">
-									<Field.Label for="lyrics-before">Lines sung · {settings.room.lyricsLinesBefore}</Field.Label>
+									<Field.Label for="lyrics-before">Lines behind · {settings.room.lyricsLinesBefore}</Field.Label>
 									<Slider
 										id="lyrics-before"
 										type="single"
@@ -955,10 +922,7 @@
 								onValueChange={(v) => liveRoom('guideLevelDefault', v / 100)}
 								onValueCommit={(v) => onroom({ guideLevelDefault: v / 100 })}
 							/>
-							<Field.Description>Starting vocal level. Singers can change it per song.</Field.Description>
-							{#if settings.room.guideLevelDefault > 0}
-								<Field.Description>Only songs processed with their vocals kept can offer a guide.</Field.Description>
-							{/if}
+
 
 							<label class="check" for="loudness-norm">
 								<Switch
@@ -966,12 +930,9 @@
 									checked={settings.room.loudnessNormalization}
 									onCheckedChange={(v) => onroom({ loudnessNormalization: v })}
 								/>
-								Even out loud songs
+								Match song loudness
 							</label>
-							<Field.Description>
-								Turns down the few songs that are much louder than the rest, so you stop reaching for the volume. Quiet
-								songs are left alone.
-							</Field.Description>
+							
 						</Card.Content>
 					</Card.Root>
 
@@ -991,7 +952,7 @@
 				<!-- ── SERVER ─────────────────────────────────────────────────────── -->
 				<div class="panel">
 					<!-- layout only — see the YOU panel for why no tabpanel role here -->
-					<p class="scope-note">Affects every room on this server.</p>
+					
 
 					<Card.Root>
 						<Card.Header>
@@ -1020,12 +981,12 @@
 									<option value={model.id}>{model.label}</option>
 								{/each}
 							</NativeSelect>
-							{#if liveNote}<Field.Description>{liveNote}</Field.Description>{/if}
+							
 							{#if liveSlow}
-								<p class="warn">Slow on CPU — around 45 minutes per song. Better suited to upgrades.</p>
+								<p class="warn">~45 minutes per song on CPU.</p>
 							{/if}
 
-							<Field.Label for="fetcher">Where audio comes from</Field.Label>
+							<Field.Label for="fetcher">Audio source</Field.Label>
 							<NativeSelect
 								id="fetcher"
 								value={settings.global.defaultFetcher}
@@ -1035,15 +996,13 @@
 									<option value={f.id}>{f.label}</option>
 								{/each}
 							</NativeSelect>
-							{#if fetcherNote}<Field.Description>{fetcherNote}</Field.Description>{/if}
+							
 							<!--
 						Explicit blast radius, matched to the splitter warning above it: this is the acquirer
 						EVERY new process downloads its source through, and a worker that cannot run it fails the
 						fetch before any separation starts.
 					-->
-							<p class="warn">
-								Changes where every new process gets its audio. A worker that cannot run it will fail the download.
-							</p>
+							
 						</Card.Content>
 					</Card.Root>
 
@@ -1059,7 +1018,7 @@
 						The room's pairs were checked at the same width and fit. A truncated option is worse
 						than a longer page, and this is the tab you visit once.
 					-->
-							<Field.Label for="asr-model">Reader</Field.Label>
+							<Field.Label for="asr-model">Lyrics reader</Field.Label>
 							<NativeSelect
 								id="asr-model"
 								value={settings.global.asrModel}
@@ -1069,12 +1028,12 @@
 									<option value={model.id}>{model.label} · {model.params}</option>
 								{/each}
 							</NativeSelect>
-							{#if asrNote}<Field.Description>{asrNote}</Field.Description>{/if}
+							
 							{#if asrSlow}
-								<p class="warn">A big reader needs real memory and adds minutes to every process on a CPU box.</p>
+								<p class="warn">Needs real memory, and minutes more per song on CPU.</p>
 							{/if}
 
-							<Field.Label for="sync-mode">Timing</Field.Label>
+							<Field.Label for="sync-mode">Lyric timing</Field.Label>
 							<NativeSelect
 								id="sync-mode"
 								value={settings.global.syncMode}
@@ -1084,7 +1043,7 @@
 									<option value={mode.id}>{mode.label}</option>
 								{/each}
 							</NativeSelect>
-							{#if syncNote}<Field.Description>{syncNote}</Field.Description>{/if}
+							
 						</Card.Content>
 					</Card.Root>
 
@@ -1093,7 +1052,7 @@
 							<Card.Title>Joining</Card.Title>
 						</Card.Header>
 						<Card.Content>
-							<Field.Label for="join-origin">Address phones join at</Field.Label>
+							<Field.Label for="join-origin">Join address</Field.Label>
 							<Input
 								id="join-origin"
 								variant="mono"
@@ -1107,12 +1066,10 @@
 								bind:value={joinDraft}
 								onchange={commitJoinOrigin}
 							/>
-							<Field.Description id="join-origin-hint">
-								What the TV's QR code points at. Empty means <strong>{data.joinOriginFallback}</strong>.
-							</Field.Description>
+							<Field.Description id="join-origin-hint">Empty means <strong>{data.joinOriginFallback}</strong>.</Field.Description>
 							{#if joinError}<p class="warn" role="alert">{joinError}</p>{/if}
 							{#if joinSchemeMismatch}
-								<p class="warn">This party runs over plain http, so phones cannot open an https address.</p>
+								<p class="warn">This party runs over plain http — phones cannot open an https address.</p>
 							{/if}
 						</Card.Content>
 					</Card.Root>
@@ -1146,9 +1103,9 @@
 													checked={settings.global.enqueueUpgrade}
 													onCheckedChange={(v) => onglobal({ enqueueUpgrade: v })}
 												/>
-												Re-process at higher quality after each song
+												Re-process at higher quality, from the saved audio
 											</label>
-											<Field.Description>Runs from the audio already saved — no re-download.</Field.Description>
+											
 
 											<!-- Stacked: these default to the roformer names, the longest labels in any registry. -->
 											<Field.Label for="upgrade-engine">Upgrade splitter</Field.Label>
@@ -1174,7 +1131,7 @@
 											</NativeSelect>
 
 											{#if settings.global.enqueueUpgrade && !upgradeIsBetter}
-												<p class="warn">This is not better than the splitter above, so no upgrade will run.</p>
+												<p class="warn">Not better than the splitter above, so nothing will re-process.</p>
 											{/if}
 										</Card.Content>
 									{/snippet}
@@ -1257,12 +1214,6 @@
 	 * and a normal-weight title where Encore's was small uppercase tracking. What it buys is the
 	 * Header/Title/Content structure this page was already hand-rolling eleven times.
 	 */
-	/* Only the server scope needs saying out loud; "You" and "Party" say it in the tab. */
-	.scope-note {
-		margin: 0 0 var(--space-md) var(--space-3xs);
-		font-size: var(--ph-text-sm);
-		color: var(--ink-dim);
-	}
 	/* A failed write is about the page, not one card, so it sits above them all. */
 	/* `.banner` is GONE: the save-failure line is `Alert variant="destructive"`, which owns its own
 	   block spacing. Deleted rather than kept, because an unused selector is a typecheck failure here. */
