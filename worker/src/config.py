@@ -218,6 +218,9 @@ class WorkerConfig:
     demucs_segment: int | None = None
     #: None => demucs' default. Higher averages more predictions: better and proportionally slower.
     demucs_shifts: int | None = None
+    #: demucs-mlx's batch size (`-b`). None => let demucs-mlx choose. MLX-only; see
+    #: `separation.tuning.SeparationTuning.mlx_batch_size` for why there is no default yet.
+    mlx_batch_size: int | None = None
     #: Where the separator CLIs cache their auto-downloaded checkpoints. None => each tool's own default.
     #: See `separation.tuning.SeparationTuning.models_dir` for why one setting covers two CLI flags.
     models_dir: str | None = None
@@ -348,6 +351,9 @@ class WorkerConfig:
             # operator never asked for it, and the media volume has its own eviction cap
             # (ENCORE_MEDIA_MAX_GB) that knows nothing about model weights.
             models_dir=(e.get("ENCORE_MODELS_DIR", "").strip() or None),
+            # `_opt_int` already does the right thing with junk and with a sub-minimum value: warn, then
+            # behave as unset. A batch size below 1 is meaningless, so `minimum=1` is the real bound.
+            mlx_batch_size=_opt_int(e, "ENCORE_MLX_BATCH_SIZE", w, minimum=1),
             whisperx_device=(e.get("ENCORE_WHISPERX_DEVICE", "").strip() or None),
             asr_model=_str(e, "ENCORE_ASR_MODEL", "base"),
             sync_mode=_str(e, "ENCORE_SYNC_MODE", "forced").lower(),
@@ -492,6 +498,7 @@ def separation_tuning(
         shifts=cfg.demucs_shifts,
         stem_format=cfg.stem_format,
         models_dir=cfg.models_dir,
+        mlx_batch_size=cfg.mlx_batch_size,
     )
 
 

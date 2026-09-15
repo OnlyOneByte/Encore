@@ -11,10 +11,10 @@ reachable from nowhere.
 The two checkpoint-cache flags are now wired, through `models_dir` below, and that is the payoff this type
 was supposed to buy: one field here, one line in `config.separation_tuning`, and both CLIs receive it.
 
-`batch_size` (demucs-mlx's `-b`) is STILL unreachable, deliberately for now. `MlxDemucsEngine` accepts it
-but `engine_for`'s mlx allowlist does not carry it, and it is a memory-versus-throughput knob with no
-measurement behind any default this repo could responsibly pick — the demucs family already exposes
-`jobs` and `segment` for that trade-off. Wiring it wants a benchmark first, not another field.
+All three are now reachable. `batch_size` arrives as `mlx_batch_size` — named for its engine, because
+demucs-mlx is the only CLI of the four with such a flag — and it is exposed with NO DEFAULT on purpose.
+Reachable and unset are different things: the operator can now measure and choose, where before the flag
+could not be supplied at all. Why no default, and the benchmark that would justify one, is on the field.
 
 One frozen value collapses that to a single edit, and makes the set of tuning knobs something you can
 read in one place rather than reconstruct from four.
@@ -65,6 +65,22 @@ class SeparationTuning:
     shifts: int | None = None
     #: Container for the RAW scratch stems. See `vocabulary.StemFormat`.
     stem_format: StemFormat = StemFormat.FLAC
+    #: demucs-mlx's `-b/--batch-size`. MLX-ONLY, and unset by default on purpose.
+    #:
+    #: Named for its engine because it reaches exactly one: the flag exists only on demucs-mlx, so a bare
+    #: `batch_size` here would read as a knob the torch, roformer and audiosep engines also honour. They
+    #: do not, and `engine_for`'s allowlist drops it for them.
+    #:
+    #: NO DEFAULT, pending a measurement. This repo's only batching data is SUMMARY.md §2 — BS-RoFormer on
+    #: the 32-core Graviton box, batch 1 vs 4, 253s vs 247s, recorded as "batching is worthless (1.02x —
+    #: 32 cores already saturate at batch 1)". That reasoning is exactly why it does not settle the MLX
+    #: case: batching pays off when the device is UNDER-utilised at batch 1, which a saturated 32-core CPU
+    #: is not and a Metal GPU waiting on per-call launch overhead may well be. Nothing on Apple Silicon has
+    #: ever been measured here (SUMMARY.md's box table still says so), and the risk of guessing is
+    #: asymmetric: batching trades memory for throughput, so a value that helps a 32 GB box can OOM a
+    #: 16 GB one mid-song, which the room sees as a failed song. `docs/benchmarks/scripts/mlx_batch_bench.sh`
+    #: produces the number; until it has been run, unset means demucs-mlx's own default applies.
+    mlx_batch_size: int | None = None
     #: Where the big model checkpoints live, shared across processes on this box.
     #:
     #: The roformer and audio-separator CLIs each auto-download their checkpoint on FIRST USE — roughly
@@ -102,4 +118,6 @@ class SeparationTuning:
             # each CLI receives only the flag it actually understands.
             "model_file_dir": self.models_dir,
             "models_dir": self.models_dir,
+            # Spelled as demucs-mlx's own constructor parameter; every other engine's allowlist drops it.
+            "batch_size": self.mlx_batch_size,
         }

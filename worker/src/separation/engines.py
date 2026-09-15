@@ -460,7 +460,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
             # Wired, not silent: an mlx-resolved process builds the MLX engine, which runs demucs-mlx and
             # derives the instrumental. This is what makes facts.backend honest — a torch
             # DemucsEngine can never be built under an "mlx" label.
-            allowed = {"overlap", "segment", "shifts"}
+            allowed = {"overlap", "segment", "shifts", "batch_size"}
             kw = {k: v for k, v in given.items() if k in allowed}
             if "demucs_model" in given:
                 kw["default_model"] = given["demucs_model"]

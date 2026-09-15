@@ -242,7 +242,15 @@ or you want to deliberately limit a box:
   container. Point it at a persistent directory and it happens once per box. One setting covers both tools
   even though they spell the flag differently (`--models_dir` vs `--model_file_dir`); deliberately **not**
   defaulted under `MEDIA_DIR`, because model weights are not media and the `ENCORE_MEDIA_MAX_GB` eviction
-  cap knows nothing about them)
+  cap knows nothing about them), `ENCORE_MLX_BATCH_SIZE` (unset; demucs-mlx's `-b`, and **MLX-only** — the
+  other three separator CLIs have no such flag and never receive it. Left unset **on purpose**: batching
+  trades memory for throughput, and the only measurement this repo has is on a 32-core CPU box where it was
+  worthless because those cores already saturate at batch 1 — reasoning that says nothing about a Metal
+  GPU. Nothing on Apple Silicon has been measured yet, and a value that speeds up a 32 GB Mac can OOM a
+  16 GB one mid-song, which reads as a failed song. Run
+  [`docs/benchmarks/scripts/mlx_batch_bench.sh`](docs/benchmarks/scripts/mlx_batch_bench.sh) before setting
+  it; the open question and the results table are
+  [`docs/benchmarks/SUMMARY.md`](docs/benchmarks/SUMMARY.md) §7)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only
   fallbacks for a job carrying neither, `ENCORE_LRCLIB_BASE` (point at a mirror when lrclib.net is
   blocked), `ENCORE_ANNOTATE` (`1`; set `0` on a box with no outbound network), `ENCORE_KEEP_RAW_CAPTIONS` (`0`; set `1` to retain the raw `.vtt`/`.srt` caption track in `derived/captions/` for post-process diagnosis — counted and evicted by the `ENCORE_MEDIA_MAX_GB` cap)
