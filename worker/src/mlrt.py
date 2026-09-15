@@ -1,11 +1,12 @@
 """The ML runtime's one process-wide lock.
 
 WHY IT IS NOT IN A DOMAIN. `ML_LOCK` serialises loading and running the heavy models: whisperx forced
-alignment (`lyrics/timing.py`), whisper ASR (`lyrics/asr.py`), and pyannote diarization
+alignment (`lyrics/aligner.py`), whisper ASR (`lyrics/asr.py`), and pyannote diarization
 (`diarize/diarizer.py`). Three users, two domains.
 
-It used to live in `lyrics/timing.py` because alignment was the first thing that needed it, which made
-`diarize/diarizer.py` import `..lyrics.timing` — the ONLY domain-to-domain import in the whole worker, and
+It used to live in `lyrics/aligner.py` because alignment was the first thing that needed it, which made
+`diarize/diarizer.py` import `..lyrics.timing` (that file is `lyrics/aligner.py` now) — the ONLY
+domain-to-domain import in the whole worker, and
 one no guard forbade. A lock shared by two domains is not a lyrics concern that diarize borrows; it is a
 property of the process. So it lives at the root, where anything may read it and nothing owns it.
 

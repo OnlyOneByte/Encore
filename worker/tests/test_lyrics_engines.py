@@ -183,13 +183,13 @@ def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, 
     import threading
     import time
 
+    import src.lyrics.aligner as aligner_mod
     import src.lyrics.asr as asr_mod
-    import src.lyrics.timing as timing_mod
     from src.lyrics import aligner_for, transcriber_for
 
     if factory == "aligner":
-        cls = timing_mod.WhisperxForcedAligner
-        cache = timing_mod._ALIGNERS
+        cls = aligner_mod.WhisperxForcedAligner
+        cache = aligner_mod._ALIGNERS
         call = lambda: aligner_for("cpu")  # noqa: E731
     else:
         cls = asr_mod.WhisperxTranscriber

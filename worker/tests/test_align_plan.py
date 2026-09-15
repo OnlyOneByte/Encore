@@ -642,7 +642,7 @@ async def test_untimed_text_with_a_broken_aligner_is_DROPPED_not_shipped_unsynce
 async def test_aligner_that_PLACES_NO_WORD_degrades_via_the_FAILURE_path_not_validate(tmp_path):
     """the real aligner's second failure shape, which no double in this file models. Every
     aligner double here signals failure by RAISING; whisperx does not — its own docstring at
-    lyrics/timing.py:31 names a raise as THE failure signal, while normalize_lyrics' docstring at
+    lyrics/aligner.py:31 names a raise as THE failure signal, while normalize_lyrics' docstring at
     artifact.py:47 says whisperx "leaves some tokens un-timed". When every token is un-timed the
     aligner has returned cleanly yet placed no word, so `is_valid_lyrics(doc)` is False.
 
@@ -986,8 +986,8 @@ def test_concurrent_ML_calls_are_serialized_on_the_shared_model(monkeypatch, tmp
     tree where the call sites reference the undefined `_ML_LOCK`."""
     import threading
 
+    from src.lyrics.aligner import ML_LOCK, WhisperxForcedAligner
     from src.lyrics.asr import WhisperxTranscriber
-    from src.lyrics.timing import ML_LOCK, WhisperxForcedAligner
 
     # Fail FAST on a non-reentrant lock before the threaded drive: this test also runs the real
     # transcribe()->_load() / align()->_model() nested acquisition, so a plain Lock would DEADLOCK
@@ -1040,8 +1040,8 @@ def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader(monke
     calls _model(), which takes it again. A plain Lock would deadlock the worker on the first real
     call. Drives the production methods so it exercises the real nested acquisition, and raises
     NameError on the pre-fix tree."""
+    from src.lyrics.aligner import ML_LOCK, WhisperxForcedAligner
     from src.lyrics.asr import WhisperxTranscriber
-    from src.lyrics.timing import ML_LOCK, WhisperxForcedAligner
 
     _stub_whisperx(monkeypatch)
     audio = str(tmp_path / "vocals.wav")

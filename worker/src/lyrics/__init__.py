@@ -25,6 +25,7 @@ concerns and splits into `model` / `grade` / `sources/*` in a later stage. This 
 from __future__ import annotations
 
 from ..mlrt import ML_LOCK
+from .aligner import Aligner, WhisperxForcedAligner, aligner_for
 from .artifact import candidate_key, is_valid_lyrics, lrclib_to_segments, normalize_lyrics
 from .asr import DEFAULT_MODEL, Transcriber, WhisperxTranscriber, transcriber_for
 from .captions import caption_argv, is_translated_track, parse_vtt, read_captions
@@ -79,7 +80,6 @@ from .lrclib import (
 )
 from .presplit import klp_probe_line, klp_status, presplit_texts
 from .registry import SPECS, SourceSpec, build_sources, unmet
-from .timing import Aligner, WhisperxForcedAligner, aligner_for
 from .validate import (
     LrcFit,
     fit_lrc_to_aligned,

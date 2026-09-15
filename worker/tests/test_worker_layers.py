@@ -271,8 +271,9 @@ def test_a_domain_never_imports_the_runtime_or_a_step(domain: str):
 def test_no_domain_imports_another_domain():
     """The six domains are siblings, not a hierarchy, and nothing shared may live inside one of them.
 
-    Until `ML_LOCK` moved out of `lyrics/timing.py` there was exactly one violation: `diarize/diarizer.py`
-    imported `..lyrics.timing` for a process-wide lock that whisperx alignment, whisper ASR and pyannote
+    Until `ML_LOCK` moved out of `lyrics/aligner.py` there was exactly one violation: `diarize/diarizer.py`
+    imported `..lyrics.timing` (now `lyrics/aligner.py`) for a process-wide lock that whisperx
+    alignment, whisper ASR and pyannote
     diarization all take. A lock two domains need is a property of the process, not a lyrics concern the
     diarizer borrows — it lives in `src/mlrt.py` now.
 
