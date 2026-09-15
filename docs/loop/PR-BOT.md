@@ -163,7 +163,7 @@ worktree** (`../encore-rev-<n>`, checked out at this PR's head, `bun install` al
 the main checkout and never in another reviewer's tree:
 
 ```bash
-bun test · cd worker && python3 -m pytest -q · bun run typecheck · bun run lint · bun run build
+bun run test · cd worker && python3 -m pytest -q · bun run typecheck · bun run lint · bun run build
 ```
 
 That list is not prose any more: `bun run gates` runs exactly these legs in exactly this order,

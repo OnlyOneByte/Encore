@@ -1222,7 +1222,20 @@
 		   Kept in sync with --page-measure above so the header aligns with this column. */
 		max-width: 560px;
 		margin: 0 auto;
-		padding: var(--space-md) var(--space-3xl) calc(28px + env(safe-area-inset-bottom, 0px));
+		/*
+		 * RESERVES THE BAND (XR-PH-12), and drops the env() term it used to carry itself.
+		 *
+		 * Both halves are consequences of the band becoming app chrome: the layout mounts it on every
+		 * phone surface, so this column now has fixed chrome at its bottom edge where it previously had
+		 * none, and `gate:measured` caught the result — a 44px control here read a 0px hit extent,
+		 * "blocked by button.handle", because the page's own last controls were scrolled underneath it
+		 * with nothing reserving the space.
+		 *
+		 * The env() goes because the BAND carries the only home-indicator inset now, and that inset
+		 * reaches everything above it through --dock-h. Keeping one here as well is the doubled gap the
+		 * band contract exists to prevent — one env(), on the one element that sits at the bottom edge.
+		 */
+		padding: var(--space-md) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 
 	/* ── the scope tabs ─────────────────────────────────────────────────── */

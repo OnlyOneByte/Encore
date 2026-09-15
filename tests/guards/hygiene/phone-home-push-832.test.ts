@@ -41,10 +41,12 @@ function previousCodeLine(lines: string[], idx: number): string {
 }
 
 test('the contract names the way to the docked search box, and homeReady resolves', () => {
-	// The search box is now docked on home unconditionally, so `homeReady` (the docked band) is
-	// both the post-join readiness signal AND the band the box lives in — there is nothing to click.
-	// `contract.test.ts` proves it resolves to real source; this proves it exists at all.
-	expect(SEL.homeReady).toBe('.search-dock');
+	// REVERSED: the search box is no longer on home at all — it is the `/find` route, reached by tapping
+	// the band's magnifier. So `homeReady` is now the BAND, which is a better readiness signal than the
+	// box ever was: the layout mounts it on every phone surface, so it says "the joined app has painted"
+	// rather than "this one route rendered". There IS something to click again, and the shared helper
+	// clicks it. `contract.test.ts` proves the selector resolves to real source; this proves it exists.
+	expect(SEL.homeReady).toBe('.band');
 	const ids = HOOKS.map((h) => h.id);
 	expect(ids).toContain('homeReady');
 	// `openBrowse` was RETIRED with the `+ Add a turn` button — it must not linger in SEL or HOOKS.

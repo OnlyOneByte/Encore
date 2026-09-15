@@ -63,7 +63,7 @@ import { repoRoot } from '../lib/repo-root.mjs';
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
- * @typedef {{ tag: string, type: string | null, cls: string, near: string, boxH: number, hitH: number, occluded: number, fontSize: number }} Reading
+ * @typedef {{ tag: string, type: string | null, cls: string, near: string, offscreen: boolean, blockedBy: string | null, boxH: number, hitH: number, occluded: number, fontSize: number }} Reading
  */
 
 const CORE = repoRoot;
@@ -132,15 +132,50 @@ function sweepExpr(scope) {
 			// Without this, the sweep saw only the 18px glyph and read a 44px label as an 18px false floor.
 			const type = (el.getAttribute('type') || '').toLowerCase();
 			const glyph = el.tagName === 'INPUT' && (type === 'checkbox' || type === 'radio');
-			const target = glyph ? (el.closest(${JSON.stringify(LABEL_SELECTOR)}) || el) : el;
+			// A SWITCH IS THE SAME DELEGATION WEARING NEW MARKUP. The shadcn migration replaced the
+			// checkbox input with a button carrying role=switch, inside the same label.check — and that
+			// label still carries min-height: var(--tap). The Switch component's own comment says why:
+			// giving the switch a 44px box would make the row 88px and put two competing targets in it.
+			// The reader above was written for an input, stopped recognising the control, and so
+			// re-reported an already-closed false positive as an 18.4px box with a 34px hit extent. The
+			// delegation follows the CONTROL, not the tag it used to have.
+			const switchBtn = el.getAttribute('role') === 'switch';
+			// A SLIDER THUMB'S TARGET IS ITS TRACK. Bits UI moves the thumb to wherever the track is
+			// pressed, so the thumb's own 22/28px box is not what a finger has to hit — the same
+			// substitution, one level of nesting further out. If the slider ROOT is also short this still
+			// fails, which is the point: it credits a real target, it does not excuse a small one.
+			const thumb = el.matches('[data-slot="slider-thumb"]');
+			const target =
+				glyph || switchBtn
+					? el.closest(${JSON.stringify(LABEL_SELECTOR)}) || el
+					: thumb
+						? el.closest('[data-slot="slider"]') || el
+						: el;
 			const inTarget = (n) => !!n && (n === target || target.contains(n));
 			const tr = target.getBoundingClientRect();
 			const cx = Math.min(Math.max(Math.round(tr.left + tr.width / 2), 0), innerWidth - 1);
 			const cy = Math.round(tr.top + tr.height / 2);
 			// Vertical hit extent at the CENTRE x. That is the reading the 44px floor is about: WCAG
 			// 2.5.8 and Encore's own --tap are both statements about the target's box.
-			let hitH = 0;
-			if (inTarget(document.elementFromPoint(cx, cy))) {
+			/*
+			 * OFF-VIEWPORT IS NOT ZERO-HEIGHT, and conflating them fabricated failures. document
+			 * .elementFromPoint returns null for any point outside the viewport, so a control below the
+			 * fold read hitH = 0 and occluded = 3/3 — reported as an unhittable, fully covered target.
+			 * /settings' own "Start singing" button is 53px tall and sits at y=861 in an 844px viewport;
+			 * it is neither short nor covered, it is simply further down the page.
+			 *
+			 * A hit extent is a VIEWPORT-RELATIVE reading and cannot be taken for a control whose probe
+			 * point is not in the viewport. The test is on the CENTRE POINT rather than on the box, because
+			 * the centre point is what is probed: a control straddling the fold intersects the viewport and
+			 * still has no hittable centre, which is how the first version of this fix left the same
+			 * failure standing at a taller viewport. Its declared box is still credited, so the 44px floor
+			 * stays live for every control the sweep sees, and the occlusion probe — meaningless off-screen,
+			 * since nothing can cover what is not being painted — is skipped.
+			 * Counted in the reading's offscreen flag so the skip cannot quietly absorb a whole surface.
+			 */
+			const onScreen = cy >= 0 && cy < innerHeight;
+			let hitH = onScreen ? 0 : Math.round(tr.height * 10) / 10;
+			if (onScreen && inTarget(document.elementFromPoint(cx, cy))) {
 				let top = cy, bottom = cy;
 				while (top - 1 >= 0 && inTarget(document.elementFromPoint(cx, top - 1))) top--;
 				while (bottom + 1 < innerHeight && inTarget(document.elementFromPoint(cx, bottom + 1))) bottom++;
@@ -152,9 +187,28 @@ function sweepExpr(scope) {
 			// unmeetable by construction. Kept as an occlusion probe, which is what a far-edge reading
 			// is actually good for: an overlay covering part of a control.
 			let occluded = 0;
-			for (const f of [0.25, 0.5, 0.75]) {
-				const x = Math.min(Math.max(Math.round(tr.left + tr.width * f), 0), innerWidth - 1);
-				if (!inTarget(document.elementFromPoint(x, cy))) occluded++;
+			// WHAT blocked it, not just that something did. "something else is topmost" told a reader
+			// there was a problem and nothing about where to look — three separate investigations of this
+			// gate's own output ended in a hand-written probe to answer the same question. Naming the
+			// topmost element makes the failure message the diagnosis. null means the point had no element
+			// at all, which after the offscreen guard above can only mean a gap in the target's own paint.
+			let blockedBy = null;
+			if (onScreen) {
+				for (const f of [0.25, 0.5, 0.75]) {
+					const x = Math.min(Math.max(Math.round(tr.left + tr.width * f), 0), innerWidth - 1);
+					const hit = document.elementFromPoint(x, cy);
+					if (!inTarget(hit)) {
+						occluded++;
+						if (!blockedBy) {
+							blockedBy = hit
+								? hit.tagName.toLowerCase() +
+									(hit.className && hit.className.toString ? '.' + hit.className.toString().replace(/svelte-[\w-]+/g, '').trim().split(/\s+/).slice(0, 2).join('.') : '') +
+									' pe=' + getComputedStyle(hit).pointerEvents +
+									(hit === target.parentElement ? ' (the target OWN PARENT)' : '')
+								: 'nothing (no element at that point)';
+						}
+					}
+				}
 			}
 			const label = el.closest(${JSON.stringify(LABEL_SELECTOR)});
 			const near = (el.getAttribute('aria-label') || (label ? label.textContent : '') || (el.parentElement ? el.parentElement.textContent : '') || '')
@@ -164,6 +218,8 @@ function sweepExpr(scope) {
 				type: el.getAttribute('type'),
 				cls: ((el.className && el.className.toString) ? el.className.toString() : '').replace(/svelte-[\\w-]+/g, '').trim().replace(/\\s+/g, ' '),
 				near,
+				offscreen: !onScreen,
+				blockedBy,
 				boxH: Math.round(r.height * 10) / 10,
 				hitH,
 				occluded,
@@ -336,7 +392,7 @@ try {
 			const q = QUARANTINE.find((e) => covers(e.where, label) && matches(r, e));
 			if (r.occluded > 0) {
 				occludedControls.push(
-					`${id}: something else is topmost at ${r.occluded} of 3 x positions along the control's own centre line`
+					`${id}: blocked by ${r.blockedBy} at ${r.occluded} of 3 x positions along the control's own centre line`
 				);
 			}
 			if (r.hitH >= TAP) {
@@ -344,7 +400,9 @@ try {
 				continue;
 			}
 			if (!q) {
-				newOffenders.push(`${id}: hit extent ${r.hitH}px (box ${r.boxH}px) < ${TAP}px`);
+				newOffenders.push(
+					`${id}: hit extent ${r.hitH}px (box ${r.boxH}px) < ${TAP}px${r.blockedBy ? ` — blocked by ${r.blockedBy}` : ''}`
+				);
 			} else if (r.hitH < q.measured - 1) {
 				worsened.push(`${id}: ${q.measured}px when quarantined, now ${r.hitH}px`);
 			}
@@ -425,18 +483,25 @@ try {
 	/*
 	 * ── CLAIM 3 (XR-VER-11): the docked band's published height and its safe-area term ──────────
 	 *
-	 * WHERE THIS IS MEASURED CHANGED, and the claim did not. Direction A
-	 * made the queue the home screen, so `/` no longer mounts QueueSheet; the 2026-09-09 owner correction
-	 * then made the docked band at the bottom of the phone the SEARCH DOCK (the `+ Add a turn`
-	 * button is gone), present on home for a joined singer. The "published height equals the real
-	 * rendered height, and the safe-area inset arrives THROUGH that token" contract moved with it from
-	 * `--peek-h`/`.peek` to `--dock-h`/`.search-dock`.
+	 * WHERE THIS IS MEASURED KEEPS CHANGING, and the claim has not. It began as `--peek-h`/`.peek` on the
+	 * QueueSheet; Direction A made the queue the home screen and the 2026-09-09 owner correction moved it
+	 * to `--dock-h`/`.search-dock`, a SEARCH band docked at the bottom of `/`; the phone-remote rebuild
+	 * moved it again, and this time to something that is no longer route-shaped at all.
 	 *
-	 * then deleted the drawer surface entirely, so the second half of this section — the sheet's
+	 * IT IS NOW ONE ELEMENT FOR THE WHOLE APP. `NowPlayingBand` (`SEL.homeReady`, `.band`) is the
+	 * bottom-most chrome on EVERY phone surface, mounted by `src/routes/+layout.svelte` inside a `.dock`
+	 * wrapper, and the LAYOUT publishes `--dock-h` from that wrapper's `bind:clientHeight`. So no route
+	 * publishes the token any more, and the band is the only element in the stack carrying an
+	 * `env(safe-area-inset-bottom)` term — which is what makes "published height equals the real rendered
+	 * height, and the inset arrives THROUGH that token" a single contract rather than one per screen.
+	 *
+	 * A later change deleted the drawer surface entirely, so the second half of this section — the sheet's
 	 * own cap and peek geometry, measured on `/components` where the component used to render — was
 	 * removed with it, and `SHEET_CAP_FRACTION` retired from the register (its reason is recorded
 	 * there). Nothing docked caps itself in a viewport fraction now; the band is sized by its content.
-	 * What remains below is the LIVE contract on `/`, measured against the real band.
+	 *
+	 * What follows is the contract measured on `/`; the block after it measures the SAME band on `/find`,
+	 * which is where search went, and compares the two readings.
 	 */
 	await page.viewport(390, 844);
 	await page.goto(base + '/');
@@ -451,6 +516,8 @@ try {
 			dockVar: getComputedStyle(document.documentElement).getPropertyValue('--dock-h').trim(),
 			dockInline: document.documentElement.style.getPropertyValue('--dock-h').trim(),
 			dockClientHeight: dock.clientHeight,
+			// The OUTER box, and it is the one the claim is about — see the note at the arm below.
+			dockOuterHeight: dr.height,
 			dockTop: dr.top,
 			dockBottom: dr.bottom,
 			dockPadBottom: parseFloat(getComputedStyle(dock).paddingBottom),
@@ -463,13 +530,29 @@ try {
 		check(
 			'CLAIM 3 the docked band is rendered on the joined home, so its contract is measurable',
 			false,
-			'no .search-dock found'
+			`no ${SEL.homeReady} found on / — the layout mounts the band for a joined singer, so its absence is either an unjoined drive or the band itself`
 		);
 	} else {
+		/*
+		 * WHICH HEIGHT, and it matters by exactly the 1px that would have made this arm red on a correct
+		 * app. `--dock-h` is `bind:clientHeight` on the `.dock` WRAPPER (src/routes/+layout.svelte), and
+		 * that wrapper has no padding or border of its own, so the token is the band's OUTER box. Read off
+		 * `.band` itself, `clientHeight` EXCLUDES its `border-top: 1px solid var(--line)` and so reports one
+		 * pixel less than the thing that was published — a comparison that fails while nothing is wrong.
+		 * `getBoundingClientRect().height` is the outer box, which is what the publisher measured.
+		 *
+		 * The 1px tolerance is for the INTEGER rounding `clientHeight` does to a fractional used height, not
+		 * slack in the claim: the defect this arm exists to catch — a stale token, a hardcoded guess, a
+		 * height published from a different element — is wrong by tens of pixels, never by one. The
+		 * computed-vs-inline pair is asserted separately and exactly, because that is the half that says the
+		 * value was WRITTEN by the layout's measurement rather than inherited from a stylesheet default.
+		 */
 		check(
 			"CLAIM 3 (XR-VER-11) --dock-h equals the docked band's REAL rendered height — the contract every docked control offsets from",
-			dock.dockVar === `${dock.dockClientHeight}px` && dock.dockInline === `${dock.dockClientHeight}px`,
-			`--dock-h resolved "${dock.dockVar}" (inline "${dock.dockInline}") against a rendered band of ${dock.dockClientHeight}px`
+			dock.dockVar !== '' &&
+				dock.dockVar === dock.dockInline &&
+				Math.abs(parseFloat(dock.dockVar) - dock.dockOuterHeight) <= 1,
+			`--dock-h resolved "${dock.dockVar}" (inline "${dock.dockInline}") against a band whose outer box is ${dock.dockOuterHeight.toFixed(1)}px (clientHeight ${dock.dockClientHeight}px, which excludes its 1px top border)`
 		);
 		check(
 			'CLAIM 3 the docked band sits fully on screen — no bleed below, no clip above',
@@ -494,40 +577,68 @@ try {
 	}
 
 	/*
-	 * ── CLAIM 3, THE SEARCH DOCK measured with results showing (sole band) ──────
+	 * ── CLAIM 3 ON `/find`: THE SAME ONE BAND, MEASURED ON THE SECOND SURFACE ───────────────────
 	 *
-	 * Direction B docks search in the thumb zone and stacks the results UPWARD from it. Since the owner
-	 * correction it is the SOLE docked band on this route — the `+ Add a turn` button that used to
-	 * be home's band is gone — and results render IN PLACE (no `?browse=1` mode), so this measures the
-	 * one band with a query typed and its results on screen. The band contract still has to hold, which
-	 * is the whole reason `--dock-h` is measured rather than written.
+	 * WHAT MOVED, AND WHY THE CLAIM WIDENED RATHER THAN SHRANK. This section used to measure
+	 * `.search-dock`: a SEARCH band docked at the bottom of `/`, publishing `--dock-h` itself, with its
+	 * results stacking UPWARD out of it. Both halves of that are gone. Search is the `/find` ROUTE and
+	 * its box (`SEL.findBox`) sits at the TOP of the column in NORMAL FLOW — not docked, not sticky —
+	 * while `NowPlayingBand` (`SEL.homeReady`, `.band`) is the bottom-most chrome on EVERY phone surface
+	 * and `src/routes/+layout.svelte` publishes `--dock-h` from the `.dock` wrapper's measured
+	 * `clientHeight`.
 	 *
-	 * Four of these cannot be settled by reading source, and three were open questions before this ran:
-	 *   - whether `--dock-h` reads the REAL search band's rendered height (there is now only one band, so
-	 *     the old "phantom left over from home's button" ambiguity is gone, but the measurement stands);
-	 *   - whether the input really lands within thumb reach rather than merely below the list;
-	 *   - whether the stack really ENDS at the dock — a bottom-anchored column plus a scroll-to-bottom is
-	 *     the mechanism, and nothing about either is visible in a declaration;
-	 *   - whether any result row is occluded by the band it stacks up from.
+	 * So the subject got SIMPLER and the assertion got WIDER, which is why this is a re-point and not a
+	 * retirement. There is exactly one docked band in the app and it is the SAME element here as on `/`,
+	 * so XR-VER-11 — "the published height is the real rendered height" — is now asserted on BOTH
+	 * surfaces instead of only on the browse screen, and a mismatch on either is the same defect. Both
+	 * are worth measuring even though one element publishes the token: the layout WRITES `--dock-h`, but
+	 * each route's own `main` CONSUMES it (`calc(var(--dock-h, 0px) + 28px)` in both
+	 * `src/routes/+page.svelte` and `src/routes/find/+page.svelte`), so a route that reserves the wrong
+	 * thing, or a band that renders to a different height under a different route's header, is a
+	 * PER-SURFACE defect a single-surface reading cannot see. And one arm exists only because there are
+	 * now two readings of one element: they have to AGREE.
+	 *
+	 * What still cannot be settled by reading source:
+	 *   - whether `--dock-h` equals the band's real rendered height on this surface too, and equals the
+	 *     height the same band rendered at on `/`;
+	 *   - whether reaching search still costs no regrip. The docked box was the thumb-zone control; the
+	 *     band's magnifier is the entry point now, so THAT is the control the reach claim belongs to —
+	 *     see the retirement note at the arm for why the find box itself must not be asserted there;
+	 *   - whether any result row is occluded by the band — at rest AND with the list scrolled to its very
+	 *     end, which is the case `main`'s reservation exists for and the only one where it can fail.
 	 *
 	 * The reflow half of the results screen (320px at 200% text) is deliberately NOT re-asserted here:
 	 * `src/lib/phone-inventory.test.ts` owns XR-PH-02, and two independent geometry checks of
 	 * one criterion is the duplicated-vocabulary shape the spec warns about.
 	 */
 	await page.viewport(390, 844);
+	/*
+	 * NAVIGATE, don't type. Search left home, so the old drive — type into `/` and wait out the debounce —
+	 * would now be typing at a queue screen that renders no field at all. `openBrowseFromHome` taps the
+	 * band's magnifier and waits for the find box, which keeps the ONE place that knows how search is
+	 * reached the one place; the helper is deliberately not renamed, so its ~20 call sites (this one
+	 * included) survived the move untouched.
+	 */
 	await openBrowseFromHome(page, { timeout: 15000 });
 	await page.fill(SEL.search, 'a');
 	await page
 		.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`, { timeout: 15000 })
 		.catch(() => {});
-	await sleep(800); // the search debounce is 150ms; let the result set and the scroll-to-bottom settle
+	await sleep(800); // the search debounce is 150ms; let the result set land and the rows paint
+
+	// The band's magnifier, built from the contract's own accessible name rather than a second hard-coded
+	// string — the same form `lib/phone.mjs` addresses it by, so it can only be reached by the name a
+	// screen reader announces.
+	const bandMagnifier = `${SEL.homeReady} button[aria-label="${SEL.bandSearch.name}"]`;
 
 	const browseProbe = `(() => {
-		const dock = document.querySelector(${JSON.stringify(SEL.searchDock)});
+		const dock = document.querySelector(${JSON.stringify(SEL.homeReady)});
+		const mag = document.querySelector(${JSON.stringify(bandMagnifier)});
 		const field = document.querySelector(${JSON.stringify(SEL.search)});
 		const main = document.querySelector(${JSON.stringify(SEL.mainColumn)});
-		if (!dock || !field || !main) return null;
+		if (!dock || !mag || !field || !main) return null;
 		const dr = dock.getBoundingClientRect();
+		const mr = mag.getBoundingClientRect();
 		const fr = field.getBoundingClientRect();
 		const rows = [...document.querySelectorAll(${JSON.stringify(SEL.songRow)})].map((r) => {
 			const b = r.getBoundingClientRect();
@@ -537,76 +648,189 @@ try {
 			dockVar: getComputedStyle(document.documentElement).getPropertyValue('--dock-h').trim(),
 			dockInline: document.documentElement.style.getPropertyValue('--dock-h').trim(),
 			dockClientHeight: dock.clientHeight,
+			dockOuterHeight: dr.height,
 			dockTop: dr.top,
 			dockBottom: dr.bottom,
+			magCentreY: mr.top + mr.height / 2,
 			fieldCentreY: fr.top + fr.height / 2,
 			innerHeight: window.innerHeight,
 			mainPadBottom: parseFloat(getComputedStyle(main).paddingBottom),
 			rowCount: rows.length,
-			lastRowBottom: rows.length ? rows[rows.length - 1].bottom : null,
-			occludedRows: rows.filter((r) => r.bottom > dr.top + 1 && r.top < dr.bottom - 1).length
+			occludedRows: rows.filter((r) => r.bottom > dr.top + 1 && r.top < dr.bottom - 1).length,
+			// The FIRST row is the best match on a list that reads downward, so its clearance is the one
+			// that can be asserted at rest — see the arm below.
+			firstRowTop: rows.length ? rows[0].top : null,
+			firstRowBottom: rows.length ? rows[0].bottom : null
 		};
 	})()`;
 	const browse = await page.evaluate(browseProbe);
 	if (!browse) {
 		check(
-			'CLAIM 3 the browse screen renders its docked search band, so its contract is measurable',
+			'CLAIM 3 the find surface renders the docked band, its magnifier, its field and its column, so the contract is measurable',
 			false,
-			`no ${SEL.searchDock} / ${SEL.search} / ${SEL.mainColumn} found on / with results showing`
+			`no ${SEL.homeReady} / ${bandMagnifier} / ${SEL.search} / ${SEL.mainColumn} found on /find with results showing`
 		);
 	} else {
 		check(
-			"CLAIM 3 (XR-VER-11) --dock-h on the browse screen is the SEARCH band's REAL rendered height, not a phantom from home's button",
-			browse.dockVar === `${browse.dockClientHeight}px` && browse.dockInline === `${browse.dockClientHeight}px`,
-			`--dock-h resolved "${browse.dockVar}" (inline "${browse.dockInline}") against a rendered band of ${browse.dockClientHeight}px`
+			"CLAIM 3 (XR-VER-11) --dock-h on /find is the BAND's REAL rendered height — the contract every column offsets from",
+			browse.dockVar !== '' &&
+				browse.dockVar === browse.dockInline &&
+				Math.abs(parseFloat(browse.dockVar) - browse.dockOuterHeight) <= 1,
+			`--dock-h resolved "${browse.dockVar}" (inline "${browse.dockInline}") against a band whose outer box is ${browse.dockOuterHeight.toFixed(1)}px (see the height note on the / arm above)`
+		);
+		/*
+		 * THE ARM THE NEW ARRANGEMENT ADDED, and it can only exist because there is one band on two
+		 * surfaces. `--dock-h` is written once by the layout, so a per-surface disagreement means the band
+		 * itself rendered to a different height here than on `/` (a route header, a font, a route-scoped
+		 * rule reaching it) while each `main` went on reserving whatever the token last said. Neither
+		 * single-surface reading above can see that; only the comparison can.
+		 */
+		check(
+			'CLAIM 3 (XR-VER-11) the ONE band renders to the SAME height on / and on /find — one element, one token, no per-surface drift',
+			dock !== null && Math.abs(browse.dockOuterHeight - dock.dockOuterHeight) <= 1,
+			dock === null
+				? 'the / reading is missing, so the two surfaces could not be compared'
+				: `band outer box is ${dock.dockOuterHeight.toFixed(1)}px on / and ${browse.dockOuterHeight.toFixed(1)}px on /find`
 		);
 		check(
-			'CLAIM 3 the search band sits fully on screen — no bleed below, no clip above',
+			'CLAIM 3 the band sits fully on screen on /find — no bleed below, no clip above',
 			browse.dockTop >= -1 && browse.dockBottom <= browse.innerHeight + 1,
 			`band occupies ${browse.dockTop.toFixed(1)}..${browse.dockBottom.toFixed(1)} of a ${browse.innerHeight}px viewport`
 		);
 		check(
-			'CLAIM 3 the browse column RESERVES the search band rather than being overlapped by it (XR-PH-12)',
+			'CLAIM 3 the find column RESERVES the band rather than being overlapped by it (XR-PH-12)',
 			browse.mainPadBottom >= browse.dockClientHeight,
 			`main padding-bottom ${browse.mainPadBottom}px against a ${browse.dockClientHeight}px band`
 		);
-		// Thumb reach is the POINT of docking it (acceptance 1): the bottom third of a 390x844
-		// phone is the region a thumb covers without regripping. A box merely below the list fails this.
+		/*
+		 * RE-POINTED, NOT DROPPED: thumb reach now belongs to the band's MAGNIFIER.
+		 *
+		 * The retired arm read the search INPUT's centre and required it in the bottom third, because a box
+		 * docked in the thumb zone was the whole point of that design. Re-pointing it at this surface's
+		 * field would assert the OPPOSITE of what `/find` deliberately does — the box is at the top of the
+		 * column in normal flow, and the route's own comment records why it is not even sticky. An arm that
+		 * demands a design the app rejected is not a preserved claim, it is a false red.
+		 *
+		 * What the claim was ABOUT survives whole and moved with the control: reaching search must not cost
+		 * a regrip. That control is the band's magnifier, which is permanent chrome in the thumb zone on
+		 * every phone surface — so this reading also carries for `/`, which is why it is asserted once
+		 * rather than on both (two geometry checks of one criterion is the shape this file warns about).
+		 */
 		check(
-			'CLAIM 3 the search input sits in the thumb zone — the bottom third of the viewport',
-			browse.fieldCentreY > (browse.innerHeight * 2) / 3,
-			`input centre at y=${browse.fieldCentreY.toFixed(1)} of ${browse.innerHeight}px; thumb zone starts at ${((browse.innerHeight * 2) / 3).toFixed(1)}`
+			"CLAIM 3 the search ENTRY POINT sits in the thumb zone — the band's magnifier in the bottom third of the viewport",
+			browse.magCentreY > (browse.innerHeight * 2) / 3,
+			`magnifier centre at y=${browse.magCentreY.toFixed(1)} of ${browse.innerHeight}px; thumb zone starts at ${((browse.innerHeight * 2) / 3).toFixed(1)} (the find field is at y=${browse.fieldCentreY.toFixed(1)}, top of the column, by design)`
 		);
-		// A floor, not a check: with no rows the two arms below would pass over nothing at all.
+		// A floor, not a check: with no rows the occlusion arms would pass over nothing at all.
 		check(
-			'CLAIM 3 the browse drive rendered a real result stack — >=1 row to measure',
+			'CLAIM 3 the find drive rendered a real result stack — >=1 row to measure',
 			browse.rowCount >= 1,
 			`${browse.rowCount} rows rendered for the query "a"`
 		);
+		/*
+		 * RETIRED: "no result row is occluded by the band, at rest" — which required ZERO of the rendered
+		 * rows to intersect the band before any scrolling. That was satisfiable only because the browse
+		 * screen was BOTTOM-ANCHORED and scrolled itself to the end on every keystroke, so "at rest" and
+		 * "at the end of the list" were the same position. `/find` reads downward from a header, so at rest
+		 * a list longer than the viewport necessarily continues underneath the band — 2 of 28 rows did, and
+		 * the arm redded on a surface that is behaving correctly. Demanding it back would mean demanding a
+		 * list no longer than one screen.
+		 *
+		 * ITS GUARANTEE SPLITS IN TWO, and both halves are asserted rather than dropped. That no row is
+		 * PERMANENTLY hidden is the reservation arm below (the last row clears the band once scrolled to
+		 * the end) — that is the half that was ever load-bearing. What can still be said at rest is the
+		 * half a downward list gets and an upward one never had: the TOP of the ranking, the best match,
+		 * is never under the chrome. On the old screen the best match was the row nearest the thumb and
+		 * this was free; here it is a real claim about where the column starts.
+		 */
 		check(
-			'CLAIM 3 no result row is occluded by the band it stacks up from (acceptance 3)',
-			browse.occludedRows === 0,
-			`${browse.occludedRows} of ${browse.rowCount} rows intersect the band at ${browse.dockTop.toFixed(1)}..${browse.dockBottom.toFixed(1)}`
-		);
-		// The stack GROWS UPWARD: its last member — the top-ranked one — ends just above the dock rather
-		// than at the top of the column. This is the arm that fails if the bottom anchoring or the
-		// scroll-to-bottom is dropped, and neither is visible in any declaration.
-		const gap = browse.lastRowBottom === null ? null : browse.dockTop - browse.lastRowBottom;
-		check(
-			'CLAIM 3 the stack ENDS at the dock — the top-ranked row is the one beside the thumb (acceptance 1)',
-			gap !== null && gap >= 0 && gap <= 72,
-			`last row's bottom is ${gap === null ? 'n/a' : gap.toFixed(1)}px above the band (0..72 expected: main reserves the band + 28px)`
+			'CLAIM 3 the TOP of the ranking is clear of the band at rest — the best match is never under the chrome',
+			browse.firstRowBottom !== null && browse.firstRowBottom <= browse.dockTop + 1,
+			`best-match row occupies ${(browse.firstRowTop ?? NaN).toFixed(1)}..${(browse.firstRowBottom ?? NaN).toFixed(1)} against a band starting at y=${browse.dockTop.toFixed(1)} (${browse.occludedRows} of ${browse.rowCount} rows sit under it further down, which is what scrolling is for)`
 		);
 	}
 
 	/*
-	 * The BOTTOM ANCHORING, isolated from the scroll. The arm above cannot tell the two apart: a long
-	 * result set overflows the column, so the scroll-to-bottom alone puts the last row beside the dock
-	 * whether the column is anchored or not — measured, by reverting `justify-content: flex-end` and
-	 * watching that arm stay green. What the anchoring is FOR is the short case: one line of content
-	 * belongs beside the thumb, not stranded at the top of an empty screen. A query that matches nothing
-	 * is the deterministic way to reach it — one `.empty` line, a column that cannot scroll, so the only
-	 * thing that can put it at the bottom is the anchoring.
+	 * ── CLAIM 3, THE RESERVATION UNDER SCROLL: the successor to the retired upward-stack arm ────
+	 *
+	 * RETIRED: "the stack ENDS at the dock — the top-ranked row is the one beside the thumb". It required
+	 * the last row's bottom to land 0..72px above the band, and it was an assertion about TWO mechanisms
+	 * `/find` does not have: a bottom-anchored column (`justify-content: flex-end`) and a scroll-to-bottom
+	 * on every result set. Results flow downward from a box at the top now, in ordinary document order, so
+	 * a short result set legitimately ends hundreds of pixels above the band and that arm could only red
+	 * on a correct app. It is not re-pointed under its old name because the name states the dead
+	 * mechanism.
+	 *
+	 * ITS SURVIVING HALF IS THE ONE THAT MATTERED, and it needs the scroll it used to get for free: with
+	 * the list driven to its very END, the last row must still CLEAR the band. That is the only position
+	 * where `main`'s `calc(var(--dock-h, 0px) + 28px)` reservation can be observed doing its job — at rest
+	 * the last row of a long list is off-screen entirely, so the at-rest occlusion arm above passes over a
+	 * row nobody can see. Scrolled to the end, a reservation that is missing, stale, or measured off the
+	 * wrong element puts the final row under fixed chrome, which is exactly XR-PH-12's defect.
+	 */
+	await page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)');
+	await sleep(400); // no smooth scrolling in this app; this is paint settle, not animation
+	const endProbe = `(() => {
+		const dock = document.querySelector(${JSON.stringify(SEL.homeReady)});
+		const rows = [...document.querySelectorAll(${JSON.stringify(SEL.songRow)})];
+		if (!dock || rows.length === 0) return null;
+		const dr = dock.getBoundingClientRect();
+		const last = rows[rows.length - 1].getBoundingClientRect();
+		return {
+			dockTop: dr.top,
+			dockBottom: dr.bottom,
+			lastRowBottom: last.bottom,
+			occludedRows: rows.filter((r) => {
+				const b = r.getBoundingClientRect();
+				return b.bottom > dr.top + 1 && b.top < dr.bottom - 1;
+			}).length,
+			rowCount: rows.length,
+			scrollY: Math.round(window.scrollY),
+			maxScroll: Math.round(document.documentElement.scrollHeight - window.innerHeight)
+		};
+	})()`;
+	const end = await page.evaluate(endProbe);
+	if (!end) {
+		check(
+			'CLAIM 3 the find surface still has a band and rows to measure at the end of the list',
+			false,
+			`no ${SEL.homeReady} or no ${SEL.songRow} on /find after scrolling to the end`
+		);
+	} else {
+		// The precondition, stated as its own arm: if the column never scrolled there is no end to be at,
+		// and the two arms below would pass on the at-rest layout the block above already measured.
+		check(
+			'CLAIM 3 the drive really reached the END of the list — the reservation is measured where it can fail',
+			end.scrollY >= end.maxScroll - 1,
+			`scrolled to ${end.scrollY} of a possible ${end.maxScroll} (a result set shorter than the viewport reports 0/0, which is a pass)`
+		);
+		check(
+			'CLAIM 3 (XR-PH-12) the LAST row clears the band with the list scrolled to its end — what the reservation is for',
+			end.lastRowBottom <= end.dockTop + 1,
+			`last row's bottom is at y=${end.lastRowBottom.toFixed(1)} against a band starting at y=${end.dockTop.toFixed(1)}`
+		);
+		check(
+			'CLAIM 3 no result row is occluded by the band at the end of the list',
+			end.occludedRows === 0,
+			`${end.occludedRows} of ${end.rowCount} rows intersect the band at ${end.dockTop.toFixed(1)}..${end.dockBottom.toFixed(1)}`
+		);
+	}
+
+	/*
+	 * ── CLAIM 3, THE SHORT CASE: the band contract when the column cannot scroll ────────────────
+	 *
+	 * RETIRED: "one line of content is anchored beside the thumb, not stranded at the top". It measured
+	 * `justify-content: flex-end` on the search column — one empty-state line pushed down beside the
+	 * docked box — and the note above it said so outright. `/find` anchors nothing: its `main` is ordinary
+	 * flow with the box at the top, so the empty line sits NEAR the top and is meant to. Asserting the old
+	 * position would be asserting a design that was reversed.
+	 *
+	 * THE PROBE IS KEPT AND RE-AIMED, because a non-matching query is still the cheapest way to reach a
+	 * genuinely different GEOMETRY — a column with nothing in it, shorter than the viewport, unable to
+	 * scroll. XR-VER-11 has to hold there too: a band whose measured height only survives while content
+	 * pushes against it is a band whose height is a coincidence. And the empty line, wherever it sits,
+	 * must not be under the band. `.empty` is `SEL.empty` (`.encore-empty`) — the find surface renders it
+	 * for a query that matched nothing.
 	 */
 	await page.fill(SEL.search, 'zzzzznotasongzzzzz');
 	await page
@@ -614,12 +838,19 @@ try {
 		.catch(() => {});
 	await sleep(900);
 	const shortProbe = `(() => {
-		const dock = document.querySelector(${JSON.stringify(SEL.searchDock)});
+		const dock = document.querySelector(${JSON.stringify(SEL.homeReady)});
 		const empty = document.querySelector(${JSON.stringify(SEL.empty)});
 		if (!dock || !empty) return null;
+		const dr = dock.getBoundingClientRect();
 		const er = empty.getBoundingClientRect();
 		return {
-			dockTop: dock.getBoundingClientRect().top,
+			dockVar: getComputedStyle(document.documentElement).getPropertyValue('--dock-h').trim(),
+			dockInline: document.documentElement.style.getPropertyValue('--dock-h').trim(),
+			dockClientHeight: dock.clientHeight,
+			dockOuterHeight: dr.height,
+			dockTop: dr.top,
+			dockBottom: dr.bottom,
+			emptyTop: er.top,
 			emptyBottom: er.bottom,
 			rowCount: document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length,
 			scrollHeight: document.documentElement.scrollHeight,
@@ -629,21 +860,27 @@ try {
 	const short = await page.evaluate(shortProbe);
 	if (!short) {
 		check(
-			'CLAIM 3 a non-matching query leaves one empty-state line to measure the anchoring against',
+			'CLAIM 3 a non-matching query leaves one empty-state line to measure the short case against',
 			false,
-			`no ${SEL.empty} found on / after a non-matching query`
+			`no ${SEL.empty} found on /find after a non-matching query`
 		);
 	} else {
 		check(
-			'CLAIM 3 the short case really is short — the column cannot scroll, so position is anchoring alone',
+			'CLAIM 3 the short case really is short — the column cannot scroll, so nothing is pressing on the band',
 			short.rowCount === 0 && short.scrollHeight <= short.innerHeight + 1,
 			`${short.rowCount} rows, scrollHeight ${short.scrollHeight} against innerHeight ${short.innerHeight}`
 		);
-		const shortGap = short.dockTop - short.emptyBottom;
 		check(
-			'CLAIM 3 one line of content is anchored beside the thumb, not stranded at the top',
-			shortGap >= 0 && shortGap <= 72,
-			`empty-state line's bottom is ${shortGap.toFixed(1)}px above the band (0..72 expected; unanchored it would be ~700px)`
+			"CLAIM 3 (XR-VER-11) --dock-h still equals the band's rendered height with an EMPTY column — the height is measured, not a coincidence of content",
+			short.dockVar !== '' &&
+				short.dockVar === short.dockInline &&
+				Math.abs(parseFloat(short.dockVar) - short.dockOuterHeight) <= 1,
+			`--dock-h resolved "${short.dockVar}" (inline "${short.dockInline}") against a band whose outer box is ${short.dockOuterHeight.toFixed(1)}px`
+		);
+		check(
+			'CLAIM 3 the empty-state line is not occluded by the band (XR-PH-12 with one line of content)',
+			short.emptyBottom <= short.dockTop + 1,
+			`empty-state line occupies ${short.emptyTop.toFixed(1)}..${short.emptyBottom.toFixed(1)} against a band starting at y=${short.dockTop.toFixed(1)}`
 		);
 	}
 

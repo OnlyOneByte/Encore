@@ -16,7 +16,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { at } from '@encore/test-support';
+import { at, filesUnder, relative } from '@encore/test-support';
 
 // Named absolutely. This used to be `at('src/lib/components')` — "the components
 // directory next to me", which only meant src/lib/components while this test sat in lib/.
@@ -68,18 +68,52 @@ test('SongRow derives its process bar from overallProcessPct', () => {
 // The CALLER side of the same wiring. SongRow only reads overall process completion when its parent
 // passes the live `status`; a call site that passes `pct=` but drops `status=` silently falls back to
 // the raw per-step pct — the bug, fully restored, with the callee still compliant. pr-bot showed
-// the earlier guard passed 2/2 even after all four `status=` props were dropped from +page.svelte, so
+// the earlier guard passed 2/2 even after all four `status=` props were dropped from the page, so
 // the guard must cover the caller too. Scan every <SongRow …> element and require: if it passes pct=,
 // it passes status=. This is the repo's most-repeated defect shape (a caller that stops calling).
-test('every +page.svelte SongRow that passes pct also passes status', () => {
-	const src = readFileSync(at('src/routes/+page.svelte'), 'utf8');
-	// Each <SongRow …> element, self-closing or not, across newlines.
-	const elements = src.match(/<SongRow\b[\s\S]*?\/?>/g) ?? [];
-	expect(elements.length, 'expected to find <SongRow> usages in +page.svelte').toBeGreaterThan(0);
-	const offenders = elements.filter((el) => /\bpct=/.test(el) && !/\bstatus=/.test(el));
+//
+// RE-POINTED AS A WALK, not at a second single path. This arm used to name `src/routes/+page.svelte`,
+// which was the only page rendering a SongRow; the phone-remote redesign moved every SongRow off home
+// (queue-only now) onto `routes/find/+page.svelte`, and naming that file instead would just relocate
+// the same blind spot — the NEXT route to grow a song list would be unguarded exactly as /find was on
+// the day it was created. So the population is now derived: every `+page.svelte` under `src/routes`
+// that renders a SongRow, with a non-vacuity floor on both the page count and the element count so a
+// tree that stops rendering SongRow anywhere reds instead of reporting green over nothing.
+//
+// `routes/components` — the eyes-on component gallery — is EXCLUDED, and that is the one judgement in
+// this arm. It is a fixture surface whose job is to render states side by side, including the
+// un-decorated `pct` WITHOUT a `status` that is this guard's offender shape: two of its rows carry a
+// commented-in-source instruction that they omit the status deliberately ("A row without a status is
+// unchanged — it still shows the raw pct"), because seeing the raw-pct bar beside the overall-pct bar
+// is how a human confirms the fix landed. The invariant being guarded is about the RENDER PATH a guest
+// actually reaches, not about a demo of the bug. Scope is still strictly wider than before this
+// re-point (home plus /find plus every future route, versus home alone).
+const FIXTURE_PAGES = ['src/routes/components/+page.svelte'];
+
+test('every route page SongRow that passes pct also passes status', () => {
+	const excluded = FIXTURE_PAGES.map((p) => at(p));
+	const pages = filesUnder('src/routes', ['.svelte'])
+		.filter((p) => p.endsWith('+page.svelte') && !excluded.includes(p))
+		.map((p) => ({ path: p, src: readFileSync(p, 'utf8') }))
+		.filter((p) => /<SongRow\b/.test(p.src));
+	expect(
+		pages.length,
+		'expected at least one non-fixture +page.svelte under src/routes to render <SongRow>'
+	).toBeGreaterThan(0);
+	const offenders: string[] = [];
+	let elementCount = 0;
+	for (const page of pages) {
+		// Each <SongRow …> element, self-closing or not, across newlines.
+		const elements = page.src.match(/<SongRow\b[\s\S]*?\/?>/g) ?? [];
+		elementCount += elements.length;
+		for (const el of elements) {
+			if (/\bpct=/.test(el) && !/\bstatus=/.test(el)) offenders.push(`${relative(page.path)}:\n${el}`);
+		}
+	}
+	expect(elementCount, 'expected to find <SongRow> usages on the pages that reference it').toBeGreaterThan(0);
 	expect(
 		offenders,
-		`these +page.svelte <SongRow> call sites pass pct= but not status=, so barPct falls back to the ` +
+		`these <SongRow> call sites pass pct= but not status=, so barPct falls back to the ` +
 			`raw per-step pct and re-opens the process-bar defect. Add status={…} beside pct=:\n${offenders.join('\n---\n')}`
 	).toEqual([]);
 });

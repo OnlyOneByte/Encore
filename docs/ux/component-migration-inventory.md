@@ -75,6 +75,15 @@ migration. Vendoring it today would leave a primitive wired to nothing, which LI
 
 ### `lib/components/NowPlayingHero.svelte`
 
+> **Replaced, not migrated.** This file was deleted on `ui/phone-remote-redesign`; its job moved into
+> `src/lib/components/NowPlayingDrawer.svelte`, a bottom drawer mounted from `src/routes/+layout.svelte`.
+> The audit below is kept as the record of what was migrated out of the hero before it went. Two rows no
+> longer describe anything live: the shell `.hero card` is gone (its entry has been removed from
+> `tests/guards/design-system/ui-card-surface-913.test.ts`, because the drawer's surface is the vendored
+> `Drawer.Content` and it takes no `.card`), and the `.track` blocker below was resolved by the move —
+> the drawer renders `Progress` directly. The disclosure rows are moot too: a drawer's content is
+> portalled on open, so there is no Collapsible left to migrate.
+
 | Mark | Element | Line | Target / reason |
 |---|---|---|---|
 | ✅ | Transport buttons | 122, 125, 133 | `Button` (`outline` / `iconPrimary`, `size="icon"`) |
@@ -288,8 +297,9 @@ a mechanical swap:
 2. **`LyricsReselect` → `Collapsible`.** Attempted and reverted: Bits UI reads
    `getBoundingClientRect`, which happy-dom stubs, so mounting it broke three behaviour tests. The
    claims have to move to the layout rung first — the same route the hero's disclosure took.
-3. **`NowPlayingHero`'s `.track` → `Progress`**, once `ui/progress` carries the `--motion-tick`
-   transition and its reduced-motion arm.
+3. ~~**`NowPlayingHero`'s `.track` → `Progress`**, once `ui/progress` carries the `--motion-tick`
+   transition and its reduced-motion arm.~~ **Done, by replacement rather than by migration:** the hero
+   was replaced by `src/lib/components/NowPlayingDrawer.svelte`, whose seek row renders `Progress`.
 4. **`MyPositionCard` → `Item`** and **`JoinLanding`'s `.scan-row` → `Card` + `Item`**, the two
    cleanest remaining greenfield adoptions.
 5. **`SongRow`'s `.thumb` → `AspectRatio`**, blocked only by `contrast.test.ts` attributing the

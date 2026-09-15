@@ -1,7 +1,9 @@
 # 02 — Phone / guest surface requirements
 
-Area prefix `XR-PH`. Scope: the phone remote — `/` (landing, unjoined + joined), the browse push,
-`/settings`, `/stats`, and the join path. Surfaces column uses **Phone**, **TV**, **Ops**.
+Area prefix `XR-PH`. Scope: the phone remote — `/` (landing, unjoined + joined; the queue and nothing
+else since the rebuild), `/find`, `/song/[mediaId]`, `/settings`, `/stats`, the join path, and the
+`NowPlayingBand` + `NowPlayingDrawer` chrome `src/routes/+layout.svelte` mounts on every one of them.
+Surfaces column uses **Phone**, **TV**, **Ops**.
 
 Direction is **A + B**, and drag reorder, landing/join, and live singing controls are DECIDED
 (`encore-design-handoff.md` §1). These rows specify against those decisions; they do not re-open them.
@@ -22,6 +24,42 @@ Two repo facts these rows lean on, verified in this pass and worth stating once:
   `+page.svelte:97` already gates the up/down buttons on `reorderIsMeaningful(...)`. The **grip is new**,
   so it has to inherit that gate or it promises a reorder the reducer discards.
 
+**The IA these rows were written against was REBUILT, and four of its rulings reversed.** The phone was
+one route: a now-playing hero card at the top of `/`, a search box docked at the bottom that expanded
+its results upward in place, and the live singing controls inside the hero's disclosure body. It is now
+a queue at `/`, a `NowPlayingBand` the layout docks on every phone surface, the `NowPlayingDrawer` that
+band pulls up into, a `/find` route whose zero-query state is the saved library, and `/song/[mediaId]`
+reached from the drawer. The hero is deleted, and the socket and the room's truth moved out of the route
+into `src/lib/stores/room.ts`. The four reversals are recorded rather than dropped, because a ruling
+that vanishes gets re-made:
+
+- **Search is no longer a bottom-docked box in the thumb zone.** It was `.search-dock`, fixed to the
+  bottom of `/` and publishing `--dock-h` itself — the sole band on the route, so one measurement
+  reserved the only band there was. Two surfaces cannot hold one edge and the band is the one that must
+  always be there, so the box moved to the TOP of `/find`'s flow and docks nothing. It is not sticky
+  either: `PageHeader` already is, and offsetting a second sticky element below it needs the header's
+  rendered height, which is not a token. The measurement claim survived verbatim and only changed
+  owner — `XR-PH-23`.
+- **Results no longer stack upward.** Three `[...list].reverse()` stacks and a raw → processing → ready
+  section order put the top-ranked row beside the thumb, which was a consequence of the docked box and
+  nothing else. `/find` reads DOWNWARD from a page header, so the best match is FIRST and the
+  scroll-to-bottom orchestration is gone rather than re-pointed. The `column-reverse` ban is kept and
+  now does more work than it did: DOM order must still equal visual order (`XR-PH-12`), and a reversing
+  container is the one way to break that without touching the markup order a scan reads.
+- **An empty search box shows the LIBRARY, not the queue.** The zero-query state of `/find` *is* the
+  saved library, so the songs that can be sung right now are the default content and typing filters the
+  world rather than revealing it. There is no empty-box dead end left to design around.
+- **There IS a navigation to search.** The earlier ruling was explicitly "no browse MODE, no
+  `?browse=1`", and it was about a box that lived on home; once search is somewhere you *go* — a tap on
+  the band's magnifier — a route is what makes the phone's own back gesture the way back. What is **not**
+  returning: no browse TOGGLE, no `?browse=1`, and no per-row readiness chip strip, so the retired
+  `openBrowse` / `browseToggle` / `readyChip` selectors stay retired. `/find`'s group headings did come
+  back, in one neutral treatment naming *which list* rather than the readiness of its members, because
+  three groups can render at once with no chips to tell them apart.
+
+The rewritten assertions live in `tests/guards/hygiene/browse-screen-833.test.ts`, whose header records
+each reversal as `R1`–`R7` beside the claim it replaced.
+
 ---
 
 ## 1 · Per-surface property floors — phone at arm's length
@@ -34,7 +72,7 @@ Two repo facts these rows lean on, verified in this pass and worth stating once:
 | **Surfaces** | Phone |
 | **Rationale** | The *number* is already unbreakable (`charts/trend-tap-target.test.ts:32` bridges `--tap` into the guard); what is unenforced is the expression, so a future change to the standard would apply to 5 files and silently skip 11 literals. |
 | **Source** | [SC 2.5.8 Target Size (Minimum)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) (AA, 24px) and [SC 2.5.5 Target Size (Enhanced)](https://www.w3.org/WAI/WCAG22/Understanding/target-size-enhanced.html) (AAA, 44px). Both are pointing-precision criteria stated in CSS px — they do **not** scale with viewing distance, so arm's length changes nothing here. |
-| **Acceptance** | Given the phone source tree, When it is scanned for `44px` outside `:root`, Then zero occurrences remain under `src/routes/**` and `src/lib/**`, and the 11 known literals (`lib/ui/PageHeader.svelte` ×2, `routes/+page.svelte` ×9) are gone. |
+| **Acceptance** | Given the phone source tree, When it is scanned for `44px` outside `:root`, Then zero occurrences remain under `src/routes/**` and `src/lib/**`. The **11 known literals** this row was written against (`lib/ui/PageHeader.svelte` ×2, `routes/+page.svelte` ×9) are gone; the inventory is kept as history, not as current state. What remains is two declarations in the vendored `ui/skeleton` and one on `/tv`, which is not a phone surface — so the live claim is about the vendored layer and about the literal never returning. |
 | **Check** | Extend `tests/guards/a11y/touch-targets.test.ts` (already a full `svelteFiles(SRC)` tree-walk, so there is no file list to maintain) with a literal-expression assertion. A source scan suffices — this is a syntax claim, not a measurement. |
 | **Priority** | Should — behaviour is correct today; this protects the next change to the standard. |
 
@@ -44,9 +82,9 @@ Two repo facts these rows lean on, verified in this pass and worth stating once:
 |---|---|
 | **Statement** | At 200% text size and at a 320 CSS px viewport width, every phone surface reflows without clipping, overlap, loss of content, or a horizontal scrollbar. |
 | **Surfaces** | Phone |
-| **Rationale** | The phone is a fixed-width column (`--max-w: 480px`) with two bottom-docked bands (queue peek, browse search dock) plus a docked CTA — the exact shape where scaled text overlaps rather than reflows. |
+| **Rationale** | The phone is a capped column (`--max-w: 480px`, growing to 760 at 768px and 1080 at 1200px) with one bottom-docked band of app chrome under it and two toasts offsetting off that band's measured height — the exact shape where scaled text overlaps rather than reflows. |
 | **Source** | [SC 1.4.4 Resize Text](https://www.w3.org/WAI/WCAG22/Understanding/resize-text.html) (AA) and [SC 1.4.10 Reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html) (AA, 320 CSS px). |
-| **Acceptance** | Given `/`, `/join`, `/settings`, `/stats` and the browse screen at 320×480 with root font-size ×2, When each is rendered, Then `scrollWidth <= clientWidth` on the scrolling element, and no docked band's rect intersects a queue row's rect. |
+| **Acceptance** | Given `/`, `/find`, `/song/[mediaId]`, `/join`, `/settings` and `/stats` at 320×480 with root font-size ×2, When each is rendered, Then `scrollWidth <= clientWidth` on the scrolling element, and no docked band's rect intersects a queue or result row's rect. |
 | **Check** | Rendered-DOM or driven-browser measurement. **Not a source scan** — both halves are geometry. Depends on XR-PH-21. A residual 5px overflow at 280px is known pre-existing on `main` and out of scope: 320px is the criterion's width. |
 | **Priority** | Must. |
 
@@ -80,12 +118,12 @@ the pre-migration figures and are kept as the rationale that justified the work,
 
 | | |
 |---|---|
-| **Statement** | `:root` declares a named spacing scale and a named z-index scale. Every `gap`/`margin`/`padding` in a phone surface resolves to a spacing step; every overlapping phone surface — queue rows, the lifted drag row, the docked CTA, the browse search dock, the queue sheet, the undo toast, the reconnecting pill — names a z-index step. The design guard fails on a new literal in either dimension. |
+| **Statement** | `:root` declares a named spacing scale and a named z-index scale. Every `gap`/`margin`/`padding` in a phone surface resolves to a spacing step; every overlapping phone surface — queue rows, the lifted drag row, the sticky `PageHeader`, the docked band, the band's own controls above its handle's hit-area pseudo-element, the toasts, the reconnecting pill — names a z-index step. The design guard fails on a new literal in either dimension. |
 | **Surfaces** | Phone (TV and Ops inherit the scales; their migration is not this section's) |
 | **Rationale** | 228 of the ~391 untokenised literals are spacing, the dimension the A+B redesign touches most; and the reorder mode adds a *lifted* row that must paint above sibling rows and below the docked controls — an ordering nobody can currently state, let alone check, across 22 bare z-index values. |
 | **Source** | `DERIVED` — model: the guard compares a literal against the token set, so enforceable coverage of a dimension is exactly the existence of tokens in it; 228 literals against 0 tokens is 0% enforceable. Counts from the shared brief. |
-| **Acceptance** | Given the phone tree, When spacing and z-index declarations are enumerated, Then each is `var(--space-*)` / `var(--z-*)`, a `calc()` over one, or an env/safe-area expression; When a bare `padding: 13px` is introduced, Then the guard reds; and When the lifted row is rendered, Then it paints above unlifted rows and below the docked CTA band. |
-| **Check** | Extend `design-system.test.ts` with a rule per dimension, plus a **non-vacuity floor** asserting each token set is non-empty — if that floor ever fires it is a finding, not a number to lower. The paint-order clause needs the rendered rung. |
+| **Acceptance** | Given the phone tree, When spacing and z-index declarations are enumerated, Then each is `var(--space-*)` / `var(--z-*)`, a `calc()` over one, or an env/safe-area expression; When a bare `padding: 13px` is introduced, Then the guard reds; and When the lifted row is rendered, Then it paints above unlifted rows and below the docked band. |
+| **Check** | Extend `design-system.test.ts` with a rule per dimension, plus a **non-vacuity floor** asserting each token set is non-empty — if that floor ever fires it is a finding, not a number to lower. The paint-order clause needs the rendered rung. The shipped ladder is `--z-header` 1 → `--z-band-control` 2 → `--z-row-lifted` 3 → `--z-dock` 30; `--z-band-control` was inserted between the first two when a measured reading showed the band's handle hit-area pseudo-element winning the hit test over its later-sibling buttons, which pushed the lifted row 2 → 3. Re-spacing the ladder is legal where re-ordering it is not. The vendored `ui/drawer` states its own tier as a Tailwind `z-50` utility, which is outside a declaration scan by construction — the same blind spot XR-VER-15 owns. |
 | **Priority** | Must — the highest-leverage single row in this section. |
 
 ### XR-PH-05 — The type axes exist, with a documented minimum, and no angular correction
@@ -158,7 +196,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 |---|---|
 | **Statement** | Every optimistic queue mutation carries a visible unconfirmed marker until the server acknowledges it — an add, a removal, **and a reorder** — using the same surface-signal idiom, not opacity. |
 | **Surfaces** | Phone |
-| **Rationale** | The add path already has this (`QueueRow.svelte`'s `.pending` warn surface; the reconnecting pill at `+page.svelte:852` states that commands are still accepted while offline because they resend on resync), but a reorder has no marker at all — so a drag committed on a flaky socket looks identical to one that landed. |
+| **Rationale** | The add path already has this (`QueueRow.svelte`'s `.pending` warn surface; the reconnecting pill at `+page.svelte:556` states that commands are still accepted while offline because they resend on resync — `/find` and `/song/[mediaId]` state the same thing in their own words, since the band keeps every surface live), but a reorder has no marker at all — so a drag committed on a flaky socket looks identical to one that landed. |
 | **Source** | `DERIVED` — model: the mutation set is `ops.ts`'s `QueueOp` union; the marker exists for `add` and is absent for `move`, so the gap is the difference between them. |
 | **Acceptance** | Given a reorder issued while the socket is down, When the row re-renders, Then it carries the unconfirmed surface and its reorder controls are inert; When the ack arrives, Then the marker clears within one render. |
 | **Check** | Source scan that every branch of the op union has a marker binding, plus a driven check with the socket interrupted. |
@@ -180,12 +218,12 @@ the pre-migration figures and are kept as the rationale that justified the work,
 
 | | |
 |---|---|
-| **Statement** | On every phone route, DOM order matches visual order, and any bottom-docked control (CTA, search dock, queue peek) reserves its band in normal flow rather than overlapping scrollable content. |
+| **Statement** | On every phone route, DOM order matches visual order, and any bottom-docked control — the layout's `NowPlayingBand`, and the toasts that offset off it — reserves its band in normal flow rather than overlapping scrollable content. |
 | **Surfaces** | Phone |
-| **Rationale** | The mockup's own home frame demonstrates the failure — the docked CTA occludes queue row 5 because a disclosure grew inside a fixed shell — and an absolutely-positioned CTA that visually sits last while appearing first in the DOM also breaks the tab sequence. |
+| **Rationale** | The mockup's own home frame demonstrated the failure — a docked CTA occluding queue row 5 because a disclosure grew inside a fixed shell — and an absolutely-positioned control that visually sits last while appearing first in the DOM also breaks the tab sequence. The rebuild narrows the risk to one element and widens where it applies: there is exactly one docked band now, mounted by the layout, and every route's own `main` has to reserve it. |
 | **Source** | [SC 2.4.3 Focus Order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html) (A) for the sequence. The reserve-in-flow half is `DERIVED` — model: content occluded by a fixed band cannot be reached by scrolling, so it is content loss under [SC 1.4.10 Reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html) regardless of the focus question. |
-| **Acceptance** | Given home with enough rows to scroll, When the list is scrolled to its end, Then the last row's rect does not intersect the docked band's rect; and When Tab is pressed from the header, Then focus visits controls in top-to-bottom visual order. |
-| **Check** | Driven browser: `getBoundingClientRect` intersection plus real `Tab` key events reading `document.activeElement`. The `--dock-h` custom-property idiom is the working precedent for reserving a docked band's height (it succeeded `--peek-h`, retired with the drawer surface). |
+| **Acceptance** | Given `/` and `/find` with enough rows to scroll, When each list is scrolled to its end, Then the last row's rect does not intersect the docked band's rect; and When Tab is pressed from the header, Then focus visits controls in top-to-bottom visual order. |
+| **Check** | Driven browser: `getBoundingClientRect` intersection plus real `Tab` key events reading `document.activeElement`. The reserving idiom is `--dock-h` (it succeeded `--peek-h`, retired with the drawer surface): `src/routes/+layout.svelte` publishes it from the `.dock` wrapper's `bind:clientHeight`, and each route's `main` consumes it as `calc(var(--dock-h, 0px) + 28px)`. One writer, several readers, so a per-surface disagreement is itself a finding — measured by XR-VER-11 on `/` and on `/find`. |
 | **Priority** | Must. |
 
 ### XR-PH-13 — Announcement inventory: what is announced, and when
@@ -194,7 +232,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 |---|---|
 | **Statement** | The phone's polite live region announces exactly: another guest's add, a rotation reorder that moved rows under the guest, a change to the guest's own position, entering and leaving the reorder mode, each committed slot change during it, and connection loss/restore. It announces **nothing** on first sync, and nothing for a mutation the guest initiated and can already see. |
 | **Surfaces** | Phone |
-| **Rationale** | The region and its suppression discipline already exist (`+page.svelte:1303`, with `announceReady` suppressing the initial sync and self-adds deliberately silent); what is missing is the reorder mode and the guest's own position — the two things this redesign adds and the two a non-sighted guest cannot otherwise perceive. |
+| **Rationale** | The region and its suppression discipline already exist (`+page.svelte:740`, with `announceReady` suppressing the initial sync and self-adds deliberately silent); what is missing is the reorder mode and the guest's own position — the two things this redesign adds and the two a non-sighted guest cannot otherwise perceive. |
 | **Source** | [SC 4.1.3 Status Messages](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html) (AA). Politeness is `DERIVED` — model: none of these interrupt a task, so all are `polite`; an assertive queue announcement would talk over a guest mid-typing in search. |
 | **Acceptance** | Given each of the seven events, When it occurs, Then the live region's text changes exactly once and names the event in guest vocabulary. Given the first `queue:sync`, Then the region stays empty. Falsified by an eighth announcement, or by a silent one of the seven. |
 | **Check** | Unit test over the announcement reducer (already a `$effect` over derived state, extractable as a pure function), plus one driven pass reading the region's text per event. |
@@ -216,13 +254,35 @@ the pre-migration figures and are kept as the rationale that justified the work,
 
 | | |
 |---|---|
-| **Statement** | The guide-vocal level, pitch shift and vocal-range bar are controls for the song playing **now**, rendered in the now-playing hero's disclosure **body** — never on a pointer-drag surface — and each states what it does. When a song has no isolated vocals stem, the guide-vocal control renders disabled with the reason plus a statement that pitch and range still work; it does not vanish. |
+| **Statement** | The guide-vocal level, pitch shift and vocal-range bar are controls for the song playing **now**, rendered in the now-playing **drawer's body** — never on a pointer-drag surface — and each states what it does. When a song has no isolated vocals stem, the guide-vocal control renders disabled with the reason plus a statement that pitch and range still work; it does not vanish. |
 | **Surfaces** | Phone |
-| **Rationale** | All three components already carry these constraints in their own headers — `GuidingTrack.svelte` is a 0–100 level that "lives in the sheet BODY not the peek … a range input there fights that gesture", and `RangeBar.svelte` says "the phone renders it inside a disclosure" — and relocating them onto the hero is exactly the change that could lose them. |
+| **Rationale** | All three components already carry these constraints in their own headers — `GuidingTrack.svelte` is a 0–100 level that "lives in the sheet BODY not the peek … a range input there fights that gesture", and `RangeBar.svelte` says "the phone renders it inside a disclosure" — and relocating them is exactly the change that could lose them. The relocation has now happened **twice**, which is why this row is preservation rather than description: the controls went from the retired queue sheet's body to the hero's disclosure body, and from there into `NowPlayingDrawer.svelte`. |
 | **Source** | `DERIVED` — model: both constraints are stated in the components' own source, and this row is what carries them across the relocation. Preservation, not invention. |
-| **Acceptance** | Given the hero, When the disclosure is expanded, Then no range input is a descendant of a drag-gesture surface, and the collapsed summary carries the current values. Given `available === false`, Then the guide-vocal row renders a disabled control, a stated reason, and text naming what still works. |
-| **Check** | Source scan for the drag-surface ancestry (`GuidingTrack` must not sit inside the sheet-peek subtree), plus captured frames for the available/unavailable pair. `RangeBar` is `aria-hidden` by design with a text readout beside it — assert that pairing, since otherwise the graphic is the only carrier. |
+| **Acceptance** | Given the drawer is open on a playing song, When its controls are located, Then no range input is a descendant of a drag-gesture surface: a pointer drag on the guiding-track thumb changes the level and does **not** dismiss the drawer, while a drag on the handle does dismiss it. Given `available === false`, Then the guide-vocal row renders a disabled control, a stated reason, and text naming what still works. |
+| **Check** | Source scan for `handleOnly` on the drawer Root, since without it the slider and the dismiss gesture are one gesture — `tests/guards/hygiene/hero-live-controls-835.test.ts`, at the drawer's address. No scan can prove a gesture, so the drag pair is driven in `tests/e2e/probes/p16-hero-live-controls.mjs` and passes there. `RangeBar` is `aria-hidden` by design with a text readout beside it — assert that pairing, since otherwise the graphic is the only carrier. |
 | **Priority** | Must. |
+
+**What happened to the container, recorded rather than dropped.** `NowPlayingHero` is **deleted**. It was
+the last surface duplicating the band — both said "Nothing playing" on the same screen, both carried a
+transport, and the hero pushed the rotation down the page to do it — so its content became the drawer the
+band pulls up into, and `/` is the queue and nothing else. Three consequences this row's substance
+depends on:
+
+- **The prohibition is now enforced by a container property, not by placement.** `vaul` drawers
+  drag-to-dismiss from anywhere in their content by default, and this drawer's body *is* sliders, so the
+  two gestures would be one gesture and the ancestor would win. `handleOnly` on `Drawer.Root` restricts
+  dragging to the handle — a whitelist, chosen over a blacklist of `data-vaul-no-drag` elements because a
+  whitelist cannot be forgotten when a control is added later. It only works because `ui/drawer` renders
+  `vaul`'s real `Drawer.Handle`: shadcn's copy shipped a decorative div in that slot, which would have
+  left `handleOnly` with nothing to restrict dragging *to* and made the drawer silently undraggable.
+- **"The collapsed summary carries the current values" is retired.** A drawer portals its content on open
+  and destroys it on close, so there is no collapsed summary to carry anything. What is visible while it
+  is closed is the band, which states the song, who is singing it and progress — deliberately not the
+  control values, because the band is a one-line glance and repeating the drawer in it would state the
+  same thing twice.
+- **The nested "Vocal range" disclosure is gone** (ratified 2026-09-14). The range sits directly below
+  the key row, because the picture answers "can I sing this, in this key?" and the ± buttons are the
+  thing it answers *about*. One level of revealing is the drawer itself; a second inside it was a wall.
 
 ### XR-PH-16 — A stated policy for who may operate the live controls mid-song
 
@@ -234,7 +294,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Source** | Named-decision requirement — acceptance is the existence and consistency of the policy, not its content. |
 | **Acceptance** | Given the documented policy, When a non-permitted actor sends each of the three commands, Then the server refuses all three identically and the phone reflects the refusal. Falsified by a control hidden on the phone but unguarded on the server. |
 | **Check** | `EXEMPT` on the content. Server-side enforcement is unit-testable against `validateCommand` once the capability exists. |
-| **Priority** | Must decide before the hero controls ship. |
+| **Priority** | Must decide — **overdue rather than pending.** The drawer's controls have shipped: `+layout.svelte` wires `key`, `guide`, `restart`, `skip` and `play/pause` for any joined singer, on every phone surface, with no capability gate between the tap and the command. |
 
 ---
 
@@ -290,7 +350,63 @@ the pre-migration figures and are kept as the rationale that justified the work,
 
 ---
 
-## 5 · Verification
+## 5 · The rebuilt surfaces — the band, the drawer, and the two routes
+
+The four rows here have no predecessors: they specify the surfaces the phone-remote rebuild introduced,
+so nothing above them was written against these subjects. Each is written against shipped source rather
+than a forecast, which is unusual in this tree and is why every clause names where it is checkable.
+
+### XR-PH-23 — One band is app chrome, and it alone owns the bottom edge
+
+| | |
+|---|---|
+| **Statement** | A single `NowPlayingBand` is mounted by `src/routes/+layout.svelte` as the bottom-most chrome of every phone surface, for a joined singer only. It publishes its **measured** height as `--dock-h` on `documentElement`, with a teardown, and it is the only element in the stack carrying an `env(safe-area-inset-bottom)` term. No route publishes that token, no route mounts a second band, and nothing stacked above it adds a second inset. |
+| **Surfaces** | Phone |
+| **Rationale** | Two surfaces cannot hold one edge, so making the band chrome is what let the search box leave that edge — and the band having to survive navigation between the queue, the find surface and a song page is what forced the socket and the room's truth out of the route into `src/lib/stores/room.ts`. Each half of the token contract has already failed once in this repo: a hardcoded height leaves the last row bleeding under the band the moment the copy, the font or the inset changes; a second `env()` term doubles the clearance on a notched phone; and a custom property written to `documentElement` outlives the component that wrote it and, being inline on `:root`, out-specifies any media query trying to set the same token. |
+| **Source** | `DERIVED` — model: the token *is* the band's real rendered height, so the only honest publisher is a measurement of the rendered element rather than a constant; and `env(safe-area-inset-bottom)` resolves per element, so exactly one element may add it or the clearance is counted twice. The gating list is deliberately the same four exemptions `tests/guards/layout/phone-inventory.test.ts` already enforces (`/tv`, `/components`, `/admin`, `/metrics`), not a second opinion about what a phone surface is — an ungated connect on `/tv` would open a `role=phone` socket there and register the television as a singer present in the room. |
+| **Acceptance** | Given a joined singer on `/`, `/find`, `/song/[mediaId]`, `/settings` or `/stats`, When the document is measured, Then exactly one band is mounted, `--dock-h` equals its real rendered outer height, and the band sits fully on screen with no bleed below and no clip above. Given `/tv`, Then no band is mounted and `--dock-h` resolves to `0px` rather than to a stale phone-band height. Given a simulated non-zero bottom inset, Then the band's bottom padding grows by exactly that inset and nothing above it does. Falsified by a route publishing the token itself, or by any element above the band carrying an `env(safe-area-inset-bottom)` term. |
+| **Check** | The measured rung. `bun run gate:measured`'s CLAIM 3 (XR-VER-11) reads the published token against the band's rendered height on `/` **and** on `/find` — worth measuring twice even with one publisher, because the layout *writes* `--dock-h` while each route's own `main` *consumes* it — and resolves the safe-area term under a simulated 34px inset. A source scan covers the one-publisher and one-`env()` clauses. Note the height arithmetic: `--dock-h` is `bind:clientHeight` on the `.dock` wrapper, which has no padding or border of its own, so the token is the band's outer box; read off `.band` itself, `clientHeight` excludes its `border-top` and reports one pixel short. |
+| **Priority** | Must. |
+
+### XR-PH-24 — The drawer is the band's expansion, and its container properties are the guarantees
+
+| | |
+|---|---|
+| **Statement** | The band's pull handle opens one `NowPlayingDrawer`, whose content is **portalled on open and destroyed on close**. It caps at `82dvh`, restricts dragging to its handle, and while open it is the bottom-most element and therefore carries the home-indicator inset itself. Its pull affordance renders only when a handler exists; its "···" renders only when a `mediaId` does. |
+| **Surfaces** | Phone |
+| **Rationale** | Three separate defects, each pinned by one of those properties. **Destroy-on-close** is what satisfies the Bits UI slider's `offsetWidth` read *structurally*: the hero needed an explicit `{#if controlsOpen}` inside its `Collapsible`, because a Collapsible renders its content always and merely hides it, so a condition someone had to remember becomes a property of the container. **`dvh` rather than `vh`**: iOS resolves `vh` against the large viewport, so a `vh`-capped sheet hides its own footer while the URL bar shows. **Covering rather than clearing the band**: this drawer reserved `--dock-h` beneath itself on the theory that it opened *above* the band, and a captured frame showed that as 89px of empty surface at the bottom of every drawer — `vaul` portals content to the end of the body at a higher stacking level, so it was never going to open above anything. Covering is also correct, which is why the fix deleted the padding rather than raising the drawer: the band is a one-line glance at the song and the drawer is the same song, larger. Drawer height fell 237px → 160px. |
+| **Source** | Repo: `src/lib/components/NowPlayingDrawer.svelte`; `src/lib/components/ui/drawer/drawer-content.svelte` (the `82dvh` cap) and `src/lib/components/ui/drawer/drawer-handle.svelte` (`vaul`'s real `Drawer.Handle`, which shadcn's copy shipped as a decorative div). The mount clause is `DERIVED` — model: XR-VER-03 replaces a geometry API that cannot measure with a throw, so a component reading `offsetWidth` must not mount while hidden, and destroy-on-close is the only arrangement in which that cannot happen. |
+| **Acceptance** | Given the drawer is closed, When the document is queried, Then no `[data-slot="drawer-content"]` exists and no slider is mounted. Given it is opened, Then exactly one exists, its handle's hit area measures `var(--tap)`, a drag on the handle dismisses it, and a drag on the guiding-track thumb changes the level without dismissing it. Given nothing is playing, Then the band renders no pull handle rather than one whose tap is swallowed, and the drawer renders no "···". Given a non-zero bottom inset, Then the open drawer carries it and no second `env()` term is added above it. |
+| **Check** | Mount rung plus probe, and the split between them is measured rather than assumed. `tests/guards/hygiene/phone-home-832.test.ts` mounts the drawer and asserts what renders, bounding by name the two geometry refusals opening it reaches so a new one reds instead of being absorbed. `tests/guards/hygiene/hero-live-controls-835.test.ts` scans for `handleOnly` and asserts the capability boundary itself, so a future `vaul` that makes the drawer openable on that rung reds and sends the reader back to move the rendered claims home. `tests/e2e/probes/p16-hero-live-controls.mjs` drives the two gestures and the handle's 44px hit area on a real page. The `82dvh` cap is the successor address the retired `dvh` sheet-cap scan recorded as missing, arrived at by correcting shadcn's stock `max-h-[80vh]` — precisely the iOS hazard that scan existed to catch, shipped by the copy-in. So the rule *can* be re-anchored against one live subject instead of a deleted two-file list; the restoration is **owed**, and the `RETIRED` entry in `tests/guards/meta/non-vacuity-floors.test.ts` says so rather than leaving it to be rediscovered. |
+| **Priority** | Must. |
+
+### XR-PH-25 — `/find` is a route, reads downward, and defaults to the library
+
+| | |
+|---|---|
+| **Statement** | Search is its own route. Its box sits at the top of normal flow — neither `sticky` nor `fixed` — and is focused on arrival; its zero-query state is the saved library; results read downward with the best match first; group headings are one neutral treatment naming *which list*, never the readiness of their members, and never outlive their rows. The route reserves the band in flow and docks nothing itself. |
+| **Surfaces** | Phone |
+| **Rationale** | This row is where the four reversals in the preamble land, and two of its clauses exist because rendering found the defect rather than review. The box was first written `position: sticky` with `top: calc(env(…) + var(--space-6xl))`, and the spacing scale stops at `--space-4xl` — an undefined custom property inside a `calc()` invalidates the whole declaration, so the box would have ridden up under the title with nothing failing out loud. Not sticking is the better answer anyway: `PageHeader` is already sticky and carries the top inset, and offsetting a second sticky element below it needs the header's rendered height, which is not a token. Separately, with an empty library and one song processing the surface rendered "READY TO SING · YOUR LIBRARY" with nothing under it, immediately above "MAKING KARAOKE…" — a group heading is a claim about what follows it. |
+| **Source** | Repo: `src/routes/find/+page.svelte`. The saved library lives on the room link (`src/lib/stores/room.ts`, `refreshLibrary()`) rather than in this route, because the same fetch feeds `/find`'s rows **and** the media catalog plus live statuses that `/`'s queue titles and progress bars read — sharing one function body in the route made the queue's titles depend on the search surface having run. |
+| **Acceptance** | Given `/find` with no query, Then the library rows render under one neutral heading, or a designed empty state when there are none *and* nothing is processing; and the box is focused with a computed `position` that is neither `sticky` nor `fixed`. Given a query, Then ready results precede needs-karaoke results, with no `.reverse()` and no scroll of the viewport. Given a result list longer than the viewport, Then the top of the ranking is never under the band, and the last row clears the band once the list is scrolled to its end. Falsified by a browse toggle, a `?browse=1`, a reversing container, or a heading with no rows beneath it. |
+| **Check** | Source scan for the absences in `tests/guards/hygiene/browse-screen-833.test.ts`, which reads four sources — this route, the room link, the layout and the drawer — with a non-vacuity floor on each, because a re-point that silently reads the wrong file asserts nothing. The occlusion halves are measured by `bun run gate:measured`'s CLAIM 3, whose "no result row is occluded at rest" arm was **split** when the list stopped being bottom-anchored: a downward list longer than the viewport necessarily continues under the band, so what is asserted now is that no row is *permanently* hidden, plus the guarantee an upward list never had — the best match is never under the chrome. |
+| **Priority** | Must. |
+
+### XR-PH-26 — `/song/[mediaId]` is a page, fetches its own subject, and quick-select is its whole lyric scope
+
+| | |
+|---|---|
+| **Statement** | The drawer's "···" opens a route rather than a second sheet, and renders only when a song is playing. The route is reachable for any media id, fetches its subject from `GET /api/audit/[mediaId]`, reads the room only for the live key shift, states the vocal range in full, offers lyrics **quick-select** and nothing more, and renders a designed empty, loading, error and offline state. Opening it closes the drawer. |
+| **Surfaces** | Phone |
+| **Rationale** | A page rather than a sheet on a forward-looking argument, not a stylistic one: lyrics timing and editing are going to become a comprehensive system, and a sheet that grows into a workspace is the wrong container to start it in — a chooser is not an editor. So the browser's back gesture is the way out and `/song/[mediaId]/lyrics` has somewhere to be. It shares its endpoint with `/metrics/[mediaId]` because that endpoint already returns the full media row plus its attempt history and is the one place that knows everything about how a song came to be; the two surfaces ask different questions of it — /metrics asks how this was made and what it cost, this asks whether I can sing it and whether the words are right — and a second endpoint would have been two answers to one question. It **fetches** rather than reading the room's catalog because the catalog holds only songs the room has touched, while this page is reachable for a song that is not queued, not playing, and processed on an earlier night. And it closes the drawer as it navigates, because the drawer lives in the layout and survives the route change, so leaving it open would cover the page it just opened. |
+| **Source** | Repo: `src/routes/song/[mediaId]/+page.svelte`; the ruling was *share the endpoint and the components, keep the routes separate*. Its facts panel takes the shared `.card` surface rather than a `<Card.Root>` and is enumerated as such in `tests/guards/design-system/ui-card-surface-913.test.ts`'s callers, because its heading is the route's own `h1` in `PageHeader` and a `<Card.Title>` would be a second heading for one subject. |
+| **Acceptance** | Given a playing song, When the drawer's header is read, Then the "···" is a real anchor whose `href` is `/song/<the id actually playing>`; given nothing playing, Then it is absent. Given a song with no separated vocals, Then a sentence states that the measured range comes from those vocals, rather than an empty strip that reads as "range = zero". Given an unknown id, Then a designed empty state says so; given a failed load, Then an alert distinguishes that from an unknown song. Given the navigation, Then the band is still mounted and the drawer is closed. |
+| **Check** | `tests/guards/layout/phone-inventory.test.ts` covers the four-state inventory for this route — it is **not** exempted — and its phone-route floor was re-anchored 4 → 5 with the set named, per XR-VER-06. `tests/e2e/probes/p16-hero-live-controls.mjs` asserts the "···" against the playing song's id rather than for mere presence, because a door pointing at the wrong song is worse than no door, plus exactly one `h1` carrying the title, `back` to `/`, and the band surviving the navigation. |
+| **Priority** | Must. |
+
+---
+
+## 6 · Verification
 
 ### XR-PH-21 — No phone measurement claim is asserted by source scan alone
 
@@ -324,8 +440,13 @@ the pre-migration figures and are kept as the rationale that justified the work,
   `--tap` into the guard, and `touch-targets.test.ts` is a full `svelteFiles(SRC)` tree-walk that derives
   its control set from markup rather than an allowlist. Only the expression was at risk (XR-PH-01).
 - **A 16px form-control floor.** Stated *and* enforced at `design-system.test.ts:287`.
-- **`dvh` sheet caps, safe-area insets, home-indicator clearance, custom-property teardown.** All four
-  are already guarded (`design-system.test.ts:236/314/323/339`).
+- **`dvh` sheet caps, safe-area insets, home-indicator clearance, custom-property teardown.** Three of
+  the four are guarded, at their post-rebuild addresses: the phone shell's dynamic viewport and insets
+  (`design-system.test.ts:833`), the docked band's home-indicator clearance (`:842`, which also pins that
+  the band carries the `env(safe-area-inset-bottom)` term itself) and the `--dock-h` teardown (`:895`).
+  The fourth — the `dvh` cap — is currently **retired**, because the two files it looped over were
+  deleted; its successor address exists again as the vendored drawer's `82dvh` and its restoration is
+  owed, per `XR-PH-24`.
 - **A visible focus indicator.** `app.css:234-244` carries a global `:focus-visible` ring, deliberately
   written as a plain selector list rather than `:where()` so it out-specifies `outline: none`. Focus
   *order* and the mode's focus *management* were the gaps (XR-PH-12, XR-PH-19).
@@ -335,11 +456,15 @@ the pre-migration figures and are kept as the rationale that justified the work,
 - **A cross-singer drag requirement.** `move` expresses a within-singer reorder only; a cross-singer drag
   rewrites the stored ordered list through the "move to index" op that the migration's step 4 introduces, so
   specifying a guest-facing version here would front-run that step.
-- **Search and filter behaviour on the browse screen beyond the deletion.** The direction deletes the four
-  filter mechanisms and leaves typing as the only filter; ranking, debounce and result-set semantics are a
-  search-quality question nobody has framed, and inventing thresholds here would be exactly the
-  plausible-number-without-a-marker failure.
+- **Search and filter behaviour on `/find` beyond the deletion.** The direction deletes the four filter
+  mechanisms and leaves typing as the only filter; ranking and result-set semantics are a search-quality
+  question nobody has framed, and inventing thresholds here would be exactly the
+  plausible-number-without-a-marker failure. Two corrections since: the surface is a route now, not a
+  screen (`XR-PH-25`), and one of the four deletions came back in part — `/find` renders group headings
+  again, because up to three groups appear at once with no chips to tell them apart. What stays deleted
+  is their colour-coded, state-gated form. A **150ms** debounce with an aborted in-flight request shipped
+  with the route and has no requirement behind it; recorded here as a number the register does not own.
 - **Whether global settings are host-gated.** Recorded as open (handoff §4.4) and broader than the phone;
-  XR-PH-16 covers only the mid-song control subset the hero introduces.
+  XR-PH-16 covers only the mid-song control subset the drawer introduces.
 - **A per-stop accent decision for row-level `+` buttons.** The handoff offers the neutral-ink mitigation
   explicitly as a build-time judgement to raise with the owner, not to apply unilaterally.

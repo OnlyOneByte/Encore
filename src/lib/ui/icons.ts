@@ -58,6 +58,18 @@ export const ICON_PATHS = {
 	 * trailing U+FE0F — which does not merely permit colour emoji, it explicitly REQUESTS it — and both
 	 * are functional: a settings link and an error state.
 	 */
+	/*
+	 * MORE ABOUT THIS THING. Three filled dots rather than an ⓘ or a cog, and the reason is positional:
+	 * every other surface in this app puts a round icon-only control in the header's right-hand column,
+	 * so a second round glyph there reads as its sibling — an ⓘ in that slot was taken for app settings
+	 * on sight. Dots carry no such prior meaning.
+	 *
+	 * Circles, not a stroked path: at 16px a stroked ring reads as a smudge, and these are the one glyph
+	 * in the set whose whole content is three small solid marks. `fill="currentColor"` is set per-circle
+	 * because Icon.svelte's root declares `fill="none"` for the stroked majority.
+	 */
+	dots:
+		'<circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/>',
 	gear: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
 	warning:
 		'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',

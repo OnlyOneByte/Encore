@@ -5,14 +5,14 @@
 > how the system works now is [`../ARCHITECTURE.md`](../ARCHITECTURE.md); how to operate it safely
 > is [`../HANDOFF.md`](../HANDOFF.md). Open work is tracked in **GitHub issues**.
 
-Written 2026-09-09 for the UI redesign, extended since. **127 requirements** across seven sections.
+Written 2026-09-09 for the UI redesign, extended since. **131 requirements** across seven sections.
 Subsystem contracts — media, the HTTP surface, background jobs — are a sibling tree at
 [`../arch/`](../arch/README.md), because this document is about the design rules and those are not.
 
 | Section | Rows | Covers |
 |---|---|---|
 | [`01-tv.md`](01-tv.md) | 20 | Type floor, safe areas, every TV state, the attract phrase system |
-| [`02-phone.md`](02-phone.md) | 22 | Queue-as-home, bottom search, the drag mode, join, live singing controls |
+| [`02-phone.md`](02-phone.md) | 26 | Queue-as-home, the persistent band and its drawer, the find surface, the song page, the drag mode, join |
 | [`03-colour-tokens.md`](03-colour-tokens.md) | 24 | The 48-stop palette, four per-stop contrast roles, token-layer consequences |
 | [`04-verification.md`](04-verification.md) | 22 | How the rules are *checked* — the two rungs, anti-vacuity, migration safety |
 | [`05-concurrency.md`](05-concurrency.md) | 17 | Authority, cross-surface consistency, the social cost of a visible failure |

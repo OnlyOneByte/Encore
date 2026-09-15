@@ -48,7 +48,27 @@ const CALLERS: { file: string; why: string }[] = [
 	{ file: 'lib/components/SongRow.svelte', why: 'a library/search row — its structure is Item, not Card' },
 	{ file: 'lib/components/QueueRow.svelte', why: 'a queue row — Item, plus its own drag and state classes' },
 	{ file: 'lib/components/ProcessingCard.svelte', why: 'a processing row — Item, plus a progress bar and stage line' },
-	{ file: 'lib/components/NowPlayingHero.svelte', why: 'the hero: a transport and a disclosure, not a titled card' },
+	{
+		file: 'routes/song/[mediaId]/+page.svelte',
+		why:
+			"the song page's facts panel — a labelled fact list (key, range, the band sentence, the range " +
+			'visualizer), not a Card with a Header and a Title. Its heading is the route\'s own h1 in ' +
+			'PageHeader, so a <Card.Title> inside it would be a second heading for the same subject'
+	},
+	/*
+	 * REMOVED, not repointed: `lib/components/NowPlayingHero.svelte` (`class="hero card"`, one of the nine
+	 * S4 survivors named at the top of this file). The hero was deleted and its job moved into
+	 * `lib/components/NowPlayingDrawer.svelte`, a bottom drawer mounted from `routes/+layout.svelte`.
+	 *
+	 * The successor does NOT belong on this list, and that is a property of what it became rather than an
+	 * omission: the drawer has no shell of its own to paint. Its outermost element is the vendored
+	 * `Drawer.Content`, whose surface comes from the registry's `bg-popover` + `border-t` + `rounded-t-xl`
+	 * (see `lib/components/ui/drawer/drawer-content.svelte`). The drawer adds only `.np-drawer`, which
+	 * sets `padding-bottom` and nothing else. So there is no element in it that wants `.card`, and adding
+	 * one would paint a second surface on top of the sheet's own.
+	 *
+	 * This is the direction the second test below is for: the caller left, so the entry leaves with it.
+	 */
 	{ file: 'lib/components/MyPositionCard.svelte', why: 'a single line telling a singer where they are' },
 	{ file: 'lib/components/CodeEntry.svelte', why: 'one character box of a room-code entry' },
 	{ file: 'lib/components/JoinLanding.svelte', why: 'the scanned-room row on the landing surface' },

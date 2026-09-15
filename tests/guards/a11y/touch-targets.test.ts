@@ -49,6 +49,11 @@ const FILES = [
 	// redundant is retired with it.
 	...svelteFiles(join(SRC, 'lib', 'ui')),
 	join(SRC, 'routes', '+page.svelte'),
+	// `/find` is a phone surface in its own right since the remote rebuild: search left `/` and became
+	// this route, taking a text field and a clear control with it. Walked for the same reason
+	// `lib/ui/` is — a surface nobody added to this list is a surface these arms never examine, which
+	// is how the metrics pages shipped at 32px.
+	join(SRC, 'routes', 'find', '+page.svelte'),
 	join(SRC, 'routes', 'settings', '+page.svelte'),
 	// The operator metrics pages are phone surfaces by their own CSS's admission (they harden for the
 	// 320px layout) and each has exactly one navigation control, yet neither was ever scanned — which
@@ -134,10 +139,11 @@ test('every phone control that sizes its own box reaches the tap standard', () =
 	 */
 	expect(controlRulesSeen).toBeGreaterThan(6); // @nvf-floor controlRulesSeen
 	// …and pin the SCANNED POPULATION too (XR-VER-14 Acceptance). FILES is a tree walk over
-	// lib/components and lib/ui PLUS five hand-named route pages, so a walk that stops finding
-	// components still leaves five files — and five files carry enough control rules to clear the floor
+	// lib/components and lib/ui PLUS six hand-named route pages, so a walk that stops finding
+	// components still leaves six files — and six files carry enough control rules to clear the floor
 	// above. The two floors fail on different regressions: `controlRulesSeen` on a broken derivation,
-	// this one on a narrowed walk. 14 files today (12 before lib/ui/ joined the walk).
+	// this one on a narrowed walk. 16 files today (15 before routes/find/ was added to the list, 14
+	// before lib/ui/ joined the walk).
 	expect(FILES.length).toBeGreaterThanOrEqual(12); // @nvf-floor FILES.length
 });
 
@@ -193,6 +199,7 @@ test('every phone control expresses the tap standard as var(--tap), never the nu
  */
 test('the controls that previously fell short declare the tap standard as the token', () => {
 	const phone = readFileSync(join(SRC, 'routes', '+page.svelte'), 'utf8');
+	const find = readFileSync(join(SRC, 'routes', 'find', '+page.svelte'), 'utf8');
 	const settings = readFileSync(join(SRC, 'routes', 'settings', '+page.svelte'), 'utf8');
 	const metrics = readFileSync(join(SRC, 'routes', 'metrics', '+page.svelte'), 'utf8');
 	const css = readFileSync(join(SRC, 'app.css'), 'utf8');
@@ -229,8 +236,23 @@ test('the controls that previously fell short declare the tap standard as the to
 	expect(sizeRule('tap')).toMatch(/\bmin-h-tap\b/);
 	// …and the two call sites really do ask for those sizes, so the pins above are not measuring a size
 	// nothing uses.
+	//
+	// THE SEARCH-ESCAPE CALL SITE MOVED FILES, not sizes. It was the "Show all N" control in the docked
+	// search box on `/`; the remote rebuild made `/` queue-only and search the `/find` route, so the
+	// control — same `size="tap"`, same `onclick={clearSearch}` — is read out of the find page now. Left
+	// pointing at `/` this assertion could only fail, never bite, which is the same trap the retired
+	// `.browse-toggle` pin fell into. The `/find` box also added a SECOND clear control (the icon-only
+	// one inside the box), pinned beside it: it is an icon button in a text-entry row, which is exactly
+	// where the sub-24px settings gear came from.
 	expect(phone).toMatch(/<Button[^>]*size="icon"[^>]*href="\/settings"/s);
-	expect(phone).toMatch(/<Button[^>]*size="tap"[^>]*onclick=\{clearSearch\}/s);
+	expect(find).toMatch(/<Button[^>]*size="tap"[^>]*onclick=\{clearSearch\}/s);
+	expect(find).toMatch(/<Button[^>]*size="icon"[^>]*aria-label="Clear the search"/s);
+	// The band is the phone's one permanent control pair (the magnifier and the transport disc) and it
+	// carries the floor as the TOKEN on both. It lives in lib/components, so the structural arms above
+	// examine it like any other component — this pin only records that the two controls a singer can
+	// always reach are the ones least allowed to fall short.
+	const band = readFileSync(join(SRC, 'lib/components/NowPlayingBand.svelte'), 'utf8');
+	expect(band).toMatch(/\.btn,\s*\.disc\s*\{[^}]*min-height:\s*var\(--tap\)/s);
 	// RETIRED: the `.browse-toggle` pin. Direction B deleted the browse disclosure along with the
 	// artist and genre rails it hid, so the rule it named is gone from the phone stylesheet — the
 	// assertion could only fail, never bite. The token-only conversion had just re-pointed this pin at `var(--tap)`; that
@@ -316,7 +338,23 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 	// name. A control passes when at least one rule whose selector contains that token names var(--tap)
 	// on a height, OR sets an explicit height >= TAP.
 	const CONTROLS: { file: string; token: RegExp; name: string }[] = [
-		{ file: join(SRC, 'routes', '+page.svelte'), token: /\.searchbox\s+input\b/, name: 'the dock search input' },
+		/*
+		 * RE-ANCHORED BY THE REMOTE REBUILD. This was `.searchbox input` in `routes/+page.svelte`, the
+		 * field in the box docked at the bottom of home — the control this arm was written for, measured
+		 * at 22px because an `<input>` with no height sits at one text line and `input` is deliberately
+		 * absent from the bare-tag allowlist `controlRules()` consults.
+		 *
+		 * Search is the `/find` route now and the box is `.findbox`, sticky at the top. The FLOOR is
+		 * unchanged and still spelled `min-height: var(--tap)` on the input rather than on the wrapper —
+		 * the field is the tap target, and the box around it is 52px of padding that a finger landing
+		 * near the edge would miss. Only the file and the class moved, which is precisely what this arm
+		 * reports: left pointing at the old selector it said `no sizing rule found (selector moved?)`.
+		 */
+		{
+			file: join(SRC, 'routes', 'find', '+page.svelte'),
+			token: /\.findbox\s+input\b/,
+			name: 'the find search input'
+		},
 		/*
 		 * RE-ANCHORED BY S2 (XR-VER-07). These three controls were `select`, `.text` and `.name-input`
 		 * rules inside settings/+page.svelte. They are now <NativeSelect> and <Input>, and their appearance

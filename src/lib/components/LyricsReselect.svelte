@@ -132,7 +132,7 @@
 						<Textarea
 							bind:value={draft}
 							rows={5}
-							placeholder="Paste the correct lyrics, one line per line…"
+							placeholder="Paste the lyrics…"
 							aria-label="Paste lyrics"
 						/>
 						<div class="reselect-acts">
@@ -142,7 +142,7 @@
 					</div>
 				{:else}
 					<button class="reselect-paste-open" onclick={() => (pasting = true)}>
-						<Icon name="chevron-right" /> None of these — paste my own
+						<Icon name="chevron-right" /> Paste my own
 					</button>
 				{/if}
 			</div>
@@ -159,14 +159,17 @@
 	/*
 	 * THE DISCLOSURE IS STILL HAND-ROLLED, AND THAT IS MEASURED RATHER THAN PREFERRED (the shadcn migration).
 	 *
-	 * `ui/collapsible` is vendored and NowPlayingHero uses it, so one idiom on this screen was the
-	 * intent. It cannot be had here: Bits UI's CollapsibleContent reads `getBoundingClientRect()` in a
+	 * `ui/collapsible` is vendored and NowPlayingHero used it, so one idiom on this screen was the
+	 * intent. (NowPlayingDrawer replaced the hero and dropped the disclosure entirely — a drawer IS the
+	 * reveal — so `routes/settings` is the vendored Collapsible's remaining consumer. The argument below
+	 * is unaffected either way.) It cannot be had here: Bits UI's CollapsibleContent reads `getBoundingClientRect()` in a
 	 * watcher that fires the moment its element gets a ref, and the mount rung replaces that accessor
 	 * with a throw because happy-dom fabricates a zero (XR-VER-03, test-setup/svelte-dom-preload.ts).
 	 * Measured on a scratch component: the disclosure WORKS — the trigger gets `aria-expanded`, the
 	 * content gets an id and the trigger gets a matching `aria-controls` for free — and then the deferred
 	 * read throws and fails the test that mounted it. That is what took NowPlayingHero's four disclosure
-	 * claims off this rung and into `e2e/probes/p16-hero-live-controls.mjs`.
+	 * claims off this rung and into `e2e/probes/p16-hero-live-controls.mjs` — the hero has since been
+	 * replaced by NowPlayingDrawer, so those claims now describe the drawer's controls.
 	 *
 	 * lyrics-reselect-640.test.ts MOUNTS this component for all four of its claims — the candidate list,
 	 * the marked pick, `onpick`, `onpaste` and the peek. Adopting Collapsible would trade those four for
@@ -179,7 +182,8 @@
 		gap: var(--space-2xs);
 		width: 100%;
 		/* Was `padding: var(--space-2xs) 0` and no floor — ~25px on one text line, well under the
-		   standard. NowPlayingHero's equivalent toggle already names the token; this one now does too. */
+		   standard. NowPlayingHero's equivalent toggle already named the token; that surface is now
+		   NowPlayingDrawer, whose reveal is the drawer itself rather than a toggle. This one names it too. */
 		min-height: var(--tap);
 		background: none;
 		border: none;
