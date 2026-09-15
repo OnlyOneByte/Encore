@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .vocabulary import STAGE_PLANS as _STAGE_PLANS
-from .vocabulary import Action, Stage
+from .vocabulary import Action, Stage, serves_family
 
 # ── message type strings (must match src/lib/contract/core/events.ts) ──────────────
 # worker -> core
@@ -167,8 +167,6 @@ class WorkerState:
         served by a `stems`/`stems:*` token — then match. Unknown/unnamespaced actions keep the
         plain prefix behaviour, so an action the worker cannot run is still refused.
         """
-        from .vocabulary import serves_family
-
         # Same rule as every worker-local family check — stated once in the vocabulary.
         return serves_family(self.capabilities, self._serving_action(job_type))
 
