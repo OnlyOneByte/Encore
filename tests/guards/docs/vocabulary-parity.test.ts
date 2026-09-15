@@ -194,8 +194,7 @@ function pyCapabilityTokens(): string[] {
 	const tokens = pyEnumValues(vocabulary, 'Capability');
 	// Non-vacuity: an empty list would make every assertion below pass by having nothing to check —
 	// exactly how the literal grep failed OPEN when the tokens moved.
-	if (tokens.length === 0)
-		throw new Error('no Capability members found in vocabulary.py — the extraction broke');
+	if (tokens.length === 0) throw new Error('no Capability members found in vocabulary.py — the extraction broke');
 	return tokens;
 }
 

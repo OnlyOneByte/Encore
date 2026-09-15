@@ -61,7 +61,7 @@ const TEST_LEG = /\bbun (?:run )?test\b/;
  * The script is a `;`-separated sh chain where every LEG carries a `|| { echo …; exit 1; }` failure
  * arm — that arm is what makes the chain stop at the first failure and name it, so requiring it is
  * not incidental parsing convenience: a statement without one is not a gate, because it cannot fail
- * the run. The trailing `echo 'gates: all 5 legs green'` has no arm and is therefore correctly
+ * the run. The trailing `echo 'gates: all 6 legs green'` has no arm and is therefore correctly
  * excluded rather than special-cased by its text.
  */
 function legsFromScript(script: string): string[] {
@@ -136,8 +136,10 @@ test('the PROSE gate list names exactly the legs the `gates` script runs, in the
 
 	// Non-vacuity: a broken `legsFromScript` regex, an emptied script, or a prose line that stopped
 	// matching the shape would compare [] to [] and pass while enforcing nothing — the exact silent
-	// green this file exists to prevent, one level up. Five legs as of 2026-09-12.
-	expect(scriptLegs.length, 'the leg parse found nothing — the script shape changed').toBeGreaterThanOrEqual(5); // @nvf-floor scriptLegs.length
+	// green this file exists to prevent, one level up. Six legs as of 2026-09-15, when `format:check`
+	// joined: it was a real blocking check that no gate list mentioned, so nothing ran it and it went
+	// red on 34 files across two commits — the same hole `bun run lint` fell through above.
+	expect(scriptLegs.length, 'the leg parse found nothing — the script shape changed').toBeGreaterThanOrEqual(6); // @nvf-floor scriptLegs.length
 });
 
 test('pipeline.json’s machine-readable `gates.legs` is the same list too', () => {

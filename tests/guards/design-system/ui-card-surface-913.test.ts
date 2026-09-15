@@ -52,7 +52,7 @@ const CALLERS: { file: string; why: string }[] = [
 		file: 'routes/song/[mediaId]/+page.svelte',
 		why:
 			"the song page's facts panel — a labelled fact list (key, range, the band sentence, the range " +
-			'visualizer), not a Card with a Header and a Title. Its heading is the route\'s own h1 in ' +
+			"visualizer), not a Card with a Header and a Title. Its heading is the route's own h1 in " +
 			'PageHeader, so a <Card.Title> inside it would be a second heading for the same subject'
 	},
 	/*
@@ -71,7 +71,6 @@ const CALLERS: { file: string; why: string }[] = [
 	 */
 	{ file: 'lib/components/MyPositionCard.svelte', why: 'a single line telling a singer where they are' },
 	{ file: 'lib/components/CodeEntry.svelte', why: 'one character box of a room-code entry' },
-	{ file: 'lib/components/JoinLanding.svelte', why: 'the scanned-room row on the landing surface' },
 	{ file: 'lib/tv/TvProgress.svelte', why: 'the TV progress track — a ten-foot surface, no card structure' },
 	{ file: 'routes/+page.svelte', why: 'the reorder bar, and the search dock which carries its own copy' }
 ];

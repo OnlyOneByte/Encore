@@ -44,4 +44,4 @@
 	let { activeSnapPoint = 0.82, ...rest }: Props = $props();
 </script>
 
-<NowPlayingDrawer bind:activeSnapPoint {...rest} />
+<NowPlayingDrawer bind:activeSnapPoint={activeSnapPoint} {...rest} />

@@ -192,13 +192,30 @@ test('an unstubbed SvelteKit virtual module fails with a message naming the stub
 test('the landing join surface mounts, reads the stubbed page.url, and its goto lands in the stub', async () => {
 	const { setPage } = await stateStub();
 	const { calls } = await navStub();
-	// `/join` was retired (Q2-A); its join UI is the JoinLanding component rendered in the
-	// unjoined branch of `/`. A bare landing (no `?room`) joins the active room, and `?next=` is read
-	// here exactly as the old route read it — which is the `page.url` wiring this rung proves.
-	setPage({ url: '/?next=/settings' });
+	/*
+	 * `/join` was retired (Q2-A); its join UI is the JoinLanding component rendered in the unjoined
+	 * branch of `/`. `?next=` is read here exactly as the old route read it — that `page.url` wiring
+	 * is what this rung proves.
+	 *
+	 * THE LANDING IS NOW ARRIVED-WITH-A-CODE, and it has to be. This drove a BARE landing and joined
+	 * the active room with `code` omitted, which the two-pane split deliberately ended: a code-less
+	 * guest gets the CODE pane, which has no name field and whose Continue resolves a room rather
+	 * than joining one. Driving that pane would prove the opposite of what this rung is for. So the
+	 * stub arrives with a room code, `/api/room-preview` resolves it, and the IDENTITY pane — the one
+	 * surface that can actually join — is what mounts.
+	 */
+	setPage({ url: '/?room=K7MP2Q&next=/settings' });
 	const bodies: string[] = [];
 	const realFetch = globalThis.fetch;
-	globalThis.fetch = ((_url: string, init?: { body?: string }) => {
+	globalThis.fetch = ((url: string, init?: { body?: string }) => {
+		// The preview GET carries no body; only the join POST is recorded, so `bodies` stays a log of
+		// join attempts rather than of every request the pane makes.
+		if (String(url).includes('/api/room-preview')) {
+			const preview = { code: 'K7MP2Q', presentCount: 2, names: ['Maya', 'Dana'] };
+			return Promise.resolve(
+				new Response(JSON.stringify(preview), { status: 200, headers: { 'content-type': 'application/json' } })
+			);
+		}
 		bodies.push(init?.body ?? '');
 		return Promise.resolve(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
 	}) as typeof fetch;
@@ -213,6 +230,17 @@ test('the landing join surface mounts, reads the stubbed page.url, and its goto 
 		// Effects ran and the component rendered — the mount half of XR-VER-01.
 		// the field is <Input>, whose appearance lives in the component, so `.name-input` is gone.
 		// `data-slot` is shadcn's own contract for the rendered element and survives a re-vendor.
+		/*
+		 * LET THE PREVIEW LAND FIRST. `/api/room-preview` is a fetch, so at the flushSync above the pane
+		 * is still RESOLVING ("Finding the room…") and carries no name field — querying here without
+		 * settling reported "mounted but rendered no name field", which reads as a broken component
+		 * rather than a pending request. Two microtask turns is what the promise chain needs; the same
+		 * idiom is used after the submit click below.
+		 */
+		await Promise.resolve();
+		await Promise.resolve();
+		flushSync();
+
 		const input = target.querySelector("input[data-slot='input']") as HTMLInputElement | null;
 		expect(input, 'JoinLanding mounted but rendered no name field').not.toBeNull();
 
@@ -236,8 +264,9 @@ test('the landing join surface mounts, reads the stubbed page.url, and its goto 
 
 		// The join button reached fetch — the action wired through the mount, not just static markup.
 		expect(bodies.length, 'the join button did not reach fetch').toBe(1);
-		// A bare landing carries no room code, so the active room is joined (`code` omitted).
-		expect(JSON.parse(bodies[0]!).code).toBeUndefined();
+		// The scanned code is what gets joined, and it is the code the preview CONFIRMED — not merely
+		// whatever was in the URL. That distinction is the bug the split's `previewCode` exists to stop.
+		expect(JSON.parse(bodies[0]!).code).toBe('K7MP2Q');
 		// `$app/navigation`: the navigation is recorded rather than silently swallowed, and it carries
 		// the destination the stubbed `next` param asked for — the `page.url` read this rung proves.
 		expect(calls.map((c) => c.fn)).toContain('goto');
