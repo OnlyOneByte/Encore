@@ -14,7 +14,6 @@
 		type LyricsCandidate,
 		type SongProfile
 	} from '$lib/contract';
-	import NowPlayingBand from '$lib/components/NowPlayingBand.svelte';
 	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
 	import { room } from '$lib/stores/room';
 
@@ -122,16 +121,9 @@
 	 * unknown (never probed, or a live stream) gets an EMPTY ring, which reads as "no idea how far in";
 	 * a zeroed ring would claim the song had just started and then never move.
 	 */
-	const progress = $derived(durationSec > 0 ? Math.max(0, Math.min(1, livePos / durationSec)) : null);
 
 	// Only a joined singer gets the band: a guest on the landing page has no room to be a remote for.
 	const showBand = $derived(isPhoneSurface && me !== null);
-	/*
-	 * The drawer's open state lives HERE, not in the band, because the band is presentational and the
-	 * drawer is its sibling rather than its child. The band raises `onexpand`; this decides what that
-	 * means. Closing is the drawer's own business (its handle, the overlay, Escape).
-	 */
-	let drawerOpen = $state(false);
 
 	/**
 	 * THE BAND CONTRACT, and it lives here now because the band is the bottom-most thing on the screen.
@@ -155,7 +147,10 @@
 	 * surface with no band (the television), and there a stale --dock-h would pad the TV's stage by a
 	 * phone's band height.
 	 */
-	let dockH = $state(0);
+	/* Seeded with a plausible band height, not 0: this is bound to the drawer's `bandH`, which IS
+	   snap point 0, and a parent 0 pushed down on mount would collapse the sheet to `0px` for the
+	   frame before the real measurement arrives. */
+	let dockH = $state(72);
 	$effect(() => {
 		document.documentElement.style.setProperty('--dock-h', `${dockH}px`);
 		return () => {
@@ -177,36 +172,26 @@
 </div>
 
 <!--
-	THE DOCK IS A POSITIONING WRAPPER AND NOTHING ELSE — no paint, no padding, no inset. All three
-	belong to NowPlayingBand, which already carries its own surface, its top border and the
-	safe-area inset.
+	ONE MOUNT, TWO HEIGHTS. The band used to be a separate fixed element in a `.dock` wrapper here,
+	with this drawer as its sibling expansion and an `onexpand` callback between them. Both the wrapper
+	and the callback are gone: the band is snap point 0 of the drawer (see NowPlayingDrawer.svelte), so
+	there is one element to position and vaul does the positioning.
 
-	The split exists because `position: fixed` cannot live on the component: /components renders FIVE
-	bands stacked to show every state, and a fixed band would collapse all five onto the same strip at
-	the bottom of the gallery. Docking is a property of this being the app's chrome, not of the band.
+	That retires three things this file used to own. `.dock` — vaul fixes the content itself. The
+	`class:covered={drawerOpen}` opacity fade, which existed only because the band and the drawer were
+	two surfaces with matching top edges and one had to step out from under the other; with a single
+	surface there is nothing to hide. And `drawerOpen`, because a permanently-mounted sheet has no
+	open/closed state — it has a snap point, which the drawer owns.
+
+	`showBand` KEEPS ITS NAME and its meaning: it is what decides whether a joined singer on a phone
+	surface gets the remote's chrome at all. `--dock-h` also stays exactly what it was, the band's real
+	rendered height, now measured inside the drawer at snap 0 and handed back through `bind:bandH` so
+	this file remains its single writer.
 -->
 {#if showBand}
-	<div class="dock" class:covered={drawerOpen} bind:clientHeight={dockH}>
-		<NowPlayingBand
-			{title}
-			{artist}
-			{singerName}
-			{singerColor}
-			{progress}
-			{isPlaying}
-			onsearch={() => goto('/find')}
-			ontoggleplay={() => room.command({ cmd: isPlaying ? 'pause' : 'play' })}
-			onexpand={() => (drawerOpen = true)}
-		/>
-	</div>
-
-	<!--
-		The drawer is the band's expansion, so it is a SIBLING of the band rather than a child: vaul
-		portals its content to the end of the body, and nesting it inside a `position: fixed` dock would
-		put the portal's coordinate system inside the very element it has to cover.
-	-->
 	<NowPlayingDrawer
-		bind:open={drawerOpen}
+		bind:bandH={dockH}
+		onsearch={() => goto('/find')}
 		{title}
 		{artist}
 		{singerName}
@@ -237,20 +222,6 @@
 {/if}
 
 <style>
-	.dock {
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		/* The band paints itself and sets its own stacking context; this only says where. */
-		z-index: var(--z-dock);
-		/*
-		 * THE BAND STEPS OUT FROM UNDER THE DRAWER — see `.dock.covered` below. The duration matches
-		 * vaul's own 500ms content transform, measured off the render, so the two halves of one movement
-		 * finish together instead of one landing early.
-		 */
-		transition: opacity 500ms cubic-bezier(0.32, 0.72, 0, 1);
-	}
 	/*
 	 * The drawer covers the band once open, so this changes nothing at rest — it changes the 500ms in
 	 * between, which is where the trouble was. Band and drawer are the same surface colour with the same
@@ -260,13 +231,4 @@
 	 * Opacity only, and the band stays in the layout, so `--dock-h` never moves and no column reflows
 	 * while the drawer is open. `visibility` is deliberately not used: it would cut the fade to a pop.
 	 */
-	.dock.covered {
-		opacity: 0;
-	}
-	/* A guest who asked for less motion gets the state, not the movement. */
-	@media (prefers-reduced-motion: reduce) {
-		.dock {
-			transition: none;
-		}
-	}
 </style>

@@ -64,22 +64,42 @@ export async function openBrowseFromHome(page, { timeout = DEFAULT_TIMEOUT } = {
  * contract promises that, and a driver should not depend on it).
  *
  * @param {{ waitFor: (expr: string, opts?: { timeout?: number }) => Promise<unknown>,
- *           click: (selector: string) => Promise<unknown> }} page
+ *           click: (selector: string) => Promise<unknown>,
+ *           evaluate: (expr: string) => Promise<any>,
+ *           drag: (x1: number, y1: number, x2: number, y2: number,
+ *                  opts?: { steps?: number, settle?: number }) => Promise<unknown> }} page
  * @param {{ timeout?: number }} [opts]
  */
 export async function openNowPlaying(page, { timeout = DEFAULT_TIMEOUT } = {}) {
-	/** @param {string} sel */
-	const has = (sel) => `document.querySelector(${JSON.stringify(sel)}) !== null`;
-	const alreadyOpen = await page.waitFor(has(SEL.npDrawer), { timeout: 250 }).catch(() => false);
-	if (alreadyOpen) return;
+	/*
+	 * PULLED UP IS A HEIGHT, NOT A PRESENCE. This used to decide "already open" with
+	 * `querySelector(npDrawer) !== null`, which was sound while vaul destroyed the content on close.
+	 * The sheet is permanently mounted now, so that read is TRUE at both snap points and the helper
+	 * would return without opening anything. What distinguishes them is where the sheet's top edge is:
+	 * collapsed it sits a band's height off the bottom, pulled up it is near the top. Half the viewport
+	 * is the midpoint between the two snap points, so it separates them with room to spare either way.
+	 */
+	const pulledUp = `(() => {
+		const e = document.querySelector(${JSON.stringify(SEL.npDrawer)});
+		return e ? e.getBoundingClientRect().top < window.innerHeight * 0.5 : false;
+	})()`;
+	if (await page.waitFor(pulledUp, { timeout: 250 }).catch(() => false)) return;
 
 	// The band is app chrome, so it is present on whichever phone surface the driver is on.
-	await page.waitFor(has(SEL.homeReady), { timeout });
-	// The pull handle is rendered only when there is a drawer to pull into — it is gated on `onexpand`,
-	// so waiting for it also proves the layout wired the two together.
-	await page.waitFor(has(SEL.bandExpand), { timeout });
-	await page.click(SEL.bandExpand);
-	await page.waitFor(has(SEL.npDrawer), { timeout });
+	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`, { timeout });
+	/*
+	 * And it is DRAGGED, not clicked. The band's pull-handle button is retired: the one way to snap 1 is
+	 * vaul's own handle, and `handleOnly` restricts dragging to it. A click does nothing at all here, so
+	 * a helper that clicked would fail with a timeout on the wait below rather than say why.
+	 */
+	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.drawerHandle)}) !== null`, { timeout });
+	const grip = await page.evaluate(`(() => {
+		const b = document.querySelector(${JSON.stringify(SEL.drawerHandle)}).getBoundingClientRect();
+		return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
+	})()`);
+	// Past the snap threshold on purpose: vaul settles to the nearest point, so an under-shoot springs back.
+	await page.drag(grip.x, grip.y, grip.x, Math.max(8, grip.y - 520), { steps: 20, settle: 24 });
+	await page.waitFor(pulledUp, { timeout });
 }
 
 /**

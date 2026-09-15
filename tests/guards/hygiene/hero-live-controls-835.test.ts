@@ -2,10 +2,11 @@
 //
 // ── WHAT MOVED, AND WHAT THIS FILE NOW WATCHES ─────────────────────────────────────────────────────
 //
-// `NowPlayingHero` is DELETED. Its job is `NowPlayingDrawer.svelte` now — a bottom drawer (shadcn
-// `ui/drawer` over `vaul-svelte`) mounted in `+layout.svelte` as the expansion of the persistent
-// now-playing band. Home is queue-only. So every subject this file used to read on the hero, or on the
-// route that fed the hero, moved with it:
+// `NowPlayingHero` is DELETED. Its job is `NowPlayingDrawer.svelte` now — a bottom sheet (shadcn
+// `ui/drawer` over `vaul-svelte`) mounted in `+layout.svelte`, which since the band/drawer MERGE is not
+// the band's expansion but the band itself: one permanently-mounted sheet with two snap points, the
+// band strip being snap 0. Home is queue-only. So every subject this file used to read on the hero, or
+// on the route that fed the hero, moved with it:
 //
 //   the sentence's DERIVATION  route `+page.svelte` (`controlsNote`)  →  `NowPlayingDrawer` (`guideNote`)
 //   the stem READING           route `+page.svelte` (`guideEnabled`)  →  `+layout.svelte`, then a prop
@@ -32,35 +33,55 @@
 // path in `src/lib/components/ui/slider/slider.svelte` and `docs/ux/04-verification.md`, is that
 // commit's work. `-835` is the anchor that keeps the pair findable in the meantime.
 //
-// ── THE CAPABILITY BOUNDARY: THIS DRAWER CANNOT BE OPENED ON THE MOUNT RUNG ────────────────────────
+// ── THE CAPABILITY BOUNDARY: THIS DRAWER CANNOT BE MOUNTED AT ALL ──────────────────────────────────
 //
-// Stated up front because it is the reason three of the six arms below are source scans rather than
-// renders, and because it is MEASURED, not assumed. `vaul` reads box geometry the moment it opens, and
-// `svelte-dom-preload.ts` deliberately replaces every geometry API with a throw (XR-VER-03) because
-// happy-dom fabricates a zero. Two independent reads, both unavoidable from here:
+// Stated up front because it is the reason five of the six arms below are source scans rather than
+// renders, and because it is MEASURED, not assumed. The boundary also MOVED with the merge, and it got
+// STRICTER rather than looser — the previous version of this header said the drawer could not be
+// OPENED here, which was true while opening was a state change. There is no opening any more.
 //
-//   1. THE DRAWER ITSELF. `vaul-svelte/dist/use-prevent-scroll.svelte.js:185` reads
-//      `document.documentElement.clientWidth` to size the scrollbar gutter when a MODAL drawer opens.
-//      `NowPlayingDrawer` does not pass `modal={false}`, and it is not this file's business to make it.
-//      `use-drawer-root.svelte.js:67-68,248-269,423-424` reads `getBoundingClientRect()` on the same
-//      path. Measured: opening throws with `hasSong: false`, so the blocker is the CONTAINER and holds
-//      even for a drawer with no controls in it at all.
-//   2. THE CONTROL. With `hasSong: true` the body mounts `GuidingTrack`, whose Bits UI `Slider` reads
-//      `offsetWidth` and observes its track with `ResizeObserver` — the same pair `slider.svelte:17-24`
-//      and `docs/ux/04-verification.md` already record as what pushed four of this issue's arms onto
-//      the layout rung. `mount-rung.test.ts` has a live arm asserting `ResizeObserver` is ABSENT.
+//   WHAT IT WAS. `vaul` read box geometry the moment a drawer opened:
+//   `use-prevent-scroll.svelte.js:185` read `document.documentElement.clientWidth` to size the
+//   scrollbar gutter for a MODAL drawer, and `use-drawer-root.svelte.js:67-68,248-269,423-424` read
+//   `getBoundingClientRect()` on the same path. Both were reached by flipping `open` false → true, and
+//   `svelte-dom-preload.ts` replaces every geometry API with a throw (XR-VER-03) because happy-dom
+//   fabricates a zero. So the drawer mounted closed and refused to open.
 //
-// Faking either would manufacture exactly the silent green those refusals exist to prevent, so neither
-// is faked. Instead the boundary is an ASSERTION (arm 2), not a paragraph: if a future `vaul`, or a
-// `modal={false}`, makes the drawer openable here, that arm reds and sends the next reader back to this
-// header to move the rendered claims home. A comment cannot do that.
+//   WHAT IT IS NOW, MEASURED. The sheet is permanently mounted, so there is nothing to flip: the
+//   refusal arrives at MOUNT, and it arrives from the drawer's OWN markup rather than from vaul.
+//   `.band-slot` carries `bind:clientHeight={bandH}` — that is how snap 0 becomes the band's real
+//   rendered height and how `--dock-h` stays one measured number — and Svelte implements a size
+//   binding with a `ResizeObserver` (`svelte/src/internal/client/dom/elements/bindings/size.js:35,51`
+//   → `bind_element_size`). The mount rung deliberately does NOT install one:
+//   `tests/guards/meta/mount-rung.test.ts` has a named arm asserting `globalThis.ResizeObserver` is
+//   undefined and that the preload never mentions it, because happy-dom ships one whose `observe()` is
+//   a no-op and installing it would turn a loud `ReferenceError` into a measurement of nothing.
 //
-// WHAT THAT COSTS, PLAINLY. The three placement/dimming claims below are decided from SOURCE, not from
-// a render. A source scan cannot see a cascade, so it proves the drawer DECLARES the right structure
-// and not that a stylesheet elsewhere fails to override it. p16 is where the rendered half belongs, and
-// p16 is stale — the gap is real and named rather than papered over.
-import { test, expect, afterEach } from 'bun:test';
-import { mount, unmount, flushSync } from '$setup/svelte-client';
+//   Measured, at both snap placements: `mount()` throws `ResizeObserver is not defined` and the
+//   document ends up with ZERO drawer nodes — no `[data-slot="drawer-content"]`, no `.np-drawer`, no
+//   `.band-slot`, no slider. The throw lands while the content's children are being created, so the
+//   portal never attaches. vaul's own geometry reads and `GuidingTrack`'s `offsetWidth` are both still
+//   there, and both are now UNREACHABLE from here: the size binding fails first, so the geometry
+//   refusal never fires. That is why arm 2's matcher is the `ReferenceError` rather than the preload's
+//   own "cannot measure on the MOUNT rung" message.
+//
+//   AND IT IS THE COMPONENT'S OWN MEASUREMENT NOW, which is an XR-VER-02 ruling and not a dependency's
+//   accident: a component that measures its own layout belongs on rung L. Every rendered claim about
+//   this drawer is a layout-rung claim, full stop.
+//
+// Faking the observer would manufacture exactly the silent green those refusals exist to prevent —
+// `docs/ux/04-verification.md` records that ruling for this very file, where four arms moved to p16
+// "rather than being kept alive with a faked width and a faked observer" — so it is not faked here
+// either. Instead the boundary is an ASSERTION (arm 2), not a paragraph: if a future Svelte, a future
+// `vaul`, or a drawer that stops measuring itself makes this mountable, that arm reds and sends the
+// next reader back to this header to move the rendered claims home. A comment cannot do that.
+//
+// WHAT THAT COSTS, PLAINLY. Every placement, dimming and DOM-presence claim below is decided from
+// SOURCE, not from a render. A source scan cannot see a cascade, so it proves the drawer DECLARES the
+// right structure and not that a stylesheet elsewhere fails to override it. p16 is where the rendered
+// half belongs, and p16 is stale — the gap is real and named rather than papered over.
+import { test, expect } from 'bun:test';
+import { mount, flushSync } from '$setup/svelte-client';
 import { read } from '@encore/test-support';
 import DrawerHarness from './hero-live-controls-835.harness.svelte';
 
@@ -86,10 +107,31 @@ const GUIDE_LEVEL = strip(read('src/lib/contract/lyrics/guide-level.ts'));
 const MARKUP = DRAWER.slice(DRAWER.indexOf('<Drawer.Root'), DRAWER.indexOf('</Drawer.Root>'));
 /** The drawer's `<style>` block only, for the ancestor-opacity ban. */
 const CSS = DRAWER.slice(DRAWER.indexOf('<style>'), DRAWER.lastIndexOf('</style>'));
+/**
+ * Everything between the script and the style block — i.e. MARKUP plus whatever surrounds it.
+ *
+ * Needed because `MARKUP` starts AT `<Drawer.Root`, so a conditional wrapped AROUND the sheet would sit
+ * outside it and be invisible to every scan below. Arm 1's permanent-mount claim is exactly a claim
+ * about that region.
+ */
+const TEMPLATE = DRAWER.slice(DRAWER.indexOf('</script>') + '</script>'.length, DRAWER.indexOf('<style>'));
 
 // Shortened in the copy pass — two clauses instead of two sentences, same two facts: why the control is
 // dead, and what still works. The second half is the load-bearing one and is why this is not just 'off'.
 const NOTE = 'No isolated vocals, so no guiding track. Key and range still work.';
+
+/** vaul's own snap values, by VALUE and not by index — the literals `snapPoints` carries. */
+const SNAP_BAND = '80px';
+const SNAP_OPEN = 0.82;
+
+/**
+ * The mount rung's OTHER refusal shape: an API it declines to install at all, so the failure is a
+ * `ReferenceError` from the runtime rather than the preload's own message. Matched on the exact
+ * identifier and the runtime's exact wording, so a genuinely missing module or a typo'd global still
+ * fails the arm. Not anchored at the END: Svelte appends its component trace to anything thrown inside
+ * an effect.
+ */
+const ABSENT_OBSERVER = /^ResizeObserver is not defined\b/;
 
 /**
  * Every rule body in `css` whose selector list mentions `.cls` as a whole token.
@@ -111,86 +153,209 @@ function occurrences(hay: string, needle: string): number {
 	return hay.split(needle).length - 1;
 }
 
-let live: Array<{ comp: unknown; host: HTMLElement }> = [];
-afterEach(() => {
-	for (const { comp, host } of live) {
-		void unmount(comp as never);
-		host.remove();
-	}
-	live = [];
-});
-
-function render<P extends Record<string, unknown>>(Comp: unknown, props: P): HTMLElement {
-	const host = document.createElement('div');
-	document.body.appendChild(host);
-	const comp = mount(Comp as never, { target: host, props });
-	flushSync();
-	live.push({ comp, host });
-	return host;
+/** Every `{#if …}` test expression in `markup`, in source order. */
+function gates(markup: string): string[] {
+	return [...markup.matchAll(/\{#if\s+([^}]+)\}/g)].map((m) => m[1]!.trim());
 }
 
-// ── 1. the mount arm: a closed drawer, and why that is a claim rather than a formality ────────────
+/**
+ * Every identifier in the drawer's script that carries the SNAP STATE, so arm 1's ban is a ban on the
+ * state rather than on a hand-written list of names.
+ *
+ * The two bindable props are unconditional — `open` and `activeSnapPoint` are the component's own API —
+ * and any `$derived` that READS `activeSnapPoint` is added to them, which today is `collapsed`. Derived
+ * rather than hard-coded for a measured reason: `collapsed` is currently unused in the markup (eslint
+ * says so), so a tidy-up could delete it, and a hard-coded ban on a deleted identifier is the vacuous
+ * `not.toContain` this repo refuses. This way a deletion shrinks the list to the two props (still a real
+ * ban) and a NEW reading of the snap state is banned the moment it is written.
+ */
+function snapIdentifiers(drawer: string): string[] {
+	const out = ['open', 'activeSnapPoint'];
+	for (const [, name, body] of drawer.matchAll(/const (\w+) = \$derived\(([\s\S]*?)\);/g)) {
+		if (/\bactiveSnapPoint\b/.test(body) && !out.includes(name!)) out.push(name!);
+	}
+	return out;
+}
 
-test('a CLOSED drawer mounts no live control at all — the container is the mount constraint', () => {
+/**
+ * Try to mount the harness with the sheet PLACED at `snap`, and report what the attempt left behind.
+ *
+ * Returns rather than throws, because the claim in arm 2 is a conjunction — it threw, AND it threw for
+ * the named reason, AND nothing of the drawer reached the document, AND the harness itself did mount —
+ * and a bare `expect(fn).toThrow()` can only carry the first two.
+ *
+ * `drawerNodes` is a COUNT, not an element, and that is a measured choice this file inherits from
+ * `phone-home-832.test.ts`: bun formats the received value on a red, and formatting a happy-dom element
+ * walks its properties — including the six geometry accessors the preload replaced with a throw. A count
+ * formats as a number, so a red reads `Expected: 0 / Received: 1` at once.
+ *
+ * The document is swept back to its prior contents before returning, so a half-built portal cannot be
+ * read as a render by the next placement or the next arm.
+ */
+function attemptMount(snap: string | number): {
+	threw: string;
+	sentinel: string | null;
+	drawerNodes: number;
+} {
+	const before = new Set<Node>(Array.from(document.body.childNodes));
+	const host = document.createElement('div');
+	document.body.appendChild(host);
+	let threw = '(nothing threw)';
+	try {
+		mount(DrawerHarness as never, {
+			target: host,
+			props: { hasSong: true, guideEnabled: false, activeSnapPoint: snap }
+		});
+		flushSync();
+	} catch (err) {
+		threw = String((err as Error)?.message ?? err);
+	}
+	const sentinel = host.querySelector('[data-testid="snap"]')?.textContent ?? null;
+	// Queried on the DOCUMENT, not the host: vaul portals content to the end of `document.body`, so a
+	// host-scoped query would report "absent" for content that had in fact rendered.
+	const drawerNodes = document.querySelectorAll(
+		'[data-slot="drawer-content"], .np-drawer, .band-slot, [data-slot="slider"], .tools-note'
+	).length;
+	host.remove();
+	for (const node of Array.from(document.body.childNodes)) {
+		if (!before.has(node)) node.remove();
+	}
+	return { threw, sentinel, drawerNodes };
+}
+
+// ── 1. permanent mount: the DOM does not vary with the snap point ─────────────────────────────────
+
+test('the sheet is PERMANENTLY MOUNTED, and no snap state gates anything inside it (XR-PH-15)', () => {
 	/*
-	 * WHAT THIS REPLACES. The hero needed an explicit `{#if controlsOpen}` INSIDE its Collapsible,
-	 * because a Collapsible renders its content always and merely hides it — and `GuidingTrack`'s
-	 * Slider must not mount while hidden (it reads `offsetWidth`). `NowPlayingDrawer`'s header claims
-	 * that condition is now met STRUCTURALLY, because a drawer portals its content on open and destroys
-	 * it on close, so there is nothing left to remember.
+	 * ── WHAT THIS RETIRES, AND WHY THE GUARANTEE IS GONE RATHER THAN MOVED ────────────────────────
 	 *
-	 * This arm is that claim, executable. It is NOT vacuous and it is NOT a tautology: if the drawer
-	 * ever rendered its body while closed, `GuidingTrack` would mount, the Slider would read
-	 * `offsetWidth`, and the XR-VER-03 hardening would make THIS TEST THROW rather than quietly find an
-	 * extra element. `hasSong: true` is therefore load-bearing — it is the arm where a body exists to
-	 * leak.
+	 * This arm used to be "a CLOSED drawer mounts no live control at all", a RENDERED claim: mount the
+	 * harness closed with `hasSong: true`, then assert the document held no `[data-slot=
+	 * "drawer-content"]`, no slider and no sentence. What it protected was a real mount constraint —
+	 * `GuidingTrack` wraps a Bits UI Slider that reads `offsetWidth`, so it must not mount while hidden
+	 * — and the hero needed an explicit `{#if controlsOpen}` INSIDE its Collapsible to get that, because
+	 * a Collapsible renders its content always and merely hides it. The drawer was said to meet the
+	 * constraint STRUCTURALLY, because a drawer portals its content on open and destroys it on close.
+	 *
+	 * THE MERGE DELETED BOTH HALVES OF THAT. There is no closed state: `open` defaults true, nothing
+	 * changes it, and `+layout.svelte` no longer has a `drawerOpen` or an `onexpand` to change it with.
+	 * A snap-pointed sheet keeps its whole body in the document and TRANSLATES it below the fold, so at
+	 * snap 0 — the band strip, the collapsed state — the body, the guide row and its Slider are all
+	 * mounted. The container no longer supplies the guarantee, and nothing else does: the Slider mounts
+	 * whenever `hasSong` is true, at either snap point.
+	 *
+	 * That is not a defect on the phone (the Slider has a layout engine there) but it IS the end of the
+	 * old claim, so the old claim is retired rather than reworded. Its rendered successor — that the
+	 * body is off-screen at snap 0 and on-screen at snap 1 — is a TRANSFORM OFFSET, which is a
+	 * layout-rung claim (XR-VER-01) and belongs in `tests/e2e/probes/`. Recorded here so the next reader
+	 * does not go looking for it on this rung.
+	 *
+	 * WHAT IS DECIDABLE HERE, and what this arm now asserts, is the DOM half of the same subject: the
+	 * mounted tree does not depend on the snap point at all. That needs no geometry — but it also
+	 * cannot be rendered, for the reason arm 2 asserts, so it is read from the source's conditionals.
+	 * A gate naming a snap identifier is exactly how the tree WOULD come to vary, which is what makes
+	 * this a ban with teeth rather than a restatement of the header.
 	 */
-	// Not vacuous: the content asserted absent is really declared, so an emptied component cannot pass.
+	// Not vacuous: the content whose mounting is at stake is really declared, so an emptied component
+	// cannot pass this arm.
 	expect(MARKUP).toContain('<GuidingTrack');
 	expect(MARKUP).toContain('class="tools-note"');
 
-	const host = render(DrawerHarness, { hasSong: true, guideEnabled: false });
+	// (a) born open, permanently. `open` defaults TRUE and no gate below may read it.
+	expect(DRAWER).toMatch(/open = \$bindable\(true\)/);
+	// (b) the snap state exists and is bindable, so the identifiers banned below are LIVE state a gate
+	//     could plausibly be written against rather than names that happen to be absent.
+	expect(DRAWER).toMatch(/activeSnapPoint = \$bindable\(null\)/);
+	expect(DRAWER).toMatch(/snapPoints=\{\[SNAP_BAND, SNAP_OPEN\]\}/);
 
-	// The expand affordance mounted, so the harness itself is alive and the queries below mean something.
-	expect(host.querySelector('[data-testid="expand"]')).not.toBeNull();
-	// Queried on the DOCUMENT, not the host: vaul portals to the end of `document.body`, so a
-	// host-scoped query would report "absent" for content that had in fact rendered.
-	expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull();
-	expect(document.querySelector('[data-slot="slider"]')).toBeNull();
-	expect(document.querySelector('.tools-note')).toBeNull();
-	expect((document.body.textContent ?? '').toLowerCase()).not.toContain('no isolated vocals');
+	// (c) the sheet itself is not behind a conditional — a `{#if}` wrapped AROUND `<Drawer.Root>` would
+	//     sit outside MARKUP entirely, so the region before it is read separately.
+	const rootAt = TEMPLATE.indexOf('<Drawer.Root');
+	expect(rootAt).toBeGreaterThanOrEqual(0);
+	expect(TEMPLATE.slice(0, rootAt)).not.toContain('{#if');
+
+	// (d) and no gate INSIDE the sheet reads the snap state, so every element it mounts is mounted at
+	//     both heights.
+	const inside = gates(MARKUP);
+	// Non-vacuity, both halves: the gate collector really found this component's conditionals — including
+	// the one gate the body genuinely has — and the ban list really names live state. A broken regex on
+	// either side would make the loop below trivially clean.
+	expect(inside.length).toBeGreaterThanOrEqual(8);
+	expect(inside).toContain('hasSong');
+	const banned = snapIdentifiers(DRAWER);
+	expect(banned.length).toBeGreaterThanOrEqual(2);
+	for (const id of banned) {
+		const token = new RegExp(`\\b${id}\\b`);
+		expect(inside.filter((g) => token.test(g))).toEqual([]);
+	}
+
+	/*
+	 * RECORDED MUTATIONS (XR-VER-04), each applied to the string this arm reads and each measured to red
+	 * exactly this arm: gating `.tools-body` on `!collapsed && hasSong`; gating it on a NEW
+	 * `$derived(activeSnapPoint === SNAP_BAND)`; wrapping `<Drawer.Root>` in an `{#if}`; flipping `open`
+	 * to `$bindable(false)`; making `activeSnapPoint` a plain `let`; deleting `snapPoints`; and breaking
+	 * the `gates()` regex so the collector examines nothing.
+	 *
+	 * And one measured NON-mutation, which is the point of deriving the ban list: DELETING the unused
+	 * `collapsed` derived leaves all six arms green. A tidy-up that removes dead state is not a
+	 * regression, and the ban survives it with its two live members.
+	 */
 });
 
 // ── 2. the boundary, asserted rather than narrated ────────────────────────────────────────────────
 
-test('opening the drawer is NOT decidable on the mount rung (XR-VER-03), and says which API blocks it', () => {
+test('MOUNTING the drawer is NOT decidable on the mount rung (XR-VER-03), and says which API blocks it', () => {
 	/*
-	 * Opened the way the app opens it: mounted CLOSED, then flipped by the harness's stand-in for the
-	 * band's `onexpand`. Mounting with `open: true` would prove less — born-open is a path
-	 * `+layout.svelte` never takes, since it declares `let drawerOpen = $state(false)`.
+	 * Mounted the way the app mounts it, which since the merge is the ONLY way there is: born open, at a
+	 * snap point. The previous version of this arm mounted closed and then clicked a stand-in for the
+	 * band's `onexpand`, and argued that mounting with `open: true` "would prove less — born-open is a
+	 * path `+layout.svelte` never takes, since it declares `let drawerOpen = $state(false)`".
 	 *
-	 * `hasSong: false` is deliberate: the body — and therefore `GuidingTrack`'s Slider — is gated behind
-	 * `{#if hasSong}`, so this arm isolates the DRAWER's own geometry read. It throwing here is what
-	 * proves the blocker is the container and not the control, which is why arms 4 and 5 are scans even
-	 * for claims that have nothing to do with a slider.
+	 * THAT PREMISE IS NOW FALSE, AND ITS INVERSE IS TRUE. `drawerOpen` does not exist; neither does the
+	 * band's `onexpand`, nor `.dock`, nor `class:covered`. `NowPlayingDrawer` declares `open =
+	 * $bindable(true)` and `+layout.svelte` renders it under `{#if showBand}` without passing `open` at
+	 * all, so a joined singer on a phone surface gets a sheet that is open from its first frame and
+	 * never closes. Born-open is not the path the app never takes — it is the path the app ONLY takes,
+	 * and it is a closed-then-flipped mount that would now prove nothing.
 	 *
-	 * The matcher is the rung's own message, so a DIFFERENT failure (a missing `ResizeObserver`, say)
-	 * reds this arm rather than passing it — "still unopenable, but for a new reason" is a finding too,
-	 * and the assertion text is where the next reader is told to re-read the header.
+	 * Both snap placements are attempted, and that pair is the point rather than repetition: the
+	 * boundary must not be a function of where the sheet sits. `hasSong: true` is deliberate here (the
+	 * old arm used `false` to isolate the container's own read) because the blocker is no longer in the
+	 * container OR in the control — it is the drawer's own `bind:clientHeight`, which is outside the
+	 * `{#if hasSong}` gate and therefore runs either way.
+	 *
+	 * The matcher is the runtime's exact `ReferenceError`, so a DIFFERENT failure — including the
+	 * preload's own "cannot measure on the MOUNT rung", which would mean the size binding had somehow
+	 * been satisfied — reds this arm rather than passing it. "Still unmountable, but for a new reason"
+	 * is a finding too, and the assertion text is where the next reader is told to re-read the header.
 	 */
-	const host = render(DrawerHarness, { hasSong: false, guideEnabled: false });
-	const expand = host.querySelector('[data-testid="expand"]') as HTMLElement | null;
-	expect(expand).not.toBeNull();
-
-	// The debris of a half-mounted drawer is swept before the next arm can read it as a render.
-	const before = new Set<Node>(Array.from(document.body.childNodes));
-	expect(() => {
-		expand?.click();
-		flushSync();
-	}).toThrow(/cannot measure on the MOUNT rung/);
-	for (const node of Array.from(document.body.childNodes)) {
-		if (!before.has(node)) node.remove();
+	for (const snap of [SNAP_BAND, SNAP_OPEN]) {
+		const { threw, sentinel, drawerNodes } = attemptMount(snap);
+		// The harness itself mounted and the placement arrived, so the absence below is the DRAWER's and
+		// not a dead harness reporting nothing. This read-out is declared ahead of the drawer, so it
+		// survives the drawer's throw.
+		expect(sentinel).toBe(String(snap));
+		expect(threw).toMatch(ABSENT_OBSERVER);
+		// Nothing of the sheet reached the document: the throw lands mid-way through creating the
+		// content's children, so the portal never attaches. This is the arm that reds if it ever does.
+		expect(drawerNodes).toBe(0);
 	}
+
+	// …and the API is named from the SOURCE too, so the story above is checked rather than narrated: the
+	// size binding sits on `.band-slot`, outside every gate, and its target is the same `bandH` the
+	// layout binds to publish `--dock-h`.
+	expect(MARKUP).toMatch(/<div class="band-slot"[^>]*bind:clientHeight=\{bandH\}/);
+	expect(DRAWER).toMatch(/bandH = \$bindable\(\d+\)/);
+	expect(LAYOUT).toContain('bind:bandH={dockH}');
+
+	/*
+	 * RECORDED MUTATIONS (XR-VER-04), both measured to red exactly this arm: deleting
+	 * `bind:clientHeight={bandH}` from `.band-slot` (the named cause disappears); and installing a no-op
+	 * `ResizeObserver` on `globalThis` before the mount, which stands in for the rung gaining one or the
+	 * drawer stopping measuring itself — the drawer then MOUNTS, `threw` is no longer the
+	 * `ReferenceError`, and this arm reds. That second one is the whole promise of the header: the
+	 * boundary is not narrated, it is the thing that fails when the boundary moves.
+	 */
 });
 
 // ── 3. Q1-D, re-pointed: the sentence comes from the SONG, never from a bare flag ─────────────────
@@ -259,19 +424,33 @@ test('the sentence renders BEFORE the control it explains, inside the hasSong ga
 	 * Neither can be rendered here now, for the reason arm 2 asserts. Both are decidable from the
 	 * markup's ORDER, which is what this reads. Exactly-once first, so an index comparison cannot be
 	 * satisfied by a second copy of either element somewhere harmless.
+	 *
+	 * THE GATE IS FOUND BACKWARDS FROM `.tools-body`, not forwards from the top of the markup. This read
+	 * `MARKUP.indexOf('{#if hasSong}')`, which silently assumed the tools gate was the FIRST such gate in
+	 * the component — and it stopped being: the header now wraps `<Drawer.Title>` in its own
+	 * `{#if hasSong}` (the title is the dialog's accessible name, so it cannot carry idle copy). The old
+	 * anchor then measured "is the note after the TITLE's gate", found the title's `{/if}` in between,
+	 * and red. Anchoring on the nearest preceding gate names which gate the claim is about, so a sibling
+	 * `{#if hasSong}` anywhere else in the markup is simply not this arm's business.
 	 */
 	expect(occurrences(MARKUP, 'class="tools-note"')).toBe(1);
 	expect(occurrences(MARKUP, '<GuidingTrack')).toBe(1);
 
-	const gate = MARKUP.indexOf('{#if hasSong}');
 	const body = MARKUP.indexOf('class="tools-body"');
 	const note = MARKUP.indexOf('class="tools-note"');
 	const control = MARKUP.indexOf('<GuidingTrack');
+	const gate = MARKUP.lastIndexOf('{#if ', body);
 
+	expect(body).toBeGreaterThanOrEqual(0);
 	expect(gate).toBeGreaterThanOrEqual(0);
-	// The idle guarantee, structurally: the note is nested inside the `{#if hasSong}` block, so a room
+	// The gate immediately above the tools body is the hasSong one, and nothing else stands between the
+	// two — so the block the note sits in is the block a playing song opens.
+	const TOOLS = 'class="tools-body"';
+	expect(MARKUP.slice(gate, body + TOOLS.length)).toMatch(
+		new RegExp(String.raw`^\{#if hasSong\}\s*<div ${TOOLS}$`)
+	);
+	// The idle guarantee, structurally: the note is nested inside that `{#if hasSong}` block, so a room
 	// with nothing playing cannot reach it. No `{/if}` between the two means the block is still open.
-	expect(body).toBeGreaterThan(gate);
 	expect(note).toBeGreaterThan(body);
 	expect(MARKUP.slice(gate, note)).not.toContain('{/if}');
 	// And the reason precedes the control it explains, rather than trailing it.
@@ -297,7 +476,8 @@ test('the sentence is dimmed by an ink token, never by an opacity on it or an an
 	expect(noteRules[0]).toMatch(/color:\s*var\(--ink-dim\)/);
 
 	// Every ancestor of the note that this component styles. Each must be FOUND (or the ban is vacuous
-	// against a renamed class) and each must be alpha-free.
+	// against a renamed class) and each must be alpha-free. `.band-slot` is a sibling of the head and
+	// body rather than an ancestor of the note, so it is not on this list.
 	for (const cls of ['tools-body', 'np-body', 'np-drawer']) {
 		const rules = rulesFor(CSS, cls);
 		expect(rules.length).toBeGreaterThan(0);
@@ -321,8 +501,9 @@ test('the sentence is dimmed by an ink token, never by an opacity on it or an an
 test('stays reversed-proof: the reason is on the drawer, NOT back inside GuidingTrack', () => {
 	// The whole point of arm D. `drawer-ui-cleanup-253.test.ts` bans this phrase from the component and
 	// this asserts the same boundary from the other side, so a future edit that relocates the sentence
-	// into the component reds here as well as there. Unchanged by the hero→drawer move: the ruling was
-	// about which side of the component boundary the copy lives on, and both sides still exist.
+	// into the component reds here as well as there. Unchanged by the hero→drawer move and by the
+	// band/drawer merge: the ruling was about which side of the component boundary the copy lives on,
+	// and both sides still exist.
 	//
 	// Non-vacuity first: a component that had been deleted or renamed would satisfy every ban below by
 	// being absent, which is the failure mode a bare `not.toMatch` cannot distinguish from compliance.
