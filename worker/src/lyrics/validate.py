@@ -36,6 +36,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from .model import LyricsDoc
+
 # ── validation thresholds ────────────────────────────────────────────────────────────────────────
 # Each is a shape a real artifact exhibited, not a guess.
 
@@ -128,13 +130,12 @@ class TimingReport:
 
 
 def _words_of(doc: dict[str, Any]) -> list[dict[str, Any]]:
-    """Every timed word in document order. Tolerates both the doc shapes in play."""
-    out: list[dict[str, Any]] = []
-    for line in doc.get("lines") or doc.get("segments") or []:
-        for w in line.get("words") or []:
-            if isinstance(w.get("start"), (int, float)) and isinstance(w.get("end"), (int, float)):
-                out.append(w)
-    return out
+    """Every timed word in document order.
+
+    The doc's SHAPE is `model.LyricsDoc`'s business, not this module's: `validate.py` owns judgements
+    about timing QUALITY, and it used to re-derive what a line even was before it could judge one.
+    """
+    return LyricsDoc(doc).timed_words()
 
 
 def validate_timing(doc: dict[str, Any], duration_sec: float | None) -> TimingReport:
@@ -315,12 +316,6 @@ def _median(values: list[float]) -> float:
     s = sorted(values)
     mid = len(s) // 2
     return s[mid] if len(s) % 2 else (s[mid - 1] + s[mid]) / 2.0
-
-
-def line_starts(doc: dict[str, Any]) -> list[float]:
-    """Line start times from either doc shape, for feeding the fit."""
-    lines = doc.get("lines") or doc.get("segments") or []
-    return [float(ln["start"]) for ln in lines if isinstance(ln.get("start"), (int, float))]
 
 
 # ── placing the LRC on THIS audio's timeline, BEFORE it is aligned ───────────────────────────
