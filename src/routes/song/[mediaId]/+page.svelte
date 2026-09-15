@@ -103,7 +103,13 @@
 	const heading = $derived(loading ? 'Song' : (display.title || media?.title || 'Unknown song'));
 </script>
 
-<PageHeader title={heading} back={{ href: '/', label: 'Back to the queue' }} />
+<!--
+	The wrapper exists to carry `--page-measure`, which PageHeader reads. The header is a SIBLING of
+	`main`, not a descendant, so declaring the measure on `main` would never reach it — the same shape
+	`/settings` uses with `.settings-page`.
+-->
+<div class="song-page">
+	<PageHeader title={heading} back={{ href: '/', label: 'Back to the queue' }} />
 
 <main>
 	<!-- Room state is a live claim, and a stale one on this page would let the range readout describe a
@@ -190,12 +196,27 @@
 		{/if}
 	{/if}
 </main>
+</div>
 
 <Toaster position="bottom-center" offset="var(--dock-h, 0px)" style="--width: min(92vw, 420px);" />
 
 <style>
+	.song-page {
+		/*
+		 * A READING WIDTH, which this route shipped without. PageHeader caps its row on this token and
+		 * falls back to the shell's cap when a route sets none — so on a desktop viewport the header
+		 * aligned to one width while the column ran the full shell, the two visibly disagreed, and the
+		 * range visualizer stretched to ~1300px. 560px matches /settings, the other route whose content is
+		 * a labelled fact list rather than a grid of rows.
+		 */
+		--page-measure: var(--measure-prose);
+	}
 	main {
 		flex: 1;
+		max-width: var(--page-measure);
+		margin-inline: auto;
+		width: 100%;
+		box-sizing: border-box;
 		/* Reserves the band in normal flow (XR-PH-12); no env() term — the band carries the only one. */
 		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}

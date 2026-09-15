@@ -108,6 +108,32 @@
 //      /find. `/`'s floors are then set to what a queue-only route genuinely supports. The code this
 //      guard examines therefore goes UP, not down; the floor's job — proving `read()` really landed on
 //      the file and the stripper did not blank it — is unchanged at every one of the five addresses.
+//
+//  R8. THE BAND AND THE DRAWER ARE ONE SURFACE NOW, which reverses the two-element arrangement R1 and R7
+//      are both written about. `NowPlayingBand` is COMPOSED inside `NowPlayingDrawer` as the first child
+//      of its content (`.band-slot`), and that element is snap point 0 of a permanently-mounted vaul
+//      sheet. So `+layout.svelte` mounts ONE component inside `{#if showBand}`, there is no `.dock`
+//      wrapper, no `drawerOpen`, and no `onexpand` callback between the two. What forced it is a gesture:
+//      an outside element can START a pointer gesture but cannot hand the in-flight pointer to vaul, so
+//      the old band's handle advertised a drag it could only answer with a jump.
+//
+//      R1's MEASUREMENT CLAIM SURVIVES VERBATIM, in two named steps rather than one binding: `.band-slot`
+//      measures itself with `bind:clientHeight={bandH}` (that height IS snap 0), the layout takes it back
+//      with `bind:bandH={dockH}`, and the layout alone writes `--dock-h` and removes it on teardown. One
+//      measurement, one publisher, both counted below.
+//
+//      R5's SUBJECT MOVES ONE ADDRESS FURTHER. The `position: fixed; bottom: 0` element the soft-keyboard
+//      attribute lifts is no longer a rule this repo writes at all — vaul's own content element carries
+//      it, through the vendored `ui/drawer/drawer-content.svelte` class list (`fixed` plus
+//      `data-[vaul-drawer-direction=bottom]:bottom-0`). That file is therefore read as a SIXTH source,
+//      with its own floor, because a claim asserted against a file this guard does not read is not
+//      asserted at all.
+//
+//      THE `class:covered={drawerOpen}` FADE IS RETIRED, and it is the one mechanism here that loses
+//      assertions outright rather than moving. It existed only because two surfaces of the same colour
+//      with matching top edges had to step out from under each other for the length of the open; one
+//      surface at two heights has nothing to hide. Its `opacity`-never-`visibility` rider is DELETED as
+//      vacuous — see the deletion note at the arm that carried it.
 
 import { test, expect } from 'bun:test';
 import { existsSync } from 'node:fs';
@@ -144,9 +170,14 @@ const HOME_RAW = read('src/routes/+page.svelte');
 const HOME = stripComments(HOME_RAW);
 // R7: the now-playing drawer, which took the song identity, transport and live controls off `/`. Read
 // because it is app chrome on every phone surface now, so it is a third address a banned mechanism could
-// return at without touching either route.
+// return at without touching either route. R8: it also mounts the BAND, as snap point 0.
 const DRAWER_RAW = read('src/lib/components/NowPlayingDrawer.svelte');
 const DRAWER = stripComments(DRAWER_RAW);
+// R8: the vendored drawer content. Read because the `position: fixed; bottom: 0` that used to be `.dock`
+// in the layout is now vaul's own, expressed in this file's class list — and R5's soft-keyboard claim is
+// about that element. A claim asserted against a file this guard does not read is not asserted at all.
+const DRAWER_CONTENT_RAW = read('src/lib/components/ui/drawer/drawer-content.svelte');
+const DRAWER_CONTENT = stripComments(DRAWER_CONTENT_RAW);
 
 // ── mechanism 1: the three readiness chips ───────────────────────────────────────────────────────
 test('mechanism 1 — the readiness chip row is gone, and so is the state behind it', () => {
@@ -301,10 +332,58 @@ test('the band owns the bottom edge and publishes the measured --dock-h; the fin
 	// R1. ONE band, ONE measurement, and both now live in the layout — which is what lets the band be app
 	// chrome on every phone surface instead of a home-screen element. Gated on `showBand` (a joined singer
 	// on a phone surface), so /tv never mounts it and never opens a `role=phone` socket.
-	expect(LAYOUT).toMatch(/\{#if showBand\}\s*<div class="dock" bind:clientHeight=\{dockH\}>/);
+	//
+	// R8. It is ONE component that gets mounted there now: the drawer, with the band composed inside it as
+	// snap point 0. `bind:bandH={dockH}` is the hop that carries the band's real rendered height back to
+	// the layout. Matched through a bounded window rather than `[^>]*`, because the tag's own props contain
+	// `>` (`() => goto(…)`) and a negated-class run would stop at the first arrow instead of the tag's end.
+	expect(LAYOUT).toMatch(/\{#if showBand\}\s*<NowPlayingDrawer\b[\s\S]{0,200}?bind:bandH=\{dockH\}/);
+	/*
+	 * RETIRED (R8) — two positive arms, recorded here because the mechanism is GONE rather than moved:
+	 *
+	 *     expect(LAYOUT).toMatch(/class:covered=\{drawerOpen\}/);
+	 *     expect(LAYOUT).toMatch(/\.dock\.covered \{\s*opacity: 0;/);
+	 *
+	 * They pinned the fade that took the band out from under the opening drawer. The defect was real —
+	 * both surfaces were `--card` with a 1px top border and a matching top radius, so a sheet rising over
+	 * the band showed two identical top edges and read as a second copy of the panel arriving rather than
+	 * as the panel growing. With one surface at two heights there is no second edge, nothing to step out
+	 * from under, and no open/closed state to drive a fade from.
+	 *
+	 * DELETED AS VACUOUS, not left green — the rider that travelled with them:
+	 *
+	 *     expect(LAYOUT).not.toMatch(/\.dock\.covered \{[^}]*visibility/s);
+	 *
+	 * WHAT IT PROTECTED: the fade had to be `opacity`, never `visibility` and never a height change. The
+	 * band stayed in the layout while the drawer was open, so --dock-h must not move or every scrolling
+	 * column reflows behind it; `visibility: hidden` would also have cut the cross-fade to a pop.
+	 * WHY IT IS DELETED RATHER THAN RE-POINTED: there is no `.dock.covered` rule left for a negative to
+	 * examine, so it passes while looking at nothing — enforcement in appearance only, which is exactly
+	 * what this file's own header calls out about absences. And the rule has no successor to re-point at:
+	 * no fade means no property to insist on, so nothing can regress into `visibility`. The bans below
+	 * carry what remains of the claim, which is that the two-surface arrangement must not come back.
+	 */
+	expect(LAYOUT, 'the retired fade: no class, no rule, no state named `covered`').not.toContain('covered');
+	expect(LAYOUT, 'the retired positioning wrapper — vaul fixes the drawer content itself').not.toContain(
+		'class="dock"'
+	);
+	expect(LAYOUT, 'a permanently-mounted sheet has no open state').not.toMatch(/\bdrawerOpen\b/);
 	expect(LAYOUT).toMatch(/const showBand = \$derived\(isPhoneSurface && me !== null\);/);
-	const docks = LAYOUT.match(/bind:clientHeight=\{dockH\}/g) ?? [];
-	expect(docks.length).toBe(1); // the band's dock, the only fixed band in the app
+	/*
+	 * ONE MEASUREMENT AND ONE HOP, which is R1's single-publisher count RE-EXPRESSED against the new idiom
+	 * rather than dropped: `.band-slot` inside the drawer measures itself (that height IS snap 0), and the
+	 * layout takes it back exactly once. A second of either forks the geometry the measurement exists to
+	 * keep single.
+	 */
+	expect(DRAWER).toMatch(/<div class="band-slot"[^>]*bind:clientHeight=\{bandH\}>/);
+	expect((DRAWER.match(/bind:clientHeight=\{bandH\}/g) ?? []).length).toBe(1);
+	const docks = LAYOUT.match(/bind:bandH=\{dockH\}/g) ?? [];
+	expect(docks.length).toBe(1); // the one hop out of the one band row in the app
+	// The band is mounted by the DRAWER, once, and as the content's FIRST child — what shows at snap 0 is
+	// the top of that element, so anything above it in the tree would take the strip's place.
+	expect((DRAWER.match(/<NowPlayingBand\b/g) ?? []).length).toBe(1);
+	expect(DRAWER.indexOf('class="band-slot"')).toBeGreaterThan(-1);
+	expect(DRAWER.indexOf('class="band-slot"')).toBeLessThan(DRAWER.indexOf('<Drawer.Header'));
 	// MEASURED, published to documentElement, and torn down. The teardown is not tidiness: an inline
 	// property on :root outlives its writer AND outranks a stylesheet rule, so a stale --dock-h would pad
 	// the television's stage by a phone band's height (the one surface that really does unmount it).
@@ -323,13 +402,51 @@ test('the band owns the bottom edge and publishes the measured --dock-h; the fin
 	}
 	expect(FIND).not.toContain('bind:clientHeight');
 	expect(HOME).not.toContain('bind:clientHeight');
-	// The dock really is at the bottom edge, or --dock-h reserves nothing.
-	expect(LAYOUT).toMatch(/\.dock \{[^}]*position: fixed;[^}]*bottom: 0;/s);
+	// R8: and neither does the LAYOUT any more — the measurement moved INTO the drawer, so a clientHeight
+	// binding here would be a second band row measuring itself against the one that is snap 0.
+	expect(LAYOUT).not.toContain('bind:clientHeight');
+	/*
+	 * THE BAND REALLY IS AT THE BOTTOM EDGE, or --dock-h reserves nothing — RE-POINTED (R8) at the element
+	 * that carries it. This was `.dock { position: fixed; bottom: 0 }`, a rule in `+layout.svelte`; the
+	 * layout declares no CSS at all now, because vaul's own content element is the fixed one. The vendored
+	 * `ui/drawer/drawer-content.svelte` sets it in a Tailwind class list, with the bottom offset gated on
+	 * the drawer's DIRECTION — so the direction is part of the claim: a `direction` prop on the Root other
+	 * than the default would leave the sheet fixed to some other edge with the band still inside it.
+	 */
+	expect(DRAWER_CONTENT).toContain('data-slot="drawer-content"');
+	expect(DRAWER_CONTENT).toMatch(/\bfixed\b/);
+	expect(DRAWER_CONTENT).toContain('data-[vaul-drawer-direction=bottom]:bottom-0');
+	expect(DRAWER_CONTENT).toContain('data-[vaul-drawer-direction=bottom]:inset-x-0');
+	// The direction is part of the claim, and it is sliced rather than windowed: the bottom offset above is
+	// gated on `data-vaul-drawer-direction=bottom`, so a `direction` prop on the Root would leave the sheet
+	// fixed to some other edge with the band still inside it. vaul's default is bottom, so the assertion is
+	// that the prop is ABSENT from the Root's own tag — not merely absent from a fixed-width window of it.
+	const rootTag = DRAWER.slice(DRAWER.indexOf('<Drawer.Root'), DRAWER.indexOf('>', DRAWER.indexOf('handleOnly')));
+	expect(DRAWER.indexOf('<Drawer.Root'), 'the sheet must still be a vaul Root').toBeGreaterThan(-1);
+	expect(rootTag).toContain('snapPoints={[SNAP_BAND, SNAP_OPEN]}');
+	expect(rootTag, 'the sheet must stay a BOTTOM drawer, or the bottom-0 class never applies').not.toContain(
+		'direction='
+	);
+	// …and the drawer releases the vendored `max-h-[82dvh]` cap, which is what makes vaul's translate land
+	// the band strip at the bottom edge rather than 152px above it. Without this the whole snap arithmetic
+	// is applied to a box shorter than the viewport and every offset is wrong by the difference.
+	expect(DRAWER).toMatch(/height: 100dvh;\s*max-height: none;/);
 	// ONE env() term, on the one element that actually sits at that edge. Anything stacked above reads the
 	// inset THROUGH --dock-h, so a second term doubles the gap on a notched phone.
 	expect(BAND).toContain('padding-bottom: env(safe-area-inset-bottom, 0px);');
 	expect(LAYOUT).not.toContain('safe-area-inset-bottom');
 	expect(FIND).not.toContain('safe-area-inset-bottom');
+	/*
+	 * The drawer CONTENT carries an inset of its own, and it is not a second term in the measured stack: it
+	 * is an ANCESTOR of `.band-slot`, so its padding sits outside the clientHeight --dock-h is bound to,
+	 * and it is the bottom-most element only while the sheet is pulled up — which is when the band is not.
+	 * Counted, so a term cannot appear on `.band-slot` itself (where it WOULD be measured, twice).
+	 */
+	expect((DRAWER.match(/env\(safe-area-inset-bottom/g) ?? []).length).toBe(1);
+	const slotCss = DRAWER.slice(DRAWER.indexOf('.band-slot {'), DRAWER.indexOf('.band-slot :global(.band)'));
+	expect(DRAWER.indexOf('.band-slot {'), '.band-slot must still be the measured band row').toBeGreaterThan(-1);
+	expect(slotCss.length).toBeGreaterThan(0);
+	expect(slotCss).not.toContain('env(safe-area-inset-bottom');
 
 	// THE BOX IS AT THE TOP AND STICKY, not docked — the reversal itself. Sticky rather than fixed so it
 	// survives a long scroll through the library without pinning a SECOND fixed element to the viewport,
@@ -454,8 +571,22 @@ test('the docked band survives the on-screen keyboard, by the one mechanism that
 	expect(html).toMatch(/name="viewport"/);
 	expect(html).toContain('interactive-widget=resizes-content');
 	// What it lifts is the BAND now, not the search box — so the fixed-to-the-bottom element the attribute
-	// exists for is the layout's dock, or the attribute is lifting nothing.
-	expect(LAYOUT).toMatch(/\.dock \{[^}]*position: fixed;[^}]*bottom: 0;/s);
+	// exists for is the drawer content the band sits inside, or the attribute is lifting nothing.
+	//
+	// RE-POINTED ONE ADDRESS FURTHER (R8), at the same strength. This read `.dock { position: fixed;
+	// bottom: 0 }` in `+layout.svelte`. The band is snap point 0 of the drawer now and the layout declares
+	// no CSS at all, so the fixed element is vaul's own content — set in the vendored
+	// `ui/drawer/drawer-content.svelte` class list, with the bottom offset gated on the drawer's direction.
+	// Asserted against that file rather than assumed, because R5 is a one-attribute claim that reads as
+	// cosmetic and is not: the measured gate cannot check it, so this scan is the only thing that does.
+	expect(DRAWER_CONTENT).toMatch(/\bfixed\b/);
+	expect(DRAWER_CONTENT).toContain('data-[vaul-drawer-direction=bottom]:bottom-0');
+	// …and the band really is inside that content, or the lifted element is not the one with the band in it.
+	// Ordered by index rather than by a windowed match: this file's stripper BLANKS comments in place to
+	// keep line numbers, so the (long) rationale between the two tags still occupies its own width.
+	expect(DRAWER.indexOf('<Drawer.Content')).toBeGreaterThan(-1);
+	expect(DRAWER.indexOf('<Drawer.Content')).toBeLessThan(DRAWER.indexOf('<div class="band-slot"'));
+	expect(DRAWER).toContain('<NowPlayingBand');
 	// And the box needs no lifting: it is at the TOP of the document, above the keyboard by construction
 	// the second half of the reversal, and asserting it is what stops the box quietly re-docking on the
 	// strength of an attribute that would then be carrying two elements' worth of work.
@@ -487,13 +618,19 @@ test('this guard really read every route it claims to, and really stripped their
 	// under `drawer`, is subject to the same bans (mechanisms 1 and 2+3 above), and the total this guard
 	// examines is LARGER than before. Each floor keeps roughly the same margin under its file's real size
 	// as the three untouched entries do, so all five stay sensitive to a wrong read for the same reason.
+	//
+	// R8 ADDS A SIXTH ENTRY and lowers nothing. `content` is the vendored `ui/drawer/drawer-content.svelte`,
+	// which is where the `position: fixed; bottom: 0` that used to be `.dock` in the layout now lives. It
+	// is a small file, so its floors are proportionally smaller — the point of a floor is that it is
+	// sensitive to THIS file being mis-read, not that every file scores the same number.
 	for (const [name, raw, stripped, rawFloor, codeFloor] of [
 		['find', FIND_RAW, FIND, 12000, 7000],
 		['layout', LAYOUT_RAW, LAYOUT, 5000, 1800],
 		['band', BAND_RAW, BAND, 9000, 2800],
 		['room', ROOM_RAW, ROOM, 12000, 5000],
 		['home', HOME_RAW, HOME, 34000, 11000],
-		['drawer', DRAWER_RAW, DRAWER, 12000, 6000]
+		['drawer', DRAWER_RAW, DRAWER, 12000, 6000],
+		['content', DRAWER_CONTENT_RAW, DRAWER_CONTENT, 2500, 1200]
 	] as const) {
 		expect(raw.length, `${name}: file read`).toBeGreaterThan(rawFloor);
 		expect(stripped.replace(/\s+/g, '').length, `${name}: survived the stripper`).toBeGreaterThan(codeFloor);
@@ -508,6 +645,7 @@ test('this guard really read every route it claims to, and really stripped their
 	//   find   names the retired upward stacking  (R2)
 	//   layout names the retired `.search-dock`   (R1)
 	//   drawer names the retired nested disclosure the range sat behind (R7)
+	//   content names the decorative-handle defect the copy-in shipped (R8)
 	expect(HOME_RAW).toContain('`showReady`/`showProcessing`/`showRaw`');
 	expect(HOME).not.toContain('`showReady`/`showProcessing`/`showRaw`');
 	expect(FIND_RAW).toContain('results expand upward IN PLACE');
@@ -516,4 +654,6 @@ test('this guard really read every route it claims to, and really stripped their
 	expect(LAYOUT).not.toContain('`.search-dock` in the route');
 	expect(DRAWER_RAW).toContain('behind a nested "Vocal range" Collapsible');
 	expect(DRAWER).not.toContain('behind a nested "Vocal range" Collapsible');
+	expect(DRAWER_CONTENT_RAW).toContain('shadcn renders a DECORATIVE div');
+	expect(DRAWER_CONTENT).not.toContain('shadcn renders a DECORATIVE div');
 });

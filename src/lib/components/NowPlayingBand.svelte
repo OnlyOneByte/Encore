@@ -139,10 +139,10 @@
 			>
 				<span class="art"></span>
 				<span class="mark"><Icon name={isPlaying ? 'pause' : 'play'} /></span>
-				<svg class="ring" viewBox="0 0 52 52" aria-hidden="true">
-					<circle class="ring-track" cx="26" cy="26" r="22" />
+				<svg class="arc" viewBox="0 0 52 52" aria-hidden="true">
+					<circle class="arc-track" cx="26" cy="26" r="22" />
 					<circle
-						class="ring-fill"
+						class="arc-fill"
 						cx="26"
 						cy="26"
 						r="22"
@@ -217,7 +217,20 @@
 		padding: 0;
 		border: 0;
 		background: none;
-		cursor: grab;
+		/*
+		 * `pointer`, NOT `grab`. This bar looks like a drag handle and for a while it said so — and it has
+		 * never been draggable: it is a `<button>` whose click sets the drawer open, so a finger that
+		 * pulled up got nothing and a cursor that hovered was told to try. An affordance that promises a
+		 * gesture it cannot perform is the same defect class as a labelled button that swallows its tap.
+		 *
+		 * DRAG-TO-OPEN IS A REAL FEATURE AND IT IS NOT A CSS FIX. vaul owns the gesture, and it can only
+		 * follow a finger on an element inside its own drawer tree — an outside element can start a drag
+		 * but cannot hand the in-flight pointer over, so the sheet would jump to open rather than track.
+		 * The honest route is the band becoming the drawer's collapsed SNAP POINT (`snapPoints`), so there
+		 * is one surface at two heights and the drag is vaul's throughout. That is an architecture change,
+		 * not a polish pass, so the promise is withdrawn until it is made.
+		 */
+		cursor: pointer;
 		/* Anchors the hit-area pseudo-element. */
 		position: relative;
 	}
@@ -272,6 +285,22 @@
 	.disc {
 		position: relative;
 		z-index: var(--z-band-control);
+	}
+	/*
+	 * THE FOCUS RING HUGS THE DISC INSTEAD OF LANDING ON ITS PROGRESS RING.
+	 *
+	 * app.css draws `:focus-visible` as a 2px `--focus` outline at `outline-offset: 2px`. That offset is
+	 * right for every other control and wrong for exactly this one: the progress ring is drawn OUTSIDE
+	 * the 44px button box (deliberately — an inset ring would eat the tap floor), so a ring 2px out lands
+	 * on top of it. The result reads as a pale box bolted around the play button, which is what it was
+	 * reported as.
+	 *
+	 * A NEGATIVE offset, so the indicator sits just inside the disc's own edge and clear of the arc.
+	 * Width and colour are untouched, so XR-VER-12's measured floor — a >=2px outline in the resolved
+	 * `--focus` — is unaffected; only where it is drawn changes.
+	 */
+	.disc:focus-visible {
+		outline-offset: -3px;
 	}
 	.handle > i {
 		display: block;
@@ -376,18 +405,34 @@
 		 */
 		color: inherit;
 	}
-	.ring {
+	/*
+	 * NAMED `arc`, NOT `ring` — and the rename is a defect fix, not a preference.
+	 *
+	 * `ring` is one of Tailwind's own utility names (`box-shadow: 0 0 0 <n>px var(--tw-ring-color)`), and
+	 * the vendored button and drawer both use `focus-visible:ring-3 ring-ring/50`, so Tailwind emits the
+	 * `ring` class into the bundle. A plain `class="ring"` on this SVG then matched it and picked up a
+	 * two-layer box-shadow on a 50x50 box with `border-radius: 0` — painting a pale SQUARE around a round
+	 * play button. Reported as "a weird white box around the play button", and measured here: the svg
+	 * carried a box-shadow it never declared.
+	 *
+	 * This is the third member of a family app.css already documents in prose: `.underline` collided with
+	 * the lyrics ball's marker style and `.block` with the same enum's `block` value, which is why the
+	 * `source(none)` fence exists at all. The fence stops utilities being GENERATED from app markup; it
+	 * cannot stop an app class from colliding with a utility another file legitimately generated. The only
+	 * defence is not to use a utility's name, so this one does not.
+	 */
+	.arc {
 		position: absolute;
 		/* Outside the tap box — see the disc comment in the markup. */
 		inset: calc(-1 * var(--space-2xs));
 		pointer-events: none;
 	}
-	.ring-track,
-	.ring-fill {
+	.arc-track,
+	.arc-fill {
 		fill: none;
 		stroke-width: 3.4;
 	}
-	.ring-track {
+	.arc-track {
 		stroke: var(--track-bg);
 	}
 	/*
@@ -398,7 +443,7 @@
 	 * motion.test.ts would reject it — and the caller updates progress about once a second, which the
 	 * eye reads as continuous on a ring this size without animating anything.
 	 */
-	.ring-fill {
+	.arc-fill {
 		stroke: var(--accent);
 		stroke-linecap: round;
 	}

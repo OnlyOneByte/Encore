@@ -441,10 +441,10 @@
 		gap: 1rem;
 		/* 3rem (48px) is off-scale — the scale stops at --space-4xl (20px) — so it stays a literal. */
 		padding: 1rem 0 3rem;
-		max-width: 900px;
+		max-width: var(--measure-grid);
 		/* Match the PageHeader's --page-measure cap to this block's width so header and content share one
 		   measure and the header does not cap below 900 when --max-w steps to 760 in the 768–1200 band. */
-		--page-measure: 900px;
+		--page-measure: var(--measure-grid);
 		/* The cap takes width off the right only on a flex child (.app-shell is a
 		   centered flex column); width:100% keeps the stretch so margin-inline:auto
 		   re-centres the full capped block instead of collapsing it to content width. */

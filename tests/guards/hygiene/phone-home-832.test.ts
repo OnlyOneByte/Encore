@@ -16,6 +16,23 @@
 // re-pointed; the handful whose SUBJECT genuinely no longer exists were transformed to the assertion
 // that now carries the same guarantee, and each of those says so at its site.
 //
+// ── ONE PERMANENTLY-MOUNTED SHEET, NOT TWO SURFACES: WHAT THAT CHANGED HERE ──────────────────────
+//
+// The persistent band and the drawer it expanded into were MERGED into one vaul drawer with snap
+// points (`'80px'` = the band strip, `0.82` = pulled up), and `NowPlayingBand` is COMPOSED as the
+// content's first child. Three consequences for this file, each handled at its site:
+//
+//   A. THERE IS NO CLOSED STATE. `open` defaults true and never changes, so `.np-drawer` is in the
+//      document at all times and the harness's old `openOnMount: false` arm modelled nothing. The
+//      guarantee it carried ("before the reveal, the control is not on screen") has no mount-rung
+//      expression left; see the retirement comment on the collapsed arm below.
+//   B. THE WHOLE BODY STAYS MOUNTED at either height — below the fold is not out of the tree. That is
+//      asserted, not assumed, and it is what surfaced the duplicate "Nothing playing" the idle arm
+//      pins: two elements in ONE dialog said the same thing, invisibly, to a screen reader.
+//   C. IT NEEDS A `ResizeObserver` TO RENDER AT ALL, because `.band-slot` carries `bind:clientHeight`.
+//      That one is lent for the duration of a mount rather than swallowed — see `withResizeObserver`
+//      for why swallowing it leaves every query below running against an empty document.
+//
 // ── TWO THINGS THE DRAWER CHANGES ABOUT MOUNTING, AND HOW THIS FILE HANDLES THEM ──────────────────
 //
 // 1. IT PORTALS. vaul moves the content to the end of `document.body`, so the host element `mount()`
@@ -61,14 +78,19 @@ import type { SongProfile } from '$lib/contract';
 
 let live: Array<{ comp: unknown; host: HTMLElement }> = [];
 afterEach(() => {
-	for (const { comp, host } of live) {
-		// `void`: unmount returns a promise (it can await outro transitions) and nothing here has any, so
-		// the teardown is synchronous in practice — but a floating promise is a lint error either way.
-		// Wrapped because tearing the drawer down runs the same measuring effects (MEASURED: the portal
-		// is removed either way, so a leaked portal still reds in the next test's `openDrawer`).
-		swallowGeometryRefusal(() => void unmount(comp as never));
-		host.remove();
-	}
+	// One lend around the whole loop, not one per unmount: `withResizeObserver` refuses to nest (it
+	// asserts the global is absent on entry), and tearing a drawer down re-runs the same binding
+	// cleanups the mount armed.
+	withResizeObserver(() => {
+		for (const { comp, host } of live) {
+			// `void`: unmount returns a promise (it can await outro transitions) and nothing here has any, so
+			// the teardown is synchronous in practice — but a floating promise is a lint error either way.
+			// Wrapped because tearing the drawer down runs the same measuring effects (MEASURED: the portal
+			// is removed either way, so a leaked portal still reds in the next test's `openDrawer`).
+			swallowGeometryRefusal(() => void unmount(comp as never));
+			host.remove();
+		}
+	});
 	live = [];
 });
 
@@ -87,19 +109,30 @@ function render<P extends Record<string, unknown>>(Comp: unknown, props: P): HTM
 const GEOMETRY_REFUSAL = /^(\S+?)(?:\(\))? cannot measure on the MOUNT rung/;
 
 /**
+ * The OTHER shape the mount rung's refusal could take: an API it declines to install at all.
+ *
+ * DELIBERATELY NOT MATCHED HERE, and this note is why. The merged sheet needs a `ResizeObserver` to
+ * render at all, and that arrives as a bare `ReferenceError` rather than as the preload's message. It
+ * is NOT swallowed: swallowing it would leave every assertion below querying an empty document (see
+ * `withResizeObserver` for the measurement). So the observer is lent for the duration of a mount and
+ * this catch stays narrowed to the "cannot measure" refusal, meaning a `ReferenceError` reaching it —
+ * from a genuinely missing global, or from the lend failing — still fails the test loudly.
+ */
+
+/**
  * Every geometry API refused while this file ran, in first-seen order.
  *
  * Recorded rather than discarded so the LAST test can assert the exact set. That assertion is what
  * keeps the swallow honest: a new measuring dependency inside the drawer would otherwise be absorbed
- * silently by the same catch that absorbs the two known incidental reads.
+ * silently by the same catch that absorbs the known incidental reads.
  */
 const refusedApis: string[] = [];
 
 /**
- * Run `fn`, letting the mount rung's geometry refusal through and rethrowing everything else.
+ * Run `fn`, letting the mount rung's geometry refusals through and rethrowing everything else.
  *
  * The narrow match is the point. A component error, a missing module, a bad prop — anything that is
- * not the preload's own "cannot measure" refusal — still fails the test.
+ * not one of the two refusal shapes above — still fails the test.
  */
 function swallowGeometryRefusal(fn: () => void): void {
 	try {
@@ -113,30 +146,101 @@ function swallowGeometryRefusal(fn: () => void): void {
 }
 
 /**
+ * The ONE notification API the mount rung has to be lent for this drawer to render at all.
+ *
+ * `ResizeObserver` is deliberately ABSENT from the preload, and `tests/guards/meta/mount-rung.test.ts`
+ * has a named arm holding it absent: happy-dom ships one whose `observe()` is a no-op, so installing it
+ * suite-wide would give `bind:clientHeight` a silent path to its initial value.
+ *
+ * WHY IT CANNOT SIMPLY BE SWALLOWED LIKE `offsetWidth`. The merged sheet's `.band-slot` carries
+ * `bind:clientHeight` (it is what publishes `--dock-h`), and Svelte's size binding constructs a
+ * `ResizeObserver` inside a RENDER effect. MEASURED: the resulting `ReferenceError` aborts the whole
+ * effect flush before bits-ui's portal effect runs, so `Drawer.Content` never reaches the document and
+ * the host is left holding eight empty anchors and nothing else. The geometry swallow works only
+ * because those reads happen AFTER the tree is complete; this one happens instead of it.
+ *
+ * WHY LENDING IT FABRICATES NOTHING, which is the whole reason it is allowed. A `ResizeObserver` is a
+ * NOTIFICATION API, not a measurement one. This stub notifies nobody, and all six geometry accessors
+ * XR-VER-03 enumerates — `clientHeight` included — still throw, so there is no path to a fabricated
+ * zero: `bandH` simply keeps the default `NowPlayingDrawer` declares for it, and NOTHING in this file
+ * reads a bound size. That is the distinction `hero-live-controls-835.test.ts` drew when it refused a
+ * zero-returning `offsetWidth`; a stub that measures nothing is not a stub that measures wrong.
+ *
+ * SCOPED, and self-policing. It is installed for the duration of one call and deleted in a `finally`,
+ * and it asserts the global was ABSENT on entry — so a leak from this file or anywhere else reds here
+ * rather than quietly making the suite's other mounts measurable. `mount-rung.test.ts`'s two claims
+ * (the global is undefined; the preload never names it) both stay true.
+ *
+ * ONE HONEST RESIDUE, recorded rather than hidden: Svelte's size binding goes through a MODULE-LEVEL
+ * `ResizeObserverSingleton` that caches its observer instance on first use
+ * (`svelte/src/internal/client/dom/elements/bindings/size.js`). So the stub instance outlives this
+ * helper inside Svelte's own module state for the rest of the process. It still notifies nobody and
+ * still reads no geometry, so it cannot turn any measurement into a number — but a later file mounting
+ * a `bind:clientHeight` component in the same run gets a constructed observer instead of a
+ * `ReferenceError`, and the thing protecting it there is the `clientHeight` accessor's own throw.
+ */
+function withResizeObserver<T>(fn: () => T): T {
+	const g = globalThis as Record<string, unknown>;
+	expect(g.ResizeObserver, 'a ResizeObserver leaked into the global scope — see mount-rung.test.ts').toBeUndefined();
+	g.ResizeObserver = class {
+		observe(): void {}
+		unobserve(): void {}
+		disconnect(): void {}
+	};
+	try {
+		return fn();
+	} finally {
+		delete g.ResizeObserver;
+	}
+}
+
+/*
+ * ── PLACING THE SHEET, now that there is no open state ───────────────────────────────────────────
+ *
+ * vaul identifies a snap point by VALUE, not by index, so these are the literals `NowPlayingDrawer`'s
+ * own `snapPoints` array carries. Duplicated here rather than imported because the component does not
+ * export them, and a test that reached into the component for its expectation would be asserting the
+ * component against itself.
+ */
+/** Snap 0 — collapsed, the band strip alone on screen. */
+const SNAP_BAND = '80px';
+/** Snap 1 — pulled up. */
+const SNAP_OPEN = 0.82;
+
+/**
  * Mount the drawer through its harness and return the ONE portalled content element.
+ *
+ * WAS `openDrawer` IN THE OPEN/CLOSED SENSE, AND IS NOT ANY MORE. The band and the drawer are one
+ * permanently-mounted sheet with two snap points, so `open` defaults true, never changes, and there is
+ * no transition to drive: mounting the harness IS opening. What `at` does is place the sheet at a
+ * HEIGHT, which is the only distinction the component still makes — and, as the collapsed arm below
+ * says at its own site, it changes nothing about which elements are mounted.
  *
  * Non-vacuous by construction: exactly one `[data-slot="drawer-content"]` must be in the document, so
  * a drawer that rendered nothing (or a portal leaked from a previous test) fails here rather than
  * letting every `querySelector` below return null and pass.
  */
-function openDrawer(props: Record<string, unknown> = {}): HTMLElement {
+function openDrawer(props: Record<string, unknown> = {}, at: number | string = SNAP_OPEN): HTMLElement {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
-	const comp = mount(NowPlayingDrawerHarness as never, { target: host, props });
-	live.push({ comp, host });
-	swallowGeometryRefusal(() => flushSync());
+	withResizeObserver(() => {
+		const comp = mount(NowPlayingDrawerHarness as never, { target: host, props: { activeSnapPoint: at, ...props } });
+		live.push({ comp, host });
+		swallowGeometryRefusal(() => flushSync());
+	});
 	const found = document.querySelectorAll('[data-slot="drawer-content"]');
-	expect(found.length, 'expected exactly one open drawer in the document').toBe(1);
+	expect(found.length, 'expected exactly one drawer in the document').toBe(1);
 	return found[0] as HTMLElement;
 }
 
-/** Mount the drawer CLOSED. Returns nothing: the claim is that nothing was added to the document. */
-function closedDrawer(props: Record<string, unknown> = {}): void {
-	const host = document.createElement('div');
-	document.body.appendChild(host);
-	const comp = mount(NowPlayingDrawerHarness as never, { target: host, props: { ...props, openOnMount: false } });
-	live.push({ comp, host });
-	swallowGeometryRefusal(() => flushSync());
+/**
+ * Tear the most recently mounted drawer down, so the next `openDrawer` has the document to itself.
+ *
+ * Several arms below mount twice in one test. `openDrawer` allows exactly one drawer in the document,
+ * which is also what proves the first one really went away.
+ */
+function dropDrawer(): void {
+	withResizeObserver(() => swallowGeometryRefusal(() => void unmount(live.pop()!.comp as never)));
 }
 
 /**
@@ -247,7 +351,7 @@ test('an unknown song length hides the progress row rather than pinning a bar at
 	//
 	// Two mounts in one test, so the first is torn down before the second opens — `openDrawer` allows
 	// exactly one drawer in the document, which is also what proves the first one really went away.
-	swallowGeometryRefusal(() => void unmount(live.pop()!.comp as never));
+	dropDrawer();
 	const known = openDrawer(PLAYING);
 	expect(count(known, '[role="progressbar"]')).toBe(1);
 	const bar = known.querySelector('[role="progressbar"]') as HTMLElement;
@@ -271,12 +375,12 @@ test('the transport is disabled when there is nothing for it to act on', () => {
 	expect(btn(empty, 'play/pause').disabled).toBe(true);
 
 	// …but play stays live when a queue is waiting to start: "start when it is ready" is a real intent.
-	swallowGeometryRefusal(() => void unmount(live.pop()!.comp as never));
+	dropDrawer();
 	const waiting = openDrawer({ ...IDLE, canStart: true });
 	expect(btn(waiting, 'play/pause').disabled).toBe(false);
 	expect(btn(waiting, 'skip').disabled).toBe(true);
 
-	swallowGeometryRefusal(() => void unmount(live.pop()!.comp as never));
+	dropDrawer();
 	const playing = openDrawer(PLAYING);
 	expect(btn(playing, 'restart').disabled).toBe(false);
 	expect(btn(playing, 'skip').disabled).toBe(false);
@@ -335,7 +439,27 @@ test('an idle drawer says "Nothing playing" exactly once', () => {
 	// the title saying the same thing. Also a frame finding.
 	const idle = openDrawer(IDLE);
 	expect(count(idle, '.eyebrow')).toBe(0);
+	/*
+	 * AND THE SECOND COPY WAS A REAL SOURCE DEFECT, not a stale expectation. This arm went red when the
+	 * band and the drawer merged: the band row is the sheet's own first child now, so its `.title` and the
+	 * head's `Drawer.Title` both sat in ONE dialog rendering the same three words. Nothing showed it twice
+	 * on screen — the head is past the fold at the collapsed snap point — which is precisely why a
+	 * rendered-DOM guard is what caught it: a screen reader reads the whole dialog and announced it twice.
+	 *
+	 * `NowPlayingDrawer` was fixed rather than this count relaxed: the head renders its title only when
+	 * there IS a song, and the dialog keeps an accessible name from `aria-label` on the content when there
+	 * is not. So the string has exactly one home — the band row, which is the collapsed face of the
+	 * surface and the half a guest actually reads.
+	 */
 	expect((idle.textContent ?? '').match(/Nothing playing/g)?.length).toBe(1);
+	// The band row is where it lives, and the head does not have one to repeat.
+	expect(idle.querySelector('.band-slot .band .title')?.textContent).toBe('Nothing playing');
+	expect(count(idle, '[data-slot="drawer-title"]')).toBe(0);
+	// …and the surface is still NAMED, so the dedup did not trade a duplicate announcement for a dialog
+	// with no announcement at all. `aria-labelledby` is absent because bits-ui only sets it once a Title
+	// registers an id, which is what makes the `aria-label` the accessible name here.
+	expect(idle.getAttribute('aria-labelledby')).toBeNull();
+	expect(idle.getAttribute('aria-label')).toBe('Now playing');
 	/*
 	 * AND SAYS NOTHING ELSE. This used to assert the drawer contained "Queue a song to start the party"
 	 * — a line that was three things at once: the state (already the title), an instruction (the
@@ -348,22 +472,73 @@ test('an idle drawer says "Nothing playing" exactly once', () => {
 });
 
 /*
- * TRANSFORMED FROM THE DELETED `controlsSummary` PEEK ASSERTIONS.
+ * RE-POINTED TWICE, AND THE SECOND TIME THE OLD SUBJECT GENUINELY CEASED TO EXIST. WHAT IT USED TO
+ * PROTECT, AND WHY THAT THING IS GONE:
  *
- * The hero's disclosure had a `controlsSummary` prop that stood in for the controls while collapsed,
- * and the guarantee attached to it was: BEFORE the reveal, the control is not on screen. The prop and
- * the collapsed state are both gone, so the guarantee is re-anchored to the drawer's own two states —
- * closed renders no content whatsoever. That is strictly stronger than "hidden behind a summary": the
- * controls are not in the document, so nothing can reach them by accident, and the persistent glance
- * is the band (its own component, with its own guards) rather than a summary line.
+ *   1. Originally: the hero's disclosure had a `controlsSummary` prop standing in for the controls
+ *      while collapsed, and the guarantee was BEFORE THE REVEAL, THE CONTROL IS NOT ON SCREEN.
+ *   2. Then: the prop and the summary went away, and the guarantee was re-anchored to the drawer's own
+ *      two states — a CLOSED drawer rendered no content whatsoever, which is strictly stronger.
+ *
+ * There is no closed state left. The band and the drawer are ONE permanently-mounted sheet with snap
+ * points, so `[data-slot="drawer-content"]` and every control inside it are in the document at all
+ * times, and the old assertions (`count(document, '.tools-body')` is 0, the body does not contain
+ * "Bohemian Rhapsody") are now FALSE rather than vacuous — they were deleted, not neutered.
+ *
+ * "The controls are not reachable while collapsed" therefore has no mount-rung expression at all: what
+ * hides them is a transform offset on a full-height box, which is a LAYOUT-rung claim (XR-VER-01) and
+ * lives in `tests/e2e/probes/`. Nothing here can substitute for it, and pretending otherwise is exactly
+ * the green no-op this file refuses.
+ *
+ * What DOES survive, and is asserted instead, is the structural fact the change created and the whole
+ * mechanism now rests on: the band row is COMPOSED as the sheet's first child, and the body below it
+ * stays mounted at either snap point. That is load-bearing twice over — it is why the sheet can be
+ * dragged between two heights at all (an outside element cannot hand vaul an in-flight pointer), and it
+ * is why the drawer head may not restate what the band row says, since a screen reader reads both.
  */
-test('a closed drawer puts nothing on screen — no controls, no transport, no title', () => {
-	closedDrawer(PLAYING);
-	expect(count(document, '[data-slot="drawer-content"]')).toBe(0);
-	expect(count(document, '.tools-body')).toBe(0);
-	expect(count(document, '.gt')).toBe(0);
-	expect(count(document, 'button[aria-label="play/pause"]')).toBe(0);
-	expect(document.body.textContent).not.toContain('Bohemian Rhapsody');
+test('the band row is the sheet itself, and the body stays mounted at the collapsed snap point', () => {
+	const collapsed = openDrawer(PLAYING, SNAP_BAND);
+	// COMPOSED, not absorbed: the band keeps its own component and its own `.band` surface, inside this
+	// sheet's content. Re-inlining its markup here would take ~200 lines of CSS written against `.band`
+	// with it, and /components would lose the five side-by-side band states.
+	expect(count(collapsed, '.band-slot')).toBe(1);
+	expect(count(collapsed, '.band-slot .band')).toBe(1);
+	/*
+	 * FIRST, AND THE ASSERTION IS ON THE POSITION RATHER THAN ON MERE PRESENCE. vaul sizes the content to
+	 * the largest snap point and translates it DOWN, so what shows at snap 0 is the TOP of the content —
+	 * the band row only equals the collapsed face while nothing of substance precedes it. Anything
+	 * inserted above it silently becomes the collapsed face instead.
+	 *
+	 * "First of the CHILDREN THIS COMPONENT PASSES", not first element child: the vendored
+	 * `drawer-content.svelte` renders vaul's real `Drawer.Handle` itself, ahead of `{@render children()}`,
+	 * so the grab bar legitimately precedes the band row. Stated as a whitelist — the ONLY thing allowed
+	 * above the band row is a drag handle — so a card, an alert or a second row landing there reds.
+	 */
+	const above = [...collapsed.children].slice(0, [...collapsed.children].indexOf(collapsed.querySelector('.band-slot')!));
+	expect(above.map((el) => el.getAttribute('data-slot') ?? el.tagName)).toEqual(['drawer-handle']);
+	// …and the head and the body are BELOW it in document order rather than absent, which is the fact
+	// that replaces "closed renders nothing". Below the fold is not out of the tree.
+	const head = collapsed.querySelector('[data-slot="drawer-header"]') as HTMLElement | null;
+	expect(head, 'the drawer head did not render').not.toBeNull();
+	expect(
+		collapsed.querySelector('.band-slot')!.compareDocumentPosition(head!) & Node.DOCUMENT_POSITION_FOLLOWING
+	).toBeTruthy();
+	expect(count(collapsed, '.tools-body')).toBe(1);
+	expect(count(collapsed, 'button[aria-label="play/pause"]')).toBe(1);
+
+	// SAME TREE AT EITHER HEIGHT. Asserted, not assumed: it is what makes every other arm in this file
+	// free to mount at one snap point and say nothing about the other, and it is the premise of the
+	// duplicate-copy finding the idle arm below pins.
+	//
+	// Compared as an element COUNT plus the rendered text, not as `innerHTML`. MEASURED: bits-ui and vaul
+	// both mint per-instance ids (`bits-c53`, `vaul-svelte-43`), so two mounts of an identical tree never
+	// produce equal markup — and a red on a 12 KB string is unreadable, the same hazard `count()` below
+	// exists to avoid.
+	const census = (el: HTMLElement) => ({ elements: el.querySelectorAll('*').length, text: el.textContent });
+	const atBand = census(collapsed);
+	expect(atBand.elements, 'the collapsed sheet rendered almost nothing').toBeGreaterThan(50);
+	dropDrawer();
+	expect(census(openDrawer(PLAYING, SNAP_OPEN))).toEqual(atBand);
 });
 
 /*
@@ -388,7 +563,7 @@ test('the drawer renders lyrics re-selection itself, from props, with no snippet
 	expect(count(content, '.tools-body')).toBe(1);
 	expect(count(body!, '.reselect'), 'lyrics re-selection did not render').toBe(1);
 	// An idle room has no song whose lyrics could be wrong, so it gets no re-selection either.
-	swallowGeometryRefusal(() => void unmount(live.pop()!.comp as never));
+	dropDrawer();
 	expect(count(openDrawer(IDLE), '.reselect')).toBe(0);
 });
 
@@ -530,31 +705,40 @@ test('the gallery carries the drawer and BOTH position branches, adjacent', () =
 });
 
 // ── the swallow stays honest ─────────────────────────────────────────────────────────────────────
-test('nothing beyond the two KNOWN incidental geometry reads was swallowed (XR-VER-03)', () => {
+test('nothing beyond the KNOWN incidental geometry reads was swallowed (XR-VER-03)', () => {
 	/*
 	 * `openDrawer` lets the mount rung's geometry refusal through so the rendered content can be
 	 * asserted at all. That catch is narrow — anything that is not the refusal rethrows — but it would
 	 * still absorb a NEW measuring dependency, and a component that started measuring its own layout
 	 * belongs on rung L rather than here (XR-VER-02). So the swallowed names are bounded.
 	 *
-	 * Both known entries are DEPENDENCIES' reads, on paths this file asserts nothing about:
-	 *   offsetWidth — the Bits UI Slider inside GuidingTrack, which mounts whenever hasSong is true.
-	 *   clientWidth — bits-ui body-scroll-lock's scrollbar-width compensation, on
-	 *                 document.documentElement, when a modal dialog opens.
+	 * Every known entry is a read on a path this file asserts nothing about:
+	 *   offsetWidth  — the Bits UI Slider inside GuidingTrack, which mounts whenever hasSong is true.
+	 *   clientHeight — Svelte's own `bind:clientHeight` on `.band-slot`, the drawer's `--dock-h` source.
+	 *   clientWidth  — bits-ui body-scroll-lock's scrollbar-width compensation, on
+	 *                  document.documentElement, when a MODAL dialog opens.
 	 *
-	 * A SUBSET, plus one required member, rather than an exact set — and that asymmetry is MEASURED,
-	 * not a hedge. `offsetWidth` is deterministic: this file always opens a playing drawer, so the
-	 * Slider always mounts. `clientWidth` is NOT: bits-ui's lock bookkeeping is module-global, so
-	 * whether the scrollbar computation runs here depends on whether an earlier FILE in the same
-	 * process already locked the body. Measured — refused when this file runs alone, absent in a full
-	 * `bun run test`. Pinning it exactly made this arm pass alone and fail in the suite, which is a
-	 * property of the run scope rather than of the drawer.
+	 * `clientHeight` IS THE NEW ONE, AND IT IS THE PROOF THAT LENDING A `ResizeObserver` FABRICATES
+	 * NOTHING. `withResizeObserver` hands the sheet a notifier so its portal effect can run; the
+	 * MEASUREMENT it would notify about still refuses, right here, by name. So `bandH` never receives a
+	 * number on this rung — it keeps the default the component declares — and nothing in this file reads
+	 * a bound size. Its real value is measured on rung L.
 	 *
-	 * If this reds with a THIRD name, do not add it here reflexively: read what measures, and decide
-	 * whether the claim that depends on it has to move to `tests/e2e/probes/`.
+	 * A SUBSET, plus two required members, rather than an exact set — and that asymmetry is MEASURED,
+	 * not a hedge. `offsetWidth` and `clientHeight` are deterministic: this file always mounts a playing
+	 * drawer, so the Slider always mounts, and `.band-slot` is unconditional. `clientWidth` is NOT:
+	 * bits-ui's lock bookkeeping is module-global, so whether the scrollbar computation runs here depends
+	 * on whether an earlier FILE in the same process already locked the body — and this drawer is
+	 * `modal={false}`, so it does not lock it itself and the read has stopped appearing at all. Left in
+	 * `known` rather than deleted: a suite-order change that reintroduces it is not a defect in the
+	 * drawer, and this arm exists to catch NEW measuring, not to pin the run scope.
+	 *
+	 * If this reds with a name not listed above, do not add it here reflexively: read what measures, and
+	 * decide whether the claim that depends on it has to move to `tests/e2e/probes/`.
 	 */
-	const known = ['clientWidth', 'offsetWidth'];
+	const known = ['clientWidth', 'offsetWidth', 'clientHeight'];
 	expect(refusedApis.filter((api) => !known.includes(api))).toEqual([]);
 	// Non-vacuity: the swallow really did fire, so this arm is not passing because nothing was caught.
 	expect(refusedApis).toContain('offsetWidth');
+	expect(refusedApis).toContain('clientHeight');
 });

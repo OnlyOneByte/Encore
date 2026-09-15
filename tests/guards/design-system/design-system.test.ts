@@ -854,16 +854,24 @@ test('the bottom-docked band clears the home indicator', () => {
 	// RE-ANCHORED AGAIN (the band phase), because the OWNER of the bottom edge changed. The list read
 	// `['search-dock']` against routes/+page.svelte: search WAS the docked band, and it both carried the
 	// inset and published --dock-h. `NowPlayingBand` is now the bottom-most app chrome on every phone
-	// surface, mounted in routes/+layout.svelte inside a `.dock` positioning wrapper, and search moved to
-	// routes/find/+page.svelte as a TOP-sticky box. `.search-dock` exists nowhere, so scanning for it
-	// would red on a stale address rather than on a real defect.
+	// surface, and search moved to routes/find/+page.svelte as a TOP-sticky box. `.search-dock` exists
+	// nowhere, so scanning for it would red on a stale address rather than on a real defect.
 	//
-	// The invariant is unchanged and now asserted at GREATER strength than the one-selector list it
-	// replaces, because the stack it protects has two more parts:
+	// AMENDED (the sheet merge): the band is no longer fixed by a `.dock` wrapper in the layout at all —
+	// see the record on the second half of this test. The clause below is unaffected, because it has
+	// always been about the BAND's own rule, and the band component is unchanged.
+	//
+	// AND ONE DELETION, on the record. This arm used to end with
+	// `expect(routes/+page.svelte).not.toContain('search-dock')` — "the retired address is genuinely gone
+	// rather than merely unscanned". Over markup that has not existed since the band took the bottom edge
+	// that assertion cannot fail: it is a green no-op dressed as a regression guard, and it would stay
+	// green through any future defect. It is deleted rather than carried, and the retirement itself is
+	// recorded in prose above, which is where a retirement belongs.
+	//
+	// The invariant is unchanged and is asserted in two halves:
 	//   - the BAND carries env(safe-area-inset-bottom) itself, in its own component;
-	//   - the `.dock` wrapper that fixes it to the bottom carries NO inset (it is position and nothing
-	//     else), so there is exactly ONE env() term in the docked stack;
-	//   - the retired address is asserted absent, so this cannot pass by scanning a file that moved on.
+	//   - that inset stays inside the element `--dock-h` is measured from, which is the reservation
+	//     contract every other docked control offsets from (see the second half).
 	// It is still a list, so the next docked band must comply.
 	let banded = 0;
 	for (const { file, cls } of [{ file: 'lib/components/NowPlayingBand.svelte', cls: 'band' }]) {
@@ -877,19 +885,64 @@ test('the bottom-docked band clears the home indicator', () => {
 	// floor stops the list being quietly emptied to nothing.
 	expect(banded).toBe(1);
 
-	// The wrapper that DOCKS the band adds no second inset. A second env() term doubles the gap on a
-	// notched phone, which is the failure the one-band rule exists to prevent — and it is the wrapper,
-	// not the band, that a later author is most likely to "fix" by adding one.
-	const layout = readFileSync(join(SRC, 'routes/+layout.svelte'), 'utf8');
-	const dock = layout.match(/\.dock\s*\{[^}]*\}/s);
-	expect(dock, '.dock must still be the positioning wrapper in routes/+layout.svelte').not.toBeNull();
-	expect(dock![0], '.dock must still be what fixes the band to the bottom edge').toMatch(/position:\s*fixed/);
-	expect(dock![0], '.dock must still be docked at the bottom').toMatch(/bottom:\s*0/);
-	expect(dock![0], '.dock is positioning only — the inset belongs to the band').not.toMatch(
-		/env\(safe-area-inset-bottom/
+	/*
+	 * RE-POINTED AGAIN, AND ONE CLAUSE RETIRED (the sheet merge). This half used to read the `.dock` rule
+	 * out of routes/+layout.svelte and assert three things about it: that it was `position: fixed`, that it
+	 * was `bottom: 0`, and that it carried NO env() of its own — "exactly ONE env() term in the docked
+	 * stack".
+	 *
+	 * `.dock` IS GONE, and not renamed. The band and the now-playing drawer were merged into one
+	 * permanently-mounted vaul sheet with the band as snap point 0, so nothing in the layout positions the
+	 * band any more: vaul fixes the sheet's own content and the band rides inside it. Scanning for `.dock`
+	 * would red on a stale address rather than on a defect, which is the same failure the `search-dock`
+	 * re-anchor before it corrected.
+	 *
+	 * THE POSITIONING CLAUSES RE-POINT CLEANLY — to the vendored drawer content, which is what fixes the
+	 * sheet to the bottom edge now. That is a copy-in, so it is exactly the kind of file a re-vendor
+	 * rewrites wholesale; two of its Tailwind utilities are load-bearing for this invariant and neither is
+	 * obviously so on sight.
+	 *
+	 * THE ENV() CLAUSE CANNOT RE-POINT, so it is RETIRED with its reason rather than pointed at the
+	 * nearest element and quietly inverted. `.np-drawer` DELIBERATELY carries its own
+	 * `env(safe-area-inset-bottom)` (documented at that rule in NowPlayingDrawer.svelte), so asserting
+	 * "the positioning wrapper adds no inset" against it would assert a falsehood, and asserting the
+	 * opposite would be a rule invented to match the code. The premise the old clause rested on — that
+	 * the band's inset is the ONLY one in the stack — ended when the two surfaces became one element.
+	 *
+	 * WHAT REPLACES IT IS THE PART THAT STILL PROTECTS THE INDICATOR. The invariant every docked control
+	 * actually depends on is that `--dock-h` INCLUDES the band's inset, because that is the single number
+	 * they all offset from. `--dock-h` is measured off `.band-slot` (`bind:clientHeight`), the band renders
+	 * inside it, and the drawer reaches into the band with a `:global(.band)` rule to suppress its surface
+	 * paint — three properties, deliberately not padding. If that suppression ever grows a
+	 * `padding-bottom`, the inset leaves the measurement and every offset control silently stops clearing
+	 * the home indicator, with the band itself still looking correct. That is the live hazard now, and it
+	 * is what these clauses pin.
+	 */
+	// Comment-stripped, both reads. drawer-content.svelte's own prose says "DEFECT IN THE COPY-IN, fixed
+	// here", which satisfies a raw `\bfixed\b` — measured: deleting `fixed` from the class list left this
+	// arm GREEN against the comment. Same asymmetric-stripping hole this file's header names for app.css,
+	// and the same one that makes the drawer read below strip too (its prose states the very declaration
+	// the last clause checks for).
+	const content = stripComments(readFileSync(join(SRC, 'lib/components/ui/drawer/drawer-content.svelte'), 'utf8'));
+	expect(content, 'the vendored drawer content must still be what fixes the sheet to the viewport').toMatch(
+		/\bfixed\b/
 	);
-	// …and the retired address is genuinely gone rather than merely unscanned.
-	expect(readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8')).not.toContain('search-dock');
+	expect(content, 'a bottom-direction drawer must still be pinned to the bottom edge').toMatch(
+		/data-\[vaul-drawer-direction=bottom\]:bottom-0/
+	);
+
+	// The band's inset must stay INSIDE the measured element, which is the reservation contract every
+	// docked control offsets from.
+	const drawer = stripComments(readFileSync(join(SRC, 'lib/components/NowPlayingDrawer.svelte'), 'utf8'));
+	expect(drawer, '--dock-h must still be measured off the .band-slot that holds the band').toMatch(
+		/class="band-slot"[^>]*bind:clientHeight=\{bandH\}/
+	);
+	const suppress = drawer.match(/\.band-slot\s+:global\(\.band\)\s*\{([^}]*)\}/);
+	expect(suppress, 'the drawer must still suppress the band surface paint via :global(.band)').not.toBeNull();
+	expect(
+		suppress![1]!,
+		'the :global(.band) suppression must not reach the band padding — env(safe-area-inset-bottom) lives there and --dock-h measures it'
+	).not.toMatch(/padding/);
 });
 
 test('every documentElement custom-property write (--dock-h) tears down on unmount (§14/§17)', () => {
@@ -913,11 +966,17 @@ test('every documentElement custom-property write (--dock-h) tears down on unmou
 	 *
 	 * `--dock-h` is RE-POINTED, not retired: same writer, same leak shape, new address. It was published
 	 * by routes/+page.svelte, which owned the docked search band. The bottom edge belongs to
-	 * NowPlayingBand now, mounted as app chrome in routes/+layout.svelte, so the LAYOUT binds the `.dock`
-	 * wrapper's clientHeight and writes the token — and the leak CLASS is documented in full at that
-	 * $effect. The move makes the teardown MORE load-bearing, not less: the layout is the ROOT layout, so
-	 * it wraps the television too, and /tv mounts no band — a stale --dock-h there would pad the TV's
-	 * stage by a phone band's height. That is the one case that actually unmounts the writer.
+	 * NowPlayingBand now, mounted as app chrome from routes/+layout.svelte, so the LAYOUT writes the token
+	 * — and the leak CLASS is documented in full at that $effect. The move makes the teardown MORE
+	 * load-bearing, not less: the layout is the ROOT layout, so it wraps the television too, and /tv mounts
+	 * no band — a stale --dock-h there would pad the TV's stage by a phone band's height. That is the one
+	 * case that actually unmounts the writer.
+	 *
+	 * AMENDED (the sheet merge): this record said the layout "binds the `.dock` wrapper's clientHeight".
+	 * There is no `.dock` wrapper. The band is snap point 0 of the now-playing sheet, so the layout binds
+	 * the DRAWER's `bandH` prop, which the drawer binds to its `.band-slot` clientHeight. The chain gained
+	 * a link; the writer, the property and the leak are unchanged, which is why the site list and its floor
+	 * below are untouched.
 	 */
 	const sites: Array<{ file: string; prop: string }> = [{ file: 'routes/+layout.svelte', prop: '--dock-h' }];
 	/*
@@ -1088,7 +1147,12 @@ test('a route page block that caps its width also centres it under the app-shell
 		const rule = css.match(new RegExp(`\\.${rootClass}\\s*\\{([^}]*)\\}`));
 		if (!rule) continue;
 		const body = rule[1]!;
-		const capsWidth = /(^|[;{\s])max-width:\s*\d/.test(body);
+		// A cap is a NUMBER OR A TOKEN. This began as `max-width:\s*\d`, which quietly stopped seeing
+		// every dashboard the moment the six hand-picked measures (720/900/760/44rem/560) collapsed into
+		// `var(--measure-grid)` / `var(--measure-prose)`: `checked` fell under its floor below and the
+		// non-vacuity assertion caught the disarm. `var(` is the whole addition — `none` still must not
+		// count, since removing a cap is what /settings does to the shell on purpose.
+		const capsWidth = /(^|[;{\s])max-width:\s*(\d|var\()/.test(body);
 		if (!capsWidth) continue; // no cap -> nothing to re-centre; this page fills the shell
 		checked++;
 		const autoMargin =
