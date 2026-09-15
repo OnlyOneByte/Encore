@@ -235,7 +235,14 @@ or you want to deliberately limit a box:
   the whole chain is one lossless codec end to end and a stem pair costs roughly half the scratch bytes.
   `wav` skips that encode during separation. Only the two CLIs that take a format flag honour it — torch
   demucs and `audio-separator`; `demucs-mlx` and `bs-roformer-infer` have none, so their engines declare a
-  fixed format instead of pretending to accept one)
+  fixed format instead of pretending to accept one), `ENCORE_MODELS_DIR` (unset; where the separator CLIs
+  cache the checkpoints they auto-download on first use — ~700 MB for `bs-roformer-infer`, hundreds of MB
+  for `audio-separator`. Unset, each tool uses its own default location, which inside a container is the
+  container filesystem unless that path is a mounted volume — so the download repeats on every fresh
+  container. Point it at a persistent directory and it happens once per box. One setting covers both tools
+  even though they spell the flag differently (`--models_dir` vs `--model_file_dir`); deliberately **not**
+  defaulted under `MEDIA_DIR`, because model weights are not media and the `ENCORE_MEDIA_MAX_GB` eviction
+  cap knows nothing about them)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only
   fallbacks for a job carrying neither, `ENCORE_LRCLIB_BASE` (point at a mirror when lrclib.net is
   blocked), `ENCORE_ANNOTATE` (`1`; set `0` on a box with no outbound network), `ENCORE_KEEP_RAW_CAPTIONS` (`0`; set `1` to retain the raw `.vtt`/`.srt` caption track in `derived/captions/` for post-process diagnosis — counted and evicted by the `ENCORE_MEDIA_MAX_GB` cap)

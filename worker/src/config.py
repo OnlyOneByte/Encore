@@ -218,6 +218,9 @@ class WorkerConfig:
     demucs_segment: int | None = None
     #: None => demucs' default. Higher averages more predictions: better and proportionally slower.
     demucs_shifts: int | None = None
+    #: Where the separator CLIs cache their auto-downloaded checkpoints. None => each tool's own default.
+    #: See `separation.tuning.SeparationTuning.models_dir` for why one setting covers two CLI flags.
+    models_dir: str | None = None
     #: Cap torch's intra-op threads. Matters with demucs_jobs > 1, where N jobs x all-cores oversubscribe.
     #: Defaults to `auto_torch_threads(concurrency, demucs_jobs)` — the cores divided among the
     #: separations that can actually contend — and stays None when only one can run, so a box with no
@@ -340,6 +343,11 @@ class WorkerConfig:
             # Parsed at the BOUNDARY, so an unknown value fails here rather than reaching the engines as a
             # format the readers were never told about — which is the silent guide-mix loss this type ended.
             stem_format=parse_stem_format(e.get("ENCORE_STEM_FORMAT", "").strip().lower() or None),
+            # Unset means "let each CLI use its own default location". Deliberately NOT defaulted under
+            # MEDIA_DIR: that would start writing hundreds of MB into the media volume on a box whose
+            # operator never asked for it, and the media volume has its own eviction cap
+            # (ENCORE_MEDIA_MAX_GB) that knows nothing about model weights.
+            models_dir=(e.get("ENCORE_MODELS_DIR", "").strip() or None),
             whisperx_device=(e.get("ENCORE_WHISPERX_DEVICE", "").strip() or None),
             asr_model=_str(e, "ENCORE_ASR_MODEL", "base"),
             sync_mode=_str(e, "ENCORE_SYNC_MODE", "forced").lower(),
@@ -483,6 +491,7 @@ def separation_tuning(
         segment=segment,
         shifts=cfg.demucs_shifts,
         stem_format=cfg.stem_format,
+        models_dir=cfg.models_dir,
     )
 
 

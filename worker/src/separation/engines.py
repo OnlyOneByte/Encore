@@ -296,10 +296,15 @@ class RoformerEngine(SeparatorDefaults):
         default_model: str = r.DEFAULT_ROFORMER_MODEL,
         roformer_bin: str = "bs-roformer-infer",
         device: str | None = None,
+        models_dir: str | None = None,
     ) -> None:
         self._default_model = default_model
         self._bin = roformer_bin
         self._device = device
+        # Where the ~700MB checkpoint is cached. `roformer_argv` has always accepted this; nothing reached
+        # it, because neither this constructor nor `engine_for`'s allowlist carried it — so the download
+        # repeated wherever the CLI's default location was not persistent.
+        self._models_dir = models_dir
 
     def resolve_model(self, params: dict) -> str:
         return r.resolve_roformer_slug(params, self._default_model)
@@ -312,7 +317,14 @@ class RoformerEngine(SeparatorDefaults):
         return os.path.join(in_dir, "input.wav")
 
     def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:
-        return r.roformer_argv(os.path.dirname(input_wav), out_dir, model, device=self._device, bin=self._bin)
+        return r.roformer_argv(
+            os.path.dirname(input_wav),
+            out_dir,
+            model,
+            device=self._device,
+            models_dir=self._models_dir,
+            bin=self._bin,
+        )
 
     def parse_progress(self, line: str) -> int | None:
         return None  # tqdm output is not a stable pct source; the step emits a coarse 0→100
@@ -428,7 +440,7 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
     """
     given = {k: v for k, v in kwargs.items() if v is not None}
     if name == RoformerEngine.id:
-        allowed = {"roformer_bin", "device"}
+        allowed = {"roformer_bin", "device", "models_dir"}
         kw = {k: v for k, v in given.items() if k in allowed}
         if "roformer_model" in given:
             kw["default_model"] = given["roformer_model"]
