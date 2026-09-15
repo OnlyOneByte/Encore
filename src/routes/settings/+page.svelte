@@ -589,7 +589,7 @@
 							
 
 							<Field.Label for="presence-grace">
-								Roster grace · {graceLabel}
+								Drop quiet phones after · {graceLabel}
 							</Field.Label>
 							<Slider
 								id="presence-grace"
@@ -660,7 +660,7 @@
 									</NativeSelect>
 								</div>
 								<div class="cell">
-									<Field.Label for="tv-progress">Progress</Field.Label>
+									<Field.Label for="tv-progress">Song progress</Field.Label>
 									<NativeSelect
 										id="tv-progress"
 										value={settings.room.tvProgressStyle}
@@ -715,7 +715,7 @@
 								/>
 
 								<Field.Label for="tv-background-dim">
-									Darken · {Math.round(settings.room.tvBackgroundDim * 100)}%
+									Darken the stage · {Math.round(settings.room.tvBackgroundDim * 100)}%
 								</Field.Label>
 								<!--
 							Dims the stage colour toward black (an earlier change, owner ruling Q2 = A) — a lightness control, not
@@ -748,7 +748,7 @@
 							
 
 							<Field.Label data-dim={!settings.room.songIntroEnabled || undefined} for="song-intro-ms">
-								Hold · {(settings.room.songIntroMs / 1000).toFixed(1)}s
+								Song intro duration · {(settings.room.songIntroMs / 1000).toFixed(1)}s
 							</Field.Label>
 							<!--
 					  The range MUST match the server clamp exactly (MIN/MAX_SONG_INTRO_MS). A slider narrower
@@ -842,7 +842,7 @@
 							</div>
 
 
-							<Field.Label for="lyrics-scale">Lyric size · {settings.room.lyricsScalePct}% of the TV's own</Field.Label>
+							<Field.Label for="lyrics-scale">Lyric size · {settings.room.lyricsScalePct}% of the TV's default</Field.Label>
 							<Slider
 								id="lyrics-scale"
 								type="single"
@@ -860,7 +860,7 @@
 							
 
 							<Field.Label for="lyrics-lead">
-								Highlight lead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
+								Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
 							</Field.Label>
 							<Slider
 								id="lyrics-lead"
@@ -910,7 +910,7 @@
 						</Card.Header>
 						<Card.Content>
 							<Field.Label for="guide-default">
-								Original vocals · {Math.round(settings.room.guideLevelDefault * 100)}%
+								Guiding track · {Math.round(settings.room.guideLevelDefault * 100)}%
 							</Field.Label>
 							<Slider
 								id="guide-default"
