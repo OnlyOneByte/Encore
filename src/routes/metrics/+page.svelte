@@ -11,7 +11,7 @@
 	import { onMount } from 'svelte';
 	import Bars from '$lib/charts/Bars.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import { dur, stepLabel, stageLabel, rate } from '$lib/metrics-format';
+	import { dur, stepLabel, stageLabel, pct, vsClaimed, separatorLabel } from '$lib/metrics-format';
 	import * as Card from '$lib/components/ui/card';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
@@ -163,14 +163,13 @@
 				{:else}
 					{m.sample.attempts} runs across {m.sample.processes} songs.
 					{#if m.sample.provisional}<strong>Too few to trust the averages yet.</strong>{/if}
-					Songs processed before this page existed have no timings.
 				{/if}
 			</p>
 
 			{#if m}
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Start to finish</Card.Title>
+						<Card.Title>From request to ready to sing</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						<div class="kv">
@@ -179,7 +178,6 @@
 							<div><span class="k">worst</span><span class="v">{dur(m.e2e.p95Ms)}</span></div>
 							<div><span class="k">songs</span><span class="v">{m.e2e.n}</span></div>
 						</div>
-						<p class="note">From asking for a song to it being ready to sing, waiting included.</p>
 					</Card.Content>
 				</Card.Root>
 
@@ -204,42 +202,39 @@
 											<Table.Head scope="col">average</Table.Head>
 											<Table.Head scope="col">typical</Table.Head>
 											<Table.Head scope="col">worst</Table.Head>
-											<Table.Head scope="col">waited</Table.Head>
-											<Table.Head scope="col">speed</Table.Head>
+											<Table.Head scope="col">wait</Table.Head>
+											<Table.Head scope="col">% of song length</Table.Head>
 											<Table.Head scope="col">failed</Table.Head>
 										</Table.Row>
 									</Table.Header>
 									<Table.Body>
 										{#each m.steps as s (s.jobType)}
 											<Table.Row>
-												<Table.Cell
-													>{stepLabel(s.jobType)}{#if s.provisional}<Badge variant="warn">few runs</Badge
-														>{/if}</Table.Cell
-												>
+												<Table.Cell>
+													<span class="named"
+														>{stepLabel(s.jobType)}{#if s.provisional}<Badge variant="warn">few runs</Badge>{/if}</span
+													>
+												</Table.Cell>
 												<Table.Cell>{s.n}</Table.Cell>
 												<Table.Cell><span class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</span></Table.Cell>
 												<Table.Cell>{dur(s.p50Ms)}</Table.Cell>
 												<Table.Cell>{dur(s.p95Ms)}</Table.Cell>
 												<Table.Cell>{dur(s.meanQueueWaitMs)}</Table.Cell>
-												<Table.Cell>{rate(s.meanRtFactor)}</Table.Cell>
+												<Table.Cell>{pct(s.meanRtFactor)}</Table.Cell>
 												<Table.Cell>{s.failed + s.abandoned}</Table.Cell>
 											</Table.Row>
 										{/each}
 									</Table.Body>
 								</Table.Root>
 							</div>
-							<p class="note">
-								Times are work only — <strong>waited</strong> is time sitting in the queue.
-								<strong>speed</strong> is computer time per second of song, so 0.5× means twice as fast as the music.
-								<strong>failed</strong> runs are left out of the averages.
-							</p>
+							<p class="note">Failed runs are left out of the averages.</p>
 						{/if}
 					</Card.Content>
 				</Card.Root>
 
 				<Card.Root>
 					<Card.Header>
-						<Card.Title>Vocal removal — this machine vs the benchmark</Card.Title>
+						<Card.Title>Vocal removal speed</Card.Title>
 					</Card.Header>
 					<Card.Content>
 						{#if m.models.length === 0}
@@ -255,26 +250,28 @@
 										<Table.Row>
 											<Table.Head scope="col">model</Table.Head>
 											<Table.Head scope="col">runs</Table.Head>
-											<Table.Head scope="col">here</Table.Head>
-											<Table.Head scope="col">benchmark</Table.Head>
-											<Table.Head scope="col">vs</Table.Head>
+											<Table.Head scope="col">measured here</Table.Head>
+											<Table.Head scope="col">claimed</Table.Head>
+											<Table.Head scope="col">vs claimed</Table.Head>
 										</Table.Row>
 									</Table.Header>
 									<Table.Body>
 										{#each m.models as r (String(r.engine) + String(r.model))}
 											<Table.Row>
-												<Table.Cell
-													>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<Badge variant="warn">few runs</Badge
-														>{/if}</Table.Cell
-												>
+												<Table.Cell>
+													<span class="named"
+														>{separatorLabel(r.engine, r.model)}{#if r.provisional}<Badge variant="warn">few runs</Badge
+														>{/if}</span
+													>
+												</Table.Cell>
 												<Table.Cell>{r.n}</Table.Cell>
-												<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
-												<Table.Cell>{rate(r.declared?.rtFactor ?? null)}</Table.Cell>
+												<Table.Cell>{pct(r.meanRtFactor)}</Table.Cell>
+												<Table.Cell>{pct(r.declared?.rtFactor ?? null)}</Table.Cell>
 												<Table.Cell
 													><span
 														class:slower={(r.ratioToDeclared ?? 1) > 1.5}
 														class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
-														>{rate(r.ratioToDeclared)}</span
+														>{vsClaimed(r.ratioToDeclared)}</span
 													></Table.Cell
 												>
 											</Table.Row>
@@ -282,13 +279,7 @@
 									</Table.Body>
 								</Table.Root>
 							</div>
-							<p class="note">
-								<strong>benchmark</strong> is the speed this model was timed at once, on a different machine.
-								<strong>vs</strong> compares it to here: 1.0× matches, <span class="slower">over 1.5×</span> is slower
-								here,
-								<span class="faster">under 0.67×</span> means the benchmark was too pessimistic. Use it to plan, not to pass
-								or fail.
-							</p>
+							<p class="note">Claimed speeds were measured once, on someone else's machine.</p>
 						{/if}
 					</Card.Content>
 				</Card.Root>
@@ -313,28 +304,27 @@
 											<Table.Head scope="col">timing</Table.Head>
 											<Table.Head scope="col">runs</Table.Head>
 											<Table.Head scope="col">average</Table.Head>
-											<Table.Head scope="col">speed</Table.Head>
+											<Table.Head scope="col">% of song length</Table.Head>
 										</Table.Row>
 									</Table.Header>
 									<Table.Body>
 										{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
 											<Table.Row>
-												<Table.Cell
-													>{r.asrModel ?? '—'}{#if r.provisional}<Badge variant="warn">few runs</Badge>{/if}</Table.Cell
-												>
+												<Table.Cell>
+													<span class="named"
+														>{r.asrModel ?? '—'}{#if r.provisional}<Badge variant="warn">few runs</Badge>{/if}</span
+													>
+												</Table.Cell>
 												<Table.Cell class="name">{r.syncMode ?? '—'}</Table.Cell>
 												<Table.Cell>{r.n}</Table.Cell>
 												<Table.Cell>{dur(r.meanMs)}</Table.Cell>
-												<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
+												<Table.Cell>{pct(r.meanRtFactor)}</Table.Cell>
 											</Table.Row>
 										{/each}
 									</Table.Body>
 								</Table.Root>
 							</div>
-							<p class="note">
-								These models have never been timed anywhere, so there is no benchmark to compare against. This is the
-								first measurement.
-							</p>
+
 						{/if}
 					</Card.Content>
 				</Card.Root>
@@ -353,7 +343,6 @@
 								}))}
 								unit="s avg"
 							/>
-							<p class="note">Measured by the worker inside each step.</p>
 						</Card.Content>
 					</Card.Root>
 				{/if}
@@ -386,13 +375,12 @@
 													<a href="/metrics/{c.mediaId}">{c.title ?? c.mediaId}</a>
 													<Item.Description>{dur(c.workMs)} working, {c.steps} steps</Item.Description>
 												</Item.Content>
-												<Item.Actions><span class="v">{dur(c.totalMs)}</span></Item.Actions>
+												<Item.Actions><span class="v">{dur(c.totalMs)} total</span></Item.Actions>
 											</li>
 										{/snippet}
 									</Item.Root>
 								{/each}
 							</ol>
-							<p class="note">The gap between the two numbers was spent waiting for a free worker.</p>
 						</Card.Content>
 					</Card.Root>
 				{/if}
@@ -476,11 +464,64 @@
 	 * than decoration: the 34rem minimum that makes eight numeric columns scroll instead of crushing,
 	 * and the sticky first column that keeps the step name beside its numbers while they do. `.scroller`
 	 * stays HERE because it is this page's layout, and the component's rules key off it as an ancestor.
+	 *
+	 * ONE SCROLL CONTAINER, AND IT IS THIS ONE. shadcn's <Table> renders its own
+	 * `<div data-slot="table-container" class="relative w-full overflow-x-auto">` around the <table>, so
+	 * before the rule below there were TWO nested scroll boxes: the inner one, being `w-full`, was
+	 * exactly as wide as `.scroller`, took all the overflow, and did all the scrolling — while
+	 * `.scroller` reported `scrollWidth === clientWidth` and looked broken to anyone measuring it (it
+	 * cost this author a wrong diagnosis). Nothing was unreachable, but the page could not own the
+	 * scroll state of a box it does not render, which is what the shadow affordance below needs.
+	 * Neutralising the inner container hands the overflow back to `.scroller`; the sticky first column
+	 * follows, because sticky resolves against the nearest scrolling ancestor.
 	 */
+	:global(.scroller [data-slot='table-container']) {
+		overflow-x: visible;
+		width: auto;
+	}
 	.scroller {
 		overflow-x: auto;
 		/* Room for the sticky column's own background to cover what slides under it. */
 		margin: 0 -0.1rem;
+		/*
+		 * SAY that it scrolls. Eight columns on a phone are cut at the card's edge with no hint that
+		 * anything is past it, and a touch browser's overlay scrollbar is invisible until you already
+		 * guessed and swiped — so the discoverability gap is exactly on the surface that needs it most.
+		 *
+		 * The classic four-layer technique, and the reason it is worth the density: it is HONEST with no
+		 * JavaScript and no resize observer. The two `local` layers are painted in the CONTENT's
+		 * coordinate space, so they travel with the table and sit OVER the `scroll` shadows at each end,
+		 * hiding a shadow exactly when there is nothing further that way. A table that fits shows
+		 * neither; a table scrolled to its end shows only the left one. An always-on fade would claim
+		 * there is more to see when there is not.
+		 *
+		 * RIGHT SIDE ONLY, and the left pair is deliberately absent rather than forgotten. The sticky
+		 * first column is `background: var(--card)` pinned at `left: 0`, so it paints over the scroller's
+		 * own background at exactly the place a left shadow would go — verified by sampling the pixels
+		 * after scrolling to the end: the left edge stayed rgb(26,26,40) with the pair present. CSS that
+		 * cannot render is worse than none, because the next reader debugs it instead of reading this.
+		 * Rightwards is also the direction that needs the hint: it is where the unseen columns are.
+		 *
+		 * LINEAR, not radial. The usual recipe reaches for `radial-gradient(farthest-side at 100% 50%)`
+		 * and it is invisible here — measured, not guessed: in a band 8.8px wide and ~200px tall,
+		 * `farthest-side` resolves to the VERTICAL half-height, so across the band's 8.8px the colour
+		 * barely leaves its start, and the edge pixel came back rgb(24,24,38) against a card of
+		 * rgb(26,26,40). A linear gradient falls off across the axis that is actually narrow: the same
+		 * pixel now reads rgb(12,12,19).
+		 *
+		 * KNOWN, and measured: when scrolled fully right, ONE pixel of shadow survives at the very edge.
+		 * `scrollLeft` clamps to the integer 342 while the true maximum is fractional, so the content —
+		 * and the `local` cover riding on it — stops a fraction of a pixel short. A `right -1px` offset on
+		 * the cover was tried and moved nothing. It reads as a hairline on the card's inner edge, it only
+		 * appears for a table that actually overflows, and it is not worth more than this paragraph.
+		 *
+		 * The shadow is --bg (#0b0b12) rather than a glow token: it has to read as depth against --card
+		 * (#1a1a28), and --stage-glow is the same lightness as the card, so it would have been invisible
+		 * for a second, unrelated reason. The cover is wider than the shadow it has to hide.
+		 */
+		background:
+			linear-gradient(to left, var(--card) 55%, transparent) right center / 1.5rem 100% no-repeat local,
+			linear-gradient(to left, var(--bg), transparent) right center / 1.25rem 100% no-repeat scroll;
 	}
 	/* .card in app.css has no padding — see the note in routes/stats/+page.svelte. */
 	/*
@@ -516,6 +557,17 @@
 	 * scoped rule here cannot reach. What stays below is this page's own MEANING, not table styling.
 	 */
 	/* The dominant step, so "what is slow" is a glance rather than a comparison. */
+	/*
+	 * A name and its "few runs" qualifier were touching, because the badge followed the label text with
+	 * no separator at all. inline-flex rather than a margin on the Badge: the badge is a component, so a
+	 * class from here would be scoped to this file and stripped, and the gap belongs to the pairing
+	 * rather than to either half of it.
+	 */
+	.named {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2xs);
+	}
 	.lead {
 		color: var(--ink);
 		font-weight: 700;

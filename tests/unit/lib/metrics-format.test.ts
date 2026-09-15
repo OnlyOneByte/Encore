@@ -6,7 +6,24 @@
 // copy of the function and neither had a test -- the extraction into one module is what made a test
 // worth writing, and these two cases are why it is worth keeping.
 import { test, expect } from 'bun:test';
-import { dur, stepLabel, stageLabel, localStamp } from '$lib/metrics-format';
+import { dur, stepLabel, stageLabel, localStamp, pct, vsClaimed } from '$lib/metrics-format';
+
+test('a rate reads as a percentage of the song, and an unmeasured one is not 0%', () => {
+	// The whole point of the percent form is that it needs no caption: 15% of the song's length.
+	expect(pct(0.15)).toBe('15%');
+	expect(pct(1.62)).toBe('162%');
+	// "never measured" and "instant" are different facts and must not render the same.
+	expect(pct(null)).toBe('—');
+});
+
+test('a measured-vs-claimed rate names its own direction, so colour is not the only signal', () => {
+	expect(vsClaimed(1.74)).toBe('74% slower');
+	expect(vsClaimed(0.49)).toBe('51% faster');
+	// Parity is a match, not a 0% complaint.
+	expect(vsClaimed(1)).toBe('matches');
+	expect(vsClaimed(1.002)).toBe('matches');
+	expect(vsClaimed(null)).toBe('—');
+});
 
 test('a missing timing is not zero', () => {
 	// "not recorded" and "took no time" are different facts and must not render the same.
