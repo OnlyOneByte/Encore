@@ -120,7 +120,16 @@ const TEMPLATE = DRAWER.slice(DRAWER.indexOf('</script>') + '</script>'.length, 
 // dead, and what still works. The second half is the load-bearing one and is why this is not just 'off'.
 const NOTE = 'No isolated vocals, so no guiding track. Key and range still work.';
 
-/** vaul's own snap values, by VALUE and not by index — the literals `snapPoints` carries. */
+/**
+ * vaul's own snap values, by VALUE and not by index — the values `snapPoints` carries.
+ *
+ * SNAP 1 IS NO LONGER A LITERAL, and this comment used to say it was. It is now
+ * `min(0.82, (vh - 176) / vh)` in the component — the clamp that stops a pulled-up sheet covering the
+ * page's own top-of-page controls on a short window — so `0.82` is its CEILING rather than its value.
+ * Both arms below only need a plausible snap-1 PLACEMENT: arm 1 reads the source and never mounts, and
+ * arm 2 asserts that mounting THROWS at either placement, which is a claim about the rung and not about
+ * the offset. Nothing here would change if the clamp moved.
+ */
 const SNAP_BAND = '80px';
 const SNAP_OPEN = 0.82;
 

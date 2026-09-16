@@ -17,14 +17,14 @@
 	 * harness — it would have kept reading as though a closed arm were being exercised.
 	 *
 	 * WHAT REPLACES IT IS THE SNAP POINT. `activeSnapPoint` is the only handle anything has on
-	 * collapsed-versus-pulled-up: `'80px'` is the band strip alone on screen, `0.82` is the sheet pulled
-	 * up. It is a `$bindable` the app OWNS (vaul writes it back on every drag), so this harness owns it
+	 * collapsed-versus-pulled-up: `'80px'` is the band strip alone on screen, and a fraction near `0.82`
+	 * is the sheet pulled up. It is a `$bindable` the app OWNS (vaul writes it back on every drag), so this harness owns it
 	 * the same way and a test can place the sheet by passing a value in.
 	 *
 	 * WHAT A SNAP POINT DOES **NOT** CHANGE, and the test file says this at the one arm that depends on
 	 * it: which elements are MOUNTED. A snap-pointed sheet keeps its whole body in the document and
-	 * translates it below the fold, so placing the sheet at `'80px'` renders exactly the same tree as
-	 * `0.82`. Which of the two is on SCREEN is a transform offset — a LAYOUT-rung claim (XR-VER-01),
+	 * translates it below the fold, so placing the sheet at `'80px'` renders exactly the same tree as the
+	 * open snap. Which of the two is on SCREEN is a transform offset — a LAYOUT-rung claim (XR-VER-01),
 	 * measured in `tests/e2e/probes/`, not here.
 	 *
 	 * Not shipped: nothing in the app imports it. It sits beside its test, mirroring
@@ -35,9 +35,13 @@
 
 	interface Props extends Omit<ComponentProps<typeof NowPlayingDrawer>, 'activeSnapPoint'> {
 		/**
-		 * Where to place the sheet: `'80px'` (collapsed to the band) or `0.82` (pulled up). The values are
-		 * vaul's own — it identifies a snap point by VALUE, not by index — so a test passes the same
-		 * literals `NowPlayingDrawer`'s `snapPoints` array carries.
+		 * Where to place the sheet: `'80px'` (collapsed to the band) or the open fraction (pulled up). The
+		 * values are vaul's own — it identifies a snap point by VALUE, not by index — so a test passes the
+		 * values `NowPlayingDrawer`'s `snapPoints` array carries.
+		 *
+		 * Snap 1 is DERIVED there rather than a literal: `min(0.82, (vh - 176) / vh)`, the clamp that keeps a
+		 * pulled-up sheet off the page's own top-of-page controls on a short window. `0.82` is its ceiling,
+		 * which is all a placement needs — see the test file, where nothing depends on the number.
 		 */
 		activeSnapPoint?: number | string | null;
 	}

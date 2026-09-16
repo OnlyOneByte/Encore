@@ -39,6 +39,8 @@ const SRC = srcDir;
 const RING = readFileSync(join(SRC, 'lib/components/ColourRing.svelte'), 'utf8');
 const LANDING = readFileSync(join(SRC, 'lib/components/JoinLanding.svelte'), 'utf8');
 const SETTINGS = readFileSync(join(SRC, 'routes/settings/+page.svelte'), 'utf8');
+// The preset picker's remaining surface, once the ring took both identity panes.
+const GALLERY = readFileSync(join(SRC, 'routes/components/+page.svelte'), 'utf8');
 
 test('every stop the ring can return is a colour a singer may legally be identified by', () => {
 	// Non-vacuity: a broken import would leave an empty list, and `every` over [] is true.
@@ -106,18 +108,27 @@ test('a colour the ring cannot produce maps onto the ring by hue, and one it can
 	expect(nearestPaletteStop('not a colour').i).toBeGreaterThanOrEqual(1);
 });
 
-test('the join screen renders the RING, and the eight-preset picker is a settings control now', () => {
+test('both identity surfaces render the RING, and the eight-preset picker still has a surface', () => {
 	// Both halves, because the absence alone would be satisfied by deleting the picker outright — and it is
-	// not deleted, it MOVED SURFACES. This is the `.hero` shape: `SEL.swatch` and `SEL.hueSlider` still
-	// resolve, so nothing reds if a join flow points at them; only a pinned split says which surface each
-	// belongs to.
+	// not deleted. This is the `.hero` shape: `SEL.swatch` and `SEL.hueSlider` still resolve, so nothing
+	// reds if a flow points at them; only a pinned split says which surface each belongs to.
+	//
+	// RE-POINTED once already and again here. The ring took the join pane first, leaving the presets on
+	// /settings?tab=you; it has now taken that pane too, so the picker's only remaining surface is the
+	// /components gallery — which is a real surface with a live binding, not a graveyard: the gallery is
+	// where the preset-vs-rail agreement is exercised, and every guard below still reads the component.
 	expect(LANDING).toMatch(/<ColourRing\b/);
 	expect(LANDING).not.toMatch(/<ColourPicker\b/);
-	expect(SETTINGS, 'the preset picker lost its remaining surface — then it is a deletion, not a move').toMatch(
+	expect(SETTINGS, 'the settings identity control is the ring now, like the join pane').toMatch(/<ColourRing\b/);
+	expect(SETTINGS).not.toMatch(/<ColourPicker\b/);
+	expect(GALLERY, 'the preset picker lost its remaining surface — then it is a deletion, not a move').toMatch(
 		/<ColourPicker\b/
 	);
 	// The ring is fed REAL occupancy from the same preview the room sentence is built from, not a sample.
 	expect(LANDING).toMatch(/taken=\{preview\?\.colors \?\? \[\]\}/);
+	// Settings has no occupancy in its load, so it passes an EMPTY list rather than inventing one. Pinned
+	// so a future sample list has to argue with this line instead of slipping in as a plausible default.
+	expect(SETTINGS).toMatch(/taken=\{\[\]\}/);
 });
 
 test('the ring declares the slider contract it no longer inherits from a range input', () => {

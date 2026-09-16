@@ -4,7 +4,7 @@
 	WHAT IT REPLACED, AND WHY A RING. The identity pane used to carry TWO controls for one choice: eight
 	preset swatches in a roving-tabindex radiogroup, plus a continuous hue slider under them. That pairing
 	cost a running agreement problem (tap a swatch and the slider's thumb has to travel, or the two
-	disagree about what is selected — see ColourPicker.svelte, which still serves the settings page), and
+	disagree about what is selected — see ColourPicker.svelte, which now demos only in the /components gallery), and
 	it cut the hue circle open at an arbitrary point: on a strip, the first and last stops are neighbours
 	in colour and opposite ends in space. A ring has no ends, so every stop's neighbours are its
 	neighbours, and the hole in the middle is free space for the thing a strip has nowhere to put — the

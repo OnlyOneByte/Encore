@@ -19,7 +19,8 @@
 	 * being exercised when no closed arm exists.
 	 *
 	 * WHAT REPLACES IT IS THE SNAP POINT, PASSED IN. `activeSnapPoint` is the only handle anything has
-	 * on collapsed-versus-pulled-up — `'80px'` is the band strip alone, `0.82` is the sheet pulled up —
+	 * on collapsed-versus-pulled-up — `'80px'` is the band strip alone, a fraction near `0.82` is the
+	 * sheet pulled up —
 	 * and it is a `$bindable` the app OWNS, because vaul writes it back on every drag. So this harness
 	 * binds it the same way and a test PLACES the sheet by passing a value, rather than by clicking an
 	 * affordance. There is deliberately no button: pulling the sheet up is a DRAG that only vaul can
@@ -46,10 +47,14 @@
 		/** Does the playing song have an isolated vocals stem? False is the degraded arm. */
 		guideEnabled?: boolean;
 		/**
-		 * Where the sheet sits: `'80px'` (collapsed to the band) or `0.82` (pulled up). vaul's own
-		 * values — it identifies a snap point by VALUE and not by index — so a test passes the same
-		 * literals `NowPlayingDrawer`'s `snapPoints` array carries. Bound, because the component seats it
-		 * itself on mount and vaul rewrites it on every drag.
+		 * Where the sheet sits: `'80px'` (collapsed to the band) or the open fraction (pulled up). vaul's
+		 * own values — it identifies a snap point by VALUE and not by index — so a test passes the values
+		 * `NowPlayingDrawer`'s `snapPoints` array carries. Bound, because the component seats it itself on
+		 * mount and vaul rewrites it on every drag.
+		 *
+		 * Snap 1 is DERIVED there rather than a literal: `min(0.82, (vh - 176) / vh)`, the clamp that keeps a
+		 * pulled-up sheet off the page's own top-of-page controls on a short window. `0.82` is its ceiling,
+		 * which is all a placement needs — the drawer cannot mount on this rung anyway.
 		 */
 		activeSnapPoint?: number | string | null;
 	}

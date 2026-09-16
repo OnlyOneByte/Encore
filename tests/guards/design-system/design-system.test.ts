@@ -1151,7 +1151,10 @@ test('a route page block that caps its width also centres it under the app-shell
 		// every dashboard the moment the six hand-picked measures (720/900/760/44rem/560) collapsed into
 		// `var(--measure-grid)` / `var(--measure-prose)`: `checked` fell under its floor below and the
 		// non-vacuity assertion caught the disarm. `var(` is the whole addition — `none` still must not
-		// count, since removing a cap is what /settings does to the shell on purpose.
+		// count, since `max-width: none` RELEASES a cap rather than setting one and there is nothing to
+		// re-centre. (/settings used to be the live example of that, releasing the shell's own cap; it
+		// now takes `--measure-grid` like the other dashboards, so the exclusion stands on the rule
+		// rather than on that page.)
 		const capsWidth = /(^|[;{\s])max-width:\s*(\d|var\()/.test(body);
 		if (!capsWidth) continue; // no cap -> nothing to re-centre; this page fills the shell
 		checked++;
