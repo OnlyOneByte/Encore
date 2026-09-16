@@ -36,12 +36,13 @@ export const SEL = {
 	/**
 	 * THE JOIN SCREEN'S COLOUR PICKER — one `role="slider"` over the 48-stop palette (ColourRing.svelte).
 	 *
-	 * It REPLACED `swatch` + `hueSlider` on this surface, and those two are NOT retired: the same
-	 * ColourPicker still serves /settings?tab=you, so they resolve, they are honest, and their entries
-	 * below have been re-pointed at the surface that still renders them. That is the whole hazard this
-	 * comment exists for — a driver reaching for `SEL.swatch` on the join pane now addresses a control
-	 * that is only on the settings page, which is the `.hero` shape (a selector resolving green against
-	 * the wrong surface) rather than a timeout. contract.test.ts pins the split.
+	 * It REPLACED `swatch` + `hueSlider` on BOTH identity panes — the join screen first, then
+	 * /settings?tab=you — and those two are still NOT retired: ColourPicker.svelte is unchanged and the
+	 * /components gallery renders it with a live binding, so they resolve, they are honest, and their
+	 * entries below are re-pointed at that surface. That is the whole hazard this comment exists for — a
+	 * driver reaching for `SEL.swatch` on either identity pane now addresses a control that exists only
+	 * in the gallery, which is the `.hero` shape (a selector resolving green against the wrong surface)
+	 * rather than a timeout. contract.test.ts pins the split.
 	 *
 	 * Addressed by CLASS, not by `{role, name}`: the ring names itself `aria-label={label}` — an
 	 * EXPRESSION, so no literal `aria-label="Your color"` exists in source for the resolver to find — and
@@ -52,10 +53,10 @@ export const SEL = {
 	/**
 	 * The preset swatch, addressed by the radio's accessible name.
 	 *
-	 * RE-POINTED SURFACE, SAME CONTROL (the colour ring took the join pane). This is the profile picker on
-	 * /settings?tab=you now — ColourPicker.svelte is unchanged and still renders the eight presets there,
-	 * so nothing about the selector moved; what moved is where a flow can drive it. A join flow must use
-	 * `colourRing` above.
+	 * RE-POINTED SURFACE TWICE, SAME CONTROL. The ring took the join pane, leaving the presets on
+	 * /settings?tab=you; it has now taken that pane too, so this is the /components gallery's demo —
+	 * ColourPicker.svelte is unchanged and still renders the eight presets there, so nothing about the
+	 * selector moved; what moved is where a flow can drive it. Both identity panes use `colourRing`.
 	 *
 	 * That name is the BARE colour name ("pink"), not "pink swatch": the element already has
 	 * role=radio, so announcing "swatch" was noise a screen reader had to sit through on all eight.
@@ -67,9 +68,11 @@ export const SEL = {
 	 */
 	swatch: (colourName: string) => ({ role: 'radio' as const, name: colourName }),
 	/**
-	 * The hue rail beside those presets — also the SETTINGS picker now, for the same reason as `swatch`.
-	 * The join screen has no range input at all any more: the ring is a `div[role=slider]`, so a driver
-	 * that reaches for this on the join pane finds the settings page's control or nothing.
+	 * The hue rail beside those presets — also the GALLERY's now, for the same reason as `swatch`.
+	 * Neither identity pane has this range input any more: the ring is a `div[role=slider]`, so a driver
+	 * that reaches for this on the join or settings pane finds another page's control or nothing.
+	 * (/settings does still carry a native `input[type="color"]` — the STAGE colour — which this
+	 * `type="range"` selector deliberately does not match.)
 	 */
 	hueSlider: 'input[type="range"]',
 	submit: /Start singing/,
@@ -759,8 +762,9 @@ export const SEL = {
 export const PRESET_COLOUR_NAMES = ['violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'] as const;
 
 export const HOOKS: Hook[] = [
-	// join (the join screen's colour picker is the RING — ColourRing.svelte; the eight-preset ColourPicker
-	// still serves /settings?tab=you, so its hooks below are re-pointed at that surface, not retired)
+	// join (both identity panes' colour picker is the RING — ColourRing.svelte; the eight-preset
+	// ColourPicker's remaining surface is the /components gallery, so its hooks below are re-pointed at
+	// that surface, not retired)
 	{
 		id: 'nameInput',
 		file: 'src/lib/components/JoinLanding.svelte',
@@ -789,19 +793,19 @@ export const HOOKS: Hook[] = [
 		id: 'swatchRadiogroup',
 		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: 'aria-label={colorName(c)}',
-		why: 'presets are selected by accessible name; the old flow used a hex and broke. RE-POINTED SURFACE: this picker is the settings/profile one now — the join pane uses colourRing'
+		why: 'presets are selected by accessible name; the old flow used a hex and broke. RE-POINTED SURFACE TWICE: this picker is the /components gallery demo now — both identity panes use colourRing'
 	},
 	{
 		id: 'colourNames',
 		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: "'violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'",
-		why: 'PRESET_COLOUR_NAMES here must match the names the settings picker announces'
+		why: 'PRESET_COLOUR_NAMES here must match the names the gallery picker announces'
 	},
 	{
 		id: 'hueSlider',
 		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: 'aria-label="Pick your own color by hue"',
-		why: 'the settings picker still proves a non-preset hue survives the round trip; the join screen proves it through the ring instead, whose 48 stops are all non-preset by construction'
+		why: 'the gallery picker still proves a non-preset hue survives the round trip; both identity panes prove it through the ring instead, whose 48 stops are all non-preset by construction'
 	},
 	{
 		id: 'submit',

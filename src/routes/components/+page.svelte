@@ -821,7 +821,9 @@
 	</div>
 
 	<h2 class="section">ColourPicker · presets plus hue wheel</h2>
-	<!-- The identity picker, extracted from /join and reused by the settings You tab. Bound to live
+	<!-- The identity picker. This gallery is its ONLY surface now — the ring took /join first and then
+	     the settings You tab — which is why the demo binds live state rather than posing: the
+	     preset-vs-rail agreement has nowhere else left to be exercised. Bound to live
 	     state so the preset-vs-slider agreement (picking a swatch moves the wheel, and vice versa) can
 	     actually be exercised here, not just posed. The bound value IS a singer colour = fixture data. -->
 	<div style="max-width:420px;">
