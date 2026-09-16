@@ -33,9 +33,29 @@ export interface Hook {
 export const SEL = {
 	// ── join ──────────────────────────────────────────────────────────────
 	nameInput: 'input[placeholder^="e.g."]',
-	/** Presets are a radiogroup; the accessible name is the colour's NAME, not its hex. */
-	/*
+	/**
+	 * THE JOIN SCREEN'S COLOUR PICKER — one `role="slider"` over the 48-stop palette (ColourRing.svelte).
+	 *
+	 * It REPLACED `swatch` + `hueSlider` on this surface, and those two are NOT retired: the same
+	 * ColourPicker still serves /settings?tab=you, so they resolve, they are honest, and their entries
+	 * below have been re-pointed at the surface that still renders them. That is the whole hazard this
+	 * comment exists for — a driver reaching for `SEL.swatch` on the join pane now addresses a control
+	 * that is only on the settings page, which is the `.hero` shape (a selector resolving green against
+	 * the wrong surface) rather than a timeout. contract.test.ts pins the split.
+	 *
+	 * Addressed by CLASS, not by `{role, name}`: the ring names itself `aria-label={label}` — an
+	 * EXPRESSION, so no literal `aria-label="Your color"` exists in source for the resolver to find — and
+	 * the class is what a driver can hand to `pressKey`. Which is how a driver picks a colour now: the
+	 * ring is a slider, so `Home`/`End`/arrows move it, and there is no per-colour element to click.
+	 */
+	colourRing: '.colour-ring',
+	/**
 	 * The preset swatch, addressed by the radio's accessible name.
+	 *
+	 * RE-POINTED SURFACE, SAME CONTROL (the colour ring took the join pane). This is the profile picker on
+	 * /settings?tab=you now — ColourPicker.svelte is unchanged and still renders the eight presets there,
+	 * so nothing about the selector moved; what moved is where a flow can drive it. A join flow must use
+	 * `colourRing` above.
 	 *
 	 * That name is the BARE colour name ("pink"), not "pink swatch": the element already has
 	 * role=radio, so announcing "swatch" was noise a screen reader had to sit through on all eight.
@@ -46,6 +66,11 @@ export const SEL = {
 	 * matching lists cannot tell you the wrapper around each entry is still right.
 	 */
 	swatch: (colourName: string) => ({ role: 'radio' as const, name: colourName }),
+	/**
+	 * The hue rail beside those presets — also the SETTINGS picker now, for the same reason as `swatch`.
+	 * The join screen has no range input at all any more: the ring is a `div[role=slider]`, so a driver
+	 * that reaches for this on the join pane finds the settings page's control or nothing.
+	 */
 	hueSlider: 'input[type="range"]',
 	submit: /Start singing/,
 	/*
@@ -734,7 +759,8 @@ export const SEL = {
 export const PRESET_COLOUR_NAMES = ['violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'] as const;
 
 export const HOOKS: Hook[] = [
-	// join (the colour picker itself is a shared component — see ColourPicker.svelte)
+	// join (the join screen's colour picker is the RING — ColourRing.svelte; the eight-preset ColourPicker
+	// still serves /settings?tab=you, so its hooks below are re-pointed at that surface, not retired)
 	{
 		id: 'nameInput',
 		file: 'src/lib/components/JoinLanding.svelte',
@@ -742,22 +768,40 @@ export const HOOKS: Hook[] = [
 		why: 'the flow types a singer name here'
 	},
 	{
+		id: 'colourRing',
+		file: 'src/lib/components/ColourRing.svelte',
+		anchor: 'class="colour-ring"',
+		why: 'the join screen picks a colour on the ring now; SEL.colourRing addresses this class because the control names itself from a prop expression, so there is no literal aria-label to resolve'
+	},
+	{
+		id: 'colourRingSlider',
+		file: 'src/lib/components/ColourRing.svelte',
+		anchor: 'role="slider"',
+		why: 'the ring replaced a native range input, so its keyboard operation is not inherited — a driver drives it with Home/End/arrows, and a keyboard guest reaches all 48 stops the same way'
+	},
+	{
+		id: 'colourRingMounted',
+		file: 'src/lib/components/JoinLanding.svelte',
+		anchor: '<ColourRing',
+		why: 'colourRing resolves against a COMPONENT; the identity pane rendering it is a separate claim, and it is the one that says the join screen has a colour picker at all (the same reason bandMounted exists beside homeReady)'
+	},
+	{
 		id: 'swatchRadiogroup',
 		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: 'aria-label={colorName(c)}',
-		why: 'presets are selected by accessible name; the old flow used a hex and broke'
+		why: 'presets are selected by accessible name; the old flow used a hex and broke. RE-POINTED SURFACE: this picker is the settings/profile one now — the join pane uses colourRing'
 	},
 	{
 		id: 'colourNames',
 		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: "'violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'",
-		why: 'PRESET_COLOUR_NAMES here must match the names the picker announces'
+		why: 'PRESET_COLOUR_NAMES here must match the names the settings picker announces'
 	},
 	{
 		id: 'hueSlider',
 		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: 'aria-label="Pick your own color by hue"',
-		why: 'the flow proves a wheel hue survives the round trip, not just a preset'
+		why: 'the settings picker still proves a non-preset hue survives the round trip; the join screen proves it through the ring instead, whose 48 stops are all non-preset by construction'
 	},
 	{
 		id: 'submit',

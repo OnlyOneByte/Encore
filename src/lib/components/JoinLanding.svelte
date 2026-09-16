@@ -14,7 +14,7 @@
 	    code", the six boxes, and a Continue that resolves the code. No name field and no colour picker —
 	    identity is step 2's job, and asking for it here is what made the merged screen long.
 	  • STEP 2 — the IDENTITY pane. The room confirmed IN WORDS ("Maya and Dana are here"), the name
-	    field, the colour picker, "Start singing". The ONLY pane a guest who scanned the QR ever sees.
+	    field, the colour ring, "Start singing". The ONLY pane a guest who scanned the QR ever sees.
 
 	TWO PATHS TO ONE ROOM, side by side (never one instead of the other): a SCAN affordance and a TYPED
 	six-segment code. A typed code alone is a cognitive-function test under WCAG SC 3.3.8, so the scan
@@ -35,9 +35,9 @@
 -->
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import { SINGER_COLORS } from '$lib/contract';
+	import { SINGER_COLORS, nearestPaletteStop } from '$lib/contract';
 	import { normalizeRoomCodeInput, CODE_LENGTH } from '$lib/contract';
-	import ColourPicker from '$lib/components/ColourPicker.svelte';
+	import ColourRing from '$lib/components/ColourRing.svelte';
 	import CodeEntry from '$lib/components/CodeEntry.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { goto } from '$app/navigation';
@@ -48,7 +48,18 @@
 	import { Spinner } from '$lib/components/ui/spinner';
 
 	let name = $state('');
-	let color = $state<string>(SINGER_COLORS[0]);
+	/*
+	 * The colour a guest arrives holding, as a RING STOP rather than as a preset.
+	 *
+	 * The picker on this pane is the 48-stop ring, and the ring can only return one of its own fills — so
+	 * seeding this with `SINGER_COLORS[0]` (violet, at OKLCH L≈0.56, deliberately outside the ring's
+	 * L≈0.72 band) would put the knob and the hub on the nearest stop while the value said something the
+	 * ring cannot produce, and a guest who never touched the picker would join on a colour the control
+	 * never offered. Snapping the default through `nearestPaletteStop` keeps the continuity — it is still
+	 * the violet the join screen has always opened on, to within a stop — while making the first paint
+	 * honest about what is selected.
+	 */
+	let color = $state<string>(nearestPaletteStop(SINGER_COLORS[0]).fill);
 	// The code the guest is typing into the six boxes (empty until they start). Distinct from the
 	// scanned code below: this is the TYPED path.
 	let typedCode = $state('');
@@ -242,13 +253,17 @@
 	<h1 class="brand" class:brand-bar={!onCodeStep}>
 		<Icon name="mic" /> <span class="wordmark">Encore</span>
 	</h1>
-	<p class="lede">
-		{#if onCodeStep}
-			Join the room on the TV to start singing.
-		{:else}
-			You're joining this room.
-		{/if}
-	</p>
+	<!--
+		THE LEDE BELONGS TO THE CODE PANE ONLY. It used to switch to "You're joining this room." on the
+		identity pane, directly above `roomPresenceSentence` — which says the same thing with the facts
+		in it ("Maya and Dana are here."). Two sentences, one message, and the vaguer one first.
+
+		The identity pane needs no lede at all: the room sentence IS its opening line, and the wordmark
+		has become a header bar rather than a title needing a subtitle under it.
+	-->
+	{#if onCodeStep}
+		<p class="lede">Join the room on the TV to start singing.</p>
+	{/if}
 </header>
 
 <main class="join-main">
@@ -303,7 +318,23 @@
 			/>
 		</label>
 
-		<ColourPicker bind:value={color} label="Your color" hint="How you'll spot yourself in the queue and on the TV." />
+		<!--
+			THE COLOUR PICKER IS THE RING (see ColourRing.svelte). It replaced the eight preset swatches plus
+			the hue slider that used to stand here: one control instead of two for one choice, the full
+			48-stop palette instead of eight named colours and a continuous rail, and the hue circle closed
+			rather than cut open at an arbitrary stop.
+
+			`taken` is REAL OCCUPANCY, from the same /api/room-preview the sentence above is built from —
+			the endpoint now returns the present singers' colours alongside their names, so the pips mark
+			colours actually in the room rather than a plausible-looking sample. An empty room is an empty
+			list, which is a legitimate state and needs no special case.
+		-->
+		<ColourRing
+			bind:value={color}
+			label="Your color"
+			hint="How you'll spot yourself in the queue and on the TV."
+			taken={preview?.colors ?? []}
+		/>
 
 		{#if error}
 			<div class="err" role="alert">{error}</div>

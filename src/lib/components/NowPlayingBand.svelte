@@ -383,6 +383,44 @@
 	.disc:disabled {
 		color: var(--ink-dim);
 	}
+	/*
+	 * HOVER — the state these two never had, and they are the only controls on this surface without one.
+	 *
+	 * Everything else in the drawer and the header goes through the shadcn `<Button>` variants, which
+	 * carry a hover as a matter of course (`hover:bg-muted`, i.e. `--card2`). These two are hand-rolled
+	 * `<button>`s and so inherited nothing: a cursor over the magnifier or the transport got no response
+	 * at all, which on a laptop reads as "not a control" and was reported as exactly that. The rules
+	 * above this point are a `min-height` and a z-tier — nothing that answers a pointer.
+	 *
+	 * A SURFACE LIFT, NEVER AN OPACITY CHANGE. XR-PH-03 rejects a subtree alpha for any state (the
+	 * disabled case above uses an ink token for the same reason), so hover mixes a little `--ink` into
+	 * the fill the control already has. That is the move the `secondary` variant already makes, and it
+	 * keeps hover reading as "the same surface, warmer" rather than as a new colour with its own
+	 * meaning. `--focus` is deliberately NOT borrowed here: it is the focus ring's colour, and a hover
+	 * wearing it would make the two states indistinguishable.
+	 *
+	 * NO TRANSITION, matching `.arc-fill` above and the incumbent `.btn-accent` this pair descends from.
+	 * A paint change is correct instantly, so there is no motion to gate on `prefers-reduced-motion` and
+	 * nothing here for motion.test.ts to weigh.
+	 *
+	 * `:not(:disabled)` because `.disc` IS disabled with no song, and a dead transport that lights up
+	 * under the cursor promises a tap it will swallow — the same lie the handle's old `cursor: grab`
+	 * told. `:focus-visible` is untouched: separate rule, separate property (outline).
+	 */
+	.btn:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--card2) 88%, var(--ink));
+		border-color: color-mix(in srgb, var(--line-strong) 70%, var(--ink));
+	}
+	/*
+	 * The disc paints through `.art`, not through its own box — the button is `background: none` with a
+	 * transparent border so the arc can be drawn OUTSIDE the tap box (see `.arc`). So its hover has to
+	 * reach the artwork surface instead, at the same ratios as `.btn` so the pair moves together, and
+	 * against the tokens `.art` itself already uses rather than a second set.
+	 */
+	.disc:hover:not(:disabled) .art {
+		background: color-mix(in srgb, var(--card-tint2) 88%, var(--ink));
+		border-color: color-mix(in srgb, var(--line) 70%, var(--ink));
+	}
 	.art {
 		position: absolute;
 		inset: 0;

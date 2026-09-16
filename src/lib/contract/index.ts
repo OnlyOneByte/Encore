@@ -32,6 +32,7 @@ export * from './process/fetchers';
 export * from './lyrics/lyrics-engines';
 export * from './core/ulid';
 export * from './presentation/colors';
+export * from './presentation/player-palette';
 export * from './presentation/song-display';
 export * from './core/days-window';
 export * from './core/room-code';

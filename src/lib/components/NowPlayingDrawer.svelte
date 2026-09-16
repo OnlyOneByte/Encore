@@ -15,8 +15,10 @@
 	 * the two gestures are the same gesture, and the drawer wins because it is the ancestor. So
 	 * dragging is restricted to the handle, which is a whitelist rather than a blacklist of
 	 * `data-vaul-no-drag` elements — a whitelist cannot be forgotten when a control is added later.
-	 * (That prop only works because `ui/drawer` now renders vaul's real Handle; shadcn's copy shipped a
-	 * decorative div, which would have made `handleOnly` silently undraggable. See drawer-handle.svelte.)
+	 * (That prop only works because a real `Drawer.Handle` is rendered below, inside `.band-slot`;
+	 * shadcn's copy-in shipped a decorative div in its `drawer-content.svelte` — and the vendored file
+	 * briefly rendered a real one there too, which is how the phone came to draw TWO pull-up lines.
+	 * See drawer-handle.svelte.)
 	 *
 	 * THE SLIDER'S MOUNT CONSTRAINT IS SATISFIED STRUCTURALLY. GuidingTrack wraps a Bits UI Slider that
 	 * reads `offsetWidth`, and the mount rung replaces that with a throw (XR-VER-03), so it must not
@@ -201,7 +203,69 @@
 		void tick().then(() => {
 			activeSnapPoint = SNAP_BAND;
 		});
+		return armResizeReseat();
 	});
+
+	/*
+	 * RESIZING MUST RE-LAY THE SHEET OUT, and nothing in vaul does it. This is the fix for "the bottom
+	 * gets cut off on resize", and the cause is one missing trigger rather than wrong arithmetic.
+	 *
+	 * In `use-snap-points.svelte.js`, `snapPointsOffset` is `$derived` and DOES recompute on a resize —
+	 * the file keeps its own `windowDimensions` state behind a `window` resize listener for exactly that.
+	 * But the only thing that ever applies an offset to the element is `snapToPoint()`, and its only
+	 * caller outside a drag is `watch([() => activeSnapPoint.current, () => open.current])`. A resize
+	 * changes NEITHER of those, so the recomputed offset is never written: the sheet keeps the PIXEL
+	 * translate it was given at the old height while the viewport moves out from under it.
+	 *
+	 * Both snap points move, which is why this re-seats whichever one is active rather than only the
+	 * fraction. `SNAP_OPEN` is `0.82` and its offset is `containerHeight - 0.82 * containerHeight`, so it
+	 * scales with the height directly; `SNAP_BAND` is a px string, and its offset is still
+	 * `containerHeight - 80` — a viewport-dependent number built from a viewport-independent snap. At
+	 * 844 → 600 the collapsed sheet's translate should fall 764 → 520, and unfixed it stays at 764,
+	 * which puts a 600px-tall box entirely below the fold.
+	 *
+	 * HOW IT RE-TRIGGERS: `null`, a tick, then the same value back. The watch is runed's, so it fires on
+	 * a CHANGE of the value it tracks; writing the same string is not a change, and the intermediate
+	 * `null` is a deliberate no-op rather than a state anything renders (`snapToPoint` is not reached —
+	 * the watch's own `if (!activeSnapPoint.current) return` handles it, and `activeSnapPointIndex`
+	 * simply reads -1 for one tick). The `tick()` is what makes the two writes two separate changes.
+	 *
+	 * DEBOUNCED, because a desktop window drag emits a resize per frame and each re-seat starts vaul's
+	 * own 0.5s transform transition — so an undebounced version would have the sheet chasing the pointer
+	 * a half-second behind. One settle at the end is both cheaper and what a resize actually means.
+	 *
+	 * SSR-safe by construction: this is armed from `onMount`, which does not run on the server, and it
+	 * returns the teardown so the listener and any pending timer die with the component.
+	 */
+	const RESIZE_SETTLE_MS = 120;
+
+	function armResizeReseat(): () => void {
+		let pending: ReturnType<typeof setTimeout> | null = null;
+
+		const reseat = () => {
+			pending = null;
+			const target = activeSnapPoint;
+			// Nothing seated yet (the mount write above has not landed) — there is no offset to refresh.
+			if (target === null || target === undefined) return;
+			activeSnapPoint = null;
+			void tick().then(() => {
+				// Restore only if nothing else claimed the snap point while we were between ticks — a
+				// drag released mid-resize owns the sheet, and this must not drag it back.
+				if (activeSnapPoint === null) activeSnapPoint = target;
+			});
+		};
+
+		const onResize = () => {
+			if (pending) clearTimeout(pending);
+			pending = setTimeout(reseat, RESIZE_SETTLE_MS);
+		};
+
+		window.addEventListener('resize', onResize);
+		return () => {
+			if (pending) clearTimeout(pending);
+			window.removeEventListener('resize', onResize);
+		};
+	}
 
 	/** Collapse to the band. What `open = false` used to do, expressed as a height. */
 	const collapse = () => (activeSnapPoint = SNAP_BAND);
@@ -334,6 +398,15 @@
 			from one measured number (XR-VER-11).
 		-->
 		<div class="band-slot" style="--snap-band: {SNAP_BAND}" bind:clientHeight={bandH}>
+			<!--
+				THE SHEET'S ONE AND ONLY GRAB BAR, and it lives here rather than in `ui/drawer` because this
+				is the row a thumb pulls. `drawer-content.svelte` used to render a second real
+				`Drawer.Handle` at the top of the content BOX as well, so the phone drew TWO stacked
+				pull-up lines — reported as exactly that. Only one of the two could be placed correctly: a
+				consumer cannot move a child the vendored component renders for it, and the band row is
+				snap point 0, so the bar has to be inside it. `handleOnly` on the Root restricts dragging
+				TO this element, which is why it must be vaul's real Handle and not a decorative bar.
+			-->
 			<Drawer.Handle />
 			<NowPlayingBand
 				title={title}

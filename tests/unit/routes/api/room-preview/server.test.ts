@@ -60,6 +60,12 @@ test('present = online AND a singer of THIS room — not online alone, not liste
 	// The count is the intersection: 2, not 4 (listPublic∪other) and not 3 (all room singers).
 	expect(body.presentCount).toBe(2);
 	expect(new Set(body.names)).toEqual(new Set(['Maya', 'Dana']));
+	// The COLOURS come from the same intersection and in the same order, because the join screen's colour
+	// ring pips them: a set built from a different filter would show the away singer's colour as taken, or
+	// the other room's. Order-matched to `names` so the two describe one set of people.
+	expect(body.colors).toEqual(body.names.map((n: string) => (n === 'Maya' ? maya.color : dana.color)));
+	expect(body.colors).not.toContain('#f59e0b'); // the away singer's
+	expect(body.colors).not.toContain('#ef4444'); // the other room's
 	// Neither the away singer nor the other room's singer leaks in.
 	expect(body.names).not.toContain('Gone');
 	expect(body.names).not.toContain('Elsewhere');
