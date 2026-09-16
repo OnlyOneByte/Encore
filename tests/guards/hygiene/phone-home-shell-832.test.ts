@@ -284,7 +284,16 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	expect(DRAWER).toMatch(/<Drawer\.Root\b[^>]*\bhandleOnly\b/);
 	// …and a REAL handle for it to be restricted to. Without these two the prop is a silent no-op that
 	// makes the drawer undraggable, so asserting `handleOnly` alone would be asserting nothing.
-	expect(DRAWER_CONTENT).toMatch(/<DrawerHandle\b/);
+	//
+	// THE HANDLE MOVED, AND THE CLAIM FOLLOWED IT. This used to require `<DrawerHandle>` inside the
+	// VENDORED `drawer-content.svelte`, which rendered one at the top of the content box. Composing the
+	// band into the sheet put a second handle in `.band-slot`, so two grab bars were drawn one above the
+	// other — reported on sight. The vendored one is gone; the one in the band row is the real one,
+	// because that is where a thumb reaches it. What matters is unchanged: exactly ONE element carrying
+	// vaul's `data-vaul-handle` exists for `handleOnly` to restrict dragging to. So this asserts the
+	// handle at its NEW address, and asserts the vendored file no longer renders a competing one.
+	expect(DRAWER).toMatch(/<Drawer\.Handle\b/);
+	expect(DRAWER_CONTENT).not.toMatch(/<DrawerHandle\b/);
 	expect(DRAWER_HANDLE).toMatch(/<DrawerPrimitive\.Handle\b/);
 	// No second disclosure anywhere on this surface: the drawer is the one level of revealing.
 	expect(DRAWER).not.toContain('Collapsible');

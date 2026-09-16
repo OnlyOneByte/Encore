@@ -355,6 +355,15 @@ const FLOORS: Record<string, Floor[]> = {
 			guards: 'card-root discovery; renaming the `card list-row` pair would find nothing'
 		}
 	],
+	'tests/guards/design-system/colour-ring-palette.test.ts': [
+		{
+			subject: 'PALETTE_STOPS.length',
+			min: 48,
+			count: 1,
+			guards:
+				'the population of the join screen\u2019s colour ring: every stop it can return is checked against isLegibleSingerColor and against the singer-dot lightness band, and both arms are `filter(...)` scans whose offender array is empty for a clean palette AND for an empty one. The stops are read out of a generated JSON registry, so a moved key (`variants.uniform.stops`) or a failed import empties the list and every arm passes vacuously \u2014 which would ship a picker whose 48 colours nobody had measured.'
+		}
+	],
 	'tests/guards/design-system/singer-color.test.ts': [
 		{
 			subject: 'FILES.length',
@@ -774,7 +783,11 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// it). `taggedSitesSeen` below moves in the same commit, as its own comment requires — a whole
 	// deleted guard file gets NO RETIRED entry (this file's own retirement arm rejects a key that no
 	// longer resolves); the rationale lives in docs/DECISIONS.md and the deleting commit.
-	expect(located).toBeGreaterThanOrEqual(72);
+	//
+	// 72 → 73 when the join screen's colour ring registered its `PALETTE_STOPS.length` floor. The ring
+	// reads its 48 colours out of a generated JSON registry rather than computing them, so the floor is
+	// the thing that tells an emptied read apart from a clean palette.
+	expect(located).toBeGreaterThanOrEqual(73);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -866,7 +879,8 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
 	// 73 → 72 in lockstep with `located` above, for the drawer-deletion guard's removal.
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(72);
+	// 72 → 73 in lockstep again, for the colour ring's `PALETTE_STOPS.length` floor.
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(73);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

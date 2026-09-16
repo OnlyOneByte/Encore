@@ -2,7 +2,6 @@
 	import { Drawer as DrawerPrimitive } from 'vaul-svelte';
 	import { cn } from '$lib/utils.js';
 	import type { WithoutChildrenOrChild } from '$lib/utils.js';
-	import DrawerHandle from './drawer-handle.svelte';
 	import DrawerOverlay from './drawer-overlay.svelte';
 	import DrawerPortal from './drawer-portal.svelte';
 	import type { ComponentProps } from 'svelte';
@@ -42,15 +41,28 @@
 		{...restProps}
 	>
 		<!--
-			DEFECT IN THE COPY-IN, fixed here. shadcn renders a DECORATIVE div at this position — the right
-			size, the right place, and dragging nothing at all. `vaul-svelte` exports a real
-			`Drawer.Handle` (the element that carries `data-vaul-handle`), and without it `handleOnly` on
-			the Root has no handle to restrict dragging TO, so the drawer silently becomes undraggable.
-			Encore needs `handleOnly` because this drawer's body is sliders — see drawer-handle.svelte.
+			NO HANDLE IS RENDERED HERE, and the reason it once was still stands — it just belongs at the
+			composition site instead.
 
-			The visibility condition is unchanged: only a bottom drawer draws a grab bar.
+			THE COPY-IN'S DEFECT, RECORDED SO IT CANNOT COME BACK. shadcn renders a DECORATIVE div at this
+			position — the right size, the right place, and dragging nothing at all. `vaul-svelte` exports a
+			real `Drawer.Handle` (the element that carries `data-vaul-handle`), and without one somewhere in
+			the tree `handleOnly` on the Root has no handle to restrict dragging TO, so the drawer silently
+			becomes undraggable. Encore needs `handleOnly` because the now-playing drawer's body is sliders —
+			see drawer-handle.svelte. So a real Handle is still REQUIRED; what was wrong was rendering it
+			from HERE.
+
+			WHY IT MOVED. This position is the top of the content BOX, which is not where the grab bar
+			belongs in a snap-pointed sheet: `NowPlayingDrawer` puts its own `<Drawer.Handle />` inside
+			`.band-slot`, the band row that IS snap point 0, so the bar sits in the row a thumb actually
+			pulls. With both rendered the phone drew TWO stacked pull-up lines — reported as exactly that —
+			and the vendored one was the copy that could not be placed, since a consumer cannot move a
+			child this component renders for it.
+
+			The composition site is also the only place that knows whether a handle is wanted at all, which
+			retires the visibility condition this carried (`hidden` unless the drawer's direction is
+			`bottom`): a caller that renders no handle needs no rule hiding one.
 		-->
-		<DrawerHandle class="hidden group-data-[vaul-drawer-direction=bottom]/drawer-content:block" />
 		{@render children?.()}
 	</DrawerPrimitive.Content>
 </DrawerPortal>

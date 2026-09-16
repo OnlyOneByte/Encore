@@ -1,5 +1,6 @@
 // GET /api/room-preview?code=CODE — resolve a scanned/typed join code to a WORDS confirmation for an
-// unjoined guest: how many people are here now, and a couple of their names (XR-PH-14, Q1-B).
+// unjoined guest: how many people are here now, a couple of their names, and the identity colours they
+// hold (XR-PH-14, Q1-B).
 //
 // Unauthenticated on purpose, and it is no new exposure: /tv reads no session and already renders the
 // present singers BY NAME on the big screen (`lib/tv/screen.ts`), and /metrics is ungated too — there is
@@ -36,9 +37,16 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	// Present = live socket AND a singer of THIS room. Names are for the confirmation sentence; the
 	// count is the whole set, not just the named ones.
+	//
+	// COLOURS RIDE ALONG WITH THE NAMES, for the join screen's colour ring: it draws a hollow pip on every
+	// stop somebody in the room is already holding, so a guest can avoid arriving as a near-twin of the
+	// singer next to them on the TV roster. Same order as `names`, from the same intersection, so the two
+	// cannot describe different sets of people. No new exposure — `/tv` already renders both the names and
+	// the colour dots of everyone present on the big screen, unauthenticated, for the whole room to read.
 	const onlineIds = new Set(app.presence.online());
 	const present = app.singers.listPublic(room.id).filter((s) => onlineIds.has(s.id));
 	const names = present.map((s) => s.displayName);
+	const colors = present.map((s) => s.color);
 
-	return json({ code, presentCount: present.length, names });
+	return json({ code, presentCount: present.length, names, colors });
 };

@@ -928,7 +928,10 @@ if (!chromium) {
 		// Join first (an unjoined visitor gets the join landing at / (no separate /join route since Q2-A)).
 		await phone.goto(`${base}/`);
 		await phone.fill(SEL.nameInput, `P12ui-${Date.now() % 100000}`);
-		await phone.clickByLabel(SEL.swatch('pink').name);
+		// The join screen's colour picker is the 48-stop RING now, one role=slider with no per-colour
+		// element to click — `SEL.swatch` resolves against the settings picker, not this surface. Any stop
+		// will do here; this probe is about row actions, not identity.
+		await phone.pressKey(SEL.colourRing, 'End');
 		await phone.clickByRole('button', 'Start singing');
 		await phone.waitFor(`location.pathname === '/'`);
 		// the search box moved behind the browse push, so joining lands on the queue.
