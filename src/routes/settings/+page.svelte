@@ -21,7 +21,7 @@
 	import { goto, replaceState } from '$app/navigation';
 	import Icon from '$lib/ui/Icon.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import ColourPicker from '$lib/components/ColourPicker.svelte';
+	import ColourRing from '$lib/components/ColourRing.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { NativeSelect } from '$lib/components/ui/native-select';
 	import { Switch } from '$lib/components/ui/switch';
@@ -485,7 +485,30 @@
 								bind:value={name}
 							/>
 
-							<ColourPicker bind:value={colour} />
+							<!--
+								THE SAME RING THE JOIN SCREEN USES (ColourRing.svelte). It replaced the eight preset
+								swatches plus the hue rail that stood here — the last surface still carrying that
+								pairing, which is why the two controls could disagree about what was selected in one
+								place and not the other. One control for one choice, the whole 48-stop palette rather
+								than eight names and a continuous rail, and the same keyboard contract a guest already
+								met on the way in.
+
+								`taken` IS DELIBERATELY EMPTY, not a sample. The pips mean "somebody in the room holds
+								this colour", and this page's load has no occupancy in it: `+page.server.ts` returns
+								`me` (you, alone), the effective settings and two join-address facts. Real occupancy is
+								one field away — the same present-in-this-room intersection /api/room-preview builds,
+								`app.singers.listPublic(app.activeRoomId)` filtered by `app.presence.online()` — but
+								that is a load change, and an invented list here would draw pips at colours nobody
+								holds, which is worse than drawing none. An empty ring is a legitimate state the
+								component already handles (an empty room), so it degrades to "no pips" rather than to
+								a wrong claim.
+							-->
+							<ColourRing
+								bind:value={colour}
+								label="Your color"
+								hint="How you'll spot yourself in the queue and on the TV."
+								taken={[]}
+							/>
 
 							{#if profileError}<p class="warn" role="alert">{profileError}</p>{/if}
 
