@@ -518,7 +518,17 @@ test('the band row is the sheet itself, and the body stays mounted at the collap
 		0,
 		[...collapsed.children].indexOf(collapsed.querySelector('.band-slot')!)
 	);
-	expect(above.map((el) => el.getAttribute('data-slot') ?? el.tagName)).toEqual(['drawer-handle']);
+	/*
+	 * NOTHING is above the band row now, which satisfies this whitelist more strictly than the old
+	 * `['drawer-handle']` did. The vendored `drawer-content.svelte` used to render its own grab bar at
+	 * the top of the content box, and composing the band into the sheet added a second one inside
+	 * `.band-slot` — two lines, stacked, visible on sight. The vendored one was removed, so the handle
+	 * a thumb actually reaches now lives INSIDE the band row rather than above it. The rule this arm
+	 * exists for is unchanged: a card, an alert or a second row landing above the band row still reds.
+	 */
+	expect(above.map((el) => el.getAttribute('data-slot') ?? el.tagName)).toEqual([]);
+	// …and the handle is still present, one level down, so "nothing above" is not "no handle at all".
+	expect(collapsed.querySelectorAll('[data-slot="drawer-handle"]').length).toBe(1);
 	// …and the head and the body are BELOW it in document order rather than absent, which is the fact
 	// that replaces "closed renders nothing". Below the fold is not out of the tree.
 	const head = collapsed.querySelector('[data-slot="drawer-header"]') as HTMLElement | null;

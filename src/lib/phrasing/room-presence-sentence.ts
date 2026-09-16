@@ -10,6 +10,18 @@ export interface RoomPreview {
 	code: string;
 	presentCount: number;
 	names: string[];
+	/**
+	 * The present singers' identity colours, in the same order as `names` — what the join screen's colour
+	 * ring draws as hollow "already taken" pips.
+	 *
+	 * OPTIONAL, and deliberately so rather than for the convenience of the callers that build a preview
+	 * in a test. It is the same courtesy `names` is: the COUNT is the authoritative fact this endpoint
+	 * exists to state, and a consumer that has no use for the colours (the sentence below never reads
+	 * them) must not be made to supply them. A caller reading a preview from an older server, or from a
+	 * fixture written before this field existed, gets an empty ring rather than a crash — and an empty
+	 * ring is a state the picker already has to render, because an empty room has no pips either.
+	 */
+	colors?: string[];
 }
 
 /**

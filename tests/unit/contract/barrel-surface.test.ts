@@ -77,6 +77,12 @@ const EXPECTED = [
 	'MIN_SONG_INTRO_MS',
 	'MIN_STAGE_DIM',
 	'MIN_TOKENS_TO_COMPARE',
+	// The 48-stop player palette, read through presentation/player-palette.ts — the join screen's colour
+	// ring is built on it (`PALETTE_STOPS` and the angle/nearest helpers), and it sits in the contract
+	// because the registry JSON it reads does.
+	'PALETTE_RING_FROM_DEG',
+	'PALETTE_STOPS',
+	'PALETTE_STOP_ARC_DEG',
 	'QUEUE_ORDERS',
 	'SEPARATOR_ENGINES',
 	'SEQUENCE_WEIGHT',
@@ -172,6 +178,7 @@ const EXPECTED = [
 	'mergeLyricsCandidate',
 	'midiToNoteName',
 	'moveToIndex',
+	'nearestPaletteStop',
 	'nearestSingerHue',
 	'needsFetch',
 	'nextSwatchIndex',
@@ -185,6 +192,11 @@ const EXPECTED = [
 	'normalizeStageDim',
 	'oklchToRgb',
 	'originalKeyLabel',
+	'paletteConicGradient',
+	'paletteRingAngle',
+	'paletteStopAt',
+	'paletteStopAtRingAngle',
+	'paletteStopByFill',
 	'parseHex',
 	'pendingGates',
 	'pickBestLyrics',

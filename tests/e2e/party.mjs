@@ -30,7 +30,7 @@
  * have hidden it.
  */
 import { connect, sleep } from './driver.mjs';
-import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
+import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from './lib/phone.mjs';
 
@@ -192,14 +192,21 @@ try {
 		`computed left ${brandLeft}px — a bare 48px would sit inside the overscan region on many sets`
 	);
 
-	// ── two guests join, one by preset and one off the hue wheel ─────────────
-	/** @param {string} name @param {{ colourName?: string, hue?: number }} [opts] @returns {Promise<Page>} */
-	async function joinAs(name, { colourName, hue } = {}) {
+	// ── two guests join, each on its own end of the colour ring ──────────────
+	/*
+	 * COLOUR IS PICKED ON THE RING NOW, by keyboard. The join screen's eight preset swatches and its hue
+	 * rail were replaced by ONE `role="slider"` over the 48-stop palette (ColourRing.svelte), so there is
+	 * no per-colour element to click and no range input to set — `SEL.swatch` and `SEL.hueSlider` still
+	 * resolve, but against the SETTINGS picker, which is not this surface (see their re-pointed records in
+	 * contract.ts). `stop` is therefore a key, and `Home`/`End` are what land two guests on colours far
+	 * apart deterministically — which is all this flow ever needed the colours for.
+	 */
+	/** @param {string} name @param {{ stop?: string }} [opts] @returns {Promise<Page>} */
+	async function joinAs(name, { stop } = {}) {
 		const page = await browser0.newPage();
 		await page.goto(`${base}/`);
 		await page.fill(SEL.nameInput, name);
-		if (colourName) await page.clickByLabel(SEL.swatch(colourName).name);
-		if (hue !== undefined) await page.setRange(SEL.hueSlider, hue);
+		if (stop) await page.pressKey(SEL.colourRing, stop);
 		await page.clickByRole('button', 'Start singing');
 		await page.waitFor(`location.pathname === '/'`);
 		// Home is the QUEUE since an earlier change; searching is a push. openBrowseFromHome waits for the joined home,
@@ -208,10 +215,10 @@ try {
 		return page;
 	}
 
-	const maya = await joinAs('Maya', { colourName: PRESET_COLOUR_NAMES[1] }); // pink preset
-	// Ada picks a hue off the wheel — the path that did not exist before this branch, and the one that
-	// silently coerced every non-preset colour to violet.
-	const ada = await joinAs('Ada', { hue: 150 });
+	const maya = await joinAs('Maya', { stop: 'Home' }); // the ring's first stop
+	// Ada takes the other end of the ring — a colour the default never lands on, and the path that used
+	// to silently coerce every non-preset colour to violet.
+	const ada = await joinAs('Ada', { stop: 'End' });
 	check('two guests joined in isolated sessions', true);
 
 	const adaColour = await ada.evaluate(`(async () => (await (await fetch('/api/me')).json())?.singer?.color ?? '')()`);

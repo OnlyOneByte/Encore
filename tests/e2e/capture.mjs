@@ -27,7 +27,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect, sleep } from './driver.mjs';
-import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
+import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 import { atRepo as at } from './lib/repo-root.mjs';
@@ -233,22 +233,32 @@ try {
 	await tv.waitForSelector(SEL.qrImage);
 	await frame('tv-attract', () => shoot(tv, 'tv-attract', 'nobody here yet — the QR owns the screen'));
 
-	// ── join, both ways of picking a colour ──────────────────────────────────
+	// ── join, and pick a colour off the ring ─────────────────────────────────
 	const maya = await browser0.newPage();
 	await maya.viewport(...PHONE);
 	await maya.goto(`${base}/`);
-	await frame('join-presets', () => shoot(maya, 'join-presets', 'presets, with the violet default selected'));
 
-	await frame('join-hue-wheel', async () => {
-		await maya.setRange(SEL.hueSlider, 150);
+	/*
+	 * ONE FRAME, NOT TWO, AND THAT IS THE CHANGE ITSELF. This used to shoot `join-presets` (the eight
+	 * swatches with violet selected) and then `join-hue-wheel` (a hue set on the rail), because the join
+	 * screen carried TWO controls for one choice. It now carries one: a `role="slider"` ring over the
+	 * 48-stop palette, with the selected stop's name, hex and measured contrast in the hub. Keeping the
+	 * two old frames would have shot a control that is not there — and `SEL.hueSlider` would have found
+	 * the SETTINGS picker's rail if this page had one, which is worse than finding nothing.
+	 *
+	 * The ring is driven by KEY, because a slider has no per-colour element to click: `End` walks to the
+	 * last stop, which is both a real interaction and visibly not the default.
+	 */
+	await frame('join-colour-ring', async () => {
+		await maya.pressKey(SEL.colourRing, 'End');
 		await sleep(300);
-		await shoot(maya, 'join-hue-wheel', 'a hue picked off the wheel — lightness and chroma stay pinned');
+		await shoot(maya, 'join-colour-ring', 'the full hue circle — lightness and chroma stay pinned, the hub names the stop');
 	});
 
 	await maya.fill(SEL.nameInput, 'Maya');
-	await maya.clickByLabel(SEL.swatch(PRESET_COLOUR_NAMES[1]).name); // pink
+	await maya.pressKey(SEL.colourRing, 'Home');
 	await sleep(250);
-	await frame('join-ready', () => shoot(maya, 'join-ready', 'name entered and a preset chosen, submit enabled'));
+	await frame('join-ready', () => shoot(maya, 'join-ready', 'name entered and a ring stop chosen, submit enabled'));
 	await maya.clickByRole('button', 'Start singing');
 	await maya.waitFor(`location.pathname === '/'`);
 	await openBrowseFromHome(maya);
@@ -314,7 +324,8 @@ try {
 	await ada.viewport(...PHONE);
 	await ada.goto(`${base}/`);
 	await ada.fill(SEL.nameInput, 'Ada');
-	await ada.setRange(SEL.hueSlider, 210);
+	// A stop away from Maya's, by key: the ring is a slider, so there is nothing per-colour to click.
+	await ada.pressKey(SEL.colourRing, 'End');
 	await ada.clickByRole('button', 'Start singing');
 	await ada.waitFor(`location.pathname === '/'`);
 	await sleep(800);
