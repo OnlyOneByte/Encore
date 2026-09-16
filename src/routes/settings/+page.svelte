@@ -1144,25 +1144,39 @@
 
 <style>
 	/*
-	 * The app shell caps every phone surface at --max-w. Settings opts out so its own column can be
-	 * WIDER than the 480px phone cap (the paired controls need room) — but the opt-out removed the cap
-	 * from the whole shell, so the PageHeader (a child of .settings-page, above <main>) spanned the
-	 * ENTIRE viewport while <main> sat at 560px: on a wide monitor the h1 was hundreds of px left of the
-	 * text it introduces. Fix: --page-measure caps the header on the SAME 560px measure as <main>, so
-	 * the two share one column, while the shell stays uncapped so nothing else is constrained.
+	 * TWO MEASURES, NOT ONE — the page takes the shell's width, the ROWS keep a readable one.
+	 *
+	 * WHAT THE OLD SHAPE WAS, AND WHAT IT GOT RIGHT. This page used to cap itself at
+	 * `--measure-prose` (560) and release the shell entirely (`.app-shell:has(.settings-page)`
+	 * → `max-width: none`), with `--page-measure` pulling the PageHeader onto that same 560 so the
+	 * h1 sat over the text it introduces rather than hundreds of px to its left. The reasoning
+	 * behind the narrow cap is still correct and is not being discarded: the paired controls here
+	 * need room, and a `<select>` must never span a monitor.
+	 *
+	 * WHAT IT GOT WRONG was applying that reasoning to the PAGE. Measured at 1440: `main` came out
+	 * 560 wide while /stats and /metrics — which take `--measure-grid` — came out 1048, and the
+	 * now-playing sheet's own content column is 1080. So settings was visibly the one narrow page
+	 * in the app, and the band docked beneath it was WIDER than the page it was docked to: the
+	 * band's title sat at x=196 and its controls at x≈1145 while the settings column ran 440→1000.
+	 * The two halves of one screen disagreed about where the column was.
+	 *
+	 * So the cap moves DOWN a level. The page fills the shell like every other surface
+	 * (`--measure-grid`, which is `--max-w`, so the shell needs no opt-out and settings widens in
+	 * the same two steps as everything else), and the CONTROLS inside each card carry
+	 * `--measure-prose` instead. A card is then a full-width panel with a readable form in it —
+	 * the shape GitHub's and macOS's settings both use — and the `<select>` is bounded by the row
+	 * it lives in rather than by the page it lives on, which is what the old comment actually
+	 * wanted.
 	 */
 	.settings-page {
-		--page-measure: var(--measure-prose);
-	}
-	:global(.app-shell:has(.settings-page)) {
-		max-width: none;
+		/* Level 1 — THE PAGE. The grid role: fill whatever the shell gives us. */
+		--page-measure: var(--measure-grid);
 	}
 
 	main {
-		/* A single readable column. Wider than the 480px phone cap so a desktop operator gets room for
-		   the paired controls, narrower than the shell's 1080px so a select never spans a monitor.
-		   Kept in sync with --page-measure above so the header aligns with this column. */
-		max-width: var(--measure-prose);
+		/* Level 1, again — kept in sync with --page-measure above so the header aligns with this
+		   column, exactly as it did when both were the prose measure. */
+		max-width: var(--measure-grid);
 		margin: 0 auto;
 		/*
 		 * RESERVES THE BAND (XR-PH-12), and drops the env() term it used to carry itself.
@@ -1178,6 +1192,22 @@
 		 * band contract exists to prevent — one env(), on the one element that sits at the bottom edge.
 		 */
 		padding: var(--space-md) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
+	}
+
+	/*
+	 * Level 2 — THE ROWS. This is where the narrow cap the old comment argued for now lives, and it
+	 * is `card-content` rather than the card because the card is the PANEL (its own surface, its own
+	 * ring, its title) while its content is the form. Reached with `:global()` because scoped CSS
+	 * cannot address an element ui/card renders, and scoped under `main` so it claims only this
+	 * page's cards.
+	 *
+	 * Every control on this page is a child of one of these, which is what makes one declaration
+	 * enough: the selects, the sliders, the switches, the colour input and the paired name+save row
+	 * are all bounded by it, so none of them can reach a monitor's width no matter how wide the page
+	 * gets.
+	 */
+	main :global([data-slot='card-content']) {
+		max-width: var(--measure-prose);
 	}
 
 	/* ── the scope tabs ─────────────────────────────────────────────────── */
