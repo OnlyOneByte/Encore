@@ -19,7 +19,8 @@
 // ── ONE PERMANENTLY-MOUNTED SHEET, NOT TWO SURFACES: WHAT THAT CHANGED HERE ──────────────────────
 //
 // The persistent band and the drawer it expanded into were MERGED into one vaul drawer with snap
-// points (`'80px'` = the band strip, `0.82` = pulled up), and `NowPlayingBand` is COMPOSED as the
+// points (`'80px'` = the band strip, a clamped fraction at most `0.82` = pulled up), and
+// `NowPlayingBand` is COMPOSED as the
 // content's first child. Three consequences for this file, each handled at its site:
 //
 //   A. THERE IS NO CLOSED STATE. `open` defaults true and never changes, so `.np-drawer` is in the
@@ -197,14 +198,22 @@ function withResizeObserver<T>(fn: () => T): T {
 /*
  * ── PLACING THE SHEET, now that there is no open state ───────────────────────────────────────────
  *
- * vaul identifies a snap point by VALUE, not by index, so these are the literals `NowPlayingDrawer`'s
- * own `snapPoints` array carries. Duplicated here rather than imported because the component does not
+ * vaul identifies a snap point by VALUE, not by index, so these are the values `NowPlayingDrawer`'s own
+ * `snapPoints` array carries. Duplicated here rather than imported because the component does not
  * export them, and a test that reached into the component for its expectation would be asserting the
  * component against itself.
+ *
+ * SNAP 1 IS NO LONGER A LITERAL, and this comment used to say it was. It is now
+ * `min(0.82, (vh - 176) / vh)` — the clamp that stops a pulled-up sheet covering the page's own
+ * top-of-page controls on a short window — so `0.82` is its CEILING rather than its value, reached on
+ * any window taller than ~977px. That is exactly what this file needs and no more: the claim every arm
+ * below makes is that the mounted DOM does not vary with the snap point AT ALL, so `at` is a placement
+ * argument whose job is to be a plausible snap-1 value, not to be the one this viewport would compute.
+ * An arm that depended on the number would belong on the layout rung with the transform offsets.
  */
-/** Snap 0 — collapsed, the band strip alone on screen. */
+/** Snap 0 — collapsed, the band strip alone on screen. Still a true constant; see the component. */
 const SNAP_BAND = '80px';
-/** Snap 1 — pulled up. */
+/** Snap 1 — pulled up. The clamp's ceiling, which is its value on a tall window. */
 const SNAP_OPEN = 0.82;
 
 /**

@@ -54,6 +54,7 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
+	import { SNAP_BAND, openSnapFraction } from '$lib/sheet-snap';
 	import {
 		originalKeyLabel,
 		soundingKeyLabel,
@@ -174,18 +175,47 @@
 	 *      re-measured height updates this component's state before the prop reaches vaul's box, so
 	 *      `'78px'` is looked up in `['72px', 0.82]`, returns -1, and no snap happens — also silently.
 	 *
-	 * So the band's height is FIXED here and `.band-slot` is given that exact height in CSS from this one
-	 * constant, rather than the constant being copied into a stylesheet where the two could drift. The
-	 * band's height was never really variable: it is a `--tap`-sized control row plus its padding, and
-	 * pinning it also stops the strip growing by a line when a byline appears.
+	 * So the band's height is FIXED — in `$lib/sheet-snap`, which is also where `.band-slot` gets it in
+	 * CSS from (via `--snap-band`) rather than the number being copied into a stylesheet where the two
+	 * could drift. The band's height was never really variable: it is a `--tap`-sized control row plus
+	 * its padding, and pinning it also stops the strip growing by a line when a byline appears.
 	 *
 	 * `--dock-h` is still MEASURED off the rendered `.band-slot` (see the layout), so the reservation
 	 * contract every docked control offsets from is unchanged — it just now measures an element whose
 	 * height is deterministic.
+	 *
+	 * SNAP 1 IS NOT A CONSTANT, and everything above is why that needs saying out loud. It has to move
+	 * with the viewport (see `SNAP_OPEN` below — a fixed fraction covers the page's top controls on a
+	 * short window), so both hazards apply to it and both are handled EXPLICITLY rather than avoided:
+	 * hazard 1 by never touching the array before mount (`onMount` writes the height synchronously,
+	 * while `activeSnapPoint` is still `null`), and hazard 2 by re-seating on the NEW array value after
+	 * every resize instead of restoring the stale one (`armResizeReseat`). The rule both follow is the
+	 * same: the array is only ever replaced while nothing points into it.
 	 */
-	const BAND_SNAP_PX = 80;
-	const SNAP_BAND = `${BAND_SNAP_PX}px`;
-	const SNAP_OPEN = 0.82;
+
+	/*
+	 * SNAP 1 IS CLAMPED, AND THAT IS WHY IT IS DERIVED RATHER THAN A CONSTANT LIKE ITS SIBLING.
+	 *
+	 * It was a flat `0.82`, and a fraction of the viewport is the one thing an open sheet must not be.
+	 * vaul puts the sheet's top at `containerHeight - fraction * containerHeight`, so `0.82` means "18%
+	 * of the window, whatever that is" — 162px on a 900px-tall window and 126px on a 700px one. The
+	 * page's own top-of-page controls do not shrink with the window: on `/find` the search box sits at
+	 * 115–159px at BOTH heights. So the sheet cleared it at 900 by three pixels and covered it at 700,
+	 * and `document.elementFromPoint` at the input's centre returned a `<span>` from inside the sheet.
+	 * The sheet is `position: fixed`, so covering is the whole of it — the click never reaches the input,
+	 * which is the other half of "I can't type in the song search bar".
+	 *
+	 * THE ARITHMETIC LIVES IN `$lib/sheet-snap`, not here, because it is the half of this fix that can be
+	 * WRONG at a height nobody happened to try. A rendered offset is a layout-rung claim (XR-VER-01) and
+	 * this component cannot even be mounted on the rung below it, so a formula written inline could only
+	 * ever be guarded as a string. As a pure function it is swept across every viewport height instead.
+	 *
+	 * The window height is STATE rather than read on demand, because `snapPoints` is a prop vaul reads
+	 * reactively. Zero until mount — this component is server-rendered — and `openSnapFraction` answers
+	 * that with the ceiling, which is the value snap 1 had before the clamp existed.
+	 */
+	let viewportH = $state(0);
+	const SNAP_OPEN = $derived(openSnapFraction(viewportH));
 
 	/*
 	 * WHICH HEIGHT THE SHEET IS AT, and the replacement for the old `open` boolean. `open` no longer
@@ -198,8 +228,14 @@
 	 * `$effect`: the write has to happen when `drawerNode` is non-null, and it must be a CHANGE
 	 * (null → '80px') for the lazy watch to see it at all. `tick()` covers the ref binding landing
 	 * a microtask after the children mount.
+	 *
+	 * `viewportH` is written FIRST and synchronously, so `snapPoints` reaches its real value while
+	 * `activeSnapPoint` is still `null` — nothing can be pointing at an entry the array is about to
+	 * replace. That ordering is the whole re-seating discipline for the derived snap 1; see
+	 * `armResizeReseat`.
 	 */
 	onMount(() => {
+		viewportH = window.innerHeight;
 		void tick().then(() => {
 			activeSnapPoint = SNAP_BAND;
 		});
@@ -236,6 +272,18 @@
 	 *
 	 * SSR-safe by construction: this is armed from `onMount`, which does not run on the server, and it
 	 * returns the teardown so the listener and any pending timer die with the component.
+	 *
+	 * IT ALSO RE-SEATS SNAP 1 ONTO ITS NEW VALUE, which is what makes a DERIVED snap point safe. Snap 1
+	 * is `min(0.82, (vh - headroom) / vh)`, so a resize changes the ARRAY as well as the offsets, and
+	 * vaul looks the active point up by strict equality (`snapPoints.findIndex(p => p === activeSnapPoint)`
+	 * in both `use-snap-points.svelte.js` and `use-drawer-handle.svelte.js`). Restoring the value this
+	 * function captured would therefore restore a fraction that is no longer IN the array: index -1, no
+	 * snap, and a handle click that silently does nothing. So it restores by WHICH SNAP POINT was active
+	 * rather than by its number, and it reads `SNAP_OPEN` after the tick, when the derived value has
+	 * caught up with the new height.
+	 *
+	 * The write order is the same one `onMount` uses and for the same reason: `null` first, then the new
+	 * height, so the array is only ever replaced while nothing points into it.
 	 */
 	const RESIZE_SETTLE_MS = 120;
 
@@ -247,11 +295,13 @@
 			const target = activeSnapPoint;
 			// Nothing seated yet (the mount write above has not landed) — there is no offset to refresh.
 			if (target === null || target === undefined) return;
+			const wasBand = target === SNAP_BAND;
 			activeSnapPoint = null;
+			viewportH = window.innerHeight;
 			void tick().then(() => {
 				// Restore only if nothing else claimed the snap point while we were between ticks — a
 				// drag released mid-resize owns the sheet, and this must not drag it back.
-				if (activeSnapPoint === null) activeSnapPoint = target;
+				if (activeSnapPoint === null) activeSnapPoint = wasBand ? SNAP_BAND : SNAP_OPEN;
 			});
 		};
 
@@ -386,7 +436,38 @@
 		attribute is absent and this is what names the dialog. With a song it is inert: `aria-labelledby`
 		wins the accessible-name cascade, so the song title still names the surface.
 	-->
-	<Drawer.Content class="np-drawer" aria-label="Now playing">
+	<!--
+		`trapFocus={false}` IS WHY YOU CAN TYPE IN THE SEARCH BOX. Reported as "I can't type in the song
+		search bar and I can't even see the cursor", and the caret really was not there: focus was being
+		taken off the input a frame after it landed.
+
+		`modal={false}` was already set for the neighbouring problem and does NOT cover this one. It
+		reaches vaul's own `onFocusOutside` / `onInteractOutside` (`use-drawer-content.svelte.js`), which
+		`preventDefault()` when the drawer is non-modal — that is the DISMISSAL path. The focus TRAP is a
+		separate mechanism one layer down: `Drawer.Content` renders `bits-ui`'s `Dialog.Content`, which
+		defaults `trapFocus = true` (`dialog-content.svelte:24`) and hands it to `FocusScope`. Nothing
+		vaul exposes on the Root touches it — `autoFocus` (default false) only cancels the ONE
+		open-autofocus, which is why the collapsed band looked innocent.
+
+		WHAT THE TRAP DOES, from `focus-scope.svelte.js`: when `trap` is set it installs a
+		DOCUMENT-LEVEL `focusin` capture listener for as long as the scope is `enabled`, and `enabled` is
+		`open.current` — permanently true here, because this sheet never closes. Every focus landing
+		outside the content is treated as an escape and yanked back: `e.preventDefault()` then
+		`lastFocused.focus()`, falling through to `(firstTabbable || firstFocusable || container).focus()`.
+		The container is the fallback and it is focusable (the scope gives it `tabindex: -1`), which is
+		exactly what was measured — after clicking the input, `document.activeElement` was
+		`div[data-slot=drawer-content]`. `/find` focuses its box in `onMount`, so the very first thing a
+		guest sees is a caret that appears and then vanishes.
+
+		This is the sheet's own trap being switched off, NOT the sheet being made unfocusable. Everything
+		inside it stays in the tab order — the transport buttons, the guiding-track slider, the ± keycaps,
+		"More about this song" — and the container keeps its `tabindex: -1`. What is gone is the
+		`focusin` interception, the `Tab` wrap-around and the MutationObserver that re-homed focus when a
+		focused child was removed. All three are modal-dialog behaviours, and a sheet that is mounted over
+		every phone surface at all times is the opposite of modal: the page underneath is the thing you
+		are using.
+	-->
+	<Drawer.Content class="np-drawer" trapFocus={false} aria-label="Now playing">
 		<!--
 			SNAP 0 — the band row, and the only thing on screen when the sheet is collapsed. It is the
 			content's FIRST child because vaul sizes the content to the largest snap point and translates
@@ -607,7 +688,7 @@
 	 */
 	.band-slot {
 		position: relative;
-		/* From the component's own BAND_SNAP_PX, so the rendered strip and snap 0 cannot drift. */
+		/* From `$lib/sheet-snap`'s BAND_SNAP_PX, so the rendered strip and snap 0 cannot drift. */
 		height: var(--snap-band);
 		overflow: hidden;
 	}
