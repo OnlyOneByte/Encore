@@ -75,30 +75,44 @@ export async function openNowPlaying(page, { timeout = DEFAULT_TIMEOUT } = {}) {
 	 * PULLED UP IS A HEIGHT, NOT A PRESENCE. This used to decide "already open" with
 	 * `querySelector(npDrawer) !== null`, which was sound while vaul destroyed the content on close.
 	 * The sheet is permanently mounted now, so that read is TRUE at both snap points and the helper
-	 * would return without opening anything. What distinguishes them is where the sheet's top edge is:
-	 * collapsed it sits a band's height off the bottom, pulled up it is near the top. Half the viewport
-	 * is the midpoint between the two snap points, so it separates them with room to spare either way.
+	 * would return without opening anything. What distinguishes them is where the sheet's top edge is.
+	 *
+	 * MEASURED AGAINST THE COLLAPSED REST POSITION, NOT AGAINST HALF THE VIEWPORT. Half was chosen as
+	 * "the midpoint between the two snap points", which stopped being a midpoint when snap 1 gained a
+	 * CONTENT cap: a sheet with nothing playing is a head and a transport row, so it now opens to about
+	 * 230px and its top lands around 72% down an 844px phone — open, and nowhere near half. The party flow
+	 * timed out here on exactly that, which is the helper being stale rather than the sheet being shut.
+	 *
+	 * So the test is relative to where the sheet RESTS: collapsed, its top sits `--dock-h` off the bottom;
+	 * raised, it must have risen by at least another band's height. `--dock-h` is read live from the
+	 * document rather than restated, so this cannot drift from the token the layout publishes.
 	 */
 	const pulledUp = `(() => {
 		const e = document.querySelector(${JSON.stringify(SEL.npDrawer)});
-		return e ? e.getBoundingClientRect().top < window.innerHeight * 0.5 : false;
+		if (!e) return false;
+		const dock = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dock-h')) || 80;
+		return e.getBoundingClientRect().top < window.innerHeight - dock * 2;
 	})()`;
 	if (await page.waitFor(pulledUp, { timeout: 250 }).catch(() => false)) return;
 
 	// The band is app chrome, so it is present on whichever phone surface the driver is on.
 	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`, { timeout });
 	/*
-	 * And it is DRAGGED, not clicked. The band's pull-handle button is retired: the one way to snap 1 is
-	 * vaul's own handle, and `handleOnly` restricts dragging to it. A click does nothing at all here, so
-	 * a helper that clicked would fail with a timeout on the wait below rather than say why.
+	 * CLICKED, not dragged — and this reverses what this helper used to say.
+	 *
+	 * It read: "the band's pull-handle button is retired: the one way to snap 1 is vaul's own handle, and
+	 * `handleOnly` restricts dragging to it. A click does nothing at all here." That was true, and it was
+	 * also the shape of a real defect — vaul's handle is a `<div aria-hidden="true">` with no tabindex, so
+	 * while it was the only affordance the sheet could not be raised by a keyboard or announced to a
+	 * screen reader. The band carries a real expand button again (`SEL.bandOpen`, its metadata block), so
+	 * a click is both available and the more faithful drive: it is the affordance a guest who cannot drag
+	 * actually uses, and it cannot under-shoot a snap threshold the way a synthetic 520px drag can.
+	 *
+	 * The DRAG still works and is still vaul's (`handleOnly` is untouched); it is simply not what this
+	 * helper needs to exercise, and a flow specifically testing the gesture should drive it explicitly.
 	 */
-	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.drawerHandle)}) !== null`, { timeout });
-	const grip = await page.evaluate(`(() => {
-		const b = document.querySelector(${JSON.stringify(SEL.drawerHandle)}).getBoundingClientRect();
-		return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
-	})()`);
-	// Past the snap threshold on purpose: vaul settles to the nearest point, so an under-shoot springs back.
-	await page.drag(grip.x, grip.y, grip.x, Math.max(8, grip.y - 520), { steps: 20, settle: 24 });
+	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.bandOpen)}) !== null`, { timeout });
+	await page.click(SEL.bandOpen);
 	await page.waitFor(pulledUp, { timeout });
 }
 

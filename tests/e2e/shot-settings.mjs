@@ -10,6 +10,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
+import { openJoin } from './lib/join.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
@@ -34,7 +35,7 @@ try {
 
 	// Join first. /settings is join-gated, so a page that goes straight there lands on /join.
 	// A unique name because a duplicate display name 409s and the room persists across runs.
-	await page.goto(`${base}/`);
+	await openJoin(page, base);
 	await page.fill(SEL.nameInput, `Copy${Date.now() % 100000}`);
 	await sleep(250);
 	await page.clickByRole('button', 'Start singing');

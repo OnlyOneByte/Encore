@@ -40,6 +40,7 @@ import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from '../lib/phone.mjs';
+import { openJoin } from '../lib/join.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -233,7 +234,7 @@ try {
 	async function newPhone(name) {
 		const page = await b.newPage();
 		await page.viewport(390, 844);
-		await page.goto(`${base}/`);
+		await openJoin(page, base);
 		await page.fill(SEL.nameInput, name);
 		await page.clickByRole('button', 'Start singing');
 		// Wait for the remote. The search field USED to be the signal the room UI mounted; now it

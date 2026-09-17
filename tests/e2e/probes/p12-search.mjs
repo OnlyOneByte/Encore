@@ -48,6 +48,7 @@ import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { repoRoot } from '../lib/repo-root.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
+import { openJoin } from '../lib/join.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -926,7 +927,7 @@ if (!chromium) {
 		const phone = await browser.newPage();
 
 		// Join first (an unjoined visitor gets the join landing at / (no separate /join route since Q2-A)).
-		await phone.goto(`${base}/`);
+		await openJoin(phone, base);
 		await phone.fill(SEL.nameInput, `P12ui-${Date.now() % 100000}`);
 		// The join screen's colour picker is the 48-stop RING now, one role=slider with no per-colour
 		// element to click — `SEL.swatch` resolves against the settings picker, not this surface. Any stop

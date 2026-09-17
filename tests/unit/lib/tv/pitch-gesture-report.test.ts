@@ -99,9 +99,23 @@ const SNAP = {
 	__snapshot: true
 } as unknown as Record<string, unknown>;
 
-/** Let the graph's async build settle — setShift and the retry are both promise-based. */
+/**
+ * Let the graph's async build settle — `setShift` and the gesture retry are both promise-based.
+ *
+ * MACROTASK TURNS, NOT A COUNT OF MICROTASKS, and that is a fix rather than a style choice. This drained
+ * a fixed `8 × await Promise.resolve()`, which is a bet on the exact LENGTH of an await chain inside
+ * production code — and the two paths here are not the same length. The routed path awaits
+ * `ctx.resume()`; the DEGRADED path awaits `resume()`, then `ctx.close()`, then the build's `finally`,
+ * then the caller's `.catch().then()`. Eight turns covered the first and fell short of the second, so
+ * both blocked-path tests failed while the routed one passed — a red that reported a defect in the
+ * product when the shortfall was in this helper. Neither the graph nor the reporting was wrong.
+ *
+ * A `setTimeout(0)` runs only after the microtask queue is fully drained, so three macrotask turns cover
+ * any chain length rather than one particular one. A future await added inside the build cannot silently
+ * break this the way one more `.then()` used to.
+ */
 async function settle(): Promise<void> {
-	for (let i = 0; i < 8; i++) await Promise.resolve();
+	for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 0));
 	flushSync();
 }
 

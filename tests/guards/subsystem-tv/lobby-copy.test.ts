@@ -43,7 +43,19 @@ test('the processing copy explains the wait rather than asking for another pick'
 	// what changed is the TV no longer speaks its own dialect. (It used to require the literal string,
 	// which pinned the exact divergence FIX 4 removed.)
 	expect(/karaoke|vocals|processStageLabel/i.test(processingCopy)).toBe(true);
-	expect(/tap Turn/.test(processingCopy)).toBe(false);
+	/*
+	 * RE-POINTED from `/tap Turn/`, which this arm could no longer fail.
+	 *
+	 * "tap Turn" named a control that no longer exists anywhere: SongRow's actions are icon-only and
+	 * "Add a turn" survives only as an `aria-label`, so the lobby's prompt now reads "pick a song". Once
+	 * the old string was gone from the file, asserting its ABSENCE from one branch was satisfied by every
+	 * possible edit — the vacuity XR-VER-07 rejects. The claim was never about those two words; it is that
+	 * the processing branch must not ask for ANOTHER pick while the last one is still cooking. So this
+	 * pins the prompt's actual verb, which is also what the not-processing branch is asserted to carry.
+	 */
+	expect(/pick a song|tap Turn/.test(processingCopy)).toBe(false);
+	// …and it is a real prohibition rather than a typo: the prompt exists, just not on this branch.
+	expect(LOBBY).toContain('pick a song');
 });
 
 test('the route computes pendingCount from real playability, not a guess', () => {

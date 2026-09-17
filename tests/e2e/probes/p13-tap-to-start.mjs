@@ -16,6 +16,7 @@ import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
+import { openJoin } from '../lib/join.mjs';
 
 /**
  * Types for this out-of-program driver. Browser/Page derive from
@@ -67,7 +68,7 @@ try {
 	// -- a singer joins and queues the processed song, through the real UI --
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
-	await phone.goto(base + '/');
+	await openJoin(phone, base);
 	await phone.fill(SEL.nameInput, 'Singer' + (Date.now() % 100000));
 	await phone.clickByRole('button', 'Start singing');
 	await phone.waitFor("location.pathname === '/'");

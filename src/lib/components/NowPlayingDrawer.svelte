@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	/*
 	 * THE NOW-PLAYING DRAWER — what the band pulls up into.
 	 *
@@ -54,7 +54,7 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
-	import { SNAP_BAND, openSnapFraction } from '$lib/sheet-snap';
+	import { SNAP_BAND, OPEN_CONTENT_SLACK_PX, openSnapFraction } from '$lib/sheet-snap';
 	import {
 		originalKeyLabel,
 		soundingKeyLabel,
@@ -215,7 +215,50 @@
 	 * that with the ceiling, which is the value snap 1 had before the clamp existed.
 	 */
 	let viewportH = $state(0);
-	const SNAP_OPEN = $derived(openSnapFraction(viewportH));
+	/*
+	 * THE SHEET'S NATURAL HEIGHT, so snap 1 cannot open to five times its own content.
+	 *
+	 * Measured off `.np-fit`, the block holding the head and the body — everything below the band row.
+	 * The content BOX itself is no use for this: it is `height: 100dvh` with `max-height: none` (see the
+	 * `.np-drawer` rule and the note there about why the cap had to be released), so reading it back always
+	 * answers "the viewport".
+	 *
+	 * `bandH` is added because the band row is snap 0 and part of the same box, and `OPEN_CONTENT_SLACK_PX`
+	 * covers the content's own bottom padding, which is applied to the box rather than to the measured
+	 * block — see that constant for why the slack errs generous.
+	 *
+	 * 0 until the first measurement lands, which `openSnapFraction` reads as "not measured" and answers
+	 * with the viewport caps alone. So the first paint behaves exactly as it did before this existed.
+	 */
+	let fitH = $state(0);
+	const contentH = $derived(fitH > 0 ? bandH + fitH + OPEN_CONTENT_SLACK_PX : 0);
+	const SNAP_OPEN = $derived(openSnapFraction(viewportH, contentH));
+
+	/*
+	 * RE-SEAT WHEN THE CONTENT CHANGES HEIGHT, for the same reason `armResizeReseat` re-seats on a resize
+	 * and with the same discipline: snap 1 is DERIVED, vaul looks the active point up by strict equality
+	 * (`snapPoints.findIndex((p) => p === activeSnapPoint)`), and replacing the array under a pointer into
+	 * it yields index -1 — no snap, silently, and a handle click that does nothing.
+	 *
+	 * A song starting or ending changes the body's height (the seek row, the ± keycaps, the range bar and
+	 * the guiding track all come and go), so this is a real trigger and not a theoretical one.
+	 *
+	 * ONLY WHEN THE SHEET IS AT THE OPEN POINT, and only when the active value is a NUMBER: snap 0 is a px
+	 * STRING, so a numeric value that is not the current fraction is exactly the stale-pointer case and
+	 * nothing else. `null` first, then the new value after a tick — the array is only ever replaced while
+	 * nothing points into it. `untrack` on the read so this effect is driven by the derived snap point
+	 * alone and cannot re-enter itself by writing what it reads.
+	 */
+	$effect(() => {
+		const open = SNAP_OPEN;
+		const at = untrack(() => activeSnapPoint);
+		if (typeof at !== 'number' || at === open) return;
+		activeSnapPoint = null;
+		void tick().then(() => {
+			// Not if something else claimed the sheet between ticks — a drag released mid-change owns it.
+			if (activeSnapPoint === null) activeSnapPoint = open;
+		});
+	});
 
 	/*
 	 * WHICH HEIGHT THE SHEET IS AT, and the replacement for the old `open` boolean. `open` no longer
@@ -412,9 +455,21 @@
 	cannot do.
 
 	`dismissible={false}` with `open` is vaul's own documented pairing for a sheet that must never
-	close ("Use this in combination with the `open` prop"). `modal={false}` keeps the collapsed band
-	from trapping focus behind a scrim on every phone surface. `fadeFromIndex={1}` starts the overlay
-	at the SECOND snap point, so there is no scrim while the band is just sitting there.
+	close ("Use this in combination with the `open` prop"). `modal={false}` keeps the collapsed band from
+	trapping focus behind a scrim on every phone surface.
+
+	THERE IS NO SCRIM AT EITHER HEIGHT, and this used to claim otherwise. The Root carried
+	`fadeFromIndex={1}` under a comment saying the overlay "starts at the SECOND snap point, so there is no
+	scrim while the band is just sitting there" — which reads as "and there IS one once you pull it up".
+	There never was: `vaul-svelte` gates the overlay on modality (`use-drawer-overlay.svelte.js`:
+	`shouldRender = ctx.modal.current`), so `modal={false}` means it renders nothing at any index, and
+	`fadeFromIndex` had nothing to fade. Measured on the running app: no `[data-slot='drawer-overlay']` in
+	the DOM at either snap point. The prop is gone and `drawer-content.svelte` no longer includes the
+	overlay at all; `drawer-overlay-modality.test.ts` ties the two facts together so they cannot drift.
+
+	That is also the honest design: the page under this sheet is the thing the guest is using (see
+	`trapFocus` below), so an un-dimmed page is correct rather than a missing feature. What the sheet leans
+	on instead is its own edge — `border-t` in `border-border` plus the popover surface.
 
 	`handleOnly` stays, and it is load-bearing rather than decorative: the body carries sliders, so a
 	drag started anywhere on the content would fight them (XR-PH-15). The handle exists at both
@@ -425,7 +480,6 @@
 	dismissible={false}
 	modal={false}
 	snapPoints={[SNAP_BAND, SNAP_OPEN]}
-	fadeFromIndex={1}
 	bind:activeSnapPoint={activeSnapPoint}
 	handleOnly
 >
@@ -489,6 +543,26 @@
 				TO this element, which is why it must be vaul's real Handle and not a decorative bar.
 			-->
 			<Drawer.Handle />
+			<!--
+				`onexpand` IS BACK, AND IT IS THE ONLY WAY IN WITHOUT A POINTER.
+
+				It was dropped when the band became this sheet's snap point 0, on the reasoning that there is
+				no closed surface left to open — true of the SHEET, false of the guest. vaul's `Drawer.Handle`
+				above is the whole affordance that replaced it, and it is a `<div aria-hidden="true">` with no
+				tabindex and no role: draggable and clickable by a pointer, invisible to a keyboard and to a
+				screen reader. Measured on the collapsed home route, the only drawer controls reachable by Tab
+				were the band's magnifier and a play/pause button below the fold; the transport, the ± keycaps,
+				the guiding track, the lyrics reselect and the `···` that is the ONLY link to /song/[mediaId]
+				were all unreachable.
+
+				Raising the sheet is a snap-point write, not an `open` toggle — `open` is permanently true here
+				(`dismissible={false}`), so this seats `activeSnapPoint` on snap 1 exactly as a completed drag
+				would. Guarded on it not already being there so a press on an open sheet is a no-op rather than
+				a re-seat that restarts vaul's transform transition.
+
+				Nothing about the DRAG changes: `handleOnly` still restricts dragging to the handle, so the
+				body of sliders is still not a drag surface (XR-PH-15).
+			-->
 			<NowPlayingBand
 				title={title}
 				artist={artist}
@@ -498,18 +572,27 @@
 				isPlaying={isPlaying}
 				onsearch={onsearch}
 				ontoggleplay={ontoggleplay}
+				onexpand={() => {
+					if (activeSnapPoint !== SNAP_OPEN) activeSnapPoint = SNAP_OPEN;
+				}}
 			/>
 		</div>
-		<Drawer.Header class="np-head">
-			{#if singerName}
-				<div class="eyebrow">
-					<span class="singer-dot" style="--singer:{singerColor ?? 'var(--accent)'}"></span>
-					<span>Now singing · {singerName}</span>
-				</div>
-			{/if}
-			<div class="titlerow">
-				<div class="titlecol">
-					<!--
+		<!--
+			`.np-fit` EXISTS TO BE MEASURED, and it is a plain block so it changes nothing about the layout:
+			the head and the body keep their own padding and their own `--max-w` centring. It wraps
+			everything below the band row, which is what snap 1's content cap needs the height of.
+		-->
+		<div class="np-fit" bind:clientHeight={fitH}>
+			<Drawer.Header class="np-head">
+				{#if singerName}
+					<div class="eyebrow">
+						<span class="singer-dot" style="--singer:{singerColor ?? 'var(--accent)'}"></span>
+						<span>Now singing · {singerName}</span>
+					</div>
+				{/if}
+				<div class="titlerow">
+					<div class="titlecol">
+						<!--
 						THE HEAD NAMES THE SONG; IT DOES NOT RESTATE THE ROOM'S STATE.
 
 						This used to render `hasSong ? title : 'Nothing playing'`, which was correct while the
@@ -526,137 +609,138 @@
 						because that is the dialog's accessible name (`aria-labelledby`, see `Drawer.Content`) and
 						the band row's copy of it is a one-line glance rather than the heading.
 					-->
-					{#if hasSong}
-						<Drawer.Title class="np-song">{title}</Drawer.Title>
-					{/if}
-					<!-- No filler when there is nothing to say. "Adjust while you sing" described the drawer to the
+						{#if hasSong}
+							<Drawer.Title class="np-song">{title}</Drawer.Title>
+						{/if}
+						<!-- No filler when there is nothing to say. "Adjust while you sing" described the drawer to the
 					     person who had just opened it, and "Queue a song to start the party" repeated the title
 					     back with encouragement attached. -->
-					{#if byline}
-						<Drawer.Description class="np-byline">{byline}</Drawer.Description>
+						{#if byline}
+							<Drawer.Description class="np-byline">{byline}</Drawer.Description>
+						{/if}
+					</div>
+					{#if hasSong && mediaId}
+						<div class="more-slot">
+							<Button
+								variant="ghost"
+								size="icon"
+								href={`/song/${mediaId}`}
+								aria-label="More about this song"
+								onclick={collapse}
+							>
+								<Icon name="dots" />
+							</Button>
+						</div>
 					{/if}
 				</div>
-				{#if hasSong && mediaId}
-					<div class="more-slot">
-						<Button
-							variant="ghost"
-							size="icon"
-							href={`/song/${mediaId}`}
-							aria-label="More about this song"
-							onclick={collapse}
-						>
-							<Icon name="dots" />
-						</Button>
+			</Drawer.Header>
+
+			<div class="np-body">
+				{#if progress !== null}
+					<!-- Time REMAINING on the right: the question this surface answers is "when am I up?".
+				     aria-hidden because the position card on home states the same thing in words. -->
+					<div class="seekrow" aria-hidden="true">
+						<span class="time">{formatClock(elapsedSec)}</span>
+						<div class="bar-slot"><Progress value={progress * 100} size="sm" /></div>
+						<span class="time r">{formatRemaining(elapsedSec, durationSec)}</span>
 					</div>
 				{/if}
-			</div>
-		</Drawer.Header>
 
-		<div class="np-body">
-			{#if progress !== null}
-				<!-- Time REMAINING on the right: the question this surface answers is "when am I up?".
-				     aria-hidden because the position card on home states the same thing in words. -->
-				<div class="seekrow" aria-hidden="true">
-					<span class="time">{formatClock(elapsedSec)}</span>
-					<div class="bar-slot"><Progress value={progress * 100} size="sm" /></div>
-					<span class="time r">{formatRemaining(elapsedSec, durationSec)}</span>
-				</div>
-			{/if}
-
-			<!-- Disabled when there is nothing to act on. Restart and skip need a song that is PLAYING;
+				<!-- Disabled when there is nothing to act on. Restart and skip need a song that is PLAYING;
 			     play additionally accepts a queue with something in it, because the server decides when
 			     "start when it is ready" becomes a start. -->
-			<div class="transport">
-				<Button variant="outline" size="icon" aria-label="restart" disabled={!hasSong} onclick={() => onrestart?.()}>
-					<Icon name="prev" />
-				</Button>
-				<Button
-					variant="iconPrimary"
-					size="icon"
-					aria-label="play/pause"
-					disabled={!hasSong && !canStart}
-					onclick={() => ontoggleplay?.()}
-				>
-					<Icon name={isPlaying ? 'pause' : 'play'} />
-				</Button>
-				<Button variant="outline" size="icon" aria-label="skip" disabled={!hasSong} onclick={() => onskip?.()}>
-					<Icon name="next" />
-				</Button>
-			</div>
+				<div class="transport">
+					<Button variant="outline" size="icon" aria-label="restart" disabled={!hasSong} onclick={() => onrestart?.()}>
+						<Icon name="prev" />
+					</Button>
+					<Button
+						variant="iconPrimary"
+						size="icon"
+						aria-label="play/pause"
+						disabled={!hasSong && !canStart}
+						onclick={() => ontoggleplay?.()}
+					>
+						<Icon name={isPlaying ? 'pause' : 'play'} />
+					</Button>
+					<Button variant="outline" size="icon" aria-label="skip" disabled={!hasSong} onclick={() => onskip?.()}>
+						<Icon name="next" />
+					</Button>
+				</div>
 
-			<!--
+				<!--
 				The live controls only exist for a song playing NOW, so an idle room shows the transport and
 				stops there rather than offering knobs with nothing behind them.
 			-->
-			{#if hasSong}
-				<div class="tools-body">
-					{#if guideNote}<p class="tools-note">{guideNote}</p>{/if}
-					<GuidingTrack pct={guidePct} available={guideEnabled} oninput={onGuideInput} oncommit={onGuideCommit} />
+				{#if hasSong}
+					<div class="tools-body">
+						{#if guideNote}<p class="tools-note">{guideNote}</p>{/if}
+						<GuidingTrack pct={guidePct} available={guideEnabled} oninput={onGuideInput} oncommit={onGuideCommit} />
 
-					{#if keyOriginal}
-						<div class="key-head" class:shifted={keyShifted}>
-							<span class="key-vals">
-								<span class="key-orig">{keyOriginal}</span>
-								{#if keyShifted}
-									<span class="key-arrow"><Icon name="arrow-right" /></span>
-									<span class="key-sound">{keySounding}</span>
-								{/if}
-							</span>
-						</div>
-					{/if}
+						{#if keyOriginal}
+							<div class="key-head" class:shifted={keyShifted}>
+								<span class="key-vals">
+									<span class="key-orig">{keyOriginal}</span>
+									{#if keyShifted}
+										<span class="key-arrow"><Icon name="arrow-right" /></span>
+										<span class="key-sound">{keySounding}</span>
+									{/if}
+								</span>
+							</div>
+						{/if}
 
-					<div class="key" class:disabled={!keyShiftEnabled} class:shifted={keyShift !== 0}>
-						<span class="lab">{keyLabel}</span>
-						<div class="key-cell">
-							<Button
-								variant="keycap"
-								size="block"
-								disabled={!keyShiftEnabled || keyShift <= -7}
-								onclick={() => onkey?.(keyShift - 1)}
-							>
-								<Icon name="minus" /> semitone
-							</Button>
+						<div class="key" class:disabled={!keyShiftEnabled} class:shifted={keyShift !== 0}>
+							<span class="lab">{keyLabel}</span>
+							<div class="key-cell">
+								<Button
+									variant="keycap"
+									size="block"
+									disabled={!keyShiftEnabled || keyShift <= -7}
+									onclick={() => onkey?.(keyShift - 1)}
+								>
+									<Icon name="minus" /> semitone
+								</Button>
+							</div>
+							<div class="key-cell">
+								<Button
+									variant="keycap"
+									size="block"
+									disabled={!keyShiftEnabled || keyShift >= 7}
+									onclick={() => onkey?.(keyShift + 1)}
+								>
+									<Icon name="plus" /> semitone
+								</Button>
+							</div>
 						</div>
-						<div class="key-cell">
-							<Button
-								variant="keycap"
-								size="block"
-								disabled={!keyShiftEnabled || keyShift >= 7}
-								onclick={() => onkey?.(keyShift + 1)}
-							>
-								<Icon name="plus" /> semitone
-							</Button>
-						</div>
-					</div>
 
-					<!--
+						<!--
 						DIRECTLY BELOW KEY, no disclosure. The picture answers "can I sing this, in this key?" and
 						the ± buttons are the thing it answers ABOUT, so putting a tap between them made the two
 						halves of one question feel like two features.
 					-->
-					{#if rangeText}
-						<div class="range">
-							<div class="range-facts">
-								<span class="range-label">{rangeText}</span>
-								{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
+						{#if rangeText}
+							<div class="range">
+								<div class="range-facts">
+									<span class="range-label">{rangeText}</span>
+									{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
+								</div>
+								{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
+								<RangeBar profile={profile} keyShift={keyShift} />
 							</div>
-							{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
-							<RangeBar profile={profile} keyShift={keyShift} />
-						</div>
-					{/if}
+						{/if}
 
-					{#if candidates.length}
-						<LyricsReselect
-							candidates={candidates}
-							chosenRef={chosenRef}
-							overrideRef={overrideRef}
-							newerExists={newerExists}
-							onpick={(ref) => onpicklyrics?.(ref)}
-							onpaste={(text) => onpastelyrics?.(text)}
-						/>
-					{/if}
-				</div>
-			{/if}
+						{#if candidates.length}
+							<LyricsReselect
+								candidates={candidates}
+								chosenRef={chosenRef}
+								overrideRef={overrideRef}
+								newerExists={newerExists}
+								onpick={(ref) => onpicklyrics?.(ref)}
+								onpaste={(text) => onpastelyrics?.(text)}
+							/>
+						{/if}
+					</div>
+				{/if}
+			</div>
 		</div>
 	</Drawer.Content>
 </Drawer.Root>
@@ -750,12 +834,46 @@
 		 */
 		padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--space-lg));
 	}
+	/*
+	 * THE MEASURE, SHARED BY THE HEAD AND THE BODY — one rule, two selectors, and they must STAY one rule.
+	 *
+	 * `--max-w` for the same reason the band tracks it: this is bottom-docked chrome, and on a laptop a
+	 * full-bleed sheet would put the song title at the far left of the window while its controls sat in a
+	 * centred column — which is exactly what happened when a new rule was once inserted BETWEEN these two
+	 * selectors. The head silently dropped out of the list, kept the declarations of whatever rule followed,
+	 * and went full-bleed at every width above `--max-w`: title and `···` pinned to the window edges with
+	 * the transport, the guiding track and the range centred 280px inside them. Nothing caught it — the
+	 * class still resolved to a rule, so the class-resolution guard was satisfied, and no measured arm reads
+	 * the head's width. It was found by looking at the screen.
+	 *
+	 * So: if you add a rule near here, add it AFTER this block, never inside the selector list.
+	 */
 	:global(.np-head),
 	.np-body {
 		width: 100%;
 		max-width: var(--max-w);
 		margin-inline: auto;
 		/* A nowrap child must not set a floor this box cannot go under — the band's own defect class. */
+		min-width: 0;
+	}
+	/*
+	 * THE MEASURED BLOCK — the wrapper holding the head and the body, whose height is snap 1's content cap.
+	 *
+	 * FULL WIDTH ON PURPOSE: the two children above cap and centre THEMSELVES, so capping this one too would
+	 * be a second measure saying the same thing, and the first change to disagree with the other would move
+	 * the column.
+	 *
+	 * `flex: 0 0 auto` is load-bearing rather than defensive: this is a flex child of the content column, so
+	 * it would otherwise inherit `flex-shrink: 1` — and if the body ever grew past the viewport the wrapper
+	 * would SHRINK, `clientHeight` would under-report, and snap 1's content cap would be computed from a
+	 * height smaller than the content it is capping. That clips a control instead of leaving space, which is
+	 * the one direction the cap must never err in (see OPEN_CONTENT_SLACK_PX).
+	 *
+	 * `min-width: 0` for the reason the two above carry it: a nowrap descendant must not set a floor this box
+	 * cannot go under.
+	 */
+	.np-fit {
+		flex: 0 0 auto;
 		min-width: 0;
 	}
 	:global(.np-head) {

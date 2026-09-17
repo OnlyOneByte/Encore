@@ -236,10 +236,30 @@ export function rangeLabel(p: SongProfile | null | undefined, semitones = 0): st
 	return `${midiToNoteName(p.p05Midi + shift)} - ${midiToNoteName(p.p95Midi + shift)}`;
 }
 
-/** How many octaves the sung range spans, to one decimal — the "is this a big sing" number. */
+/**
+ * How many octaves the range spans, to one decimal — the "is this a big sing" number.
+ *
+ * MEASURED OVER p05..p95, WHICH IS THE SAME PAIR `rangeLabel` PRINTS, and that is the whole point of
+ * this note. It used to span `lowMidi..highMidi` — the absolute extremes — while `rangeLabel` above has
+ * always used the 5th..95th percentile. Both numbers were individually correct and both are rendered
+ * ADJACENT, as one value, by the only two callers (`routes/song/[mediaId]` and `NowPlayingDrawer`:
+ * `{rangeText}{octaves} oct`). On the first real processed song in the library that read
+ *
+ *     "A3 - A#4    3.7 oct"
+ *
+ * — a 13-semitone label beside a 3.7-octave span, because p05/p95 were 56.76/69.70 while low/high were
+ * 40.50/84.85. A singer cannot reconcile those, and the pair is what they are being asked to judge
+ * "can I sing this?" from.
+ *
+ * The extremes are still the honest measurement of what the tracker HEARD; they are just not what the
+ * label describes. They keep their own home: `RangeBar` draws the histogram off `lowMidi` and the
+ * lives-here block off p05..p95, so nothing that wants the full span loses it.
+ *
+ * An interval is shift-invariant, so this takes no `semitones` — transposing moves both ends equally.
+ */
 export function rangeOctaves(p: SongProfile | null | undefined): number | null {
 	if (!hasVocalRange(p)) return null;
-	return Math.round(((p.highMidi - p.lowMidi) / 12) * 10) / 10;
+	return Math.round(((p.p95Midi - p.p05Midi) / 12) * 10) / 10;
 }
 
 // ── voice bands ───────────────────────────────────────────────────────────────────

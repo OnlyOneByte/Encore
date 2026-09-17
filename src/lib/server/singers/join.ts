@@ -22,22 +22,36 @@ export interface JoinResult {
 	roomId: string;
 }
 
-/** Thrown when the requested display name is already held by someone still in the room. */
+/**
+ * Thrown when the requested display name is already held by someone still in the room.
+ *
+ * THE MESSAGE IS GUEST COPY, because `/api/join` returns it as the response `error` and JoinLanding
+ * renders that verbatim into `.err[role=alert]` — the route's own comment says so ("The phone shows this
+ * verbatim, so it has to read as a sentence"). It read `the name "Maya" is taken`: lowercase, quoted,
+ * and silent about what to do next — a developer's exception text on the first screen of the app. It is
+ * now a sentence with the next step in it. `takenName` stays for callers and logs.
+ */
 export class NameTakenError extends Error {
 	// NOT a field called `name` — Error already owns that, and shadowing it makes the thrown error
 	// stringify as the singer's name instead of its type.
 	readonly takenName: string;
 	constructor(takenName: string) {
-		super(`the name "${takenName}" is taken`);
+		super('That name is taken — try another.');
 		this.takenName = takenName;
 	}
 }
 
-/** Thrown when a join names a room code that resolves to no room — a mistyped or stale code. */
+/**
+ * Thrown when a join names a room code that resolves to no room — a mistyped or stale code.
+ *
+ * Same wording as `/api/room-preview`'s own 404, for the same reason as above: both are shown verbatim
+ * to a guest on the same screen, and two spellings of one failure ("no room with code X" vs "No room is
+ * using the code X.") is the drift a shared sentence removes.
+ */
 export class RoomNotFoundError extends Error {
 	readonly code: string;
 	constructor(code: string) {
-		super(`no room with code "${code}"`);
+		super(`No room is using the code ${code}.`);
 		this.code = code;
 	}
 }
@@ -50,6 +64,50 @@ export const nameKey = (name: string): string => name.trim().toLowerCase().repla
  * so accept any case and surrounding whitespace and canonicalise to the stored form before lookup.
  */
 export const normalizeRoomCode = (code: string): string => code.trim().toUpperCase();
+
+/** A public singer — what `listPublic` projects onto the wire (no session token, no roomId). */
+type Member = Omit<Singer, 'sessionToken'>;
+
+/**
+ * WHO IS STILL IN THIS ROOM, split by whether their phone is reachable.
+ *
+ * ── WHY THIS EXISTS: TWO POPULATIONS, ONE ROOM, AND A CONTRADICTION ON THE FIRST SCREEN ──────────
+ *
+ * `assertNameFree` below refuses a name held by anyone whose presence state is not `gone` — here OR
+ * away — because the grace window is the whole point: a locked phone must not hand your name to the
+ * next guest while you are in the bathroom. `/api/room-preview`, which draws the join screen's
+ * confirmation sentence and the colour ring's "already taken" pips, counted `presence.online()`
+ * instead: a LIVE SOCKET only.
+ *
+ * Two different sets, one room, and the join screen showed both in sequence:
+ *
+ *     "This room is empty right now — you'll be the first here."
+ *     …then, on submit:  the name "Maya" is taken
+ *
+ * Observed on a real run, with the TV simultaneously rendering "Maya AWAY" on its roster — so the wall
+ * and the phone disagreed about whether anyone was in the room, and the phone lost.
+ *
+ * So membership is read HERE, once, and both callers derive from it. A future rule about who counts as
+ * present cannot land on one and miss the other. `here` first in the returned lists so a caller naming
+ * only a few people names reachable ones first.
+ */
+export function roomMembership(app: EncoreApp, roomId: string): { here: Member[]; away: Member[] } {
+	const graceMs = graceMsOf(app.settings.getRoom(roomId).presenceGraceMinutes);
+	const now = app.now();
+	const online = new Set(app.presence.online());
+	const here: Member[] = [];
+	const away: Member[] = [];
+	for (const s of app.singers.listPublic(roomId)) {
+		if (online.has(s.id)) {
+			here.push(s);
+			continue;
+		}
+		// Not connected: still in the room only while the grace clock is running (or while they hold a
+		// turn, which is what keeps that clock unstarted). Exactly the test `assertNameFree` applies.
+		if (app.presence.stateOf(s.id, now, graceMs, hasPendingSongs(app, s.id)) !== 'gone') away.push(s);
+	}
+	return { here, away };
+}
 
 /**
  * Refuse a name already held by someone still IN THE ROOM.
@@ -66,12 +124,10 @@ export const normalizeRoomCode = (code: string): string => code.trim().toUpperCa
  */
 export function assertNameFree(app: EncoreApp, roomId: string, name: string, exceptId?: string): void {
 	const key = nameKey(name);
-	const graceMs = graceMsOf(app.settings.getRoom(roomId).presenceGraceMinutes);
-	const clash = app.singers.listPublic(roomId).some((s) => {
-		if (s.id === exceptId) return false;
-		if (nameKey(s.displayName) !== key) return false;
-		return app.presence.stateOf(s.id, app.now(), graceMs, hasPendingSongs(app, s.id)) !== 'gone';
-	});
+	// Through `roomMembership` rather than re-deriving the grace test here, so the set this refuses from
+	// IS the set /api/room-preview describes to the guest. See that function's note for the defect.
+	const { here, away } = roomMembership(app, roomId);
+	const clash = [...here, ...away].some((s) => s.id !== exceptId && nameKey(s.displayName) === key);
 	if (clash) throw new NameTakenError(name);
 }
 

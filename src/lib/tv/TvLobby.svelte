@@ -14,6 +14,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import type { RosterMember } from './screen';
 	import { processStageLabel } from '$lib/phrasing/process-phrasing';
+	import { joinAddressLabel } from './join-address';
 
 	interface Props {
 		qrDataUrl: string;
@@ -72,8 +73,9 @@
 	const dense = $derived(roster.length > CHIP_STEPDOWN || rosterChars > CHAR_BUDGET);
 	/* Scheme-less AND query-less, matching attract: nobody types "http://" or the redundant ?room=CODE
 	   off a wall (the QR carries the full URL). Stripping the query is also what keeps the address to one
-	   line so it cannot collide with a full roster below it. */
-	const joinShort = $derived(joinUrl.replace(/^https?:\/\//, '').replace(/\?.*$/, ''));
+	   line so it cannot collide with a full roster below it. Through the shared helper, which also drops
+	   the bare trailing slash this regex left behind. */
+	const joinShort = $derived(joinAddressLabel(joinUrl));
 	/** Somebody has picked, it just is not singable yet. Different situation, different words. */
 	const processing = $derived(pendingCount > 0);
 
@@ -92,6 +94,13 @@
 
 	// With a rehydrated queue but nobody reconnected, the roster is empty — say something true
 	// rather than "0 in the room".
+	//
+	// THE PROMPT SAYS "pick a song", NOT "tap Turn", and the rename is a defect fix. There is no control
+	// called Turn any more: SongRow's two actions are ICON-ONLY (a sparkle on an accent fill, a plus
+	// outlined in green) and the words survive only as their `aria-label`s — "Sing this — strips the
+	// vocals first…" and "Add a turn". So the wall was instructing a whole room to look for a label no
+	// phone displays. This wording borrows the verb from `headline` one block up, which is the vocabulary
+	// the same guest has just read on the same screen.
 	const sub = $derived(
 		processing
 			? // Do NOT tell them to pick a song here: they already did, and the honest answer is that the
@@ -101,8 +110,8 @@
 				? `${count} in the room · making the karaoke, this takes a minute`
 				: 'Making the karaoke — this takes a minute'
 			: count > 0
-				? `${count} in the room · search on your phone and tap Turn`
-				: 'Scan to join, then search on your phone and tap Turn'
+				? `${count} in the room · search on your phone and pick a song`
+				: 'Scan to join, then search on your phone and pick a song'
 	);
 </script>
 

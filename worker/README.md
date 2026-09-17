@@ -71,12 +71,33 @@ touch.
 All four must be clean. There is no CI on this repo, so these are the whole verification story.
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt   # once
-pytest -q                    # 1035 tests, asyncio_mode=auto
+pip install -r requirements-test.txt   # once — pytest, its two plugins, ruff, mypy
+pytest -q                    # 1037 tests, asyncio_mode=auto
 ruff check .                 # lint
 ruff format --check .        # ruff is the formatter; there is no separate black
 mypy                         # config in pyproject.toml
 ```
+
+That install line used to read `-r requirements.txt -r requirements-dev.txt`, and it did not work: those
+two files are the same heavy ML **runtime** set and neither has ever named pytest, ruff or mypy, so a new
+contributor following this section got `No module named pytest` from the very first gate. The tooling is
+declared in `requirements-test.txt` now, separately, so running the gates costs five small pure-Python
+packages instead of a multi-GB torch stack. Add `-r requirements.txt` on top only when you need to run a
+REAL job rather than the suite.
+
+**RUN THIS ON PYTHON 3.12.** That is what the pins resolve against (`requirements.txt`'s own note says
+"py3.12/aarch64", and mypy targets 3.12), and it is not a preference: `scipy==1.16.2` declares
+`Requires-Python >=3.11`, so on a 3.10 interpreter pip refuses it outright — no wheel, no fallback. The
+five loudness tests import it transitively through `pyloudnorm` and fail on that import rather than on any
+logic.
+
+**TEN tests are environment-bound, and a 3.10 box is one of the environments they bind against.** Measured
+there: 1026 pass, 10 fail, 1 skipped. The five loudness cases and the real-encode guide-mix case need
+`scipy` / `pyloudnorm` / `soundfile` (all in `requirements.txt`, none reachable on 3.10 per the paragraph
+above). Three `test_hardware` cases read Linux cgroup and CPU-affinity interfaces macOS does not have, and
+one demucs case asserts POSIX child-reaping semantics. None of the ten is a signal about the code — but do
+not read a 1026 as green either, because the loudness half of `build_song_profile` is genuinely unverified
+when they are skipped for the wrong reason.
 
 **A green suite is the floor, not the bar.** This box has numpy and scipy only, so **no heavy seam is ever
 executed here** — every test fakes torch, demucs, whisperx and pyannote. That is the right trade for

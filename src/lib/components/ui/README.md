@@ -6,20 +6,35 @@ CSS somewhere the source-scanning design guards can still read and edit it. A he
 that CSS into `node_modules`, where a 38 px button, a 14 px input, a `vh` sheet cap and a
 `content: '✕'` all become **invisible rather than illegal**.
 
-**The shadcn migration filled this directory.** It holds 19 components, every one wired to a real call site: Button,
-Input, NativeSelect, Label, Field, Checkbox, Slider, Tabs, Collapsible, Card, Badge, Progress, Table,
-Item, Empty, Skeleton, Spinner, Sonner and Chart. `Label` is reached through `Field.Label` rather than
-directly; it is the only indirect one.
+**The shadcn migration filled this directory**, and every component in it is wired to a real call site.
+`Label` is reached through `Field.Label` rather than directly; it is the only indirect one.
 
-`Switch`, `Textarea` and `Separator` were vendored during the migration and deleted again before review
-closed, because nothing used them — "vendored but unwired" reads as migrated when it is not.
+NO COUNT IS WRITTEN HERE ANY MORE, deliberately. This paragraph used to open "It holds 19 components" and
+name all nineteen — and it was wrong within two changes, because a number in prose is a fact nothing
+checks. `ls src/lib/components/ui/` is the count, and it is always right. What this file is FOR is the five
+constraints below, which a directory listing cannot tell you.
+
+The same rot hit the sentence that followed: "`Switch`, `Textarea` and `Separator` were vendored during the
+migration and deleted again, because nothing used them." `Separator` is still gone. `Switch` and `Textarea`
+came BACK and are wired — Switch at three call sites on `/settings`, Textarea in `LyricsReselect` — so the
+sentence was describing a tree two changes old while sounding like a rule. The rule it was reaching for is
+worth keeping, and it is the reason those two were deleted the first time: **"vendored but unwired" reads as
+migrated when it is not**, so vendor a component in the change that USES it, never ahead of one.
 
 Unused *parts* of components we DO use are kept on purpose: a part is the registry's unit, and deleting
 one makes the next `--overwrite` look like a regression. `Card.Action`, `Table.Caption`, `Field.Set` and
 about twenty others are unrendered and staying. **The one exception is a part whose own dependency goes**:
 `Field.Separator` and `Item.Separator` were deleted with `Separator` itself, because a part that imports a
-component we no longer vendor cannot compile. If you re-add `Separator`, re-add them with it. If you are adding number 20, the five sections below
-are the constraints that will bite you, in the order they bit that migration.
+component we no longer vendor cannot compile. If you re-add `Separator`, re-add them with it.
+
+A SECOND exception has since appeared, and it is the reverse shape — a part whose own RENDER goes.
+`drawer-overlay.svelte` is vendored, wired to nothing, and staying: `vaul-svelte` gates the overlay on
+`modal`, Encore's only drawer is necessarily `modal={false}`, so it could never mount. It keeps its
+component and lost its dead fade CSS, and `drawer-overlay-modality.test.ts` ties "not rendered" to "not
+modal" so the pair cannot drift. See its deviation header.
+
+If you are adding the next one, the five sections below are the constraints that will bite you, in the
+order they bit that migration.
 
 ---
 
@@ -108,7 +123,7 @@ do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if 
 
 ---
 
-## Adding component 20
+## Adding the next component
 
 1. `cd . && ./node_modules/.bin/shadcn-svelte add <name> --yes` (`bunx` fails — CodeArtifact
    401). Run `bun test` from the **repo root** afterwards; `bunfig.toml` and its preload live there,
@@ -118,7 +133,7 @@ do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if 
    `var(--color-popover)` paints nothing. `design-system.test.ts` catches that.
 3. Give it Encore's appearance where the registry's differs, and record **why** in an `ENCORE
    DEVIATIONS` HTML comment at the top of the file, naming the test that enforces each item. They are what
-   makes an `--overwrite` reviewable. 18 of the 19 components carry one in that exact form; `button/` is
+   makes an `--overwrite` reviewable. Every component here carries one in that exact form bar one; `button/` is
    the odd one out, using `DEVIATIONS FROM REGISTRY OUTPUT` inside a `<script module>` block because it
    predates the convention. Its content is the most thorough here — only the marker differs, so a grep for
    the mandated header misses it.

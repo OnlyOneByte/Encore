@@ -484,59 +484,58 @@ test('the retired hero family stays retired — `.hero` resolves, but only again
 	}
 });
 
-test('the retired band pull handle stays retired — `.band .handle` resolves, but the app cannot render it', () => {
+test('the band pull handle is gone, and the expand claim came back as a real button', () => {
 	/*
-	 * THE SAME TRAP AS `.hero` ABOVE, REACHED FROM THE OTHER DIRECTION, which is why it needs its own
-	 * absence assertion rather than a line in that test's dead list.
+	 * REWRITTEN. This used to assert that `.band .handle` still RESOLVED while being unrenderable — live
+	 * source in a dead branch (`{#if onexpand}` with no call site passing one), which is the `.hero` trap
+	 * reached from the other direction. Both halves of that have changed, and the guard has to change with
+	 * them or it pins a world that no longer exists:
 	 *
-	 * The band and the now-playing drawer were merged into ONE permanently-mounted vaul sheet, with the
-	 * band as snap point 0. Nothing opens a closed surface any more, so the band's pull handle — the old
-	 * `SEL.bandExpand`, `.band .handle` — is retired in favour of `[data-slot='drawer-handle']`, which is
-	 * both the way in and the drag surface.
+	 *   • the `<button class="handle">` is DELETED from the band, so the selector no longer resolves at all
+	 *     — the bar a thumb pulls is vaul's, rendered by the drawer inside `.band-slot`;
+	 *   • an `onexpand` IS wired again, deliberately. `drawerHandle` is a `<div aria-hidden="true">` with no
+	 *     tabindex and no role, so while it was the only affordance the sheet could not be raised by a
+	 *     keyboard or announced to a screen reader, and everything inside it was pointer-only.
 	 *
-	 * `.hero` kept resolving because the class MOVED SURFACES (the TV's JoinBadge still renders it). This
-	 * one keeps resolving for a subtler reason: `NowPlayingBand.svelte` is UNCHANGED, so it still declares
-	 * `<button class="handle">` — inside `{#if onexpand}`, a branch NO call site can enter, because nothing
-	 * in the app passes the band an `onexpand` any more. So the anchor is live source in a dead branch:
-	 * a grep says yes, the rendered app says no, and every existing guard here is a grep. Reviving
-	 * `bandExpand` — or "fixing" a red phone read by pointing it back at `.band .handle` — would pass the
-	 * every-SEL-resolves guard aimed at a button that cannot exist.
-	 *
-	 * So this asserts the GATE, not just the absence. The prop and its `{#if}` are what make the button
-	 * unreachable, and the empty call-site sweep is what makes them decisive; re-wiring an `onexpand`
-	 * anywhere reds here and sends the author to the retirement record instead of letting the selector
-	 * quietly come back to life.
+	 * So the claims now are: the old selector is gone and its NAME stays banned; the replacement is a real
+	 * button with an accessible name; something actually hands the band the action it is gated on; and the
+	 * drag surface is untouched. The old test's warning is preserved as the last arm — a second grab bar
+	 * here is a defect that already shipped once.
 	 */
 	const sources = guardSources();
 	const bandFile = join(CORE, 'src/lib/components/NowPlayingBand.svelte');
 	const band = stripComments(readFileSync(bandFile, 'utf8'));
 
-	// The resolution is REAL — the entire reason the absence has to be asserted rather than assumed. If
-	// this ever goes false the class has left the band too, and this test can go with it.
-	expect(selectorResolves('.band .handle', sources)).toBe(true);
+	// The retired selector is gone from source entirely, which is the state the old record hoped for.
+	expect(selectorResolves('.band .handle', sources), '`.band .handle` is retired — the button was deleted').toBe(false);
+	expect(band, 'the deleted handle button must not come back in the band').not.toMatch(/class="handle"/);
 
-	// THE GATE, both halves, in the band's own source. Non-vacuity for the sweep below: without a prop and
-	// a condition keyed on it, "no call site passes one" would prove nothing about what renders.
-	expect(band, 'the band must still declare the onexpand prop the handle is gated on').toMatch(
+	// The successor is a REAL button, not a div with a click handler, and it is still gated on the prop so
+	// the gallery's five bare bands stay inert rather than offering a press that goes nowhere.
+	expect(band, 'the band must still declare the onexpand prop the expand control is gated on').toMatch(
 		/onexpand\?:\s*\(\)\s*=>\s*void;/
 	);
-	expect(band, 'the handle must still be gated on {#if onexpand}').toMatch(/\{#if onexpand\}/);
-	expect(band, 'the gated element must still be the .handle button').toMatch(/class="handle"/);
+	expect(band, 'the expand control must still be gated on {#if onexpand}').toMatch(/\{#if onexpand\}/);
+	expect(band, 'the expand control must be a <button>, so it is focusable and announced').toMatch(
+		/<button[^>]*class="meta meta-btn"/
+	);
+	// A name a screen reader can read, and one that CONTAINS the visible text (SC 2.5.3): the label
+	// interpolates the title rather than replacing it with words that are not on screen.
+	expect(band, 'the expand button must carry an accessible name').toMatch(/aria-label={expandLabel}/);
+	expect(band, 'and that name must contain the visible title').toMatch(/expandLabel\s*=\s*\$derived\(/);
 
-	// ...and NOTHING hands it one. This is the assertion that makes `.band .handle` unrenderable: the
-	// layout mounts only the sheet, and /components renders five bare bands. A file walk rather than a
-	// single-file read, because the wiring could come back anywhere.
+	// ...and SOMETHING hands it one. The inverse of what this test used to assert, and the arm that makes
+	// the rest non-vacuous: without a call site the button cannot render, however well it is declared.
 	const wired = svelteFiles(join(CORE, 'src'))
 		.filter((f) => f !== bandFile)
 		.filter((f) => /\bonexpand\s*=/.test(stripComments(readFileSync(f, 'utf8'))))
 		.map((f) => f.replace(CORE + '/', ''));
 	expect(
 		wired,
-		'a call site passes the band an onexpand again, so its pull handle renders — revisit the bandExpand retirement in contract.ts rather than re-adding the selector'
-	).toEqual([]);
+		'nothing passes the band an onexpand, so its expand button cannot render and the sheet is pointer-only again — see the bandExpand retirement record in contract.ts'
+	).not.toEqual([]);
 
-	// So no SEL entry may point at it, and neither retired HOOK may return. The anchor test cannot report
-	// `bandExpand`'s return (its anchor is live source), which is exactly why the id is banned here.
+	// The retired NAMES stay retired, whatever they might be pointed at next.
 	expect(Object.values(SEL), '.band .handle is retired and must not return to SEL').not.toContain('.band .handle');
 	expect(Object.keys(SEL), 'the bandExpand KEY is retired, whatever value it is given').not.toContain('bandExpand');
 	const hookIds = HOOKS.map((h) => h.id);
@@ -544,17 +543,28 @@ test('the retired band pull handle stays retired — `.band .handle` resolves, b
 		expect(hookIds, `the ${dead} hook is retired and must not return`).not.toContain(dead);
 	}
 
-	// The successor claims both live on: the handle itself, and the `handleOnly` wiring that makes it the
-	// only drag surface — bandExpandWired's replacement (see its retirement record in contract.ts).
+	// The successor pair both resolve: the press and the wiring that makes it real.
+	expect(selectorResolves(SEL.bandOpen, sources), 'bandOpen').toBe(true);
+	expect(hookIds).toContain('bandOpen');
+	expect(hookIds).toContain('bandOpenWired');
+
+	// The DRAG surface is untouched, and `handleOnly` still keeps the body of sliders off it.
 	expect(selectorResolves(SEL.drawerHandle, sources)).toBe(true);
 	expect(hookIds).toContain('drawerHandleOnly');
-	// ...and one clause the anchor test still cannot express. That test now strips comments, so a deleted
-	// `handleOnly` reds there — but its check is a SUBSTRING, which `handleOnlyMaybe` would satisfy just as
-	// well. This pins the prop as a whole line on the Root, which is the form vaul actually reads.
+	// One clause the anchor test cannot express: it checks a SUBSTRING, which `handleOnlyMaybe` satisfies
+	// too. This pins the prop as a whole line on the Root, which is the form vaul actually reads.
 	const drawer = stripComments(readFileSync(join(CORE, 'src/lib/components/NowPlayingDrawer.svelte'), 'utf8'));
 	expect(drawer, 'the sheet Root must SET handleOnly as its own prop, not a longer name containing it').toMatch(
 		/^\s*handleOnly\s*$/m
 	);
+
+	/*
+	 * AND EXACTLY ONE PULL BAR. shadcn's copy-in rendered a decorative div at the top of the content box
+	 * while the drawer also rendered a real `Drawer.Handle` inside the band row, and the phone drew TWO
+	 * stacked pull-up lines — reported as exactly that. The expand action living on the METADATA BLOCK is
+	 * what keeps that from recurring here, so it is worth asserting rather than trusting.
+	 */
+	expect((drawer.match(/<Drawer\.Handle/g) ?? []).length, 'the sheet renders exactly one pull bar').toBe(1);
 });
 
 test('every settings id the flow drives exists as an element id', () => {

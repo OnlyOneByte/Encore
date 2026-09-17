@@ -33,6 +33,7 @@ import { connect, sleep } from './driver.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse, openNowPlaying } from './lib/phone.mjs';
+import { openJoin } from './lib/join.mjs';
 
 /**
  * Types for this out-of-program driver (earlier changes–an earlier change pattern). Browser/Page derive from
@@ -204,7 +205,7 @@ try {
 	/** @param {string} name @param {{ stop?: string }} [opts] @returns {Promise<Page>} */
 	async function joinAs(name, { stop } = {}) {
 		const page = await browser0.newPage();
-		await page.goto(`${base}/`);
+		await openJoin(page, base);
 		await page.fill(SEL.nameInput, name);
 		if (stop) await page.pressKey(SEL.colourRing, stop);
 		await page.clickByRole('button', 'Start singing');

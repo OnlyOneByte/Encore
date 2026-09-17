@@ -104,6 +104,65 @@ test('a height that is not a measurement yields the pre-clamp ceiling rather tha
 	expect(openSnapFraction(200) * 200).toBeGreaterThan(BAND_SNAP_PX);
 });
 
+/*
+ * ── THE CONTENT CAP ──────────────────────────────────────────────────────────────────────────────
+ *
+ * Snap 1 used to be a fraction of the WINDOW whatever was inside the sheet, so with nothing playing it
+ * opened to a transport row plus ~600px of empty surface on a 390x844 phone — measured: content top 176,
+ * last control ending near 330. That is the first state a guest ever sees the sheet in, before anyone has
+ * queued anything, and a sheet that opens to five times its content reads as a broken screen.
+ *
+ * The cap is a THIRD term beside the ceiling and the headroom, and these arms pin what it must not break:
+ * it may only ever shorten, it may never shorten past the floor, and an unmeasured content height must
+ * leave the old behaviour exactly as it was.
+ */
+test('the sheet never opens taller than its own content', () => {
+	const vh = 844;
+	// A short sheet: the band row plus an idle head and transport, plus the slack for its bottom padding.
+	const shortContent = 260;
+	expect(openSheetTopPx(vh, shortContent)).toBeCloseTo(vh - shortContent, 6);
+	// …and that really is the case the defect was about: the uncapped sheet is far taller.
+	expect(openSnapFraction(vh) * vh).toBeGreaterThan(shortContent * 2);
+});
+
+test('a full sheet is unaffected — the viewport caps still bind when the content is tall', () => {
+	for (const vh of HEIGHTS) {
+		// Taller than any window in the sweep, which is the playing case: head, seek row, transport, the ±
+		// keycaps, the range bar and the guiding track.
+		const tall = vh * 2;
+		expect(openSnapFraction(vh, tall), `tall content at vh=${vh}`).toBeCloseTo(openSnapFraction(vh), 6);
+	}
+});
+
+test('the content cap only ever SHORTENS the sheet, and never past the floor', () => {
+	for (const vh of HEIGHTS) {
+		for (const contentH of [1, 40, 120, 300, 700, 5000]) {
+			const capped = openSnapFraction(vh, contentH);
+			// Never taller than the uncapped answer: this is a cap, not a size.
+			expect(capped, `cap at vh=${vh} content=${contentH}`).toBeLessThanOrEqual(openSnapFraction(vh) + 1e-9);
+			// Never a sheet that fails to expand past the band — the ambiguous-offset hazard the floor exists
+			// for, which a tiny content height can now reach where no real viewport could.
+			expect(capped * vh, `floor at vh=${vh} content=${contentH}`).toBeGreaterThan(BAND_SNAP_PX);
+		}
+	}
+});
+
+test('an unmeasured content height changes nothing', () => {
+	/*
+	 * `fitH` is `$state(0)` until the first `bind:clientHeight` lands, and this component is
+	 * server-rendered — so "not measured" is a real state on every first paint, not an edge case. It must
+	 * resolve to the pre-cap answer rather than to a floor-height sheet.
+	 */
+	for (const vh of HEIGHTS) {
+		for (const unmeasured of [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(openSnapFraction(vh, unmeasured as number | undefined), `vh=${vh} content=${unmeasured}`).toBeCloseTo(
+				openSnapFraction(vh),
+				6
+			);
+		}
+	}
+});
+
 test('snap 0 is still a CONSTANT px string, which is the correctness requirement snap 1 is not', () => {
 	/*
 	 * Snap 0 must not be re-measured, and the component records why against this version of vaul: the

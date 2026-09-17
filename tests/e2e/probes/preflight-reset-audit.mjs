@@ -25,6 +25,7 @@ import { dirname } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+import { openJoin } from '../lib/join.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
@@ -181,7 +182,7 @@ try {
 				 * The one driven step in this probe. Named per surface and per run so a re-run of the
 				 * AFTER pass cannot collide with the BEFORE pass's singer (409 → still on /join).
 				 */
-				await page.goto(`${base}/`);
+				await openJoin(page, base);
 				await page.fill(SEL.nameInput, `Pf${s.name.replace(/[^a-z]/gi, '')}${RUN_TAG}`);
 				await sleep(250);
 				await page.clickByRole('button', 'Start singing');

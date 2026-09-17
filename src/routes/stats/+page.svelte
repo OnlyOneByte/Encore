@@ -12,6 +12,9 @@
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import * as Card from '$lib/components/ui/card';
 	import * as Alert from '$lib/components/ui/alert';
+	// The same count-with-agreeing-noun helper /metrics uses. Shared rather than re-derived here: the
+	// defect it fixes ("the last 1 days") was one bug spelled on two operator pages.
+	import { count } from '$lib/metrics-format';
 
 	interface Stats {
 		library: { ready: number; catalog: number };
@@ -84,7 +87,7 @@
 				{#if !stats}
 					Loading…
 				{:else}
-					Party stats for the last {stats.window.days} days.
+					Party stats for the last {count(stats.window.days, 'day')}.
 				{/if}
 			</p>
 
@@ -96,7 +99,7 @@
 								<div class="tile">
 									<span class="n">{stats.sings.total}</span>
 									<span class="k">songs sung</span>
-									<span class="sub">{stats.sings.window} in the last {stats.window.days} days</span>
+									<span class="sub">{stats.sings.window} in the last {count(stats.window.days, 'day')}</span>
 								</div>
 							</Card.Content>
 						</Card.Root>
@@ -148,7 +151,7 @@
 						<Card.Content>
 							<Bars rows={stats.topRecent.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" />
 						</Card.Content>
-						<Card.Footer><p class="note">Last {stats.window.days} days.</p></Card.Footer>
+						<Card.Footer><p class="note">Last {count(stats.window.days, 'day')}.</p></Card.Footer>
 					</Card.Root>
 				{/if}
 

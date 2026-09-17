@@ -31,6 +31,7 @@
 		PROCESS_STEPS
 	} from '$lib/tv/screen';
 	import { isAutoTranscribed, provenanceLabel } from '$lib/tv/lyrics';
+	import { joinAddressLabel } from '$lib/tv/join-address';
 	import { processStageLabel } from '$lib/phrasing/process-phrasing';
 	import { mergeCatalog, snapshot, processIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
 	import { makePhraseBag, reducedMotionPhrase, seedFromString, ATTRACT_PHRASES } from '$lib/tv/phrases';
@@ -790,18 +791,19 @@
 	 */
 	const lyricsStyle = $derived(resolveLyricsPresentation(settings, lyricsProvenance?.timing));
 	/*
-	 * The join address without its scheme. Someone reading this off a wall types the host and the path;
-	 * "http://" is nine characters of noise on the least readable thing on the screen. The QR still
-	 * carries the full URL, so nothing is lost — only shown differently.
+	 * The join address as a person reads it off a wall: no scheme, no query, no bare trailing slash.
+	 * Someone retyping this needs the shortest legible string, and the QR beside it still encodes the
+	 * full room-scoped URL, so nothing is lost — only shown differently. The attract panel additionally
+	 * prints the room CODE as its own largest element (.jt-code), which is why repeating it as
+	 * `?room=CODE` here was both redundant and the reason the address once wrapped to five lines in a
+	 * 600px panel.
+	 *
+	 * ONE HELPER, THREE CALLERS (`lib/tv/join-address.ts`). This was a local two-step regex chain, and
+	 * `TvLobby` and `JoinBadge` had their own — which had already drifted: the badge stripped the scheme
+	 * only, so the corner card printed the `?room=CODE` its own comment calls too long to read, while the
+	 * two here left a slash with nothing behind it on the most-transcribed string in the product.
 	 */
-	const joinShort = $derived(data.joinUrl.replace(/^https?:\/\//, ''));
-	/*
-	 * The attract panel shows the room CODE as its own largest element (.jt-code), so repeating it in
-	 * the URL's `?room=CODE` query is both redundant and the reason the address wrapped to five lines in
-	 * a 600px panel. Strip the scheme AND the query for the attract URL line — host + path only, the
-	 * shortest legible thing to type — while the QR still encodes the full room-scoped URL.
-	 */
-	const attractJoinUrl = $derived(joinShort.replace(/\?.*$/, ''));
+	const attractJoinUrl = $derived(joinAddressLabel(data.joinUrl));
 	/*
 	 * Whether the join QR advertises an address no phone can reach.
 	 *

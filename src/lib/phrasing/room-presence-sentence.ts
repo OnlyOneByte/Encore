@@ -22,6 +22,17 @@ export interface RoomPreview {
 	 * ring is a state the picker already has to render, because an empty room has no pips either.
 	 */
 	colors?: string[];
+	/**
+	 * How many of `presentCount` are AWAY rather than reachable — a locked phone, a pocket, a walk to the
+	 * kitchen. They are in the room (that is what the grace window means, and it is why the name they hold
+	 * is not free), so they are counted; this field is what lets the sentence avoid claiming they are
+	 * standing in front of you.
+	 *
+	 * OPTIONAL for the same reason `colors` is: the COUNT is the authoritative fact, and a preview from an
+	 * older server or a fixture written before this field existed must still produce a sentence. Absent is
+	 * read as 0 — i.e. "everyone counted is reachable", which is the shape this endpoint used to have.
+	 */
+	awayCount?: number;
 }
 
 /**
@@ -34,12 +45,40 @@ export interface RoomPreview {
  *   3, named   → "Maya, Dana and Lee are here."
  *   5, 2 named → "5 people here, including Maya and Dana."
  *   n, 0 named → "6 people here." (count known, names withheld/unavailable)
+ *
+ * ── AND WHEN EVERYONE COUNTED IS AWAY ────────────────────────────────────────────────────────────
+ *
+ *   1, named   → "Maya is in the room, away right now."
+ *   2, named   → "Maya and Dana are in the room, away right now."
+ *   4, 0 named → "4 people in the room, all away right now."
+ *
+ * That branch exists because the alternative is a lie in one direction or the other. Away members hold
+ * their names (the grace window is why `assertNameFree` refuses them), so they MUST be counted — a room
+ * that reports itself empty and then rejects your name is the defect `/api/room-preview` was carrying.
+ * But "Maya is here." about someone whose phone is asleep is the same overclaim in reverse, and the TV's
+ * roster is meanwhile rendering "Maya AWAY" to the same party. "away right now" is the wall's own word,
+ * so the two surfaces agree.
+ *
+ * A MIXED room needs no special case: somebody reachable IS here, and the away members are the
+ * difference between the count and the names — which the count already carries.
  */
 export function roomPresenceSentence(preview: RoomPreview): string {
 	const count = Math.max(0, preview.presentCount);
 	const names = preview.names.slice(0, count);
+	const away = Math.min(Math.max(0, preview.awayCount ?? 0), count);
 
 	if (count === 0) return "This room is empty right now — you'll be the first here.";
+
+	// Nobody reachable, but the room still holds their names and colours.
+	if (away === count) {
+		if (names.length === 0) {
+			return count === 1 ? '1 person in the room, away right now.' : `${count} people in the room, all away right now.`;
+		}
+		if (names.length === count && count <= 3) {
+			return `${joinNames(names)} ${isAre(count)} in the room, away right now.`;
+		}
+		return `${count} ${people(count)} in the room, all away right now, including ${joinNames(names)}.`;
+	}
 
 	// Count known but no names to show: state the count plainly.
 	if (names.length === 0) return `${count} ${people(count)} here.`;

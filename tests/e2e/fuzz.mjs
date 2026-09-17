@@ -79,6 +79,7 @@ import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 import { atRepo as at } from './lib/repo-root.mjs';
+import { openJoin } from './lib/join.mjs';
 
 
 /**
@@ -1389,7 +1390,7 @@ try {
 	async function newPhone(name) {
 		const page = await /** @type {Browser} */ (browser).newPage();
 		await page.viewport(390, 844);
-		await page.goto(`${base}/`);
+		await openJoin(page, base);
 		await page.fill(SEL.nameInput, name);
 		await page.clickByRole('button', 'Start singing');
 		await page.waitFor(`location.pathname === '/'`, { timeout: 15000 });

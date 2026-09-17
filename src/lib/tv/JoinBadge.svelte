@@ -9,6 +9,8 @@
 	the corner that stays clear of it.
 -->
 <script lang="ts">
+	import { joinAddressLabel } from '$lib/tv/join-address';
+
 	interface Props {
 		/** Data-URL QR encoding the /join URL (built server-side in +page.server.ts). */
 		qrDataUrl: string;
@@ -47,9 +49,13 @@
 	// size regardless — so for a CSS-length size we hand it a reasonable placeholder rather than 0.
 	const intrinsicPx = $derived(typeof size === 'number' ? size : placement === 'corner' ? 88 : 320);
 
-	// The full URL is too long to read across a room in the corner treatment; the path is enough
+	// The full URL is too long to read across a room in the corner treatment; the host is enough
 	// once the QR carries the real target.
-	const shortUrl = $derived(joinUrl.replace(/^https?:\/\//, ''));
+	//
+	// Through the shared helper now. This used to strip the SCHEME only, so the corner badge printed
+	// `host:port/?room=CODE` — the redundant query the line above calls too long to read — while the
+	// attract panel and the lobby each stripped it with their own regex. One function, three callers.
+	const shortUrl = $derived(joinAddressLabel(joinUrl));
 </script>
 
 {#if unreachable}

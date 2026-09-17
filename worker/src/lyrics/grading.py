@@ -385,7 +385,7 @@ def agreement_score(candidate: str, baseline: str) -> float | None:
 def baselines_of(texts: list[LyricsText]) -> list[LyricsText]:
     """The texts that are EVIDENCE, best-evidence first. See BASELINE_* for the ordering rationale."""
     got = [t for t in texts if t.role == ROLE_BASELINE]
-    got.sort(key=lambda t: (t.baseline_rank if t.baseline_rank is not None else 99))
+    got.sort(key=lambda t: t.baseline_rank if t.baseline_rank is not None else 99)
     return got
 
 

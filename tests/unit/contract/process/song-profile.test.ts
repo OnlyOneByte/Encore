@@ -147,9 +147,29 @@ describe('range labels', () => {
 		expect(rangeLabel(profile(), -2)).toBe('C3 - G4');
 	});
 
-	test('octave span comes from the true extremes', () => {
-		expect(rangeOctaves(profile())).toBe(2); // C3..C5
-		expect(rangeOctaves(profile({ lowMidi: 48, highMidi: 66 }))).toBe(1.5);
+	/*
+	 * THE OCTAVE SPAN DESCRIBES THE INTERVAL THE LABEL PRINTS, and this test is the defect it replaces.
+	 *
+	 * It used to assert the span came from lowMidi..highMidi — the true extremes — while `rangeLabel`
+	 * above has always used p05..p95. Both were correct in isolation and both are rendered ADJACENT, as
+	 * one value, by the only two callers (`{rangeText}{octaves} oct` in `routes/song/[mediaId]` and
+	 * `NowPlayingDrawer`). On the first real processed song that read "A3 - A#4  3.7 oct".
+	 *
+	 * So the third arm is the load-bearing one: moving the EXTREMES must not move this number. Under the
+	 * old basis it returned 4.
+	 */
+	test('the octave span describes the interval the label prints', () => {
+		expect(rangeOctaves(profile())).toBe(1.6); // D3..A4, the labelled pair — not C3..C5's 2
+		const p = profile({ p05Midi: 48, p95Midi: 66 });
+		expect(rangeLabel(p)).toBe('C3 - F#4');
+		expect(rangeOctaves(p)).toBe(1.5);
+		expect(rangeOctaves(profile({ lowMidi: 36, highMidi: 84 }))).toBe(1.6);
+	});
+
+	/* An interval is shift-invariant, which is why `rangeOctaves` takes no `semitones` where
+	   `rangeLabel` does: transposing moves both ends by the same amount. */
+	test('the octave span is invariant under transposition', () => {
+		expect(rangeOctaves(profile({ p05Midi: 52, p95Midi: 71 }))).toBe(rangeOctaves(profile()));
 	});
 
 	test('absent with no range', () => {

@@ -2,7 +2,6 @@
 	import { Drawer as DrawerPrimitive } from 'vaul-svelte';
 	import { cn } from '$lib/utils.js';
 	import type { WithoutChildrenOrChild } from '$lib/utils.js';
-	import DrawerOverlay from './drawer-overlay.svelte';
 	import DrawerPortal from './drawer-portal.svelte';
 	import type { ComponentProps } from 'svelte';
 
@@ -18,7 +17,27 @@
 </script>
 
 <DrawerPortal {...portalProps}>
-	<DrawerOverlay />
+	<!--
+		NO `<DrawerOverlay />`, AND IT IS NOT A SIMPLIFICATION — IT COULD NEVER RENDER.
+
+		The registry renders the overlay here, and this file did too. `vaul-svelte` gates it on modality:
+		`use-drawer-overlay.svelte.js` computes `shouldRender = ctx.modal.current`, so with `modal={false}`
+		on the Root the component mounts nothing at all. Encore's only drawer is `NowPlayingDrawer`, which is
+		`modal={false}` NECESSARILY rather than by preference — it is a permanently-mounted sheet whose
+		collapsed height IS the band on every phone surface, so a modal scrim and focus trap would cover the
+		page the guest is using. Measured on the running app: no `[data-slot='drawer-overlay']` in the DOM at
+		either snap point.
+
+		WHAT THAT COST WHILE IT WAS HERE, which is why the deletion is worth the words: the Root also carried
+		`fadeFromIndex={1}` and its comment claimed the overlay "starts at the SECOND snap point, so there is
+		no scrim while the band is just sitting there" — describing behaviour that cannot happen at either
+		height. And `drawer-overlay.svelte` carried ~50 lines of hand-written fade CSS with a
+		prefers-reduced-motion wrapper and two `-global-` keyframes, all of it unreachable, all of it reading
+		as live code that someone would maintain.
+
+		IF A MODAL DRAWER IS EVER ADDED, re-add this line with it — the component is still vendored, and
+		`drawer-overlay-modality.test.ts` pins the pair so the two cannot drift apart again.
+	-->
 	<!--
 		`border-border` IS A DEFECT FIX, the third this file has needed from the copy-in. `border-t` and
 		its left/right/top siblings below set only `border-*-WIDTH`. Nothing in shadcn's class list sets a

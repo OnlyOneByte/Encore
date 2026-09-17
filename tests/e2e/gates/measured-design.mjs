@@ -59,6 +59,7 @@ import {
 	VIEWPORTS
 } from './measured-design-register.mjs';
 import { repoRoot } from '../lib/repo-root.mjs';
+import { openJoin } from '../lib/join.mjs';
 
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -361,7 +362,7 @@ try {
 	// ── join once; every phone surface below is behind a session ───────────────────────────────
 	// `/join` was retired (Q2-A): the join form is the unjoined state of `/`. An unjoined visitor
 	// to `/` gets the name field + code entry; joining navigates back to `/` (now the joined queue).
-	await page.goto(`${base}/`);
+	await openJoin(page, base);
 	const joinSweep = /** @type {Reading[]} */ (await page.evaluate(sweepExpr()));
 	await page.fill(SEL.nameInput, `Gate${Date.now() % 1000000}`);
 	await page.clickByRole('button', 'Start singing');
@@ -488,12 +489,20 @@ try {
 	 * to `--dock-h`/`.search-dock`, a SEARCH band docked at the bottom of `/`; the phone-remote rebuild
 	 * moved it again, and this time to something that is no longer route-shaped at all.
 	 *
-	 * IT IS NOW ONE ELEMENT FOR THE WHOLE APP. `NowPlayingBand` (`SEL.homeReady`, `.band`) is the
-	 * bottom-most chrome on EVERY phone surface, mounted by `src/routes/+layout.svelte` inside a `.dock`
-	 * wrapper, and the LAYOUT publishes `--dock-h` from that wrapper's `bind:clientHeight`. So no route
-	 * publishes the token any more, and the band is the only element in the stack carrying an
-	 * `env(safe-area-inset-bottom)` term — which is what makes "published height equals the real rendered
-	 * height, and the inset arrives THROUGH that token" a single contract rather than one per screen.
+	 * IT IS NOW ONE ELEMENT FOR THE WHOLE APP, AND IT IS THE ROW RATHER THAN THE STRIP. The bottom-most
+	 * chrome on EVERY phone surface is `NowPlayingDrawer`'s `.band-slot` (`SEL.dockRow`) — vaul's pull
+	 * handle, then `NowPlayingBand`'s strip (`SEL.homeReady`, `.band`) — and the LAYOUT publishes `--dock-h`
+	 * from that ROW's `clientHeight`, bound through the drawer's `bandH` prop. So no route publishes the
+	 * token any more, and the band carries the only `env(safe-area-inset-bottom)` term in the stack — which
+	 * is what makes "published height equals the real rendered height, and the inset arrives THROUGH that
+	 * token" a single contract rather than one per screen.
+	 *
+	 * THE SUBJECT MOVED WHEN THE BAND BECAME SNAP POINT 0, and this section read `.band` for one release
+	 * after it did: the token resolved to the row's 80px against a 56px strip, and the gate reported a
+	 * broken contract where there was none. A column must clear the WHOLE row — a thumb reaching for the
+	 * grab bar otherwise lands on page content — so 80px is the correct reservation and `.band-slot` is the
+	 * correct thing to compare it with. `homeReady` stays the strip, because what a readiness poll wants to
+	 * know is whether a singer is joined.
 	 *
 	 * A later change deleted the drawer surface entirely, so the second half of this section — the sheet's
 	 * own cap and peek geometry, measured on `/components` where the component used to render — was
@@ -508,8 +517,21 @@ try {
 	await page.waitForSelector(SEL.homeReady , { timeout: 15000 });
 	await sleep(600); // let the measured --dock-h write land
 
+	/*
+	 * TWO ELEMENTS, TWO CLAIMS, and they were one element until the band became snap point 0.
+	 *
+	 *   the RESERVATION contract — `--dock-h` vs what a column must clear — is about the ROW
+	 *     (`SEL.dockRow`, i.e. `.band-slot`: vaul's pull handle plus the strip), because that is the element
+	 *     the layout measures and the whole of what sits over the page.
+	 *   the SAFE-AREA contract — that the home-indicator inset is really composed in — is about the STRIP
+	 *     (`SEL.homeReady`, i.e. `.band`), because `NowPlayingBand` is what declares
+	 *     `env(safe-area-inset-bottom)` and it is the bottom-most PAINTED surface.
+	 *
+	 * Reading the row for both is what this did, and it measured a padding-bottom of 0 at every inset —
+	 * reporting a composed term as missing when it was simply declared one element further in.
+	 */
 	const dockProbe = `(() => {
-		const dock = document.querySelector(${JSON.stringify(SEL.homeReady)});
+		const dock = document.querySelector(${JSON.stringify(SEL.dockRow)});
 		if (!dock) return null;
 		const dr = dock.getBoundingClientRect();
 		return {
@@ -521,6 +543,11 @@ try {
 			dockTop: dr.top,
 			dockBottom: dr.bottom,
 			dockPadBottom: parseFloat(getComputedStyle(dock).paddingBottom),
+			// The safe-area term lives on the STRIP, not on the row — see the note above this probe.
+			stripPadBottom: (() => {
+				const strip = document.querySelector(${JSON.stringify(SEL.homeReady)});
+				return strip ? parseFloat(getComputedStyle(strip).paddingBottom) : Number.NaN;
+			})(),
 			innerHeight: window.innerHeight,
 			mainPadBottom: parseFloat(getComputedStyle(document.querySelector(${JSON.stringify(SEL.mainColumn)})).paddingBottom)
 		};
@@ -530,7 +557,7 @@ try {
 		check(
 			'CLAIM 3 the docked band is rendered on the joined home, so its contract is measurable',
 			false,
-			`no ${SEL.homeReady} found on / — the layout mounts the band for a joined singer, so its absence is either an unjoined drive or the band itself`
+			`no ${SEL.dockRow} found on / — the layout mounts the docked row for a joined singer, so its absence is either an unjoined drive or the row itself`
 		);
 	} else {
 		/*
@@ -570,8 +597,8 @@ try {
 		const dockInset = await page.evaluate(dockProbe);
 		check(
 			`CLAIM 3 the band's bottom padding really composes env(safe-area-inset-bottom) — +${SIMULATED_BOTTOM_INSET}px under a simulated inset`,
-			dockInset !== null && Math.abs(dockInset.dockPadBottom - (dock.dockPadBottom + SIMULATED_BOTTOM_INSET)) < 1,
-			`padding-bottom ${dock.dockPadBottom}px at inset 0, ${dockInset?.dockPadBottom}px at inset ${SIMULATED_BOTTOM_INSET}px`
+			dockInset !== null && Math.abs(dockInset.stripPadBottom - (dock.stripPadBottom + SIMULATED_BOTTOM_INSET)) < 1,
+			`the band strip's padding-bottom ${dock.stripPadBottom}px at inset 0, ${dockInset?.stripPadBottom}px at inset ${SIMULATED_BOTTOM_INSET}px`
 		);
 		await page.safeAreaInsets({ top: 0, right: 0, bottom: 0, left: 0 });
 	}
@@ -632,7 +659,7 @@ try {
 	const bandMagnifier = `${SEL.homeReady} button[aria-label="${SEL.bandSearch.name}"]`;
 
 	const browseProbe = `(() => {
-		const dock = document.querySelector(${JSON.stringify(SEL.homeReady)});
+		const dock = document.querySelector(${JSON.stringify(SEL.dockRow)});
 		const mag = document.querySelector(${JSON.stringify(bandMagnifier)});
 		const field = document.querySelector(${JSON.stringify(SEL.search)});
 		const main = document.querySelector(${JSON.stringify(SEL.mainColumn)});
@@ -668,7 +695,7 @@ try {
 		check(
 			'CLAIM 3 the find surface renders the docked band, its magnifier, its field and its column, so the contract is measurable',
 			false,
-			`no ${SEL.homeReady} / ${bandMagnifier} / ${SEL.search} / ${SEL.mainColumn} found on /find with results showing`
+			`no ${SEL.dockRow} / ${bandMagnifier} / ${SEL.search} / ${SEL.mainColumn} found on /find with results showing`
 		);
 	} else {
 		check(
@@ -771,7 +798,7 @@ try {
 	await page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)');
 	await sleep(400); // no smooth scrolling in this app; this is paint settle, not animation
 	const endProbe = `(() => {
-		const dock = document.querySelector(${JSON.stringify(SEL.homeReady)});
+		const dock = document.querySelector(${JSON.stringify(SEL.dockRow)});
 		const rows = [...document.querySelectorAll(${JSON.stringify(SEL.songRow)})];
 		if (!dock || rows.length === 0) return null;
 		const dr = dock.getBoundingClientRect();
@@ -794,7 +821,7 @@ try {
 		check(
 			'CLAIM 3 the find surface still has a band and rows to measure at the end of the list',
 			false,
-			`no ${SEL.homeReady} or no ${SEL.songRow} on /find after scrolling to the end`
+			`no ${SEL.dockRow} or no ${SEL.songRow} on /find after scrolling to the end`
 		);
 	} else {
 		// The precondition, stated as its own arm: if the column never scrolled there is no end to be at,
@@ -838,7 +865,7 @@ try {
 		.catch(() => {});
 	await sleep(900);
 	const shortProbe = `(() => {
-		const dock = document.querySelector(${JSON.stringify(SEL.homeReady)});
+		const dock = document.querySelector(${JSON.stringify(SEL.dockRow)});
 		const empty = document.querySelector(${JSON.stringify(SEL.empty)});
 		if (!dock || !empty) return null;
 		const dr = dock.getBoundingClientRect();

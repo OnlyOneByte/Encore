@@ -51,23 +51,57 @@ export const SNAP_OPEN_MAX = 0.82;
 export const OPEN_HEADROOM_PX = 176;
 
 /**
+ * Slack added to a measured content height before it is used as a cap.
+ *
+ * The sheet's own bottom padding is `env(safe-area-inset-bottom) + var(--space-lg)` — 12px on a laptop,
+ * up to ~46px on a notched phone — and it is applied to the content box rather than to the block whose
+ * height is measured, so a cap taken from that measurement alone would sit UNDER the sheet's own padding
+ * and clip the last control. This is deliberately generous: over-reserving leaves a little empty surface
+ * at the bottom of a short sheet, under-reserving hides a button, and those are not the same mistake.
+ */
+export const OPEN_CONTENT_SLACK_PX = 56;
+
+/**
  * Snap point 1 — the pulled-up sheet — as the fraction of `viewportH` vaul multiplies out.
  *
  * Read it as a TOP EDGE, which is the way the rule was decided: the sheet's top lands at
  * `max(OPEN_HEADROOM_PX, (1 - SNAP_OPEN_MAX) * viewportH)`. Below roughly 977px tall the headroom wins
  * and the sheet stops short; above it the ceiling wins and nothing about the old behaviour changes.
  *
- * THE FLOOR (`2 * BAND_SNAP_PX`) is degenerate-window insurance rather than a design position. Below
- * ~336px tall the headroom term would ask for a sheet SHORTER than the band it expands from, and two
- * snap points resolving to one offset makes vaul's own `snapToPoint` lookup — `findIndex` over the
- * offsets — ambiguous about which point it just landed on. No real viewport reaches it.
+ * ── AND IT NEVER EXCEEDS ITS OWN CONTENT (`contentH`) ─────────────────────────────────────────────
+ *
+ * `contentH` is the sheet's natural height — what its children actually occupy — and it is a THIRD cap
+ * rather than a replacement for either of the others. Without it the sheet always opened to the same
+ * fraction of the window whatever was inside it, and with nothing playing that is a transport row and
+ * ~600px of empty surface on a 844px phone: measured at 390x844, content top 176 with the last control
+ * ending around 330. A sheet that opens to five times its content reads as a broken screen, and it is the
+ * state a guest sees FIRST, before anyone has queued anything.
+ *
+ * When a song is playing the body carries the head, the seek row, the transport, the ± keycaps, the range
+ * bar and the guiding track, so this term is larger than the fraction and the ceiling binds exactly as
+ * before. The cap only bites on the short sheet, which is the case that was wrong.
+ *
+ * Omitted (or non-finite, or non-positive) means "not measured yet", and then the two viewport caps decide
+ * alone — the behaviour this function had before the term existed. That is the honest answer for the first
+ * paint and for the server, where no child has a height.
+ *
+ * THE FLOOR (`2 * BAND_SNAP_PX`) is degenerate-window insurance rather than a design position, and it also
+ * protects the new term: a sheet may not be capped SHORTER than twice the band it expands from. Below
+ * ~336px tall the headroom term asks for the same thing, and two snap points resolving to one offset makes
+ * vaul's own `snapToPoint` lookup — `findIndex` over the offsets — ambiguous about which point it just
+ * landed on. No real viewport reaches it; a nearly-empty sheet now can, which is why the floor is applied
+ * after the cap rather than before.
  *
  * A non-finite or non-positive height (server-side, or before the first measurement) has no answer, so
  * it returns the ceiling: the value snap 1 had before this clamp existed.
  */
-export function openSnapFraction(viewportH: number): number {
+export function openSnapFraction(viewportH: number, contentH?: number): number {
 	if (!Number.isFinite(viewportH) || viewportH <= 0) return SNAP_OPEN_MAX;
-	const openPx = Math.max(Math.min(SNAP_OPEN_MAX * viewportH, viewportH - OPEN_HEADROOM_PX), 2 * BAND_SNAP_PX);
+	const measured = Number.isFinite(contentH) && (contentH as number) > 0 ? (contentH as number) : Infinity;
+	const openPx = Math.max(
+		Math.min(SNAP_OPEN_MAX * viewportH, viewportH - OPEN_HEADROOM_PX, measured),
+		2 * BAND_SNAP_PX
+	);
 	return openPx / viewportH;
 }
 
@@ -79,6 +113,6 @@ export function openSnapFraction(viewportH: number): number {
  * because a guard that re-derived `vh - fraction * vh` for itself would be re-implementing vaul's
  * translate rather than checking the rule.
  */
-export function openSheetTopPx(viewportH: number): number {
-	return viewportH - openSnapFraction(viewportH) * viewportH;
+export function openSheetTopPx(viewportH: number, contentH?: number): number {
+	return viewportH - openSnapFraction(viewportH, contentH) * viewportH;
 }

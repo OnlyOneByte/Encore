@@ -30,6 +30,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { SEL, PRESET_COLOUR_NAMES } from '../contract.ts';
 import { connect } from '../driver.mjs';
 import { openBrowseFromHome, joinedExpression } from '../lib/phone.mjs';
+import { openJoin } from '../lib/join.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -135,7 +136,7 @@ const INSTRUMENT = `
 async function joinPhone(browser, name, colourName = PRESET_COLOUR_NAMES[0]) {
 	const page = await browser.newPage({ initScript: INSTRUMENT });
 	await page.viewport(390, 844, 1); // an iPhone-ish portrait, without the 2000px screenshot ceiling risk
-	await page.goto(`${BASE}/`);
+	await openJoin(page, BASE);
 
 	/*
 	 * Driven through the driver's verbs rather than three `evaluate`s that dispatched their own events.
