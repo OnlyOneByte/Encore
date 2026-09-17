@@ -8,14 +8,16 @@
 	it cut the hue circle open at an arbitrary point: on a strip, the first and last stops are neighbours
 	in colour and opposite ends in space. A ring has no ends, so every stop's neighbours are its
 	neighbours, and the hole in the middle is free space for the thing a strip has nowhere to put — the
-	stop's NAME, its hex, and the contrast figure it was measured at.
+	stop's NAME. (It carried the hex and the measured contrast ratio there too; both were a developer's
+	evidence shown to a guest picking a colour, and both are gone. See the hub's markup note.)
 
 	HUE IS STILL THE ONLY AXIS. The stops come from `variants.uniform` of the generated palette registry,
 	all at OKLCH L≈0.72 — the same band the retired wheel emitted at `SINGER_L`. Lightness and chroma are
 	not the guest's to choose, which is what guarantees every reachable colour is a dot that stays visible
 	on the dark surfaces and stays distinguishable from the next guest's. What the registry adds over
-	live arithmetic is a NAME per stop (so a screen reader says "Turquoise" rather than "21") and a
-	measured contrast ratio, both of which the hub shows.
+	live arithmetic is a NAME per stop (so a screen reader says "Turquoise" rather than "21"), which is
+	what the hub shows, and a measured contrast ratio, which is checked in
+	`palette-registry-820.test.ts` and deliberately NOT shown to the person picking.
 
 	OPERABLE WITHOUT A POINTER, which is the load-bearing half: this replaces a native `<input
 	type=range>`, so nothing is inherited. It is one `role="slider"` — a single tab stop — carrying
@@ -172,11 +174,18 @@
 			<span class="cr-pip" style="--cr-a:{paletteRingAngle(pip)}deg" aria-hidden="true"></span>
 		{/each}
 		<span class="cr-knob" style="--cr-a:{paletteRingAngle(index)}deg; --cr-fill:{stop.fill}" aria-hidden="true"></span>
+		<!--
+			THE HUB NAMES THE COLOUR AND STOPS THERE. It used to print the hex and the measured contrast
+			ratio under the name — `#a392ff` and `6.64:1 on card` — which are the two facts the REGISTRY
+			needed to certify the stop, not anything the person picking it can use. A guest at a party
+			deciding which dot is theirs on the TV was being shown a developer's evidence; "Denim" is the
+			whole of what they need, and it is what a screen reader already says through `aria-valuetext`.
+			The measurement did not stop mattering — it moved back to where it is checked, which is
+			`palette-registry-820.test.ts` re-deriving every stop's `r_dot_card` from its fill.
+		-->
 		<span class="cr-hub" aria-hidden="true">
 			<span class="cr-dot" style="--cr-fill:{stop.fill}"></span>
 			<b class="cr-name">{stop.name}</b>
-			<small class="cr-hex">{stop.fill}</small>
-			<small class="cr-ratio">{stop.r_dot_card.toFixed(2)}:1 on card</small>
 		</span>
 	</div>
 </div>
@@ -342,12 +351,6 @@
 		font-size: var(--ph-text-base);
 		color: var(--ink);
 	}
-	/* The hex and the measured ratio are the detail behind the name: same size, dimmed, so the name stays
-	   the thing you read first. The ratio is the registry's own published figure — see
-	   player-palette.ts — not a number computed here. */
-	.cr-hex,
-	.cr-ratio {
-		font-size: var(--ph-text-2xs);
-		color: var(--ink-dim);
-	}
+	/* `.cr-hex` and `.cr-ratio` were deleted with the readout they styled — see the hub's markup note.
+	   The hub is a dot and a name now, so there is no second tier of text for a rule to size. */
 </style>

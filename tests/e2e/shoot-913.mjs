@@ -19,6 +19,7 @@ import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { repoRoot } from './lib/repo-root.mjs';
 import { spawnChild, killChild } from './lib/child.mjs';
+import { openJoin } from './lib/join.mjs';
 
 
 const PORT = process.env.EPORT ?? '5217';
@@ -154,7 +155,7 @@ async function main() {
 	}
 
 	// ── join, in the browser, so the queue op's actor is this session ──
-	await page.goto(`${BASE}/`);
+	await openJoin(page, BASE);
 	await waitFor(async () => await page.evaluate(`!!document.querySelector(${JSON.stringify(SEL.nameInput)})`), {
 		timeout: 15_000,
 		name: 'the landing name field'

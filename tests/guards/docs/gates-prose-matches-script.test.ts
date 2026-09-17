@@ -136,10 +136,16 @@ test('the PROSE gate list names exactly the legs the `gates` script runs, in the
 
 	// Non-vacuity: a broken `legsFromScript` regex, an emptied script, or a prose line that stopped
 	// matching the shape would compare [] to [] and pass while enforcing nothing — the exact silent
-	// green this file exists to prevent, one level up. Six legs as of 2026-09-15, when `format:check`
-	// joined: it was a real blocking check that no gate list mentioned, so nothing ran it and it went
-	// red on 34 files across two commits — the same hole `bun run lint` fell through above.
-	expect(scriptLegs.length, 'the leg parse found nothing — the script shape changed').toBeGreaterThanOrEqual(6); // @nvf-floor scriptLegs.length
+	// green this file exists to prevent, one level up.
+	//
+	// SEVEN legs, and the seventh is the sharpest instance of this file's own thesis. `bun run gate:measured`
+	// was documented as deliberately OUTSIDE the chain ("needs a build and a browser, so it is not a leg"),
+	// and while it sat outside, the join screen became two panes, its driver's `fill(SEL.nameInput)` started
+	// timing out on the first pane, and the gate stopped running at all — silently, taking the four
+	// measured claims (hit extents, field font size, --dock-h, the focus ring) with it. A guard nobody runs
+	// is the same hole `bun run lint` and `format:check` each fell through before it, which is why both of
+	// them are legs today. So it is leg 7 rather than a footnote.
+	expect(scriptLegs.length, 'the leg parse found nothing — the script shape changed').toBeGreaterThanOrEqual(7); // @nvf-floor scriptLegs.length
 });
 
 test('pipeline.json’s machine-readable `gates.legs` is the same list too', () => {

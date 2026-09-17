@@ -34,7 +34,11 @@
 		/** Opening the find surface. The band becomes the search field once it is open. */
 		onsearch?: () => void;
 		ontoggleplay?: () => void;
-		/** Pulling the band up. Phase 1b wires this to the drawer's open state. */
+		/**
+		 * Raising the sheet. When present, the band's own metadata block becomes a real button that does
+		 * it — see the markup. Absent (the /components gallery, which renders five bands with no drawer)
+		 * leaves it inert text, because a labelled control that swallows its press is worse than none.
+		 */
 		onexpand?: () => void;
 	}
 
@@ -82,44 +86,64 @@
 		if (artist) parts.push(artist);
 		return parts.join(' · ');
 	});
+
+	/*
+	 * The expand button's accessible name, which CONTAINS its visible text on purpose (SC 2.5.3, label in
+	 * name): the visible string is the title, or "Nothing playing", and both appear here verbatim with the
+	 * action appended. A bare `aria-label="Open the player"` would replace the visible label with words
+	 * that are not in it, which is the failure that criterion describes — and it would also stop a voice
+	 * user saying "tap Sweet Caroline".
+	 */
+	const expandLabel = $derived(hasSong ? `${title} — open the player` : 'Nothing playing — open the player');
 </script>
+
+<!--
+	THE METADATA BLOCK IS THE KEYBOARD PATH INTO THE SHEET, and it exists because the previous one stopped
+	rendering.
+
+	This file used to declare a `<button class="handle">` above the strip — a grab bar that was a real
+	button, carrying the comment "so the band is reachable without a pointer — a drag-only affordance is
+	unreachable by keyboard and by a screen reader". It was gated on `{#if onexpand}`, and when the band
+	became snap point 0 of the drawer no call site passed one any more, so the branch was never entered and
+	the button never rendered ANYWHERE. What replaced it as the way in is vaul's `Drawer.Handle`: a
+	`<div aria-hidden="true">` with no tabindex and no role. Measured on the collapsed home route, the only
+	drawer controls a keyboard could reach were the magnifier and a play/pause button sitting off screen —
+	the transport, the ± keycaps, the guiding-track slider and "More about this song" were pointer-only, and
+	so was `/song/[mediaId]`, whose single entry point lives inside this sheet.
+
+	SO THE ACTION MOVED ONTO THE TEXT RATHER THAN GROWING A SECOND BAR. Rendering another grab bar here is
+	a defect that already shipped once: vaul's handle plus a hand-rolled one drew TWO stacked pull-up lines
+	(recorded in drawer-content.svelte). The metadata block is the better host — real, visible, focusable
+	content that names what it opens; the handle's own hit box already claims it ("what it legitimately owns
+	is the inert title text, where a tap opening the now-playing detail is what a mini-player does anyway");
+	and tapping the track info to open the full player is what every mini-player on a phone already does. No
+	new chrome, no second affordance, no layout change.
+
+	Still gated on `onexpand`, for the original reason: /components renders five bands with no drawer behind
+	them, and a labelled button that swallows its press is worse than inert text.
+-->
+{#snippet metaBlock()}
+	<span class="title">{hasSong ? title : 'Nothing playing'}</span>
+	{#if byline}
+		<span class="byline">
+			{#if singerName}
+				<span class="dot" style:background={singerColor ?? 'var(--accent)'}></span>
+			{/if}
+			<span class="byline-text">{byline}</span>
+		</span>
+	{/if}
+{/snippet}
 
 <div class="band" class:idle={!hasSong}>
 	<div class="inner">
-		<!--
-		The pull surface, rendered ONLY when there is somewhere to pull to. A labelled button that does
-		nothing is worse than an absent one: a screen reader announces "Open now playing" and the tap is
-		swallowed. So the affordance is gated on the action existing, which also means this band degrades
-		to a status-plus-transport strip wherever no drawer is wired.
-
-		It carries the expand action and NOTHING else: XR-PH-15's prohibition is on a
-		control sharing a drag surface, and a range input here would fight the gesture. The handle is a
-		real button so the band is reachable without a pointer — a drag-only affordance is unreachable
-		by keyboard and by a screen reader.
-	-->
-		{#if onexpand}
-			<button
-				class="handle"
-				type="button"
-				aria-label={hasSong ? 'Open now playing' : 'Open the player'}
-				onclick={() => onexpand()}
-			>
-				<i></i>
-			</button>
-		{/if}
-
 		<div class="strip">
-			<div class="meta">
-				<div class="title">{hasSong ? title : 'Nothing playing'}</div>
-				{#if byline}
-					<div class="byline">
-						{#if singerName}
-							<span class="dot" style:background={singerColor ?? 'var(--accent)'}></span>
-						{/if}
-						<span class="byline-text">{byline}</span>
-					</div>
-				{/if}
-			</div>
+			{#if onexpand}
+				<button class="meta meta-btn" type="button" aria-label={expandLabel} onclick={() => onexpand()}>
+					{@render metaBlock()}
+				</button>
+			{:else}
+				<div class="meta">{@render metaBlock()}</div>
+			{/if}
 
 			<button class="btn" type="button" aria-label="Search for a song" onclick={() => onsearch?.()}>
 				<Icon name="search" />
@@ -207,79 +231,67 @@
 		min-width: 0;
 	}
 
-	.handle {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 100%;
-		/* Short by design: the grab bar is a hint, not the target. See the ::after below for the target. */
-		min-height: var(--space-4xl);
-		padding: 0;
-		border: 0;
-		background: none;
-		/*
-		 * `pointer`, NOT `grab`. This bar looks like a drag handle and for a while it said so — and it has
-		 * never been draggable: it is a `<button>` whose click sets the drawer open, so a finger that
-		 * pulled up got nothing and a cursor that hovered was told to try. An affordance that promises a
-		 * gesture it cannot perform is the same defect class as a labelled button that swallows its tap.
-		 *
-		 * DRAG-TO-OPEN IS A REAL FEATURE AND IT IS NOT A CSS FIX. vaul owns the gesture, and it can only
-		 * follow a finger on an element inside its own drawer tree — an outside element can start a drag
-		 * but cannot hand the in-flight pointer over, so the sheet would jump to open rather than track.
-		 * The honest route is the band becoming the drawer's collapsed SNAP POINT (`snapPoints`), so there
-		 * is one surface at two heights and the drag is vaul's throughout. That is an architecture change,
-		 * not a polish pass, so the promise is withdrawn until it is made.
-		 */
-		cursor: pointer;
-		/* Anchors the hit-area pseudo-element. */
-		position: relative;
-	}
 	/*
-	 * THE TAP TARGET, and the reason it is a pseudo-element rather than a taller button.
+	 * `.handle`, `.handle::after` and `.handle > i` WERE DELETED WITH THE BUTTON THEY STYLED, and the
+	 * history is worth keeping because two of those rules were themselves defect fixes.
 	 *
-	 * The measured gate caught this: while the handle was inert (no drawer to open, so no `onexpand` and
-	 * no rendered control) a 20px box was nobody's problem. Wiring the drawer turned it into the ONLY way
-	 * to reach the transport, the key row and the guiding track — a 20px primary control, which XR-VER-09
-	 * fails on a rendered reading. The declared height looked fine; the rendered extent is what failed.
+	 * The bar they drew is now vaul's — `Drawer.Handle`, rendered by NowPlayingDrawer inside `.band-slot`
+	 * (see drawer-handle.svelte, which supplies the var(--tap) hit area vaul ships no dimensions for). The
+	 * expand ACTION moved onto `.meta-btn` below; see the markup note for why it is the text rather than a
+	 * second bar.
 	 *
-	 * Growing `min-height` to `--tap` would add 24px to the band, and the band's height is published as
-	 * `--dock-h`, so every scrolling column would reserve 24px of empty chrome to make one grab bar
-	 * easier to hit. An inset pseudo-element costs no layout at all.
-	 *
-	 * It expanded SYMMETRICALLY at first, and that was wrong twice over — both times caught by the
-	 * measured gate rather than by reading. The first version's comment claimed the overlap onto the
-	 * strip was "safe by paint order rather than by luck", because the strip's buttons are later
-	 * siblings; the magnifier then read a 32px hit extent inside a 44px box, because a POSITIONED
-	 * pseudo-element outranks a later sibling that establishes no stacking context of its own. DOM order
-	 * was never doing the work, so `.btn`/`.disc` below say it explicitly. The second problem was the
-	 * other direction and worse — see the rule itself.
+	 * What those rules had learned, so it is not re-learned from scratch:
+	 *   • the drawn bar must not BE the tap target (a 6px control), and growing `min-height` to var(--tap)
+	 *     would have added 24px to a band whose height is published as `--dock-h`, so the target was an
+	 *     inset pseudo-element costing no layout;
+	 *   • that pseudo-element must expand DOWNWARD ONLY. Symmetric (±12px) it reached above a band that is
+	 *     fixed to the viewport and stole taps from whatever page content scrolled under it — gate:measured
+	 *     read a 44px control on /settings as a 0px hit extent, "blocked by button.handle". vaul's own hit
+	 *     area is centred on its bar, so this is the hazard to re-measure if that bar ever moves down into
+	 *     the strip.
 	 */
-	.handle::after {
-		content: '';
-		position: absolute;
-		left: 0;
-		right: 0;
-		/*
-		 * DOWNWARD ONLY, and that asymmetry is the whole correctness of it. This expanded symmetrically
-		 * (±12px) until gate:measured named the blocker: a 44px control on /settings read a 0px hit
-		 * extent, "blocked by button.handle". The band is FIXED to the viewport, so 12px above it lands
-		 * on whatever page content is scrolled under it — on every phone surface. A control that steals
-		 * taps from the page it floats over is a worse defect than the small target this was fixing.
-		 *
-		 * Downward, the 44px fits entirely inside the band (20px of handle + 24 = 44, of the band's 77),
-		 * so it can never reach the page. It does overlap the strip below, and the two real controls
-		 * there declare --z-band-control to sit above it — measured, not assumed: the magnifier read 32px
-		 * of its 44px box until they did. What it legitimately owns is the inert title text, where a tap
-		 * opening the now-playing detail is what a mini-player does anyway.
-		 */
-		top: 0;
-		/* 20px of handle plus this reaches var(--tap); both terms are tokens, so it tracks either move. */
-		bottom: calc(var(--space-4xl) - var(--tap));
-	}
+
 	/*
-	 * ABOVE THE HANDLE'S HIT BOX, explicitly. Both are later siblings than `.handle`, which is NOT enough:
-	 * its `::after` is positioned and these were not, so the pseudo-element won the hit test over their
-	 * top 12px. Measured before and after — the magnifier read 32px of its 44px box, and reads 44px now.
+	 * THE EXPAND BUTTON. A button reset and nothing else: it must be typographically identical to the inert
+	 * `<div class="meta">` the gallery renders, because the two are the same block with and without an
+	 * action behind it, and a visible difference between them would be a difference nobody chose.
+	 *
+	 * `font: inherit` is already global (app.css supplies the two Preflight resets the vendored primitives
+	 * assume), so this only has to undo the UA's box: no background, no border, no padding, left-aligned,
+	 * inherited colour. `text-align: left` is the one that bites — a UA centres button text, which would
+	 * centre the title and the byline inside the band.
+	 *
+	 * NO HOVER AND NO PRESS STATE, deliberately. The two round controls beside it grew a hover because they
+	 * read as "not a control" without one; a whole text block that lightens under the cursor reads as a
+	 * selection, and the mini-player convention is that the metadata is quietly tappable. The focus ring is
+	 * app.css's global `:focus-visible`, which is what makes this reachable in the first place.
+	 */
+	.meta-btn {
+		background: none;
+		border: 0;
+		padding: 0;
+		margin: 0;
+		text-align: left;
+		color: inherit;
+		cursor: pointer;
+		/* A button is not a block by default, and `.meta` is a flex CHILD that must still stretch. */
+		display: block;
+	}
+
+	/*
+	 * ABOVE THE PULL HANDLE'S HIT AREA, explicitly rather than by DOM order.
+	 *
+	 * RE-AIMED, NOT RETIRED. This used to guard against `.handle::after` — this file's own hit-area
+	 * pseudo-element, deleted with the button above — and the lesson it recorded was that being a LATER
+	 * SIBLING is not enough: a positioned pseudo-element outranks a sibling that establishes no stacking
+	 * context, and the magnifier read 32px of its 44px box until these two named a tier.
+	 *
+	 * The hazard still exists and now belongs to vaul: `Drawer.Handle`'s `[data-vaul-handle-hitarea]` span
+	 * is var(--tap) tall and CENTRED on a 6px bar (drawer-handle.svelte), so it overhangs its bar in both
+	 * directions. It currently lands above this strip rather than over it — measured at 390x844: hit area
+	 * 743..787, strip top 787 — which is exactly the kind of clearance that survives by a few pixels and
+	 * stops surviving when a token moves. Keeping the tier costs one declaration and removing it would be
+	 * betting the transport's tap target on that arithmetic.
 	 */
 	.btn,
 	.disc {
@@ -290,24 +302,16 @@
 	 * THE FOCUS RING HUGS THE DISC INSTEAD OF LANDING ON ITS PROGRESS RING.
 	 *
 	 * app.css draws `:focus-visible` as a 2px `--focus` outline at `outline-offset: 2px`. That offset is
-	 * right for every other control and wrong for exactly this one: the progress ring is drawn OUTSIDE
-	 * the 44px button box (deliberately — an inset ring would eat the tap floor), so a ring 2px out lands
-	 * on top of it. The result reads as a pale box bolted around the play button, which is what it was
-	 * reported as.
+	 * right for every other control and wrong for exactly this one: the progress ring is drawn OUTSIDE the
+	 * 44px button box (deliberately — an inset ring would eat the tap floor), so a ring 2px out lands on top
+	 * of it. The result reads as a pale box bolted around the play button, which is what it was reported as.
 	 *
-	 * A NEGATIVE offset, so the indicator sits just inside the disc's own edge and clear of the arc.
-	 * Width and colour are untouched, so XR-VER-12's measured floor — a >=2px outline in the resolved
-	 * `--focus` — is unaffected; only where it is drawn changes.
+	 * A NEGATIVE offset, so the indicator sits just inside the disc's own edge and clear of the arc. Width
+	 * and colour are untouched, so XR-VER-12's measured floor — a >=2px outline in the resolved `--focus` —
+	 * is unaffected; only where it is drawn changes.
 	 */
 	.disc:focus-visible {
 		outline-offset: -3px;
-	}
-	.handle > i {
-		display: block;
-		width: 38px;
-		height: var(--space-2xs);
-		border-radius: var(--radius-pill);
-		background: var(--line-strong);
 	}
 
 	.strip {
@@ -317,7 +321,28 @@
 		padding: 0 var(--space-2xl) var(--space-lg);
 	}
 
+	/*
+	 * ONE TAP TARGET TALL, in BOTH forms.
+	 *
+	 * `gate:measured` caught this the first time it ran after the expand action moved here: the button's box
+	 * is its text, which is 18px with nothing playing and ~36px with a byline — a primary control at 18px,
+	 * failing XR-VER-09's 44px floor on every phone surface. The declared markup looked fine; the rendered
+	 * extent is what failed, which is the whole reason that gate reads a browser.
+	 *
+	 * On `.meta` rather than on `.meta-btn`, so the inert `<div>` the gallery renders and the `<button>` the
+	 * app renders are the same box. They are one block with and without an action behind it, and a 26px
+	 * difference between them would be a difference nobody chose.
+	 *
+	 * COSTS THE BAND NO HEIGHT: `.strip` is already taller than this (two var(--tap) round controls sit in
+	 * it, centred), so the floor is absorbed by a row that was that tall anyway — and the band's height is
+	 * published as `--dock-h`, so growing it would make every scrolling column reserve more empty chrome.
+	 * The text stays optically where it was because the column centres it in the taller box.
+	 */
 	.meta {
+		min-height: var(--tap);
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
 		flex: 1 1 auto;
 		/* min-width:0 is what lets the ellipsis engage: a flex child's automatic minimum is its
 		   min-content width, so an unbreakable title would otherwise size the band instead of
@@ -325,6 +350,9 @@
 		min-width: 0;
 	}
 	.title {
+		/* A <span> now (it sits inside a <button>, which may only contain phrasing content), so the block
+		   display the old <div> gave for free has to be declared. */
+		display: block;
 		font-size: var(--ph-text-md);
 		font-weight: 650;
 		line-height: var(--lh-snug);

@@ -29,6 +29,7 @@ import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 import { atRepo } from '../lib/repo-root.mjs';
+import { openJoin } from '../lib/join.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -222,7 +223,7 @@ try {
 	// ── phone joins and queues the processed song ────────────────────────────
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
-	await phone.goto(`${base}/`);
+	await openJoin(phone, base);
 	await phone.fill(SEL.nameInput, `P6Phone${Date.now() % 100000}`);
 	await phone.clickByRole('button', 'Start singing');
 	await phone.waitFor(`location.pathname === '/'`);

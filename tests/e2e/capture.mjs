@@ -31,6 +31,7 @@ import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
 import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 import { atRepo as at } from './lib/repo-root.mjs';
+import { openJoin } from './lib/join.mjs';
 
 
 /**
@@ -236,7 +237,7 @@ try {
 	// ── join, and pick a colour off the ring ─────────────────────────────────
 	const maya = await browser0.newPage();
 	await maya.viewport(...PHONE);
-	await maya.goto(`${base}/`);
+	await openJoin(maya, base);
 
 	/*
 	 * ONE FRAME, NOT TWO, AND THAT IS THE CHANGE ITSELF. This used to shoot `join-presets` (the eight
@@ -322,7 +323,7 @@ try {
 	// ── a second guest, so the roster and cross-client sync are visible ──────
 	const ada = await browser0.newPage();
 	await ada.viewport(...PHONE);
-	await ada.goto(`${base}/`);
+	await openJoin(ada, base);
 	await ada.fill(SEL.nameInput, 'Ada');
 	// A stop away from Maya's, by key: the ring is a slider, so there is nothing per-colour to click.
 	await ada.pressKey(SEL.colourRing, 'End');

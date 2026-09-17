@@ -25,6 +25,7 @@ import { join as pathJoin } from 'node:path';
 import { connect, sleep } from '../driver.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 import { SEL } from '../contract.ts';
+import { openJoin } from '../lib/join.mjs';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
@@ -91,7 +92,7 @@ async function runUnder(label, extraFlags, tag) {
 		// absence of an AudioContext proves nothing at all about the shifter.
 		const phone = await browser.newPage();
 		await phone.viewport(390, 844);
-		await phone.goto(`${base}/`);
+		await openJoin(phone, base);
 		await phone.fill(SEL.nameInput, `T17-${tag}-${Date.now() % 10000}`);
 		await phone.clickByRole('button', 'Start singing');
 		await phone.waitFor(`location.pathname === '/'`);

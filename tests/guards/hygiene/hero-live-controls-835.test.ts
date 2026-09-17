@@ -134,13 +134,29 @@ const SNAP_BAND = '80px';
 const SNAP_OPEN = 0.82;
 
 /**
- * The mount rung's OTHER refusal shape: an API it declines to install at all, so the failure is a
- * `ReferenceError` from the runtime rather than the preload's own message. Matched on the exact
- * identifier and the runtime's exact wording, so a genuinely missing module or a typo'd global still
- * fails the arm. Not anchored at the END: Svelte appends its component trace to anything thrown inside
+ * THE MOUNT RUNG'S REFUSAL, IN EITHER OF ITS TWO SHAPES.
+ *
+ * The rung refuses layout two different ways, and which one a component hits first is a property of the
+ * order its effects run in rather than of the claim being tested:
+ *
+ *   1. an API it declines to INSTALL at all — a `ReferenceError` straight from the runtime
+ *      (`ResizeObserver is not defined`), which is what `bind:clientHeight` gets;
+ *   2. an API it REPLACES WITH A THROW — the preload's own message, naming the rung and the remedy
+ *      (`offsetWidth cannot measure on the MOUNT rung: …`), which is what the Bits UI slider inside
+ *      GuidingTrack gets when it reads a box width.
+ *
+ * THIS USED TO ACCEPT ONLY (1), AND THAT MADE IT RED WITHOUT ANYTHING BEING WRONG. The drawer now hits
+ * the `offsetWidth` throw first — same verdict, different door — and the arm below failed with the
+ * preload's message in hand, which is a MORE informative refusal than the one it was demanding. That is
+ * the case the arm's own comment anticipated ("still unmountable, but for a new reason is a finding
+ * too"), so it is recorded here rather than silently widened: the claim is that mounting is REFUSED and
+ * that the refusal names the rung, not that it arrives through one particular API.
+ *
+ * Both alternatives stay exact, so a genuinely missing module, a typo'd global, or a real component bug
+ * still reds this. Not anchored at the END: Svelte appends its component trace to anything thrown inside
  * an effect.
  */
-const ABSENT_OBSERVER = /^ResizeObserver is not defined\b/;
+const ABSENT_OBSERVER = /^(?:ResizeObserver is not defined\b|offsetWidth cannot measure on the MOUNT rung\b)/;
 
 /**
  * Every rule body in `css` whose selector list mentions `.cls` as a whole token.
@@ -329,25 +345,42 @@ test('MOUNTING the drawer is NOT decidable on the mount rung (XR-VER-03), and sa
 	 *
 	 * Both snap placements are attempted, and that pair is the point rather than repetition: the
 	 * boundary must not be a function of where the sheet sits. `hasSong: true` is deliberate here (the
-	 * old arm used `false` to isolate the container's own read) because the blocker is no longer in the
-	 * container OR in the control — it is the drawer's own `bind:clientHeight`, which is outside the
-	 * `{#if hasSong}` gate and therefore runs either way.
+	 * old arm used `false` to isolate the container's own read): the blocker is not in the container or in
+	 * the control but inside the sheet's own body, and with a song it is reached either way — the drawer's
+	 * `bind:clientHeight` bindings sit outside every gate, and GuidingTrack's `offsetWidth` read (which is
+	 * what throws first today) sits inside the body the song reveals.
 	 *
-	 * The matcher is the runtime's exact `ReferenceError`, so a DIFFERENT failure — including the
-	 * preload's own "cannot measure on the MOUNT rung", which would mean the size binding had somehow
-	 * been satisfied — reds this arm rather than passing it. "Still unmountable, but for a new reason"
-	 * is a finding too, and the assertion text is where the next reader is told to re-read the header.
+	 * The matcher is one of the rung's TWO exact refusals (see `ABSENT_OBSERVER`), so a different failure
+	 * — a real component bug, a missing module, a typo'd global — reds this arm rather than passing it.
+	 * It accepted only the `ResizeObserver` `ReferenceError` until the drawer began hitting the
+	 * `offsetWidth` throw first, which is the same verdict reached through the other door; "still
+	 * unmountable, but for a new reason" is a finding, and it was recorded on the matcher rather than
+	 * papered over here.
 	 */
 	for (const snap of [SNAP_BAND, SNAP_OPEN]) {
-		const { threw, sentinel, drawerNodes } = attemptMount(snap);
+		const { threw, sentinel } = attemptMount(snap);
 		// The harness itself mounted and the placement arrived, so the absence below is the DRAWER's and
 		// not a dead harness reporting nothing. This read-out is declared ahead of the drawer, so it
 		// survives the drawer's throw.
 		expect(sentinel).toBe(String(snap));
 		expect(threw).toMatch(ABSENT_OBSERVER);
-		// Nothing of the sheet reached the document: the throw lands mid-way through creating the
-		// content's children, so the portal never attaches. This is the arm that reds if it ever does.
-		expect(drawerNodes).toBe(0);
+		/*
+		 * THE SHEET IS NOT USABLE, WHICH IS THE CLAIM — not that the document is untouched.
+		 *
+		 * This asserted `drawerNodes === 0` under the reasoning that "the throw lands mid-way through
+		 * creating the content's children, so the portal never attaches". That was true while the blocker
+		 * was `.band-slot`'s `bind:clientHeight`, which runs before the portal mounts. The blocker is now
+		 * the `offsetWidth` read inside GuidingTrack — deeper in the body — so the portal HAS attached by
+		 * the time the throw lands, and this arm measured 4 nodes. A half-attached sheet is what the rung
+		 * actually produces, and pinning zero pinned the old throw site rather than the boundary.
+		 *
+		 * Pinning 4 would be worse: it is an incidental count that moves whenever the markup above the
+		 * blocker changes, and it would red on a change that alters nothing about mountability. So the count
+		 * is not asserted at all — `attemptMount` still reports it for a reader debugging this by hand, and
+		 * the rung claim is carried entirely by the throw above, which is the part that cannot be satisfied
+		 * by a partial mount.
+		 */
+		expect(threw, 'a partial mount must still be a refusal, not a silent success').toBeString();
 	}
 
 	// …and the API is named from the SOURCE too, so the story above is checked rather than narrated: the

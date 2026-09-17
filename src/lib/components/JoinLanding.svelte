@@ -359,13 +359,31 @@
 		     on this screen, so a guest who arrives here is not told about it. That is a deliberate
 		     ruling, not an oversight; revisit it here if the conformance claim needs to be re-made.
 		-->
-		{#if previewError}
-			<!-- The code did not resolve. Do NOT leave a blank form: state the reason, in place, directly
-			     above the boxes the guest can now correct. Covers both arrivals here — a scanned code that
-			     failed, and a typed one. -->
-			<div class="err" role="alert">{previewError}</div>
-		{/if}
-		<CodeEntry bind:value={typedCode} label="Room code" oncomplete={continueToIdentity} />
+		<!--
+			CENTRED IN THE FREE SPACE, not stacked under the header.
+
+			This pane is the shortest in the app — two step dots, a label and six boxes, about 120px — and
+			the CTA is docked to the bottom of the column by `.submit-slot`'s auto margin. Top-aligning the
+			boxes therefore put every remaining pixel in ONE gap: measured at 390x844, roughly 430px of empty
+			background between the last box and the Continue button, which is most of the screen. It read as
+			a page whose content had failed to load, and it is the FIRST screen of the app for anyone who
+			could not scan.
+
+			CODE PANE ONLY, deliberately. The identity pane is taller and is the one a soft keyboard opens
+			over — `app.html` sets `interactive-widget=resizes-content`, so the layout viewport SHRINKS — and
+			centring content that can exceed its box clips it at BOTH ends, which would put the name field's
+			label out of reach rather than merely low. This pane's content cannot overflow any real viewport,
+			so it gets the centring and that one does not.
+		-->
+		<div class="code-pane">
+			{#if previewError}
+				<!-- The code did not resolve. Do NOT leave a blank form: state the reason, in place, directly
+				     above the boxes the guest can now correct. Covers both arrivals here — a scanned code that
+				     failed, and a typed one. -->
+				<div class="err" role="alert">{previewError}</div>
+			{/if}
+			<CodeEntry bind:value={typedCode} label="Room code" oncomplete={continueToIdentity} />
+		</div>
 	{/if}
 
 	<!--
@@ -635,6 +653,21 @@
 		font-size: var(--ph-text-md);
 		text-align: center;
 	}
+	/*
+	 * The code pane's own column, which exists to ABSORB the free space rather than leave it in one gap
+	 * below the boxes — see the markup note. `flex: 1` takes what the header and the CTA do not, and
+	 * `justify-content: center` puts the boxes in the middle of it.
+	 *
+	 * `gap` rather than a margin on the error, so a rejected code pushes the boxes down by a known amount
+	 * and the group stays centred on the pair.
+	 */
+	.code-pane {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: var(--space-2xl);
+	}
 	.submit-slot {
 		margin-top: auto;
 		display: flex;
@@ -649,6 +682,12 @@
 			margin: 0 auto;
 			flex: 0 0 auto;
 			padding-bottom: 0;
+		}
+		/* On a monitor the whole pane is already centred in the viewport (`.app-shell:has(.join-main)`
+		   above), so the column has no free space to absorb and `flex: 1` would stretch the boxes' box for
+		   nothing. Back to content height, which is what the desktop layout already assumes. */
+		.code-pane {
+			flex: 0 0 auto;
 		}
 		.submit-slot {
 			margin-top: var(--space-sm);

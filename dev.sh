@@ -25,11 +25,69 @@ set -m
 cd "$(dirname "$0")"
 ROOT="$PWD"
 
+# ── .env ─────────────────────────────────────────────────────────────────────────────
+# FOR THE WORKER'S BENEFIT, not core's. Core is `bun run ./server.ts` and Bun reads .env by itself, so
+# it has always seen this file. The worker is `python -m src.dial_home` with NO dotenv dependency
+# (deliberately — the container gets its env from compose), and dev.sh launches it via a bare `env`,
+# which passes on only what this script exported. So every worker-side setting in .env.example was
+# silently inert under dev.sh: ENCORE_STEM_FORMAT, ENCORE_DEMUCS_MODEL, ENCORE_WORKER_CONCURRENCY,
+# ENCORE_PROCESSOR, ENCORE_WHISPERX_DEVICE, ENCORE_WORKER_CAPABILITIES (all read by config.py's
+# from_env) landed on core, which does not read them, and never reached the process that does.
+#
+# ENCORE_WORKER_TOKEN is the sharp one. Core gates role=worker upgrades the moment it sees a token and
+# returns 401 otherwise (config.py:197) — so a token set here reached core, the worker connected without
+# one, and ALL processing stopped with nothing in the queue to explain why. Exporting the file fixes
+# that class of split-brain outright: both processes now read one source.
+#
+# PRECEDENCE MATCHES BUN: a variable already in the environment WINS over the file, so `FOO=x bash
+# dev.sh` overrides for both halves and core/worker cannot end up disagreeing about the same key.
+# Parsed, not sourced: `set -a; . .env` would execute a value containing $(...) or a backtick.
+ENV_FILE="${ENCORE_ENV_FILE:-$ROOT/.env}"
+ENV_REPORT="no .env — using defaults"
+if [ -f "$ENV_FILE" ]; then
+	env_set=() env_shadowed=()
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in ''|'#'*) continue ;; esac
+		line="${line#export }"
+		key="${line%%=*}"
+		[ "$key" != "$line" ] || continue            # no '=' → not an assignment
+		val="${line#*=}"
+		key="${key//[[:space:]]/}"
+		case "$key" in ''|*[!A-Za-z0-9_]*) continue ;; esac   # skip anything not a shell name
+		val="${val#"${val%%[![:space:]]*}"}"         # ltrim
+		case "$val" in
+			\"*\") val="${val#\"}"; val="${val%\"}" ;;
+			\'*\') val="${val#\'}"; val="${val%\'}" ;;
+			# Unquoted: drop a trailing ` # comment`, then rtrim. Quoted values keep '#' verbatim.
+			*) val="${val%%[[:space:]]#*}"; val="${val%"${val##*[![:space:]]}"}" ;;
+		esac
+		if [ -n "${!key+x}" ]; then
+			env_shadowed+=("$key")
+		else
+			export "$key=$val"
+			env_set+=("$key")
+		fi
+	done < "$ENV_FILE"
+	ENV_REPORT="${ENV_FILE#$ROOT/} — ${#env_set[@]} set${env_set[*]:+: ${env_set[*]}}"
+	[ "${#env_shadowed[@]}" -gt 0 ] && ENV_REPORT="$ENV_REPORT; shadowed by shell: ${env_shadowed[*]}"
+fi
+
 # ── paths pinned ABSOLUTE, deliberately ──────────────────────────────────────────────
 # The app resolves MEDIA_DIR ?? './media' and DATA_DIR ?? './data' relative to CWD (paths.ts:27,
 # db/index.ts:29). Two processes started from different directories therefore get DIFFERENT stores,
 # which is how a stray ./media appears beside the real one and the worker writes stems
 # the core cannot find. Pinning both here means core and worker cannot disagree.
+#
+# THESE THREE OUTRANK .env, which is why the loader runs above rather than below. .env.example ships
+# MEDIA_DIR=./media, DATA_DIR=./data and ENCORE_CORE_WS=ws://core:3000 — all correct INSIDE the
+# container (relative to /app, and `core` is compose DNS), all wrong for a native run, where a relative
+# path is resolved per-process and `core` resolves to nothing. Announced rather than silently dropped,
+# since a setting that appears to be read but is not is the whole bug class this section exists for.
+for v in MEDIA_DIR DATA_DIR ENCORE_CORE_WS; do
+	case " ${env_set[*]:-} " in
+		*" $v "*) echo "note: $v from ${ENV_FILE##*/} overridden — a native run needs absolute paths and localhost" ;;
+	esac
+done
 export MEDIA_DIR="$ROOT/media"
 export DATA_DIR="$ROOT/data"
 CORE_URL="http://localhost:3000"
@@ -71,6 +129,7 @@ echo "bun     $(bun --version)"
 echo "ffmpeg  $(ffmpeg -version 2>/dev/null | head -1 | cut -d' ' -f3)"
 echo "media   $MEDIA_DIR"
 echo "data    $DATA_DIR"
+echo "env     $ENV_REPORT"
 
 # Refuse to start alongside a previous run. A leftover worker is not harmless: it reconnects every 3s,
 # the core hands it jobs, and two workers cooking the same media race each other on the same paths.

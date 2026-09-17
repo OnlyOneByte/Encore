@@ -32,6 +32,7 @@ import { findChromium } from '../lib/chromium.mjs';
 import { openBrowseFromHome } from '../lib/phone.mjs';
 import { repoRoot } from '../lib/repo-root.mjs';
 import { spawnChild, killChild } from '../lib/child.mjs';
+import { openJoin } from '../lib/join.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
@@ -433,7 +434,7 @@ async function main() {
 	// it exists to drive commands and to render the guiding-track control if we want to look at it.
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
-	await phone.goto(`${BASE}/`);
+	await openJoin(phone, BASE);
 	await phone.fill(SEL.nameInput, `Guide${Date.now() % 100000}`);
 	await phone.clickByRole('button', 'Start singing');
 	await phone.waitFor(`location.pathname === '/'`, { timeout: 15_000 });

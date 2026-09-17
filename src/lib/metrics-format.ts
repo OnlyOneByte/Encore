@@ -49,6 +49,23 @@ export function pct(v: number | null): string {
 }
 
 /**
+ * A count with its noun agreeing: `1` + `run` is `1 run`, `0`/`2` give `0 runs` / `2 runs`.
+ *
+ * Exists because these two pages were the only surfaces in the app that did NOT agree — everywhere a
+ * guest can read prints a number, the noun is chosen (`readiness.ts`, `JoinBadge.svelte`,
+ * `phrasing/room-presence-sentence.ts`, `phrasing/position-sentence.ts` all pick singular at 1). The
+ * operator pages interpolated bare nouns, so /metrics rendered "1 runs across 1 songs" and /stats
+ * "the last 1 days" — reachable, since the `days` window clamps to [1, max]. An operator is a person
+ * too, and a page that cannot count to one reads as a page nobody looked at.
+ *
+ * `plural` is optional and defaults to `+ 's'`, which covers every noun these pages use (run, song,
+ * day, attempt). Pass it for an irregular one rather than teaching this function English.
+ */
+export function count(n: number, singular: string, plural = `${singular}s`): string {
+	return `${n} ${n === 1 ? singular : plural}`;
+}
+
+/**
  * A measured rate against the one its model claims, as a signed difference in the reader's terms:
  * `1.74` is `74% slower`, `0.49` is `51% faster`.
  *

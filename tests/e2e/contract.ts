@@ -138,6 +138,21 @@ export const SEL = {
 	 * button that appears to open a mode.
 	 */
 	homeReady: '.band',
+	/*
+	 * THE DOCKED ROW, which is the element `--dock-h` is actually published from — and it is NOT `.band`.
+	 *
+	 * Since the band became snap point 0 of the now-playing sheet, the bottom-most chrome is
+	 * `NowPlayingDrawer`'s `.band-slot`: vaul's pull handle, then the band strip. The layout binds THAT
+	 * element's `clientHeight` (through the drawer's `bandH` prop) and writes it as `--dock-h`, so the token
+	 * is the row's height — 80px — while `.band` alone is the 56px strip inside it.
+	 *
+	 * `gate:measured` was comparing the token against `.band` and reported an 80-vs-56 mismatch as a broken
+	 * contract. It is not broken: a scrolling column has to clear the whole docked row, handle included, or a
+	 * thumb reaching for the grab bar lands on page content. The claim was right and its SUBJECT had moved,
+	 * which is what this entry fixes — `homeReady` stays the strip (it answers "is a singer joined", which is
+	 * what a readiness poll wants), and the RESERVATION contract is measured here.
+	 */
+	dockRow: '.band-slot',
 	/**
 	 * The scrolling content column. The measured gate reads its padding-bottom to prove the docked band
 	 * is RESERVED rather than overlapping the list (XR-PH-12), which is a geometry claim about this
@@ -390,26 +405,53 @@ export const SEL = {
 	bandSearch: { role: 'button' as const, name: 'Search for a song' },
 	bandTransport: '.disc',
 	/*
-	 * RETIRED: `bandExpand` was `.band .handle` — the band's pull handle, and the way into the drawer while
-	 * the band and the drawer were two surfaces. The merge made them one permanently-mounted sheet, so
-	 * there is nothing to open: `[data-slot='drawer-handle']` (`drawerHandle` below) is the ONLY handle in
-	 * the app now, and it is both the way IN (drag up to snap `0.82`) and the drag surface once there.
+	 * THE BAND'S EXPAND CONTROL — the metadata block, which is a real `<button>` whenever a drawer is
+	 * behind it. `bandExpand`'s claim, come back in a different shape; see that retirement record below for
+	 * why this is a new id rather than a revival of the old one.
 	 *
-	 * THIS IS THE `hero` SHAPE, NOT AN ORDINARY RETIREMENT, and that is why it must be pinned rather than
-	 * merely deleted. `.band .handle` STILL RESOLVES: `NowPlayingBand.svelte` is UNCHANGED and still
-	 * declares `<button class="handle">` — inside `{#if onexpand}`. What changed is that NO call site
-	 * hands the band an `onexpand` any more (the layout's wiring went with `drawerOpen`, and the five
-	 * bands in /components never passed one), so the branch is never entered and the button never renders
-	 * ANYWHERE. A selector that greps green against a component branch the app cannot reach is exactly the
-	 * silent mis-resolution `.hero` and `.chip` each cost a migration to find, so contract.test.ts pins
-	 * the absence — and pins the gate itself, so re-wiring an `onexpand` reds and forces this record to be
-	 * revisited rather than quietly reviving a dead selector.
+	 * WHY IT EXISTS AGAIN. The retirement reasoned that a permanently-mounted sheet has no closed surface to
+	 * open, which is true of the sheet and false of the guest: what replaced the band's button as the way in
+	 * was `drawerHandle`, and that element is a `<div aria-hidden="true">` with no tabindex and no role. So
+	 * for as long as it was the only affordance, the sheet — and with it the transport, the ± keycaps, the
+	 * guiding track, the lyrics reselect and the `···` that is the ONLY link to /song/[mediaId] — could not
+	 * be reached by a keyboard or announced to a screen reader at all.
 	 *
-	 * ITS CLAIM DID NOT SURVIVE UNDER A NEW ADDRESS, which is why `drawerHandle` is not simply
-	 * "bandExpand at a new selector". `bandExpand` meant "the button that OPENS a closed surface" — a
-	 * click, on a control that existed only because a drawer was wired. `drawerHandle` is a DRAG surface
-	 * on a sheet that is already mounted, and its own entry already records why losing it is silent. The
-	 * two are different kinds of affordance, which is the same test `searchDock` → `findBox` applied.
+	 * A CLASS, not a role+name pair, and that is forced rather than preferred: the button's accessible name
+	 * interpolates the song title (`${title} — open the player`, which is SC 2.5.3's label-in-name), so there
+	 * is no literal for `clickByRole` to match. `.meta-btn` is the class the band puts on the button form of
+	 * the block; the inert `<div class="meta">` the /components gallery renders does NOT carry it, which is
+	 * what keeps this selector from resolving against a control that cannot act.
+	 */
+	bandOpen: '.meta-btn',
+	/*
+	 * RETIRED, AND ITS CLAIM HAS SINCE COME BACK ELSEWHERE — read both halves of this record before acting
+	 * on either.
+	 *
+	 * `bandExpand` was `.band .handle`: the band's pull handle, and the way into the drawer while the band
+	 * and the drawer were two surfaces. The merge made them one permanently-mounted sheet, so there was
+	 * nothing left to open, and `[data-slot='drawer-handle']` (`drawerHandle` below) became the only handle
+	 * in the app — both the way IN (drag up to snap `0.82`) and the drag surface once there.
+	 *
+	 * THE SELECTOR IS STILL RETIRED AND THE ID IS STILL BANNED. `.band .handle` no longer resolves at all:
+	 * the `<button class="handle">` it addressed has been DELETED from NowPlayingBand.svelte (the bar it drew
+	 * is vaul's now, rendered by the drawer inside `.band-slot`). While it lived, this record warned that the
+	 * selector greps green against a branch the app cannot reach — `{#if onexpand}` with no call site passing
+	 * one — which is the silent mis-resolution `.hero` and `.chip` each cost a migration to find. That trap
+	 * is gone with the markup; what remains banned is the NAME, so a future red phone read cannot be "fixed"
+	 * by pointing this id at whatever `.handle` means next.
+	 *
+	 * WHAT CAME BACK, AND WHY AS A DIFFERENT ID. The retirement's reasoning — a mounted sheet has no closed
+	 * surface to open — is true of the sheet and false of the GUEST. `drawerHandle` is a
+	 * `<div aria-hidden="true">` with no tabindex and no role, so while it was the only affordance the sheet
+	 * could not be raised by a keyboard or announced to a screen reader, and everything inside it (the
+	 * transport, the ± keycaps, the guiding track, the lyrics reselect, and the `···` that is the ONLY link
+	 * to /song/[mediaId]) was pointer-only. The band therefore carries an expand control again — but it is
+	 * the METADATA BLOCK rather than a second grab bar (two bars is a defect that already shipped once), so
+	 * it is a new affordance at a new address: `bandOpen` above. Same rule as `searchDock` → `findBox`: the
+	 * claim changed kind, so it gets an entry rather than a revival.
+	 *
+	 * `drawerHandle` is unaffected by that and is still not "bandExpand at a new selector": it is the DRAG
+	 * surface, `bandOpen` is a press, and the two are different kinds of affordance that now coexist.
 	 *
 	 * THE DRIVER MIGRATION IS NOT DONE, AND IT TAKES A GREEN GATE RED — recorded here, precisely, because
 	 * that is worse than the earlier retirements and must not be discovered later. Unlike `searchDock` and
@@ -569,6 +611,23 @@ export const SEL = {
 	tvConnected: '.status.on',
 	attract: '.attract',
 	joinAddress: '.jt-url',
+	/*
+	 * THE ROOM CODE, as the attract panel prints it — six characters at the largest type on the screen,
+	 * because it is the thing being TRANSCRIBED.
+	 *
+	 * IT IS ALSO HOW EVERY DRIVER JOINS NOW, which is why a presentational-looking class earns a contract
+	 * entry. The join screen is two panes: a guest who scanned arrives with `?room=CODE` and lands on the
+	 * IDENTITY pane, and a guest with no code gets the six-box CODE pane first. Every driver used to
+	 * `goto('/')` and immediately fill the name field — a field that only exists on the second pane — so all
+	 * of them broke silently when the panes landed, including `gate:measured`, which is the one gate with no
+	 * skip path. `joinAs()` in `lib/join.mjs` reads the code from HERE and takes the scanned path instead,
+	 * so there is one place that knows how joining works.
+	 *
+	 * Read off `/tv` rather than from an API on purpose: no endpoint publishes the active room's code (the
+	 * TV's server load is what resolves it), and the QR encodes it in a data URL that a driver cannot decode.
+	 * This element is the room's own advertisement of itself.
+	 */
+	attractCode: '.jt-code',
 	stageHeadline: '.phrase-line',
 	/** The wordmark whose inset proves stage chrome clears the overscan region. */
 	stageBrand: '.brand',
@@ -963,6 +1022,24 @@ export const HOOKS: Hook[] = [
 		anchor: "aria-label={isPlaying ? 'Pause' : 'Play'}",
 		why: "the band's transport disc; anchored on the EXPRESSION because that is the only source text either label has, and SEL.bandTransport can only address it by class"
 	},
+	{
+		id: 'dockRow',
+		file: 'src/lib/components/NowPlayingDrawer.svelte',
+		anchor: 'class="band-slot"',
+		why: "the docked row whose clientHeight IS --dock-h (bound through the drawer's bandH prop and written by the layout). The measured band contract reads the token against THIS element; `.band` is the strip inside it and is 24px shorter"
+	},
+	{
+		id: 'bandOpen',
+		file: 'src/lib/components/NowPlayingBand.svelte',
+		anchor: 'class="meta meta-btn"',
+		why: 'the band\'s expand control — the metadata block in its BUTTON form. Anchored on the class pair because the accessible name interpolates the song title, so there is no literal for a role+name hook to bind to; the pair also distinguishes it from the inert `<div class="meta">` the gallery renders'
+	},
+	{
+		id: 'bandOpenWired',
+		file: 'src/lib/components/NowPlayingDrawer.svelte',
+		anchor: 'onexpand={() => {',
+		why: "bandExpandWired's successor, and the half that makes `bandOpen` real: the button is gated on `{#if onexpand}`, so a hook on the component alone would pass while nothing passed one — which is exactly how the retired pair came to assert a control the app could not render. Deleting this wiring reds here rather than silently returning the sheet to pointer-only"
+	},
 	/*
 	 * RETIRED: the `bandExpand` hook (anchor `aria-label={hasSong ? 'Open now playing' : 'Open the player'}`
 	 * in NowPlayingBand.svelte) and the `bandExpandWired` hook (anchor `onexpand={() => (drawerOpen = true)}`
@@ -982,12 +1059,18 @@ export const HOOKS: Hook[] = [
 	 * a class. So both go, and contract.test.ts pins the gate itself (the prop and its `{#if}`) plus the
 	 * absence of any `onexpand=` call site: re-wiring one reds and sends a reader back to this record.
 	 *
-	 * `bandExpandWired`'s claim did not simply vanish — it CHANGED KIND, and its successor is
+	 * `bandExpandWired`'s claim did not simply vanish — it CHANGED KIND, and its successor was
 	 * `drawerHandleOnly` below rather than a re-anchor of the name. "The app hands the band an action, so
 	 * its labelled button does something" became "the app restricts dragging TO the handle, so the sheet's
 	 * body of sliders is not also a drag surface". Same shape of claim (a component's affordance is only
 	 * real because the app configured it), different affordance, so a new entry rather than a moved one —
 	 * the `searchDock` → `findBox` rule.
+	 *
+	 * AND THEN THE ORIGINAL SHAPE RETURNED TOO, as `bandOpenWired` above. Dropping the wiring left
+	 * `drawerHandle` — an `aria-hidden` div — as the only way to raise the sheet, so it could not be reached
+	 * by a keyboard or announced at all; the band now passes an `onexpand` again, aimed at its metadata block
+	 * rather than at a second grab bar. So BOTH hooks exist: one pins the drag restriction, one pins that
+	 * somebody still hands the band a press. Neither replaces the other, and the retired IDS stay banned.
 	 */
 	{
 		id: 'drawerHandleOnly',
@@ -1103,6 +1186,12 @@ export const HOOKS: Hook[] = [
 		file: 'src/routes/tv/+page.svelte',
 		anchor: 'class="attract"',
 		why: 'the empty-room stage; the flow gates on THIS to know the room is fresh, not on the lobby address'
+	},
+	{
+		id: 'attractCode',
+		file: 'src/routes/tv/+page.svelte',
+		anchor: 'class="jt-code"',
+		why: "the attract panel's room code — the largest element on that screen, and the value every driver reads to join through the scanned path (see lib/join.mjs)"
 	},
 	{
 		id: 'joinAddress',

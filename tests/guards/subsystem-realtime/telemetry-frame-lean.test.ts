@@ -162,7 +162,17 @@ function productionFiles(dir: string, out: string[]): string[] {
 	return out;
 }
 
-test('bufferedNextPct — the hardcoded-100 field — exists nowhere in production, repo-wide', () => {
+/*
+ * A REAL TIMEOUT, because this arm walks the whole production tree.
+ *
+ * bun's default per-test timeout is 5s and this walk measured 5.2–7.3s on a repo checked out to an
+ * external volume, so it FAILED there — reported as a defect in the guard rather than in the code, which
+ * is the worst kind of red: it costs a reader the time to discover that nothing is wrong. The walk is the
+ * point of the arm (the test's name claims "repo-wide", and a hand-picked file list would not honour it),
+ * so the budget moves rather than the method. 30s is far above the worst observed and still well under
+ * anything a reader would sit through wondering whether it had hung.
+ */
+test('bufferedNextPct — the hardcoded-100 field — exists nowhere in production, repo-wide', { timeout: 30_000 }, () => {
 	// The sharpest regression is resurrecting the field a future reader would trust: a hardcoded 100
 	// that always answers "next song fully buffered". Walk the whole production tree so the test's own
 	// name ("exists nowhere ... repo-wide") is honest — not a claim over three hand-picked files.

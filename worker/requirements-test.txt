@@ -1,0 +1,58 @@
+# Encore worker — the TOOLING the four worker gates run on. Pinned like everything else here.
+#
+# ── WHY THIS FILE EXISTS ────────────────────────────────────────────────────────────────────────
+#
+# It did not, and three other files said it did. `pytest.ini` documents its own `timeout` keys as
+# belonging to "pytest-timeout (pinned in requirements-dev.txt)"; `pyproject.toml` says ruff and mypy
+# are "pinned in requirements-dev.txt"; and `README.md`'s gate block told a new contributor that
+# `pip install -r requirements.txt -r requirements-dev.txt` was the one-time setup that made
+# `pytest -q` work. None of it was true — those two files are the same heavy ML RUNTIME set (they
+# differ by one line, `audio-separator` vs `python-audio-separator`) and neither ever named pytest,
+# pytest-asyncio, pytest-timeout, ruff or mypy.
+#
+# So `cd worker && python3 -m pytest -q` — leg 2 of `bun run gates`, and the whole verification story
+# for the Python half — could only pass on a machine that already happened to have pytest for some
+# unrelated reason. On one that did not it failed with `No module named pytest`, which reads as a
+# broken gate rather than as an undeclared dependency, and no file in the repo could tell the reader
+# which it was.
+#
+# ── WHY IT IS SEPARATE FROM requirements-dev.txt RATHER THAN ADDED TO IT ─────────────────────────
+#
+# Because installing it must NOT cost multiple gigabytes. `requirements-dev.txt` pins torch,
+# torchaudio, torchvision, demucs, whisperx and pyannote — the ML set the worker's own README calls
+# "multi-GB, quarantined in this container". The test suite never executes any of it: every heavy seam
+# is faked ("This box has numpy and scipy only, so no heavy seam is ever executed here"). Folding five
+# small pure-Python tools into that file would mean a contributor who only wants to RUN THE TESTS has
+# to download a torch stack first, which is the fastest way to make a gate optional in practice.
+#
+#     pip install -r requirements-test.txt     # run the gates
+#     pip install -r requirements.txt          # additionally run real jobs
+#
+# ── THE PINS ────────────────────────────────────────────────────────────────────────────────────
+#
+# Every version here is one that was installed and RUN against this tree, not a guess: 1026 of 1037
+# tests pass, `ruff check` is clean, `ruff format --check` is clean and `mypy` reports no issues in 70
+# source files. The remaining 11 are environment-bound and named in README.md's gate section.
+#
+# pytest 8.4.2 is the version pytest.ini's own prose already named ("supported on the pinned pytest
+# 8.4.2"), and that comment is load-bearing: it explains why `faulthandler_exit_on_timeout` is
+# deliberately NOT set, since on 8.4.2 an unknown key warns rather than errors. Bumping to pytest 9
+# means revisiting that decision, not just this line.
+pytest==8.4.2
+# asyncio_mode=auto lives in pytest.ini, and it is this plugin's setting — without it every async test
+# function is silently skipped as an un-awaited coroutine rather than failing, which is the worst shape
+# a missing dependency can take in a test suite.
+pytest-asyncio==1.4.0
+# The per-test wall-clock backstop pytest.ini's `timeout` / `timeout_method` keys configure. Its own
+# note there explains what it buys: a wedged test fails alone instead of erasing the rest of the run.
+pytest-timeout==2.4.0
+# ruff is lint AND formatter (pyproject.toml: "one binary that replaces flake8 + black + isort").
+# EXACT, not `>=`: a formatter's output is part of the gate, so a newer minor can turn
+# `ruff format --check` red on files nobody touched. Adopting this pin did exactly that once, on one
+# line in src/lyrics/grading.py (0.16.8 drops redundant parens around a lambda body) — the file was
+# reformatted with the pinned version rather than the pin being loosened to hide it.
+ruff==0.16.8
+# mypy's own config (python_version, files) is in pyproject.toml. Note that `python_version = "3.12"`
+# is the TARGET, not the interpreter this must run on — mypy on 3.10 checks against 3.12 semantics
+# fine, which is worth knowing on a box whose default python3 is older.
+mypy==2.3.1

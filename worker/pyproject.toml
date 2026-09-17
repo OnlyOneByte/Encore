@@ -4,7 +4,9 @@
 #
 # `ruff` is one binary that replaces flake8 + black + isort: `ruff check` lints, `ruff format`
 # formats. `mypy` type-checks the annotations that were already present but unchecked.
-# Both are pinned in requirements-dev.txt and wired as blocking gates.
+# Both are pinned in requirements-test.txt — NOT requirements-dev.txt, which this line named for a long
+# time while that file held only the heavy ML runtime set and never mentioned either tool. See the note
+# at the top of requirements-test.txt for what that cost.
 
 [tool.ruff]
 line-length = 110

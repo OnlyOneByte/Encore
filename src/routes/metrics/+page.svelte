@@ -11,7 +11,7 @@
 	import { onMount } from 'svelte';
 	import Bars from '$lib/charts/Bars.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
-	import { dur, stepLabel, stageLabel, pct, vsClaimed, separatorLabel } from '$lib/metrics-format';
+	import { dur, stepLabel, stageLabel, pct, vsClaimed, separatorLabel, count } from '$lib/metrics-format';
 	import * as Card from '$lib/components/ui/card';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Badge } from '$lib/components/ui/badge';
@@ -161,7 +161,7 @@
 				{#if !m}
 					Loading…
 				{:else}
-					{m.sample.attempts} runs across {m.sample.processes} songs.
+					{count(m.sample.attempts, 'run')} across {count(m.sample.processes, 'song')}.
 					{#if m.sample.provisional}<strong>Too few to trust the averages yet.</strong>{/if}
 				{/if}
 			</p>
@@ -338,7 +338,7 @@
 								rows={m.stages.map((s) => ({
 									label: stageLabel(s.stage),
 									value: Math.round((s.meanMs ?? 0) / 1000),
-									hint: `${s.n} runs`
+									hint: count(s.n, 'run')
 								}))}
 								unit="s avg"
 							/>
