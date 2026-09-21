@@ -155,9 +155,34 @@ test('AC2 — Continue is disabled at 5 of 6 code characters, enabled at 6', asy
 		for (let i = 0; i < five.length; i++) typeChar(segs()[i], five[i]!);
 		expect(continueBtn().disabled, 'Continue must stay disabled at 5 of 6 characters').toBe(true);
 
-		// The sixth flips it to enabled — the criterion's boundary is exactly here.
+		/*
+		 * THE SIXTH CHARACTER NOW RESOLVES THE CODE ITSELF, so the boundary this criterion is about shows up
+		 * as "no longer blocked by length" rather than as a literally enabled button.
+		 *
+		 * AC2 is about the LENGTH gate: at five characters Continue must refuse, at six it must not. What
+		 * changed underneath it is that the sixth keystroke also fires `oncomplete`, which starts the
+		 * room lookup — and `canContinue` is `length === 6 && !previewLoading`, so for as long as that fetch
+		 * is in flight the button is legitimately disabled again, with its label reading "Checking the code…".
+		 * (It used to fire and do nothing: `oncomplete` ran before the bound value reached the parent, so the
+		 * auto-advance silently no-opped. Typing the sixth character and pasting a whole code both left the
+		 * guest on step 1.)
+		 *
+		 * So the assertion is on the DISJUNCTION, and each half is checked for the right reason: either the
+		 * button is enabled (the lookup has not started or has already failed) or the pane is mid-resolve.
+		 * Asserting only `disabled === false` would now be asserting that the auto-advance does NOT happen.
+		 */
 		typeChar(segs()[5], '3');
-		expect(continueBtn().disabled, 'Continue must enable once all six are present').toBe(false);
+		const btn = continueBtn();
+		const resolving = /Checking the code/.test(btn.textContent ?? '');
+		expect(
+			!btn.disabled || resolving,
+			'at six characters Continue must no longer be blocked by LENGTH — it is either enabled, or already resolving the code'
+		).toBe(true);
+		// And the length gate really is gone: the disabled reason, if any, is the lookup and not the count.
+		expect(
+			(document.querySelector('.cta-reason')?.textContent ?? '').includes('characters'),
+			'no length complaint may remain at six characters'
+		).toBe(false);
 	} finally {
 		void unmount(instance);
 	}

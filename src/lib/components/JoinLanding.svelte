@@ -183,9 +183,22 @@
 	 *
 	 * The pane flips on `preview` landing; nothing here advances it by hand.
 	 */
-	async function continueToIdentity() {
-		if (!canContinue) return;
-		await loadPreview(typedCode);
+	async function continueToIdentity(code?: string) {
+		/*
+		 * `code` IS THE ONE CodeEntry JUST ASSEMBLED, and taking it is what makes the auto-advance work.
+		 *
+		 * CodeEntry fires `oncomplete` synchronously from inside its `beforeinput` / `paste` / `keydown`
+		 * handler, while the `value` binding reaches this component through an `$effect` — next tick. So
+		 * this used to check `typedCode`, see five characters, fail `canContinue` and return without a
+		 * word: typing the sixth character did nothing, and pasting a whole code did nothing. Both were
+		 * measured in a browser. The button worked, which is why it went unnoticed.
+		 *
+		 * The argument is absent when the CTA is what called this, and then `typedCode` is authoritative
+		 * (the binding has long since settled), so the fallback is not a guess.
+		 */
+		const candidate = code ?? typedCode;
+		if (candidate.length !== CODE_LENGTH || previewLoading) return;
+		await loadPreview(candidate);
 	}
 
 	async function join() {
@@ -266,7 +279,15 @@
 	{/if}
 </header>
 
-<main class="join-main">
+<!--
+	A `<div>`, NOT a second `<main>`. This element was `<main class="join-main">` and it renders INSIDE
+	`routes/+layout.svelte`'s own `<main>`, so the join screen shipped nested main elements — invalid HTML,
+	and two "main" landmarks for a screen reader to choose between on the first screen of the app. Chrome's
+	own a11y tree showed both. The landmark belongs to the layout, which mounts it on every route; this is
+	the pane inside it, and `.join-main` stays the class every rule here (and the `:has()` selectors below)
+	already keys on.
+-->
+<div class="join-main">
 	{#if sawCodeStep}
 		<!-- Two dots, the second wider when active — the small-indicator shape the band already uses
 		     (`.dot`, sized off the spacing scale with a pill radius). Rendered ONLY once step 1 has been
@@ -408,13 +429,13 @@
 		{#if ctaReason && !submitting}
 			<p class="cta-reason" role="status" aria-live="polite">{ctaReason}</p>
 		{/if}
-		<Button size="blockLg" disabled={!ctaEnabled} onclick={onCodeStep ? continueToIdentity : join}>
+		<Button size="blockLg" disabled={!ctaEnabled} onclick={onCodeStep ? () => continueToIdentity() : join}>
 			{#if onCodeStep}
 				{#if previewLoading}Checking the code…{:else}Continue <Icon name="arrow-right" />{/if}
 			{:else if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
 		</Button>
 	</div>
-</main>
+</div>
 
 <style>
 	/*
@@ -662,10 +683,27 @@
 	 * and the group stays centred on the pair.
 	 */
 	.code-pane {
-		flex: 1;
+		/*
+		 * UNDER THE HEADER, at content height — which is the third arrangement this pane has had, so the two
+		 * it is not are worth naming.
+		 *
+		 * `flex: 1` + `justify-content: center` centred the group in ALL the free space: ~190px above the
+		 * boxes and ~190px below, content floating in the middle of nothing. Measured. Auto margins competing
+		 * with `.submit-slot`'s own put it a third of the way down, which was the same problem with a worse
+		 * distribution — the gap BELOW grew to two thirds.
+		 *
+		 * So it sits at content height directly under the step dots, `--space-4xl` away (the column's own
+		 * gap), and the whole remaining void lands in ONE place: above the docked CTA, where a form with a
+		 * bottom-docked button is supposed to have it. That is the arrangement iOS and Android both use, and
+		 * one gap at the bottom reads as spacing where two gaps read as a layout that failed.
+		 *
+		 * The pane is genuinely sparse — two dots, a label, six boxes — and none of this pretends otherwise.
+		 * The real answer is more on the screen, and the scan affordance that used to provide it was removed
+		 * by a recorded ruling, so that stays the owner's call rather than something a layout tweak reverses.
+		 */
+		flex: 0 0 auto;
 		display: flex;
 		flex-direction: column;
-		justify-content: center;
 		gap: var(--space-2xl);
 	}
 	.submit-slot {
@@ -683,12 +721,9 @@
 			flex: 0 0 auto;
 			padding-bottom: 0;
 		}
-		/* On a monitor the whole pane is already centred in the viewport (`.app-shell:has(.join-main)`
-		   above), so the column has no free space to absorb and `flex: 1` would stretch the boxes' box for
-		   nothing. Back to content height, which is what the desktop layout already assumes. */
-		.code-pane {
-			flex: 0 0 auto;
-		}
+		/* Content height already, on every width — nothing to override here now that the phone case does
+		   not stretch or float it either. Kept as a marker of where the desktop branch would go if the two
+		   ever need to differ again. */
 		.submit-slot {
 			margin-top: var(--space-sm);
 		}

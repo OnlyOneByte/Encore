@@ -1231,6 +1231,29 @@
 	 */
 	main :global([data-slot='card-content']) {
 		max-width: var(--measure-prose);
+		/*
+		 * ── THE RHYTHM: A LABEL BINDS TO ITS OWN CONTROL ──────────────────────────────────────────────
+		 *
+		 * Every row in these cards is FLAT — `<Field.Label>` and its control are siblings of one flex
+		 * column, with no element grouping them — so the card's single `--card-spacing` gap separated a
+		 * label from its control by exactly as much as it separated one group from the next. Measured on
+		 * the Party tab: 28px from "Who sings next" to its select, 36px from that select to "Kick out
+		 * after". A ratio of 0.78, where grouping needs something closer to 1:3, so the card read as five
+		 * evenly spaced items rather than two labelled controls — the proximity is doing no work.
+		 *
+		 * Fixed in the CASCADE rather than by restructuring 1,400 lines of markup into `Field.Root`
+		 * wrappers: the gap shrinks to the intra-group distance, and a label that FOLLOWS a control gets
+		 * the inter-group distance back as a margin. Keyed on `data-slot`, which is shadcn's own attribute
+		 * and survives a re-vendor where one of our class names would not (see ui/README §2).
+		 *
+		 * The sibling selector is what makes it safe: only a label with a control before it is a new group,
+		 * so the FIRST label in a card (which sits under the card's title and needs no extra space) is
+		 * untouched, and anything that is not a label keeps the tightened gap.
+		 */
+		gap: var(--space-sm);
+	}
+	main :global([data-slot='card-content'] > * + [data-slot='field-label']) {
+		margin-top: var(--space-4xl);
 	}
 
 	/* ── the scope tabs ─────────────────────────────────────────────────── */

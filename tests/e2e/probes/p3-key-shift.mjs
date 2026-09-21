@@ -748,7 +748,7 @@ try {
 		const meas2a = /** @type {TapRead} */ (await tv.evaluate(READ_TAP_SRC));
 		// pause
 		await openNowPlaying(phone);
-		await phone.clickByLabel('play/pause');
+		await phone.click(SEL.bandTransport);
 		await sleep(700);
 		const pausedEls = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 		record(
@@ -759,7 +759,7 @@ try {
 		);
 		// resume
 		await openNowPlaying(phone);
-		await phone.clickByLabel('play/pause');
+		await phone.click(SEL.bandTransport);
 		await sleep(1200);
 		const resumedEls = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 		record(

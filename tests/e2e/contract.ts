@@ -580,15 +580,41 @@ export const SEL = {
 	toolsNote: '.tools-note',
 
 	// ── transport (in the now-playing SHEET since the hero was deleted) ────
-	// The SELECTORS are unchanged — same three aria-labels, same three controls — so the only thing that
-	// moved is which file to look in. The gesture requirement changed shape with the merge: these are
-	// MOUNTED at all times now, so a click no longer needs the sheet opened first, but they are below the
-	// fold while it is collapsed, and a real tap has to land on a visible element. Pull the sheet up
-	// (`activeSnapPoint` `0.82`) before driving them; use the band's own disc (`bandTransport`) for the
-	// play/pause a flow wants without a gesture.
-	play: { role: 'button' as const, name: 'play/pause' },
+	// THREE controls in the row — Restart · Play/Pause · Skip (2026-09-18) — and only two of them are named
+	// here. All three are MOUNTED at all times but sit below the fold while the sheet is collapsed, and a real
+	// tap has to land on a visible element, so pull the sheet up before driving them. `bandTransport` needs no
+	// gesture at all.
+	/*
+	 * THE SHEET'S PLAY/PAUSE IS BACK, AND IT DELIBERATELY HAS NO SELECTOR OF ITS OWN. Recorded here because
+	 * the absence of an id used to MEAN the absence of a control, and it no longer does.
+	 *
+	 * The row was Restart + Skip for a while: two play/pause controls on one open surface about 100px apart
+	 * was the duplicate-transport report, and the disc was the one kept (visible at BOTH snap points, carries
+	 * the progress ring, sits in the thumb zone). The cost was a transport split across the sheet — disc at
+	 * the top right, its siblings at the bottom left in a different shape — reported as the controls not being
+	 * unified, and the ruling reversed: the row is a whole prev·play·next transport again.
+	 *
+	 * SO WHY NO ID. Both controls name themselves `aria-label={isPlaying ? 'Pause' : 'Play'}`, so a
+	 * `{role, name}` entry could not tell them apart, and the driver resolves `.first()` — which is the disc,
+	 * since `.band-slot` precedes `.np-fit` (pinned by phone-home-832). Every flow that wants play/pause
+	 * therefore uses `bandTransport` ('.disc') and needs no gesture first, which is strictly easier than
+	 * reaching the row's copy (pull to snap 1, then click below the fold). A second id would be a selector
+	 * nobody drives, on a control the first one already reaches.
+	 *
+	 * `SEL.play` STAYS BANNED. It named the deleted button's literal `aria-label="play/pause"`; the restored
+	 * control does not carry that label, so reviving the id would resolve against nothing while reading as
+	 * though the old flow still worked. If the row's copy ever does need driving, give it a class and a new
+	 * name scoped to the row — not this one.
+	 */
 	skip: { role: 'button' as const, name: 'skip' },
-	restart: { role: 'button' as const, name: 'restart' },
+	/*
+	 * `restart` IS CAPITALISED NOW, because the control was relabelled with its icon.
+	 *
+	 * It always called `onrestart` and its label always read "restart", but it was drawn with the `prev`
+	 * glyph — the previous-track mark, for something a rotation has no concept of. Icon, title and
+	 * accessible name now agree, and the name is sentence-cased like every other user-facing label.
+	 */
+	restart: { role: 'button' as const, name: 'Restart' },
 
 	// ── TV ────────────────────────────────────────────────────────────────
 	/*
@@ -1037,7 +1063,7 @@ export const HOOKS: Hook[] = [
 	{
 		id: 'bandOpenWired',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
-		anchor: 'onexpand={() => {',
+		anchor: 'onexpand={() =>',
 		why: "bandExpandWired's successor, and the half that makes `bandOpen` real: the button is gated on `{#if onexpand}`, so a hook on the component alone would pass while nothing passed one — which is exactly how the retired pair came to assert a control the app could not render. Deleting this wiring reds here rather than silently returning the sheet to pointer-only"
 	},
 	/*
@@ -1160,12 +1186,6 @@ export const HOOKS: Hook[] = [
 	// unchanged (same aria-labels on the same three controls); only which file to look in moved. Since the
 	// merge the sheet is mounted at all times, so these resolve and exist without a gesture — but they are
 	// below the fold until it is pulled up to `0.82`, so a tap or a measurement still needs the drag.
-	{
-		id: 'play',
-		file: 'src/lib/components/NowPlayingDrawer.svelte',
-		anchor: 'aria-label="play/pause"',
-		why: 'the flow starts playback through the real control, not a synthetic socket message'
-	},
 	{
 		id: 'skip',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',

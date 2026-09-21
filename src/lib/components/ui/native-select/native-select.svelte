@@ -63,7 +63,29 @@
 		width: 100%;
 		box-sizing: border-box;
 		appearance: none;
-		padding: 9px var(--space-xl) 9px var(--space-md);
+		/*
+		 * THE RIGHT PADDING CLEARS THE CHEVRON, which `--space-xl` (14px) did not.
+		 *
+		 * The mark above is positioned `right-2.5` (10px) at `size-4` (16px), so it occupies the band from
+		 * 10px to 26px in from the right edge — while the padding reserved 14px. Text therefore ran UNDER the
+		 * glyph for its last 12px, which on the two-up settings rows is not theoretical: measured at 390px,
+		 * "Along bottom edge" needs 139px of a 106px text box and was drawn straight through the chevron,
+		 * and "Word by word" cleared it by 5px. It read as a rendering fault rather than as a long label.
+		 *
+		 * Composed from the chevron's own geometry rather than set to a literal, so moving the mark moves the
+		 * padding with it: its inset, its size, and one `--space-xs` of breathing room.
+		 */
+		padding: 9px calc(var(--space-md) + 1rem + var(--space-xs)) 9px var(--space-md);
+		/*
+		 * And when the label is STILL too long for its column, truncate it with a mark instead of cutting a
+		 * glyph in half. A two-up row at 390px gives 106px of text box, which the longest option in two of
+		 * these lists exceeds outright — no padding can fix that, so the honest fallback is an ellipsis.
+		 * Chrome and Safari honour this on a `<select>`; Firefox clips, which is the behaviour it had
+		 * everywhere before.
+		 */
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		overflow: hidden;
 		border-radius: var(--radius-btn);
 		border: 1px solid var(--line);
 		background: var(--card2);

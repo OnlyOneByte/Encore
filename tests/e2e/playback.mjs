@@ -194,7 +194,7 @@ try {
 	// ── transport: pause must hold position, not reload to zero ────────────────
 	const before = pick(/** @type {El[]} */ (await tv.evaluate(probe)));
 	await openNowPlaying(phone);
-	await phone.clickByLabel('play/pause');
+	await phone.click(SEL.bandTransport);
 	await sleep(1200);
 	const paused = pick(/** @type {El[]} */ (await tv.evaluate(probe)));
 	check('pause actually pauses the master element', paused?.paused === true, `paused=${paused?.paused}`);
@@ -206,7 +206,7 @@ try {
 
 	await openNowPlaying(phone);
 
-	await phone.clickByLabel('play/pause');
+	await phone.click(SEL.bandTransport);
 	await sleep(2000);
 	const resumed = pick(/** @type {El[]} */ (await tv.evaluate(probe)));
 	check(

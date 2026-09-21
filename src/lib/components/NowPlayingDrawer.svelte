@@ -562,6 +562,29 @@
 
 				Nothing about the DRAG changes: `handleOnly` still restricts dragging to the handle, so the
 				body of sliders is still not a drag surface (XR-PH-15).
+
+				IT TOGGLES, because nothing else can collapse the sheet by tap. It only opened at first, on the
+				reasoning that vaul's own handle is the way back down. It is not: `use-drawer-handle.svelte.js`
+				cycles snap points on click, and at the LAST point with `dismissible={false}` it computes
+				`snapPoints[index + 1]`, which is `undefined`, and the seating watch then ignores it. Measured
+				in Chrome: two taps on the grab bar with the sheet open left its top at 636 both times. So the
+				app had one tap that opens, none that closes, and a grab bar that looks tappable and does
+				nothing at that height — a drag being the only way down is exactly the affordance a guest who
+				cannot drag does not have.
+
+				NO `expanded` PROP GOES WITH IT, and the reason is worth recording because it is not obvious.
+				The band's press label would ideally name its direction, which needs the snap state as a prop —
+				and ANY prop of `NowPlayingBand` that changes after mount re-runs the size bindings below
+				(`.band-slot`, `.np-fit`), which on the mount rung is a deliberate throw (XR-VER-03). Measured:
+				a reactive prop took three of `phone-home-832`'s mounts down; the same prop as a constant
+				passed. So the band's label is state-independent (see its own note) and this stays a plain
+				toggle. An `aria-expanded` written onto the button from an effect here would be the way to add
+				direction later — an attribute write re-renders nothing.
+
+				(The rationale lives here rather than inside the prop because a comment inside a component tag
+				is scanned as part of that tag: `ui-scoped-style-reach-913.test.ts` walks a tag to its closing
+				`>` tracking quote state, and an apostrophe in prose there flips it and swallows the rest of the
+				file — which reported five of this component's own plain-element classes as handed to a child.)
 			-->
 			<NowPlayingBand
 				title={title}
@@ -570,11 +593,10 @@
 				singerColor={singerColor}
 				progress={progress}
 				isPlaying={isPlaying}
+				canStart={canStart}
 				onsearch={onsearch}
 				ontoggleplay={ontoggleplay}
-				onexpand={() => {
-					if (activeSnapPoint !== SNAP_OPEN) activeSnapPoint = SNAP_OPEN;
-				}}
+				onexpand={() => (activeSnapPoint = activeSnapPoint === SNAP_OPEN ? SNAP_BAND : SNAP_OPEN)}
 			/>
 		</div>
 		<!--
@@ -649,20 +671,68 @@
 				<!-- Disabled when there is nothing to act on. Restart and skip need a song that is PLAYING;
 			     play additionally accepts a queue with something in it, because the server decides when
 			     "start when it is ready" becomes a start. -->
+				<!--
+				RESTART · PLAY/PAUSE · SKIP, CENTRED IN ONE ROW — a whole transport, which is what this sheet
+				had before and what this deliberately restores (ratified 2026-09-18).
+
+				The row shipped for a while as restart + skip ONLY, with play/pause living exclusively on the
+				band's disc, because two play buttons about 100px apart had been reported as duplicate
+				playback controls. They were — but the trade that bought was a transport split across the
+				surface: the two halves of one control group sat at opposite corners of the same sheet, the
+				disc at the top right of the band row and its siblings at the bottom left, in a different
+				shape (`rounded-md` icon buttons against the band's hand-rolled pills). Reported as the
+				controls not being unified. A familiar three-up transport is worth more than the absence of a
+				second glyph, so play/pause is back, in the middle, where the shape is read at a glance.
+
+				THE DISC STAYS, AND IT IS STILL THE ONE THAT SURVIVES A COLLAPSE. It is visible at BOTH snap
+				points, it carries the progress ring, and it sits in the thumb zone. Dropping it instead
+				would mean hiding it when the sheet opens — a prop of `NowPlayingBand` that changes after
+				mount, which the mount rung throws on (XR-VER-03; see the note on `expanded` above). So both
+				are on screen while the sheet is up, by decision rather than by oversight.
+
+				`canStart` STAYS ON THE DISC TOO rather than moving back here, which is the difference from
+				the arrangement this replaces. Both buttons fire the same `ontoggleplay`, so the same
+				condition belongs on both: `!hasSong && !canStart` keeps "a queue exists but nothing is
+				current, press to start" pressable from either height.
+
+				THE ACCESSIBLE NAME IS DUPLICATED ON PURPOSE, and it is the one thing to know before adding a
+				third caller. Both controls are named Play/Pause because both ARE play/pause, and the e2e
+				driver's `clickByLabel`/`clickByRole` resolve `.first()` — `.band-slot` precedes `.np-fit`, so
+				the disc is earlier in the DOM and every existing flow still drives it. No probe was re-aimed.
+
+				RESTART IS CALLED AND DRAWN AS RESTART. It always called `onrestart` and its label always said
+				"restart", but it was once drawn with the `prev` glyph — the universal previous-track mark, for
+				something this app has no concept of (a rotation has no previous).
+			-->
 				<div class="transport">
-					<Button variant="outline" size="icon" aria-label="restart" disabled={!hasSong} onclick={() => onrestart?.()}>
-						<Icon name="prev" />
+					<Button
+						variant="outline"
+						size="icon"
+						aria-label="Restart"
+						title="Play this song again from the beginning"
+						disabled={!hasSong}
+						onclick={() => onrestart?.()}
+					>
+						<Icon name="restart" />
 					</Button>
 					<Button
 						variant="iconPrimary"
 						size="icon"
-						aria-label="play/pause"
+						aria-label={isPlaying ? 'Pause' : 'Play'}
+						title={isPlaying ? 'Pause' : hasSong ? 'Resume this song' : 'Start the party'}
 						disabled={!hasSong && !canStart}
 						onclick={() => ontoggleplay?.()}
 					>
 						<Icon name={isPlaying ? 'pause' : 'play'} />
 					</Button>
-					<Button variant="outline" size="icon" aria-label="skip" disabled={!hasSong} onclick={() => onskip?.()}>
+					<Button
+						variant="outline"
+						size="icon"
+						aria-label="skip"
+						title="Skip to the next singer"
+						disabled={!hasSong}
+						onclick={() => onskip?.()}
+					>
 						<Icon name="next" />
 					</Button>
 				</div>
@@ -835,6 +905,27 @@
 		padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--space-lg));
 	}
 	/*
+	 * REDUCE MOTION FOR THE SHEET'S SLIDE, and it has to be `!important` — which is the whole reason this
+	 * rule needs a comment rather than an apology.
+	 *
+	 * vaul sets `transition: transform 0.5s cubic-bezier(0.32,0.72,0,1)` as an INLINE STYLE from JS
+	 * (`use-drawer-root.svelte.js:335`), so nothing in the cascade can reach it: an inline declaration
+	 * outranks every author rule except `!important`. It is also invisible to `motion.test.ts`, which scans
+	 * declared CSS in this repo and cannot see a style written by a dependency at runtime — so the app's
+	 * largest single movement, on every phone surface, honoured no motion preference and no guard could
+	 * say so. Measured in Chrome: 764 → 636 over half a second with Reduce Motion on.
+	 *
+	 * `transition-duration: 0s` rather than `transition: none`, so vaul's own `transitionend`-adjacent
+	 * bookkeeping still sees a transition it can complete instantly rather than an absent one. The sheet
+	 * still MOVES — it arrives, which is the point of a snap point — it just does not travel.
+	 */
+	@media (prefers-reduced-motion: reduce) {
+		:global([data-slot='drawer-content']) {
+			transition-duration: 0s !important;
+		}
+	}
+
+	/*
 	 * THE MEASURE, SHARED BY THE HEAD AND THE BODY — one rule, two selectors, and they must STAY one rule.
 	 *
 	 * `--max-w` for the same reason the band tracks it: this is bottom-docked chrome, and on a laptop a
@@ -956,9 +1047,17 @@
 		flex: 1;
 		min-width: 0;
 	}
+	/*
+	 * CENTRED, which is the half of "one transport" that CSS owns. Left-aligned, the pair read as two
+	 * loose buttons parked under the head; centred, the three read as prev·play·next — the arrangement
+	 * every phone player uses, and the reason the middle one is `iconPrimary` rather than `outline`.
+	 * The row is the only centred block in `.np-body`, deliberately: everything below it (the guiding
+	 * track, the keycaps, the range) is a labelled control that reads from the left.
+	 */
 	.transport {
 		display: flex;
 		align-items: center;
+		justify-content: center;
 		gap: var(--space-md);
 		margin-top: var(--space-md);
 	}

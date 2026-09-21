@@ -233,7 +233,16 @@
 	const libraryRows = $derived(unaccounted(library));
 </script>
 
-<PageHeader title="Find a song" icon="search" back={{ href: '/', label: 'Back to the queue' }} />
+<!--
+	NO ICON ON THE HEADER, and that is the duplicate going rather than a decoration being dropped.
+
+	The header carried `icon="search"` while the search FIELD eleven lines down carries the same magnifier
+	in `.find-mark` — two identical marks, 90px apart vertically, on a screen whose entire subject is one
+	search box. The field's is the functional one (it sits in the input's own box and says "type here"); the
+	header's was decorative, and with the title already reading "Find a song" it told nobody anything the
+	words did not.
+-->
+<PageHeader title="Find a song" back={{ href: '/', label: 'Back to the queue' }} />
 
 <main>
 	<!--
@@ -295,9 +304,12 @@
 			{/each}
 		{:else if processingRows.length === 0}
 			<!-- Nothing ready AND nothing on the way: the only state where the library is genuinely empty. -->
+			<!-- The state, then the next step — see the matching note on the home queue's empty state. The
+			     field above is the only way out of this screen, so it is what the description names. -->
 			<Empty.Root>
 				<Empty.Header>
-					<Empty.Description>No karaoke tracks yet.</Empty.Description>
+					<Empty.Title>No karaoke tracks yet.</Empty.Title>
+					<Empty.Description>Search above for a song and we'll make one.</Empty.Description>
 				</Empty.Header>
 			</Empty.Root>
 		{/if}
@@ -426,6 +438,28 @@
 		min-width: 0;
 		/* The input, not the wrapper, is the tap target. */
 		min-height: var(--tap);
+	}
+	/*
+	 * THE FOCUS RING BELONGS TO THE WHOLE FIELD, not to the bare input inside it.
+	 *
+	 * `.findbox` is a bordered, filled box holding a magnifier, the input, a spinner and a clear control —
+	 * so it IS the field as far as anyone looking at it is concerned. app.css's global
+	 * `input:focus-visible` rule drew the ring on the input alone, which measured 75→341 inside a wrapper
+	 * running 34→356: a violet rounded rect nested inside a grey one, with the magnifier stranded outside
+	 * the ring it should have been part of. It read as a field inside a field.
+	 *
+	 * So the ring moves out one level. `:focus-within` rather than `:focus-visible` on the wrapper because
+	 * a wrapper is never itself focused; the inner rule below suppresses the global so only one ring is
+	 * ever drawn. Same token, same width — this changes WHERE the indicator is, not whether there is one,
+	 * so XR-VER-12's measured floor (a >=2px outline in the resolved `--focus`) still holds, now on a box
+	 * that contains everything it is indicating.
+	 */
+	.findbox:has(input:focus-visible) {
+		outline: 2px solid var(--focus);
+		outline-offset: 2px;
+	}
+	.findbox input:focus-visible {
+		outline: none;
 	}
 	.find-mark {
 		display: grid;

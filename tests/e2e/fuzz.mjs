@@ -1159,6 +1159,24 @@ async function driveInput(input, world) {
 	 * on a disabled button does precisely nothing and throws nothing. Recording "clicked" for one of
 	 * those would put a beat in the reproduction recipe that never happened, so the state is read first.
 	 */
+	/*
+	 * The band's disc, addressed by CLASS rather than by label — it is the app's only play/pause since the
+	 * sheet's duplicate was deleted, and its accessible name alternates ("Play" / "Pause"), so there is no
+	 * fixed label to ask for. Same shape as `tapTransport` below: report a no-op rather than clicking a
+	 * control that is absent or disabled, because a fuzz step that silently does nothing is indistinguishable
+	 * from one that worked.
+	 */
+	async function tapDisc() {
+		const state = await page.evaluate(`(() => {
+			const el = document.querySelector(${JSON.stringify(SEL.bandTransport)});
+			return el ? { present: true, disabled: !!el.disabled, name: el.getAttribute('aria-label') } : { present: false, disabled: false };
+		})()`);
+		if (!state.present) return { who, input, detail: 'no-op (no band transport rendered)', noop: true };
+		if (state.disabled) return { who, input, detail: 'no-op (band transport is disabled)', noop: true };
+		await page.click(SEL.bandTransport);
+		return { who, input, detail: `clicked the band transport (${state.name})` };
+	}
+
 	/** @param {string} label */
 	async function tapTransport(label) {
 		const state = await page.evaluate(`(() => {
@@ -1177,11 +1195,11 @@ async function driveInput(input, world) {
 			// already paused is a no-op rather than a second command. Recorded as such: a replay must
 			// see the same sequence, including the beats that did nothing.
 			if (!playing) return { who, input, detail: 'no-op (already paused)', noop: true };
-			return await tapTransport(SEL.play.name);
+			return await tapDisc();
 		}
 		case 'resume': {
 			if (playing) return { who, input, detail: 'no-op (already playing)', noop: true };
-			return await tapTransport(SEL.play.name);
+			return await tapDisc();
 		}
 		case 'skip':
 			return await tapTransport(SEL.skip.name);

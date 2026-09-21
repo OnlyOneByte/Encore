@@ -34,6 +34,19 @@ export const ICON_PATHS = {
 	play: '<polygon points="6 3 20 12 6 21 6 3"/>',
 	pause: '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
 	next: '<polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/>',
+	/*
+	 * RESTART — a counter-clockwise arrow, NOT `prev`.
+	 *
+	 * The drawer's first transport control calls `onrestart` and always has: it takes the current song back
+	 * to zero, and there is no previous-track concept in a rotation. It was drawn with `prev` (the
+	 * skip-back bar-and-triangle), which is the universal mark for "previous item", so the control looked
+	 * like something the app cannot do — reported as exactly that. A circular arrow is the conventional
+	 * restart glyph and says the true thing.
+	 *
+	 * STROKE, not fill, so it is deliberately absent from SOLID_ICONS below: the three solid transport
+	 * marks are a family of directional wedges, and a rotation arrow is a path, not a wedge.
+	 */
+	restart: '<path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.36 2.64L3 8"/><path d="M3 3v5h5"/>',
 
 	// ── queue reorder + dismissal ───────────────────────────────────────────
 	'arrow-up': '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',

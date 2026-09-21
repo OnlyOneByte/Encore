@@ -24,8 +24,20 @@
 		value: string;
 		/** Accessible name for the whole six-box group. */
 		label?: string;
-		/** Fired when all six are present (e.g. to submit on the last keystroke). */
-		oncomplete?: () => void;
+		/**
+		 * Fired when all six are present (e.g. to submit on the last keystroke).
+		 *
+		 * IT CARRIES THE CODE, and that argument is a defect fix rather than a convenience. `value` reaches
+		 * the parent through an `$effect` below, which runs on the NEXT tick — while every call to this
+		 * fires SYNCHRONOUSLY from inside a `beforeinput` / `paste` / `keydown` handler. So a parent that
+		 * read its own binding here saw the code one character short: JoinLanding's `continueToIdentity()`
+		 * checked `typedCode.length === CODE_LENGTH`, found 5, and returned silently. Typing the sixth
+		 * character did nothing and pasting a whole code did nothing — measured in a browser, both paths.
+		 *
+		 * Handing the string to the callback removes the race instead of narrowing it: there is no tick
+		 * between assembling the code and reporting it.
+		 */
+		oncomplete?: (code: string) => void;
 	}
 	let { value = $bindable(''), label = 'Room code', oncomplete }: Props = $props();
 
@@ -48,6 +60,21 @@
 	const filled = $derived(chars.filter((c) => c !== '').length);
 	const complete = $derived(filled === CODE_LENGTH);
 
+	/**
+	 * What the code WILL be once box `i` holds `ch` — computed, not read back.
+	 *
+	 * The insert path needs to know whether this keystroke completes the code, in the same synchronous
+	 * turn that handles it. Reading `complete` there is a race with nothing to win: `chars` is written
+	 * one line up, and a `$derived` read after a write in the same turn is only correct if nothing else
+	 * has to settle first — which is exactly the assumption that made the sixth keystroke inert. This
+	 * projects the new value instead of asking for it.
+	 */
+	function withChar(i: number, ch: string): string {
+		const next = [...chars];
+		next[i] = ch;
+		return next.join('');
+	}
+
 	function focusBox(i: number) {
 		const el = inputs[Math.max(0, Math.min(CODE_LENGTH - 1, i))];
 		el?.focus();
@@ -64,9 +91,10 @@
 		if (e.data.length === 1 && isRoomCodeChar(e.data)) {
 			e.preventDefault();
 			rejection = '';
+			const assembled = withChar(i, up);
 			setChar(i, up);
 			if (i < CODE_LENGTH - 1) focusBox(i + 1);
-			else if (complete) oncomplete?.();
+			else if (assembled.length === CODE_LENGTH) oncomplete?.(assembled);
 			return;
 		}
 		// Anything else — an excluded letter, a digit we bar, a symbol, or a multi-char composition — is
@@ -102,7 +130,7 @@
 				focusBox(i + 1);
 				break;
 			case 'Enter':
-				if (complete) oncomplete?.();
+				if (complete) oncomplete?.(chars.join(''));
 				break;
 		}
 	}
@@ -128,7 +156,7 @@
 			focusBox(cleaned.length >= CODE_LENGTH ? CODE_LENGTH - 1 : cleaned.length);
 		}
 		rejection = '';
-		if (next.every((c) => c !== '')) oncomplete?.();
+		if (next.every((c) => c !== '')) oncomplete?.(next.join(''));
 	}
 </script>
 
@@ -137,6 +165,10 @@
 <div class="code-entry" role="group" aria-labelledby="code-entry-label">
 	<span id="code-entry-label" class="code-label">{label}</span>
 	<div class="segments">
+		<!-- `name` on each box is what stops Chrome's issues panel reporting "a form field element should
+		     have an id or name attribute" six times on the first screen of the app. `autocomplete="off"`
+		     already declines autofill (a one-character box has nothing to fill), so the name is purely the
+		     identity the platform asks for. -->
 		{#each chars as ch, i (i)}
 			<input
 				bind:this={inputs[i]}
@@ -147,6 +179,7 @@
 				autocomplete="off"
 				spellcheck="false"
 				maxlength="1"
+				name={`code-${i + 1}`}
 				aria-label={`Character ${i + 1} of ${CODE_LENGTH}`}
 				onbeforeinput={(e) => onBeforeInput(e as InputEvent, i)}
 				onkeydown={(e) => onKeyDown(e, i)}
