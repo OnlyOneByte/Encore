@@ -31,13 +31,22 @@
 		/** 0..1, or null when the duration is unknown. Never coerce null to 0 — see above. */
 		progress?: number | null;
 		isPlaying?: boolean;
+		/**
+		 * A queue exists but nothing is current — "start when ready" is a real intent, so the disc must be
+		 * live for it even though there is no song yet.
+		 *
+		 * THIS ARRIVED WITH THE SHEET'S DUPLICATE PLAY/PAUSE BEING DELETED. That button was the only control
+		 * carrying `!hasSong && !canStart`, so removing it without this would have taken "start the party
+		 * from the phone" with it.
+		 */
+		canStart?: boolean;
 		/** Opening the find surface. The band becomes the search field once it is open. */
 		onsearch?: () => void;
 		ontoggleplay?: () => void;
 		/**
-		 * Raising the sheet. When present, the band's own metadata block becomes a real button that does
-		 * it — see the markup. Absent (the /components gallery, which renders five bands with no drawer)
-		 * leaves it inert text, because a labelled control that swallows its press is worse than none.
+		 * Raising or lowering the sheet. When present, the band's own metadata block becomes a real button
+		 * that does it — see the markup. Absent (the /components gallery, which renders five bands with no
+		 * drawer) leaves it inert text, because a labelled control that swallows its press is worse than none.
 		 */
 		onexpand?: () => void;
 	}
@@ -49,6 +58,7 @@
 		artist = null,
 		progress = null,
 		isPlaying = false,
+		canStart = false,
 		onsearch,
 		ontoggleplay,
 		onexpand
@@ -94,7 +104,21 @@
 	 * that are not in it, which is the failure that criterion describes — and it would also stop a voice
 	 * user saying "tap Sweet Caroline".
 	 */
-	const expandLabel = $derived(hasSong ? `${title} — open the player` : 'Nothing playing — open the player');
+	/*
+	 * NOT DIRECTIONAL, and that is a constraint rather than a preference.
+	 *
+	 * The press TOGGLES the sheet, so "open the player" is wrong half the time — and the obvious fix, an
+	 * `expanded` prop the drawer feeds from its snap point, cannot be had: ANY prop of this component that
+	 * changes after mount re-runs the size bindings in the drawer's `.band-slot` / `.np-fit`, and on the
+	 * mount rung a geometry read is a throw by design (XR-VER-03). Measured: a reactive `expanded` took
+	 * three of `phone-home-832`'s mounts down, a constant one passed. So the name says WHAT this is rather
+	 * than which way it will move, which is true in both states and is what a mini-player's info row is
+	 * called anyway. The visible text is contained in it either way (SC 2.5.3).
+	 *
+	 * If a direction is ever wanted here, the way in is `aria-expanded` written by the drawer onto this
+	 * button's DOM node from an effect — an attribute write does not re-render the component — not a prop.
+	 */
+	const expandLabel = $derived(hasSong ? `${title} — now playing` : 'Nothing playing');
 </script>
 
 <!--
@@ -158,7 +182,7 @@
 				class="disc"
 				type="button"
 				aria-label={isPlaying ? 'Pause' : 'Play'}
-				disabled={!hasSong}
+				disabled={!hasSong && !canStart}
 				onclick={() => ontoggleplay?.()}
 			>
 				<span class="art"></span>

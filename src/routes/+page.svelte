@@ -625,9 +625,19 @@
 			<p class="reorder-note">{reorderNote}</p>
 		{/if}
 		{#if queued.length === 0}
+			<!--
+				THE STATE, THEN THE NEXT STEP. This was `Nothing queued.` alone: one dim line on an otherwise
+				blank screen, with the only way to act on it being an icon-only magnifier in the band 700px
+				below. A guest who has just joined has no idea the band is where songs come from.
+				`Empty.Title` carries the state and `Empty.Description` names the control, which is the
+				component's own grammar and the same register the TV already uses ("search on your phone and
+				pick a song") — an instruction rather than encouragement, which is the line this codebase
+				deliberately does not cross.
+			-->
 			<Empty.Root>
 				<Empty.Header>
-					<Empty.Description>Nothing queued.</Empty.Description>
+					<Empty.Title>Nothing queued.</Empty.Title>
+					<Empty.Description>Tap the magnifier below to pick the first song.</Empty.Description>
 				</Empty.Header>
 			</Empty.Root>
 		{:else}

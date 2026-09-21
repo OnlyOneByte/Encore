@@ -198,7 +198,7 @@ async function ensurePlaying(tv, phone, attempts = 4) {
 		lastReport = await kickPlayback(tv);
 		const a1 = await positionAdvancing(tv);
 		if (a1.advanced) return { ok: true, report: lastReport, a1 };
-		await phone.clickByLabel(SEL.play.name);
+		await phone.click(SEL.bandTransport);
 		await sleep(600);
 		lastReport = await kickPlayback(tv);
 		const a2 = await positionAdvancing(tv);

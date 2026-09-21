@@ -277,8 +277,27 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	// …and the transport is OUTSIDE that gate, in the drawer's own body, with all three controls.
 	expect(toolsBody).not.toContain('class="transport"');
 	expect(DRAWER.indexOf('class="np-body"')).toBeLessThan(DRAWER.indexOf('<div class="transport">'));
-	for (const label of ['restart', 'play/pause', 'skip'])
+	/*
+	 * THREE controls in the row: Restart · Play/Pause · Skip (ratified 2026-09-18). The row was two for a
+	 * while, with play/pause only on the band's disc, because two play buttons on one open surface had been
+	 * reported as duplicates — and the cost was a transport split between the top-right of the band row and
+	 * the bottom-left of the body, in two different shapes. The ruling went the other way: a whole
+	 * prev·play·next transport, and the disc stays for the collapsed height.
+	 *
+	 * THE PLAY/PAUSE IS MATCHED AS AN EXPRESSION, not as a literal `aria-label="…"`, because that is how it
+	 * names itself — and because the arm this replaces asserted the absence of `aria-label="play/pause"`, the
+	 * DELETED button's literal label, which would have gone on passing with the restored button in place. An
+	 * assertion that cannot fail for the thing it is about is worse than no assertion.
+	 */
+	for (const label of ['Restart', 'skip'])
 		expect(DRAWER, `the transport lost its \`${label}\` control`).toContain(`aria-label="${label}"`);
+	expect(DRAWER, 'the transport row lost its play/pause').toMatch(/aria-label=\{isPlaying \? 'Pause' : 'Play'\}/);
+	expect(DRAWER, 'and the play/pause must sit BETWEEN restart and skip, not beside them').toMatch(
+		/aria-label="Restart"[\s\S]*aria-label=\{isPlaying \? 'Pause' : 'Play'\}[\s\S]*aria-label="skip"/
+	);
+	// Centred, which is the half of "one transport" that CSS owns — left-aligned it reads as loose buttons.
+	expect(DRAWER, 'the transport row must be centred').toMatch(/\.transport\s*\{[^}]*justify-content:\s*center/);
+	expect(DRAWER, 'and the band it composes carries the one that survives a collapse').toContain('<NowPlayingBand');
 
 	// (3) XR-PH-15, at the address the drawer answers it: dragging restricted to the handle…
 	expect(DRAWER).toMatch(/<Drawer\.Root\b[^>]*\bhandleOnly\b/);
@@ -699,7 +718,12 @@ test('the route no longer declares the transport styles the drawer now owns', ()
 	 * than the number — read off the real production file so a pure deletion cannot pass unnoticed.
 	 */
 	const DRAWER_SRC = read('src/lib/components/NowPlayingDrawer.svelte');
-	expect(DRAWER_SRC).toContain('aria-label="play/pause"');
+	/*
+	 * The transport the route no longer owns is Restart + Skip now; the sheet's play/pause was deleted when
+	 * the band's disc became the app's only one. Asserting the deleted label here would pin the duplicate.
+	 */
+	expect(DRAWER_SRC).toContain('aria-label="Restart"');
+	expect(DRAWER_SRC).toContain('aria-label="skip"');
 	/*
 	 * RE-POINTED AT THE COMMENT-STRIPPED SOURCE (§5), and this one is a false positive rather than a moved
 	 * claim. `44px` is an assertion about a DECLARATION — a control sized by the number instead of by

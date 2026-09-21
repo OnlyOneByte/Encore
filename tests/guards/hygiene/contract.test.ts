@@ -522,7 +522,7 @@ test('the band pull handle is gone, and the expand claim came back as a real but
 	// A name a screen reader can read, and one that CONTAINS the visible text (SC 2.5.3): the label
 	// interpolates the title rather than replacing it with words that are not on screen.
 	expect(band, 'the expand button must carry an accessible name').toMatch(/aria-label={expandLabel}/);
-	expect(band, 'and that name must contain the visible title').toMatch(/expandLabel\s*=\s*\$derived\(/);
+	expect(band, 'and that name must contain the visible title').toMatch(/expandLabel\s*=\s*\$derived(\.by)?\(/);
 
 	// ...and SOMETHING hands it one. The inverse of what this test used to assert, and the arm that makes
 	// the rest non-vacuous: without a call site the button cannot render, however well it is declared.

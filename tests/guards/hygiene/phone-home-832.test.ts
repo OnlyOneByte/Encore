@@ -377,22 +377,56 @@ test('an unknown song length hides the progress row rather than pinning a bar at
 test('the transport is disabled when there is nothing for it to act on', () => {
 	const btn = (root: HTMLElement, label: string) =>
 		root.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement;
+	/*
+	 * THERE ARE TWO PLAY/PAUSE CONTROLS, and this arm reads BOTH — which is the change of 2026-09-18.
+	 *
+	 * The row was Restart + Skip for a while, with play/pause only on the band's disc, because two play
+	 * buttons on one open surface about 100px apart had been reported as duplicate controls. What that cost
+	 * was a transport split across the sheet: the disc at the top right of the band row, its siblings at the
+	 * bottom left in a different shape. Reported as the controls not being unified, and the ruling went the
+	 * other way — the row is a whole prev·play·next transport again and the disc stays.
+	 *
+	 * BOTH ARE ADDRESSED BY SCOPE, not by name, and that is forced rather than preferred: each names itself
+	 * `aria-label={isPlaying ? 'Pause' : 'Play'}`, so a bare name lookup cannot tell them apart and
+	 * `querySelector` would silently answer with whichever comes first in the tree (the disc — `.band-slot`
+	 * precedes `.np-fit`). That first-match ordering is itself relied upon by the e2e driver, and the arm
+	 * below this one pins it.
+	 *
+	 * `canStart` IS ON BOTH, which is the substantive claim here. Both fire the same `ontoggleplay`, so the
+	 * "a queue exists but nothing is current, press to start" case must be pressable from either — and it is
+	 * the thing a future deletion of one button would quietly drop, exactly as the first version of this row
+	 * did when it moved `canStart` to the disc.
+	 */
+	const disc = (root: HTMLElement) => root.querySelector('.disc') as HTMLButtonElement;
+	const rowPlay = (root: HTMLElement) =>
+		root.querySelector(
+			'.transport button[aria-label="Play"], .transport button[aria-label="Pause"]'
+		) as HTMLButtonElement | null;
 
 	const empty = openDrawer(IDLE);
-	expect(btn(empty, 'restart').disabled).toBe(true);
+	expect(btn(empty, 'Restart').disabled).toBe(true);
 	expect(btn(empty, 'skip').disabled).toBe(true);
-	expect(btn(empty, 'play/pause').disabled).toBe(true);
+	expect(disc(empty).disabled).toBe(true);
+	expect(rowPlay(empty), 'the transport row lost its play/pause').not.toBeNull();
+	expect(rowPlay(empty)!.disabled).toBe(true);
 
 	// …but play stays live when a queue is waiting to start: "start when it is ready" is a real intent.
+	// BOTH controls, or the intent is only half reachable.
 	dropDrawer();
 	const waiting = openDrawer({ ...IDLE, canStart: true });
-	expect(btn(waiting, 'play/pause').disabled).toBe(false);
+	expect(disc(waiting).disabled).toBe(false);
+	expect(rowPlay(waiting)!.disabled).toBe(false);
 	expect(btn(waiting, 'skip').disabled).toBe(true);
 
 	dropDrawer();
 	const playing = openDrawer(PLAYING);
-	expect(btn(playing, 'restart').disabled).toBe(false);
+	expect(btn(playing, 'Restart').disabled).toBe(false);
 	expect(btn(playing, 'skip').disabled).toBe(false);
+	expect(disc(playing).disabled).toBe(false);
+	expect(rowPlay(playing)!.disabled).toBe(false);
+	// The mark follows the state on both, so neither can be left drawing "play" over a playing song.
+	expect(rowPlay(playing)!.getAttribute('aria-label')).toBe('Pause');
+	expect(disc(playing).getAttribute('aria-label')).toBe('Pause');
 });
 
 /*
@@ -546,7 +580,25 @@ test('the band row is the sheet itself, and the body stays mounted at the collap
 		collapsed.querySelector('.band-slot')!.compareDocumentPosition(head!) & Node.DOCUMENT_POSITION_FOLLOWING
 	).toBeTruthy();
 	expect(count(collapsed, '.tools-body')).toBe(1);
-	expect(count(collapsed, 'button[aria-label="play/pause"]')).toBe(1);
+	/*
+	 * TWO PLAY/PAUSE CONTROLS, AND THE DISC IS FIRST — which is the invariant the whole arrangement rests on
+	 * since the row got its play/pause back (2026-09-18).
+	 *
+	 * The e2e driver resolves `clickByLabel` / `clickByRole` with `.first()`, and both controls carry the same
+	 * alternating name, so DOM ORDER is what decides which one every existing flow drives. `.band-slot`
+	 * precedes `.np-fit`, so it is the disc — the one that needs no gesture, because it is on screen at both
+	 * snap points. Insert a row above the band slot and that silently flips to a control below the fold, which
+	 * a real tap cannot reach; the whitelist arm above stops the insertion and this states why it matters.
+	 *
+	 * The old form of this arm asserted `aria-label="play/pause"` matched nothing, which was the DELETED
+	 * button's literal label. It would have kept passing through this change — the restored button names itself
+	 * from an expression — so it is replaced rather than adjusted.
+	 */
+	const plays = [...collapsed.querySelectorAll('button[aria-label="Play"], button[aria-label="Pause"]')];
+	expect(plays.length, 'expected the band disc and the transport row to each carry one').toBe(2);
+	expect(plays[0].classList.contains('disc'), 'the band disc must be the first play/pause in the tree').toBe(true);
+	expect(count(collapsed, '.disc')).toBe(1);
+	expect(count(collapsed, '.transport button')).toBe(3); // Restart + Play/Pause + Skip
 
 	// SAME TREE AT EITHER HEIGHT. Asserted, not assumed: it is what makes every other arm in this file
 	// free to mount at one snap point and say nothing about the other, and it is the premise of the

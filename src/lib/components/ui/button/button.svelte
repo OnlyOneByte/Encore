@@ -112,7 +112,23 @@
 				 * badge already uses, so the button agrees with the chip beside it.
 				 */
 				iconReady: 'bg-[var(--card2)] border-[var(--ok)] text-[var(--ok)]',
-				default: 'bg-primary text-primary-foreground hover:bg-primary/80',
+				/*
+				 * DISABLED IS A SURFACE SWAP, NOT A SUBTREE OPACITY — and that is Encore's rule, not a
+				 * preference. The base keeps shadcn's `disabled:opacity-50`, which composites BOTH the fill
+				 * and its ink against the page: measured on the join CTA (the first control a guest sees, and
+				 * it starts disabled) the painted pair was #3F307C under #9F97BE — a label at 4.0:1, under
+				 * AA, on the app's primary action. `NowPlayingBand`'s `.disc:disabled` states the rule this
+				 * breaks: "Unavailable is a SURFACE change, never a subtree opacity: XR-PH-03 and
+				 * layout/phone-inventory.test.ts both reject dimming a subtree, because compositing ink
+				 * against the page at 45% is what quietly drops it under 4.5:1."
+				 *
+				 * `iconPrimary` above already did this correctly, which is what made the gap invisible: the
+				 * variant Encore wrote was right and the variant it inherited was not. So this swaps to the
+				 * same inert pair — `--card2` under `--ink-dim`, 4.9:1 — and cancels the inherited opacity
+				 * with `disabled:opacity-100` so the two rules cannot both apply.
+				 */
+				default:
+					'bg-primary text-primary-foreground hover:bg-primary/80 disabled:bg-[var(--card2)] disabled:text-[var(--ink-dim)] disabled:opacity-100',
 				outline:
 					'border-border bg-background shadow-xs hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
 				secondary:

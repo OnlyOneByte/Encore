@@ -7,6 +7,12 @@
   1. The thumb is 28px on a 6px track, not `size-4` on `h-1.5`. Those numbers are the incumbent's, and
      the old CSS carried a comment about WebKit anchoring a 28px thumb to the track top — a bug that
      stops existing here, because the thumb is a positioned element rather than a pseudo-element.
+
+     ITS SHADOW IS THE GUIDING THUMB'S, not `--shadow`. `--shadow` is `0 8px 30px rgba(0,0,0,.45)` — a
+     panel shadow, sized for a card — and on a 28px control a 30px blur with an 8px offset reads as a
+     smudge under the thumb rather than as elevation: on /settings it painted a soft halo wider than the
+     control itself. The smaller thumb beside it already used `0 2px 8px rgba(0,0,0,.5)` for exactly this
+     reason, so the two now agree and the pair reads as one family at two sizes.
   2. The root keeps `min-height: var(--tap)`. A 6px track is not a 44px target; the old rule got there
      with `height: var(--tap)` on the input and this does the same, which is what touch-targets.test.ts
      reads. `touch-none` stays: #836's drag must not be re-read as a page scroll.
@@ -89,7 +95,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 					'rounded-full block shrink-0 select-none disabled:pointer-events-none disabled:opacity-50',
 					variant === 'guiding'
 						? 'size-[22px] border-2 border-[var(--accent)] bg-[var(--ink)] shadow-[0_2px_8px_rgba(0,0,0,0.5)] data-disabled:border-[var(--line-strong)] data-disabled:bg-[var(--ink-dim)]'
-						: 'size-[28px] border-[3px] border-[var(--ink)] bg-[var(--accent)] shadow-[var(--shadow)]'
+						: 'size-[28px] border-[3px] border-[var(--ink)] bg-[var(--accent)] shadow-[0_2px_8px_rgba(0,0,0,0.5)]'
 				)}
 			/>
 		{/each}

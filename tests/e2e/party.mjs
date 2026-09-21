@@ -330,7 +330,7 @@ try {
 
 		// ── the TV reacts ────────────────────────────────────────────────────
 		await openNowPlaying(maya);
-		await maya.clickByLabel('play/pause');
+		await maya.click(SEL.bandTransport);
 		await sleep(1800);
 		const playing = (await tv.count(SEL.lowerThird)) === 1;
 		if (playing) {

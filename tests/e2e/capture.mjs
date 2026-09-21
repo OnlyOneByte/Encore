@@ -203,7 +203,7 @@ async function ensurePlaying(tv, phone, { attempts = 3 } = {}) {
 	for (let i = 0; i < attempts; i++) {
 		await kickPlayback(tv);
 		if (await positionAdvancing(tv)) return true;
-		await phone.clickByLabel(SEL.play.name);
+		await phone.click(SEL.bandTransport);
 		await sleep(600);
 		await kickPlayback(tv);
 		if (await positionAdvancing(tv)) return true;
@@ -344,7 +344,7 @@ try {
 			// with ArrowUp), and the hero is on home — which is also where the queue rows above render.
 			await returnHomeFromBrowse(maya);
 			await sleep(400);
-			await maya.clickByLabel(SEL.play.name);
+			await maya.click(SEL.bandTransport);
 			/*
 			 * The song-intro card lives in the gap between "the player is ready" and "the song is
 			 * playing", so it has to be caught here — before the position check below, which by
