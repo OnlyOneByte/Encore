@@ -1,24 +1,39 @@
-// The reorder MODE, as pure functions (XR-PH-17 … XR-PH-20, issue an earlier change; drag rewired to the whole
-// queue in an earlier change — the drag half of an earlier change Q4-A).
+// Reordering the queue, as pure functions (XR-PH-17 … XR-PH-20).
 //
-// WHY A MODE AT ALL. Even under `move-to-index` (a global slot, src/lib/contract/core/ops.ts:21),
-// a guest's picks are NOT adjacent in the flat list, and now the drag can target ANY position — so the
-// list still cannot imply the legal positions by proximity. The mode DRAWS one slot per queued
-// position so the drag has an explicit, hit-testable target for every place a song can land.
+// ── FROM A MODE WITH DRAWN SLOTS TO A LIVE SORT (2026-09-21) ──────────────────────────────────────
 //
-// WHAT an earlier change CHANGED. The op the drag commits moved from `move` (an index into the singer's OWN queued
-// picks, which cannot cross singers) to `move-to-index` (a global queued index, gated server-side by
-// `queue:reorder-any`, hub.ts:225). So the index space these functions speak widened from "the guest's
-// own picks" to "the whole queued list": the grip renders on ANY queued row, the slots span the whole
-// queue, and a drop commits a global slot. The a11y CONTRACT is unchanged — grip only where a reorder
-// is real, one labelled slot per legal position, a release off a legal slot commits NOTHING, and the
-// mode states why it closed — only its index space is wider.
+// This file used to serve a MODE: a press on the grip opened it, the page drew one labelled drop target
+// per queued position, a release over a target committed and a release anywhere else committed nothing,
+// and a bar offered Done/Cancel. Its reasoning was sound for the op it was written against — under
+// `move`, a guest's picks were not adjacent in the flat list, so the list genuinely could not imply the
+// legal positions by proximity and the mode had to draw them.
 //
-// WHY THE LOGIC IS HERE AND NOT IN THE COMPONENT. XR-PH-17's and XR-PH-18's acceptance are claims
-// about a predicate and a count, and `bunfig.toml` cannot mount a component that imports `$app`
-// (see lib/tv/wake-lock.test.ts:18-27, restated as XR-PH-21). A predicate extracted into a real
-// module is testable against the code the page actually calls; a predicate inlined in the template
-// can only be tested by reconstructing it in the test, which pins nothing.
+// TWO THINGS MADE IT THE WRONG SHAPE. The op widened to `move-to-index` (a GLOBAL queued index; hub.ts
+// gates a non-owner entry on `queue:reorder-any`), so every position became legal and "draw the legal
+// ones" stopped distinguishing anything — the slots were one per row, which is what the list already
+// implies. And it was reported on sight: four controls per row plus a bar plus a target between every
+// pair of rows, to move one song one place.
+//
+// SO THE DRAG IS A LIVE SORT. The row follows the finger, the rows it passes shift out of its way, and
+// the release commits where it visibly is. No mode to open, nothing to draw, nothing to cancel — the
+// gesture IS the transaction.
+//
+// XR-PH-18'S SUBSTANCE SURVIVES, which is the part that mattered: "a release cannot commit somewhere the
+// guest did not choose." It was satisfied by declining a release outside a drawn target; it is now
+// satisfied by the target being WHAT THE GUEST CAN SEE — `liveSortTarget` is the same arithmetic that
+// positions the rows on screen, so the committed index and the rendered order cannot disagree.
+//
+// XR-PH-20 IS A CONFORMANCE ROW (SC 2.5.7 / 2.1.1) AND IS NOT WEAKENED. The up/down buttons are gone —
+// two 44px controls per row, which is what the report was about — and the non-drag path moved ONTO THE
+// GRIP: it is a real button, so focus it and Arrow Up/Down move the row one place each, committing
+// immediately. Every ordering reachable by dragging is reachable that way, it costs no layout, and it
+// covers keyboard users as the arrows did. `keyboardMoveTarget` is that path's whole logic.
+//
+// WHY THE LOGIC IS HERE AND NOT IN THE COMPONENT. XR-PH-17's and XR-PH-18's acceptance are claims about a
+// predicate and an index, and `bunfig.toml` cannot mount a component that imports `$app` (see
+// lib/tv/wake-lock.test.ts:18-27, restated as XR-PH-21). A predicate extracted into a real module is
+// testable against the code the page actually calls; one inlined in a template can only be tested by
+// reconstructing it, which pins nothing.
 
 import type { EntryStatus } from '$lib/contract';
 
@@ -37,7 +52,8 @@ import type { EntryStatus } from '$lib/contract';
  * any queued row can be dragged to any global slot (the server gates a non-owner entry on
  * `queue:reorder-any`), so the grip is legitimate on every queued row. The regression QueueRow.svelte
  * once recorded (a grip that was the SOLE affordance on another guest's row) does not return: the row
- * still carries its up/down move buttons, so the grip is an addition, never the only control.
+ * still carries a remove button, and the grip itself IS the non-drag path (Arrow Up/Down while focused),
+ * so it never promises something the row cannot do.
  *
  * (The `!ownPicksPinned` clause was removed with pinning in an earlier change step 3: with no durable pin there is
  * nothing left to re-seat a moved row, so the clause was constant-true and its predicate dead.)
@@ -46,17 +62,7 @@ export function gripVisible(opts: { queuedCount: number; reorderMeaningful: bool
 	return opts.queuedCount > 1 && opts.reorderMeaningful;
 }
 
-/** A legal drop position: one per queued entry, in the WHOLE queued index space. */
-export interface Slot {
-	/** The global queued index this slot commits — the `toIdx` `move-to-index` uses. */
-	index: number;
-	/** The ordinal this slot represents in the queue, for the accessible name. */
-	ordinal: string;
-	/** The accessible name XR-PH-18 requires the target to carry. */
-	label: string;
-}
-
-/** "1st", "2nd", "3rd", "4th" … English ordinals for the slot labels. */
+/** "1st", "2nd", "3rd", "4th" … English ordinals, for the announcements the keyboard path makes. */
 export function ordinal(n: number): string {
 	const rem100 = n % 100;
 	if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
@@ -73,41 +79,84 @@ export function ordinal(n: number): string {
 }
 
 /**
- * XR-PH-18 — the legal slots, one per position in the WHOLE queued list.
+ * XR-PH-18 — where the dragged row currently IS, as a queued index.
  *
- * The count is `queuedCount`, the length of the queued list the page renders. Under `move-to-index`
- * every position is a legal target, so a drop can land a song anywhere in the queue — which is the
- * whole point of the drag half of an earlier change Q4-A. `assignSeqs` re-derives `rotationSeq` on every mutation,
- * so the flat list moves underneath an open mode; the slot COUNT tracks the queued length, and
- * modeInvalidation closes the mode when the moving song itself leaves or starts playing (XR-PH-19).
+ * THE ONE ARITHMETIC, READ TWICE: once to place the rows on screen and once to commit on release. That is
+ * what replaced the drawn drop targets, and it is a stronger guarantee rather than a looser one — the old
+ * mode could in principle render a target the release resolved differently; here "what the guest sees" and
+ * "what is committed" are the same expression, so they cannot disagree.
+ *
+ * `rowHeightPx` is ONE height, not a table. Queued rows are uniform by construction (a processing card is
+ * a different component and is not draggable), and a table of measured heights was the previous design's
+ * recorded hazard: rows change height while a gesture is in flight — a byline gains an `away` badge,
+ * another guest queues — and a cached table then points at the wrong position. One height, re-read at
+ * press time, cannot drift that way.
+ *
+ * ROUNDS TO NEAREST rather than truncating, so a row is displaced once the finger has travelled half a
+ * row — the point at which the gap on screen has visibly opened. Truncating would need a full row of
+ * travel and the list would lag the finger by a position all the way down.
+ *
+ * CLAMPED TO THE LIST, which is the one place clamping is right: a finger can leave the list in either
+ * direction, and the nearest end is unambiguously what the guest is aiming at. That is not the "commit
+ * somewhere unchosen" case XR-PH-18 is about — the row is visibly sitting there when they let go.
  */
-export function queueSlots(queuedCount: number): Slot[] {
-	const out: Slot[] = [];
-	for (let i = 0; i < queuedCount; i++) {
-		const ord = ordinal(i + 1);
-		out.push({ index: i, ordinal: ord, label: `Move to ${ord} in queue` });
-	}
-	return out;
+export function liveSortTarget(opts: {
+	fromIndex: number;
+	offsetPx: number;
+	rowHeightPx: number;
+	count: number;
+}): number {
+	const { fromIndex, offsetPx, rowHeightPx, count } = opts;
+	if (count <= 0) return 0;
+	// A zero or negative height makes the shift meaningless; treat it as "no movement" rather than
+	// dividing by it. Heights come from a real render, but a detached node measures 0.
+	if (!(rowHeightPx > 0)) return clampIndex(fromIndex, count);
+	return clampIndex(fromIndex + Math.round(offsetPx / rowHeightPx), count);
 }
 
 /**
- * XR-PH-18 — a release that is not over a legal slot commits NOTHING.
+ * XR-PH-20 — the non-drag path, as one step of the same reorder.
  *
- * Returned as a nullable target rather than a clamp on purpose. `moveToIndex` clamps an out-of-range
- * `toIdx` into the queued range, so passing an illegal drop through would emit a move to some OTHER
- * position — a commit the guest did not choose, which is the failure XR-PH-18 exists to prevent. The
- * mode must decline, not approximate.
+ * `delta` is -1 for Arrow Up and +1 for Arrow Down. Returns the index to commit, or NULL at the ends of
+ * the list — null rather than a clamp so the caller can leave the row where it is and say nothing, rather
+ * than emitting a move to the position the row already occupies, which the server would accept as a real
+ * mutation and broadcast to every other client.
  */
-export function dropTarget(slotIndex: number | null, queuedCount: number): number | null {
-	if (slotIndex === null) return null;
-	if (!Number.isInteger(slotIndex)) return null;
-	if (slotIndex < 0 || slotIndex >= queuedCount) return null;
-	return slotIndex;
+export function keyboardMoveTarget(fromIndex: number, delta: number, count: number): number | null {
+	if (!Number.isInteger(fromIndex) || fromIndex < 0 || fromIndex >= count) return null;
+	const to = fromIndex + delta;
+	if (to < 0 || to >= count) return null;
+	return to;
 }
 
 /**
- * XR-PH-19 — has a concurrent change invalidated the open mode? Returns the reason to STATE, or null
- * while the mode is still valid.
+ * How far row `index` must shift, in ROWS, while `fromIndex` is being dragged to `targetIndex`.
+ *
+ * -1, 0 or +1: the rows between the two positions move exactly one place to open the gap, and everything
+ * outside that span stays put. The page multiplies this by the row height and hands it to a `transform`,
+ * which is why the animation is composited and why nothing here knows about pixels.
+ *
+ * The dragged row itself returns 0: it is positioned by the finger, not by this.
+ */
+export function rowShift(index: number, fromIndex: number, targetIndex: number): -1 | 0 | 1 {
+	if (index === fromIndex) return 0;
+	if (targetIndex > fromIndex && index > fromIndex && index <= targetIndex) return -1;
+	if (targetIndex < fromIndex && index < fromIndex && index >= targetIndex) return 1;
+	return 0;
+}
+
+function clampIndex(i: number, count: number): number {
+	return Math.max(0, Math.min(count - 1, i));
+}
+
+/**
+ * XR-PH-19 — has a concurrent change invalidated the DRAG IN FLIGHT? Returns the reason to STATE, or null
+ * while it is still valid.
+ *
+ * "Mode" in this function's name and prose is historical: there is no mode to exit any more (see the
+ * header), but a pointer drag is still a transaction held open across other guests' mutations, and
+ * `assignSeqs` re-derives `rotationSeq` on every one of them. The three invalidating shapes are unchanged,
+ * and so is the requirement: state what happened, commit nothing, put focus back.
  *
  * The two invalidating shapes the requirement names, plus the one it implies (the moving song being
  * removed elsewhere — its own acceptance case). Checked most-specific first: a song that starts

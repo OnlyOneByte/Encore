@@ -38,6 +38,14 @@
 		onremove?: () => void;
 		reorderable?: boolean;
 		/**
+		 * How far this row must slide, in ROWS, to make room for one being dragged past it: -1, 0 or +1.
+		 *
+		 * The page computes it with `rowShift` and this turns it into a composited `transform` — which is what
+		 * makes the live sort animate. ROWS rather than pixels because the pixel height is the page's business
+		 * (it measures one row at press time); a component taking px would need the same measurement twice.
+		 */
+		shift?: -1 | 0 | 1;
+		/**
 		 * XR-PH-18 — another guest's row while the own-picks reorder mode is open. A processing
 		 * song is still a queue entry, so another guest's process is one of the rows the mode has to
 		 * de-emphasise; found by driving the mode, where the only non-mine row on screen was a processing
@@ -45,10 +53,10 @@
 		 * reason as QueueRow's.
 		 */
 		dimmed?: boolean;
-		canUp?: boolean;
-		canDown?: boolean;
-		onup?: () => void;
-		ondown?: () => void;
+		/*
+		 * `canUp`, `canDown`, `onup` and `ondown` RETIRED (2026-09-21) with the arrow buttons — see the note in
+		 * the markup, and `$lib/reorder-mode`'s header for where the non-drag reorder path went.
+		 */
 	}
 	let {
 		seq,
@@ -61,11 +69,8 @@
 		pct,
 		onremove,
 		reorderable = false,
-		dimmed = false,
-		canUp = false,
-		canDown = false,
-		onup,
-		ondown
+		shift = 0,
+		dimmed = false
 	}: Props = $props();
 
 	// pct is shown separately in the .stage row, so the line itself omits it.
@@ -98,7 +103,15 @@
 -->
 <Item.Root variant="bare" size="bare">
 	{#snippet child({ props })}
-		<div {...props} class="qrow proc card list-row" class:pending={pending} class:failed={failed} class:dimmed={dimmed}>
+		<div
+			{...props}
+			class="qrow proc card list-row"
+			class:pending={pending}
+			class:failed={failed}
+			class:dimmed={dimmed}
+			class:shifted={shift !== 0}
+			style="--row-shift:{shift}"
+		>
 			<Item.Media
 				><div class="seq">
 					{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}
@@ -136,24 +149,17 @@
 			</Item.Content>
 			{#if !pending && (onremove || reorderable)}
 				<Item.Actions data-align="start">
-					{#if reorderable}
-						<Button
-							variant="outline"
-							size="icon"
-							press="ink"
-							aria-label="move up"
-							disabled={!canUp}
-							onclick={() => onup?.()}><Icon name="arrow-up" /></Button
-						>
-						<Button
-							variant="outline"
-							size="icon"
-							press="ink"
-							aria-label="move down"
-							disabled={!canDown}
-							onclick={() => ondown?.()}><Icon name="arrow-down" /></Button
-						>
-					{/if}
+					<!--
+						THE ARROWS ARE GONE FROM HERE TOO (2026-09-21) — two 44px outlined buttons per card to move a
+						song one place, reported as taking too much space. A processing card is NOT draggable (it has
+						no grip: the live sort moves uniform queued rows, and this card is a different height and a
+						different component), so its reorder path is the keyboard nudge on the QUEUED rows around it:
+						a card in the queue moves when the rows either side of it do.
+
+						`reorderable` is kept in the props and in this gate deliberately — it is what the route uses
+						to say "this position can move at all", and a card that could never move should not grow a
+						remove button in a row labelled as if it could.
+					-->
 					{#if onremove}
 						<Button
 							variant="outline"
@@ -355,4 +361,25 @@
 	   this, but align-items:center floated the buttons mid-card. */
 	/* Sizing, radius, surface and glyph size come from <Button variant="icon"> in components/ui/button.
 	   `.icon-btn` in app.css was deleted in an earlier change S1b when its ten consumers became that variant. */
+	/*
+	 * THE ROWS THE DRAGGED ONE PASSES SLIDE OUT OF ITS WAY, one place each — which is what makes this a
+	 * LIVE SORT rather than a drag over drawn targets (see routes/+page.svelte and `rowShift`).
+	 *
+	 * `--row-shift` is a COUNT of rows, written by the page from the pure `rowShift`, and `--row-h` is the
+	 * one height it measured at press time. Multiplying here keeps pixels out of the page's markup and keeps
+	 * the movement a `transform`, which is the only kind `motion.test.ts` allows to be animated.
+	 *
+	 * THE TRANSITION IS GATED, not unconditional — this is the one interpolated movement on this row, so
+	 * unlike `.moving` (a 1:1 response to the finger, XR-PH-06 by construction) it has a duration that
+	 * `prefers-reduced-motion` must be able to remove. Under `reduce` no transition is declared at all and
+	 * the rows simply appear in their new places, which is still a correct live sort.
+	 */
+	.shifted {
+		transform: translateY(calc(var(--row-shift, 0) * var(--row-h, 0px)));
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.shifted {
+			transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1);
+		}
+	}
 </style>

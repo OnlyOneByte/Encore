@@ -13,7 +13,7 @@ import { reconcileOnReady } from '$lib/server/realtime/player';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '$lib/contract';
 import { EMPTY_SONG_PROFILE } from '$lib/contract';
-import { modeInvalidation, queueSlots, gripVisible } from '$lib/reorder-mode';
+import { modeInvalidation, liveSortTarget, gripVisible } from '$lib/reorder-mode';
 
 const media = (id: string): Media => ({
 	id,
@@ -70,7 +70,12 @@ test('XR-PH-19 · another guest queueing mid-drag re-orders the list, and the mo
 	const before = queuedList(state).map((e) => e.id);
 	expect(before).toHaveLength(2);
 	expect(modeInvalidation(queuedList(state), 'a', 'queued')).toBeNull();
-	expect(queueSlots(queuedList(state).length)).toHaveLength(2);
+	/*
+	 * RE-POINTED FROM `queueSlots` (2026-09-21): there are no drawn targets to count any more. What the arm
+	 * actually claims is that the drag's index space follows the list's LENGTH as it changes underneath — so
+	 * it asks the live-sort arithmetic where a long drag lands, which is the last position that exists.
+	 */
+	expect(liveSortTarget({ fromIndex: 0, offsetPx: 10_000, rowHeightPx: 60, count: queuedList(state).length })).toBe(1);
 
 	// A DIFFERENT guest queues a song while my drag is open. This is the real op through the real hub,
 	// so the re-derivation is the server's own.
@@ -86,7 +91,9 @@ test('XR-PH-19 · another guest queueing mid-drag re-orders the list, and the mo
 	// …and the mode stays open, now spanning the WHOLE queue: the moving song 'a' is still queued and
 	// three songs remain, so there is a third legal slot to drop into.
 	expect(modeInvalidation(queuedList(state), 'a', 'queued')).toBeNull();
-	expect(queueSlots(queuedList(state).length)).toHaveLength(3);
+	// …and the third position is now reachable, which is the half that proves the index space widened with
+	// the list rather than being captured when the gesture began.
+	expect(liveSortTarget({ fromIndex: 0, offsetPx: 10_000, rowHeightPx: 60, count: queuedList(state).length })).toBe(2);
 });
 
 test('XR-PH-19 · the queue dropping below two songs closes the mode with a reason', () => {
@@ -141,7 +148,7 @@ test('XR-PH-19 · the moving song starting playback closes the mode with its own
 // ── · a whole-queue drop actually crosses singers through the real hub ───────────────────────
 
 test('· committing a drag as move-to-index moves a song to a GLOBAL slot, jumping another singer', () => {
-	// The drag now commits `store.moveToIndex(id, dropTarget)`, which sends a `move-to-index` op. This
+	// The drag commits `store.moveToIndex(id, dragTo)` — the same index the rows were rendered at — which
 	// is the drive-through-the-real-hub proof that a drop at a global index reorders across singers —
 	// what the old own-picks `move` could never do. The actor owns the moving entry here, so no
 	// capability gate is in the way.

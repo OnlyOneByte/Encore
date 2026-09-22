@@ -10,7 +10,6 @@
 		hasGuidingTrack,
 		effectiveGuideLevel,
 		chosenCandidate,
-		hasNewerCandidateThanOverride,
 		type LyricsCandidate,
 		type SongProfile
 	} from '$lib/contract';
@@ -57,7 +56,12 @@
 	let candidates = $state<LyricsCandidate[]>([]);
 	let chosenRef = $state<string | undefined>(undefined);
 	let overrideRef = $state<string | undefined>(undefined);
-	let newerExists = $state(false);
+	/*
+	 * `newerExists` IS GONE FROM HERE (2026-09-21): it fed the sheet's re-selection disclosure — "a better
+	 * match is available" — and that control moved to /song/[mediaId], which computes the same thing from the
+	 * same pure helper at its own call site. The layout mirrors what the SHEET reads, and the sheet now only
+	 * NAMES the lyrics source rather than offering to change it.
+	 */
 
 	onMount(() => {
 		const sync = () => {
@@ -88,7 +92,6 @@
 			candidates = media?.lyricsCandidates ?? [];
 			chosenRef = media ? chosenCandidate(media)?.ref : undefined;
 			overrideRef = media?.lyricsOverrideRef;
-			newerExists = media ? hasNewerCandidateThanOverride(media.lyricsCandidates, media.lyricsOverrideRef) : false;
 		};
 		sync();
 		const stop = room.subscribe(sync);
@@ -229,14 +232,11 @@
 		candidates={candidates}
 		chosenRef={chosenRef}
 		overrideRef={overrideRef}
-		newerExists={newerExists}
 		onrestart={() => room.command({ cmd: 'restart' })}
 		ontoggleplay={() => room.command({ cmd: isPlaying ? 'pause' : 'play' })}
 		onskip={() => room.command({ cmd: 'skip' })}
 		onkey={(semitones) => room.command({ cmd: 'key', semitones })}
 		onguide={(level) => room.command({ cmd: 'guide', level })}
-		onpicklyrics={(ref) => mediaId && void room.reselectLyrics(mediaId, { ref })}
-		onpastelyrics={(text) => mediaId && void room.reselectLyrics(mediaId, { text })}
 	/>
 {/if}
 

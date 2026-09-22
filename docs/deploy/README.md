@@ -16,15 +16,15 @@ Storage paths are deliberately **not** set here. They stay in a `.env` beside th
 (`ENCORE_DATA_VOLUME`, `ENCORE_MEDIA_VOLUME`), because they are a property of the host's disks rather
 than of its accelerator.
 
-| file | target | notes |
-|---|---|---|
-| `docker-compose.cuda.yml` | NVIDIA (the current deploy target: Windows + WSL2 + RTX 3080) | Needs no custom Dockerfile — see below. Full runbook: [`WSL2.md`](WSL2.md) |
-| `docker-compose.intel.yml` | Intel Arc (parked — the deploy box changed) | Uses the **base** Dockerfile plus the `xpu` wheel index |
+| file                       | target                                                        | notes                                                                      |
+| -------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `docker-compose.cuda.yml`  | NVIDIA (the current deploy target: Windows + WSL2 + RTX 3080) | Needs no custom Dockerfile — see below. Full runbook: [`WSL2.md`](WSL2.md) |
+| `docker-compose.intel.yml` | Intel Arc (parked — the deploy box changed)                   | Uses the **base** Dockerfile plus the `xpu` wheel index                    |
 
 Both overrides now contain **only what is genuinely host-side**: the GPU device reservation, the
 `/dev/dri` passthrough, the numeric render/video group ids, and the `TORCH_INDEX_URL` build arg. They
 set **no `ENCORE_*` environment at all**. The worker probes its accelerator, derives its alignment
-device from the same decision, sizes its own parallelism against the *usable* core count, and
+device from the same decision, sizes its own parallelism against the _usable_ core count, and
 advertises only the capabilities it can prove — so anything these files declared would be a second,
 staler copy of facts the box already knows. The drift between this directory's capability list and the
 base compose file's is exactly what once left songs stuck at 0%.
@@ -69,11 +69,11 @@ on the LAN IP and need none of what follows.
 
 ### Getting a secure context, cheapest first
 
-| Situation | What to do |
-|---|---|
-| The display is driven by the Encore host | Open **`http://localhost:3000/tv`** on that machine. Phones keep using the LAN IP. Nothing to install. |
-| The TV is a separate device with a shell | Forward the port so the **origin** is localhost: `ssh -N -L 3000:localhost:3000 user@<host>`, then open `http://localhost:3000/tv`. The browser only cares about the origin, not where the bytes come from. No certificates. |
-| The TV is a Chrome you launch yourself | `--unsafely-treat-insecure-origin-as-secure=http://<LAN-IP>:3000 --user-data-dir=/tmp/encore-tv`. Per-device, and it breaks when the host IP changes. Do not set it in a browser you also use for anything else. |
+| Situation                                             | What to do                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The display is driven by the Encore host              | Open **`http://localhost:3000/tv`** on that machine. Phones keep using the LAN IP. Nothing to install.                                                                                                                                                                                                                                   |
+| The TV is a separate device with a shell              | Forward the port so the **origin** is localhost: `ssh -N -L 3000:localhost:3000 user@<host>`, then open `http://localhost:3000/tv`. The browser only cares about the origin, not where the bytes come from. No certificates.                                                                                                             |
+| The TV is a Chrome you launch yourself                | `--unsafely-treat-insecure-origin-as-secure=http://<LAN-IP>:3000 --user-data-dir=/tmp/encore-tv`. Per-device, and it breaks when the host IP changes. Do not set it in a browser you also use for anything else.                                                                                                                         |
 | The TV is an appliance (Chromecast, smart-TV browser) | Real TLS is the only route. `tailscale cert` issues a genuine certificate for `<host>.<tailnet>.ts.net` with no port forwarding, or put Caddy in front. `Bun.serve` takes `tls: { cert, key }` natively and the client already switches to `wss:` on its own, but **`server.ts` is HTTP-only today** — the TLS block does not exist yet. |
 
 A self-signed certificate also works in principle and is usually not worth it: the CA has to be
@@ -98,7 +98,6 @@ now decoupled:** a missing or refusing worklet leaves the split graph intact, so
 a plain `http://<LAN-IP>` origin. Only ±key still needs a secure context, and `PitchShiftGraph.isShiftable`
 reports when it is unavailable so the transpose control can say so instead of moving silently.
 
-
 `worker/Dockerfile` already exposes `ARG TORCH_INDEX_URL`, so switching accelerator is a wheel
 index swap. Both of these carry the exact versions `worker/requirements.txt` already pins —
 `torch 2.8.0`, `torchaudio 2.8.0`, `torchvision 0.23.0` — so **no requirements edit is needed** for
@@ -108,7 +107,7 @@ either:
 - `https://download.pytorch.org/whl/xpu` — cp312 manylinux wheels published
 
 There used to be a `Dockerfile.intel` here, because Intel Arc support originally required
-`intel-extension-for-pytorch` as an extra pip install whose version had to be matched to *both* the
+`intel-extension-for-pytorch` as an extra pip install whose version had to be matched to _both_ the
 host driver and the pinned torch. **It has been deleted.** PyTorch ships native `torch.xpu` upstream and
 the `xpu` index carries the whole pinned set, so `docker-compose.intel.yml` uses the ordinary
 Dockerfile; `backends.py` still imports IPEX before torch when it happens to be installed, which makes

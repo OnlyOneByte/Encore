@@ -370,8 +370,25 @@ const ANNOUNCED_EVENTS: { event: string; implemented: boolean; match?: RegExp }[
 	{ event: "several guests' adds, batched on resync", implemented: true, match: /songs added to the queue/ },
 	{ event: 'a rotation reorder that moved rows under the guest', implemented: true, match: /Queue reordered/ },
 	{ event: "a change to the guest's own position", implemented: false },
-	{ event: 'entering and leaving the reorder mode', implemented: false },
-	{ event: 'each committed slot change during the reorder mode', implemented: false }
+	/*
+	 * THE KEYBOARD REORDER STEP, now implemented (2026-09-21). It replaced two inventoried-but-unimplemented
+	 * MODE events — "entering and leaving the reorder mode" and "each committed slot change during the reorder
+	 * mode" — which cannot be implemented because there is no mode: the drag is a live sort and the keyboard
+	 * path commits one place per press with nothing to enter or leave.
+	 *
+	 * It has to be announced rather than left silent, and that is the one clause the mode events were right
+	 * about: the row moves under the guest's own focus, so a screen reader is otherwise told only that the
+	 * list changed, not that THEIR row is where they put it.
+	 */
+	{ event: 'a keyboard reorder step from the grip', implemented: true, match: /Moved to \$\{ordinal/ }
+	/*
+	 * A DRAG THAT DISSOLVED MID-FLIGHT (XR-PH-19) IS ANNOUNCED TOO — the song started playing, left the queue,
+	 * or the queue fell below two — but it is deliberately NOT an entry here, and the reason is about this
+	 * scan rather than about the event. Its strings live in `$lib/reorder-mode`'s `modeInvalidation` and reach
+	 * the region as a VARIABLE (`if (note) liveMsg = note`), so the literal-site regex below cannot see it
+	 * either to list or to floor. `reorder-mode.test.ts` pins those strings where they are declared, which is
+	 * the only place a scan can judge them.
+	 */
 	// connection loss/restore is the seventh, announced by the `offline-pill` region above rather than
 	// through `liveMsg`, so it has no assignment site here.
 ];

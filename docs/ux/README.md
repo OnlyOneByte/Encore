@@ -9,15 +9,15 @@ Written 2026-09-09 for the UI redesign, extended since. **131 requirements** acr
 Subsystem contracts — media, the HTTP surface, background jobs — are a sibling tree at
 [`../arch/`](../arch/README.md), because this document is about the design rules and those are not.
 
-| Section | Rows | Covers |
-|---|---|---|
-| [`01-tv.md`](01-tv.md) | 20 | Type floor, safe areas, every TV state, the attract phrase system |
-| [`02-phone.md`](02-phone.md) | 26 | Queue-as-home, the persistent band and its drawer, the find surface, the song page, the drag mode, join |
-| [`03-colour-tokens.md`](03-colour-tokens.md) | 24 | The 48-stop palette, four per-stop contrast roles, token-layer consequences |
-| [`04-verification.md`](04-verification.md) | 22 | How the rules are *checked* — the two rungs, anti-vacuity, migration safety |
-| [`05-concurrency.md`](05-concurrency.md) | 17 | Authority, cross-surface consistency, the social cost of a visible failure |
-| [`06-components.md`](06-components.md) | 12 | The component contract: variant discipline, who owns a decision, accessible names |
-| [`07-tv-module.md`](07-tv-module.md) | 10 | The TV's module layer beneath the visuals: player lifecycle, media failure, what it must not depend on |
+| Section                                      | Rows | Covers                                                                                                  |
+| -------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------- |
+| [`01-tv.md`](01-tv.md)                       | 20   | Type floor, safe areas, every TV state, the attract phrase system                                       |
+| [`02-phone.md`](02-phone.md)                 | 26   | Queue-as-home, the persistent band and its drawer, the find surface, the song page, the drag mode, join |
+| [`03-colour-tokens.md`](03-colour-tokens.md) | 24   | The 48-stop palette, four per-stop contrast roles, token-layer consequences                             |
+| [`04-verification.md`](04-verification.md)   | 22   | How the rules are _checked_ — the two rungs, anti-vacuity, migration safety                             |
+| [`05-concurrency.md`](05-concurrency.md)     | 17   | Authority, cross-surface consistency, the social cost of a visible failure                              |
+| [`06-components.md`](06-components.md)       | 12   | The component contract: variant discipline, who owns a decision, accessible names                       |
+| [`07-tv-module.md`](07-tv-module.md)         | 10   | The TV's module layer beneath the visuals: player lifecycle, media failure, what it must not depend on  |
 
 ## How to read a row
 
@@ -42,8 +42,8 @@ documents will otherwise write the wrong requirement.
 measured against `bg #060a18 / card #131a2e`; `app.css` paints `--bg: #0b0b12 / --card: #1a1a28`.
 Re-measured on the real tokens, **Cobalt 4.473, Denim 4.477, Rose 4.477, Orchid 4.481, Magenta
 4.483 and Fuchsia 4.490** miss the 4.5 floor as accent-as-ink. The reported worst case was 4.50 —
-a margin of ~0.00, so any surface drift at all was going to cross it. This is the *same defect
-class* the handoff names as "do this first": **a contrast measurement bound to a duplicated
+a margin of ~0.00, so any surface drift at all was going to cross it. This is the _same defect
+class_ the handoff names as "do this first": **a contrast measurement bound to a duplicated
 surface value rather than to the token the app paints.** See `XR-COL-04`.
 
 **2. Aliasing `$app`/`$env` does not make measurement checkable — that needs a second rung.**
@@ -97,7 +97,7 @@ the mechanism `XR-TV-19` generalises.
 [`component-migration.md`](component-migration.md) and its
 [inventory](component-migration-inventory.md) cover **migrating the app onto the vendored component
 layer**: what migrates, what stays hand-rolled, and how a step proves it broke nothing. They are the
-only documents here written *after* an implementation existed, so the first names a record of what the
+only documents here written _after_ an implementation existed, so the first names a record of what the
 migration actually hit rather than a forecast.
 
 They are deliberately distinct from `06`, which owns the component **contract** — `06` wins on

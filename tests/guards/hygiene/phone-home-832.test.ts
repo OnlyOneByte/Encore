@@ -660,7 +660,21 @@ test('the band row is the sheet itself, and the body stays mounted at the collap
  * need a harness-supplied snippet is now the drawer's own output, and this asserts it: with candidates
  * handed in and no snippet anywhere, lyrics re-selection renders inside the live-controls body.
  */
-test('the drawer renders lyrics re-selection itself, from props, with no snippet supplied', () => {
+test('the drawer NAMES the lyrics source and does not re-pick it', () => {
+	/*
+	 * INVERTED (2026-09-21). This asserted that the sheet renders `<LyricsReselect>` itself, from props,
+	 * with no snippet supplied — which was the right claim while the sheet owned that control.
+	 *
+	 * It does not any more, and it is a deletion rather than a move: `/song/[mediaId]` already renders the
+	 * same component under its own "Lyrics" heading, and the `···` on the seek row is the door to it, so the
+	 * sheet's copy was the second one. Re-picking lyrics is a decision made ONCE about a song, sitting
+	 * still; the sheet is what a singer reaches for mid-performance, and a disclosure inside it was a second
+	 * level of revealing inside the one this sheet is supposed to be.
+	 *
+	 * WHAT SURVIVES IS THE FACT: which source the words on the TV came from, as a pill. So the arm asserts
+	 * the provenance is STATED and the control is ABSENT — either half alone would pass a sheet that had
+	 * quietly lost the information along with the disclosure.
+	 */
 	const content = openDrawer({
 		...PLAYING,
 		candidates: [
@@ -671,10 +685,43 @@ test('the drawer renders lyrics re-selection itself, from props, with no snippet
 	});
 	const body = content.querySelector('.tools-body') as HTMLElement | null;
 	expect(count(content, '.tools-body')).toBe(1);
-	expect(count(body!, '.reselect'), 'lyrics re-selection did not render').toBe(1);
-	// An idle room has no song whose lyrics could be wrong, so it gets no re-selection either.
+	expect(count(body!, '.reselect'), 'the sheet must not carry the re-selection control').toBe(0);
+	expect(count(body!, '.lyricsrc .encore-chip'), 'the lyrics source pill did not render').toBe(1);
+	expect(body!.querySelector('.lyricsrc')?.textContent?.trim()).toBe('Synced lyrics');
+
+	/*
+	 * THE OVERRIDE WINS OVER THE AUTO PICK, in the order the server resolves them: a guest who chose a
+	 * source must see THEIR choice named. And the tone follows `isAuthoritativeText`, which is the judgement
+	 * worth more than the string — an auto-transcribed guess is the case a singer should know about before
+	 * trusting the screen, so it is not painted like authored words.
+	 */
 	dropDrawer();
-	expect(count(openDrawer(IDLE), '.reselect')).toBe(0);
+	const overridden = openDrawer({
+		...PLAYING,
+		candidates: [
+			{ ref: 'a', textSource: 'lrclib', timing: 'word', textConfidence: 'high' },
+			{ ref: 'b', textSource: 'asr', timing: 'line', textConfidence: 'low' }
+		],
+		chosenRef: 'a',
+		overrideRef: 'b'
+	});
+	const pill = overridden.querySelector('.lyricsrc .encore-chip') as HTMLElement | null;
+	expect(pill?.textContent?.trim()).toBe('Auto-transcribed');
+	expect(pill?.className).toContain('encore-chip-warn');
+	expect(
+		(overridden.querySelector('.lyricsrc .encore-chip') as HTMLElement).className,
+		'an auto-transcribed guess must not wear the authored-words tone'
+	).not.toContain('encore-chip-ok');
+
+	// An idle room has no song whose lyrics could be named, so it gets no pill — and a chosen ref matching
+	// no candidate gets none either, because a pill reading "undefined" is worse than no pill.
+	dropDrawer();
+	expect(count(openDrawer(IDLE), '.lyricsrc')).toBe(0);
+	dropDrawer();
+	expect(
+		count(openDrawer({ ...PLAYING, candidates: [], chosenRef: 'a' }), '.lyricsrc'),
+		'no candidates means nothing honest to name'
+	).toBe(0);
 });
 
 // ── the position card, and its honest degradation ────────────────────────────────────────────────
@@ -725,6 +772,12 @@ test('a guest with nothing queued gets no card at all', () => {
 });
 
 // ── the unconfirmed marker says which mutation it is waiting on (XR-PH-10) ───────────────────────
+/*
+ * `reorderable`, `canUp` and `canDown` LEFT THIS FIXTURE (2026-09-21) with the props they named: the arrow
+ * pair is retired and whether a row can move is `grip` (the caller's `gripVisible()` predicate), while
+ * whether it may move right now is `pending`. Passing props a component no longer declares is how a fixture
+ * comes to describe a row that cannot exist.
+ */
 const ROW = {
 	seq: 3,
 	title: 'Wonderwall',
@@ -732,9 +785,12 @@ const ROW = {
 	singerColor: '#5cb8ff',
 	mine: true,
 	removable: true,
-	reorderable: true,
-	canUp: true,
-	canDown: true
+	/*
+	 * The grip publishes `data-grip={gripId}`, and Svelte omits an attribute whose value is undefined — so a
+	 * fixture without an id renders a grip that no `[data-grip]` query can find. It is the entry id in the
+	 * app, and the drag's focus return re-finds the grip by it (see driven-find 5).
+	 */
+	gripId: 'entry-1'
 };
 
 test('a pending REORDER says "moving…", never "adding…" (XR-PH-10)', () => {
@@ -753,18 +809,26 @@ test('a pending REORDER says "moving…", never "adding…" (XR-PH-10)', () => {
 });
 
 test('a row awaiting confirmation makes its own reorder controls inert (XR-PH-10)', () => {
-	// "…and its reorder controls are inert" is part of the requirement: a second tap on a move that has
-	// not landed would issue a second op against a position the server has not agreed to yet.
-	const moving = render(QueueRow, { ...ROW, pending: 'move' });
-	expect(moving.querySelector('button[aria-label="move up"]')).toBeNull();
-	expect(moving.querySelector('button[aria-label="move down"]')).toBeNull();
+	/*
+	 * "…and its reorder controls are inert" is part of the requirement: a second reorder of a move that has
+	 * not landed would issue an op against a position the server has not agreed to yet.
+	 *
+	 * RE-POINTED AT THE GRIP (2026-09-21). The controls were a `move up` / `move down` pair inside the row's
+	 * `{#if !pending}` gate; they are retired, and the reorder — drag AND keyboard — is the grip, which leads
+	 * the row from its media slot OUTSIDE that gate. So it carries its own `{#if grip && !pending}`, and this
+	 * arm is what proves it: the claim is unchanged, its subject moved.
+	 */
+	const moving = render(QueueRow, { ...ROW, grip: true, pending: 'move' });
+	expect(moving.querySelector('[data-grip]')).toBeNull();
 	expect(moving.querySelector('button[aria-label="remove from queue"]')).toBeNull();
 
-	// …and they are present once confirmed, so the assertion above is about the pending state and not
-	// about the props never rendering controls at all.
-	const settled = render(QueueRow, { ...ROW, pending: null });
-	expect(settled.querySelector('button[aria-label="move up"]')).not.toBeNull();
-	expect(settled.querySelector('button[aria-label="move down"]')).not.toBeNull();
+	// …and it is present once confirmed, so the assertion above is about the pending state and not about the
+	// props never rendering a grip at all.
+	const settled = render(QueueRow, { ...ROW, grip: true, pending: null });
+	expect(settled.querySelector('[data-grip]')).not.toBeNull();
+	// The retired pair stays retired — a reader grepping for it lands here rather than on a silent pass.
+	expect(settled.querySelector('button[aria-label="move up"]')).toBeNull();
+	expect(settled.querySelector('button[aria-label="move down"]')).toBeNull();
 });
 
 test('the pending state is signalled on the row SURFACE, not by dimming its subtree (XR-PH-03)', () => {

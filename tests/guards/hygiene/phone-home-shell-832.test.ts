@@ -192,7 +192,10 @@ test('home renders NO now-playing surface — the layout owns the drawer, and th
 });
 
 test('the rotation rows render inside <main>, not inside a pull-up sheet', () => {
-	const main = PAGE.slice(PAGE.indexOf('<main>'), PAGE.indexOf('</main>'));
+	// Sliced from the OPENING TAG rather than the literal `<main>`: the element carries a style attribute
+	// now (`--row-h`, the one measured row height the live sort multiplies), so the bare-tag literal stopped
+	// matching and this compared an empty string against every expectation below — silently.
+	const main = PAGE.slice(PAGE.indexOf('<main'), PAGE.indexOf('</main>'));
 	expect(main).toContain('{#each queued as e, i (e.id)}');
 	expect(main).toContain('<QueueRow');
 	expect(main).toContain('<ProcessingCard');
@@ -266,7 +269,23 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	expect(toolsBody).toContain('<GuidingTrack');
 	expect(toolsBody).toContain('<RangeBar');
 	expect(toolsBody).toContain('class="key"');
-	expect(toolsBody).toContain('<LyricsReselect');
+	/*
+	 * `<LyricsReselect>` LEFT THIS LIST (2026-09-21) and its absence is now asserted instead. Re-picking
+	 * lyrics is a decision made once about a song, sitting still; this sheet is what a singer reaches for
+	 * mid-performance, and the disclosure was a second level of revealing inside the one level the sheet is.
+	 * A deletion rather than a move: `/song/[mediaId]` already renders the same component under its own
+	 * "Lyrics" heading, and the `···` on the seek row is the door to it.
+	 *
+	 * The FACT survives as a pill — which source the words came from — so both halves are pinned: the control
+	 * is gone and the provenance is still stated. A sheet that lost both would otherwise pass.
+	 */
+	expect(toolsBody, 'the sheet must not carry the re-selection control').not.toContain('<LyricsReselect');
+	expect(toolsBody, 'the lyrics source must still be named').toContain('class="lyricsrc"');
+	expect(DRAWER, 'the pill must read the shared contract label, not a local copy of the strings').toContain(
+		'lyricsSourceLabel('
+	);
+	// …and the control really does still exist on the song page, or this is a deletion with no successor.
+	expect(read('src/routes/song/[mediaId]/+page.svelte')).toContain('<LyricsReselect');
 	// The guide's reason-before-the-dead-row note (XR-PH-03) came with them.
 	expect(toolsBody).toContain('class="tools-note"');
 
