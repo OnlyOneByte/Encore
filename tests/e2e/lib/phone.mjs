@@ -1,15 +1,16 @@
 /*
  * The phone's post-join step, in ONE place.
  *
- * WHY THIS FILE EXISTS. The phone's information architecture has moved three times now: `?browse=1`,
- * then a box docked on home at all times, and now a `/find` ROUTE reached from the band's magnifier.
- * Roughly twenty driver and probe call sites reach search, and this file is why the third move cost one
- * function instead of twenty edits. It has paid for itself twice, which is the argument for keeping the
- * indirection even though a single call site would read more plainly.
+ * WHY THIS FILE EXISTS. The phone's information architecture has moved FOUR times now: `?browse=1`, then a
+ * box docked on home at all times, then a `/find` ROUTE reached from the band's magnifier, and now a field
+ * at the top of home with the library beneath the queue. Roughly twenty driver and probe call sites reach
+ * search, and this file is why each move cost one function instead of twenty edits. It has paid for itself
+ * three times, which is the argument for keeping the indirection even though a single call site would read
+ * more plainly.
  *
- * Reaching search is a CLICK AND A NAVIGATION again — closer to the `?browse=1` era than to the docked
- * box, but by a different mechanism: a route, so the phone's own back gesture is the way back and the
- * surface is shareable.
+ * Reaching search is NEITHER a click nor a navigation now: the field is on the joined home screen, so the
+ * helper's job is to establish that it is there. The magnifier tap survives for the surfaces where it is
+ * not (a pushed page), where it both navigates home and focuses the field.
  *
  * The selectors live in the contract; every driver calls this.
  */
@@ -21,12 +22,16 @@ const DEFAULT_TIMEOUT = 15_000;
 /**
  * From the JOINED home screen, reach the search box.
  *
- * Search is its own route now, so this waits for the band (`homeReady`), taps its magnifier, and waits
- * for the find surface's box. The band is app chrome mounted by the layout, which is why it is the
- * readiness signal rather than anything `/` itself renders.
+ * THREE PLACEMENTS, ONE HELPER, and that is the whole reason this function exists. The box has been docked
+ * at the bottom of `/`, then the `/find` route reached by tapping the band's magnifier, and since
+ * 2026-09-22 a field at the TOP of `/` again. Every driver goes through here, so each move cost this file
+ * and nothing else — the name is retained (not renamed to something like `reachSearch`) so the ~20 call
+ * sites keep working, and the browse MODE it once opened is long gone.
  *
- * The name is retained (not renamed to something like `reachSearch`) so the ~20 existing call sites keep
- * working; the browse MODE it once opened is gone.
+ * On home the field is already rendered for a joined singer, so the early return below IS the common path
+ * now: the helper's job is "the field is reachable and present", which it already is. The magnifier tap is
+ * kept for the case the box is not there yet — a driver that calls this before the joined home has painted,
+ * or from a pushed surface, where tapping the band's magnifier navigates home and focuses the field.
  *
  * @param {{ waitFor: (expr: string, opts?: { timeout?: number }) => Promise<unknown>,
  *           click: (selector: string) => Promise<unknown> }} page
@@ -35,18 +40,23 @@ const DEFAULT_TIMEOUT = 15_000;
 export async function openBrowseFromHome(page, { timeout = DEFAULT_TIMEOUT } = {}) {
 	/** @param {string} sel */
 	const has = (sel) => `document.querySelector(${JSON.stringify(sel)}) !== null`;
-	// Already on the find surface? Do nothing. Cheap, and it makes the helper safe to call defensively.
+	// Field already on screen? Do nothing. Cheap, and it makes the helper safe to call defensively.
 	const alreadyThere = await page.waitFor(has(SEL.findBox), { timeout: 250 }).catch(() => false);
 	if (alreadyThere) return;
 
 	// The band is what says the joined app has painted — the layout mounts it on every phone surface,
 	// so it is a stabler readiness signal than anything a single route renders.
 	await page.waitFor(has(SEL.homeReady), { timeout });
-	// Built from the contract's own accessible name rather than a second hard-coded string, so this
-	// button can only be addressed by the name a screen reader announces for it.
-	await page.click(`${SEL.homeReady} button[aria-label="${SEL.bandSearch.name}"]`);
-	// Two distinct waits: the surface arriving, then the control on it. A driver can tell "the
-	// navigation never happened" from "it happened and the box never rendered".
+	/*
+	 * NOTHING TO CLICK ANY MORE. This tapped the band's magnifier, which navigated (`?browse=1`, then
+	 * `/find`) or focused the field; the magnifier was deleted with the merge (2026-09-22) because the field
+	 * is the FIRST element in the home column. So the helper waits rather than acts: a driver on `/` has the
+	 * field already, and a driver anywhere else has to get to `/` the way a guest does, which its own flow
+	 * already knows how to do (every caller joins and lands there).
+	 *
+	 * Two distinct waits, kept: the box arriving, then the field inside it. A driver can tell "home never
+	 * painted" from "it painted and the field is missing".
+	 */
 	await page.waitFor(has(SEL.findBox), { timeout });
 	await page.waitFor(has(SEL.search), { timeout });
 }
@@ -117,13 +127,16 @@ export async function openNowPlaying(page, { timeout = DEFAULT_TIMEOUT } = {}) {
 }
 
 /**
- * The other direction: from a search that is showing RESULTS back to the QUEUE, which is home.
+ * The other direction: from a search that is showing RESULTS back to the QUEUE.
  *
- * The rotation rows, the position line and the transport are all on home — a driver that
- * searched and then counted `.qrow` was reading the results view, where the rotation is not rendered.
- * there is no browse mode to leave: the "← Queue" control (`backToQueue`) CLEARS the search,
- * and clearing it brings the queue back in place. This clicks it only when the hero is not already
- * showing (an empty box already shows the queue), so it is the mirror of `openBrowseFromHome`.
+ * A driver that searched and then counted `.qrow` was reading the results view, where the rotation is not
+ * rendered — the queue gives way to the results under one switch, the query.
+ *
+ * SO THE WAY BACK IS TO CLEAR THE BOX, not to navigate. That is what it was under the docked box, it became
+ * a real `<a href="/">` while search was its own route, and the merge (2026-09-22) returns it: the results
+ * are a section of the page the driver is already on, so there is nothing to navigate away from. A driver
+ * that is on a PUSHED surface (a song page, settings) is a different case and still clicks the header's
+ * back link — both are handled below, in that order.
  *
  * @param {{ waitFor: (expr: string, opts?: { timeout?: number }) => Promise<unknown>,
  *           click: (selector: string) => Promise<unknown> }} page
@@ -133,19 +146,24 @@ export async function returnHomeFromBrowse(page, { timeout = DEFAULT_TIMEOUT } =
 	/** @param {string} sel */
 	const has = (sel) => `document.querySelector(${JSON.stringify(sel)}) !== null`;
 	/*
-	 * Already home? Asked of the ROUTE, not of a selector, and that is the honest form now. It used to
-	 * wait for `SEL.hero`, which worked because the hero rendered on `/` and nowhere else. The hero is
-	 * gone (the drawer replaced it, mounted by the layout), and every remaining structural anchor on
-	 * home — `main`, `.grouphead`, the band — is on `/find` too, because the band is app chrome. The one
-	 * thing that distinguishes the two surfaces is which one you are on.
+	 * ON HOME ALREADY? Asked of the ROUTE, not of a selector, and that is the honest form: every structural
+	 * anchor on this page — `main`, `.grouphead`, the band — is on the other phone surfaces too, because the
+	 * band is app chrome. The pathname is the one thing that distinguishes them.
+	 *
+	 * Being on `/` is not the end of it, though: the query is what decides whether the rotation is rendered,
+	 * so a driver on home with results up still has to clear the box.
 	 */
 	const alreadyHome = await page.waitFor(`location.pathname === '/'`, { timeout: 250 }).catch(() => false);
-	if (alreadyHome) return;
-
-	// A real navigation now, not a state clear: the header's back control is an <a href="/">, so this
-	// exercises the same route change the phone's own back gesture performs.
-	await page.click(SEL.backToQueue);
-	await page.waitFor(`location.pathname === '/'`, { timeout });
+	if (!alreadyHome) {
+		// A pushed surface: the header's back control is a real <a href="/">, so this exercises the same
+		// route change the phone's own back gesture performs.
+		await page.click(SEL.backToQueue);
+		await page.waitFor(`location.pathname === '/'`, { timeout });
+	}
+	// The clear control renders ONLY while a query is up, so its presence is the question "are results
+	// showing" asked of the DOM — and clicking it restores the queue in place, with no navigation.
+	const searching = await page.waitFor(has(SEL.clearSearch), { timeout: 250 }).catch(() => false);
+	if (searching) await page.click(SEL.clearSearch);
 	// …and the rotation heading, so a driver that continues can count rows rather than racing the paint.
 	await page.waitFor(has(SEL.mainColumn), { timeout });
 }

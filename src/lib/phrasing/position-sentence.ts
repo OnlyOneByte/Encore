@@ -72,15 +72,51 @@ export function ordinalWord(n: number): string {
  * wait, which is the failure mode that matters (a guest who wanders off is worse than one who waits).
  */
 export function waitWords(nowRemainingSec: number | null, aheadDurationsSec: Array<number | null>): string | null {
+	const total = waitSeconds(nowRemainingSec, aheadDurationsSec);
+	if (total === null) return null;
+	if (total < SUB_MINUTE_SEC) return 'Less than a minute.';
+	const minutes = Math.round(total / 60);
+	return `Roughly ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
+}
+
+/**
+ * The same wait, as a BYLINE FRAGMENT rather than a sentence: "~3 min", "<1 min", or `null`.
+ *
+ * WHY A SECOND FORMATTER AND NOT A SECOND SUM. The wait used to be read in exactly one place — a card
+ * above the queue, which stated it as a sentence. That card is gone (the queue row beside it already
+ * said "You · up next", so the card restated the row and owned the wait as its only unique content), and
+ * the wait moved ONTO that row's byline, where it sits mid-line after a middot: `You · up next · ~3 min`.
+ * A sentence cannot go there — "You · up next · Roughly 3 minutes." reads as two sentences welded
+ * together and its capital lands mid-line.
+ *
+ * So the FORM differs and the ARITHMETIC does not: both call `waitSeconds`, so the two spellings of the
+ * wait cannot disagree about how long it is. The honest-degradation rule is that shared function's, which
+ * is what keeps it true of both: one unknown term ahead and both formatters return null, and the caller
+ * renders no clause rather than a guess.
+ */
+export function waitShort(nowRemainingSec: number | null, aheadDurationsSec: Array<number | null>): string | null {
+	const total = waitSeconds(nowRemainingSec, aheadDurationsSec);
+	if (total === null) return null;
+	if (total < SUB_MINUTE_SEC) return '<1 min';
+	return `~${Math.round(total / 60)} min`;
+}
+
+/**
+ * The wait in seconds, or `null` when it cannot be known honestly — the one place the sum and its
+ * unknown rule live, so every formatter above agrees on both.
+ *
+ * Unknown is returned when the playing song's remaining time is unknown, or when ANY entry ahead has
+ * no resolvable length — one unknown term makes the sum unknown, and a partial sum understates the
+ * wait, which is the failure mode that matters (a guest who wanders off is worse than one who waits).
+ */
+function waitSeconds(nowRemainingSec: number | null, aheadDurationsSec: Array<number | null>): number | null {
 	if (nowRemainingSec === null || !Number.isFinite(nowRemainingSec)) return null;
 	let total = Math.max(0, nowRemainingSec);
 	for (const d of aheadDurationsSec) {
 		if (d === null || !Number.isFinite(d)) return null;
 		total += Math.max(0, d);
 	}
-	if (total < SUB_MINUTE_SEC) return 'Less than a minute.';
-	const minutes = Math.round(total / 60);
-	return `Roughly ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
+	return total;
 }
 
 /**

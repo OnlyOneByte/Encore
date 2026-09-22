@@ -15,6 +15,7 @@ import { POST } from '$routes/api/process/+server';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { migratedDb } from '$lib/server/db/test-db';
+import { SettingsRepository } from '$lib/server/state/settings-repository';
 import type { Media } from '$lib/contract';
 
 const APP_KEY = Symbol.for('encore.app');
@@ -39,6 +40,10 @@ function installApp(mediaById: Map<string, Media>) {
 		state: new AuthoritativeState(),
 		jobs: new JobRepository(db),
 		singers: { bySessionToken: () => ({ id: 's1', displayName: 'Ada' }) },
+		// A REAL repository, not a stub returning defaults: the route reads global settings for the
+		// per-singer process cap and for the fetcher choice, and a stub would answer the same thing for
+		// every deployment — which is how the fetcher dep went unpassed for a release without a test noticing.
+		settings: new SettingsRepository(db),
 		media: { upsert: () => {} },
 		publish: () => {},
 		workerHub: { dispatch: () => {} }

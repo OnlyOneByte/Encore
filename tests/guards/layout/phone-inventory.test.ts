@@ -93,7 +93,8 @@ const IDIOMS: Record<Condition, { name: string; find: (src: string) => boolean }
 		 * renders `Empty.Root` with "Nothing queued." and this guard
 		 * could not see it. Measured across the whole tree, the blind spot covered six files —
 		 * `routes/+page.svelte`, `routes/find/+page.svelte` (3 states, only one of them backed by a
-		 * builder call), `routes/metrics/+page.svelte` (4), `routes/admin/+page.svelte` (2), and
+		 * builder call — that route has since been merged into home, which now carries all of them),
+		 * `routes/metrics/+page.svelte` (4), `routes/admin/+page.svelte` (2), and
 		 * `lib/charts/{Trend,Bars}.svelte` — of which only `find` matched an existing idiom at all.
 		 *
 		 * Adding it can only ever move a pair from "reported missing" to "detected", never the
@@ -212,16 +213,17 @@ const PHONE_ROUTES = ALL_ROUTES.filter((r) => !isExempt(r.route));
  * new name here instead of leaving a dead exemption behind and the new surface unchecked.
  */
 test('the phone route set is derived from the filesystem, and every exemption is the spec\u2019s', () => {
-	// Re-anchored 3 -> 4 by the phone-remote rebuild, which split search out of `/` onto its own
-	// `/find` route (`/` is queue-only now, and `NowPlayingBand` moved to +layout.svelte as app chrome).
-	// So the real phone-route set is `/`, `/find`, `/settings`, `/stats`. Re-anchored UPWARD on the
-	// record rather than left slack: a floor below the measured set is a floor that would not
-	// notice the set shrinking back. Re-anchored 3 -> 4 when `/find` arrived and 4 -> 5 when
-	// `/song/[mediaId]` did, so the phone-route set is `/`, `/find`, `/settings`, `/song/[mediaId]`,
-	// `/stats`. Still non-vacuous — a walk that enumerates fewer (an over-broad exemption or a moved
-	// routes/ dir) still fails here. Keeps the per-site floor-tag anchor (below); the value 5 is recorded
-	// to match in non-vacuity-floors.test.ts's FLOORS.
-	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(5); // @nvf-floor PHONE_ROUTES.length
+	// Re-anchored 3 -> 4 when `/find` arrived (the phone-remote rebuild split search out of `/`), 4 -> 5 when
+	// `/song/[mediaId]` did, and 5 -> 4 on 2026-09-22 when `/find` was MERGED BACK INTO `/` — the field, the
+	// library and the result groups are sections of home again, so there is no separate surface to walk. The
+	// phone-route set is `/`, `/settings`, `/song/[mediaId]`, `/stats`.
+	//
+	// THIS IS THE ONE DIRECTION A FLOOR MAY MOVE DOWN IN: the route it counted no longer exists, and the
+	// surface it covered is inside a route still on the list. A floor lowered because a walk stopped finding
+	// something would be the defect this arm exists for. Still non-vacuous — an over-broad exemption or a
+	// moved routes/ dir enumerates fewer than four and fails here. The value 4 is recorded to match in
+	// non-vacuity-floors.test.ts's FLOORS.
+	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(4); // @nvf-floor PHONE_ROUTES.length
 
 	const known = new Set(ALL_ROUTES.map((r) => r.route));
 	for (const e of EXEMPT_ROUTES) {

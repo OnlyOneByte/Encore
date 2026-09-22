@@ -491,7 +491,7 @@ record(
 );
 
 // The label: search returns three arrays named `ready`, `processing`, `results`. The client renders
-// group heads "Ready to sing" and "Needs karaoke", now on routes/find/+page.svelte (they moved off
+// group heads "Ready to sing" and "Needs karaoke", on routes/+page.svelte (they moved off
 // 828). Assert the API shape carries the three keys and no others that we depend on being absent.
 const shape = Object.keys(rq.body).sort();
 record(

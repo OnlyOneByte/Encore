@@ -7,12 +7,12 @@
 // imports (no jsdom). Delete any of them and the tag chips silently never appear while the server
 // test and the SongRow test both stay green. This scan requires each seam.
 //
-// RE-POINTED for the phone-remote redesign, which split ONE page into two subjects. Search left
-// `routes/+page.svelte` (home is queue-only now) for its own route at `routes/find/+page.svelte`, which
-// is where the tag map is READ and rendered; and the `/api/library` FETCH was hoisted off the page onto
-// the room link (`RoomLink.refreshLibrary`), which is where it is now STORED. So the three seams no
-// longer live in one file: two are asserted against /find, one against the store. Same requirements,
-// two new addresses.
+// TWO SUBJECTS, and only one of them has moved around. The `/api/library` FETCH was hoisted off the page
+// onto the room link (`RoomLink.refreshLibrary`), which is where the payload is STORED, and that has been
+// true since the phone-remote redesign. Where the tag map is READ and rendered has moved twice: off
+// `routes/+page.svelte` onto `routes/find/+page.svelte` when search became its own route, and back again
+// when that route was merged into home (2026-09-22). Two seams are asserted against the page that owns the
+// song rows, one against the store. Same requirements, current addresses.
 import { test, expect } from 'bun:test';
 import { read } from '@encore/test-support';
 
@@ -23,7 +23,7 @@ function stripComments(src: string): string {
 // Both subjects are named from the REPO ROOT rather than from wherever this test happens to sit
 //. `read()` throws on a miss, so a wrong path reds loudly instead of stripping an empty
 // string and reporting three green arms over nothing.
-const PAGE = stripComments(read('src/routes/find/+page.svelte'));
+const PAGE = stripComments(read('src/routes/+page.svelte'));
 const ROOM = stripComments(read('src/lib/stores/room.ts'));
 
 test('the page holds a libraryTags map keyed by mediaId', () => {

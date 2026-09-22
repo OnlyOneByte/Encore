@@ -1,7 +1,6 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import {
 		SINGER_COLORS,
@@ -32,6 +31,20 @@
 	const isPhoneSurface = $derived(
 		!NOT_PHONE.some((r) => page.url.pathname === r || page.url.pathname.startsWith(r + '/'))
 	);
+
+	/*
+	 * THE MAGNIFIER IS GONE FROM THE BAND (2026-09-22), and with it `openSearch` and the `searchFocus` store
+	 * it requested through.
+	 *
+	 * Its whole history in three steps: it pushed `?browse=1` to reveal a docked box; it navigated to the
+	 * `/find` route; and for about an hour it focused the field on home through a store, because app chrome
+	 * cannot see a route's locals. None of that is needed once search is a field at the TOP of the home
+	 * column — the first thing on the screen a joined singer lands on. A magnifier in the chrome to reach a
+	 * field that is already the first thing in the document is a control that answers a question nobody has.
+	 *
+	 * WHAT THE BAND SPENDS THE ROW ON INSTEAD: the transport, in full, at all times. Restart and skip used to
+	 * be hidden at rest and grown in as the sheet rose, precisely because the magnifier shared the row.
+	 */
 
 	// Mirrored from the link — the same subscribe-and-mirror the route uses. Only the fields the band
 	// renders, so a library merge or a queue reorder does not touch this component.
@@ -213,7 +226,6 @@
 {#if showBand}
 	<NowPlayingDrawer
 		bind:bandH={dockH}
-		onsearch={() => goto('/find')}
 		title={title}
 		artist={artist}
 		singerName={singerName}

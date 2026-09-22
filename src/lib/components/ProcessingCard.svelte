@@ -38,6 +38,31 @@
 		onremove?: () => void;
 		reorderable?: boolean;
 		/**
+		 * Show the drag grip — the caller passes `gripVisible()` from `$lib/reorder-mode`, never a raw boolean.
+		 *
+		 * A PROCESSING CARD IS DRAGGABLE (2026-09-22), and it was not before. The old note here argued it could
+		 * not be: "the live sort moves uniform queued rows, and this card is a different height and a different
+		 * component", so its reorder path was the keyboard nudge on the rows around it. Reported as exactly what
+		 * it was — songs being processed aren't draggable — and the height objection is now fixed at the root
+		 * rather than worked around: `liveSortTarget` counts crossings against every row's measured CENTRE
+		 * instead of dividing by one height, which is exact for any mix of kinds (and which also fixes dragging
+		 * a normal row PAST one of these, a case the single height got wrong in the other direction).
+		 *
+		 * A queued entry is a queued entry: `move-to-index` places any of them at any global slot, and the
+		 * position this card holds is the thing a guest most wants to move while they wait for it.
+		 */
+		grip?: boolean;
+		/** The queue entry's id, published on the grip as `data-grip` so focus can be re-found after a move. */
+		gripId?: string;
+		/** Pointer press on the grip: begins the drag. */
+		ongripdown?: (e: PointerEvent) => void;
+		/** This is the card being dragged. Its offset is `dragY`, applied as a transform. */
+		moving?: boolean;
+		/** Live pointer offset in px for the moving card. CSS-var driven — see the `.moving` rule. */
+		dragY?: number;
+		/** A keyboard step from the grip: -1 for Arrow Up, +1 for Arrow Down — the non-drag path. */
+		onnudge?: (delta: number) => void;
+		/**
 		 * How far this row must slide, in ROWS, to make room for one being dragged past it: -1, 0 or +1.
 		 *
 		 * The page computes it with `rowShift` and this turns it into a composited `transform` — which is what
@@ -69,6 +94,12 @@
 		pct,
 		onremove,
 		reorderable = false,
+		grip = false,
+		gripId,
+		ongripdown,
+		onnudge,
+		moving = false,
+		dragY = 0,
 		shift = 0,
 		dimmed = false
 	}: Props = $props();
@@ -78,6 +109,26 @@
 	// What the unconfirmed marker SAYS — one expression, so a pending reorder cannot re-borrow the
 	// add path's word (issue an earlier change). Mirrors QueueRow's derivation of the same name.
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
+
+	/**
+	 * Which way the position number just moved: +1 up, -1 down, 0 first render. Mirrors QueueRow's
+	 * derivation of the same thing — see the long note there for why it is `$effect.pre` (the direction
+	 * has to be on the element before the keyed block replaces the digit), why the previous value is an
+	 * un-reactive `let`, and why the roll is a CSS keyframe rather than a Svelte `transition:` directive.
+	 *
+	 * `seq` is OPTIONAL on this card (a queued-but-unnumbered job shows a sparkle), so an absent number is
+	 * not a direction: it seeds the record and writes nothing.
+	 */
+	let seqDir = $state(0);
+	let prevSeq: number | undefined;
+	$effect.pre(() => {
+		if (seq === undefined || prevSeq === undefined || seq === prevSeq) {
+			prevSeq = seq;
+			return;
+		}
+		seqDir = seq > prevSeq ? 1 : -1;
+		prevSeq = seq;
+	});
 	// A terminally failed process is NOT in flight. It reaches this card because the singer's own
 	// queue slot must say the process died — a dead turn used to render as a plain waiting row,
 	// indistinguishable from a turn about to play. On this branch the card drops the progress bar and
@@ -109,12 +160,48 @@
 			class:pending={pending}
 			class:failed={failed}
 			class:dimmed={dimmed}
+			class:moving={moving}
 			class:shifted={shift !== 0}
-			style="--row-shift:{shift}"
+			style="--drag-y:{dragY}px; --row-shift:{shift}"
 		>
-			<Item.Media
-				><div class="seq">
-					{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}
+			<!--
+				The digit rolls on a position change, exactly as QueueRow's does and for the same reason: these
+				two card kinds share one list, so a drag that rolled the queue rows' numbers while a processing
+				card's jumped would read as one of the two being broken. Keyed on the number so a change swaps
+				the element and its keyframe runs once; the sparkle branch (no number yet) is outside the key,
+				since there is no position for it to roll between.
+			-->
+			<Item.Media>
+				<!--
+					THE GRIP LEADS THE ROW, the same handle in the same place as QueueRow's — deliberately identical,
+					because these two kinds sit in ONE list and a card you cannot pick up beside rows you can reads
+					as a broken row rather than as a different one. See the `grip` prop for why this card was
+					undraggable until 2026-09-22 and what had to be fixed to change that.
+
+					INERT WHILE A MOVE IS UNCONFIRMED (`!pending`), for QueueRow's reason: a second reorder against a
+					position the server has not agreed to yet would issue an op for an index that no longer means
+					what the guest saw. The seq bubble stays, so the card keeps its place while it settles.
+				-->
+				{#if grip && !pending}
+					<Button
+						variant="ghost"
+						size="icon"
+						press="grab"
+						aria-label="Reorder — drag, or use arrow keys"
+						aria-keyshortcuts="ArrowUp ArrowDown"
+						data-grip={gripId}
+						onpointerdown={(e) => ongripdown?.(e)}
+						onkeydown={(e) => {
+							if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+							// The list owns what a step means; this only reports which way and stops the page
+							// scrolling under the guest while they use it.
+							e.preventDefault();
+							onnudge?.(e.key === 'ArrowUp' ? -1 : 1);
+						}}><Icon name="grip" /></Button
+					>
+				{/if}
+				<div class="seq" style="--seq-dir:{seqDir}">
+					{#if seq}{#key seq}<span class="n">{seq}</span>{/key}{:else}<Icon name="sparkle" />{/if}
 				</div></Item.Media
 			>
 			<Item.Content>
@@ -151,10 +238,10 @@
 				<Item.Actions data-align="start">
 					<!--
 						THE ARROWS ARE GONE FROM HERE TOO (2026-09-21) — two 44px outlined buttons per card to move a
-						song one place, reported as taking too much space. A processing card is NOT draggable (it has
-						no grip: the live sort moves uniform queued rows, and this card is a different height and a
-						different component), so its reorder path is the keyboard nudge on the QUEUED rows around it:
-						a card in the queue moves when the rows either side of it do.
+						song one place, reported as taking too much space. Their job is the GRIP's now, in
+						`Item.Media` above: drag it, or Arrow Up/Down while it has focus. That is the same pair of
+						paths a queued row offers, and this card offers them because it is draggable as of
+						2026-09-22 (see the `grip` prop; it was not, and that was reported).
 
 						`reorderable` is kept in the props and in this gate deliberately — it is what the route uses
 						to say "this position can move at all", and a card that could never move should not grow a
@@ -265,6 +352,23 @@
 		background: var(--card2);
 		color: var(--ink-dim);
 		flex: 0 0 auto;
+		/* The bubble is the roll's window — the arriving digit is clipped by the circle on its way in. */
+		overflow: hidden;
+	}
+	/* The digit roll, byte-identical to QueueRow's and for the stated reason: one list, one behaviour.
+	   `from` only, so the landing state is the element's own; `--seq-dir` comes from the script above and
+	   0 degrades it to a fade. Gated on no-preference, which is its whole reduced-motion contract, and
+	   both properties are composited (motion.test.ts's allowlist). */
+	@media (prefers-reduced-motion: no-preference) {
+		.seq .n {
+			animation: seq-roll 180ms cubic-bezier(0.32, 0.72, 0, 1);
+		}
+		@keyframes seq-roll {
+			from {
+				transform: translateY(calc(var(--seq-dir, 0) * 110%));
+				opacity: 0;
+			}
+		}
 	}
 	/* Byte-identical to QueueRow's `.t`, deliberately: the two row kinds sit in the SAME phone list, so a
 	   long title that grew THIS card while the queue row beside it ellipsised read as a layout bug rather
@@ -361,6 +465,25 @@
 	   this, but align-items:center floated the buttons mid-card. */
 	/* Sizing, radius, surface and glyph size come from <Button variant="icon"> in components/ui/button.
 	   `.icon-btn` in app.css was deleted in an earlier change S1b when its ten consumers became that variant. */
+	/*
+	 * THE DRAGGED CARD FOLLOWS THE FINGER — byte-for-byte QueueRow's `.moving`, deliberately: the two kinds
+	 * are dragged in ONE list by one gesture, so a difference here would be a difference in how the same drag
+	 * behaves depending on which row you grabbed.
+	 *
+	 * NO transition and no keyframe, which is what makes reduced-motion hold by construction rather than by a
+	 * media query: nothing is interpolated over time, so there is no duration to zero out. The card's position
+	 * is a 1:1 response to the pointer — the same class of movement as scrolling.
+	 *
+	 * `pointer-events: none` because the card is translated to sit under the finger: as the topmost element at
+	 * the pointer it would answer every hit-test aimed at the list beneath it.
+	 */
+	.moving {
+		transform: translateY(var(--drag-y, 0px));
+		position: relative;
+		z-index: var(--z-row-lifted);
+		border-color: var(--accent);
+		pointer-events: none;
+	}
 	/*
 	 * THE ROWS THE DRAGGED ONE PASSES SLIDE OUT OF ITS WAY, one place each — which is what makes this a
 	 * LIVE SORT rather than a drag over drawn targets (see routes/+page.svelte and `rowShift`).

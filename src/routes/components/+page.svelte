@@ -10,8 +10,6 @@
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
-	import { positionWords } from '$lib/phrasing/position-sentence';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import {
 		LYRICS_BALL_STYLES,
@@ -551,7 +549,7 @@
 		(This is also the only surface here that cannot be judged without interacting — worth knowing
 		before trusting a gallery screenshot of it.)
 	-->
-	<h2 class="section">NowPlayingDrawer · MyPositionCard</h2>
+	<h2 class="section">NowPlayingDrawer</h2>
 	<div class="row-demo">
 		<Button
 			variant="secondary"
@@ -591,13 +589,13 @@
 		canStart
 		mediaId={drawerHasSong ? '01M2H2FVB5P1W0G7BCHC29BYFJ' : null}
 	/>
-	<MyPositionCard
-		words={positionWords({ place: 3, beforeName: 'Priya', nowRemainingSec: 145, aheadDurationsSec: [249, 321] })}
-	/>
-	<MyPositionCard
-		words={positionWords({ place: 3, beforeName: 'Priya', nowRemainingSec: 145, aheadDurationsSec: [249, null] })}
-	/>
-	<MyPositionCard words={positionWords({ place: 1, nowRemainingSec: 40, aheadDurationsSec: [] })} />
+	<!--
+		`MyPositionCard` WAS HERE, in three states (a known wait, an unknown one, and "up next"). The
+		component is deleted: it sat above the home queue restating the row beneath it — the same ordinal, the
+		same "you're up next" — and its one piece of unique information, the wait, is now a clause on that
+		row's own byline (`QueueRow subtitle`, built by `waitShort`). The three states it demonstrated are
+		still visible in this gallery, as the `subtitle` on the QueueRows below.
+	-->
 
 	<h2 class="section">QueueRow</h2>
 	<!-- singerColor values here are FIXTURE data — each is a singer's chosen accent standing in for a
@@ -605,6 +603,7 @@
 	<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
 	<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
 	<QueueRow seq={4} title="Sweet Caroline" singerName="Liam" singerColor="#5cb8ff" />
+
 	<QueueRow seq={5} title="Wonderwall" singerName="You" singerColor={PINK} mine pending="add" />
 	<!-- an earlier change / the unconfirmed REORDER, which had no fixture because the state did not exist —
 	     a pending move was indistinguishable from a landed one. Paired directly below its `pending="add"`
@@ -623,6 +622,21 @@
 		mine
 		subtitle="after Liam"
 	/>
+
+	<!--
+		THE WAIT ON THE BYLINE — its own section, so its numbering restarts at 1 (the uniqueness guard is
+		scoped per section, and a row claiming "up next" has to be able to show a 1 in its bubble).
+
+		This is where the deleted `MyPositionCard`'s one unique line went: the card sat above the home queue
+		reading "1st · You're up next. · Roughly 3 minutes." over a row that already said the same ordinal and
+		the same badge, so only the wait was its own. Three rows, the three states `waitShort` produces — a
+		known wait beside the up-next badge, the sub-minute phrase, and (the one that matters) an UNKNOWN
+		wait, which renders no clause at all rather than a guess.
+	-->
+	<h2 class="section">QueueRow · the wait</h2>
+	<QueueRow seq={1} title="Forever Young" singerName="You" singerColor={PINK} mine up subtitle="up next · ~3 min" />
+	<QueueRow seq={2} title="Africa" singerName="You" singerColor={PINK} mine subtitle="<1 min" />
+	<QueueRow seq={3} title="Heroes" singerName="You" singerColor={PINK} mine subtitle="" />
 
 	<h2 class="section">ProcessingCard</h2>
 	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />
@@ -659,6 +673,10 @@
 	<!-- A processing song is still a queue entry, so it carries the SAME controls as a ready row. Paired
 	     with the QueueRow below deliberately: the two reorder/remove button groups must line up, so a
 	     song finishing its process doesn't visually reshuffle its own buttons. -->
+	<!-- `grip` is on this one deliberately: a processing card became DRAGGABLE on 2026-09-22 (see the prop's
+	     note), and the handle sits in the same place, at the same size, as a QueueRow's. Two kinds in one
+	     list is exactly the pair a gallery exists to put side by side — if this handle ever stops matching
+	     the row's, that is visible here and nowhere else. -->
 	<ProcessingCard
 		seq={3}
 		title="Toto - Africa (Lyrics)"
@@ -667,6 +685,8 @@
 		status="separating"
 		pct={16}
 		reorderable
+		grip
+		gripId="demo-proc"
 		onremove={() => {}}
 	/>
 	<!-- Coverage gap closed: the only long-name fixture used to be a QueueRow, so

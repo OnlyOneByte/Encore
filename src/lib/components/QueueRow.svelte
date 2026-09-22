@@ -114,6 +114,36 @@
 	 * so the two states cannot drift into saying the same thing again.
 	 */
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
+
+	/**
+	 * WHICH WAY THE POSITION NUMBER JUST MOVED: +1 it went up (3 → 4), -1 it came down, 0 first render.
+	 *
+	 * Read by the `.seq` bubble as `--seq-dir` so the incoming digit rolls in from the side it came from —
+	 * an odometer increments upward, so a LARGER number enters from below. The roll itself is a keyed
+	 * block plus a CSS keyframe (see `.seq .n`), never a Svelte `transition:` directive: those compile to
+	 * an inline animation the reduced-motion media query cannot reach, which `motion.test.ts` rejects by
+	 * name.
+	 *
+	 * `$effect.pre`, not `$effect`, and that is load-bearing — the direction has to be on the element
+	 * BEFORE the keyed block replaces the digit, because an animation reads its keyframes at the moment it
+	 * starts and a later attribute write cannot retune one already running.
+	 *
+	 * The previous value is a PLAIN `let`, deliberately un-reactive: it is a record of what was last
+	 * rendered, not a dependency, and making it `$state` would put this effect in a loop with itself. It is
+	 * seeded INSIDE the effect rather than from `seq` at declaration — `let prevSeq = seq` is a
+	 * `state_referenced_locally` warning (this file must keep `bun run check` at 0/0), and the seeded form
+	 * is also what guarantees the first run writes no state at all, so the mount rung sees no extra pass.
+	 */
+	let seqDir = $state(0);
+	let prevSeq: number | undefined;
+	$effect.pre(() => {
+		if (prevSeq === undefined || seq === prevSeq) {
+			prevSeq = seq;
+			return;
+		}
+		seqDir = seq > prevSeq ? 1 : -1;
+		prevSeq = seq;
+	});
 </script>
 
 <!--
@@ -191,7 +221,16 @@
 						onclick={(e) => ongrip?.(e.currentTarget as HTMLElement)}><Icon name="grip" /></Button
 					>
 				{/if}
-				<div class="seq">{seq}</div>
+				<!--
+					THE NUMBER IS KEYED ON ITSELF, so a change swaps the element rather than mutating a text node.
+					That is what gives the digit an ENTRANCE: a fresh node runs `.seq .n`'s keyframe once, with no
+					class-toggle timer and no `offsetWidth` read to restart it (a geometry read here would throw on
+					the mount rung). The bubble itself is never recreated — it keeps its own surface, and only the
+					digit inside it rolls.
+				-->
+				<div class="seq" style="--seq-dir:{seqDir}">
+					{#key seq}<span class="n">{seq}</span>{/key}
+				</div>
 			</Item.Media>
 			<Item.Content>
 				<div class="t">{title}</div>
@@ -295,6 +334,30 @@
 		background: var(--card2);
 		color: var(--ink-dim);
 		flex: 0 0 auto;
+		/* The bubble is the roll's window: the arriving digit starts a row's-worth outside it and must be
+		   clipped by the circle on the way in, or a 2 is briefly legible above a 1. */
+		overflow: hidden;
+	}
+	/*
+	 * THE DIGIT ROLLS INTO PLACE when the row's position changes — during a drag (see `liveSeq` in
+	 * $lib/reorder-mode) and on any authoritative reorder. `from` only, so the landing state is the
+	 * element's own computed style and nothing has to be restated; direction comes from `--seq-dir`,
+	 * written by the script above, and 0 on first render degrades it to a plain fade.
+	 *
+	 * Inside the no-preference query, which is the whole reduced-motion contract for it: under Reduce
+	 * Motion the number simply changes, which is the information without the movement. Both animated
+	 * properties are composited (`motion.test.ts`'s allowlist) so a list of rolling digits costs no layout.
+	 */
+	@media (prefers-reduced-motion: no-preference) {
+		.seq .n {
+			animation: seq-roll 180ms cubic-bezier(0.32, 0.72, 0, 1);
+		}
+		@keyframes seq-roll {
+			from {
+				transform: translateY(calc(var(--seq-dir, 0) * 110%));
+				opacity: 0;
+			}
+		}
 	}
 	.up .seq {
 		background: var(--accent);

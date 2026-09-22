@@ -40,7 +40,8 @@ export class SettingsRepository {
 			defaultFetcher: row.defaultFetcher as GlobalSettings['defaultFetcher'],
 			asrModel: row.asrModel as GlobalSettings['asrModel'],
 			syncMode: row.syncMode as GlobalSettings['syncMode'],
-			joinOrigin: row.joinOrigin
+			joinOrigin: row.joinOrigin,
+			maxProcessesPerSinger: row.maxProcessesPerSinger
 		});
 	}
 

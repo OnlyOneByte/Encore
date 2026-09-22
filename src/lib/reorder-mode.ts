@@ -79,39 +79,64 @@ export function ordinal(n: number): string {
 }
 
 /**
- * where the dragged row currently IS, as a queued index.
+ * Where the dragged row currently IS, as a queued index.
  *
  * THE ONE ARITHMETIC, READ TWICE: once to place the rows on screen and once to commit on release. That is
  * what replaced the drawn drop targets, and it is a stronger guarantee rather than a looser one — the old
  * mode could in principle render a target the release resolved differently; here "what the guest sees" and
  * "what is committed" are the same expression, so they cannot disagree.
  *
- * `rowHeightPx` is ONE height, not a table. Queued rows are uniform by construction (a processing card is
- * a different component and is not draggable), and a table of measured heights was the previous design's
- * recorded hazard: rows change height while a gesture is in flight — a byline gains an `away` badge,
- * another guest queues — and a cached table then points at the wrong position. One height, re-read at
- * press time, cannot drift that way.
+ * ── FROM ONE ROW HEIGHT TO THE ROWS' OWN CENTRES (2026-09-22) ─────────────────────────────────────
  *
- * ROUNDS TO NEAREST rather than truncating, so a row is displaced once the finger has travelled half a
- * row — the point at which the gap on screen has visibly opened. Truncating would need a full row of
- * travel and the list would lag the finger by a position all the way down.
+ * This took a single `rowHeightPx` and divided the travel by it, which is exact only while every row in the
+ * list is the same height. The queue contains TWO row kinds — a queued row and a taller processing card with
+ * a progress block — so the moment one song is being made, the arithmetic is wrong in both directions: a
+ * card dragged two 65px rows (130px) read 130/104 = 1.25 → ONE position, and a row dragged past a 104px card
+ * read 104/65 = 1.6 → TWO. The old design dodged this by refusing the processing card a grip at all, which
+ * is the defect that made it visible ("songs being processed aren't currently draggable") and which did not
+ * even fix the other direction.
+ *
+ * So the input is the rows' own BOXES rather than one height, and the rule is stated in the geometry: a row
+ * is passed once the dragged row's LEADING EDGE clears that row's midpoint — its bottom edge going down, its
+ * top edge going up. That is exact for any mix of heights, and it is the SAME hand-over the old `Math.round`
+ * expressed ("half a row of travel") with the half belonging to the row being passed rather than to the row
+ * doing the passing, which is the only reading that survives two different heights.
+ *
+ * ONE GEOMETRY READ, TAKEN AT PRESS TIME — the property the single height was chosen for, kept. The recorded
+ * hazard was re-measuring MID-GESTURE: rows change height while a drag is in flight (a byline gains an
+ * `away` badge, another guest queues a card) and a stale table then points at the wrong position. Reading
+ * once at press cannot drift that way, and a list that reshapes under the finger moves the whole thing
+ * together (see the `modeInvalidation` note on why that case needs no handling).
  *
  * CLAMPED TO THE LIST, which is the one place clamping is right: a finger can leave the list in either
- * direction, and the nearest end is unambiguously what the guest is aiming at. That is not the "commit
- * somewhere unchosen" case is about — the row is visibly sitting there when they let go.
+ * direction, and the nearest end is unambiguously what the guest is aiming at.
  */
 export function liveSortTarget(opts: {
 	fromIndex: number;
 	offsetPx: number;
-	rowHeightPx: number;
+	/** Every row's box in DOM (= queued) order, measured ONCE at press time, dragged row included. */
+	rowBoundsPx: readonly { top: number; height: number }[];
 	count: number;
 }): number {
-	const { fromIndex, offsetPx, rowHeightPx, count } = opts;
+	const { fromIndex, offsetPx, rowBoundsPx, count } = opts;
 	if (count <= 0) return 0;
-	// A zero or negative height makes the shift meaningless; treat it as "no movement" rather than
-	// dividing by it. Heights come from a real render, but a detached node measures 0.
-	if (!(rowHeightPx > 0)) return clampIndex(fromIndex, count);
-	return clampIndex(fromIndex + Math.round(offsetPx / rowHeightPx), count);
+	const own = rowBoundsPx[fromIndex];
+	// No usable measurement is "no movement" rather than a guess: a detached node measures nothing, and a
+	// list of boxes that does not cover this row cannot say where the row has travelled to.
+	if (!own || rowBoundsPx.length !== count) return clampIndex(fromIndex, count);
+	const centre = (i: number) => rowBoundsPx[i]!.top + rowBoundsPx[i]!.height / 2;
+	const draggedTop = own.top + offsetPx;
+	const draggedBottom = draggedTop + own.height;
+	let target = fromIndex;
+	// Downward: the LEADING edge is the bottom, and a row is passed once that edge clears the midpoint of the
+	// row it is entering. Scanning on and keeping the last match is what lets one gesture cross several rows.
+	if (offsetPx > 0) {
+		for (let i = fromIndex + 1; i < count; i++) if (centre(i) < draggedBottom) target = i;
+	} else if (offsetPx < 0) {
+		// Upward: the leading edge is the top, and the scan runs the other way for the same reason.
+		for (let i = fromIndex - 1; i >= 0; i--) if (centre(i) > draggedTop) target = i;
+	}
+	return clampIndex(target, count);
 }
 
 /**
@@ -143,6 +168,36 @@ export function rowShift(index: number, fromIndex: number, targetIndex: number):
 	if (targetIndex > fromIndex && index > fromIndex && index <= targetIndex) return -1;
 	if (targetIndex < fromIndex && index < fromIndex && index >= targetIndex) return 1;
 	return 0;
+}
+
+/**
+ * The 1-based POSITION NUMBER row `index` shows WHILE A DRAG IS IN FLIGHT.
+ *
+ * ── THE DEFECT THIS EXISTS FOR ────────────────────────────────────────────────────────────────────
+ *
+ * The rows animated and the numbers did not. `rowShift` slid every row out of the dragged row's way in
+ * real time, but each row's bubble kept rendering `sourceIndex + 1` — the order the SERVER last sent —
+ * so a drag showed 2 sitting above 1, and the numbers all corrected themselves at once when the patch
+ * landed. Reported as "a sort of flash on screen where everything changes": the flash was the only
+ * moment the numbers moved, and it happened after the gesture rather than during it.
+ *
+ * ── WHY IT IS THIS EXPRESSION AND NOT A SECOND ONE ────────────────────────────────────────────────
+ *
+ * It is `rowShift` plus one, and that is the point — the same arithmetic that PLACES a row is what
+ * NUMBERS it, so a row cannot be drawn in one position and labelled with another. A separate
+ * "what number goes here" pass is exactly how the two would drift, which is the hazard
+ * `liveSortTarget`'s own note argues about commits: one expression, read everywhere.
+ *
+ * The dragged row is the one case `rowShift` cannot answer (it returns 0 for it, because the finger
+ * positions that row rather than the shift doing it), so its number is `targetIndex` — the position it
+ * is visibly sitting in and the position a release commits.
+ *
+ * Returns the plain source number when either index is -1, which is how the page spells "no drag".
+ */
+export function liveSeq(index: number, fromIndex: number, targetIndex: number): number {
+	if (fromIndex < 0 || targetIndex < 0) return index + 1;
+	if (index === fromIndex) return targetIndex + 1;
+	return index + rowShift(index, fromIndex, targetIndex) + 1;
 }
 
 function clampIndex(i: number, count: number): number {

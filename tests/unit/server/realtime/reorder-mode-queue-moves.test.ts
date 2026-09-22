@@ -15,6 +15,14 @@ import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } fro
 import { EMPTY_SONG_PROFILE } from '$lib/contract';
 import { modeInvalidation, liveSortTarget, gripVisible } from '$lib/reorder-mode';
 
+/**
+ * `n` uniform 60px rows stacked from y=0, as a real render would report them. The live sort takes the rows'
+ * BOXES since 2026-09-22 (one height cannot place a list that mixes queued rows with taller processing
+ * cards), and what these arms are about is the INDEX SPACE following the list's length — so the geometry is
+ * deliberately the simplest thing that can express "a drag long enough to reach the end".
+ */
+const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ top: i * 60, height: 60 }));
+
 const media = (id: string): Media => ({
 	id,
 	source: 'youtube',
@@ -75,7 +83,7 @@ test('another guest queueing mid-drag re-orders the list, and the mode tracks th
 	 * actually claims is that the drag's index space follows the list's LENGTH as it changes underneath — so
 	 * it asks the live-sort arithmetic where a long drag lands, which is the last position that exists.
 	 */
-	expect(liveSortTarget({ fromIndex: 0, offsetPx: 10_000, rowHeightPx: 60, count: queuedList(state).length })).toBe(1);
+	expect(liveSortTarget({ fromIndex: 0, offsetPx: 10_000, rowBoundsPx: rows(2), count: 2 })).toBe(1);
 
 	// A DIFFERENT guest queues a song while my drag is open. This is the real op through the real hub,
 	// so the re-derivation is the server's own.
@@ -93,7 +101,7 @@ test('another guest queueing mid-drag re-orders the list, and the mode tracks th
 	expect(modeInvalidation(queuedList(state), 'a', 'queued')).toBeNull();
 	// …and the third position is now reachable, which is the half that proves the index space widened with
 	// the list rather than being captured when the gesture began.
-	expect(liveSortTarget({ fromIndex: 0, offsetPx: 10_000, rowHeightPx: 60, count: queuedList(state).length })).toBe(2);
+	expect(liveSortTarget({ fromIndex: 0, offsetPx: 10_000, rowBoundsPx: rows(3), count: 3 })).toBe(2);
 });
 
 test('the queue dropping below two songs closes the mode with a reason', () => {

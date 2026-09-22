@@ -73,10 +73,10 @@ test('SongRow derives its process bar from overallProcessPct', () => {
 // it passes status=. This is the repo's most-repeated defect shape (a caller that stops calling).
 //
 // RE-POINTED AS A WALK, not at a second single path. This arm used to name `src/routes/+page.svelte`,
-// which was the only page rendering a SongRow; the phone-remote redesign moved every SongRow off home
-// (queue-only now) onto `routes/find/+page.svelte`, and naming that file instead would just relocate
-// the same blind spot — the NEXT route to grow a song list would be unguarded exactly as /find was on
-// the day it was created. So the population is now derived: every `+page.svelte` under `src/routes`
+// which was the only page rendering a SongRow; the phone-remote redesign moved every SongRow off home onto
+// `routes/find/+page.svelte`, and naming that file instead would just have relocated the same blind spot —
+// the NEXT route to grow a song list would be unguarded exactly as /find was on the day it was created. The
+// walk is why the merge back onto home (2026-09-22) cost this file nothing at all. So the population is now derived: every `+page.svelte` under `src/routes`
 // that renders a SongRow, with a non-vacuity floor on both the page count and the element count so a
 // tree that stops rendering SongRow anywhere reds instead of reporting green over nothing.
 //

@@ -398,7 +398,10 @@ describe('SettingsRepository global scope: getGlobal SELECT completeness', () =>
 		upgradeModel: 'htdemucs',
 		asrModel: 'medium',
 		syncMode: 'lines',
-		joinOrigin: 'http://host.test:3000'
+		joinOrigin: 'http://host.test:3000',
+		// 7, not 0: a non-default that is also not the "uncapped" sentinel, so a dropped SELECT line reads
+		// back as 3 and reds — where 0 would be indistinguishable from a normalizer rejecting the write.
+		maxProcessesPerSinger: 7
 	};
 
 	it('every persisted global field survives a write and a re-read (guards the getGlobal SELECT list)', () => {

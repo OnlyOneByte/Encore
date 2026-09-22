@@ -508,8 +508,8 @@ try {
 	 * removed with it, and `SHEET_CAP_FRACTION` retired from the register (its reason is recorded
 	 * there). Nothing docked caps itself in a viewport fraction now; the band is sized by its content.
 	 *
-	 * What follows is the contract measured on `/`; the block after it measures the SAME band on `/find`,
-	 * which is where search went, and compares the two readings.
+	 * What follows is the contract measured on the resting `/`; the block after it measures the SAME band
+	 * with a query up — the search view, which is a state of this same column — and compares the two.
 	 */
 	await page.viewport(390, 844);
 	await page.goto(base + '/');
@@ -603,26 +603,27 @@ try {
 	}
 
 	/*
-	 * ── CLAIM 3 ON `/find`: THE SAME ONE BAND, MEASURED ON THE SECOND SURFACE ───────────────────
+	 * ── CLAIM 3 IN THE SEARCH VIEW: THE SAME ONE BAND, MEASURED IN THE SECOND STATE ──────────────
 	 *
-	 * WHAT MOVED, AND WHY THE CLAIM WIDENED RATHER THAN SHRANK. This section used to measure
-	 * `.search-dock`: a SEARCH band docked at the bottom of `/`, publishing `--dock-h` itself, with its
-	 * results stacking UPWARD out of it. Both halves of that are gone. Search is the `/find` ROUTE and
-	 * its box (`SEL.findBox`) sits at the TOP of the column in NORMAL FLOW — not docked, not sticky —
-	 * while `NowPlayingBand` (`SEL.homeReady`, `.band`) is the bottom-most chrome on EVERY phone surface
-	 * and `src/routes/+layout.svelte` publishes `--dock-h` from the `.dock` wrapper's measured
-	 * `clientHeight`.
+	 * WHAT MOVED, TWICE, AND WHY THE CLAIM KEPT WIDENING. This section used to measure `.search-dock`: a
+	 * SEARCH band docked at the bottom of `/`, publishing `--dock-h` itself, with its results stacking
+	 * UPWARD out of it. Both halves of that are gone. The box (`SEL.findBox`) sits at the TOP of the column
+	 * in NORMAL FLOW — not docked, not sticky — while `NowPlayingBand` (`SEL.homeReady`, `.band`) is the
+	 * bottom-most chrome on every phone surface and `src/routes/+layout.svelte` publishes `--dock-h` from
+	 * the band's measured `clientHeight`.
 	 *
-	 * So the subject got SIMPLER and the assertion got WIDER, which is why this is a re-point and not a
-	 * retirement. There is exactly one docked band in the app and it is the SAME element here as on `/`,
-	 * so — "the published height is the real rendered height" — is now asserted on BOTH
-	 * surfaces instead of only on the browse screen, and a mismatch on either is the same defect. Both
-	 * are worth measuring even though one element publishes the token: the layout WRITES `--dock-h`, but
-	 * each route's own `main` CONSUMES it (`calc(var(--dock-h, 0px) + 28px)` in both
-	 * `src/routes/+page.svelte` and `src/routes/find/+page.svelte`), so a route that reserves the wrong
-	 * thing, or a band that renders to a different height under a different route's header, is a
-	 * PER-SURFACE defect a single-surface reading cannot see. And one arm exists only because there are
-	 * now two readings of one element: they have to AGREE.
+	 * For one release the box was its own ROUTE (`/find`) and this was "the same band on the second
+	 * SURFACE". The route was merged into home (2026-09-22), so it is now the same band in the second
+	 * STATE: the column with a query up, whose rows are search results rather than queue rows. The
+	 * measurement is unchanged and so is what it can catch — the band is reached the same way, rendered by
+	 * the same element, and this reading is still compared against the resting one, which is the arm that
+	 * exists only because there are two readings of one element and they have to AGREE.
+	 *
+	 * WHAT THE MERGE DOES NOT WEAKEN: `main`'s reservation. The layout WRITES `--dock-h` and the route's
+	 * own `main` CONSUMES it (`calc(var(--dock-h, 0px) + 28px)`), and that consumption is what keeps the
+	 * last row reachable. With one column it is one rule instead of two — but the failure it guards
+	 * against is per-STATE as much as per-surface: a results list is longer than a queue, so "scrolled to
+	 * the very end" is a different row here, and it is the only case the reservation can fail in.
 	 *
 	 * What still cannot be settled by reading source:
 	 *   - whether `--dock-h` equals the band's real rendered height on this surface too, and equals the
@@ -639,11 +640,10 @@ try {
 	 */
 	await page.viewport(390, 844);
 	/*
-	 * NAVIGATE, don't type. Search left home, so the old drive — type into `/` and wait out the debounce —
-	 * would now be typing at a queue screen that renders no field at all. `openBrowseFromHome` taps the
-	 * band's magnifier and waits for the find box, which keeps the ONE place that knows how search is
-	 * reached the one place; the helper is deliberately not renamed, so its ~20 call sites (this one
-	 * included) survived the move untouched.
+	 * REACH THE FIELD THROUGH THE ONE HELPER, then type. `openBrowseFromHome` is the single place that knows
+	 * how search is reached — it waited for a docked box, then tapped the band's magnifier and waited for a
+	 * route, and now finds the field already on home — so this drive survived both moves untouched. The
+	 * helper is deliberately not renamed for the same reason: ~20 call sites, one of them this gate.
 	 */
 	await openBrowseFromHome(page, { timeout: 15000 });
 	await page.fill(SEL.search, 'a');
@@ -652,19 +652,19 @@ try {
 		.catch(() => {});
 	await sleep(800); // the search debounce is 150ms; let the result set land and the rows paint
 
-	// The band's magnifier, built from the contract's own accessible name rather than a second hard-coded
-	// string — the same form `lib/phone.mjs` addresses it by, so it can only be reached by the name a
-	// screen reader announces.
-	const bandMagnifier = `${SEL.homeReady} button[aria-label="${SEL.bandSearch.name}"]`;
+	// The band's two flanking transport controls — restart and skip — addressed by STRUCTURE: the group holds
+	// the disc plus these two, so `.btn` inside it is exactly the pair. (It was addressed by the magnifier's
+	// accessible name until that control was deleted; see the thumb-zone arm below.)
+	const bandSideControls = `${SEL.homeReady} .tp .btn`;
 
 	const browseProbe = `(() => {
 		const dock = document.querySelector(${JSON.stringify(SEL.dockRow)});
-		const mag = document.querySelector(${JSON.stringify(bandMagnifier)});
+		const sides = [...document.querySelectorAll(${JSON.stringify(bandSideControls)})];
 		const field = document.querySelector(${JSON.stringify(SEL.search)});
 		const main = document.querySelector(${JSON.stringify(SEL.mainColumn)});
-		if (!dock || !mag || !field || !main) return null;
+		if (!dock || sides.length !== 2 || !field || !main) return null;
 		const dr = dock.getBoundingClientRect();
-		const mr = mag.getBoundingClientRect();
+
 		const fr = field.getBoundingClientRect();
 		const rows = [...document.querySelectorAll(${JSON.stringify(SEL.songRow)})].map((r) => {
 			const b = r.getBoundingClientRect();
@@ -677,7 +677,8 @@ try {
 			dockOuterHeight: dr.height,
 			dockTop: dr.top,
 			dockBottom: dr.bottom,
-			magCentreY: mr.top + mr.height / 2,
+			sideCentresY: sides.map((el) => { const b = el.getBoundingClientRect(); return b.top + b.height / 2; }),
+			discCentreY: (() => { const d = document.querySelector(${JSON.stringify(SEL.bandTransport)}); if (!d) return null; const b = d.getBoundingClientRect(); return b.top + b.height / 2; })(),
 			fieldCentreY: fr.top + fr.height / 2,
 			innerHeight: window.innerHeight,
 			mainPadBottom: parseFloat(getComputedStyle(main).paddingBottom),
@@ -692,13 +693,13 @@ try {
 	const browse = await page.evaluate(browseProbe);
 	if (!browse) {
 		check(
-			'CLAIM 3 the find surface renders the docked band, its magnifier, its field and its column, so the contract is measurable',
+			'CLAIM 3 the search view renders the docked band, its magnifier, its field and its column, so the contract is measurable',
 			false,
-			`no ${SEL.dockRow} / ${bandMagnifier} / ${SEL.search} / ${SEL.mainColumn} found on /find with results showing`
+			`no ${SEL.dockRow} / two ${bandSideControls} / ${SEL.search} / ${SEL.mainColumn} found on / with results showing`
 		);
 	} else {
 		check(
-			"CLAIM 3 --dock-h on /find is the BAND's REAL rendered height — the contract every column offsets from",
+			"CLAIM 3 --dock-h in the search view is the BAND's REAL rendered height — the contract every column offsets from",
 			browse.dockVar !== '' &&
 				browse.dockVar === browse.dockInline &&
 				Math.abs(parseFloat(browse.dockVar) - browse.dockOuterHeight) <= 1,
@@ -712,14 +713,14 @@ try {
 		 * single-surface reading above can see that; only the comparison can.
 		 */
 		check(
-			'CLAIM 3 the ONE band renders to the SAME height on / and on /find — one element, one token, no per-surface drift',
+			'CLAIM 3 the ONE band renders to the SAME height at rest and with results up — one element, one token, no per-state drift',
 			dock !== null && Math.abs(browse.dockOuterHeight - dock.dockOuterHeight) <= 1,
 			dock === null
 				? 'the / reading is missing, so the two surfaces could not be compared'
-				: `band outer box is ${dock.dockOuterHeight.toFixed(1)}px on / and ${browse.dockOuterHeight.toFixed(1)}px on /find`
+				: `band outer box is ${dock.dockOuterHeight.toFixed(1)}px at rest and ${browse.dockOuterHeight.toFixed(1)}px with results up`
 		);
 		check(
-			'CLAIM 3 the band sits fully on screen on /find — no bleed below, no clip above',
+			'CLAIM 3 the band sits fully on screen in the search view — no bleed below, no clip above',
 			browse.dockTop >= -1 && browse.dockBottom <= browse.innerHeight + 1,
 			`band occupies ${browse.dockTop.toFixed(1)}..${browse.dockBottom.toFixed(1)} of a ${browse.innerHeight}px viewport`
 		);
@@ -729,23 +730,25 @@ try {
 			`main padding-bottom ${browse.mainPadBottom}px against a ${browse.dockClientHeight}px band`
 		);
 		/*
-		 * RE-POINTED, NOT DROPPED: thumb reach now belongs to the band's MAGNIFIER.
+		 * RE-POINTED TWICE, AND THE CRITERION IS THE SAME EACH TIME: the controls a guest reaches mid-song must
+		 * not cost a regrip, so they belong in the bottom third.
 		 *
-		 * The retired arm read the search INPUT's centre and required it in the bottom third, because a box
-		 * docked in the thumb zone was the whole point of that design. Re-pointing it at this surface's
-		 * field would assert the OPPOSITE of what `/find` deliberately does — the box is at the top of the
-		 * column in normal flow, and the route's own comment records why it is not even sticky. An arm that
-		 * demands a design the app rejected is not a preserved claim, it is a false red.
+		 * It first read the search INPUT's centre, because a box docked in the thumb zone was the point of that
+		 * design. When the box moved to the top of the column it re-pointed at the band's MAGNIFIER — same
+		 * criterion, and re-pointing it at the field would have asserted the OPPOSITE of what this surface
+		 * deliberately does. The magnifier is now deleted too (2026-09-22): search is the first element in the
+		 * column, so reaching it is scrolling to the top of the page rather than a control in the chrome.
 		 *
-		 * What the claim was ABOUT survives whole and moved with the control: reaching search must not cost
-		 * a regrip. That control is the band's magnifier, which is permanent chrome in the thumb zone on
-		 * every phone surface — so this reading also carries for `/`, which is why it is asserted once
-		 * rather than on both (two geometry checks of one criterion is the shape this file warns about).
+		 * So the subject is the TRANSPORT, and the claim is STRICTLY WIDER than either predecessor: all three
+		 * controls a guest uses while a song plays — restart, play/pause, skip — are in the band row and all
+		 * three must be in the thumb zone. One reading covers every phone surface, since the band is chrome.
 		 */
+		const thumbLine = (browse.innerHeight * 2) / 3;
+		const transportCentres = [...browse.sideCentresY, browse.discCentreY];
 		check(
-			"CLAIM 3 the search ENTRY POINT sits in the thumb zone — the band's magnifier in the bottom third of the viewport",
-			browse.magCentreY > (browse.innerHeight * 2) / 3,
-			`magnifier centre at y=${browse.magCentreY.toFixed(1)} of ${browse.innerHeight}px; thumb zone starts at ${((browse.innerHeight * 2) / 3).toFixed(1)} (the find field is at y=${browse.fieldCentreY.toFixed(1)}, top of the column, by design)`
+			'CLAIM 3 the whole TRANSPORT sits in the thumb zone — restart, play/pause and skip in the bottom third',
+			transportCentres.every((y) => typeof y === 'number' && y > thumbLine),
+			`transport centres at ${transportCentres.map((y) => (typeof y === 'number' ? y.toFixed(1) : String(y))).join(', ')} of ${browse.innerHeight}px; thumb zone starts at ${thumbLine.toFixed(1)} (the search field is at y=${browse.fieldCentreY.toFixed(1)}, top of the column, by design)`
 		);
 		// A floor, not a check: with no rows the occlusion arms would pass over nothing at all.
 		check(
@@ -757,7 +760,7 @@ try {
 		 * RETIRED: "no result row is occluded by the band, at rest" — which required ZERO of the rendered
 		 * rows to intersect the band before any scrolling. That was satisfiable only because the browse
 		 * screen was BOTTOM-ANCHORED and scrolled itself to the end on every keystroke, so "at rest" and
-		 * "at the end of the list" were the same position. `/find` reads downward from a header, so at rest
+		 * "at the end of the list" were the same position. The column reads downward from the field, so at rest
 		 * a list longer than the viewport necessarily continues underneath the band — 2 of 28 rows did, and
 		 * the arm redded on a surface that is behaving correctly. Demanding it back would mean demanding a
 		 * list no longer than one screen.
@@ -781,7 +784,7 @@ try {
 	 *
 	 * RETIRED: "the stack ENDS at the dock — the top-ranked row is the one beside the thumb". It required
 	 * the last row's bottom to land 0..72px above the band, and it was an assertion about TWO mechanisms
-	 * `/find` does not have: a bottom-anchored column (`justify-content: flex-end`) and a scroll-to-bottom
+	 * this column does not have: a bottom-anchored column (`justify-content: flex-end`) and a scroll-to-bottom
 	 * on every result set. Results flow downward from a box at the top now, in ordinary document order, so
 	 * a short result set legitimately ends hundreds of pixels above the band and that arm could only red
 	 * on a correct app. It is not re-pointed under its old name because the name states the dead
@@ -820,7 +823,7 @@ try {
 		check(
 			'CLAIM 3 the find surface still has a band and rows to measure at the end of the list',
 			false,
-			`no ${SEL.dockRow} or no ${SEL.songRow} on /find after scrolling to the end`
+			`no ${SEL.dockRow} or no ${SEL.songRow} in the search view after scrolling to the end`
 		);
 	} else {
 		// The precondition, stated as its own arm: if the column never scrolled there is no end to be at,
@@ -847,7 +850,7 @@ try {
 	 *
 	 * RETIRED: "one line of content is anchored beside the thumb, not stranded at the top". It measured
 	 * `justify-content: flex-end` on the search column — one empty-state line pushed down beside the
-	 * docked box — and the note above it said so outright. `/find` anchors nothing: its `main` is ordinary
+	 * docked box — and the note above it said so outright. This column anchors nothing: `main` is ordinary
 	 * flow with the box at the top, so the empty line sits NEAR the top and is meant to. Asserting the old
 	 * position would be asserting a design that was reversed.
 	 *
@@ -886,7 +889,7 @@ try {
 		check(
 			'CLAIM 3 a non-matching query leaves one empty-state line to measure the short case against',
 			false,
-			`no ${SEL.empty} found on /find after a non-matching query`
+			`no ${SEL.empty} found on / after a non-matching query`
 		);
 	} else {
 		check(
@@ -928,6 +931,33 @@ try {
 			el.focus({ preventScroll: true });
 			const visible = el.matches(${JSON.stringify(FOCUS_VISIBLE)});
 			const cs = getComputedStyle(el);
+			/*
+			 * THE INDICATOR MAY BE ON THE FIELD RATHER THAN ON THE CONTROL, and this is what reads it there.
+			 *
+			 * A composite field — a bordered, filled box holding a mark, an input, a spinner and a clear
+			 * control — IS the field as far as anyone looking at it is concerned, so the ring belongs around
+			 * the whole box. Drawing it on the bare input instead nests a violet rounded rect inside a grey
+			 * one and strands the mark outside the ring it should be part of (measured: 75->341 inside a
+			 * wrapper running 34->356). The search box therefore carries a
+			 * .findbox:has(input:focus-visible) outline rule and suppresses the global one on the input.
+			 * (No backticks in this comment: it lives inside a template literal, where one would end the
+			 * string — the same trap a probe hit once already.)
+			 *
+			 * So the walk goes UP while the control is focused, at most three levels, and reports the first
+			 * ancestor that satisfies the floor. This is a widening of WHERE, never of WHAT: the same >=2px in
+			 * the resolved --focus is required, and a control with no qualifying ring on itself or on any near
+			 * ancestor still fails. Three levels because a field wrapper is one; the allowance stops well
+			 * short of "somewhere on the page".
+			 */
+			let ring = null;
+			for (let node = el.parentElement, hops = 0; node && hops < 3; node = node.parentElement, hops++) {
+				const acs = getComputedStyle(node);
+				const w = parseFloat(acs.outlineWidth) || 0;
+				if (acs.outlineStyle !== 'none' && w >= 2) {
+					ring = { style: acs.outlineStyle, width: w, color: acs.outlineColor, on: node.className || node.tagName };
+					break;
+				}
+			}
 			out.push({
 				what: (el.getAttribute('aria-label') || el.textContent || el.tagName).trim().replace(/\\s+/g, ' ').slice(0, 34),
 				tag: el.tagName.toLowerCase(),
@@ -935,6 +965,7 @@ try {
 				style: cs.outlineStyle,
 				width: parseFloat(cs.outlineWidth) || 0,
 				color: cs.outlineColor,
+				ring,
 				shadowChanged: cs.boxShadow !== shadowUnfocused,
 				wanted
 			});
@@ -944,9 +975,10 @@ try {
 	})()`;
 
 	const focusReadings =
-		/** @type {{ what: string, tag: string, focusVisible: boolean, style: string, width: number, color: string, shadowChanged: boolean, wanted: string }[]} */ ([]);
-	// Two surfaces, because the phone route carries seven controls and /settings carries twenty-two —
-	// including every <select> and the range inputs, whose focus rings come from different rules.
+		/** @type {{ what: string, tag: string, focusVisible: boolean, style: string, width: number, color: string, ring: { style: string, width: number, color: string, on: string } | null, shadowChanged: boolean, wanted: string }[]} */ ([]);
+	// Two surfaces, because the phone route carries the queue's controls plus the search FIELD (the only
+	// text entry on the remote, and the one control whose ring is on its wrapper) and /settings carries
+	// twenty-two — including every <select> and the range inputs, whose rings come from different rules.
 	for (const where of ['/', '/settings']) {
 		await page.goto(base + where);
 		await sleep(600);
@@ -960,14 +992,16 @@ try {
 			badFocus.push(`${who}: could not be driven into :focus-visible, so its indicator is UNMEASURED — not passed`);
 			continue;
 		}
-		if (f.style === 'none' || f.width < 2) {
+		// The control's own ring, or the field wrapper's — see the probe for why a composite field carries it.
+		const drawn = f.style === 'none' || f.width < 2 ? f.ring : { style: f.style, width: f.width, color: f.color, on: 'itself' };
+		if (!drawn) {
 			badFocus.push(
-				`${who}: outline is ${f.style} ${f.width}px${f.shadowChanged ? ' and the ring is drawn by box-shadow alone' : ''}`
+				`${who}: outline is ${f.style} ${f.width}px and no ancestor within three levels draws one${f.shadowChanged ? ' — the ring is drawn by box-shadow alone' : ''}`
 			);
 			continue;
 		}
-		if (f.color !== f.wanted) {
-			badFocus.push(`${who}: ring drawn in ${f.color}, but --focus resolves to ${f.wanted}`);
+		if (drawn.color !== f.wanted) {
+			badFocus.push(`${who}: ring on ${drawn.on} drawn in ${drawn.color}, but --focus resolves to ${f.wanted}`);
 		}
 	}
 	check(

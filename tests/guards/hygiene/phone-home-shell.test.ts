@@ -24,13 +24,18 @@
 //      therefore the BAND's measured height, published by the LAYOUT. It used to be `.search-dock` in
 //      this route, publishing its own height — an address that stopped being true the moment something
 //      docked below it.
-//   2. SEARCH IS A ROUTE, `routes/find/+page.svelte`, reached by tapping the band's magnifier. The
-//      earlier ruling ("no browse MODE, no `?browse=1`, results expand upward IN PLACE, so there is
-//      nothing to back out of") was sound about a box on home; once search is somewhere you GO, a route
-//      is what makes the phone's own back gesture work. The mode/`?browse=1` prohibition SURVIVES — it
-//      is now checked on both surfaces.
-//   3. THE ZERO-QUERY STATE SHOWS THE LIBRARY, not the queue. Home is queue-only and renders no result
-//      surface at all; the find surface's default content is the songs that can be sung right now.
+//   2. SEARCH IS A SECTION OF HOME, not a route — reverted 2026-09-22, and the reversal is the third
+//      placement of one surface. It was a box docked to the bottom of `/`; then `routes/find/+page.svelte`,
+//      reached by tapping the band's magnifier, on the reasoning that "once search is somewhere you GO, a
+//      route is what makes the phone's own back gesture work"; and it is now a field at the TOP of `/`
+//      with the library under the queue. What that earlier reasoning got right is kept by making search
+//      not somewhere you go at all: the magnifier focuses the field instead of navigating
+//      (`$lib/stores/search-focus`), so there is no back gesture to serve and no second surface to keep in
+//      step. The original ruling's prohibition — no browse MODE, no `?browse=1` — SURVIVES all three
+//      placements and is checked here.
+//   3. THE ZERO-QUERY STATE SHOWS THE QUEUE AND THE LIBRARY, in one column: what is happening, what is
+//      being made, what is ready to sing. A query replaces the queue with the results; `searchActive` is
+//      still the only switch.
 //
 // What did NOT change: (the band is reserved in normal flow off its MEASURED height, never a
 // constant), the one-env() rule (exactly one `env(safe-area-inset-bottom)` in the docked stack, on the
@@ -106,10 +111,11 @@ function stripComments(src: string): string {
 }
 const RAW = read('src/routes/+page.svelte');
 const PAGE = stripComments(RAW);
-// The three surfaces the shell was split across. Read here so every arm asserts what is actually
-// there: the layout owns the band and the token, the find route owns search, the band owns the inset.
+// The surfaces the shell is split across. Read here so every arm asserts what is actually there: the
+// layout owns the band and the token, the band owns the inset, and `PAGE` owns search again — the find
+// route's constant is gone with the route (2026-09-22), so an arm that used to check both phone routes now
+// checks the one that is left.
 const LAYOUT = stripComments(read('src/routes/+layout.svelte'));
-const FIND = stripComments(read('src/routes/find/+page.svelte'));
 const BAND = stripComments(read('src/lib/components/NowPlayingBand.svelte'));
 // §4: the now-playing surface itself, plus the two vendored files `handleOnly` depends on. The drawer
 // is where the hero's content went, so every arm that used to read the hero reads this instead; the
@@ -201,24 +207,28 @@ test('the rotation rows render inside <main>, not inside a pull-up sheet', () =>
 	expect(main).toContain('<ProcessingCard');
 	// …and behind the JOINED branch, so a guest still gets the landing page rather than a bare queue.
 	/*
-	 * REVERSED (the band/find phase, §3 of the header note). This clause used to read
-	 * `{#if !searchActive}` — the queue was one ARM of a two-view page, and that gate was what kept a
-	 * result list from stacking over the rotation. Search has LEFT this route, so home is QUEUE-ONLY and
-	 * there is no second arm to gate against; `searchActive` is not even declared here any more.
+	 * REVERSED TWICE, and it is back to the original clause. This read `{#if !searchActive}` when the queue
+	 * was one arm of a two-view page; then home became QUEUE-ONLY (search left for its own route) and the
+	 * gate was replaced by "this route renders no result surface at all", which was a stronger claim for
+	 * that shape. Search is a section of home again (2026-09-22), so the two-view gate is what is true and
+	 * the absence claims invert: there ARE song rows and there IS a field here.
 	 *
-	 * Replaced at GREATER strength rather than re-pointed, because the new shape allows a stronger
-	 * claim: the rows are still pinned behind a branch (`{#if me}`, whose else-arm is the landing page),
-	 * AND the route is asserted to render no result surface AT ALL. A result list that cannot exist here
-	 * cannot stack over the queue, which is what the old gate was buying.
+	 * The gate is what keeps a result list from stacking over the rotation, and it is asserted on BOTH
+	 * sides — the rows behind `{#if !searchActive}`, and the rows still behind the joined branch (`{#if
+	 * me}`, whose else-arm is the landing page) so a guest gets the landing page rather than a bare queue.
 	 */
 	const joinedStart = main.indexOf('{#if me}');
 	expect(joinedStart).toBeGreaterThanOrEqual(0);
 	expect(main.indexOf('{#each queued as e, i (e.id)}')).toBeGreaterThan(joinedStart);
 	expect(main).toContain('<JoinLanding />');
-	// No result surface on this route: no song rows, no query-driven split, no search box.
-	expect(PAGE).not.toContain('<SongRow');
-	expect(PAGE).not.toContain('searchActive');
-	expect(PAGE).not.toContain('findbox');
+	// The queue's rows are gated on there being no query, and they are the FIRST thing under that gate.
+	const zeroQuery = main.indexOf('{#if !searchActive}');
+	expect(zeroQuery).toBeGreaterThan(joinedStart);
+	expect(main.indexOf('{#each queued as e, i (e.id)}')).toBeGreaterThan(zeroQuery);
+	// The result surface is here rather than banned: the field, the song rows and the query switch.
+	expect(PAGE).toContain('<SongRow');
+	expect(PAGE).toContain('searchActive');
+	expect(PAGE).toContain('findbox');
 });
 
 test('the live singing controls live in the DRAWER, which IS the revealing, and home carries none', () => {
@@ -315,50 +325,44 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	for (const wire of ['onrestart={onrestart}', 'onskip={onskip}', 'ontoggleplay={ontoggleplay}'])
 		expect(DRAWER, `the band lost its \`${wire}\` wiring`).toContain(wire);
 	/*
-	 * REVEALED BY CSS, NOT BY A PROP — and all three parts are asserted, because any one alone is a silent
-	 * no-op: the state, the node it is written to, and the rule that acts on it.
+	 * THE REVEAL IS RETIRED (2026-09-22), AND ITS ABSENCE IS WHAT IS PINNED NOW.
 	 *
-	 * The band cannot take an `expanded`-style prop: a prop of it that CHANGES after mount re-runs the
-	 * drawer's size bindings, and a geometry read on the mount rung is a throw. Both reactive
-	 * forms were tried and both took the same three phone-home mounts down — an effect writing `$state`
-	 * (the write lands in a microtask, where `openDrawer` cannot swallow the refusal) and a `$derived` read
-	 * by `class:sheet-up={…}`. Bisected by deleting the directive alone with the derived left in: 18/18
-	 * passed. So it is the reactive DOM UPDATE that costs, and an imperative attribute write is the escape
-	 * hatch this file's own `aria-expanded` note already names.
+	 * It asserted three parts of a CSS reveal — the imperative `classList.toggle('sheet-up', up)`, the
+	 * `.band-face` node it wrote to, and the `display: grid` rules that acted on it — plus a second three for
+	 * the animated collapse (`sheet-down`, the rule keeping the pair displayed under it, and a `TP_ANIM_MS`
+	 * timer compared against six keyframe durations so the timer and the CSS could not drift).
+	 *
+	 * All of it existed because restart and skip were HIDDEN in the collapsed bar: the magnifier shared the
+	 * band row and four controls was too many. The magnifier is gone — search is a field at the top of home —
+	 * so the pair is simply always visible, and the whole mechanism is deleted rather than re-pointed.
+	 *
+	 * WHAT THE ARM BECOMES: the transport must be UNCONDITIONAL. The pair must not go back behind a height
+	 * state in any of the four shapes this file has already seen it in, because each was a real attempt.
 	 */
-	expect(DRAWER, 'the sheet must toggle its height state onto the band face imperatively').toMatch(
-		/el\.classList\.toggle\('sheet-up', up\)/
+	expect(DRAWER, 'the reveal is retired — no height class may be toggled onto the band again').not.toMatch(
+		/classList\.(toggle|add)\('sheet-(up|down)'/
+	);
+	expect(DRAWER, 'and no wrapper may be reintroduced to hold one').not.toContain('class="band-face"');
+	// The band is read here too (it has its own constant further down, inside the arm that owns the group's
+	// composition) because the hiding half of the retired reveal lived in THAT file, not this one.
+	// STRIPPED, because this file's own prose records what the retired reveal did — an absence arm that reads
+	// raw source reds on the explanation of the thing it bans, which is the trap browse-screen.test.ts
+	// documents at length.
+	const BAND_CODE = stripComments(read('src/lib/components/NowPlayingBand.svelte'));
+	expect(BAND_CODE, 'the pair must not be hidden at rest again').not.toMatch(/display:\s*none/);
+	expect(BAND_CODE, 'and the class the hiding rule keyed on stays gone, so nothing can re-hide by name').not.toContain(
+		'tp-side'
 	);
 	/*
-	 * …AND THE COLLAPSE ANIMATES TOO. Reported: the pair appears beautifully and then vanishes. `display:
-	 * none` arrives on the same frame as the state change, so the exit needs a class that HOLDS the open
-	 * layout while transforms carry the row to its collapsed positions — then the layout catches up with what
-	 * is already on screen. All three parts are pinned because any one alone is a no-op: the class, the rule
-	 * that keeps the pair displayed under it, and the timer that takes it off.
+	 * THE MEASURED CONSTRAINT THAT OUTLIVES THE REVEAL, kept as a ban because it is still true and still the
+	 * reason this cannot come back casually: the band cannot take a prop that CHANGES after mount, and a
+	 * reactive class directive on the band face is the same defect. `.band-slot` carries `bind:clientHeight`,
+	 * so any reactive update there re-runs its size binding, and a geometry read on the mount rung is a
+	 * deliberate throw. Both spellings were tried and both took the same three phone-home mounts down — an
+	 * effect writing `$state` (the write lands in a microtask, where `openDrawer` cannot swallow the refusal)
+	 * and a `$derived` read by `class:sheet-up={…}`, bisected by deleting the directive alone (18/18 passed).
 	 */
-	expect(DRAWER, 'the collapse must hold the open layout while it animates').toMatch(
-		/el\.classList\.add\('sheet-down'\)/
-	);
-	expect(DRAWER, 'sheet-down must keep the pair displayed, or there is nothing to animate out').toMatch(
-		/\.band-face:global\(\.sheet-down\) :global\(\.tp-side\)\s*\{[^}]*display:\s*grid/
-	);
-	/*
-	 * THE TIMER AND THE KEYFRAME DURATION ARE ONE FACT IN TWO PLACES, so they are compared rather than
-	 * trusted: a timer shorter than the animation cuts the exit off mid-flight, and a longer one leaves the
-	 * row holding its open width after the movement has finished.
-	 */
-	const animMs = /const TP_ANIM_MS = (\d+);/.exec(DRAWER)?.[1];
-	expect(animMs, 'the exit timer must be declared as a named constant').toBeTruthy();
-	const durations = [...DRAWER.matchAll(/animation: tp-[a-z-]+ (\d+)ms/g)].map((m) => m[1]);
-	expect(durations.length, 'both directions declare their animations').toBeGreaterThanOrEqual(6);
-	expect(new Set([...durations, animMs!]).size, 'the timer and every keyframe duration must agree').toBe(1);
-	expect(DRAWER, 'and hold the node it writes to').toMatch(/<div class="band-face" bind:this=\{faceEl\}>/);
-	expect(DRAWER, 'and reveal the transport pair with it').toMatch(
-		/\.band-face:global\(\.sheet-up\) :global\(\.tp-side\)\s*\{[^}]*display:\s*grid/
-	);
-	expect(DRAWER, 'the sheet-up class must not be applied reactively — that re-runs the size bindings').not.toMatch(
-		/class:sheet-up=/
-	);
+	expect(DRAWER, 'the sheet-up class must not come back as a reactive directive').not.toMatch(/class:sheet-up=/);
 	expect(DRAWER, 'and must not come back as $state written from an effect either').not.toMatch(/let sheetUp = \$state/);
 	expect(DRAWER, 'the band must not be given an expanded/sheetUp prop').not.toMatch(
 		/<NowPlayingBand[\s\S]*?(?:expanded|sheetUp)=/
@@ -386,9 +390,11 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	// …and the band's own controls with it: vaul captures the pointer, so a drag begun on the disc would
 	// fire its click on release and pause the song on the way to opening the sheet.
 	const BAND_DRAG = read('src/lib/components/NowPlayingBand.svelte');
+	// ONE attribute covers all three controls, since vaul resolves it with `closest()` — it used to take two,
+	// the group plus the magnifier beside it, and the magnifier is gone (2026-09-22).
 	expect(BAND_DRAG, 'the transport group must not be a drag surface').toMatch(/<div class="tp" data-vaul-no-drag>/);
-	expect(BAND_DRAG, 'the magnifier must not be a drag surface').toMatch(
-		/aria-label="Search for a song"[\s\S]{0,80}data-vaul-no-drag/
+	expect(BAND_DRAG, 'and there must be no control in the row outside that protection').not.toContain(
+		'aria-label="Search for a song"'
 	);
 	// …and a tap that was really a drag must not also toggle the sheet: the metadata block is both the
 	// press-to-toggle control and the biggest part of the drag surface.
@@ -431,20 +437,32 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 		expect(PAGE, `home must not carry the live control \`${gone}\` — the drawer owns it`).not.toContain(gone);
 });
 
-// ── the position, in words, fed from real durations ───────────────────────────────────
-test('the position card is fed the built sentence, not a formatted string from the route', () => {
-	expect(PAGE).toContain('<MyPositionCard words={myPosition} />');
-	// The route must not re-implement the sentence: one builder, unit-tested, no second copy to drift.
+// ── the wait, on the row it is about, fed from real durations ──────────────────────────
+test('the wait is rendered by a BUILDER, not by a string the route formats itself', () => {
+	/*
+	 * REVERSED IN ITS SUBJECT (2026-09-22), NOT IN ITS CLAIM. This required `<MyPositionCard
+	 * words={myPosition} />` — the card above the queue, fed the built sentence rather than a string the
+	 * route assembled. The card is DELETED: it restated the queue row beneath it (the same ordinal, the
+	 * same "you're up next") and its one unique line was the wait, which now sits on that row's own byline.
+	 *
+	 * The claim survives exactly: the route must not re-implement the phrasing. One formatter, unit-tested,
+	 * no second copy to drift — it is `waitShort` instead of `positionWords`, and the ban on the route
+	 * spelling a wait itself is unchanged.
+	 */
+	expect(PAGE).not.toContain('<MyPositionCard');
+	expect(PAGE).toMatch(/import \{ waitShort \} from '\$lib\/phrasing\/position-sentence';/);
+	expect(PAGE).toMatch(/subtitle=\{queueSubtitle\(e\)\}/);
 	expect(PAGE).not.toContain('roughly');
+	expect(PAGE).not.toMatch(/~\$\{/);
 	expect(PAGE).not.toMatch(/You're\s+#\$\{/);
 });
 
 test('the wait is summed from the CATALOG, with an absent media reported as unknown', () => {
 	// `Media.durationSec` is required, so the reachable unknown is an entry whose media is not in the
-	// client catalog. `?? null` is what carries that to the builder — `?? 0` would silently understate
+	// client catalog. `?? null` is what carries that to the formatter — `?? 0` would silently understate
 	// the wait, which is the dishonest rendering the requirement exists to prevent.
 	expect(PAGE).toMatch(
-		/aheadDurationsSec:\s*queued\s*\.?slice\(0, idx\)\.map\(\(e\) => mediaCatalog\.get\(e\.mediaId\)\?\.durationSec \?\? null\)/
+		/queued\s*\.?slice\(0, idx\)\s*\.?map\(\(e\) => mediaCatalog\.get\(e\.mediaId\)\?\.durationSec \?\? null\)/
 	);
 	// A playing song of unknown length makes the whole wait unknown, rather than contributing zero.
 	expect(PAGE).toMatch(/if \(nowDurationSec <= 0\) return null;/);
@@ -474,10 +492,7 @@ test('the docked band reserves its band in flow instead of overlapping rows', ()
 	expect(PAGE).not.toMatch(/setProperty\(\s*'--dock-h'/);
 	// …and consumed by EVERY scrolling column. A constant here is the mockup's own bug: the docked band
 	// occluded queue row 5 because a disclosure grew inside a fixed shell.
-	for (const [where, src] of [
-		['routes/+page.svelte', PAGE],
-		['routes/find/+page.svelte', FIND]
-	] as const) {
+	for (const [where, src] of [['routes/+page.svelte', PAGE]] as const) {
 		expect(src, `${where} must reserve the measured band in normal flow`).toMatch(
 			/padding:\s*var\(--space-xs\) var\(--space-3xl\) calc\(var\(--dock-h[^)]*\) \+ 28px\)/
 		);
@@ -486,7 +501,7 @@ test('the docked band reserves its band in flow instead of overlapping rows', ()
 	// RE-POINTED (§5): the thing mounted after the children is the drawer, which contains the band.
 	expect(LAYOUT.indexOf('<NowPlayingDrawer')).toBeGreaterThan(LAYOUT.indexOf('{@render children()}'));
 	// Nothing may dock off the retired sheet's token, or it reserves 132px of nothing.
-	for (const src of [PAGE, FIND, LAYOUT, BAND]) expect(src).not.toContain('var(--peek-h)');
+	for (const src of [PAGE, LAYOUT, BAND]) expect(src).not.toContain('var(--peek-h)');
 });
 
 test('the now-playing band is docked for a joined singer, and the + Add a turn CTA is still gone', () => {
@@ -542,14 +557,25 @@ test('the now-playing band is docked for a joined singer, and the + Add a turn C
 	// `showBand` is what carries "joined singer" — a guest on the landing page gets no band, and the
 	// television (which is not a phone surface) gets none either.
 	expect(LAYOUT).toMatch(/const showBand = \$derived\(isPhoneSurface && me !== null\)/);
-	// The magnifier is the add affordance now: it navigates to the find surface.
-	expect(LAYOUT).toMatch(/onsearch=\{\(\) => goto\('\/find'\)\}/);
+	/*
+	 * THE MAGNIFIER IS RETIRED (2026-09-22), and the arm inverts rather than being deleted.
+	 *
+	 * It pinned the control's wiring through three designs: `goto('/?browse=1')`, then `goto('/find')`, then
+	 * `openSearch` focusing home's field through a store (because chrome cannot see a route's locals). All
+	 * three answered "how does a guest reach search from the chrome", and the merge makes the question moot:
+	 * the field is the FIRST element in the home column, so there is nothing for the chrome to reach.
+	 *
+	 * Asserted as an ABSENCE because the failure mode is a half-restoration — a magnifier wired to nothing, or
+	 * a store nobody requests through — and because the band row it vacated is what makes the transport
+	 * always-visible (pinned in the transport arm above).
+	 */
+	expect(LAYOUT, 'the band must not be given a search callback again').not.toContain('onsearch=');
+	expect(LAYOUT, 'and the focus-request store retires with it').not.toContain('search-focus');
 
 	// The CTA and its dock are GONE — not merely re-gated — on every surface that could host them. If
 	// any of these come back the interstitial direction the owner corrected is back with them.
 	for (const [where, src] of [
 		['routes/+page.svelte', PAGE],
-		['routes/find/+page.svelte', FIND],
 		['routes/+layout.svelte', LAYOUT]
 	] as const) {
 		expect(src, `${where}: the retired interstitial dock`).not.toContain('cta-dock');
@@ -570,14 +596,13 @@ test('the now-playing band is docked for a joined singer, and the + Add a turn C
 	 */
 	const measured = DRAWER.match(/bind:clientHeight=\{bandH\}/g) ?? [];
 	expect(measured.length).toBe(1);
-	const hops = [LAYOUT, PAGE, FIND].join('\n').match(/bind:bandH=\{dockH\}/g) ?? [];
+	const hops = [LAYOUT, PAGE].join('\n').match(/bind:bandH=\{dockH\}/g) ?? [];
 	expect(hops.length).toBe(1);
 	// …and no phone surface measures a band of its own. WIDENED from the old `={dockH}` form: any
 	// clientHeight binding on one of these three is a second measurement competing with the band's.
 	for (const [where, src] of [
 		['routes/+layout.svelte', LAYOUT],
-		['routes/+page.svelte', PAGE],
-		['routes/find/+page.svelte', FIND]
+		['routes/+page.svelte', PAGE]
 	] as const)
 		expect(src, `${where} must not measure a second docked band`).not.toContain('bind:clientHeight');
 	/*
@@ -606,10 +631,7 @@ test('the now-playing band is docked for a joined singer, and the + Add a turn C
 	expect(LAYOUT, 'the layout declares no CSS at all now — vaul positions the content').not.toContain(
 		'env(safe-area-inset-bottom'
 	);
-	for (const [where, src] of [
-		['routes/+page.svelte', PAGE],
-		['routes/find/+page.svelte', FIND]
-	] as const) {
+	for (const [where, src] of [['routes/+page.svelte', PAGE]] as const) {
 		const mainCss = src.slice(src.indexOf('\tmain {'), src.indexOf('\tmain {') + 200);
 		expect(mainCss, `${where} must still declare a top-level main rule`).toContain('padding:');
 		expect(mainCss, `${where}'s reserve must not add a second env() term`).not.toContain('env(safe-area-inset-bottom');
@@ -631,12 +653,9 @@ test('the results view is driven by the query on the find route, with no browse 
 	 * a `?browse=1` push, or a URL read would still be exactly the defect the ruling named — so the
 	 * prohibition is KEPT and widened to both surfaces.
 	 */
-	expect(FIND).toContain('const searchActive = $derived(query.trim().length > 0)');
+	expect(PAGE).toContain('const searchActive = $derived(query.trim().length > 0)');
 	// The mode, its navigations, and the URL read that backed them are GONE from both phone routes.
-	for (const [where, src] of [
-		['routes/+page.svelte', PAGE],
-		['routes/find/+page.svelte', FIND]
-	] as const) {
+	for (const [where, src] of [['routes/+page.svelte', PAGE]] as const) {
 		expect(src, `${where} must not read a browse mode off the URL`).not.toContain("searchParams.get('browse')");
 		expect(src, `${where} must not push the retired browse route`).not.toContain("goto('/?browse=1'");
 		expect(src, `${where} must not declare a browse mode`).not.toContain('const browsing');
@@ -645,18 +664,19 @@ test('the results view is driven by the query on the find route, with no browse 
 		expect(src, `${where} must not gate on the retired mode`).not.toContain('!browsing');
 	}
 	/*
-	 * THE BACK ROLE, reassigned a second time and STATED rather than silently dropped. Under the docked
-	 * box it was an on-screen "← Queue" control calling `clearSearch()`, because there was no history
-	 * entry to pop and nothing to navigate back to. On a route it is a REAL link to `/` (PageHeader's
-	 * `back`), which is what makes the phone's own back gesture and a home-screen PWA's in-app exit both
-	 * land on the queue — and it is a stronger affordance than the button it replaces, not a weaker one.
+	 * THE BACK ROLE, reassigned a THIRD time and stated rather than silently dropped. Under the docked box
+	 * it was an on-screen "← Queue" control calling `clearSearch()`, because there was no history entry to
+	 * pop. On a route it was a real link to `/` (PageHeader's `back`), which made the phone's own back
+	 * gesture and a PWA's in-app exit both land on the queue. Merged into home (2026-09-22) there is no
+	 * back role at all: the results are a section of the page you are already on, so the only way "back"
+	 * is to stop searching. That is `clearSearch`, wired to the box's own clear control — which is where
+	 * this arm started, and it is asserted here rather than the link, because the link would now point at
+	 * the page that renders it.
 	 */
-	expect(FIND).toMatch(/back=\{\{ href: '\/', label: '[^']+' \}\}/);
-	expect(FIND).not.toContain('data-testid="back-to-queue"');
-	// `clearSearch` survives with the NARROWER job the route left it: emptying the box, which restores the
-	// zero-query view. It is wired to the box's own clear control, not standing in for a back gesture.
-	expect(FIND).toMatch(/function clearSearch\(\)/);
-	expect(FIND).toMatch(/aria-label="Clear the search" onclick=\{clearSearch\}/);
+	expect(PAGE).not.toMatch(/back=\{\{ href: '\/'/);
+	expect(PAGE).not.toContain('data-testid="back-to-queue"');
+	expect(PAGE).toMatch(/function clearSearch\(\)/);
+	expect(PAGE).toMatch(/aria-label="Clear the search" onclick=\{clearSearch\}/);
 	/*
 	 * The upward-stack auto-scroll and its `resultShape` gate are GONE rather than re-gated, and the
 	 * premise is what removed them: results grew UPWARD towards a box pinned at the bottom, so a new
@@ -664,8 +684,8 @@ test('the results view is driven by the query on the find route, with no browse 
 	 * page, which is the ordinary reading direction and needs no scrolling of its own. So there is no
 	 * gate left to get wrong — which is why this is a prohibition and not a re-pointed assertion.
 	 */
-	expect(FIND).not.toContain('resultShape');
-	expect(FIND).not.toMatch(/scrollTo\(|scrollIntoView\(/);
+	expect(PAGE).not.toContain('resultShape');
+	expect(PAGE).not.toMatch(/scrollTo\(|scrollIntoView\(/);
 });
 
 test('every result surface is gated on the query — an empty box shows the LIBRARY, never a stale list', () => {
@@ -674,17 +694,19 @@ test('every result surface is gated on the query — an empty box shows the LIBR
 	 * matter.
 	 *
 	 * THE OLD CLAIM: an empty box shows the QUEUE, so every result block had to be gated or home rendered
-	 * a library list under an empty box. Search is its own surface now, so home has no result blocks at
-	 * all (pinned by the rotation-rows arm above) and the empty box shows THE LIBRARY — the songs that can
-	 * actually be sung right now, as the find surface's default content. That is the deliberate reversal:
-	 * the library used to be hidden behind two rails of shortcuts; it IS the zero-query view.
+	 * a library list under an empty box. Then search became its own surface, home had no result blocks at
+	 * all, and the empty box showed THE LIBRARY — the songs that can actually be sung right now.
 	 *
-	 * WHAT SURVIVES is the bleed rule, at equal strength and counted rather than named: the library group
-	 * renders ONLY with an empty box, the query-scoped groups render ONLY with a query, and neither view
-	 * may show the other's list. Weakening this to "some gate exists" would be the wrong answer, so both
-	 * sides of the split are checked.
+	 * BOTH ARE TRUE AT ONCE NOW (2026-09-22). One column, one query switch: with an empty box it is the
+	 * queue AND the library, and with a query the queue's rows give way to the results. So the zero-query
+	 * view asserted here is the queue's rows and the library's, and the arm that used to require the find
+	 * surface NOT to render queue rows is inverted — it must render them, or the merge lost the queue.
+	 *
+	 * WHAT SURVIVES is the bleed rule, at equal strength: the library group renders ONLY with an empty box,
+	 * the query-scoped groups ONLY with a query, and neither view may show the other's list. Weakening this
+	 * to "some gate exists" would be the wrong answer, so both sides of the split are checked.
 	 */
-	const main = FIND.slice(FIND.indexOf('<main>'), FIND.indexOf('</main>'));
+	const main = PAGE.slice(PAGE.indexOf('<main'), PAGE.indexOf('</main>'));
 
 	// The query-scoped result groups (ready, raw, the no-results state) are gated on a query…
 	const gated = main.match(/\{#if searchActive\b/g) ?? [];
@@ -692,10 +714,11 @@ test('every result surface is gated on the query — an empty box shows the LIBR
 	// …and the zero-query view — the LIBRARY, not the queue — is gated on its absence.
 	expect(main).toContain('{#if !searchActive}');
 	expect(main).toContain('{#each libraryRows as m (m.id)}');
-	// Home's list is not duplicated here: the find surface renders no rotation rows, so the two surfaces
-	// cannot disagree about the queue.
-	expect(main).not.toContain('<QueueRow');
-	expect(main).not.toContain('{#each queued as e');
+	// …and the queue is in the same column, under the same switch — INVERTED from "this surface renders no
+	// rotation rows", which was the two-surface form of the same no-disagreement rule. With one surface the
+	// rule is satisfied by there being one list: it is here, and it is gated on the query's absence.
+	expect(main).toContain('<QueueRow');
+	expect(main).toContain('{#each queued as e, i (e.id)}');
 
 	// The retired mode must not linger anywhere in <main>.
 	expect(main).not.toContain('{#if browsing');
@@ -710,8 +733,11 @@ test('every result surface is gated on the query — an empty box shows the LIBR
 	 * the data layer instead, and `searchActive` is fed to the pure helper that computes it. A template
 	 * gate can only hide the whole group; the helper decides row by row, and it is unit-testable.
 	 */
-	expect(main).toContain('{#if processingRows.length}');
-	expect(FIND).toMatch(/processingGroupIds\(\{\s*searchActive,/);
+	// `processingGroup` since the merge: `processingRows` minus whatever the queue on this same surface is
+	// already drawing a live bar for. That is a de-duplication, not a gate — the group still renders in both
+	// views, and its membership is still query-scoped by the pure helper rather than by the template.
+	expect(main).toContain('{#if processingGroup.length}');
+	expect(PAGE).toMatch(/processingGroupIds\(\{\s*searchActive,/);
 
 	// Non-vacuity: every `<SongRow` in <main> really is inside one of those blocks. The first SongRow
 	// cannot precede the first gate.
@@ -727,7 +753,7 @@ test('every result surface is gated on the query — an empty box shows the LIBR
 	 * nothing on this route is fixed or stuck to anything.
 	 */
 	expect(main).toContain('class="findbox"');
-	const boxCss = FIND.slice(FIND.indexOf('.findbox {'), FIND.indexOf('.findbox input {'));
+	const boxCss = PAGE.slice(PAGE.indexOf('.findbox {'), PAGE.indexOf('.findbox input {'));
 	// NEITHER STICKY NOR FIXED, which is the stronger claim and the one actually decided. Sticky was
 	// tried and abandoned: PageHeader is already sticky and carries the top safe-area inset, so a second
 	// sticky element needs the header's RENDERED height as its offset — not a token, and the first
@@ -736,7 +762,7 @@ test('every result surface is gated on the query — an empty box shows the LIBR
 	// box quietly re-entering the competition for the viewport that the band now wins outright.
 	expect(boxCss).not.toMatch(/position:\s*(?:sticky|fixed)/);
 	// The retired address is gone rather than merely unscanned.
-	expect(FIND).not.toContain('search-dock');
+	expect(PAGE).not.toContain('search-dock');
 	expect(PAGE).not.toContain('search-dock');
 });
 
@@ -759,8 +785,15 @@ test('the shell imports what it is built from — a missing one is a build break
 	// route no longer reads the browse query off the URL. (Asserted on the specifier alone, not the
 	// whole import statement, so this comment cannot itself read as a virtual-module import.)
 	expect(PAGE).not.toContain('$app/state');
-	expect(PAGE).toMatch(/import \{ positionWords \} from '\$lib\/phrasing\/position-sentence';/);
-	expect(PAGE).toMatch(/import MyPositionCard from '\$lib\/components\/MyPositionCard\.svelte';/);
+	// `waitShort` replaced `positionWords` with the card that read it (see the wait arm above), and the
+	// search surface brought the row component and the two readiness helpers the result groups call. Each is a
+	// build break if dropped, invisible to a run. (`searchFocus` was here for one release, for the band's
+	// magnifier; both are retired — see the band arm.)
+	expect(PAGE).toMatch(/import \{ waitShort \} from '\$lib\/phrasing\/position-sentence';/);
+	expect(PAGE).not.toContain('MyPositionCard');
+	expect(PAGE).not.toContain('search-focus');
+	expect(PAGE).toMatch(/import SongRow from '\$lib\/components\/SongRow\.svelte';/);
+	expect(PAGE).toMatch(/import \{ processAndQueue \} from '\$lib\/process-and-queue';/);
 	/*
 	 * RE-POINTED (header note §4). The now-playing surface is the LAYOUT's, so the import this arm used
 	 * to pin here — `NowPlayingHero` — is pinned there instead, as the component the layout mounts. Same
@@ -812,11 +845,14 @@ test('the route no longer declares the transport styles the drawer now owns', ()
 	/*
 	 * RE-POINTED AGAIN (2026-09-21): THE BAND OWNS THE TRANSPORT NOW. The claim is unchanged — the controls
 	 * this route gave up really render somewhere, sized from the token — but the address moved one component
-	 * further on. Restart and skip sit in the BAND's strip beside the disc, as one header cluster with the
-	 * magnifier, because every arrangement that kept them apart from it was reported as the controls not
-	 * being unified: a body row with play/pause only on the disc, then that row with its own play/pause (two
-	 * identical buttons ~100px apart), then the disc hidden at snap 1 (a nearly-empty band row above a group
-	 * floating mid-body).
+	 * further on. Restart and skip sit in the BAND's strip beside the disc, as one cluster, because every
+	 * arrangement that kept them apart from it was reported as the controls not being unified: a body row with
+	 * play/pause only on the disc, then that row with its own play/pause (two identical buttons ~100px apart),
+	 * then the disc hidden at snap 1 (a nearly-empty band row above a group floating mid-body).
+	 *
+	 * AND THEY ARE UNCONDITIONAL NOW (2026-09-22). For one release the pair was hidden at rest and revealed
+	 * by the sheet, which is the fourth arrangement — it existed only because the magnifier shared this row.
+	 * The magnifier is gone, so the row has the space and the transport is simply there at both heights.
 	 */
 	const BAND_SRC = read('src/lib/components/NowPlayingBand.svelte');
 	expect(BAND_SRC).toContain('aria-label="Restart"');
@@ -825,10 +861,12 @@ test('the route no longer declares the transport styles the drawer now owns', ()
 	expect(BAND_SRC).toMatch(
 		/<div class="tp"[^>]*>[\s\S]*aria-label="Restart"[\s\S]*class="disc"[\s\S]*aria-label="skip"[\s\S]*<\/div>/
 	);
-	// …hidden at rest, so the COLLAPSED bar is unchanged and /components still shows its five band states.
-	expect(BAND_SRC).toMatch(/\.tp-side\s*\{[^}]*display:\s*none/);
-	// …and the drawer is what reveals them, by CSS rather than by a prop (see the sheetUp note there).
-	expect(DRAWER).toMatch(/\.band-face:global\(\.sheet-up\) :global\(\.tp-side\)\s*\{[^}]*display:\s*grid/);
+	// …and visible at BOTH heights: exactly three controls in the group, none of them conditionally rendered,
+	// so the collapsed bar carries the whole transport and /components shows it in every band state.
+	const tpGroup = /<div class="tp"[\s\S]*?<\/div>\s*<\/div>/.exec(BAND_SRC)?.[0] ?? '';
+	expect(tpGroup.length, 'the transport group must be found to be counted').toBeGreaterThan(200);
+	expect((tpGroup.match(/<button/g) ?? []).length, 'restart, the disc, skip — and nothing else').toBe(3);
+	expect(tpGroup, 'none of the three may be gated on a height or a mode').not.toMatch(/\{#if/);
 	// The sheet must NOT grow its own copy of any of the three back again.
 	for (const gone of ['class="transport"', 'data-transport="play"'])
 		expect(DRAWER, `the sheet must not carry \`${gone}\` — the band row is the transport`).not.toContain(gone);

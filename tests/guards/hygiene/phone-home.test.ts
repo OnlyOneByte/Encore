@@ -70,10 +70,9 @@
 import { test, expect, afterEach } from 'bun:test';
 import { read } from '@encore/test-support';
 import { mount, unmount, flushSync } from '$setup/svelte-client';
-import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 import QueueRow from '$lib/components/QueueRow.svelte';
 import NowPlayingDrawerHarness from './phone-home.harness.svelte';
-import { positionWords } from '$lib/phrasing/position-sentence';
+import { waitShort } from '$lib/phrasing/position-sentence';
 import { SNAP_BAND as SHEET_SNAP_BAND } from '$lib/sheet-snap';
 import type { SongProfile } from '$lib/contract';
 
@@ -269,7 +268,7 @@ function dropDrawer(): void {
  * the drawer's tree that took FIFTY-ONE SECONDS to print one red assertion in one mutation run, and
  * SIGABRTed the whole runner in two others: the mutation WAS detected, but the failure was
  * unreadable. A count formats as a number, so a red reads `Expected: 0 / Received: 1` at once.
- * Deliberately NOT applied to the QueueRow and MyPositionCard arms further down, which are unchanged
+ * Deliberately NOT applied to the QueueRow arms further down, which are unchanged
  * from before this file was re-pointed and mount far smaller trees.
  */
 function count(root: ParentNode, selector: string): number {
@@ -632,7 +631,11 @@ test('the band row is the sheet itself, and the body stays mounted at the collap
 		'expected exactly one play/pause in the app'
 	).toBe(1);
 	expect(count(collapsed, '.disc')).toBe(1);
-	expect(count(collapsed, '.tp .tp-side')).toBe(2); // restart + skip, beside the disc
+	// restart + skip, beside the disc, addressed by STRUCTURE: the group holds the disc and these two, so a
+	// `.btn` inside it IS one of the pair. It was `.tp .tp-side` until that class went with the retired
+	// reveal (2026-09-22) — a class with no rule behind it cannot stay in the markup, and the pair needs no
+	// rule of its own now that it is never hidden.
+	expect(count(collapsed, '.tp .btn')).toBe(2);
 	expect(count(collapsed, '.transport'), 'the body transport row is gone — the pair is in the band row').toBe(0);
 
 	// SAME TREE AT EITHER HEIGHT. Asserted, not assumed: it is what makes every other arm in this file
@@ -723,51 +726,47 @@ test('the drawer NAMES the lyrics source and does not re-pick it', () => {
 	).toBe(0);
 });
 
-// ── the position card, and its honest degradation ────────────────────────────────────────────────
-test('the position card states the ordinal, who you follow, and the wait', () => {
-	const host = render(MyPositionCard, {
-		words: positionWords({ place: 3, beforeName: 'Sam', nowRemainingSec: 120, aheadDurationsSec: [200, 341] })
+// ── the wait on the byline, and its honest degradation ───────────────────────────────────────────
+/*
+ * FOUR ARMS BECAME TWO, AND THE SUBJECT MOVED (2026-09-22). They rendered `MyPositionCard` — a card above
+ * the queue reading "3rd · You're up after Sam. · Roughly 11 minutes." — and asserted its ordinal, its
+ * lead, its wait, the ABSENCE of the wait when any length ahead was unknown, and that it de-emphasised the
+ * wait with a token rather than subtree opacity.
+ *
+ * The card is deleted: it restated the queue row a few pixels below it (the same ordinal in the row's own
+ * bubble, the same "up next" in its byline), and its one unique line was the wait. The wait is now a clause
+ * on that row's byline, built by `waitShort` from the same sum the sentence form used.
+ *
+ * What is dropped with the card is what was ABOUT the card: the ordinal (the row's bubble owns it, asserted
+ * by the seq arms), the lead sentence (the row's "up next" badge says it), and the opacity arm (the byline
+ * is `.who`, whose colour contrast.test.ts already walks). What SURVIVES is the honest degradation, which is
+ * the claim that mattered — and it survives at the same strength, on the element that renders it now.
+ */
+test('a known wait renders as a byline clause after the up-next badge', () => {
+	const host = render(QueueRow, {
+		...ROW,
+		singerName: 'You',
+		mine: true,
+		up: true,
+		subtitle: `up next · ${waitShort(120, [200, 341])}`
 	});
-	expect(host.querySelector('.big')?.textContent).toBe('3rd');
-	expect(host.textContent).toContain("You're up after Sam.");
-	expect(host.textContent).toContain('Roughly 11 minutes.');
-	// The ordinal is a bare number on screen, so the card names itself for a screen reader.
-	expect(host.querySelector('section')?.getAttribute('aria-label')).toBe('Your place in the queue');
+	const byline = host.querySelector('.who')?.textContent ?? '';
+	expect(byline).toContain('up next');
+	expect(byline).toContain('~11 min');
+	// The separators are real middots between real parts, never a stray one from an absent clause.
+	expect(byline).not.toContain('· ·');
 });
 
-test('an unknown wait renders NO minutes clause — not a zero, not a guess', () => {
-	const host = render(MyPositionCard, {
-		words: positionWords({ place: 3, beforeName: 'Sam', nowRemainingSec: 120, aheadDurationsSec: [200, null] })
-	});
-	// The ordinal and the "after whom" half survive…
-	expect(host.querySelector('.big')?.textContent).toBe('3rd');
-	expect(host.textContent).toContain("You're up after Sam.");
-	// …and the wait is ABSENT from the DOM, not an empty element holding a gap open.
-	expect(host.querySelector('.wait')).toBeNull();
-	const text = host.textContent ?? '';
-	expect(text.toLowerCase()).not.toContain('roughly');
-	expect(text.toLowerCase()).not.toContain('minute');
-	expect(text).not.toContain('NaN');
-	expect(text).not.toContain('null');
-});
-
-test('the card de-emphasises the wait with a token, never with subtree opacity', () => {
-	const host = render(MyPositionCard, {
-		words: positionWords({ place: 2, beforeName: 'Maya', nowRemainingSec: 60, aheadDurationsSec: [] })
-	});
-	const wait = host.querySelector('.wait') as HTMLElement;
-	expect(wait.textContent).toBe('Roughly 1 minute.');
-	// happy-dom applies no stylesheet, so the assertion that bites is the absence of an INLINE opacity
-	// on the rendered subtree; the stylesheet half is contrast.test.ts's tree-walk.
-	for (const el of [host.querySelector('section')!, wait]) {
-		expect(el.getAttribute('style') ?? '').not.toContain('opacity');
-	}
-});
-
-test('a guest with nothing queued gets no card at all', () => {
-	const host = render(MyPositionCard, { words: null });
-	expect(host.querySelector('section')).toBeNull();
-	expect((host.textContent ?? '').trim()).toBe('');
+test('an unknown wait renders NO clause — not a zero, not a guess', () => {
+	// One entry ahead with no resolvable length makes the whole sum unknown, so the formatter returns null…
+	expect(waitShort(120, [200, null])).toBeNull();
+	// …and the row renders the badge alone, with nothing where the clause would have been.
+	const host = render(QueueRow, { ...ROW, singerName: 'You', mine: true, up: true, subtitle: 'up next' });
+	const byline = host.querySelector('.who')?.textContent ?? '';
+	expect(byline).toContain('up next');
+	expect(byline.toLowerCase()).not.toContain('min');
+	expect(byline).not.toContain('NaN');
+	expect(byline).not.toContain('null');
 });
 
 // ── the unconfirmed marker says which mutation it is waiting on ───────────────────────
@@ -846,17 +845,17 @@ test('the gallery carries the drawer and BOTH position branches, adjacent', () =
 	 * two earlier `pending` rules shipped unreadable: nothing ever rendered them, so nobody measured
 	 * them. Same closure as that guard — scan the real gallery source.
 	 *
-	 * The PAIR is the point for the position card: "no minutes clause" is only judgeable against the
-	 * clause it replaces, so a gallery with only the happy branch cannot show the degradation at all.
+	 * The PAIR is the point for the wait: "no minutes clause" is only judgeable against the clause it
+	 * replaces, so a gallery with only the happy branch cannot show the degradation at all. That pair used
+	 * to be two `<MyPositionCard>` fixtures; the card is deleted and the wait is a byline clause, so it is
+	 * now two QueueRow `subtitle` fixtures — same pair, same reason, on the element that renders it.
 	 */
 	const gallery = read('src/routes/components/+page.svelte');
 	expect(gallery).toContain('<NowPlayingDrawer');
-	expect(gallery).toContain('<MyPositionCard');
-	// The imports too, separately: dropping one breaks `build` and leaves `bun test` green, so without
-	// this the fixtures could be orphaned by a tidy-up that no named test objects to.
+	expect(gallery).not.toContain('<MyPositionCard');
+	// The import too, separately: dropping it breaks `build` and leaves `bun test` green, so without this
+	// the fixtures could be orphaned by a tidy-up that no named test objects to.
 	expect(gallery).toMatch(/import NowPlayingDrawer from '\$lib\/components\/NowPlayingDrawer\.svelte';/);
-	expect(gallery).toMatch(/import MyPositionCard from '\$lib\/components\/MyPositionCard\.svelte';/);
-	expect(gallery).toMatch(/import \{ positionWords \} from '\$lib\/phrasing\/position-sentence';/);
 	/*
 	 * TRANSFORMED (fixture shape changed, claim unchanged). Was `<NowPlayingHero title="Nothing
 	 * playing"`: five hero cards could sit side by side, so the idle state was its own inline fixture.
@@ -869,12 +868,13 @@ test('the gallery carries the drawer and BOTH position branches, adjacent', () =
 	expect(gallery).toMatch(/drawerHasSong = false;/);
 	expect(gallery).toMatch(/hasSong=\{drawerHasSong\}/);
 
-	const cards = [...gallery.matchAll(/<MyPositionCard[\s\S]*?\/>/g)].map((m) => m[0]);
-	expect(cards.length).toBeGreaterThanOrEqual(2);
-	// one branch where every duration ahead is known…
-	expect(cards.some((c) => /aheadDurationsSec: \[\d+, \d+\]/.test(c))).toBe(true);
-	// …and one where an entry ahead has none, which is the honest-degradation arm.
-	expect(cards.some((c) => /aheadDurationsSec: \[[^\]]*null[^\]]*\]/.test(c))).toBe(true);
+	const rows = [...gallery.matchAll(/<QueueRow[\s\S]*?\/>/g)].map((m) => m[0]);
+	// one branch with a known wait on the byline…
+	expect(rows.some((r) => /subtitle="[^"]*~\d+ min"/.test(r))).toBe(true);
+	// …one with the sub-minute phrase…
+	expect(rows.some((r) => /subtitle="[^"]*<1 min"/.test(r))).toBe(true);
+	// …and one with NO clause at all, which is the honest-degradation arm: an unknown wait renders nothing.
+	expect(rows.some((r) => /subtitle=""/.test(r))).toBe(true);
 });
 
 // ── the swallow stays honest ─────────────────────────────────────────────────────────────────────

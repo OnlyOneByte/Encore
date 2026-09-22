@@ -6,23 +6,36 @@
 	import { room } from '$lib/stores/room';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import JoinLanding from '$lib/components/JoinLanding.svelte';
-	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
+	import SongRow from '$lib/components/SongRow.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import {
 		gripVisible,
 		liveSortTarget,
 		keyboardMoveTarget,
 		rowShift,
+		liveSeq,
 		ordinal,
 		modeInvalidation
 	} from '$lib/reorder-mode';
-	import { nextPlayableEntryId, entryPlayable, queueCardKind } from '$lib/readiness';
-	import { positionWords } from '$lib/phrasing/position-sentence';
+	import {
+		nextPlayableEntryId,
+		queueCardKind,
+		displayReadiness,
+		canProcess,
+		readyEmptyState,
+		processingGroupIds,
+		type Readiness
+	} from '$lib/readiness';
+	import { waitShort } from '$lib/phrasing/position-sentence';
+	import { processAndQueue } from '$lib/process-and-queue';
+	import { originalKeyLabel, isProcessableSource } from '$lib/contract';
 	import type { MediaStatus } from '$lib/contract';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
+	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { Spinner } from '$lib/components/ui/spinner';
 	import * as Empty from '$lib/components/ui/empty';
 
 	let me = $state<PublicSinger | null>(null);
@@ -55,25 +68,18 @@
 	// from /api/library on load, so a reload mid-process doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 	/*
-	 * DIRECTION A + the 2026-09-09 owner correction (issues earlier changes): the room's
-	 * queue IS the home screen, and the search box is docked at the bottom of it AT ALL TIMES for a
-	 * joined singer — it is the add affordance, so there is no `+ Add a turn` push and no browse MODE.
-	 * Typing expands the results UPWARD IN PLACE over the queue (direction B's layout), so there is no
-	 * navigation: the split between "queue" and "results" is driven purely by whether the box has a
-	 * query, `searchActive` below.
+	 * THE ROOM'S QUEUE IS THE HOME SCREEN, and so is the search box and the library — one surface, read top
+	 * to bottom: the field, what is queued, what is being made, what is ready to sing. There is no browse
+	 * MODE, no `+ Add a turn` push and no `?browse=1`; `searchActive` (query non-empty) is the sole switch
+	 * between the queue view and the results view, and it is derived from `query` in the search section
+	 * below. See that section's own note for the full history of where this box has lived and why it is
+	 * here rather than docked to the bottom edge (the band owns that) or on a route of its own.
 	 *
-	 * `?browse=1`'s FATE (stated, not silently dropped): it is GONE. Its only job was to push a history
-	 * entry so the phone's Back gesture returned to the queue instead of leaving the room. With results
-	 * rendered in place there is no mode to back out of — the queue is always underneath and reappears
-	 * the instant the box is cleared — so the back-gesture role is reassigned explicitly: the on-screen
-	 * "← Queue" control (rendered only while `searchActive`) calls `clearSearch()`, and the hardware Back
-	 * at the empty-box home leaves the room, which is what Back from home has always meant under
-	 * direction A. No pushed history entry means no route to strand a reload on.
+	 * BACK MEANS LEAVE THE ROOM, at every point on this screen, because there is never anything to back
+	 * out of: results render in place and clearing the box restores the queue instantly. That is what the
+	 * clear control is for, and it is why no history entry is pushed for a search — nothing can strand a
+	 * reload on a URL that does not exist.
 	 */
-	// `searchActive` (query non-empty) is the sole switch between the queue view and the results view;
-	// it is derived from `query` in the search section below.
-	/**
-	 * THE BAND CONTRACT. The docked search band's REAL rendered height, published to documentElement so
 
 	/*
 	 * Editing your name and colour, and leaving the room, used to live in a sheet mounted here. They now
@@ -157,6 +163,8 @@
 			mediaStatus = room.mediaStatus;
 			entries = room.entries;
 			pendingKind = room.pendingKind;
+			library = room.library;
+			libraryTags = room.libraryTags;
 			store = room.queue;
 		};
 		sync();
@@ -170,6 +178,245 @@
 		};
 	});
 
+	/**
+	 * The rotation, in the order the room will play it — the queue view's only list, and one of the four
+	 * groups this page now renders (see the search note below for the other three).
+	 */
+	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
+
+	function liveOf(id: string) {
+		return mediaStatus.get(id);
+	}
+
+	/*
+	 * ── SEARCH AND THE LIBRARY, BACK ON HOME ──────────────────────────────────────────────────────────
+	 *
+	 * WHERE THIS CAME FROM, because it is the third placement of one surface and the previous two were
+	 * each right about something. It was a box docked to the bottom of this page (typing expanded results
+	 * upward in place); then the band took that edge and it became its own route, `/find`, reached by
+	 * tapping the band's magnifier — "once it is somewhere you go, a route is what makes the phone's own
+	 * back gesture work". Both readings are preserved by this one: the surface is on home again, so there
+	 * is no navigation and no mode, and it is at the TOP rather than docked, so it never fights the band
+	 * for the bottom edge.
+	 *
+	 * WHAT THE MERGE IS FOR. Two screens were answering one question. The queue was "what is happening",
+	 * the find route was "what can I sing", and the second was reachable only through a magnifier in the
+	 * chrome — so the songs already on disk, the whole point of persisting the catalog, were invisible
+	 * from the screen a guest actually sits on. Home now reads top to bottom as a music app does: the
+	 * field, what is queued, what is being made, and what is ready to sing.
+	 *
+	 * THE ZERO-QUERY STATE IS THE LIBRARY, which is the idea the find route contributed and which is kept
+	 * verbatim: an empty box shows the songs that can be sung right now rather than a dead end, so typing
+	 * FILTERS the world instead of revealing it.
+	 *
+	 * A QUERY REPLACES THE QUEUE, and that is the original ruling restored rather than a new one: with
+	 * results rendered in place there is nothing to back out of, so `searchActive` is the sole switch
+	 * between the two views and clearing the box brings the queue back instantly. It has to replace
+	 * rather than stack, because the keyboard leaves ~350px: a field, a heading and two queue rows above
+	 * the results would push the first match off a phone screen.
+	 *
+	 * THE RESULTS READ DOWNWARD, best match FIRST. The docked-box version stacked them upward, best match
+	 * last, because the box was at the bottom of the screen and the nearest row to it was the one that
+	 * mattered; with the field at the top, first in the DOM is first on screen and DOM order equals visual
+	 * order again. Nothing reverses a list anywhere, which is also what keeps the focus sequence honest.
+	 */
+	let library = $state<Media[]>([]);
+	let libraryTags = $state<Record<string, string[]>>({});
+	let queryEl = $state<HTMLInputElement | null>(null);
+	let query = $state('');
+	let readyResults = $state<Media[]>([]);
+	let rawResults = $state<Media[]>([]);
+	let processingResults = $state<Media[]>([]);
+	let searching = $state(false);
+	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	let inflight: AbortController | undefined;
+	/** The sole switch between the queue view and the results view. */
+	const searchActive = $derived(query.trim().length > 0);
+
+	/*
+	 * `focusSearch` AND THE `searchFocus` STORE ARE RETIRED (2026-09-22) with the band's magnifier, which was
+	 * the only thing that ever asked for them. The field is the FIRST element in this column, so reaching it
+	 * is scrolling to the top of the page you are already on — and the band spends the row it used to
+	 * occupy on the full transport instead. `queryEl` survives, because `clearSearch` puts focus back in the
+	 * field after emptying it, which is a different act: the keyboard stays up so a guest can retype.
+	 */
+
+	function onQueryInput() {
+		clearTimeout(debounceTimer);
+		const q = query.trim();
+		if (!q) {
+			readyResults = [];
+			rawResults = [];
+			processingResults = [];
+			searching = false;
+			inflight?.abort();
+			return;
+		}
+		debounceTimer = setTimeout(() => runSearch(q), 150);
+	}
+
+	function clearSearch() {
+		query = '';
+		onQueryInput();
+		queryEl?.focus();
+		if (navigator.vibrate) navigator.vibrate(8);
+	}
+
+	async function runSearch(q: string) {
+		inflight?.abort();
+		const ctrl = new AbortController();
+		inflight = ctrl;
+		searching = true;
+		try {
+			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+			if (ctrl.signal.aborted) return;
+			const j = await res.json();
+			readyResults = j.ready ?? [];
+			rawResults = j.results ?? [];
+			processingResults = j.processing ?? [];
+			room.mergeMedia([...readyResults, ...rawResults, ...processingResults]);
+		} catch (e) {
+			if ((e as Error).name !== 'AbortError') {
+				readyResults = [];
+				rawResults = [];
+				processingResults = [];
+				showError('Search failed.');
+			}
+		} finally {
+			if (inflight === ctrl) searching = false;
+		}
+	}
+
+	// ── readiness and row shaping, for the song rows (not the queue rows) ────
+	function readinessFor(m: Media): Readiness {
+		return displayReadiness(m, liveOf(m.id));
+	}
+	const rowMeta = (m: Media) => ({
+		title: m.title,
+		artist: m.artist,
+		artistCanonical: m.artistCanonical,
+		thumbnail: m.thumbnail,
+		durationSec: m.durationSec,
+		viewCount: m.viewCount,
+		keyName: originalKeyLabel(m.songProfile) ?? undefined,
+		tags: libraryTags[m.id]
+	});
+	/** Is this song already in MY part of the rotation? Drives the row's "queued" state. */
+	function inMyQueue(mediaId: string): boolean {
+		return queued.some((e) => e.mediaId === mediaId && e.singerId === me?.id);
+	}
+
+	const processingRows = $derived.by(() => {
+		const ids = processingGroupIds({
+			searchActive,
+			processingResults,
+			mediaStatus,
+			mediaCatalog,
+			readiness: readinessFor
+		});
+		return [...ids]
+			.map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) }))
+			.filter((r) => r.media)
+			.map((r) => ({
+				id: r.id,
+				media: r.media!,
+				pct: r.live?.pct ?? 0,
+				etaSec: r.live?.etaSec,
+				status: r.live?.status
+			}));
+	});
+
+	/**
+	 * Ids already shown by another group, so no song appears twice in one list.
+	 *
+	 * THE QUEUE IS ONE OF THOSE GROUPS NOW, which it was not on the find route: a song that is queued AND
+	 * processing already has a row on this screen with a live progress bar on it (`ProcessingCard`), so
+	 * listing it again under "Making karaoke…" would draw two bars for one job. Only the QUEUED view
+	 * accounts that way — while a query is up the queue is not rendered, so it cannot be hiding anything.
+	 */
+	const accountedFor = $derived.by(() => {
+		const ids = new Set<string>();
+		for (const m of searchActive ? readyResults : library) ids.add(m.id);
+		for (const c of processingRows) ids.add(c.id);
+		return ids;
+	});
+	function unaccounted(list: Media[]): Media[] {
+		return list.filter((m) => !accountedFor.has(m.id));
+	}
+	const queuedMediaIds = $derived(new Set(queued.map((e) => e.mediaId)));
+	/** The processing group, minus whatever the queue is already showing a bar for. */
+	const processingGroup = $derived(
+		searchActive ? processingRows : processingRows.filter((c) => !queuedMediaIds.has(c.id))
+	);
+
+	// ── the two queueing actions ────────────────────────────────────────
+	function addSong(mediaId: string) {
+		store?.addSong(mediaId);
+		if (navigator.vibrate) navigator.vibrate(8);
+	}
+	function singThis(mediaId: string) {
+		processAndQueue({
+			queue: () => addSong(mediaId),
+			process: () => void processMedia(mediaId),
+			hasQueuedTurn: inMyQueue(mediaId)
+		});
+	}
+	/** Request stem-separation ("make karaoke"). The live media:status broadcasts drive the row's bar. */
+	async function processMedia(mediaId: string) {
+		if (navigator.vibrate) navigator.vibrate(12);
+		// optimistic: the row reads as processing before the request lands
+		room.setMediaStatus(mediaId, { status: 'queued', pct: 0 });
+		try {
+			const res = await fetch('/api/process', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ mediaId })
+			});
+			const body = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				room.clearMediaStatus(mediaId);
+				showError(body.error ?? 'Could not start process');
+				return;
+			}
+			// the stems were already on disk (processed on an earlier night) — nothing to wait for
+			if (body.alreadyReady) void room.refreshLibrary();
+		} catch {
+			room.clearMediaStatus(mediaId);
+			showError("Couldn't start that.");
+		}
+	}
+
+	/**
+	 * The library rows: everything ready to sing, minus whatever the processing group above is showing.
+	 *
+	 * ── A BUG CARRIED IN FROM THE FIND ROUTE, FIXED HERE ──────────────────────────────────────────────
+	 *
+	 * This was `unaccounted(library)`, and that expression is self-cancelling: with no query,
+	 * `accountedFor` is seeded with EVERY id in `library` (so the secondary lists can subtract the primary
+	 * one), and `unaccounted` then removes exactly those ids from the primary list itself. The result is
+	 * always the empty array, so the "Your library" heading and its rows NEVER RENDERED — the zero-query
+	 * state, which is the whole design idea of this section, showed the "No karaoke tracks yet." empty
+	 * state instead, over a library of three songs.
+	 *
+	 * IT SHIPPED BEHIND SOURCE-ONLY GUARDS, which is the part worth recording. Two guards assert this
+	 * group: one requires `<h2 class="grouphead">Your library</h2>` in the file and one requires the
+	 * `{#each libraryRows …}` block — both are text scans, and both were green the entire time. Nothing
+	 * rendered the state, so nothing could see that the each-block iterates nothing. Found by looking at
+	 * the screen after the merge (`library.length` was 3 and the "Show all 3" control said so, while the
+	 * list above it claimed there were none).
+	 *
+	 * `unaccounted` is still right for the SECONDARY list — `rawResults` minus the ready results and the
+	 * processing group — and that is its only remaining call site. The primary list subtracts only the one
+	 * group that can genuinely double it: a song mid-process would otherwise appear once with a progress
+	 * bar and once as ready.
+	 *
+	 * The QUEUE is deliberately NOT subtracted. A queued song is still in the library, and its row says so
+	 * (`inQueue` disables the add and reads "Already in the queue") — hiding it would make the library
+	 * look like it lost a song the moment someone queued it.
+	 */
+	const processingIds = $derived(new Set(processingRows.map((c) => c.id)));
+	const libraryRows = $derived(library.filter((m) => !processingIds.has(m.id)));
+
 	// ── readiness ────────────────────────────────────────────────────────────
 	// One axis, three states: ready (stems on disk, sing now), processing (stems in flight, still
 	// queueable because rotation holds its slot), raw (plays with the original vocals).
@@ -179,16 +426,6 @@
 	// that re-announced this axis in prose — leaving typing in the docked search box as the only one.
 	// So there is no `filter` state and no `showReady`/`showProcessing`/`showRaw` gate: every group
 	// renders, every time, and the reader narrows the list by saying what they want.
-
-	/**
-	 * The rotation, in the order the room will play it. `queued` is the ONLY list this surface renders
-	 * now that search has its own route, so the queue view is no longer one arm of a two-view page.
-	 */
-	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
-
-	function liveOf(id: string) {
-		return mediaStatus.get(id);
-	}
 
 	/*
 	 * TOASTS ARE SONNER'S NOW.
@@ -319,6 +556,12 @@
 	 * badge, another guest queues a card) and a stale geometry table then points at the wrong position.
 	 */
 	let rowH = $state(0);
+	/**
+	 * Every queued row's box, measured ONCE per gesture at press time — what the live sort compares the
+	 * dragged row's leading edge against. Empty except during a drag, exactly like `rowH`, so no stale
+	 * geometry can place a row while nothing is being dragged.
+	 */
+	let rowBounds = $state<{ top: number; height: number }[]>([]);
 	// Why a drag ended itself. Announced through the SAME polite region the queue already uses (`liveMsg`)
 	// rather than a second one, and rendered as visible text: a sighted guest needs the reason too.
 	let reorderNote = $state('');
@@ -330,7 +573,7 @@
 	const dragFrom = $derived(movingId ? queuedIdx(movingId) : -1);
 	const dragTo = $derived(
 		dragging && dragFrom >= 0
-			? liveSortTarget({ fromIndex: dragFrom, offsetPx: dragY, rowHeightPx: rowH, count: queued.length })
+			? liveSortTarget({ fromIndex: dragFrom, offsetPx: dragY, rowBoundsPx: rowBounds, count: queued.length })
 			: -1
 	);
 
@@ -394,6 +637,7 @@
 		dragging = false;
 		dragY = 0;
 		rowH = 0;
+		rowBounds = [];
 		reorderNote = note;
 		if (note) liveMsg = note;
 		/*
@@ -431,11 +675,24 @@
 		 */
 		grip.focus?.();
 		/*
-		 * ONE HEIGHT, read from the row the grip sits in. `closest` rather than an index into a list of rows:
-		 * the processing cards in this list are a different height and must not be measured as if they were
-		 * queued rows.
+		 * TWO READS, BOTH AT PRESS TIME AND BOTH ONCE. Nothing is measured again for the life of the gesture —
+		 * that was the recorded hazard (rows change height mid-drag: a byline gains an `away` badge, another
+		 * guest queues a card) and it is why these are taken here rather than in the effect that moves the row.
+		 *
+		 *   `rowH`      the DRAGGED row's own height, which is how far its neighbours must slide to open a gap
+		 *               the right size for it. `closest` rather than an index, because the two row kinds are
+		 *               different heights and the gap belongs to the one being carried.
+		 *   `rowBounds`  every row's box, which is what `liveSortTarget` compares the dragged row's leading edge
+		 *               against. A single height cannot answer that in a list of mixed heights — see its note.
+		 *
+		 * `.qrow` matches BOTH kinds (a queued row and a processing card share the class) and the query returns
+		 * them in DOM order, which is the queued order the indices mean.
 		 */
 		rowH = grip.closest('.qrow')?.getBoundingClientRect().height ?? 0;
+		rowBounds = [...document.querySelectorAll('.qrow')].map((el) => {
+			const b = el.getBoundingClientRect();
+			return { top: b.top, height: b.height };
+		});
 		const startY = e.clientY;
 		/*
 		 * THE LISTENERS GO ON `window`, NOT ON THE GRIP — and not behind `setPointerCapture`. The row's DOM is
@@ -504,8 +761,24 @@
 	});
 	const nowDurationSec = $derived(nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0);
 
-	// ── the guest's own place in the rotation, in WORDS (issue an earlier change) ──────────────
-	// My soonest queued pick, and where it sits in the room's order.
+	/*
+	 * ── HOW LONG UNTIL MY TURN, ON MY OWN ROW ─────────────────────────────────────────────────────────
+	 *
+	 * THE CARD THIS REPLACED. `MyPositionCard` sat above the queue and said "1st · You're up next. ·
+	 * Roughly 3 minutes." over a queue row that already read "1 · You · up next" a few pixels below it —
+	 * the ordinal twice, the claim twice, and one piece of information that was genuinely its own: the
+	 * wait. Reported as useless, and it was: two of its three lines were a restatement of the row beneath
+	 * it, and it rendered nothing at all when the guest had nothing queued, so the slot was dead exactly
+	 * when a guest most needs to be told what to do. The slot is the search field's now, and the WAIT
+	 * moved onto the row it was always describing.
+	 *
+	 * The honest-degradation rule is unchanged and still lives in one place (`waitShort`, which shares its
+	 * arithmetic with the sentence form): an entry ahead whose media is not in the catalog has no
+	 * resolvable length, one unknown term makes the whole estimate unknown, and an unknown estimate is
+	 * OMITTED rather than zeroed or guessed. `Media.durationSec` is required, so ABSENCE from the catalog
+	 * — not a missing field — is the reachable unknown.
+	 */
+	/** My soonest queued pick: the row the wait is about. */
 	const myNextEntry = $derived(
 		entries
 			.filter((e) => e.singerId === me?.id && e.status === 'queued')
@@ -514,33 +787,35 @@
 	/**
 	 * Seconds still to run on the song playing now: 0 when nothing is playing, and NULL when something
 	 * is playing whose length is unknown — which makes the whole wait unknown rather than short. The
-	 * sentence builder decides what to do with that; this only reports what is true.
+	 * formatter decides what to do with that; this only reports what is true.
 	 */
 	const nowRemainingSec = $derived.by(() => {
 		if (!nowEntry) return 0;
 		if (nowDurationSec <= 0) return null;
 		return Math.max(0, nowDurationSec - displayPos);
 	});
-	/*
-	 * The sentence itself is built by a pure helper so it is unit-testable with no DOM and no room, and
-	 * so the honest-degradation rule lives in ONE place: an entry ahead whose media is not in the
-	 * catalog has no resolvable length, and one unknown term makes the estimate unknown. `Media.durationSec`
-	 * is required, so ABSENCE from the catalog — not a missing field — is the reachable unknown.
+	/**
+	 * The byline clause after the singer's name: "up next", "~3 min", "up next · ~3 min", or nothing.
+	 *
+	 * Built by joining the parts that are TRUE rather than by branching on which case we are in, so a row
+	 * can never render a stray separator — which is what an `a ? x : y` over two independent facts does the
+	 * first time both are false.
 	 */
-	const myPosition = $derived.by(() => {
+	function queueSubtitle(e: QueueEntry): string {
+		return [e.id === nextPlayableId ? 'up next' : '', e.id === myNextEntry?.id ? myWait : null]
+			.filter(Boolean)
+			.join(' · ');
+	}
+
+	/** "~3 min" for MY next row, or null when any length ahead is unknown (and then no clause renders). */
+	const myWait = $derived.by(() => {
 		if (!myNextEntry) return null;
 		const idx = queued.findIndex((e) => e.id === myNextEntry.id);
 		if (idx < 0) return null;
-		const before = idx > 0 ? queued[idx - 1] : undefined;
-		return positionWords({
-			place: idx + 1,
-			beforeName: before ? (singers.get(before.singerId)?.displayName ?? null) : null,
+		return waitShort(
 			nowRemainingSec,
-			aheadDurationsSec: queued.slice(0, idx).map((e) => mediaCatalog.get(e.mediaId)?.durationSec ?? null),
-			// Only claim "up next" when the song can actually play next: a still-processing song is skipped
-			// by the TV, which contradicted the playable-aware badge in the queue list below.
-			playable: entryPlayable(mediaCatalog.get(myNextEntry.mediaId), liveOf(myNextEntry.mediaId))
-		});
+			queued.slice(0, idx).map((e) => mediaCatalog.get(e.mediaId)?.durationSec ?? null)
+		);
 	});
 </script>
 
@@ -613,11 +888,52 @@
 -->
 <main style="--row-h:{rowH}px">
 	{#if me}
-		<!-- The guest's own place, in words, with the wait omitted rather than guessed. -->
-		<MyPositionCard words={myPosition} />
-
-		<h2 class="grouphead">Queued</h2>
 		<!--
+			THE FIELD IS THE FIRST THING ON THE SCREEN, and it is a field rather than a link because search is
+			no longer a place you go — see the long note in the script. Not sticky, deliberately: the reasoning
+			is recorded on `focusSearch`, and the band's magnifier is what makes a non-sticky field free to
+			reach from anywhere.
+		-->
+		<div class="findbox">
+			<span class="find-mark"><Icon name="search" /></span>
+			<input
+				bind:this={queryEl}
+				bind:value={query}
+				oninput={onQueryInput}
+				aria-label="Search a song or artist"
+				placeholder="Search a song or artist…"
+			/>
+			{#if searching}<Spinner aria-label="Searching" />{/if}
+			{#if searchActive}
+				<Button variant="ghost" size="icon" aria-label="Clear the search" onclick={clearSearch}>
+					<Icon name="close" />
+				</Button>
+			{/if}
+		</div>
+
+		{#if searching && rawResults.length === 0 && readyResults.length === 0}
+			<div aria-busy="true" aria-label="Searching…">
+				{#each [0, 1, 2] as i (i)}
+					<div class="skel-row">
+						<Skeleton variant="thumb" />
+						<div class="skel-text">
+							<Skeleton />
+							<Skeleton variant="line-short" />
+						</div>
+					</div>
+				{/each}
+			</div>
+		{/if}
+
+		<!--
+			ONE SCROLL, TWO VIEWS. Everything from here to the library is gated on `searchActive`, which is the
+			sole switch: no query and the page is the room (what is queued, what is being made, what is ready),
+			a query and it is the search (see the script's note for why the results REPLACE the queue rather
+			than stacking under it).
+		-->
+		{#if !searchActive}
+			<h2 class="grouphead">Queued</h2>
+			<!--
 			NO MODE CHROME. A `.reorder-bar` used to appear here — a hint plus Done and Cancel — because the
 			mode it belonged to had to be committed or abandoned explicitly. The drag is a live sort now: it
 			begins on a press, it is visible the whole way, and it commits on release. There is nothing to
@@ -629,11 +945,11 @@
 			guest's finger has to say why. Visible as well as announced, because a reason only a screen reader
 			gets is not a reason.
 		-->
-		{#if reorderNote}
-			<p class="reorder-note">{reorderNote}</p>
-		{/if}
-		{#if queued.length === 0}
-			<!--
+			{#if reorderNote}
+				<p class="reorder-note">{reorderNote}</p>
+			{/if}
+			{#if queued.length === 0}
+				<!--
 				THE STATE, LARGE AND CENTRED, AND NOTHING ELSE (ratified 2026-09-21).
 
 				This carried a second line — "Tap the magnifier below to pick the first song." — added when the
@@ -653,67 +969,186 @@
 				emitted nowhere (Tailwind scans only `components/ui`) — so the one rule reaches the vendored
 				`data-slot` through `.queue-empty`, the same shape as `.band-slot:global(.band)` in the drawer.
 			-->
-			<Empty.Root>
-				<div class="queue-empty">
-					<Empty.Header>
-						<Empty.Title>Nothing Queued</Empty.Title>
-					</Empty.Header>
-				</div>
-			</Empty.Root>
-		{:else}
-			{#each queued as e, i (e.id)}
-				{@const s = singerOf(e.singerId)}
-				{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
 				<!--
+				`tight` DROPS THE 40vh, and only when there is something under it. The ratified state was "large
+				and centred, the only thing on the screen", which it WAS when the queue was the whole page: 40vh
+				of empty column with three words in the middle of it. The library renders below this now, so on a
+				phone that 40vh is the dead space between the two things a guest came for. The state stays LARGE
+				(the display step is untouched); it stops reserving a void it no longer sits in.
+			-->
+				<Empty.Root>
+					<div class="queue-empty" class:tight={libraryRows.length > 0 || processingGroup.length > 0}>
+						<Empty.Header>
+							<Empty.Title>Nothing Queued</Empty.Title>
+						</Empty.Header>
+					</div>
+				</Empty.Root>
+			{:else}
+				{#each queued as e, i (e.id)}
+					{@const s = singerOf(e.singerId)}
+					{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
+					<!--
 					NO DROP TARGETS. A `.dropslot` button used to render above every queued row while the mode was
 					open, labelled with the ordinal it committed, and the drag hit-tested for the one under the
 					finger. Deleted (2026-09-21): under `move-to-index` every position is legal, so one target per
 					row is exactly what the list already shows — and a release now commits `dragTo`, the same
 					expression that places the rows on screen, which is the substance without the chrome.
 				-->
-				{#if card === 'processing' || card === 'failed'}
-					{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
-					<ProcessingCard
-						seq={i + 1}
-						title={mediaTitle(e.mediaId)}
-						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-						singerColor={s?.color ?? SINGER_COLORS[0]}
-						singerAway={awaySingers.has(e.singerId)}
-						status={proc.status}
-						pct={proc.pct}
-						pending={pendingKind.get(e.id) ?? null}
-						onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
-						reorderable={!rowFrozen(e) && canReorder && !!me?.id && queued.length > 1}
-						dimmed={false}
-						shift={rowShift(i, dragFrom, dragTo)}
-					/>
-				{:else}
-					<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
+					{#if card === 'processing' || card === 'failed'}
+						{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
+						<ProcessingCard
+							seq={liveSeq(i, dragFrom, dragTo)}
+							title={mediaTitle(e.mediaId)}
+							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+							singerColor={s?.color ?? SINGER_COLORS[0]}
+							singerAway={awaySingers.has(e.singerId)}
+							status={proc.status}
+							pct={proc.pct}
+							pending={pendingKind.get(e.id) ?? null}
+							onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
+							reorderable={!rowFrozen(e) && canReorder && !!me?.id && queued.length > 1}
+							dimmed={false}
+							shift={rowShift(i, dragFrom, dragTo)}
+						/>
+					{:else}
+						<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
 					     safe to remove. The old `i !== 0` guard meant to protect the current song but
 					     actually froze whatever sat at position 0 — i.e. the next-up song. -->
-					<QueueRow
-						seq={i + 1}
-						title={mediaTitle(e.mediaId)}
-						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-						singerColor={s?.color ?? SINGER_COLORS[0]}
-						mine={e.singerId === me?.id}
-						singerAway={awaySingers.has(e.singerId)}
-						up={e.id === nextPlayableId}
-						pending={pendingKind.get(e.id) ?? null}
-						subtitle={e.id === nextPlayableId ? 'up next' : ''}
-						removable={e.singerId === me?.id}
-						grip={gripFor(e)}
-						gripId={e.id}
-						dimmed={false}
-						moving={movingId === e.id && dragging}
-						dragY={movingId === e.id && dragging ? dragY : 0}
-						shift={rowShift(i, dragFrom, dragTo)}
-						ongripdown={(ev) => onGripPointerDown(e, ev)}
-						onnudge={(delta) => nudge(e.id, delta)}
-						onremove={() => removeWithUndo(e)}
-					/>
-				{/if}
+						<!--
+						`seq` IS THE LIVE POSITION, not the source index. `liveSeq` reads the same shift arithmetic
+						that places the row, so the number a row shows is the number it is sitting on THROUGHOUT the
+						drag — dragging 2 above 1 relabels both as it happens. It used to be `i + 1`, the last order
+						the server sent, so every number in the list corrected itself in one jump when the patch
+						landed (the "flash" that was reported).
+					-->
+						<QueueRow
+							seq={liveSeq(i, dragFrom, dragTo)}
+							title={mediaTitle(e.mediaId)}
+							singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+							singerColor={s?.color ?? SINGER_COLORS[0]}
+							mine={e.singerId === me?.id}
+							singerAway={awaySingers.has(e.singerId)}
+							up={e.id === nextPlayableId}
+							pending={pendingKind.get(e.id) ?? null}
+							subtitle={queueSubtitle(e)}
+							removable={e.singerId === me?.id}
+							grip={gripFor(e)}
+							gripId={e.id}
+							dimmed={false}
+							moving={movingId === e.id && dragging}
+							dragY={movingId === e.id && dragging ? dragY : 0}
+							shift={rowShift(i, dragFrom, dragTo)}
+							ongripdown={(ev) => onGripPointerDown(e, ev)}
+							onnudge={(delta) => nudge(e.id, delta)}
+							onremove={() => removeWithUndo(e)}
+						/>
+					{/if}
+				{/each}
+			{/if}
+		{/if}
+
+		<!--
+			WHATEVER IS BEING MADE RIGHT NOW, in BOTH views: it is the thing most likely to be asked about, and
+			it is the one group that answers the same question whether or not a query is up. `processingGroup`
+			drops anything the queue above is already drawing a bar for — see its derivation.
+		-->
+		{#if processingGroup.length}
+			<h2 class="grouphead">Making karaoke…</h2>
+			{#each processingGroup as c (c.id)}
+				{@const r = displayReadiness(c.media, liveOf(c.id))}
+				<SongRow
+					{...rowMeta(c.media)}
+					readiness={r}
+					pct={c.pct}
+					status={c.status}
+					inQueue={inMyQueue(c.id)}
+					processable={isProcessableSource(c.media.source)}
+					onadd={() => addSong(c.id)}
+					onmake={canProcess(c.media, r) ? () => singThis(c.id) : undefined}
+				/>
 			{/each}
+		{/if}
+
+		{#if !searchActive}
+			<!--
+				ZERO QUERY = THE LIBRARY, under the queue. The songs that can be sung right now, as default
+				content — so the catalog we persist is visible from the screen a guest sits on rather than behind
+				a magnifier. Typing FILTERS this world instead of revealing it.
+
+				THE HEADING IS GATED ON HAVING ROWS: a group heading is a claim about what follows it, so it must
+				not outlive its rows (the find route learned this with an empty library and one song processing,
+				which rendered a heading over nothing).
+			-->
+			{#if libraryRows.length}
+				<h2 class="grouphead">Your library</h2>
+				{#each libraryRows as m (m.id)}
+					<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
+				{/each}
+			{:else if processingGroup.length === 0}
+				<!-- Nothing ready AND nothing on the way: the only state where the library is genuinely empty.
+				     The state, then the next step — and the field above is what the description names, because
+				     it is now on this screen rather than one navigation away. -->
+				<Empty.Root>
+					<Empty.Header>
+						<Empty.Title>No karaoke tracks yet.</Empty.Title>
+						<Empty.Description>Search above for a song and we'll make one.</Empty.Description>
+					</Empty.Header>
+				</Empty.Root>
+			{/if}
+		{/if}
+
+		{#if searchActive}
+			{@const readyStack = readyResults}
+			{#if readyStack.length}
+				<h2 class="grouphead">Ready to sing</h2>
+				{#each readyStack as m (m.id)}
+					<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
+				{/each}
+			{/if}
+
+			{@const rawRows = unaccounted(rawResults)}
+			{#if rawRows.length}
+				<h2 class="grouphead">Needs karaoke</h2>
+				{#each rawRows as m (m.id)}
+					{@const r = readinessFor(m)}
+					<SongRow
+						{...rowMeta(m)}
+						readiness={r}
+						pct={liveOf(m.id)?.pct ?? 0}
+						status={liveOf(m.id)?.status}
+						inQueue={inMyQueue(m.id)}
+						processable={isProcessableSource(m.source)}
+						onadd={() => addSong(m.id)}
+						onmake={canProcess(m, r) ? () => singThis(m.id) : undefined}
+					/>
+				{/each}
+			{/if}
+
+			{#if !searching && rawResults.length === 0 && readyResults.length === 0}
+				<Empty.Root>
+					<Empty.Header>
+						<Empty.Description>No results. YouTube search needs yt-dlp on the server.</Empty.Description>
+					</Empty.Header>
+				</Empty.Root>
+			{/if}
+
+			<!-- Nothing SINGABLE matched, but the library has songs — offer the way back to all of them, which
+			     is also the way back to the queue: clearing the box restores both. -->
+			{#if !readyStack.length && library.length}
+				{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
+				<Empty.Root>
+					<Empty.Header>
+						<Empty.Description>{empty.message}</Empty.Description>
+					</Empty.Header>
+				</Empty.Root>
+				{#if empty.showAllCount !== null}
+					<div class="showall-row">
+						<Button variant="secondary" size="tap" onclick={clearSearch}>
+							<Icon name="mic" /> Show all {empty.showAllCount}
+						</Button>
+					</div>
+				{/if}
+			{/if}
 		{/if}
 	{:else}
 		<!-- UNJOINED: `/` is the landing page. Both a scan affordance and a six-segment code entry,
@@ -900,6 +1335,92 @@
 	.grouphead:first-of-type {
 		margin-top: var(--space-2xs);
 	}
+
+	/*
+	 * ── THE SEARCH FIELD ──────────────────────────────────────────────────────────────────────────────
+	 *
+	 * Moved here verbatim from the retired /find route, including the two decisions worth keeping:
+	 *
+	 * NOT STICKY. `PageHeader` was already sticky there and this page's `.topbar` is the same shape, so a
+	 * second sticky element would have to be offset by that header's RENDERED height — which is not a token.
+	 * Inventing a spacing step past `--space-4xl` puts an undefined custom property inside a calc(), which
+	 * invalidates the whole declaration silently; measuring the header and publishing a second custom
+	 * property is a band contract's worth of machinery for a search box. So the field scrolls with the
+	 * content and the band's magnifier brings it back (see `focusSearch`).
+	 *
+	 * THE FOCUS RING BELONGS TO THE WHOLE FIELD, not the bare input inside it. `.findbox` is a bordered,
+	 * filled box holding a magnifier, an input, a spinner and a clear control — so it IS the field as far as
+	 * anyone looking at it is concerned. app.css's global `input:focus-visible` drew the ring on the input
+	 * alone: a violet rounded rect nested inside a grey one, with the magnifier stranded outside the ring it
+	 * should have been part of. `:focus-within` on the wrapper because a wrapper is never itself focused,
+	 * and the inner rule suppresses the global so only one ring is ever drawn — same token, same width, so
+	 * the measured floor (a ≥2px outline in the resolved `--focus`) still holds.
+	 */
+	.findbox {
+		background: var(--card);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
+		display: flex;
+		align-items: center;
+		gap: var(--space-md);
+		padding: var(--space-lg) var(--space-xl);
+		min-height: 52px;
+		width: 100%;
+		margin-bottom: var(--space-lg);
+	}
+	.findbox input {
+		border: 0;
+		background: transparent;
+		color: var(--ink);
+		font-size: var(--ph-text-base);
+		/* flex + min-width:0, never width:100% — the box must be able to shrink under SC 1.4.10 reflow. */
+		flex: 1;
+		min-width: 0;
+		/* The input, not the wrapper, is the tap target. */
+		min-height: var(--tap);
+	}
+	.findbox:has(input:focus-visible) {
+		outline: 2px solid var(--focus);
+		outline-offset: 2px;
+	}
+	.findbox input:focus-visible {
+		outline: none;
+	}
+	.find-mark {
+		display: grid;
+		place-items: center;
+		color: var(--ink-dim);
+	}
+
+	.skel-row {
+		display: flex;
+		align-items: center;
+		gap: var(--space-lg);
+		padding: var(--space-lg) var(--space-xl);
+		margin-bottom: var(--space-sm);
+		border-radius: var(--radius-sm);
+		background: var(--card);
+		border: 1px solid var(--line);
+	}
+	.skel-text {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-sm);
+	}
+
+	.showall-row {
+		display: flex;
+		justify-content: center;
+		padding: 0 0 var(--space-sm);
+	}
+
+	@media (max-height: 480px) {
+		.findbox {
+			min-height: var(--tap);
+			padding: var(--space-sm) var(--space-xl);
+		}
+	}
 	/*
 	 * THE EMPTY QUEUE — the state at display scale, centred in the space it leaves, and the only thing on
 	 * the screen (ratified 2026-09-21).
@@ -926,6 +1447,10 @@
 		min-height: 40vh;
 		padding: var(--space-2xl) var(--space-md);
 		text-align: center;
+	}
+	/* See the markup note: the void is only right when nothing follows the state. */
+	.queue-empty.tight {
+		min-height: 0;
 	}
 	.queue-empty:global([data-slot='empty-title']) {
 		font-size: var(--ph-text-3xl);

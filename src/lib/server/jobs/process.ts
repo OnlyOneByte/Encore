@@ -13,7 +13,9 @@ import {
 	isPlayable,
 	isProcessableSource,
 	needsFetch,
-	normalizeSongProfile
+	normalizeSongProfile,
+	DEFAULT_GLOBAL_SETTINGS,
+	PROCESSES_UNCAPPED
 } from '../../contract';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
@@ -42,16 +44,23 @@ export interface ProcessDeps {
 export const NO_QUEUE_PRIORITY = Number.MAX_SAFE_INTEGER;
 
 /**
- * How many processes ONE singer may have in flight at the same time.
+ * How many processes ONE singer may have in flight at the same time — A SETTING NOW, not a constant.
  *
- * Not a lifetime quota — a guest whose earlier songs finished processing can always start more; this
- * bounds only what is processing RIGHT NOW. WHY it exists: `requestProcess` dedups on
- * stems-existence alone, so nothing stopped one phone from tapping Sing down a whole search page and
- * enqueueing a 1–2 minute GPU job per distinct song — a self-inflicted denial of service that needs
- * no malice, just an impatient guest. Three is generous for a real singer (you queue a couple ahead)
- * while capping the fan-out a single guest can impose on a shared box's worker fleet.
+ * It was `export const MAX_CONCURRENT_PROCESSES_PER_SINGER = 3` until 2026-09-22. The reasoning behind the
+ * cap is unchanged and lives with the field (`GlobalSettings.maxProcessesPerSinger`): `requestProcess`
+ * dedups on stems-existence alone, so nothing stops one phone from tapping Sing down a whole page of
+ * results and enqueueing a 1–2 minute GPU job per distinct song. What changed is WHO decides the number —
+ * the right answer is a function of how many workers a deployment has, which no literal in this file can
+ * know.
+ *
+ * DEFAULTS RATHER THAN THROWS when no settings reader is supplied. The anonymous internal callers (the
+ * lyrics backfill, most unit tests) pass no `getSettings`, and the honest reading for them is the shipped
+ * default — not "uncapped", which would let a caller bypass the bound by omitting a dependency.
  */
-export const MAX_CONCURRENT_PROCESSES_PER_SINGER = 3;
+export function maxProcessesPerSinger(deps: Pick<ProcessDeps, 'getSettings'>): number {
+	const configured = deps.getSettings?.().maxProcessesPerSinger;
+	return typeof configured === 'number' ? configured : DEFAULT_GLOBAL_SETTINGS.maxProcessesPerSinger;
+}
 
 /**
  * How many DISTINCT songs this singer currently has processing — the bound FIX 2 enforces.
@@ -120,12 +129,12 @@ export type ProcessState =
 	| 'playing' // the live song; processing it would yank the video out from under the room
 	| 'ready' // stems already separated (persisted from an earlier session) — no re-process
 	| 'processing' // a live job is already working on it; a repeat request dedupes to that job
-	| 'over-limit' // this singer already has MAX_CONCURRENT_PROCESSES_PER_SINGER processes in flight
+	| 'over-limit' // this singer is at the configured in-flight cap (GlobalSettings.maxProcessesPerSinger)
 	| 'processable'; // nothing separated yet — go
 
 export function processState(
 	mediaId: string,
-	deps: Pick<ProcessDeps, 'mediaById' | 'state' | 'jobs'>,
+	deps: Pick<ProcessDeps, 'mediaById' | 'state' | 'jobs' | 'getSettings'>,
 	singerId?: string
 ): ProcessState {
 	const media = deps.mediaById.get(mediaId);
@@ -140,11 +149,19 @@ export function processState(
 	if (current && current.mediaId === mediaId) return 'playing';
 	if (isProcessed(media)) return 'ready';
 	if (media.stemStatus === 'queued') return 'processing';
-	// A NEW process (nothing separated, not already processing) is refused when this singer is already at
-	// their in-flight cap. Checked LAST — an already-processing or ready song is never blocked, since it
-	// starts no new work. Only evaluated when a singer is named; the anonymous internal callers
-	// (backfill, tests) impose no cap.
-	if (singerId && countInFlightProcesses(singerId, deps, mediaId) >= MAX_CONCURRENT_PROCESSES_PER_SINGER) {
+	/*
+	 * A NEW process (nothing separated, not already processing) is refused when this singer is already at
+	 * their in-flight cap. Checked LAST — an already-processing or ready song is never blocked, since it
+	 * starts no new work. Only evaluated when a singer is named: the anonymous internal callers (backfill)
+	 * are not a guest's fan-out and are bounded by the work they enqueue, not by a per-singer count.
+	 *
+	 * `0` MEANS UNCAPPED, and it is checked before the count rather than after: with a cap of 0 the
+	 * comparison `count >= 0` is true for every singer, so a deployment that turned the bound off would have
+	 * turned it all the way up instead. That inversion is exactly the kind of thing a settable limit
+	 * introduces, which is why the sentinel is named (`PROCESSES_UNCAPPED`) rather than written as a bare 0.
+	 */
+	const cap = maxProcessesPerSinger(deps);
+	if (singerId && cap !== PROCESSES_UNCAPPED && countInFlightProcesses(singerId, deps, mediaId) >= cap) {
 		return 'over-limit';
 	}
 	return 'processable';

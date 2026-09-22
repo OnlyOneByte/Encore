@@ -40,17 +40,20 @@
 		 * from the phone" with it.
 		 */
 		canStart?: boolean;
-		/** Opening the find surface. The band becomes the search field once it is open. */
-		onsearch?: () => void;
+		/*
+		 * `onsearch` RETIRED (2026-09-22) with the magnifier it fired. Search is a field at the top of home
+		 * now, not a control in the chrome, so the band has nothing to navigate to and nothing to focus — and
+		 * the row it vacated is what makes room for the transport to be visible at all times.
+		 */
 		ontoggleplay?: () => void;
 		/**
-		 * Restart and skip — the two controls that flank the disc while the sheet holding this band is up.
+		 * Restart and skip — the two controls that flank the disc, always rendered.
 		 *
 		 * They live HERE rather than in the sheet's body because one transport split across two rows is what
 		 * the last two rounds of this were reported as. Callbacks, so they are stable for the life of the
 		 * mount: a prop of this component that CHANGES after mount re-runs the drawer's size bindings, which
-		 * the mount rung throws on. Absent (the /components gallery) leaves the pair inert, and it
-		 * is hidden at rest there anyway — see `.tp-side`.
+		 * the mount rung throws on. Absent (the /components gallery) leaves the pair inert but visible, which
+		 * is the state that gallery exists to show.
 		 */
 		onrestart?: () => void;
 		onskip?: () => void;
@@ -70,7 +73,6 @@
 		progress = null,
 		isPlaying = false,
 		canStart = false,
-		onsearch,
 		ontoggleplay,
 		onrestart,
 		onskip,
@@ -220,42 +222,33 @@
 			{/if}
 
 			<!--
-				`data-vaul-no-drag` ON EVERY CONTROL IN THIS ROW, and it is a correctness fix rather than tidiness.
-				The sheet that composes this band drags from the band row now (`handleOnly` is gone; see the Root
-				note in NowPlayingDrawer), and vaul sets pointer CAPTURE on press — so a drag begun on the disc
-				would retarget its `pointerup` back to the button and fire a click, pausing the song on the way to
-				opening the sheet. vaul resolves the attribute with `closest()`, so the `.tp` group covers all three
-				of its buttons and this one covers the magnifier. Harmless in /components, where nothing drags.
-			-->
-			<button class="btn" type="button" aria-label="Search for a song" data-vaul-no-drag onclick={() => onsearch?.()}>
-				<Icon name="search" />
-			</button>
+				THE TRANSPORT GROUP — restart·play·skip in one row, ALL THREE VISIBLE AT ALL TIMES (2026-09-22).
+				The sheet used to carry restart and skip in a centred row of its own in the body, with only the disc
+				up here: on a laptop that left this header almost empty and floated a three-button group in the
+				middle of nothing, and on a phone it split one control group across two rows. Reported, twice, as
+				the controls not being unified — which is what put all three here.
 
-			<!--
-				THE TRANSPORT GROUP — prev·play·next in ONE row with the magnifier, which is the whole arrangement
-				(ratified 2026-09-21). The sheet used to carry restart and skip in a centred row of its own in the
-				body, with only the disc up here: on a laptop that left this header almost empty and floated a
-				three-button group in the middle of nothing, and on a phone it split one control group across two
-				rows. Reported, twice, as the controls not being unified.
+				NO REVEAL AND NO ANIMATION ANY MORE. For one release `.tp-side` was `display: none` at rest and the
+				drawer grew the pair in as its sheet rose, because the magnifier sat in this row and the three-up
+				group was too much for a collapsed bar beside it. The magnifier is GONE — search is a field at the
+				top of home, not a control in the chrome — so the row has the space, and a transport that is simply
+				there beats one that has to be summoned. What went with the reveal: the band's `display: none`, the
+				drawer's `.sheet-up`/`.sheet-down` classes, the imperative `classList` effect that toggled them, and
+				three pairs of keyframes.
 
-				RESTART AND SKIP ARE HIDDEN AT REST — `.tp-side` is `display: none` in this file, and the DRAWER
-				reveals the pair while its sheet is up (`.band-face:global(.sheet-up)`; see NowPlayingDrawer). So
-				the collapsed bar is what it always was — title, magnifier, disc — and so is /components, which
-				renders five of these with no drawer around them.
+				`data-vaul-no-drag` ON THE GROUP, and it is a correctness fix rather than tidiness. The sheet that
+				composes this band drags from the band row (`handleOnly` is gone; see the Root note in
+				NowPlayingDrawer), and vaul sets pointer CAPTURE on press — so a drag begun on the disc would
+				retarget its `pointerup` back to the button and fire a click, pausing the song on the way to opening
+				the sheet. vaul resolves the attribute with `closest()`, so one attribute here covers all three.
 
-				A CSS REVEAL RATHER THAN A PROP, and that is a constraint rather than a preference: any prop of this
-				component that CHANGES after mount re-runs the drawer's size bindings, and a geometry read on the
-				mount rung is a throw by design. `onrestart` and `onskip` are safe because they are
-				callbacks — stable for the life of the mount, exactly like `ontoggleplay` beside them — and the
-				disabled state reads `hasSong`, which this component already derives from `title`.
-
-				THE DISC IS STILL THE ONE PLAY/PAUSE. It is visible at both heights, it carries the progress ring and
-				it sits in the thumb zone; the pair simply grows around it. The sheet's own duplicate copy — a second
-				play/pause about 100px below this one — is deleted again, which is what this arrangement is for.
+				THE DISC IS THE ONE PLAY/PAUSE. It carries the progress ring and sits in the thumb zone; the pair
+				flanks it. The sheet's own duplicate copy — a second play/pause about 100px below this one — stays
+				deleted, which is what this arrangement is for.
 			-->
 			<div class="tp" data-vaul-no-drag>
 				<button
-					class="btn tp-side"
+					class="btn"
 					type="button"
 					aria-label="Restart"
 					title="Play this song again from the beginning"
@@ -292,7 +285,7 @@
 					</svg>
 				</button>
 				<button
-					class="btn tp-side"
+					class="btn"
 					type="button"
 					aria-label="skip"
 					title="Skip to the next singer"
@@ -436,36 +429,22 @@
 		flex: 0 0 auto;
 	}
 	/*
-	 * HOW MUCH THE ROW GROWS when the pair is revealed, as a token expression rather than a measurement.
+	 * `.btn.tp-side { display: none }` AND THE `.tp-side` CLASS ITSELF ARE GONE (2026-09-22), with the reveal.
 	 *
-	 * It is exactly the two buttons plus the two gaps that arrive with them. `.tp` is `flex: 0 0 auto` and
-	 * the title is `flex: 1`, so the title absorbs all of it: the magnifier slides LEFT by this whole
-	 * amount, and the disc by one button and one gap (the restart that lands to its left). Those two
-	 * numbers are what the enter animation replays — see `.sheet-up` in NowPlayingDrawer. Declared HERE
-	 * because it is a fact about this row's layout, not about the sheet that reveals it.
-	 */
-	/*
-	 * HIDDEN AT REST, REVEALED BY THE DRAWER (`.band-face:global(.sheet-up)` in NowPlayingDrawer).
+	 * The pair was hidden at rest and grown in by the drawer as its sheet rose, because the magnifier shared
+	 * this row and four controls was too many for a collapsed bar. The magnifier has left the band — search
+	 * is a field at the top of home — so the space is there and the transport is simply always visible. What
+	 * that rule cost while it existed is worth keeping on the record: it had to be COMPOUNDED (`.btn.tp-side`,
+	 * not `.tp-side`) because as a single class it lost to `.btn`'s own `display: grid` declared further down
+	 * this file, and the pair rendered in the collapsed bar — caught on a screenshot, not by the suite, since
+	 * presence is all the mount rung can see and visibility is a layout claim.
 	 *
-	 * `display: none` rather than `visibility: hidden`: this is a flex row, so the pair must take NO space
-	 * while collapsed or the disc would sit 104px in from the edge with two holes beside it. It costs the
-	 * band no HEIGHT either way — `.band-slot`'s height is fixed in `$lib/sheet-snap` — so revealing the
-	 * pair cannot move `--dock-h`.
-	 *
-	 * It is also what keeps this component honest in /components, which renders five bands with no drawer
-	 * around them: no `.sheet-up` ancestor, no transport, exactly the five states it showed before.
+	 * THE CLASS GOES TOO, rather than being kept as a hook: with no rule behind it, nothing in the cascade
+	 * can reach it, and `app-class-resolution.test.ts` reds on exactly that — a class in markup that no
+	 * rule matches is either dead or a rule that was deleted by accident, and the guard cannot tell which.
+	 * The two flanking controls are addressed as `.tp .btn` instead, which names the same pair by structure:
+	 * the group holds the disc (`.disc`) and these two, so `.btn` inside it IS the pair.
 	 */
-	/*
-	 * COMPOUNDED WITH `.btn` ON PURPOSE, and this is a defect fix rather than a style. As a bare `.tp-side`
-	 * it lost to `.btn`'s own `display: grid` — same single-class specificity, and that rule is declared
-	 * FURTHER DOWN this file, so source order decided it and the pair rendered in the COLLAPSED bar. Caught
-	 * on a screenshot, not by the suite: presence is all the mount rung can see, and visibility is a layout
-	 * claim. `.btn.tp-side` outranks `.btn` at any position in the file, and the drawer's reveal
-	 * (`.band-face.sheet-up .tp-side`, three classes) still outranks this.
-	 */
-	.btn.tp-side {
-		display: none;
-	}
 	/*
 	 * THE FOCUS RING HUGS THE DISC INSTEAD OF LANDING ON ITS PROGRESS RING.
 	 *
@@ -494,17 +473,11 @@
 		 */
 		padding: var(--space-sm) var(--space-2xl) var(--space-lg);
 		/*
-		 * HOW MUCH THIS ROW GROWS when the transport pair is revealed, as a token expression rather than a
-		 * measurement — which is what lets the reveal be animated at all without reading geometry (a
-		 * geometry read on the mount rung is a throw).
-		 *
-		 * It is exactly the two buttons plus the two gaps that arrive with them. `.tp` is `flex: 0 0 auto`
-		 * and `.meta` is `flex: 1`, so the title absorbs all of it: the magnifier slides LEFT by the whole
-		 * amount and the disc by one button and one gap (the restart that lands to its left). Those are the
-		 * two distances the enter animation replays — see `.sheet-up` in NowPlayingDrawer.
+		 * `--tp-grow` and `--tp-disc-shift` RETIRED with the reveal (2026-09-22). They were the two distances
+		 * the enter animation replayed — the whole pair plus its gaps, and one button plus one gap for the
+		 * disc — expressed as token arithmetic precisely so the animation never had to read geometry (a
+		 * geometry read on the mount rung is a throw). Nothing grows now: the row renders at one width.
 		 */
-		--tp-grow: calc(2 * var(--tap) + 2 * var(--space-md));
-		--tp-disc-shift: calc(var(--tap) + var(--space-md));
 	}
 
 	/*

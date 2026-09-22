@@ -12,6 +12,7 @@ import {
 	liveSortTarget,
 	keyboardMoveTarget,
 	rowShift,
+	liveSeq,
 	modeInvalidation
 } from '$lib/reorder-mode';
 import { at } from '@encore/test-support';
@@ -57,11 +58,20 @@ test('no grip under an ordering that ignores addedAt — a move there is a legal
  * somewhere the guest did not choose", is now met by identity: one expression places the rows and commits.
  * So these arms test that expression instead, including the two rounding edges a drawn target never had.
  */
+/*
+ * A UNIFORM LIST, as the boxes a real render would report: five 60px rows stacked from y=0. Uniform on
+ * purpose for the arms that were written against one row height — the hand-over points are UNCHANGED by the
+ * move to boxes, which is the claim those arms now carry.
+ */
+const UNIFORM = [0, 60, 120, 180, 240].map((top) => ({ top, height: 60 }));
+
 test('the target follows the finger, a row at a time', () => {
-	const at = (offsetPx: number) => liveSortTarget({ fromIndex: 1, offsetPx, rowHeightPx: 60, count: 5 });
+	const at = (offsetPx: number) => liveSortTarget({ fromIndex: 1, offsetPx, rowBoundsPx: UNIFORM, count: 5 });
 	// Not moved: still where it started, so a release commits nothing (the page early-returns on same-index).
 	expect(at(0)).toBe(1);
-	// HALF a row is the hand-over point: that is where the gap has visibly opened on screen.
+	// HALF a row is the hand-over point — that is where the gap has visibly opened on screen. Stated in the
+	// geometry now (the leading edge clears the next row's midpoint) rather than as a rounding of the travel,
+	// and for a uniform list the two are the same number.
 	expect(at(29)).toBe(1);
 	expect(at(31)).toBe(2);
 	expect(at(-31)).toBe(0);
@@ -70,9 +80,43 @@ test('the target follows the finger, a row at a time', () => {
 	expect(at(180)).toBe(4);
 });
 
+test('a MIXED list is exact — one tall card among short rows, in both directions', () => {
+	/*
+	 * THE DEFECT THE BOXES FIXED. The queue holds two row kinds: a ~65px queued row and a ~104px processing
+	 * card. Dividing the travel by ONE height was wrong both ways round — a card dragged two short rows read
+	 * 130/104 = 1.25 → one position, and a short row dragged past a card read 104/65 = 1.6 → two. The old
+	 * design avoided half of that by refusing the card a grip, which is what was reported ("songs being
+	 * processed aren't currently draggable").
+	 *
+	 * Geometry: 65, 104 (the card, index 1), 65, 65 stacked from y=0. Midpoints 32.5, 117, 201.5, 266.5.
+	 */
+	const MIXED = [
+		{ top: 0, height: 65 },
+		{ top: 65, height: 104 },
+		{ top: 169, height: 65 },
+		{ top: 234, height: 65 }
+	];
+	// The CARD dragged down. Its bottom edge starts at 169, so it clears index 2's midpoint (201.5) after
+	// 32.5px — HALF OF THE ROW IT IS PASSING, not half of its own 104. A single height demanded 52.
+	const card = (offsetPx: number) => liveSortTarget({ fromIndex: 1, offsetPx, rowBoundsPx: MIXED, count: 4 });
+	expect(card(30)).toBe(1);
+	expect(card(40)).toBe(2);
+	// …and on to the next, at 266.5 − 169 = 97.5px.
+	expect(card(90)).toBe(2);
+	expect(card(100)).toBe(3);
+	// A SHORT ROW dragged UP past the card: its top edge starts at 234 and passes the card's midpoint (117)
+	// after 117px — half of the CARD. Dividing by 65 would have called that 1.8 rows and landed a position early.
+	const row = (offsetPx: number) => liveSortTarget({ fromIndex: 3, offsetPx, rowBoundsPx: MIXED, count: 4 });
+	expect(row(-30)).toBe(3);
+	expect(row(-40)).toBe(2);
+	expect(row(-110)).toBe(2);
+	expect(row(-120)).toBe(1);
+});
+
 test('dragging past either end lands on the end, never outside the list', () => {
+	const bounds = [0, 60, 120].map((top) => ({ top, height: 60 }));
 	const at = (fromIndex: number, offsetPx: number) =>
-		liveSortTarget({ fromIndex, offsetPx, rowHeightPx: 60, count: 3 });
+		liveSortTarget({ fromIndex, offsetPx, rowBoundsPx: bounds, count: 3 });
 	// Clamping is right HERE and only here: the finger has left the list, and the nearest end is
 	// unambiguously what the guest is aiming at — the row is visibly sitting there when they let go. That is
 	// not the "commits somewhere unchosen" case, which was about a target the guest could not see.
@@ -81,13 +125,13 @@ test('dragging past either end lands on the end, never outside the list', () => 
 	expect(at(1, 6000)).toBe(2);
 });
 
-test('a degenerate row height cannot move anything', () => {
-	// A detached node measures 0, and dividing by it would make every offset infinite — i.e. a commit at an
-	// end of the list for a gesture that never left its row.
-	expect(liveSortTarget({ fromIndex: 1, offsetPx: 400, rowHeightPx: 0, count: 4 })).toBe(1);
-	expect(liveSortTarget({ fromIndex: 1, offsetPx: 400, rowHeightPx: -10, count: 4 })).toBe(1);
+test('a measurement that cannot answer moves nothing', () => {
+	// A detached node measures nothing, and a list of boxes that does not cover the list it claims to describe
+	// cannot say where a row has travelled to. Both are "no movement" rather than a guess at an end.
+	expect(liveSortTarget({ fromIndex: 1, offsetPx: 400, rowBoundsPx: [], count: 4 })).toBe(1);
+	expect(liveSortTarget({ fromIndex: 1, offsetPx: 400, rowBoundsPx: UNIFORM.slice(0, 2), count: 4 })).toBe(1);
 	// An empty list has no position to name; 0 rather than -1 so no caller can index with it.
-	expect(liveSortTarget({ fromIndex: 0, offsetPx: 0, rowHeightPx: 60, count: 0 })).toBe(0);
+	expect(liveSortTarget({ fromIndex: 0, offsetPx: 0, rowBoundsPx: [], count: 0 })).toBe(0);
 });
 
 test('the rows between the two positions shift exactly one place, and no others', () => {
@@ -99,6 +143,46 @@ test('the rows between the two positions shift exactly one place, and no others'
 	expect([0, 1, 2, 3, 4].map((i) => rowShift(i, 2, 2))).toEqual([0, 0, 0, 0, 0]);
 	// The dragged row is placed by the finger, never by this.
 	expect(rowShift(1, 1, 4)).toBe(0);
+});
+
+test('the position NUMBERS follow the rows mid-drag, and are a permutation at every step', () => {
+	/*
+	 * THE DEFECT: the rows animated and the numbers did not. Every bubble rendered `sourceIndex + 1`
+	 * until the server patch landed, so a drag showed 2 above 1 and then every number in the list
+	 * corrected itself in one jump — reported as "a flash where everything changes".
+	 *
+	 * Asserted as a PERMUTATION rather than row by row, because that is the property that makes the
+	 * label trustworthy: at any point in the gesture the five rows must show 1..5 in some order, with
+	 * nothing duplicated and nothing missing. A number derived separately from the placement could
+	 * satisfy every individual case and still print two 3s.
+	 */
+	const seqs = (from: number, to: number) => [0, 1, 2, 3, 4].map((i) => liveSeq(i, from, to));
+
+	// Dragging row 1 (the 2nd) down to index 3 (the 4th): 2 becomes 4, and 3 and 4 each come up one.
+	expect(seqs(1, 3)).toEqual([1, 4, 2, 3, 5]);
+	// And back the other way: dragging the 4th up to 2nd pushes 2 and 3 down.
+	expect(seqs(3, 1)).toEqual([1, 3, 4, 2, 5]);
+	// The two-row swap the report described: sliding 2 above 1 shows 1 become 2 and 2 become 1.
+	expect(seqs(1, 0)).toEqual([2, 1, 3, 4, 5]);
+	// A gesture that has not left its row numbers the list exactly as the server does.
+	expect(seqs(2, 2)).toEqual([1, 2, 3, 4, 5]);
+	// -1 is how the page spells "no drag in flight" — for `dragFrom`, for `dragTo`, or for both. Each
+	// falls back to the source order rather than producing a 0th row (`targetIndex + 1` on -1).
+	expect(seqs(-1, -1)).toEqual([1, 2, 3, 4, 5]);
+	expect(seqs(0, -1)).toEqual([1, 2, 3, 4, 5]);
+	expect(seqs(-1, 2)).toEqual([1, 2, 3, 4, 5]);
+
+	// The permutation property itself, over every (from, to) pair a 5-row list admits.
+	for (let from = 0; from < 5; from++) {
+		for (let to = 0; to < 5; to++) {
+			expect(
+				seqs(from, to)
+					.slice()
+					.sort((a, b) => a - b),
+				`from ${from} to ${to}`
+			).toEqual([1, 2, 3, 4, 5]);
+		}
+	}
 });
 
 test('the keyboard step moves one place and DECLINES at the ends', () => {

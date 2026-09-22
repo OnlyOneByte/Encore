@@ -6,7 +6,7 @@ import { json } from '@sveltejs/kit';
 import { getApp } from '$lib/server/app';
 import { SESSION_COOKIE } from '$lib/server/singers/repository';
 import { completedStatusFor, mediaStatusFor } from '$lib/server/jobs/media-status';
-import { processState, requestProcess, MAX_CONCURRENT_PROCESSES_PER_SINGER } from '$lib/server/jobs/process';
+import { processState, requestProcess, maxProcessesPerSinger } from '$lib/server/jobs/process';
 import type { MediaStatus } from '$lib/contract';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
@@ -20,7 +20,25 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	// With a durable catalog, "already processed" is the common happy path (a song separated on a
 	// previous night), not an error — answer 200 so the phone shows "ready" instead of a red toast.
-	const state = processState(mediaId, { mediaById: app.mediaById, state: app.state, jobs: app.jobs }, singer.id);
+	/*
+	 * `getSettings` IS PASSED, and that is two fixes in one dependency.
+	 *
+	 * The cap is a setting now (`GlobalSettings.maxProcessesPerSinger`), so `processState` needs a reader to
+	 * answer `over-limit` against the configured number rather than a literal. And `requestProcess` below has
+	 * ALWAYS taken this dep to choose the fetcher (`needsFetch(source, getSettings()?.defaultFetcher)`) —
+	 * this route never supplied it, so every HTTP-requested process picked the fetcher by fallback and the
+	 * deployment's own `defaultFetcher` setting reached only the internal callers. One dep, both paths.
+	 *
+	 * `getGlobal()` rather than `getEffective()`: the dep is typed `() => GlobalSettings`, and effective
+	 * settings are `{ global, room }` — handing that over type-checks nowhere and reads `undefined` for every
+	 * field, which is how the fetcher gap would have gone unnoticed a second time.
+	 */
+	const getSettings = () => app.settings.getGlobal();
+	const state = processState(
+		mediaId,
+		{ mediaById: app.mediaById, state: app.state, jobs: app.jobs, getSettings },
+		singer.id
+	);
 	if (state === 'ready') {
 		app.publish({ type: 'media:status', mediaId, status: 'ready', pct: 100 });
 		return json({ alreadyReady: true, job: null });
@@ -46,7 +64,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	if (state === 'over-limit') {
 		return json(
 			{
-				error: `you already have ${MAX_CONCURRENT_PROCESSES_PER_SINGER} songs processing — wait for one to finish`,
+				error: `you already have ${maxProcessesPerSinger({ getSettings })} songs processing — wait for one to finish`,
 				reason: 'over-limit'
 			},
 			{ status: 429 }
@@ -55,7 +73,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	const job = requestProcess(
 		mediaId,
-		{ jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now },
+		{ jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now, getSettings },
 		singer.id
 	);
 	if (!job) return json({ error: 'could not start process' }, { status: 409 });

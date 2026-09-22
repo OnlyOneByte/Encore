@@ -48,12 +48,11 @@ const FILES = [
 	// under lib/ui/ was invisible to this guard entirely. The walk closes that, and the pin it made
 	// redundant is retired with it.
 	...svelteFiles(join(SRC, 'lib', 'ui')),
+	// `/` carries the search field and its clear control again: they left for `/find` during the remote
+	// rebuild and came back when that route was merged into home (2026-09-22), so the two entries this list
+	// used to hold are one. Nothing leaves the walk — a surface nobody added to this list is a surface these
+	// arms never examine, which is how the metrics pages shipped at 32px.
 	join(SRC, 'routes', '+page.svelte'),
-	// `/find` is a phone surface in its own right since the remote rebuild: search left `/` and became
-	// this route, taking a text field and a clear control with it. Walked for the same reason
-	// `lib/ui/` is — a surface nobody added to this list is a surface these arms never examine, which
-	// is how the metrics pages shipped at 32px.
-	join(SRC, 'routes', 'find', '+page.svelte'),
 	join(SRC, 'routes', 'settings', '+page.svelte'),
 	// The operator metrics pages are phone surfaces by their own CSS's admission (they harden for the
 	// 320px layout) and each has exactly one navigation control, yet neither was ever scanned — which
@@ -142,8 +141,8 @@ test('every phone control that sizes its own box reaches the tap standard', () =
 	// lib/components and lib/ui PLUS six hand-named route pages, so a walk that stops finding
 	// components still leaves six files — and six files carry enough control rules to clear the floor
 	// above. The two floors fail on different regressions: `controlRulesSeen` on a broken derivation,
-	// this one on a narrowed walk. 16 files today (15 before routes/find/ was added to the list, 14
-	// before lib/ui/ joined the walk).
+	// this one on a narrowed walk. 15 files today (16 while routes/find/ was its own surface, 14 before
+	// lib/ui/ joined the walk).
 	expect(FILES.length).toBeGreaterThanOrEqual(12); // @nvf-floor FILES.length
 });
 
@@ -199,7 +198,6 @@ test('every phone control expresses the tap standard as var(--tap), never the nu
  */
 test('the controls that previously fell short declare the tap standard as the token', () => {
 	const phone = readFileSync(join(SRC, 'routes', '+page.svelte'), 'utf8');
-	const find = readFileSync(join(SRC, 'routes', 'find', '+page.svelte'), 'utf8');
 	const settings = readFileSync(join(SRC, 'routes', 'settings', '+page.svelte'), 'utf8');
 	const metrics = readFileSync(join(SRC, 'routes', 'metrics', '+page.svelte'), 'utf8');
 	const css = readFileSync(join(SRC, 'app.css'), 'utf8');
@@ -237,16 +235,15 @@ test('the controls that previously fell short declare the tap standard as the to
 	// …and the two call sites really do ask for those sizes, so the pins above are not measuring a size
 	// nothing uses.
 	//
-	// THE SEARCH-ESCAPE CALL SITE MOVED FILES, not sizes. It was the "Show all N" control in the docked
-	// search box on `/`; the remote rebuild made `/` queue-only and search the `/find` route, so the
-	// control — same `size="tap"`, same `onclick={clearSearch}` — is read out of the find page now. Left
-	// pointing at `/` this assertion could only fail, never bite, which is the same trap the retired
-	// `.browse-toggle` pin fell into. The `/find` box also added a SECOND clear control (the icon-only
-	// one inside the box), pinned beside it: it is an icon button in a text-entry row, which is exactly
-	// where the sub-24px settings gear came from.
+	// THE SEARCH-ESCAPE CALL SITES HAVE MOVED FILES TWICE, never sizes. "Show all N" was in the docked
+	// search box on `/`; the remote rebuild made `/` queue-only and search the `/find` route; the merge
+	// (2026-09-22) brought both controls home — the same `size="tap"` / `onclick={clearSearch}` pair and the
+	// icon-only clear inside the box. Pointed at the wrong file an assertion like this can only fail, never
+	// bite, which is the trap the retired `.browse-toggle` pin fell into. The icon-only one is pinned
+	// because it is an icon button in a text-entry row, which is exactly where the sub-24px gear came from.
 	expect(phone).toMatch(/<Button[^>]*size="icon"[^>]*href="\/settings"/s);
-	expect(find).toMatch(/<Button[^>]*size="tap"[^>]*onclick=\{clearSearch\}/s);
-	expect(find).toMatch(/<Button[^>]*size="icon"[^>]*aria-label="Clear the search"/s);
+	expect(phone).toMatch(/<Button[^>]*size="tap"[^>]*onclick=\{clearSearch\}/s);
+	expect(phone).toMatch(/<Button[^>]*size="icon"[^>]*aria-label="Clear the search"/s);
 	// The band is the phone's one permanent control pair (the magnifier and the transport disc) and it
 	// carries the floor as the TOKEN on both. It lives in lib/components, so the structural arms above
 	// examine it like any other component — this pin only records that the two controls a singer can
@@ -344,16 +341,17 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 		 * at 22px because an `<input>` with no height sits at one text line and `input` is deliberately
 		 * absent from the bare-tag allowlist `controlRules()` consults.
 		 *
-		 * Search is the `/find` route now and the box is `.findbox`, sticky at the top. The FLOOR is
-		 * unchanged and still spelled `min-height: var(--tap)` on the input rather than on the wrapper —
-		 * the field is the tap target, and the box around it is 52px of padding that a finger landing
-		 * near the edge would miss. Only the file and the class moved, which is precisely what this arm
-		 * reports: left pointing at the old selector it said `no sizing rule found (selector moved?)`.
+		 * The box is `.findbox` and it is at the top of `/` — it was the `/find` route's for a release, and
+		 * came home when that route was merged away. The FLOOR is unchanged through both moves and still
+		 * spelled `min-height: var(--tap)` on the INPUT rather than on the wrapper: the field is the tap
+		 * target, and the box around it is 52px of padding that a finger landing near the edge would miss.
+		 * Only the file and the class ever moved, which is precisely what this arm reports — left pointing at
+		 * a stale selector it said `no sizing rule found (selector moved?)`.
 		 */
 		{
-			file: join(SRC, 'routes', 'find', '+page.svelte'),
+			file: join(SRC, 'routes', '+page.svelte'),
 			token: /\.findbox\s+input\b/,
-			name: 'the find search input'
+			name: 'the search input on home'
 		},
 		/*
 		 * RE-ANCHORED BY S2. These three controls were `select`, `.text` and `.name-input`
