@@ -200,6 +200,7 @@ const EXPECTED = [
 	'parseHex',
 	'pendingGates',
 	'pickBestLyrics',
+	'lyricsSourceLabel',
 	'playbackRef',
 	'presetTabStopIndex',
 	'qualityRank',

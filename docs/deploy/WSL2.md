@@ -16,7 +16,7 @@ torch wheels.
 
 ## 1. The one thing that will break first: networking
 
-Encore's whole join flow is *phones on the LAN scan a QR shown on the TV*. Two facts collide:
+Encore's whole join flow is _phones on the LAN scan a QR shown on the TV_. Two facts collide:
 
 - **Default WSL2 networking is NAT.** Windows can reach a WSL service on `localhost`, but **other
   devices on your LAN cannot reach it at all.** Phones will simply fail to connect.
@@ -24,7 +24,7 @@ Encore's whole join flow is *phones on the LAN scan a QR shown on the TV*. Two f
   `src/routes/tv/+page.server.ts` builds `joinUrl` via `publicOrigin(request, url)`
   (`src/lib/server/public-origin.ts`), which takes the authority from `X-Forwarded-Host` or
   `Host`, and the scheme from `X-Forwarded-Proto` defaulting to `http`. So the QR contains whatever
-  address the *TV browser* used to load `/tv`. Open the TV at `http://localhost:3000/tv` and the QR
+  address the _TV browser_ used to load `/tv`. Open the TV at `http://localhost:3000/tv` and the QR
   says `localhost` — useless to a phone, even if the network were otherwise fine.
 
   > Worth knowing why that helper exists: `adapter-node` reports the protocol as
@@ -48,7 +48,7 @@ wsl --update --pre-release # only if --version is still too old after the above
 wsl --shutdown             # required for a new .wslconfig to be read
 ```
 
-`wsl --update` updates the WSL *runtime*, not your distro's packages. Those are separate:
+`wsl --update` updates the WSL _runtime_, not your distro's packages. Those are separate:
 
 ```bash
 # inside the distro, for the packages Encore actually uses
@@ -104,7 +104,7 @@ Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -D
 ### Finding the address in mirrored mode
 
 Mirrored mode also makes the address harder to read, not easier: WSL now shows the host's interfaces
-*plus* a synthetic `loopback0`, so `hostname -I` returns a list and it is not obvious which entry a
+_plus_ a synthetic `loopback0`, so `hostname -I` returns a list and it is not obvious which entry a
 phone should use. Ask the routing table which source address actually reaches the outside world:
 
 ```bash
@@ -123,13 +123,13 @@ must be `%USERPROFILE%\.wslconfig` — an `[experimental]` block swallowing the 
 `wsl --shutdown` afterwards), and the portproxy fallback below applies instead.
 
 > `networkingMode=bridged` is a **different** mode, not a synonym. It needs `vmSwitch=` naming an
-> *external* Hyper-V vSwitch and takes its own DHCP lease; without that switch it has no usable
+> _external_ Hyper-V vSwitch and takes its own DHCP lease; without that switch it has no usable
 > address at all. Use `mirrored`.
 
 ### Mirrored mode can activate and still be broken — observed on this deployment
 
 Worth knowing before you spend an evening on it: on the actual deploy box, mirrored mode came up
-**half-working**. `loopback0` was present, which is the tell that mirrored mode *did* activate, but the
+**half-working**. `loopback0` was present, which is the tell that mirrored mode _did_ activate, but the
 `eth` interface was **DOWN**, so nothing was reachable from the LAN at all. That combination is
 confusing precisely because the usual check (does mirrored appear active?) says yes.
 
@@ -146,7 +146,7 @@ wrong"; it is the cleaner mode when it works, and it removes the per-boot IP dan
 debugging a phone that cannot connect, the portproxy path is the one this deployment has actually
 verified end to end, so switch to it early rather than treating it as a last resort.
 
-**Use the port proxy** when mirrored is unavailable (Windows 10, or an older WSL) *or* when it comes up
+**Use the port proxy** when mirrored is unavailable (Windows 10, or an older WSL) _or_ when it comes up
 broken as above. From an Administrator PowerShell — replacing the WSL IP each boot, because NAT
 reassigns it:
 
@@ -170,12 +170,12 @@ Keep the rule on the **Private** profile only. This is an unauthenticated servic
 
 ## 2. Prerequisites
 
-| Component | Requirement | Check |
-|---|---|---|
-| Windows | 11 22H2+ (for mirrored networking) | `winver` |
-| WSL | 2.0+, with a distro (Ubuntu 24.04) | `wsl --version`, `wsl -l -v` |
-| NVIDIA driver | A current **Windows** driver. Do **not** install a driver inside WSL — CUDA-on-WSL comes from the Windows driver | `nvidia-smi` in PowerShell |
-| Docker | Docker Desktop with the WSL2 backend, **or** docker-ce inside the distro plus `nvidia-container-toolkit` | `docker version` |
+| Component     | Requirement                                                                                                      | Check                        |
+| ------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Windows       | 11 22H2+ (for mirrored networking)                                                                               | `winver`                     |
+| WSL           | 2.0+, with a distro (Ubuntu 24.04)                                                                               | `wsl --version`, `wsl -l -v` |
+| NVIDIA driver | A current **Windows** driver. Do **not** install a driver inside WSL — CUDA-on-WSL comes from the Windows driver | `nvidia-smi` in PowerShell   |
+| Docker        | Docker Desktop with the WSL2 backend, **or** docker-ce inside the distro plus `nvidia-container-toolkit`         | `docker version`             |
 
 Docker Desktop is the shorter path (its WSL2 backend wires up GPU access for you). Installing
 `docker-ce` directly in the distro avoids Docker Desktop entirely but means installing
@@ -210,7 +210,7 @@ cd /srv && git clone <your-remote> Encore && cd Encore
 
 **Do not put the repo, `data/`, or `media/` under `/mnt/c/...`.** Windows drives are exposed to WSL
 over a 9p filesystem, which is dramatically slower and does not honour POSIX locking properly. Encore
-writes multi-hundred-MB audio files *and* runs SQLite in WAL mode; on `/mnt/c` you get both terrible
+writes multi-hundred-MB audio files _and_ runs SQLite in WAL mode; on `/mnt/c` you get both terrible
 throughput and a real risk of database locking errors. Everything stateful stays on the distro's ext4.
 
 To reach the media from Windows Explorer, browse `\\wsl$\Ubuntu\srv\Encore\media` — read from Windows,
@@ -253,7 +253,7 @@ mkdir -p /srv/encore/data /srv/encore/media
 ```
 
 **Leave the `worker-cache` named volume alone.** It holds the demucs and RoFormer checkpoints
-(hundreds of MB) and yt-dlp's challenge-solver script. It is a *named* volume rather than a bind path
+(hundreds of MB) and yt-dlp's challenge-solver script. It is a _named_ volume rather than a bind path
 on purpose: Docker initialises it from the image's own `$XDG_CACHE_HOME`, so it inherits the
 worker's ownership, whereas a fresh bind directory would be created root-owned and the unprivileged
 worker (uid 10001) could not write to it. Converting it to a bind mount breaks the worker.
@@ -286,7 +286,7 @@ set (or deliberately left unset) in the override file, with the reasoning inline
   worker may still print a CPU-derived value — treat that line as informational, not as a claim about
   what the GPU is doing.
 - `ENCORE_WORKER_CONCURRENCY` now contends for **VRAM**, not cores. 10 GB is comfortable for one
-  separation, but not for a separation *and* WhisperX large-v3 at the same time. Raise concurrency
+  separation, but not for a separation _and_ WhisperX large-v3 at the same time. Raise concurrency
   only after watching `nvidia-smi` through a real process, and expect CUDA OOM rather than graceful
   slowdown if you overcommit.
 
@@ -319,8 +319,8 @@ $EC exec worker python -c \
    If it instead reports `accel=cpu` and "no accelerator detected", the GPU is not reachable inside the
    container — driver, `nvidia-container-toolkit`, or the device reservation. Auto-detection falls back
    to CPU **quietly**, which on this workload is the difference between minutes and most of an hour, so
-   on a box you *expect* to have a GPU it is worth putting `ENCORE_DEVICE=cuda` in a `.env`: per
-   `backends.py`'s contract an explicitly-requested-but-unavailable device *raises*, turning a silent
+   on a box you _expect_ to have a GPU it is worth putting `ENCORE_DEVICE=cuda` in a `.env`: per
+   `backends.py`'s contract an explicitly-requested-but-unavailable device _raises_, turning a silent
    20x slowdown into a startup failure you cannot miss. The config line from `describe()` also carries
    `device=`; `device=auto` there means nothing was forced, not that nothing was found — read the
    `hardware:` line for what was actually detected.
@@ -333,7 +333,7 @@ $EC exec worker python -c \
    ss -tlnp | grep 3000     # want 0.0.0.0:3000 or *:3000
    ```
 
-   A `127.0.0.1:3000` bind is reachable from Windows and *never* from the LAN — the same symptom as a
+   A `127.0.0.1:3000` bind is reachable from Windows and _never_ from the LAN — the same symptom as a
    firewall block, from a completely different cause. Encore defaults `HOST=0.0.0.0`, so this should
    already pass; check it before blaming the network.
 
@@ -349,7 +349,7 @@ $EC exec worker python -c \
      authority. Works only when the server box can reach its own LAN address.
    - **Set `ENCORE_PUBLIC_ORIGIN`** (§4). Then the QR is correct no matter which URL the TV was opened
      with, `localhost` included. This is the normal WSL2 + portproxy case: the proxy forwards traffic
-     arriving *from the network*, not the host's own loopback path, so the server machine typically
+     arriving _from the network_, not the host's own loopback path, so the server machine typically
      cannot open its own LAN address at all — and it is usually the machine attached to the TV.
    - Or set **Global → Joining → "Address phones join at"** on the phone settings page. Same value, same
      precedence rules (the setting wins over the env var), no restart — which is the one that helps when
@@ -484,7 +484,7 @@ with it, which is the library and the SQLite database.
 Flagged rather than glossed, because each could cost an evening:
 
 - **`cap_drop: ALL` plus GPU passthrough.** Every service runs with all Linux capabilities dropped
-  and `no-new-privileges`. CUDA needs device nodes rather than capabilities, so this *should* be
+  and `no-new-privileges`. CUDA needs device nodes rather than capabilities, so this _should_ be
   fine, but it is unverified on this stack. If the GPU is invisible inside the container while
   `docker run --gpus all` works standalone, temporarily relax the hardening on the worker to confirm
   that is the cause before changing anything else.

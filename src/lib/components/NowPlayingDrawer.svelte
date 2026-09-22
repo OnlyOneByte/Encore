@@ -51,11 +51,11 @@
 	import * as Drawer from '$lib/components/ui/drawer';
 	import { Button } from '$lib/components/ui/button';
 	import { Progress } from '$lib/components/ui/progress';
+	import { Badge } from '$lib/components/ui/badge';
 	import Icon from '$lib/ui/Icon.svelte';
 	import NowPlayingBand from '$lib/components/NowPlayingBand.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
-	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
 	import { SNAP_BAND, OPEN_CONTENT_SLACK_PX, openSnapFraction } from '$lib/sheet-snap';
 	import {
@@ -64,6 +64,8 @@
 		rangeLabel,
 		rangeOctaves,
 		voiceBandSentence,
+		isAuthoritativeText,
+		lyricsSourceLabel,
 		type LyricsCandidate,
 		type SongProfile
 	} from '$lib/contract';
@@ -111,14 +113,17 @@
 		candidates?: LyricsCandidate[];
 		chosenRef?: string;
 		overrideRef?: string;
-		newerExists?: boolean;
+		/*
+		 * `newerExists`, `onpicklyrics` and `onpastelyrics` RETIRED (2026-09-21) with the re-selection
+		 * disclosure they served. `candidates`/`chosenRef`/`overrideRef` stay because the sheet still NAMES the
+		 * source as a pill — it just no longer changes it. The control lives on /song/[mediaId], which the `···`
+		 * on the seek row opens, and the layout's `room.reselectLyrics` wiring moved there with it.
+		 */
 		onrestart?: () => void;
 		ontoggleplay?: () => void;
 		onskip?: () => void;
 		onkey?: (semitones: number) => void;
 		onguide?: (level: number) => void;
-		onpicklyrics?: (ref: string) => void;
-		onpastelyrics?: (text: string) => void;
 	}
 
 	let {
@@ -144,14 +149,11 @@
 		candidates = [],
 		chosenRef = undefined,
 		overrideRef = undefined,
-		newerExists = false,
 		onrestart,
 		ontoggleplay,
 		onskip,
 		onkey,
-		onguide,
-		onpicklyrics,
-		onpastelyrics
+		onguide
 	}: Props = $props();
 
 	/*
@@ -519,6 +521,28 @@
 	 * the guide row stays VISIBLE and disabled, because "this song has no isolated vocals" is
 	 * information, and hiding the control would leave the singer wondering where it went.
 	 */
+	/*
+	 * WHICH LYRICS THE TV IS SHOWING, as a label — the one thing the retired re-selection disclosure said
+	 * that is worth saying mid-song.
+	 *
+	 * The OVERRIDE wins over the auto pick, because that is the order the server resolves them in: a guest
+	 * who has chosen a source should see their choice named, not the one the ranker would have taken.
+	 * `lyricsSourceLabel` is the shared contract helper, so this cannot drift from the option list on
+	 * /song/[mediaId] — they were two copies of the same strings until it moved.
+	 *
+	 * NULL WHEN THERE IS NOTHING HONEST TO SAY: no candidates yet (the karaoke is still being made), or a
+	 * chosen ref that matches none of them. A pill reading "undefined" is worse than no pill.
+	 */
+	const chosenLyrics = $derived(candidates.find((c) => c.ref === (overrideRef ?? chosenRef)) ?? null);
+	const lyricsSource = $derived(chosenLyrics ? lyricsSourceLabel(chosenLyrics) : null);
+	/*
+	 * The TONE carries the same judgement `isAuthoritativeText` encodes, which is what makes the pill worth
+	 * more than the string alone: authored, synced words are the good case; an auto-transcribed guess or
+	 * low-confidence captions are the one a singer should know about before they trust the screen. `warn`
+	 * rather than `bad` — the words are usable, just not authored.
+	 */
+	const lyricsSourceTone = $derived(chosenLyrics && isAuthoritativeText(chosenLyrics) ? 'ok' : ('warn' as const));
+
 	const guideNote = $derived(
 		hasSong && !guideEnabled ? 'No isolated vocals, so no guiding track. Key and range still work.' : null
 	);
@@ -741,55 +765,57 @@
 		-->
 		<div class="np-fit" data-vaul-no-drag bind:clientHeight={fitH}>
 			<!--
-				THE HEAD NO LONGER NAMES THE SONG — the band row above it does, and once (ratified 2026-09-21).
+				THE HEAD IS EMPTY, AND IT STILL RENDERS — which needs saying, because an empty element is normally
+				a deletion waiting to happen.
 
-				It used to carry three things, and with the sheet open every one of them was a second copy of
-				something 40px higher up: an eyebrow ("Now singing · Maya") against the band's byline
-				("Maya is singing · Queen Official"), a `Drawer.Title` against the band's `.title`, and a
-				`Drawer.Description` ("Queen Official · G major") whose artist was in that same byline and whose key
-				is stated again, on its own line, directly above the ± keycaps. Reported on sight as the now
-				playing/now singing being duplicated.
+				It carried the song identity until every line of it turned out to be a second copy of the band row's
+				(an eyebrow against the band's byline, a `Drawer.Title` against its title, a `Drawer.Description`
+				whose artist was in that byline and whose key is stated again above the ± keycaps) — reported as the
+				now playing/now singing being duplicated. That left the `···` alone in it, which is a whole row of
+				sheet for one 44px control, reported in turn. So the `···` moved into the SEEK ROW (see below) and
+				nothing is left here.
 
-				The BAND ROW is the copy that survives, for the reason it survived the transport argument: it is on
-				screen at BOTH snap points, so the song identity never moves or disappears, and it is the collapsed
-				face of this surface. The head was only ever legible while the sheet was up — which is precisely
-				when it was a duplicate.
-
-				WHAT NAMES THE DIALOG NOW. `Drawer.Content`'s `aria-label="Now playing"` does, at every state.
-				bits-ui sets `aria-labelledby` only once a `Drawer.Title` has mounted and registered its id
-				(`dialog.svelte.js:207`), so with no Title the attribute is simply absent and the label wins the
-				accessible-name cascade — the same path the idle case already took, now the only path. The song
-				title is still IN the dialog, in the band row, so a screen reader still reads it as content; what is
-				gone is hearing it twice.
-
-				THE `···` IS ALL THAT IS LEFT, and it has to stay: it is the ONLY link to /song/[mediaId] anywhere in
-				the app. It keeps the head's padding and its own right-hand slot, so the seek row below starts where
-				it always did.
+				WHY THE ELEMENT STAYS. `Drawer.Header` is what bits-ui/vaul give the sheet its `data-slot`
+				structure from, and `phone-home-832` asserts a header renders BELOW the band slot — the fact that
+				replaced "closed renders nothing" when the sheet became permanently mounted. It is zero-height with
+				no padding, so it costs no space; deleting the component instead would red that arm for a reason
+				that has nothing to do with what this sheet shows.
 			-->
-			<Drawer.Header class="np-head">
-				{#if hasSong && mediaId}
-					<div class="more-slot">
-						<Button
-							variant="ghost"
-							size="icon"
-							href={`/song/${mediaId}`}
-							aria-label="More about this song"
-							onclick={collapse}
-						>
-							<Icon name="dots" />
-						</Button>
-					</div>
-				{/if}
-			</Drawer.Header>
+			<Drawer.Header class="np-head"></Drawer.Header>
 
 			<div class="np-body">
 				{#if progress !== null}
 					<!-- Time REMAINING on the right: the question this surface answers is "when am I up?".
 				     aria-hidden because the position card on home states the same thing in words. -->
-					<div class="seekrow" aria-hidden="true">
-						<span class="time">{formatClock(elapsedSec)}</span>
-						<div class="bar-slot"><Progress value={progress * 100} size="sm" /></div>
-						<span class="time r">{formatRemaining(elapsedSec, durationSec)}</span>
+					<!--
+						THE `···` RIDES THE SEEK ROW, and the pairing is exact rather than convenient: this row renders
+						only when there is a duration to show, and the door renders only with a `mediaId` — both are
+						"a song is playing", so the door never has to hold a row open by itself. It had its own row
+						above this one until that was reported as a whole row for one control.
+
+						`aria-hidden` MOVED OFF THE ROW AND ONTO THE TIMES. It was on the whole row, because the
+						position card on home states the same thing in words and a screen reader should not hear it
+						twice. That reasoning covers the CLOCKS, not a link — and the `···` is the app's only route
+						to /song/[mediaId], so hiding it here would make the song page unreachable to a screen
+						reader. So the two spans carry the attribute and the door stays announced.
+					-->
+					<div class="seekrow">
+						<span class="time" aria-hidden="true">{formatClock(elapsedSec)}</span>
+						<div class="bar-slot" aria-hidden="true"><Progress value={progress * 100} size="sm" /></div>
+						<span class="time r" aria-hidden="true">{formatRemaining(elapsedSec, durationSec)}</span>
+						{#if hasSong && mediaId}
+							<div class="more-slot">
+								<Button
+									variant="ghost"
+									size="icon"
+									href={`/song/${mediaId}`}
+									aria-label="More about this song"
+									onclick={collapse}
+								>
+									<Icon name="dots" />
+								</Button>
+							</div>
+						{/if}
 					</div>
 				{/if}
 
@@ -872,15 +898,27 @@
 							</div>
 						{/if}
 
-						{#if candidates.length}
-							<LyricsReselect
-								candidates={candidates}
-								chosenRef={chosenRef}
-								overrideRef={overrideRef}
-								newerExists={newerExists}
-								onpick={(ref) => onpicklyrics?.(ref)}
-								onpaste={(text) => onpastelyrics?.(text)}
-							/>
+						<!--
+							THE LYRICS SOURCE IS A PILL, NOT A DISCLOSURE (ratified 2026-09-21).
+
+							This was `<LyricsReselect>`: a collapsible listing every candidate with its provenance and timing,
+							plus a paste-your-own path. Reported as not belonging in the sheet — and it did not: re-picking
+							lyrics is a decision you make ONCE about a song, sitting still, and the sheet is what you reach for
+							mid-performance. It also asked a singer to open a second disclosure inside the one level of
+							revealing this sheet is supposed to be.
+
+							NOTHING WAS LOST, WHICH IS WHY THIS IS A DELETION RATHER THAN A MOVE. `/song/[mediaId]` already
+							renders the same component under its own "Lyrics" heading, and the `···` on the seek row above is
+							the door to it. The sheet's copy was the second one.
+
+							WHAT SURVIVES IS THE FACT, not the control: which source the words on the TV came from. It is
+							provenance a singer wants mid-song ("are these real lyrics or a guess?") and it answers in one
+							glance, so it is a pill rather than a row with a label — the string names itself.
+						-->
+						{#if lyricsSource}
+							<div class="lyricsrc">
+								<Badge variant={lyricsSourceTone}>{lyricsSource}</Badge>
+							</div>
 						{/if}
 					</div>
 				{/if}
@@ -1185,9 +1223,14 @@
 		flex: 0 0 auto;
 		min-width: 0;
 	}
+	/*
+	 * ZERO-HEIGHT: the head renders (see the markup note for why it must) and shows nothing. The vendored
+	 * `Drawer.Header` ships its own padding and a `gap`, all of which would be blank space at the top of
+	 * every open sheet now that the identity lives in the band row and the `···` rides the seek row.
+	 */
 	:global(.np-head) {
-		padding: var(--space-md) var(--space-2xl) var(--space-sm);
-		text-align: left;
+		padding: 0;
+		gap: 0;
 	}
 	.np-body {
 		padding: 0 var(--space-2xl);
@@ -1203,10 +1246,17 @@
 	 * and the affordance needed `margin-right: -10px` to align optically with the column edge — which it
 	 * still carries below, because that part is about the `···`, not about the text beside it.
 	 */
+	/*
+	 * THE DOOR, as the seek row's last item. `flex: 0 0 auto` so the bar keeps taking the width; the negative
+	 * right margin is the same optical pull it had in the head (matching PageHeader's back-slot), which lines
+	 * the glyph up with the column edge rather than the button's box.
+	 *
+	 * The row's `gap` is 9px and the remaining-time is `tabular-nums`, so the door cannot shift as the clock
+	 * counts down — which is why it can sit after the time rather than needing its own corner.
+	 */
 	.more-slot {
+		flex: 0 0 auto;
 		display: flex;
-		justify-content: flex-end;
-		/* Optical alignment with the column edge, matching PageHeader's own back-slot pull. */
 		margin-right: -10px;
 		color: var(--ink-dim);
 	}
@@ -1228,6 +1278,16 @@
 	.bar-slot {
 		flex: 1;
 		min-width: 0;
+	}
+	/*
+	 * The provenance pill, right-aligned at the foot of the tools. Right because everything above it that
+	 * carries a VALUE sits right (the key readout, the range's octave count) and everything that carries a
+	 * LABEL sits left — the pill is a value with no label, so it belongs on that side.
+	 */
+	.lyricsrc {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: var(--space-sm);
 	}
 	.tools-body {
 		margin-top: var(--space-lg);

@@ -21,7 +21,19 @@
 		subtitle?: string; // e.g. "now playing", "after Liam"
 		pending?: 'add' | 'move' | null; // optimistic, not yet confirmed — see pendingLabel
 		removable?: boolean; // show the remove affordance (mine, not currently playing)
-		reorderable?: boolean; // show move up/down (the caller's predicate — see routes/+page.svelte)
+		/*
+		 * `reorderable` RETIRED (2026-09-21) with the arrow buttons that were its only reader. Whether this row
+		 * can be moved is `grip` — the caller's `gripVisible()` predicate — and whether it may be moved RIGHT
+		 * NOW is `pending`. Two props for one question was how a row could show a grip and dead arrows.
+		 */
+		/**
+		 * How far this row must slide, in ROWS, to make room for one being dragged past it: -1, 0 or +1.
+		 *
+		 * The page computes it with `rowShift` and this turns it into a composited `transform` — which is what
+		 * makes the live sort animate. ROWS rather than pixels because the pixel height is the page's business
+		 * (it measures one row at press time); a component taking px would need the same measurement twice.
+		 */
+		shift?: -1 | 0 | 1;
 		/**
 		 * XR-PH-17 — show the drag grip. The caller passes `gripVisible()` from `$lib/reorder-mode`,
 		 * never a raw boolean: the grip is a promise that a `move` will land, and the four conditions
@@ -60,11 +72,15 @@
 		 * the page re-finds the grip by id instead.
 		 */
 		gripId?: string;
-		canUp?: boolean;
-		canDown?: boolean;
+		/*
+		 * `canUp`, `canDown`, `onup` and `ondown` RETIRED (2026-09-21) with the arrow buttons. The
+		 * single-pointer reorder they provided is `onnudge` below, on the grip — same one-place step, no row
+		 * of controls. The `disabled` state they carried is expressed by the list declining a nudge at the
+		 * ends (`keyboardMoveTarget` returns null) rather than by two buttons that are dead most of the time.
+		 */
+		/** A keyboard step from the grip: -1 for Arrow Up, +1 for Arrow Down. */
+		onnudge?: (delta: number) => void;
 		onremove?: () => void;
-		onup?: () => void;
-		ondown?: () => void;
 	}
 	let {
 		seq,
@@ -80,7 +96,7 @@
 		subtitle = '',
 		pending = null,
 		removable = false,
-		reorderable = false,
+		shift = 0,
 		grip = false,
 		dimmed = false,
 		moving = false,
@@ -88,11 +104,8 @@
 		ongripdown,
 		ongrip,
 		gripId,
-		canUp = false,
-		canDown = false,
 		onremove,
-		onup,
-		ondown
+		onnudge
 	}: Props = $props();
 
 	/**
@@ -126,9 +139,60 @@
 			class:pending={pending}
 			class:dimmed={dimmed}
 			class:moving={moving}
-			style="--drag-y:{dragY}px"
+			class:shifted={shift !== 0}
+			style="--drag-y:{dragY}px; --row-shift:{shift}"
 		>
-			<Item.Media><div class="seq">{seq}</div></Item.Media>
+			<Item.Media>
+				<!--
+					THE GRIP LEADS THE ROW (2026-09-21), and it is a handle rather than a button-looking control.
+
+					It sat at the far right in a row of four outlined 44px icon buttons — up, down, remove, grip —
+					which was reported as taking too much space, and it put the thing you PICK THE ROW UP BY at the
+					opposite end from the row's identity. A drag handle on the left of what it drags is the
+					convention every sortable list uses, and it reads as part of the row rather than as a fourth
+					action on it.
+
+					NO OUTLINE: `variant="ghost"` rather than `outline`. The three siblings it used to stand in a
+					row with are gone (the arrows are retired — see XR-PH-20 in `$lib/reorder-mode` — and remove
+					keeps its own box on the right), so a border here would be the only one left, framing a texture.
+
+					STILL A REAL BUTTON, and still `press="grab"` — which is not styling: XR-PH-17's last clause is
+					that `cursor: grab` lives on this control and never on a row, and `press="grab"` is where the
+					button variant declares both that cursor and the `touch-action: none` the drag needs to stop
+					the browser claiming the vertical gesture for scrolling.
+
+					AND IT IS THE NON-DRAG PATH. Arrow Up/Down while it has focus moves the row one place and
+					commits; that is SC 2.5.7's single-pointer alternative and SC 2.1.1's keyboard operability,
+					which the deleted arrows used to carry. `aria-keyshortcuts` announces it, and the label names
+					the action rather than the gesture so it is honest for both paths.
+				-->
+				<!--
+					XR-PH-10: INERT WHILE A MOVE IS UNCONFIRMED. `pending` gates the grip for the same reason it gated
+					the arrows it replaced — a second reorder against a position the server has not agreed to yet would
+					issue an op for an index that no longer means what the guest saw. The seq bubble stays, so the row
+					keeps its place in the list while it settles; only the handle to move it goes.
+				-->
+				{#if grip && !pending}
+					<Button
+						variant="ghost"
+						size="icon"
+						press="grab"
+						aria-label="Reorder — drag, or use arrow keys"
+						aria-keyshortcuts="ArrowUp ArrowDown"
+						data-grip={gripId}
+						onpointerdown={(e) => ongripdown?.(e)}
+						onkeydown={(e) => {
+							if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+							// The list owns what a step means; this only reports which way and stops the page
+							// scrolling under the guest while they use it.
+							e.preventDefault();
+							onnudge?.(e.key === 'ArrowUp' ? -1 : 1);
+						}}
+						onclick={(e) => ongrip?.(e.currentTarget as HTMLElement)}><Icon name="grip" /></Button
+					>
+				{/if}
+				<div class="seq">{seq}</div>
+			</Item.Media>
 			<Item.Content>
 				<div class="t">{title}</div>
 				<!--
@@ -158,24 +222,14 @@
 			</Item.Content>
 			{#if !pending}
 				<Item.Actions>
-					{#if reorderable}
-						<Button
-							variant="outline"
-							size="icon"
-							press="ink"
-							aria-label="move up"
-							disabled={!canUp}
-							onclick={() => onup?.()}><Icon name="arrow-up" /></Button
-						>
-						<Button
-							variant="outline"
-							size="icon"
-							press="ink"
-							aria-label="move down"
-							disabled={!canDown}
-							onclick={() => ondown?.()}><Icon name="arrow-down" /></Button
-						>
-					{/if}
+					<!--
+						ONE ACTION LEFT ON THE RIGHT. The `move up` / `move down` pair was deleted here (2026-09-21):
+						two 44px outlined buttons on every row to move a song one place, which is what "the up/down
+						buttons take up too much space" was about. Their job — a reorder without a drag — did not go
+						with them; it moved onto the grip above, where Arrow Up/Down does the same one-place step for
+						no layout at all. See the header of `$lib/reorder-mode` for why that keeps XR-PH-20 (a
+						conformance row, SC 2.5.7 / 2.1.1) satisfied rather than traded away.
+					-->
 					{#if removable}
 						<Button
 							variant="outline"
@@ -183,31 +237,6 @@
 							press="accent2"
 							aria-label="remove from queue"
 							onclick={() => onremove?.()}><Icon name="close" /></Button
-						>
-					{/if}
-					<!--
-				THE GRIP (XR-PH-17). It renders under `grip` ALONE, as a SIBLING of the button
-				pair above — never as a wrapper around it and never in an `{:else}` against it. That shape
-				is the requirement, not a style choice: XR-PH-20 is a WCAG 2.5.7 conformance row, so the
-				single-pointer alternative must stay present and operable *while the mode is open*, and a
-				grip that could ever replace the buttons is the one arrangement that falsifies it.
-
-				The history this does NOT repeat: a grip previously rendered only on rows that were neither
-				removable nor reorderable — another guest's song — where it was the sole affordance,
-				promising a drag-to-reorder that does not exist and that the row had no reorder path to
-				fall back on. `grip` is now `gripVisible()` from `$lib/reorder-mode`, which is false on
-				another guest's row by its first condition; and `cursor: grab` lives on THIS button only,
-				never on a row (XR-PH-17's last clause).
-			-->
-					{#if grip}
-						<Button
-							variant="outline"
-							size="icon"
-							press="grab"
-							aria-label="Reorder your songs"
-							data-grip={gripId}
-							onpointerdown={(e) => ongripdown?.(e)}
-							onclick={(e) => ongrip?.(e.currentTarget as HTMLElement)}><Icon name="grip" /></Button
 						>
 					{/if}
 				</Item.Actions>
@@ -366,4 +395,25 @@
 	/* XR-PH-17's last clause: `cursor: grab` lives on the grip BUTTON and on nothing else, so it can
 	   never appear on a row that has no reorder path. `touch-action: none` because a vertical drag
 	   starting on this button must move the row rather than scroll the page. */
+	/*
+	 * THE ROWS THE DRAGGED ONE PASSES SLIDE OUT OF ITS WAY, one place each — which is what makes this a
+	 * LIVE SORT rather than a drag over drawn targets (see routes/+page.svelte and `rowShift`).
+	 *
+	 * `--row-shift` is a COUNT of rows, written by the page from the pure `rowShift`, and `--row-h` is the
+	 * one height it measured at press time. Multiplying here keeps pixels out of the page's markup and keeps
+	 * the movement a `transform`, which is the only kind `motion.test.ts` allows to be animated.
+	 *
+	 * THE TRANSITION IS GATED, not unconditional — this is the one interpolated movement on this row, so
+	 * unlike `.moving` (a 1:1 response to the finger, XR-PH-06 by construction) it has a duration that
+	 * `prefers-reduced-motion` must be able to remove. Under `reduce` no transition is declared at all and
+	 * the rows simply appear in their new places, which is still a correct live sort.
+	 */
+	.shifted {
+		transform: translateY(calc(var(--row-shift, 0) * var(--row-h, 0px)));
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.shifted {
+			transition: transform 160ms cubic-bezier(0.32, 0.72, 0, 1);
+		}
+	}
 </style>

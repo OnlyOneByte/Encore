@@ -247,10 +247,10 @@ const FLOORS: Record<string, Floor[]> = {
 	'tests/guards/design-system/ui-card-surface-913.test.ts': [
 		{
 			subject: 'callers.length',
-			min: 8,
+			min: 7,
 			count: 1,
 			guards:
-				'the elements that take the shared `.card` surface rather than a <Card.Root>. The rule "app.css must define .card with a background" is unfalsifiable if nothing uses the class, and S4 deleted the rule after an audit whose grep (`class="card[ "]`) only matched class lists STARTING with card — nine spell it mid-list. This counts the population both directions of that check depend on.'
+				'the elements that take the shared `.card` surface rather than a <Card.Root>. The rule "app.css must define .card with a background" is unfalsifiable if nothing uses the class, and S4 deleted the rule after an audit whose grep (`class="card[ "]`) only matched class lists STARTING with card — nine spell it mid-list. This counts the population both directions of that check depend on. 8 -> 7 on 2026-09-21: routes/+page.svelte left the population when the reorder bar was deleted with the mode it dressed, and its other card surface (the search dock) had already moved to /find.'
 		},
 		{
 			subject: 'rules.length',

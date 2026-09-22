@@ -6,7 +6,14 @@
 // assertion below imports the same function `+page.svelte` calls.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { gripVisible, queueSlots, ordinal, dropTarget, modeInvalidation } from '$lib/reorder-mode';
+import {
+	gripVisible,
+	ordinal,
+	liveSortTarget,
+	keyboardMoveTarget,
+	rowShift,
+	modeInvalidation
+} from '$lib/reorder-mode';
 import { at } from '@encore/test-support';
 
 const PAGE = at('src/routes/+page.svelte');
@@ -43,55 +50,88 @@ test('XR-PH-17 · no grip under an ordering that ignores addedAt — a move ther
 
 // ── XR-PH-18 · legal slots span the WHOLE queued list ─────────────────────────────────────────────
 
-test('XR-PH-18 · the slot count equals the queued list length', () => {
-	// Every queued position is a legal target now, so 6 queued entries → exactly 6 drop targets.
-	expect(queueSlots(2)).toHaveLength(2);
-	expect(queueSlots(6)).toHaveLength(6);
-	expect(queueSlots(0)).toHaveLength(0);
+/*
+ * XR-PH-18's SLOT ARMS BECAME LIVE-SORT ARMS (2026-09-21). They pinned `queueSlots` (one labelled target per
+ * queued position) and `dropTarget` (a release off a target commits nothing). Both are deleted with the mode
+ * — see the header of `$lib/reorder-mode` — and the requirement they served, "a release cannot commit
+ * somewhere the guest did not choose", is now met by identity: one expression places the rows and commits.
+ * So these arms test that expression instead, including the two rounding edges a drawn target never had.
+ */
+test('XR-PH-18 · the target follows the finger, a row at a time', () => {
+	const at = (offsetPx: number) => liveSortTarget({ fromIndex: 1, offsetPx, rowHeightPx: 60, count: 5 });
+	// Not moved: still where it started, so a release commits nothing (the page early-returns on same-index).
+	expect(at(0)).toBe(1);
+	// HALF a row is the hand-over point: that is where the gap has visibly opened on screen.
+	expect(at(29)).toBe(1);
+	expect(at(31)).toBe(2);
+	expect(at(-31)).toBe(0);
+	// …and it keeps counting, one row per row of travel.
+	expect(at(120)).toBe(3);
+	expect(at(180)).toBe(4);
 });
 
-test('XR-PH-18 · each slot is labelled with the queue position it commits', () => {
-	const slots = queueSlots(3);
-	expect(slots.map((s) => s.ordinal)).toEqual(['1st', '2nd', '3rd']);
-	expect(slots.map((s) => s.index)).toEqual([0, 1, 2]);
-	// The accessible name says what activating it DOES, and names the GLOBAL queue position — the index
-	// space `move-to-index` uses.
-	expect(slots[0]!.label).toBe('Move to 1st in queue');
-	for (const s of slots) expect(s.label).toContain('in queue');
+test('XR-PH-18 · dragging past either end lands on the end, never outside the list', () => {
+	const at = (fromIndex: number, offsetPx: number) =>
+		liveSortTarget({ fromIndex, offsetPx, rowHeightPx: 60, count: 3 });
+	// Clamping is right HERE and only here: the finger has left the list, and the nearest end is
+	// unambiguously what the guest is aiming at — the row is visibly sitting there when they let go. That is
+	// not the "commits somewhere unchosen" case, which was about a target the guest could not see.
+	expect(at(0, -600)).toBe(0);
+	expect(at(2, 600)).toBe(2);
+	expect(at(1, 6000)).toBe(2);
 });
 
-test('XR-PH-18 · ordinals stay correct past the irregular teens', () => {
-	expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 101, 111].map(ordinal)).toEqual([
-		'1st',
-		'2nd',
-		'3rd',
-		'4th',
-		'11th',
-		'12th',
-		'13th',
-		'21st',
-		'22nd',
-		'23rd',
-		'101st',
-		'111th'
-	]);
+test('XR-PH-18 · a degenerate row height cannot move anything', () => {
+	// A detached node measures 0, and dividing by it would make every offset infinite — i.e. a commit at an
+	// end of the list for a gesture that never left its row.
+	expect(liveSortTarget({ fromIndex: 1, offsetPx: 400, rowHeightPx: 0, count: 4 })).toBe(1);
+	expect(liveSortTarget({ fromIndex: 1, offsetPx: 400, rowHeightPx: -10, count: 4 })).toBe(1);
+	// An empty list has no position to name; 0 rather than -1 so no caller can index with it.
+	expect(liveSortTarget({ fromIndex: 0, offsetPx: 0, rowHeightPx: 60, count: 0 })).toBe(0);
 });
 
-test('XR-PH-18 · a release that is not over a legal slot commits NOTHING — it is not clamped', () => {
-	// The distinction is the whole requirement. `moveToIndex` clamps an out-of-range toIdx into the
-	// queued range, so passing an illegal drop through would commit some OTHER position the guest never
-	// chose. `dropTarget` declines instead, over the whole-queue count.
-	expect(dropTarget(null, 3)).toBeNull(); // released over no slot at all
-	expect(dropTarget(3, 3)).toBeNull(); // one past the last slot
-	expect(dropTarget(-1, 3)).toBeNull();
-	expect(dropTarget(7, 3)).toBeNull();
-	expect(dropTarget(1.5, 3)).toBeNull(); // a hit-test that read a non-integer dataset value
-	// …and a legal one passes through unchanged.
-	expect(dropTarget(0, 3)).toBe(0);
-	expect(dropTarget(2, 3)).toBe(2);
+test('XR-PH-18 · the rows between the two positions shift exactly one place, and no others', () => {
+	// Dragging row 1 down to 3: rows 2 and 3 come up one, everything else stays.
+	expect([0, 1, 2, 3, 4].map((i) => rowShift(i, 1, 3))).toEqual([0, 0, -1, -1, 0]);
+	// Dragging row 3 up to 1: rows 1 and 2 go down one.
+	expect([0, 1, 2, 3, 4].map((i) => rowShift(i, 3, 1))).toEqual([0, 1, 1, 0, 0]);
+	// Not moved: nothing shifts, so an idle list cannot be left displaced.
+	expect([0, 1, 2, 3, 4].map((i) => rowShift(i, 2, 2))).toEqual([0, 0, 0, 0, 0]);
+	// The dragged row is placed by the finger, never by this.
+	expect(rowShift(1, 1, 4)).toBe(0);
 });
 
-// ── XR-PH-19 · the queue moves underneath the mode ────────────────────────────────────────────────
+test('XR-PH-20 · the keyboard step moves one place and DECLINES at the ends', () => {
+	// The non-drag path (SC 2.5.7 / 2.1.1), which replaced the move up / move down buttons.
+	expect(keyboardMoveTarget(1, -1, 4)).toBe(0);
+	expect(keyboardMoveTarget(1, 1, 4)).toBe(2);
+	/*
+	 * NULL, NOT A CLAMP, at either end. A clamp would emit a move to the position the row already occupies —
+	 * which the server accepts as a real mutation and broadcasts to every other client, for a keypress that
+	 * did nothing. The page returns early on null and says nothing.
+	 */
+	expect(keyboardMoveTarget(0, -1, 4)).toBeNull();
+	expect(keyboardMoveTarget(3, 1, 4)).toBeNull();
+	// A row that is not in the list cannot be stepped.
+	expect(keyboardMoveTarget(-1, 1, 4)).toBeNull();
+	expect(keyboardMoveTarget(4, -1, 4)).toBeNull();
+	expect(keyboardMoveTarget(1.5, 1, 4)).toBeNull();
+});
+
+test('XR-PH-20 · the ordinals the keyboard path announces stay correct past the irregular teens', () => {
+	// The announcement is "Moved to Nth in the queue", so these are read aloud rather than drawn.
+	expect(ordinal(1)).toBe('1st');
+	expect(ordinal(2)).toBe('2nd');
+	expect(ordinal(3)).toBe('3rd');
+	expect(ordinal(4)).toBe('4th');
+	expect(ordinal(11)).toBe('11th');
+	expect(ordinal(12)).toBe('12th');
+	expect(ordinal(13)).toBe('13th');
+	expect(ordinal(21)).toBe('21st');
+	expect(ordinal(22)).toBe('22nd');
+	expect(ordinal(23)).toBe('23rd');
+	expect(ordinal(111)).toBe('111th');
+});
 
 test('XR-PH-19 · a valid open mode reports no reason to close', () => {
 	expect(modeInvalidation([{ id: 'a' }, { id: 'b' }], 'a', 'queued')).toBeNull();
@@ -149,7 +189,14 @@ test('non-vacuity · +page.svelte imports and calls every predicate asserted her
 	// failure mode exists to make loud. Each name is checked as a CALL, not just as an import.
 	const src = readFileSync(PAGE, 'utf8');
 	expect(src).toContain("from '$lib/reorder-mode'");
-	for (const fn of ['gripVisible(', 'queueSlots(', 'dropTarget(', 'modeInvalidation(']) {
+	for (const fn of [
+		'gripVisible(',
+		'liveSortTarget(',
+		'keyboardMoveTarget(',
+		'rowShift(',
+		'ordinal(',
+		'modeInvalidation('
+	]) {
 		expect(src).toContain(fn);
 	}
 });

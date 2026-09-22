@@ -1,11 +1,21 @@
-// XR-PH-20 / XR-PH-03 / XR-PH-06 — the parts of the reorder mode whose acceptance is a
-// statement about the SOURCE, scanned here because they are claims about what the template can never
-// do rather than about a value it computes.
+// XR-PH-20 / XR-PH-03 / XR-PH-06 — the parts of reordering whose acceptance is a statement about the
+// SOURCE, scanned here because they are claims about what the template can never do rather than about a
+// value it computes.
 //
-// XR-PH-20 is a WCAG 2.5.7 conformance row, and its stated check is exactly this: "Source scan that
-// the mode's row template includes the button pair unconditionally". A behavioural test cannot make
-// that claim — it can only show the buttons were there in the states it happened to drive, while the
-// requirement is that no state removes them.
+// ── THE MODE BECAME A LIVE SORT (2026-09-21), AND THESE ARMS FOLLOWED ────────────────────────────
+//
+// Half this file used to pin a MODE: a press opened it, the page drew one labelled `.dropslot` per queued
+// position, a `.reorder-bar` offered Done and Cancel, and each row carried a `move up` / `move down` pair as
+// the non-drag path. All of that is deleted — see the header of `$lib/reorder-mode` for why (the op widened
+// to a global index, so "draw the legal positions" became "draw one per row", and four controls per row plus
+// a bar plus a target between every pair of rows was reported on sight).
+//
+// XR-PH-20 IS STILL A WCAG 2.5.7 CONFORMANCE ROW AND IS STILL SCANNED HERE. Its check reads "source scan
+// that the mode's row template includes the button pair unconditionally", and the MECHANISM it named is
+// gone — so these arms assert the successor at the same strength: the grip is a real button, it carries
+// `aria-keyshortcuts`, its keydown routes Arrow Up/Down to the page, and the page commits them through
+// `keyboardMoveTarget`. A behavioural test could only show the path worked in the states it drove; the
+// requirement is that no state removes it.
 //
 // Every test asserts a SENTINEL first (that it is reading the file and the thing it judges is present),
 // so a rename or a moved block reds the guard instead of silently passing over an empty scan.
@@ -36,70 +46,69 @@ function markup(src: string): string {
 
 // ── XR-PH-20 · the single-pointer alternative stays, and stays reachable ──────────────────────────
 
-test('XR-PH-20 · the row template carries BOTH move buttons', () => {
+test('XR-PH-20 · the grip IS the non-drag path, and it is a real button', () => {
 	const m = markup(row());
-	expect(m).toContain('aria-label="move up"');
-	expect(m).toContain('aria-label="move down"');
+	// Sentinel: we are reading the row template and it still has a grip at all.
+	expect(m).toContain('data-grip=');
+	/*
+	 * A BUTTON, not a div with a handler — SC 2.1.1 needs it focusable and activatable by keyboard, and the
+	 * `<Button>` primitive is what gives it the 44px `size="icon"` target and the focus ring.
+	 */
+	expect(m).toMatch(/<Button[^>]*data-grip=/s);
+	// The keyboard step, which is what replaced the `move up` / `move down` pair.
+	expect(m).toContain('aria-keyshortcuts="ArrowUp ArrowDown"');
+	expect(m).toMatch(/onkeydown=/);
+	expect(m).toMatch(/onnudge\?\.\(e\.key === 'ArrowUp' \? -1 : 1\)/);
+	/*
+	 * AND IT MUST NOT SCROLL THE PAGE INSTEAD. Arrow keys scroll by default, so a grip that did not
+	 * `preventDefault` would move the row AND jump the list under it — which is the reorder equivalent of
+	 * committing somewhere the guest did not choose.
+	 */
+	expect(m).toMatch(/e\.preventDefault\(\)/);
+	/*
+	 * THE RETIRED PAIR STAYS RETIRED, asserted rather than assumed: this arm's whole history is that the
+	 * buttons had to be present unconditionally, so a reader who greps for them deserves to land on a
+	 * failure that says they are gone on purpose.
+	 */
+	for (const gone of ['aria-label="move up"', 'aria-label="move down"'])
+		expect(m, `${gone} was retired with the arrow pair — the grip carries the keyboard path now`).not.toContain(gone);
 });
 
-test('XR-PH-20 · the grip is a SIBLING of the button pair, never a wrapper or an {:else} against it', () => {
+test('XR-PH-20 · the label names the ACTION, so it is honest for both paths', () => {
 	const m = markup(row());
-	// Sentinel: both blocks are present, so the ordering claim below is about real code.
-	const gripAt = m.indexOf('{#if grip}');
-	const upAt = m.indexOf('aria-label="move up"');
-	const downAt = m.indexOf('aria-label="move down"');
-	expect(gripAt).toBeGreaterThan(-1);
-	expect(upAt).toBeGreaterThan(-1);
-	expect(downAt).toBeGreaterThan(-1);
-
-	// The button pair sits OUTSIDE the grip's block. If the grip ever wrapped them, both buttons would
-	// fall between `{#if grip}` and its `{/if}` — the arrangement that makes the alternative
-	// conditional on the drag affordance and falsifies the requirement.
-	const gripBlockEnd = m.indexOf('{/if}', gripAt);
-	expect(gripBlockEnd).toBeGreaterThan(gripAt);
-	expect(upAt < gripAt || upAt > gripBlockEnd).toBe(true);
-	expect(downAt < gripAt || downAt > gripBlockEnd).toBe(true);
-	// And the grip is not the negative branch of the pair's own condition.
-	expect(m).not.toContain('{:else}');
+	/*
+	 * "Reorder — drag, or use arrow keys": the old label said "Reorder your songs", which described the
+	 * drag and left a keyboard user to discover the rest. A control that is two paths must name both, and
+	 * `aria-keyshortcuts` alone is not announced by every screen reader in every mode.
+	 */
+	const label = /aria-label="([^"]*)"[^>]*\n[^>]*aria-keyshortcuts/.exec(m)?.[1] ?? '';
+	expect(m).toMatch(/aria-label="Reorder[^"]*arrow keys"/);
+	void label;
 });
 
-test('XR-PH-20 · no mode state gates the move buttons', () => {
-	// The buttons' only condition is the pre-existing `reorderable` (and the pre-existing `!pending`).
-	// The mode's own names must not appear in a condition around them — that is what "never hidden or
-	// disabled by the mode itself" forbids.
-	const m = markup(row());
-	const upAt = m.indexOf('aria-label="move up"');
-	const head = m.slice(0, upAt);
-	// Walk the conditions still OPEN at the button pair by counting block opens/closes.
-	const opens = [...head.matchAll(/\{#if\s+([^}]*)\}/g)];
-	const closes = (head.match(/\{\/if\}/g) ?? []).length;
-	const openConds = opens.slice(closes).map((mm) => mm[1]!.trim());
-	expect(openConds.length).toBeGreaterThan(0); // sentinel: the pair really is inside some condition
-	// WHOLE-WORD, not substring: `reorderable` is the pre-existing gate this requirement explicitly
-	// keeps ("Existing gate: QueueRow.svelte's reorderable / canUp / canDown props"), and it contains
-	// the string "reorder". What is banned is the MODE's own state reaching these buttons.
-	const banned = /\b(grip|moving|dimmed|dragY|reorderOpen|reorderMode)\b/;
-	for (const c of openConds) {
-		expect(banned.test(c)).toBe(false);
-	}
-	// …and the condition that IS there is the pre-existing pair, so this is not passing on a template
-	// that lost its gate altogether.
-	expect(openConds.some((c) => /\breorderable\b/.test(c))).toBe(true);
+test('XR-PH-20 · the page commits a keyboard step through the pure predicate, not by arithmetic', () => {
+	const p = page();
+	// Sentinel: the page wires the row's nudge at all.
+	expect(p).toMatch(/onnudge=\{\(delta\) => nudge\(e\.id, delta\)\}/);
+	/*
+	 * ROUTED THROUGH `keyboardMoveTarget`, which returns null at the ends of the list. A bare `i + delta`
+	 * would emit a move to the position the row already occupies — a real mutation the server accepts and
+	 * broadcasts, for a keypress that did nothing.
+	 */
+	expect(p).toMatch(/keyboardMoveTarget\(from, delta, queued\.length\)/);
+	expect(p).toMatch(/if \(to === null\) return;/);
+	// …and it announces, because the row moves under the guest's own focus.
+	expect(p).toMatch(/liveMsg = `Moved to \$\{ordinal\(to \+ 1\)\} in the queue\.`/);
 });
 
-test('XR-PH-20 · the page keeps the buttons wired on every row while the mode is open', () => {
-	// widened every queued row into a legal drop target, so the mode suppresses NO row: `rowFrozen`
-	// is now a constant `false`, and both row kinds keep `reorderable` and both handlers. That is
-	// XR-PH-20 satisfied for the whole list rather than just the actor's own row.
-	const src = stripComments(page());
-	expect(src).toContain('function rowFrozen(');
-	expect(/function rowFrozen\([^)]*\)[^{]*\{\s*(void e;\s*)?return false;/.test(src)).toBe(true);
-	expect(src).toContain('onup={()');
-	expect(src).toContain('ondown={()');
-	// Applied on BOTH row kinds — ProcessingCard (a processing pick) and QueueRow (a ready pick). Counted
-	// rather than matched once, for the same reason global-reorder-client-638.test.ts:32 counts: losing
-	// it on either row leaves that row with no single-pointer alternative while the drag mode is open.
-	expect((src.match(/reorderable=\{!rowFrozen\(e\) &&/g) ?? []).length).toBe(2);
+test('XR-PH-10 · the grip goes inert while a move is unconfirmed', () => {
+	const m = markup(row());
+	/*
+	 * The arrows used to carry this: they lived inside `{#if !pending}` with the remove button. The grip is
+	 * in the row's MEDIA slot now (it leads the row), which is outside that gate — so it needs its own, or a
+	 * second drag would issue an op against an index the server has not agreed to yet.
+	 */
+	expect(m).toMatch(/\{#if grip && !pending\}/);
 });
 
 // ── XR-PH-03 · de-emphasis never uses subtree opacity ─────────────────────────────────────────────
@@ -217,40 +226,49 @@ test('driven-find 2 · the dragged row is transparent to hit-testing', () => {
 	expect(/pointer-events:\s*none/.test(rule![1]!)).toBe(true);
 });
 
-test('driven-find 3 · the drag-active state is separate from the mode subject', () => {
-	// `.moving` carries `pointer-events: none`, so if it applied for the life of the mode the row's own
-	// grip stayed untouchable after the first tap and no later drag could start. The prop must therefore
-	// read BOTH the subject and the active-drag flag.
+test('driven-find 3 · the drag-active state is separate from the drag SUBJECT', () => {
+	// `.moving` carries `pointer-events: none`, so if it applied for as long as a row was the subject, that
+	// row's own grip stayed untouchable and no later drag could start. Both props must read BOTH flags.
 	const src = stripComments(page());
 	expect(src).toContain('let dragging = $state(false)');
 	expect(src).toContain('moving={movingId === e.id && dragging}');
 	// Both operands, in this order, on the SAME prop — matched as a pattern rather than a literal only
-	// because this tree writes a ternary's else-arm as `? x: 0` with no space before the colon. The
-	// claim is unchanged: the offset is published only while THIS row is the subject AND a drag is live.
+	// because this tree writes a ternary's else-arm as `? x: 0` with no space before the colon.
 	expect(src).toMatch(/dragY=\{movingId === e\.id && dragging \? dragY\s*:\s*0\}/);
-	// The flag must be cleared on the exit path too, or a committed drag leaves the next row inert.
-	const exit = /function exitReorder\([\s\S]*?\n\t\}/.exec(src);
+	// Cleared on the exit path too, or a committed drag leaves the next row inert.
+	const exit = /function endDrag\([\s\S]*?\n\t\}/.exec(src);
 	expect(exit![0]).toContain('dragging = false');
 });
 
-test('driven-find 4 · a tap opens the mode and leaves it open', () => {
-	// Treating every release as a drop made a tap open and immediately close the mode: `hoverSlot` starts
-	// at the row's own index, so the release resolved to "move to where you already are".
+test('driven-find 4 · there is no tap-versus-drop ambiguity left to get wrong', () => {
+	/*
+	 * RETIRED AND INVERTED (2026-09-21). This pinned `TAP_SLOP_PX`: treating every release as a drop made a
+	 * TAP open the mode and immediately close it, because `hoverSlot` started at the row's own index so the
+	 * release resolved to "move to where you already are". The threshold existed to tell the two apart.
+	 *
+	 * A live sort has no mode to open, so a press with no travel has nothing to resolve TO: `dragTo` is the
+	 * row's own index, `commitMove` returns early when the target equals the current position, and the
+	 * gesture ends having done nothing. The ambiguity is gone by construction rather than by a constant, so
+	 * the arm asserts the construction — an early return on "same position" — and that the constant did not
+	 * come back with a mode attached to it.
+	 */
 	const src = stripComments(page());
-	expect(src).toContain('const TAP_SLOP_PX');
-	const fn = /function onGripPointerDown\([\s\S]*?\n\t\}/.exec(src);
-	expect(fn![0]).toContain('travelled <= TAP_SLOP_PX');
+	expect(src).toMatch(/if \(from < 0 \|\| to === from\) return;/);
+	expect(src, 'a tap threshold means a mode that a release could close by accident').not.toContain('TAP_SLOP_PX');
 });
 
 test('driven-find 5 · focus return is re-found by attribute, not by a held element', () => {
-	// The grip the guest pressed is a detached node by the time the mode closes, so focusing the captured
-	// reference put focus nowhere — `activeElement` was `<body>` after Escape.
+	// The grip the guest pressed is a detached node by the time the list has reordered, so focusing the
+	// captured reference put focus nowhere — `activeElement` was `<body>` after Escape.
 	const src = stripComments(page());
 	expect(src).toContain('gripId={e.id}');
 	expect(markup(row())).toContain('data-grip={gripId}');
-	const exit = /function exitReorder\([\s\S]*?\n\t\}/.exec(src);
+	const exit = /function endDrag\([\s\S]*?\n\t\}/.exec(src);
 	expect(exit![0]).toContain('data-grip=');
 	expect(exit![0]).toContain('tick().then(');
+	// The keyboard path re-finds it the same way, for the same reason: a nudge recreates the row's DOM.
+	const nudge = /function nudge\([\s\S]*?\n\t\}/.exec(src);
+	expect(nudge![0]).toContain('data-grip=');
 });
 
 test('· the .dimmed rule stays a surface token, not opacity — and no row is dimmed by the mode', () => {
@@ -299,89 +317,55 @@ test('XR-PH-06 · no drag library is pulled in for the mode', () => {
 
 // ── XR-PH-18 · the slots are drawn, and a drop cannot be approximated ────────────────────────────
 
-test('XR-PH-18 · each drop target is a real button carrying its ordinal as an accessible name', () => {
-	const m = markup(page());
-	const slotAt = m.indexOf('class="dropslot"');
-	expect(slotAt).toBeGreaterThan(-1); // sentinel
-	const block = m.slice(slotAt - 200, slotAt + 400);
-	expect(block).toContain('<button');
-	expect(block).toContain('aria-label={slot.label}');
-	expect(block).toContain('data-slot={slot.index}');
-	// Committing goes through the same exit the pointer release uses, so the keyboard and pointer paths
-	// cannot commit different indices.
-	expect(block).toContain('exitReorder(slot.index)');
-});
-
-test('XR-PH-18 · the slots render only while the mode is open, one per queued row', () => {
-	const m = markup(page());
-	expect(m).toContain('{#if reorderOpen && slots[i]}');
-});
-
-test('XR-PH-18 · the PAGE derives its slots from the whole queued list, not own picks', () => {
-	// Found by mutation on the old model: pointing this derivation at the wrong collection left every
-	// other assertion in this suite green, because they all test the slot builder in isolation. The
-	// builder cannot defend the claim on its own — it is only given a count — so the only place the
-	// wrong collection can be supplied is here. That makes this scan the sole guard on XR-PH-18's
-	// central sentence, and the count claim vacuous without it. flips the required collection from
-	// the guest's own picks to the whole queued list.
+test('XR-PH-18 · the committed index IS the rendered one, so a release cannot land elsewhere', () => {
+	/*
+	 * REPLACED (2026-09-21), not dropped. Four arms here pinned the drawn drop targets: a `.dropslot` button
+	 * per queued row carrying its ordinal, rendered only while the mode was open, derived from the whole
+	 * queued list, and every release routed through `dropTarget` so an illegal drop committed nothing.
+	 *
+	 * The requirement was never the chrome — it is "a release cannot commit somewhere the guest did not
+	 * choose". The live sort satisfies it by identity instead of by declining: `dragTo` is the one expression
+	 * that both places the rows on screen and commits on release, so the two cannot disagree. That is what
+	 * this arm pins, and it is a stronger claim than the old one could make — a drawn target could in
+	 * principle be rendered at one index and resolved at another.
+	 */
 	const src = stripComments(page());
-	const decl = /const slots = \$derived\(([^;]*)\);/.exec(src);
-	expect(decl).not.toBeNull(); // sentinel: the derivation exists to be judged
-	const expr = decl![1]!;
-	expect(expr).toContain('queued.length');
-	// It must NOT re-narrow to the own-picks basis, which is what would undo the widening.
-	expect(/\bmyPicks\b/.test(expr)).toBe(false);
+	// ONE derivation, read by both the render and the commit.
+	expect(src).toMatch(/const dragTo = \$derived\(/);
+	expect(src).toMatch(
+		/liveSortTarget\(\{ fromIndex: dragFrom, offsetPx: dragY, rowHeightPx: rowH, count: queued\.length \}\)/
+	);
+	// The render reads it…
+	expect(src).toMatch(/shift=\{rowShift\(i, dragFrom, dragTo\)\}/);
+	// …and so does the release, through the shared commit rather than a second arithmetic.
+	const end = /function endDrag\([\s\S]*?\n\t\}/.exec(src)![0];
+	expect(end).toMatch(/commitMove\(id, to >= 0 \? to : null\)/);
+	/*
+	 * AND THE CHROME STAYS GONE. A reader who greps for the old mechanism should land on a failure that says
+	 * it was deleted on purpose, not on a silent pass.
+	 */
+	for (const gone of ['dropslot', 'dropTarget', 'hoverSlot', 'queueSlots', 'reorder-bar'])
+		expect(src, `\`${gone}\` belongs to the retired mode`).not.toContain(gone);
 });
 
-test('XR-PH-18 · no row is dimmed by the mode — every row is a legal drop target', () => {
-	// Mirror of the slot guard: the visual half of "any position accepts a drop" is that no row is
-	// de-emphasised. An inverted or unscoped condition here is invisible to a unit test.
-	const m = markup(page());
-	expect(m).toContain('dimmed={false}');
-	expect(m).not.toContain('dimmed={reorderOpen');
-});
-
-test('XR-PH-18 · every release is routed through dropTarget rather than passed to moveToIndex raw', () => {
-	// `moveToIndex` CLAMPS an out-of-range toIdx, so a raw pass-through would commit a position the
-	// guest did not choose. The guard is that the only `moveToIndex` in the mode's exit reads the value
-	// `dropTarget` returned.
+test('XR-PH-18 · a drag that has not moved commits nothing, and neither does a cancel', () => {
 	const src = stripComments(page());
-	const exit = /function exitReorder\([\s\S]*?\n\t\}/.exec(src);
-	expect(exit).not.toBeNull(); // sentinel
-	const body = exit![0]!;
-	expect(body).toContain('const target = dropTarget(');
-	expect(/store\?\.moveToIndex\(id, target\)/.test(body)).toBe(true);
-	expect(/target !== null/.test(body)).toBe(true);
-	// …and it commits the GLOBAL op, not the own-picks `move` the drag used before.
-	expect(/store\?\.moveEntry\(/.test(body)).toBe(false);
+	// `commit` false is the cancel path — Escape and an invalidation both take it.
+	expect(src).toMatch(/function endDrag\(commit: boolean, note = ''\)/);
+	expect(src).toMatch(/if \(commit && id\) commitMove/);
+	expect(src).toMatch(/dragging && e\.key === 'Escape' && endDrag\(false\)/);
+	// …and the invalidation path passes `false` with its reason, so a dissolving gesture cannot commit.
+	expect(src).toMatch(/if \(reason\) endDrag\(false, reason\)/);
 });
 
-// step 4 — the cross-singer arrow wiring, pinned so reverting the call site reds. The arrow
-// hunk at +page.svelte moveGlobal is individually-revertible-green otherwise: swapping
-// `store?.moveToIndex(id, i + delta)` back to `store?.moveEntry(...)` undoes the whole feature (arrows
-// go back to own-picks) yet the behavioural suite stays green, because no test reads the UI call site.
-// This scan is that missing pin. The drag mode's exitReorder still calls moveEntry (own-picks) —
-// distinct path — so this asserts moveGlobal SPECIFICALLY emits moveToIndex.
-test('step 4 · the up/down arrows are wired to moveGlobal, which emits store.moveToIndex', () => {
+test('step 4 · every reorder — drag or keyboard — emits store.moveToIndex through ONE function', () => {
+	/*
+	 * Was: "the up/down arrows are wired to moveGlobal, which emits store.moveToIndex". The arrows and
+	 * `moveGlobal` are both retired; the claim that mattered is that the two affordances share one wire path,
+	 * so a fix to one cannot miss the other. There is now exactly one caller of the op.
+	 */
 	const src = stripComments(page());
-	// (1) both arrow handlers route through moveGlobal (not moveMine / moveEntry).
-	expect(/onup=\{\(\)\s*=>\s*moveGlobal\(/.test(src)).toBe(true);
-	expect(/ondown=\{\(\)\s*=>\s*moveGlobal\(/.test(src)).toBe(true);
-	// (2) moveGlobal emits the cross-singer op. Slice its body and require store.moveToIndex, and
-	// require it does NOT fall back to the own-picks store.moveEntry — reverting the call site reds here.
-	const fn = /function moveGlobal\([\s\S]*?\n\t\}/.exec(src);
-	expect(fn).not.toBeNull(); // sentinel: the function must exist
-	const body = fn![0]!;
-	expect(/store\?\.moveToIndex\(id,/.test(body)).toBe(true);
-	expect(/store\?\.moveEntry\(/.test(body)).toBe(false);
-	// (3) the arrow-GATING props (canUp/canDown) are computed on the GLOBAL queued index, not the
-	// singer's own-picks index — that is what makes the arrows reach every row. Reverting the props to
-	// the own-picks basis (myIdx / myPicks.length) reds these. Both QueueRow blocks are covered.
-	expect((src.match(/canUp=\{queuedIdx\(e\.id\)\s*>\s*0\}/g) || []).length).toBeGreaterThanOrEqual(2);
-	expect(
-		(src.match(/canDown=\{queuedIdx\(e\.id\)[\s\S]*?queued\.length\s*-\s*1\}/g) || []).length
-	).toBeGreaterThanOrEqual(2);
-	// no arrow-gating prop falls back to the own-picks basis
-	expect(/canUp=\{myIdx\(/.test(src)).toBe(false);
-	expect(/canDown=\{myIdx\(/.test(src)).toBe(false);
+	expect(src).toMatch(/function commitMove\(id: string, to: number \| null\)/);
+	expect((src.match(/store\?\.moveToIndex\(/g) ?? []).length, 'one op call site, shared by both paths').toBe(1);
+	expect(src).not.toContain('function moveGlobal');
 });

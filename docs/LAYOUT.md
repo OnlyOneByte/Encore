@@ -14,12 +14,12 @@ followed without ever being written down. This document writes them down.
 
 Four homes, in the order you should test a new file against:
 
-| Ask | Home | Enforced by |
-|---|---|---|
-| Does it touch a DB, a secret, the filesystem, or authoritative state? | `src/lib/server/` | SvelteKit refuses to bundle it clientward — `bun run build` exits 1 |
-| Do **both** the browser and the server (or the Python worker) need it? | `src/lib/contract/` | a boundary guard, in both directions |
-| Is it a Svelte component? | `src/lib/components/`, or a surface folder | — |
-| Otherwise: pure, client-only, non-component logic | `src/lib/` root | — |
+| Ask                                                                    | Home                                       | Enforced by                                                         |
+| ---------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------- |
+| Does it touch a DB, a secret, the filesystem, or authoritative state?  | `src/lib/server/`                          | SvelteKit refuses to bundle it clientward — `bun run build` exits 1 |
+| Do **both** the browser and the server (or the Python worker) need it? | `src/lib/contract/`                        | a boundary guard, in both directions                                |
+| Is it a Svelte component?                                              | `src/lib/components/`, or a surface folder | —                                                                   |
+| Otherwise: pure, client-only, non-component logic                      | `src/lib/` root                            | —                                                                   |
 
 The fourth case is the one that reads like a dump and is not. Twelve pure
 client-only modules sit directly in `src/lib/` because they are the residue
@@ -36,7 +36,7 @@ confusing thing in the tree, so state it before anything else:
   Reorganising this directory is forbidden (§3).
 - `src/lib/ui/` — **authored.** Encore's own primitives.
 
-Read it as *vendored* vs *ours*, never as *the ui library* vs *our ui*. Neither
+Read it as _vendored_ vs _ours_, never as _the ui library_ vs _our ui_. Neither
 name predicts its contents, which is why the rule has to be written here rather
 than inferred.
 
@@ -136,7 +136,7 @@ Each was proposed during the review and each is a net loss.
   `process-*` modules are two concerns, not one: two are presentation, one is
   action composition that orders two mutations so a job inherits queue
   priority. A `process/` folder would misfile it. One of the three is
-  additionally pinned *outside* `contract/` by a guard whose mutation arm
+  additionally pinned _outside_ `contract/` by a guard whose mutation arm
   asserts that its alias is forbidden, annotated in three places against
   exactly this re-litigation.
 - **Surface subfolders for the root components.** 83 hard path literals across
@@ -149,7 +149,7 @@ Each was proposed during the review and each is a net loss.
   impedes work, move out the one generic process utility that has no media
   semantics and leave the rest.
 - **Moving the TV components** into the shared components directory. It would
-  close a guard blind spot, but colocation with their logic is *correct* per
+  close a guard blind spot, but colocation with their logic is _correct_ per
   §2. Widen the guard instead — it is a one-line change to the walk root.
 
 ---
@@ -157,7 +157,7 @@ Each was proposed during the review and each is a net loss.
 ## 6. Moving anything safely
 
 The test tree derives almost every path from a repo root found by walking up
-for `bunfig.toml`, so **moving a test file is nearly free.** Moving a *source*
+for `bunfig.toml`, so **moving a test file is nearly free.** Moving a _source_
 file is not: 353 quoted repo-relative literals across 124 guard files name
 source paths.
 
@@ -198,7 +198,7 @@ cannot discover → the doc citations themselves (328 across 21 documents).
 
 ### Verifying
 
-A green suite after a move proves nothing about *where* the guards looked.
+A green suite after a move proves nothing about _where_ the guards looked.
 Prove non-vacuity by measurement: raise a floor absurdly high, run that file
 alone, read the received count. **A floor firing is a finding, never a number
 to adjust.** Adding files to a walked tree is safe; a floor proves the walk
@@ -210,7 +210,7 @@ index/worktree disagreement surfaces as a missing file.
 One trap specific to this document: the doc-citation guard checks every
 `src`/`worker`/`tests` path in `docs/` that ends in a file extension. Proposed
 paths that do not exist yet would fail it, which is why §4 names target
-*directories* rather than target files.
+_directories_ rather than target files.
 
 ---
 
@@ -230,7 +230,7 @@ All of these were verified, and none was caused by the review. **Fixed:**
   `static/` and precached by the service worker. The icon family now has one home.
 - **Six e2e probes resolved their repo-root anchor one hop short**, and the fault
   was paired: their spawn arguments were cwd-relative in a way that only worked
-  *because* the anchor was wrong, so fixing either alone would have broken them.
+  _because_ the anchor was wrong, so fixing either alone would have broken them.
   Both moved together. The hop-count spelling is gone from the e2e tree — one
   shared module walks up for the root marker, replacing six inlined copies.
 - **A helper called in two drivers was defined in neither**, lost with a batch of

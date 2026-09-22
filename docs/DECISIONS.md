@@ -611,14 +611,14 @@ Parked deliberately. These return only if the owner says so.
   - _Score-reactive modulation._ Has no data to react to at all: scoring was REMOVED outright.
   - _Visualizers on the no-lyrics screens_ (lobby, `waiting`, interstitial). The ratified band for
     backgrounds is playing-only; extending it is a separate decision.
-  One incidental note that is load-bearing for any FFT work: it is possible at all only because
-  `TvPlayer.fileSrc` hardcodes `/media/${ref}`, so the media element is always same-origin. A
-  cross-origin source taints `MediaElementAudioSourceNode` and every FFT visualizer silently goes flat
-  with no error. This is no longer merely incidental: the `MediaStore.url()` presign path that could have
-  made the element cross-origin was **deleted** (it had no production caller — `docs/arch/01-media.md`
-  `XR-MED-10`), so same-origin playback is now a structural property of the store interface, guarded by
-  `tests/guards/subsystem-media/store-members-have-production-callers.test.ts`. Reinstating a URL-returning
-  store member is a decision about *this* deferred work, and must be argued here.
+    One incidental note that is load-bearing for any FFT work: it is possible at all only because
+    `TvPlayer.fileSrc` hardcodes `/media/${ref}`, so the media element is always same-origin. A
+    cross-origin source taints `MediaElementAudioSourceNode` and every FFT visualizer silently goes flat
+    with no error. This is no longer merely incidental: the `MediaStore.url()` presign path that could have
+    made the element cross-origin was **deleted** (it had no production caller — `docs/arch/01-media.md`
+    `XR-MED-10`), so same-origin playback is now a structural property of the store interface, guarded by
+    `tests/guards/subsystem-media/store-members-have-production-callers.test.ts`. Reinstating a URL-returning
+    store member is a decision about _this_ deferred work, and must be argued here.
 - **Milkdrop-class WebGL preset rendering.** A hand-rolled fragment shader if ever, not `butterchurn`:
   this project vendored Lucide _path geometry_ rather than accept a webfont, to stay offline-LAN-safe.
 - **Human lyrics review UI** (idea from `karaoke-gen`). Provenance _labelling_ shipped; review is the
@@ -671,7 +671,7 @@ both:
   **not** bridge the container scale, so `max-w-sm` resolved `sm` through the wrong namespace and emitted
   `max-width: 8px`. Now `max-w-[24rem]`. Caught by `vendored-dimension-keys.test.ts`.
 - `drawer-overlay.svelte` arrived with `data-open:animate-in data-open:fade-in-0
-  data-closed:animate-out data-closed:fade-out-0`. `motion.test.ts` rejects `animate-*` **outright**,
+data-closed:animate-out data-closed:fade-out-0`. `motion.test.ts` rejects `animate-*` **outright**,
   which is the rule working as designed: a utility-expressed animation is invisible to the declaration
   scans by construction, which is the enforcement gap `XR-PH-06` exists to close. The fade is now a
   scannable declaration in that component's own `<style>` — opacity only, duration from `--motion-base`,

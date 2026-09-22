@@ -10,6 +10,7 @@
 	// with provenance over the wire, so no new read path. `chosenCandidate` marks the current pick and
 	// `hasNewerCandidateThanOverride` decides the hint; both are pure shared helpers.
 	import type { LyricsCandidate } from '$lib/contract';
+	import { lyricsSourceLabel } from '$lib/contract';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
@@ -44,15 +45,10 @@
 	const uid = $props.id();
 	const bodyId = `reselect-body-${uid}`;
 
-	// A short, honest provenance label per candidate — the same distinction the TV overlay draws
-	// (authored words vs an auto-transcribed guess), so a singer picks with the same information.
-	function sourceLabel(c: LyricsCandidate): string {
-		if (c.textSource === 'lrclib') return 'Synced lyrics';
-		if (c.textSource === 'captions') return c.textConfidence === 'low' ? 'Auto captions' : 'Captions';
-		if (c.textSource === 'asr') return 'Auto-transcribed';
-		if (c.textSource === 'manual') return 'Your lyrics';
-		return c.textSource;
-	}
+	// The provenance label lives in `$lib/contract` now: the now-playing sheet shows the chosen candidate's
+	// label as a pill, and two copies of a provenance string is how one surface comes to call something
+	// "Captions" that another calls "Auto captions".
+	const sourceLabel = lyricsSourceLabel;
 	function timingLabel(c: LyricsCandidate): string {
 		return c.timing === 'word' ? 'word-by-word' : c.timing === 'line' ? 'line-by-line' : 'no timing';
 	}

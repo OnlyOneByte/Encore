@@ -73,6 +73,25 @@ export interface LyricsCandidate {
  * confidence is `low`, which is how an auto-generated caption track gets correctly demoted to the
  * same standing as ASR despite arriving through the "captions" door.
  */
+/**
+ * A short, honest provenance label for a candidate's TEXT — "the same distinction the TV overlay draws
+ * (authored words vs an auto-transcribed guess), so a singer picks with the same information".
+ *
+ * MOVED HERE FROM `LyricsReselect` (2026-09-21), where it was a private function, because it now has two
+ * readers: that component's option list, and the now-playing sheet, which shows the CHOSEN candidate's
+ * label as a pill instead of carrying a whole re-selection disclosure. Two copies of a provenance string
+ * is how the sheet ends up calling something "Captions" that the song page calls "Auto captions".
+ *
+ * Pure, in the contract, for the reason the rest of this file is: all three tiers touch lyrics provenance.
+ */
+export function lyricsSourceLabel(c: Pick<LyricsCandidate, 'textSource' | 'textConfidence'>): string {
+	if (c.textSource === 'lrclib') return 'Synced lyrics';
+	if (c.textSource === 'captions') return c.textConfidence === 'low' ? 'Auto captions' : 'Captions';
+	if (c.textSource === 'asr') return 'Auto-transcribed';
+	if (c.textSource === 'manual') return 'Your lyrics';
+	return c.textSource;
+}
+
 export function isAuthoritativeText(c: Pick<LyricsCandidate, 'textSource' | 'textConfidence'>): boolean {
 	return c.textSource !== 'asr' && c.textConfidence !== 'low';
 }

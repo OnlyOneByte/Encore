@@ -947,9 +947,11 @@ export const HOOKS: Hook[] = [
 		why: 'the box the field sits in, sticky at the TOP of /find — the successor to the retired docked search band'
 	},
 	{
+		// Anchored on the OPENING TAG, not the bare `<main>`: the element carries a style attribute now
+		// (`--row-h`, the one measured row height the live sort multiplies through the rows it displaces).
 		id: 'mainColumn',
 		file: 'src/routes/+page.svelte',
-		anchor: '<main>',
+		anchor: '<main',
 		why: 'the gate measures this column reserving the docked band, so the element itself is load-bearing'
 	},
 	/*

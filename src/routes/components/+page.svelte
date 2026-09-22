@@ -667,11 +667,7 @@
 		status="separating"
 		pct={16}
 		reorderable
-		canUp
-		canDown
 		onremove={() => {}}
-		onup={() => {}}
-		ondown={() => {}}
 	/>
 	<!-- Coverage gap closed: the only long-name fixture used to be a QueueRow, so
 	     the narrower `.who` on a processing card WITH its queue controls was never eyes-on. This is the
@@ -688,11 +684,7 @@
 		status="separating"
 		pct={16}
 		reorderable
-		canUp
-		canDown
 		onremove={() => {}}
-		onup={() => {}}
-		ondown={() => {}}
 	/>
 	<QueueRow
 		seq={4}
@@ -702,9 +694,7 @@
 		mine
 		subtitle="up next"
 		removable
-		reorderable
-		canUp
-		canDown
+		grip
 	/>
 
 	<h2 class="section">NowPlayingBand · every state</h2>

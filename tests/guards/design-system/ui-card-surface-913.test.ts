@@ -71,8 +71,14 @@ const CALLERS: { file: string; why: string }[] = [
 	 */
 	{ file: 'lib/components/MyPositionCard.svelte', why: 'a single line telling a singer where they are' },
 	{ file: 'lib/components/CodeEntry.svelte', why: 'one character box of a room-code entry' },
-	{ file: 'lib/tv/TvProgress.svelte', why: 'the TV progress track — a ten-foot surface, no card structure' },
-	{ file: 'routes/+page.svelte', why: 'the reorder bar, and the search dock which carries its own copy' }
+	{ file: 'lib/tv/TvProgress.svelte', why: 'the TV progress track — a ten-foot surface, no card structure' }
+	/*
+	 * `routes/+page.svelte` LEFT THIS LIST (2026-09-21). Its two `card` surfaces were the reorder bar and the
+	 * search dock, and both are gone: the dock moved to /find when search became a route, and the bar went
+	 * with the reorder MODE when the drag became a live sort (no Done, no Cancel, nothing to dress). The
+	 * route paints no shared surface of its own now — its rows are QueueRow and ProcessingCard, which are
+	 * listed above and carry their own.
+	 */
 ];
 
 function svelteFiles(dir: string): string[] {
@@ -117,7 +123,11 @@ function callersInTree(): string[] {
 test('while anything uses `card`, app.css defines it WITH a background', () => {
 	const callers = callersInTree();
 	// Non-vacuity: the population is real. An empty set would make the rule below unfalsifiable.
-	expect(callers.length).toBeGreaterThanOrEqual(8); // @nvf-floor callers.length
+	// 7, WAS 8 (2026-09-21): `routes/+page.svelte` left the population when the reorder bar was deleted with
+	// the mode it dressed (the drag is a live sort — nothing to confirm or abandon), and its other `card`
+	// surface, the search dock, had already moved to /find. The floor tracks the population; it must never be
+	// lowered to accommodate a caller that quietly stopped being scanned (XR-VER-06).
+	expect(callers.length).toBeGreaterThanOrEqual(7); // @nvf-floor callers.length
 
 	const css = readFileSync(join(SRC, 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
 
