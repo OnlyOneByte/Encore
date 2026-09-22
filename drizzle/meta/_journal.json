@@ -8,6 +8,13 @@
       "when": 1789415708389,
       "tag": "0000_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790102155855,
+      "tag": "0001_glossy_veda",
+      "breakpoints": true
     }
   ]
 }

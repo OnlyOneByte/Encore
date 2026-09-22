@@ -66,6 +66,7 @@ const EXPECTED = [
 	'MAX_LYRICS_SCALE_PCT',
 	'MAX_MEASURABLE_LUFS',
 	'MAX_PRESENCE_GRACE_MINUTES',
+	'MAX_PROCESSES_PER_SINGER_CEILING',
 	'MAX_SONG_INTRO_MS',
 	'MAX_STAGE_DIM',
 	'MEDIA_STAGES',
@@ -80,6 +81,7 @@ const EXPECTED = [
 	// The 48-stop player palette, read through presentation/player-palette.ts — the join screen's colour
 	// ring is built on it (`PALETTE_STOPS` and the angle/nearest helpers), and it sits in the contract
 	// because the registry JSON it reads does.
+	'PROCESSES_UNCAPPED',
 	'PALETTE_RING_FROM_DEG',
 	'PALETTE_STOPS',
 	'PALETTE_STOP_ARC_DEG',
@@ -184,6 +186,7 @@ const EXPECTED = [
 	'nextSwatchIndex',
 	'normalizeGlobalSettings',
 	'normalizeJoinOrigin',
+	'normalizeMaxProcesses',
 	'normalizeRoomCodeInput',
 	'normalizeRoomSettings',
 	'normalizeSingerColor',

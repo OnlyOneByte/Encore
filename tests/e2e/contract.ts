@@ -86,9 +86,12 @@ export const SEL = {
 
 	// ── phone remote ──────────────────────────────────────────────────────
 	/*
-	 * HOME IS THE QUEUE (direction A) AND NOTHING ELSE. The phone-remote rebuild took search OFF home:
-	 * `NowPlayingBand` is the bottom-most app chrome on every phone surface, it owns that edge, and its
-	 * magnifier (`bandSearch`) NAVIGATES to the `/find` route. `/` renders the rotation only.
+	 * HOME IS THE QUEUE, THE LIBRARY AND SEARCH, in one column. The phone-remote rebuild took search OFF
+	 * home and onto the `/find` route; that route was MERGED BACK (2026-09-22), so `/` reads top to bottom as
+	 * the field, what is queued, what is being made and what is ready to sing. `NowPlayingBand` is still the
+	 * bottom-most app chrome on every phone surface and owns that edge, but its magnifier (`bandSearch`) no
+	 * longer navigates — it FOCUSES the field on home (`$lib/stores/search-focus`), going to `/` first only
+	 * when it is somewhere else.
 	 *
 	 * AMENDED (the sheet merge). That paragraph used to say the band "is mounted by
 	 * `src/routes/+layout.svelte` inside a `.dock` wrapper", and neither half is true now. The band and
@@ -110,11 +113,11 @@ export const SEL = {
 	 * search again and it is a ROUTE — the phone's own back gesture works, the surface is shareable, and
 	 * typing does not re-render the queue under a keyboard.
 	 *
-	 * WHAT DID NOT COME BACK, so the retirements below are not contradicted by that reversal: there is
-	 * no browse TOGGLE. `openBrowse`, `browseToggle` and `readyChip` were CONTROLS that revealed or
-	 * filtered a list in place, and `/find` needs none of them because the SURFACE is the browse view —
-	 * you go there instead of switching something on. A returning surface is not a returning control, so
-	 * all three stay retired for the reason each was retired for.
+	 * WHAT DID NOT COME BACK, through either reversal: there is no browse TOGGLE. `openBrowse`,
+	 * `browseToggle` and `readyChip` were CONTROLS that revealed or filtered a list in place, and the merged
+	 * home needs none of them — the library is the default content of the column and typing filters it, so
+	 * there is nothing to switch on. A returning surface was never a returning control, and now there is not
+	 * even a surface to go to: all three stay retired for the reason each was retired for.
 	 *
 	 * `homeReady` is the post-join readiness check and is now the BAND, which the layout mounts exactly
 	 * when a singer is joined (`showBand = isPhoneSurface && me !== null`) — so it answers "joined",
@@ -123,19 +126,19 @@ export const SEL = {
 	 * half of the claim is carried by the caller rather than by this selector, which is present on every
 	 * phone surface.
 	 *
-	 * THE DRIVER MIGRATION IS NOT DONE, and saying so is the point of writing it here rather than
-	 * discovering it in a browser: `openBrowseFromHome()` in `tests/e2e/lib/phone.mjs` still waits for
-	 * `search` on `/` with no navigation, so every flow that reaches search through it will now time
-	 * out until that ONE helper taps `bandSearch` and waits for `/find` — which is exactly why the
-	 * sequence was put in one place. That helper is outside this change's scope; the contract records
-	 * what the app IS, and the guard is what keeps reporting the gap until the helper follows.
+	 * THE DRIVER MIGRATION IS DONE, and the note that recorded it as outstanding is kept as the record of
+	 * why the indirection is worth having: when search became a route, `openBrowseFromHome()` in
+	 * `tests/e2e/lib/phone.mjs` was still waiting for `search` on `/` with no navigation, so every flow
+	 * reaching search through it timed out until that ONE helper learned to tap `bandSearch`. It has since
+	 * learned to do neither — the field is on home again, so the helper's common path is to find it already
+	 * there. Four placements, one function edited each time.
 	 *
 	 * RETIRED: `openBrowse` was `.cta-dock .cta`, the `+ Add a turn` button that pushed `?browse=1`
 	 * to reveal the search box. The owner correction docked the box permanently and deleted the button, so the anchor is
 	 * absent from every source — an anchor guard for markup nobody renders reports a permanent failure,
-	 * not an invariant. It does NOT return with the `/find` route: `bandSearch` navigates to a surface
-	 * rather than revealing one in place, and it is a permanent piece of app chrome rather than a
-	 * button that appears to open a mode.
+	 * not an invariant. It did not return with the `/find` route and it does not return with the merge:
+	 * `bandSearch` is a permanent piece of app chrome that reaches a field which is always rendered, rather
+	 * than a button that appears in order to open a mode.
 	 */
 	homeReady: '.band',
 	/*
@@ -254,32 +257,31 @@ export const SEL = {
 	 */
 	slider: "[data-slot='slider']",
 	/**
-	 * Back to the queue from the find surface. It NAVIGATES now — a real `<a href="/">` that
-	 * `PageHeader` renders inside its `.back-slot` wrapper, requested by `/find` as
-	 * `back={{ href: '/', label: 'Back to the queue' }}` — rather than clearing a query in place.
+	 * Back to the queue from a PUSHED phone surface — a song page, settings, stats. A real `<a href="/">`
+	 * that `PageHeader` renders inside its `.back-slot` wrapper, requested by the route as
+	 * `back={{ href: '/', label: '…' }}`.
 	 *
-	 * RE-ANCHORED from `[data-testid="back-to-queue"]`, a test-only hook on the retired in-place
-	 * "← Queue" control that called `clearSearch()`. Home renders neither that control nor a search box
-	 * to clear, so the old anchor could only report a permanent failure. The behaviour it stood for did
-	 * not die, it changed KIND: `/find` is a route, so the way back is the route's own back affordance
-	 * and the phone's back gesture now does the same thing rather than leaving the room.
+	 * RE-ANCHORED TWICE. It was `[data-testid="back-to-queue"]`, a test-only hook on the in-place "← Queue"
+	 * control that called `clearSearch()`; then the find route's own `back` link, because on a route the way
+	 * back is a navigation and the phone's back gesture does the same thing rather than leaving the room.
+	 * Search is a section of home again (2026-09-22), so THAT subject is gone — a link to `/` rendered on `/`
+	 * points at itself. The way back from a search is `clearSearch` again, and this selector keeps the job it
+	 * still has: leaving a pushed surface. Both acts exist; they are different, and they are separate names.
 	 *
 	 * Addressed by the page-rendered wrapper plus the tag rather than by a class on the control: the
 	 * control is a `<Button href>`, whose classes belong to the component and can be re-vendored.
 	 * `.back-slot` is the part that pins THIS control; the `a` part resolves as "this tag is rendered
 	 * somewhere" (see selectorResolves — a source scan cannot see co-location).
 	 *
-	 * AMENDED: the sentence that followed said "`returnHomeFromBrowse()` in lib/phone.mjs still works
-	 * unchanged: it clicks this, then waits for `hero`, which renders on `/` once the navigation lands."
-	 * There is no hero — home is the queue only. The CLICK still works; the WAIT has to change, and not to
-	 * `homeReady`: the band is app chrome on every phone surface including `/find`, so its presence cannot
-	 * prove the navigation landed. `queueRow`/`mainColumn` — or the pathname itself, which the helper's
-	 * siblings already read — is what says the flow is back on `/`. Recorded here rather than fixed there
-	 * because lib/phone.mjs is outside this change's scope.
+	 * `returnHomeFromBrowse()` in lib/phone.mjs reads both: the pathname decides whether to click this, and
+	 * the clear control's presence decides whether a query also has to be cleared. It does NOT wait on
+	 * `homeReady` — the band is app chrome on every phone surface, so its presence cannot prove a navigation
+	 * landed; the pathname and `mainColumn` are what say the flow is back on `/`.
 	 */
 	backToQueue: '.back-slot a',
-	/** The search field itself. On `/find` since the band took the bottom edge — it was on `/` when the
-	 *  box was docked there, and the aria-label is deliberately unchanged so only the FILE moved. */
+	/** The search field itself. On `/` again since the find route was merged into home (2026-09-22) — it
+	 *  was on `/` docked, then on `/find`, and the aria-label is deliberately unchanged through all three,
+	 *  so only the FILE ever moved and no driver's selector had to. */
 	search: 'input[aria-label="Search a song or artist"]',
 	/*
 	 * RETIRED: `searchDock` was `.search-dock`, the search band docked at the bottom of home. It had two
@@ -295,12 +297,13 @@ export const SEL = {
 	 * made, and the find box is sticky at the TOP of its own route and publishes nothing. Re-pointing
 	 * the name would have left a selector called `searchDock` at an element that is not a dock.
 	 */
-	/** The find surface's search box: the sticky wrapper holding the mark, the field, the searching
-	 *  spinner and the clear control. */
+	/** The search box: the wrapper holding the mark, the field, the searching spinner and the clear
+	 *  control. At the top of the home column, in normal flow — neither docked nor sticky. */
 	findBox: '.findbox',
-	/** The find box's clear control — empties the query and returns the surface to the library view.
-	 *  (The retired `backToQueue` testid used to be the control that cleared a search; clearing and
-	 *  leaving are two different acts now, and this is the clearing one.) */
+	/** The box's clear control — empties the query, which restores the queue and the library in place. It
+	 *  is the whole way "back" from a search now (2026-09-22): the results are a section of the page the
+	 *  guest is already on, so there is nowhere to navigate to. `backToQueue` below is a different act —
+	 *  leaving a PUSHED surface (a song page, settings) for home. */
 	clearSearch: '[aria-label="Clear the search"]',
 	songRow: '.row',
 	songTitle: '.row .t',
@@ -328,7 +331,8 @@ export const SEL = {
 	addOrSing: '[data-testid="song-add"],[data-testid="song-sing"]',
 	rowTitle: '.t',
 	/*
-	 * The empty-state line — an empty rotation on `/`, and a query that matched nothing on `/find`.
+	 * The empty-state line — on `/`, for both an empty rotation and a query that matched nothing. One surface
+	 * carries both states since the find route was merged into home (2026-09-22).
 	 *
 	 * RE-ANCHORED to `.encore-empty`; `.empty` is gone. The empty state is `<Empty.Root>` now, and
 	 * ui/empty/empty.svelte keeps the registry's Root/Header/Description structure while carrying Encore's
@@ -354,12 +358,12 @@ export const SEL = {
 	 * which is the condition that empty state was always really about. `browseToggle` ('.browse-toggle')
 	 * went with the same diff and for the same reason: the disclosure it opened is gone.
 	 *
-	 * NEITHER RETURNS WITH `/find`, and the distinction is worth stating because that route looks like
-	 * the browse view coming back. What returned is a SURFACE, not a control: `/find` opens with the
-	 * library already listed, so there is nothing to reveal (no toggle) and nothing to filter down to
-	 * (no readiness chip) — readiness is a per-row fact the rows state themselves, and narrowing is done
-	 * by typing. A chip or a disclosure reappearing here would be re-adding a filter mechanism direction
-	 * B removed, which is why these records stand rather than being reversed with the surface.
+	 * NEITHER RETURNED WITH `/find`, and neither returns with the merge — the distinction is worth stating
+	 * because both looked like the browse view coming back. What came back is a SURFACE, not a control: the
+	 * column opens with the library already listed, so there is nothing to reveal (no toggle) and nothing to
+	 * filter down to (no readiness chip) — readiness is a per-row fact the rows state themselves, and
+	 * narrowing is done by typing. A chip or a disclosure reappearing here would be re-adding a filter
+	 * mechanism direction B removed, which is why these records stand rather than being reversed.
 	 */
 	/** A SongRow status/kind chip — the SCALING probe (p10) contrast-checks its text on the remote.
 	 *  Migrated from KNOWN_OFFENDERS (Group E).
@@ -383,9 +387,10 @@ export const SEL = {
 	 * anything above these are reachable wherever a driver happens to be — which is what makes the
 	 * magnifier the entry point search now has.
 	 *
-	 * `bandSearch` NAVIGATES to `/find`; it is not a toggle and not a mode. That is the difference
-	 * between it and the retired `openBrowse` (see the retirement note above), and it is why the band's
-	 * arrival did not resurrect that entry.
+	 * `bandSearch` FOCUSES the search field on home — it navigated to `/find` for one release, and that route
+	 * is merged into home now. It is not a toggle and not a mode in either form, which is the difference
+	 * between it and the retired `openBrowse` (see the retirement note above) and why the band's arrival did
+	 * not resurrect that entry.
 	 *
 	 * `bandTransport` is addressed by CLASS, not by role/name, and deliberately: the disc names itself
 	 * `aria-label={isPlaying ? 'Pause' : 'Play'}` — an EXPRESSION — so neither `aria-label="Play"` nor
@@ -402,7 +407,16 @@ export const SEL = {
 	 * can: this one is inside `.band`, `play` is inside `.np-drawer` past the fold. The band's disc is
 	 * still the only transport a flow can tap without first pulling the sheet up.
 	 */
-	bandSearch: { role: 'button' as const, name: 'Search for a song' },
+	/*
+	 * RETIRED: `bandSearch` was `{ role: 'button', name: 'Search for a song' }` — the band's magnifier. It
+	 * pushed `?browse=1`, then navigated to `/find`, then focused the field on home, and it is now GONE
+	 * (2026-09-22): search is a field at the TOP of the home column, so app chrome has nothing to reach. An
+	 * anchor for a control no source renders reports a permanent failure rather than an invariant, which is
+	 * why this is a retirement and not a re-point.
+	 *
+	 * WHAT THE ROW SPENDS ITSELF ON INSTEAD: the full transport, always visible — `bandTransport` plus the
+	 * two controls flanking it, which is what `bandRestart` / `bandSkip` below now address without a gesture.
+	 */
 	bandTransport: '.disc',
 	/*
 	 * THE BAND'S EXPAND CONTROL — the metadata block, which is a real `<button>` whenever a drawer is
@@ -615,10 +629,11 @@ export const SEL = {
 	 *
 	 * WHAT THAT MEANS FOR A DRIVER. `bandTransport` ('.disc') is play/pause at BOTH heights, needs no
 	 * gesture, and is the cheapest control in the app to drive — the five flows that were briefly re-aimed
-	 * at a sheet-only copy are back on it. `restart` and `skip` are in the same row but are HIDDEN while the
-	 * sheet is collapsed (`.tp-side` is `display: none`; the drawer reveals the pair at snap 1), so a flow
-	 * that wants either must `openNowPlaying` first — `driver.click` waits for visibility, so a tap without
-	 * the gesture times out rather than failing loudly.
+	 * at a sheet-only copy are back on it. `restart` and `skip` are in the same row and, since 2026-09-22,
+	 * are visible at BOTH heights too, so neither needs `openNowPlaying` first. For one release they were
+	 * hidden while the sheet was collapsed and grown in at snap 1 — because the magnifier shared the row and
+	 * four controls was too many for a collapsed bar. The magnifier is gone, so the row has the space and a
+	 * driver has three controls it can tap with no gesture at all.
 	 *
 	 * A SHEET-ONLY `sheetTransport` ENTRY IS RETIRED WITH ARRANGEMENT 3. It named
 	 * `[data-transport="play"]` on the body row's copy, and that button no longer exists.
@@ -930,9 +945,9 @@ export const HOOKS: Hook[] = [
 	// phone remote
 	{
 		id: 'search',
-		file: 'src/routes/find/+page.svelte',
+		file: 'src/routes/+page.svelte',
 		anchor: 'aria-label="Search a song or artist"',
-		why: 'the flow searches the library through this field, which moved to the /find route when the band took the bottom edge — the label is unchanged, so only the FILE moved'
+		why: 'the flow searches the library through this field. It has been on `/` (docked), on `/find` (its own route), and is on `/` again since that route was merged into home (2026-09-22) — the label is deliberately unchanged through all three, so only the FILE ever moved'
 	},
 	{
 		id: 'songDoor',
@@ -942,9 +957,9 @@ export const HOOKS: Hook[] = [
 	},
 	{
 		id: 'findBox',
-		file: 'src/routes/find/+page.svelte',
+		file: 'src/routes/+page.svelte',
 		anchor: 'class="findbox"',
-		why: 'the box the field sits in, sticky at the TOP of /find — the successor to the retired docked search band'
+		why: 'the box the field sits in, at the TOP of the home column — the successor to the retired docked search band, and since the /find merge (2026-09-22) it is the first thing above the queue rather than a separate surface'
 	},
 	{
 		// Anchored on the OPENING TAG, not the bare `<main>`: the element carries a style attribute now
@@ -1020,9 +1035,9 @@ export const HOOKS: Hook[] = [
 	},
 	{
 		id: 'backToQueue',
-		file: 'src/routes/find/+page.svelte',
+		file: 'src/routes/song/[mediaId]/+page.svelte',
 		anchor: "back={{ href: '/', label: 'Back to the queue' }}",
-		why: 'the find surface must OFFER a way back to the queue; this is the route asking PageHeader for one'
+		why: 'a pushed phone surface must OFFER a way back to the queue; this is a route asking PageHeader for one. RE-ANCHORED (2026-09-22) from the find route, which no longer exists — search is a section of home, so the surface that used to need this link is the page it pointed at. The song page is the pushed surface that still needs it, and the anchor is the same literal'
 	},
 	{
 		id: 'backSlot',
@@ -1041,8 +1056,8 @@ export const HOOKS: Hook[] = [
 	 * `src/routes/+layout.svelte` and into `src/lib/components/NowPlayingDrawer.svelte`. The CLAIM is
 	 * unchanged and is why the name stays — `homeReady` (`.band`) resolves against a component, and a
 	 * component rendering a class is not the same thing as the app rendering the component, so the mount
-	 * itself has to be pinned somewhere. Only the file moved, exactly as `search` did when it moved to
-	 * `/find`: the band is composed as snap point 0 of the sheet instead of being a fixed sibling of it.
+	 * itself has to be pinned somewhere. Only the file moved, exactly as `search`'s has each time it changed
+	 * surface: the band is composed as snap point 0 of the sheet instead of being a fixed sibling of it.
 	 *
 	 * IT IS NOW HALF A CHAIN, and that is a strengthening rather than a dilution. `drawerMounted` pins
 	 * layout → drawer and this pins drawer → band; both must hold for `.band` to reach a phone, and each
@@ -1060,11 +1075,23 @@ export const HOOKS: Hook[] = [
 		anchor: '<NowPlayingBand',
 		why: 'homeReady only holds because the sheet COMPOSES the band as its snap-0 content on every phone surface; the component rendering the class is not the same claim as the app showing it'
 	},
+	/*
+	 * RETIRED: the `bandSearch` hook (anchor `aria-label="Search for a song"`). The magnifier is deleted with
+	 * the merge (2026-09-22) — search is the first element in the home column, so chrome has nothing to reach
+	 * — and no source renders that label any more, so the anchor could only report a permanent failure. Its
+	 * successors are the two hooks below: the row it vacated is now the full transport, always visible.
+	 */
 	{
-		id: 'bandSearch',
+		id: 'bandRestart',
 		file: 'src/lib/components/NowPlayingBand.svelte',
-		anchor: 'aria-label="Search for a song"',
-		why: 'the ONLY way to reach search now — the magnifier navigates to /find, which is what replaced the docked box'
+		anchor: 'aria-label="Restart"',
+		why: 'restart is in the band row at BOTH sheet heights since the magnifier left it, so a driver can tap it with no gesture; it was hidden at rest for one release and a flow had to open the sheet first'
+	},
+	{
+		id: 'bandSkip',
+		file: 'src/lib/components/NowPlayingBand.svelte',
+		anchor: 'aria-label="skip"',
+		why: 'the other half of the always-visible pair — pinned beside restart because the two are revealed and hidden together, so a change that loses one loses both'
 	},
 	{
 		id: 'bandTransport',
@@ -1151,9 +1178,9 @@ export const HOOKS: Hook[] = [
 	/*
 	 * RETIRED: the `searchDock` hook (anchor `class="search-dock"`). The band owns the bottom edge and
 	 * publishes `--dock-h`, so no source renders a docked search band and the anchor could only report a
-	 * permanent failure. `findBox` above is the successor — the same box, sticky at the top of `/find`,
-	 * which is a different claim and so a different entry (see the SEL retirement note for why the name
-	 * was not simply re-pointed).
+	 * permanent failure. `findBox` above is the successor — the same box, in normal flow at the top of the
+	 * home column, which is a different claim and so a different entry (see the SEL retirement note for why
+	 * the name was not simply re-pointed).
 	 */
 	/*
 	 * RETIRED: the `openBrowse` hook (anchor `class="cta" onclick={openBrowse}`). The owner correction docked the

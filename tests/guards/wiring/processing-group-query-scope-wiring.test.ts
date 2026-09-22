@@ -19,11 +19,11 @@
 // run in a live browser page. The presence of each seam is a decidable property of the component
 // source, so this reads the search surface and requires each one.
 //
-// RE-POINTED for the phone-remote redesign: search moved out of `routes/+page.svelte` (home is
-// queue-only now) into its own route, `routes/find/+page.svelte`, carrying `query`, `searchActive`,
-// `processingResults`, `runSearch` and `processingRows` over unchanged. The query-scoping seams are
-// properties of whichever surface owns the search box, and that is now /find. Same requirements, new
-// address.
+// RE-POINTED TWICE, and the rule is the same each time: the query-scoping seams are properties of
+// whichever surface owns the search box. That was `routes/+page.svelte`, then `routes/find/+page.svelte`
+// when search became its own route, and is `routes/+page.svelte` again since the find route was merged
+// into home (2026-09-22) — `query`, `searchActive`, `processingResults`, `runSearch` and `processingRows`
+// moved each way unchanged. Same requirements, current address.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { at } from '@encore/test-support';
@@ -37,7 +37,7 @@ function stripComments(src: string): string {
 }
 
 // Paths come from `at()`, which resolves against the repo root, so this guard does not encode its own depth.
-const PAGE = stripComments(readFileSync(at('src/routes/find/+page.svelte'), 'utf8'));
+const PAGE = stripComments(readFileSync(at('src/routes/+page.svelte'), 'utf8'));
 
 test('the page imports the query-scope helper it wires', () => {
 	expect(PAGE).toMatch(/import\s*\{[^}]*\bprocessingGroupIds\b[^}]*\}\s*from\s*'\$lib\/readiness'/);

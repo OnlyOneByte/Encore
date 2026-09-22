@@ -333,8 +333,18 @@ test('the committed index IS the rendered one, so a release cannot land elsewher
 	// ONE derivation, read by both the render and the commit.
 	expect(src).toMatch(/const dragTo = \$derived\(/);
 	expect(src).toMatch(
-		/liveSortTarget\(\{ fromIndex: dragFrom, offsetPx: dragY, rowHeightPx: rowH, count: queued\.length \}\)/
+		/liveSortTarget\(\{ fromIndex: dragFrom, offsetPx: dragY, rowBoundsPx: rowBounds, count: queued\.length \}\)/
 	);
+	/*
+	 * …FED BY ONE READ, AT PRESS TIME. `rowBoundsPx` replaced a single `rowHeightPx` (2026-09-22) so a list
+	 * that mixes queued rows with taller processing cards is placed exactly — but the property that made the
+	 * single height safe has to survive the change, and it is a source claim: the boxes are measured in the
+	 * POINTER-DOWN handler and nowhere else. Re-measuring mid-gesture is the recorded hazard (rows change
+	 * height while a drag is in flight), so a second read inside the move handler is what this catches.
+	 */
+	const down = /function onGripPointerDown\([\s\S]*?\n\t\}/.exec(src)![0];
+	expect(down, 'the boxes are measured once, on press').toMatch(/rowBounds = \[\.\.\.document\.querySelectorAll/);
+	expect((src.match(/rowBounds = \[\.\.\.document/g) ?? []).length, 'exactly one place measures them').toBe(1);
 	// The render reads it…
 	expect(src).toMatch(/shift=\{rowShift\(i, dragFrom, dragTo\)\}/);
 	// …and so does the release, through the shared commit rather than a second arithmetic.

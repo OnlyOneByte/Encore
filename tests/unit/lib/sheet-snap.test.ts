@@ -7,7 +7,7 @@
  *
  * Snap 1 was a flat `0.82`, so the sheet's top edge landed at 18% of the window — 162px on a 900px-tall
  * window, 126px on a 700px one. The page's own top-of-page controls do NOT shrink with the window: on
- * `/find`, `PageHeader` plus the search box ends at 159px at both heights. So the sheet cleared the box
+ * home, the top bar plus the search box ends at 159px at both heights. So the sheet cleared the box
  * by three pixels at 900 and sat on top of it at 700, and since the sheet is `position: fixed`, covering
  * is the whole of it — measured, `document.elementFromPoint` at the input's centre returned a `<span>`
  * from inside the sheet and the click was refused as intercepted.
@@ -39,7 +39,7 @@ import {
 const HEIGHTS = [360, 500, 600, 667, 700, 740, 800, 844, 900, 932, 976, 977, 1000, 1100, 1400, 2160];
 
 /**
- * The tallest top-of-page control stack any phone surface renders, measured on `/find` at both 900 and
+ * The tallest top-of-page control stack any phone surface renders, measured on the search view at 900 and
  * 700 — `PageHeader` plus the search box, ending at 159px. This is what the headroom exists to clear, so
  * it is stated as its own number rather than folded into `OPEN_HEADROOM_PX`: the guard's claim is "the
  * sheet clears the measured stack", and the token is only one way of achieving it.

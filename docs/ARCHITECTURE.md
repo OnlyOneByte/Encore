@@ -11,10 +11,10 @@
 
 Encore is a self-hosted karaoke server with two surfaces:
 
-- **Phone remote:** QR join (name + color, no signup), then three surfaces under one persistent
-  now-playing band: the queue at `/`, unified YouTube/library search grouped by readiness at `/find`,
-  and one song's detail at `/song/[mediaId]`. One-tap queue, singer-owned reordering, and the live
-  controls — transport, ±key, guiding track, lyrics re-pick — in the drawer the band pulls up into.
+- **Phone remote:** QR join (name + color, no signup), then two surfaces under one persistent
+  now-playing band: home at `/` — a search field, the queue, what is being made, and the saved library in
+  one column — and one song's detail at `/song/[mediaId]`. One-tap queue, singer-owned reordering, and the
+  live controls — transport, ±key, guiding track, lyrics re-pick — in the drawer the band pulls up into.
 - **TV/stage:** attract → lobby → waiting → playing, gapless two-player playback, lower-third,
   lyrics, persistent join card.
 
@@ -138,9 +138,9 @@ Three properties of the owner are deliberate:
   enforces, rather than a second opinion about what a phone surface is.
 
 Two seams follow from single ownership, and both are the reason for it rather than a side effect. The
-**saved library** is owned here because its one fetch serves two readers: it gives `/find` its rows AND
-seeds the media catalog and live statuses the QUEUE reads for its titles and progress bars on a cold
-load. Sharing one function body inside a route meant the queue's titles depended on the search surface
+**saved library** is owned here because its one fetch serves two readers: it gives the library section its
+rows AND seeds the media catalog and live statuses the QUEUE reads for its titles and progress bars on a
+cold load. Sharing one function body inside a route meant the queue's titles depended on the search surface
 having run — invisible while they were one file, a silent breakage the moment they were not. And the
 held **failed-process scars** must be maintained rather than snapshotted at connect: the link does not
 remount, so a failure arriving after connect has to join the held list, or the next `queue:sync`
@@ -176,8 +176,7 @@ The routes then divide by the question each answers:
 
 | Surface           | Answers                              | Notes                                                                                        |
 | ----------------- | ------------------------------------ | -------------------------------------------------------------------------------------------- |
-| `/`               | who is up, and where am I            | the queue and nothing else; a guest who has not joined gets the landing state instead        |
-| `/find`           | what can I sing                      | search, whose **zero-query state is the saved library**                                      |
+| `/`               | who is up, and what can I sing       | one column: the search field, the queue, what is being made, and the **saved library** as the zero-query state. A guest who has not joined gets the landing state instead |
 | `/song/[mediaId]` | can I sing THIS, are the words right | reached from the drawer's "···"; shares `GET /api/audit/[mediaId]` with `/metrics/[mediaId]` |
 
 Two of those are reversals worth recording rather than quietly dropping.
@@ -188,15 +187,21 @@ once the band existed — said "Nothing playing" twice on one screen. Its conten
 which is a change of PLACE and not of content: the same song identity, seek row, transport and live
 controls, none of it occupying the queue any more.
 
-**Search is a place you go, not a mode.** It used to be a box docked in the thumb zone whose results
-expanded UPWARD in place over the queue, explicitly with no browse mode and no `?browse=1`, because
-there was nothing to navigate back out of. That reasoning was about a box that lived on home; the band
-took the bottom edge, so keeping the box there would have put two surfaces on one edge. Once search is
-somewhere you GO — a tap on the band's magnifier — a route is what makes the phone's own back gesture
-the way back. Note what did not come back with it: there is still no browse TOGGLE, because the surface
-IS the browse view, and results read DOWNWARD from a header, so the best match is first and the
-scroll-to-the-end orchestration is gone rather than re-pointed. `/find` focuses its box on arrival,
-since getting there is already a deliberate tap.
+**Search is a section of home, not a place you go.** Three placements, and each was right about something.
+It was a box docked in the thumb zone whose results expanded UPWARD in place over the queue, with no browse
+mode and no `?browse=1`, because there was nothing to navigate back out of. The band then took the bottom
+edge, so the box moved to a route of its own (`/find`) — once search is somewhere you GO, a route is what
+makes the phone's own back gesture the way back. And a route turned out to be the cost: the songs already on
+disk, the whole point of persisting the catalog, were invisible from the screen a guest actually sits on.
+
+So the field moved to the TOP of home and the library under the queue (2026-09-22), which keeps both
+readings: nothing competes with the band for the bottom edge, and there is no navigation to back out of
+because a query simply replaces the queue with the results. The band's magnifier FOCUSES the field now
+rather than navigating (`$lib/stores/search-focus`, since app chrome cannot reach into a route's locals).
+
+Note what did not come back through any of it: there is still no browse TOGGLE, because the library IS the
+default content, and results read DOWNWARD, so the best match is first and the scroll-to-the-end
+orchestration is gone rather than re-pointed.
 
 `/song/[mediaId]` is a route rather than a second sheet stacked on the drawer, on a forward-looking
 argument: lyrics timing and editing are becoming a comprehensive system, and a sheet that grows into a

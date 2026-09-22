@@ -11,12 +11,14 @@
 // every mechanism below could be restored with the whole suite green. These are the assertions that
 // RED when one comes back, one test per mechanism so a failure names which one.
 //
-// WHERE THE SUBJECT LIVES NOW (the phone-remote rebuild). The browse screen is no longer a MODE of the
-// queue route — it is its own route, and the state it read was hoisted out of the page:
+// WHERE THE SUBJECT LIVES NOW. The browse screen was a MODE of the queue route; the phone-remote rebuild
+// made it a route of its own (`src/routes/find/+page.svelte`) and hoisted the state it read out of the page;
+// the merge (2026-09-22) brought the surface back to the queue route, as a section of it rather than a mode.
+// Net of both moves:
 //
-//   * the surface itself:      `src/routes/+page.svelte`  ->  `src/routes/find/+page.svelte`
+//   * the surface itself:      `src/routes/+page.svelte`  ->  (via /find) -> `src/routes/+page.svelte`
 //   * the saved library:       page-local `loadLibrary`   ->  `src/lib/stores/room.ts` (`refreshLibrary`)
-//   * the bottom-edge band:    page-local `.search-dock`  ->  `src/routes/+layout.svelte` (`.dock`)
+//   * the bottom-edge band:    page-local `.search-dock`  ->  `src/routes/+layout.svelte` -> the drawer
 //
 // So this guard reads FOUR sources rather than one. Each is stripped and floored separately (see the
 // non-vacuity arm), because a re-point that silently reads the wrong file asserts nothing.
@@ -153,9 +155,6 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
 }
 
-// The browse surface itself — every arm that used to read `routes/+page.svelte` reads THIS now.
-const FIND_RAW = read('src/routes/find/+page.svelte');
-const FIND = stripComments(FIND_RAW);
 // The band, its dock, and the single --dock-h publisher.
 const LAYOUT_RAW = read('src/routes/+layout.svelte');
 const LAYOUT = stripComments(LAYOUT_RAW);
@@ -164,8 +163,19 @@ const BAND = stripComments(BAND_RAW);
 // The saved library, hoisted out of the page.
 const ROOM_RAW = read('src/lib/stores/room.ts');
 const ROOM = stripComments(ROOM_RAW);
-// The queue route. Still read, for the arms that are about `/` rather than about the browse surface —
-// and as the second half of every "did not creep back" ban, since `/` is where these mechanisms lived.
+/*
+ * THE BROWSE SURFACE AND THE QUEUE ARE ONE FILE AGAIN (2026-09-22), which is why there is one page
+ * constant here and not two.
+ *
+ * This guard was written against `routes/+page.svelte`, re-pointed at `routes/find/+page.svelte` when
+ * search became its own route, and read BOTH from then on — the new address for the presence arms, the old
+ * one as the second half of every "did not creep back" ban. The find route is now merged into home: the
+ * search field, the library and the result groups are sections of `/`, under the queue's own heading. So
+ * `HOME` is gone and every arm reads `HOME`, which is both the surface that owns the mechanisms and the
+ * address they would creep back at. The bans lose nothing by collapsing — there is no second route left
+ * for a rail to return on — and the drawer stays a separate subject below, because it is app chrome and so
+ * IS a second address.
+ */
 const HOME_RAW = read('src/routes/+page.svelte');
 const HOME = stripComments(HOME_RAW);
 // R7: the now-playing drawer, which took the song identity, transport and live controls off `/`. Read
@@ -185,7 +195,6 @@ test('mechanism 1 — the readiness chip row is gone, and so is the state behind
 	// surface and the old one: the chips could come back either at their old address or at the new one.
 	// R7 adds the drawer, which is on every phone surface now and so is a third address for them.
 	for (const [name, src] of [
-		['find', FIND],
 		['home', HOME],
 		['drawer', DRAWER]
 	] as const) {
@@ -202,7 +211,7 @@ test('mechanism 1 — the readiness chip row is gone, and so is the state behind
 		// this mechanism and must survive — the empty state below still names how many songs the library has.
 		expect(src, name).not.toMatch(/const libraryCount = \$derived/);
 	}
-	expect(FIND).toMatch(/libraryCount: library\.length/);
+	expect(HOME).toMatch(/libraryCount: library\.length/);
 });
 
 test('mechanism 1 — every group renders unconditionally, so nothing is hidden behind a chip', () => {
@@ -210,15 +219,24 @@ test('mechanism 1 — every group renders unconditionally, so nothing is hidden 
 	// docked-box version) not on `searchActive` either: whatever is being made right now shows in both the
 	// library view and the results view. That is a strictly wider claim than the arm it replaces, and it is
 	// what fails if a "quick" reinstatement re-adds a gate without the chips.
-	expect(FIND).toContain('{#if processingRows.length}');
+	//
+	// `processingGroup`, NOT `processingRows`, since the merge (2026-09-22) — and the difference is not a
+	// gate. The queue is on this surface again, and a song that is queued AND processing already has a row
+	// with a live bar on it, so the group subtracts what the queue is drawing rather than printing a second
+	// bar for one job. Both halves are pinned: the render is gated on the group having rows, and the group
+	// is `processingRows` minus the queued ids — never minus a filter.
+	expect(HOME).toContain('{#if processingGroup.length}');
+	expect(HOME).toMatch(
+		/const processingGroup = \$derived\(\s*searchActive \? processingRows : processingRows\.filter\(\(c\) => !queuedMediaIds\.has\(c\.id\)\)\s*\);/
+	);
 	// No group is gated on a show-flag of any kind, on either surface. This is the general form of the ban
 	// the three named flags above cover, so a FOURTH flag under a new name reds here.
-	expect(FIND).not.toMatch(/\{#if\s+show[A-Z]/);
+	expect(HOME).not.toMatch(/\{#if\s+show[A-Z]/);
 	expect(HOME).not.toMatch(/\{#if\s+show[A-Z]/);
 	// `accountedFor` subtracts BOTH groups from the shortcut lists unconditionally: with a filter, a
 	// hidden group stopped accounting for its songs and they reappeared under Popular/Recently queued.
-	expect(FIND).toMatch(/for \(const m of searchActive \? readyResults : library\) ids\.add\(m\.id\);/);
-	expect(FIND).toMatch(/for \(const c of processingRows\) ids\.add\(c\.id\);/);
+	expect(HOME).toMatch(/for \(const m of searchActive \? readyResults : library\) ids\.add\(m\.id\);/);
+	expect(HOME).toMatch(/for \(const c of processingRows\) ids\.add\(c\.id\);/);
 });
 
 // ── mechanisms 2 and 3: the artist rail and the genre/tag rail ───────────────────────────────────
@@ -227,7 +245,6 @@ test('mechanisms 2+3 — the browse disclosure and both facet rails are gone fro
 	// /find, so a scan of only one of the two would miss a reinstatement at the other. R7 adds the drawer:
 	// it inherited the hero's disclosure body, which is where a facet rail would sit most plausibly now.
 	for (const [name, src] of [
-		['find', FIND],
 		['home', HOME],
 		['drawer', DRAWER]
 	] as const) {
@@ -242,9 +259,9 @@ test('mechanisms 2+3 — the browse disclosure and both facet rails are gone fro
 	}
 	// The route is NOT a browse MODE come back under a URL: no `?browse=1`, and no toggle into it. The
 	// surface IS the browse view, reached by navigation, so there is nothing to toggle.
-	expect(FIND).not.toContain('?browse=1');
-	expect(FIND).not.toMatch(/\bopenBrowse\b/);
-	expect(FIND).not.toMatch(/\bbrowseToggle\b/);
+	expect(HOME).not.toContain('?browse=1');
+	expect(HOME).not.toMatch(/\bopenBrowse\b/);
+	expect(HOME).not.toMatch(/\bbrowseToggle\b/);
 });
 
 test('mechanisms 2+3 — the phone asks the library endpoint for the whole library, unfiltered', () => {
@@ -255,12 +272,11 @@ test('mechanisms 2+3 — the phone asks the library endpoint for the whole libra
 	// is asserted rather than assumed — the surface reads `room.library` and asks for a refresh, so it
 	// cannot reintroduce a narrowed request of its own.
 	expect(ROOM).toMatch(/fetch\('\/api\/library'\)/);
-	expect(FIND).not.toContain('/api/library');
-	expect(FIND).toContain('library = room.library;');
-	expect(FIND).toContain('room.refreshLibrary()');
+	expect(HOME).not.toContain('/api/library');
+	expect(HOME).toContain('library = room.library;');
+	expect(HOME).toContain('room.refreshLibrary()');
 	for (const [name, src] of [
 		['room', ROOM],
-		['find', FIND],
 		['home', HOME]
 	] as const) {
 		expect(src, name).not.toMatch(/\?artist=/);
@@ -295,33 +311,32 @@ test('the retired tag-filter wiring guard is deleted, and its server sibling is 
 
 // ── mechanism 4 (REVERSED — see R6): the headings name WHICH LIST, in one neutral treatment ──────
 test('mechanism 4 — the group headings name which list, and the retired colour-coded form stays gone', () => {
-	// FOUR groups can be on this surface, and up to three of them at once, with no chip row anywhere to
-	// tell them apart — so each carries a name. Pinned by exact markup, because the claim is that all
-	// four share ONE neutral treatment; a heading whose class drifted is the reversion this arm catches.
-	expect(FIND).toContain('<h2 class="grouphead">Your library</h2>');
-	expect(FIND).toContain('<h2 class="grouphead">Making karaoke…</h2>');
-	expect(FIND).toContain('<h2 class="grouphead">Ready to sing</h2>');
-	expect(FIND).toContain('<h2 class="grouphead">Needs karaoke</h2>');
-	// Exactly four, all bare: the count is what makes "one treatment" falsifiable rather than decorative,
-	// since a fifth heading or a variant class would have to pass through here.
-	expect((FIND.match(/class="grouphead"/g) ?? []).length).toBe(4);
+	// FIVE groups can be on this surface — four, until the merge added the QUEUE to the same column
+	// (2026-09-22) — and up to three of them at once, with no chip row anywhere to tell them apart, so each
+	// carries a name. Pinned by exact markup, because the claim is that all five share ONE neutral
+	// treatment; a heading whose class drifted is the reversion this arm catches.
+	expect(HOME).toContain('<h2 class="grouphead">Queued</h2>');
+	expect(HOME).toContain('<h2 class="grouphead">Your library</h2>');
+	expect(HOME).toContain('<h2 class="grouphead">Making karaoke…</h2>');
+	expect(HOME).toContain('<h2 class="grouphead">Ready to sing</h2>');
+	expect(HOME).toContain('<h2 class="grouphead">Needs karaoke</h2>');
+	// Exactly five, all bare: the count is what makes "one treatment" falsifiable rather than decorative,
+	// since a sixth heading or a variant class would have to pass through here.
+	expect((HOME.match(/class="grouphead"/g) ?? []).length).toBe(5);
 	// What mechanism 4 really retired: the per-readiness, state-gated FORM. A heading that carries the
 	// readiness of its members in colour says the axis twice — SongRow already paints a chip per row —
 	// and `showGroupHeads` was the flag that decided when to.
-	expect(FIND).not.toMatch(/\bshowGroupHeads\b/);
-	expect(FIND).not.toMatch(/class="grouphead ok"/);
-	expect(FIND).not.toMatch(/class="grouphead warn"/);
-	expect(FIND).not.toContain('Processing · queue it anyway');
+	expect(HOME).not.toMatch(/\bshowGroupHeads\b/);
+	expect(HOME).not.toMatch(/class="grouphead ok"/);
+	expect(HOME).not.toMatch(/class="grouphead warn"/);
+	expect(HOME).not.toContain('Processing · queue it anyway');
 	// …and the `.grouphead-mark` rule those variants were the only users of goes with them — a dead CSS
 	// selector left behind is exactly the residue this deletion guard exists to red on.
-	expect(FIND).not.toContain('grouphead-mark');
+	expect(HOME).not.toContain('grouphead-mark');
 	// The zero-query shortcut lists (Popular tonight / Recently queued) were dropped with the browse
 	// mode and did NOT come back with the route: an empty box shows the LIBRARY now, which is the whole
 	// design idea — the songs you can sing are the default content rather than a hidden third state.
-	for (const [name, src] of [
-		['find', FIND],
-		['home', HOME]
-	] as const) {
+	for (const [name, src] of [['home', HOME]] as const) {
 		expect(src, name).not.toContain('Popular tonight');
 		expect(src, name).not.toContain('Recently queued');
 	}
@@ -394,13 +409,12 @@ test('the band owns the bottom edge and publishes the measured --dock-h; the fin
 	// publisher forks the geometry the measurement exists to keep single.
 	for (const [name, src] of [
 		['layout', LAYOUT],
-		['find', FIND],
 		['home', HOME]
 	] as const) {
 		expect(src, name).not.toContain('--search-dock-h');
 		expect(src, name).not.toContain('search-dock');
 	}
-	expect(FIND).not.toContain('bind:clientHeight');
+	expect(HOME).not.toContain('bind:clientHeight');
 	expect(HOME).not.toContain('bind:clientHeight');
 	// R8: and neither does the LAYOUT any more — the measurement moved INTO the drawer, so a clientHeight
 	// binding here would be a second band row measuring itself against the one that is snap 0.
@@ -439,7 +453,7 @@ test('the band owns the bottom edge and publishes the measured --dock-h; the fin
 	// inset THROUGH --dock-h, so a second term doubles the gap on a notched phone.
 	expect(BAND).toContain('padding-bottom: env(safe-area-inset-bottom, 0px);');
 	expect(LAYOUT).not.toContain('safe-area-inset-bottom');
-	expect(FIND).not.toContain('safe-area-inset-bottom');
+	expect(HOME).not.toContain('safe-area-inset-bottom');
 	/*
 	 * The drawer CONTENT carries an inset of its own, and it is not a second term in the measured stack: it
 	 * is an ANCESTOR of `.band-slot`, so its padding sits outside the clientHeight --dock-h is bound to,
@@ -461,18 +475,23 @@ test('the band owns the bottom edge and publishes the measured --dock-h; the fin
 	// the calc() invalid and slides the box under the title with nothing failing out loud. Pinning the
 	// ABSENCE of both is the stronger claim: it stops the box re-entering a competition for the viewport
 	// that the band now wins outright.
-	expect(FIND).not.toMatch(/\.findbox \{[^}]*position:\s*(?:sticky|fixed)/s);
-	expect(FIND).not.toContain('position: fixed');
-	expect(FIND).not.toMatch(/bottom: 0;/);
-	// It is the first thing inside the column, above every group.
-	expect(FIND).toMatch(/<main>\s*<div class="findbox">/);
+	expect(HOME).not.toMatch(/\.findbox \{[^}]*position:\s*(?:sticky|fixed)/s);
+	expect(HOME).not.toContain('position: fixed');
+	expect(HOME).not.toMatch(/bottom: 0;/);
+	// It is the first thing inside the column, above every group — asserted by POSITION rather than by
+	// adjacency since the merge (2026-09-22): `main` carries the measured `--row-h` and opens with the
+	// `{#if me}` gate that keeps the whole remote off the join screen, so nothing can be syntactically
+	// adjacent to it. What the claim needs is the ordering, and that is what this reads.
+	const column = HOME.slice(HOME.indexOf('<main'), HOME.indexOf('</main>'));
+	expect(column.indexOf('class="findbox"')).toBeGreaterThan(-1);
+	expect(column.indexOf('class="findbox"')).toBeLessThan(column.indexOf('class="grouphead"'));
 	// …and `main`'s padding still consumes the MEASURED --dock-h, so the last row cannot bleed under the
 	// band. Same claim as before the move, read off the same token; the `+ 28px` term stays a literal
 	// because 28 is not a scale step, so nothing owns it and there is nothing to name it.
-	expect(FIND).toMatch(/padding:\s*var\(--space-xs\) var\(--space-3xl\) calc\(var\(--dock-h[^)]*\) \+ 28px\)/);
+	expect(HOME).toMatch(/padding:\s*var\(--space-xs\) var\(--space-3xl\) calc\(var\(--dock-h[^)]*\) \+ 28px\)/);
 	// The label is a driven-flow anchor (SEL.search); renaming it hangs six probes on a timeout rather
 	// than failing an assertion, so the move must not have taken it with it.
-	expect(FIND).toContain('aria-label="Search a song or artist"');
+	expect(HOME).toContain('aria-label="Search a song or artist"');
 });
 
 test('the results read DOWNWARD: every result list is emitted with its best match first', () => {
@@ -480,70 +499,78 @@ test('the results read DOWNWARD: every result list is emitted with its best matc
 	// order equal to visual order now that the column reads from a header downward. A
 	// `column-reverse` container would paint the column against its DOM order and invert the focus
 	// sequence with it, so the ban is part of the claim and is kept from the arm this replaces.
-	expect(FIND).toMatch(/\{@const readyStack = readyResults\}/);
-	expect(FIND).toMatch(/\{@const rawRows = unaccounted\(rawResults\)\}/);
-	expect(FIND).not.toContain('.reverse()');
-	expect(FIND).not.toContain('column-reverse');
+	expect(HOME).toMatch(/\{@const readyStack = readyResults\}/);
+	expect(HOME).toMatch(/\{@const rawRows = unaccounted\(rawResults\)\}/);
+	expect(HOME).not.toContain('.reverse()');
+	expect(HOME).not.toContain('column-reverse');
 	// The named upward stacks are gone with the layout that needed them, and so are the zero-query
 	// shortcut stacks that were dropped with the browse mode.
-	expect(FIND).not.toContain('processingStack');
-	expect(FIND).not.toContain('popularRows');
-	expect(FIND).not.toContain('recentRows');
+	expect(HOME).not.toContain('processingStack');
+	expect(HOME).not.toContain('popularRows');
+	expect(HOME).not.toContain('recentRows');
 
 	// Section order is the same claim at the block level: the most relevant section is the FIRST one, so
 	// it is the one on screen when the results land. Ready first, then what still needs karaoke — with
 	// whatever is being made right now above both, since that is the thing most likely to be asked about.
-	const main = FIND.slice(FIND.indexOf('<main>'), FIND.indexOf('</main>'));
+	// `<main` without the closing bracket: the element carries the measured `--row-h` as an attribute.
+	const main = HOME.slice(HOME.indexOf('<main'), HOME.indexOf('</main>'));
 	expect(main.indexOf('Making karaoke')).toBeLessThan(main.indexOf('{@const readyStack'));
 	expect(main.indexOf('{@const readyStack')).toBeLessThan(main.indexOf('{@const rawRows'));
 	expect(main.indexOf('>Ready to sing</h2>')).toBeLessThan(main.indexOf('>Needs karaoke</h2>'));
 });
 
-test('the top-anchored column takes its back control from the page header', () => {
-	// R3. Top-anchored, and the back affordance is the shared header's rather than a row this route draws
-	// for itself: one way back on every non-/tv page, and a real `<a href>` so the browser's own back
-	// works, the route stays shareable, and a home-screen PWA with no back gesture still has an exit.
+test('the top-anchored column has NO back control, because there is nowhere behind it', () => {
 	/*
-	 * NO `icon="search"` ANY MORE, and the assertion follows the screen rather than pinning a decoration.
-	 * The header's magnifier duplicated the one inside the search field 90px below it — two identical marks
-	 * on a screen whose whole subject is that one field — so the decorative copy went. What this arm is
-	 * about is the BACK CONTROL coming from the shared header, which is unchanged, so the icon is dropped
-	 * from the match rather than the match being deleted.
+	 * R3, REVERSED AND RECORDED (2026-09-22). It read: "the back affordance is the shared header's rather
+	 * than a row this route draws for itself" — `<PageHeader title="Find a song" back={{ href: '/' }} />`,
+	 * one way back on every non-/tv page, a real `<a href>` so the browser's own back works and a PWA with
+	 * no back gesture still has an exit. That was right for a surface you NAVIGATED to.
+	 *
+	 * There is no such navigation now: the field and the library are sections of `/`, so this surface has no
+	 * behind. A "Back to the queue" link would point at the page it is on, and a PageHeader would put a
+	 * second title above home's own wordmark. The exits are the two that always existed — clearing the box
+	 * to get the queue back, and the hardware Back, which at home means leave the room.
+	 *
+	 * So the assertion INVERTS rather than being deleted: no PageHeader on this route, and specifically not
+	 * the one this arm used to require, which is what would red if the surface were pushed onto a route
+	 * again without the rest of the design following it.
 	 */
-	expect(FIND).toContain(`<PageHeader title="Find a song" back={{ href: '/', label: 'Back to the queue' }} />`);
-	expect(FIND.indexOf('<PageHeader')).toBeLessThan(FIND.indexOf('<main>'));
+	expect(HOME).not.toContain('<PageHeader');
+	expect(HOME).not.toContain('Back to the queue');
+	// The topbar is what stands in its place, and it is home's own: a wordmark, not a title with a way out.
+	expect(HOME).toContain('<header class="topbar">');
 	// The bottom-anchoring mechanism is banned OUTRIGHT rather than re-pointed, so the anchoring cannot
 	// revert by halves: `.backrow` was both the selector `main:has(…)` matched on and the element whose
 	// auto bottom margin pushed every later sibling down.
-	expect(FIND).not.toContain('backrow');
-	expect(FIND).not.toContain('margin-bottom: auto');
-	expect(FIND).not.toContain('align-content: end');
+	expect(HOME).not.toContain('backrow');
+	expect(HOME).not.toContain('margin-bottom: auto');
+	expect(HOME).not.toContain('align-content: end');
 	// The wide layout anchors the same way — an `align-content: end` grid would bottom-anchor the columns
 	// while the phone column read from the top.
-	expect(FIND).toMatch(/align-content: start;/);
+	expect(HOME).toMatch(/align-content: start;/);
 });
 
 test('nothing scrolls this surface: the ranking is already at the top, and the box stays reachable', () => {
 	// R4. With the best match first there is nothing to scroll TO, so the whole scroll orchestration is
 	// banned rather than re-pointed — a viewport that moves under a reader who is reading is worse than
 	// the problem it was solving.
-	expect(FIND).not.toContain('window.scrollTo');
-	expect(FIND).not.toContain('scrollIntoView');
-	expect(FIND).not.toContain('scrollHeight');
-	expect(FIND).not.toMatch(/\bresultShape\b/);
+	expect(HOME).not.toContain('window.scrollTo');
+	expect(HOME).not.toContain('scrollIntoView');
+	expect(HOME).not.toContain('scrollHeight');
+	expect(HOME).not.toMatch(/\bresultShape\b/);
 	// Instant, never smoothed — KEPT from the arm this replaces, and now a floor rather than a rider: a
 	// scroll animation is motion no reduced-motion guest asked for, and `behavior: 'smooth'` is the one
 	// way to introduce it that motion.test.ts's matcher cannot see.
-	expect(FIND).not.toMatch(/behavior:\s*'smooth'/);
+	expect(HOME).not.toMatch(/behavior:\s*'smooth'/);
 	// What replaces it: the box is the FIRST thing in <main>, so the top of the document already IS the
 	// top of the ranking and there is nothing to scroll to. Pinned as an ORDERING in the markup rather
 	// than as a CSS property, because an ordering is the actual claim.
-	const mainBody = FIND.slice(FIND.indexOf('<main>'), FIND.indexOf('</main>'));
+	const mainBody = HOME.slice(HOME.indexOf('<main'), HOME.indexOf('</main>'));
 	expect(mainBody).toContain('class="findbox"');
 	expect(mainBody.indexOf('class="findbox"')).toBeLessThan(mainBody.indexOf('class="grouphead"'));
 	// No z-index either: a box in normal flow has nothing to sit above. The only stacked thing on a
 	// phone surface is the band, and it is in the layout.
-	expect(FIND).not.toMatch(/\.findbox \{[^}]*z-index/s);
+	expect(HOME).not.toMatch(/\.findbox \{[^}]*z-index/s);
 });
 
 test('the empty state that named the library count survives the chip that used to reach it', () => {
@@ -556,7 +583,7 @@ test('the empty state that named the library count survives the chip that used t
 	// because the whole block now lives inside the searchActive branch — so the arm reads the block by
 	// slicing from a `{@const}` that exists ONLY in that branch, which asserts the nesting rather than
 	// dropping the term.
-	const results = FIND.slice(FIND.indexOf('{@const readyStack'), FIND.indexOf('</main>'));
+	const results = HOME.slice(HOME.indexOf('{@const readyStack'), HOME.indexOf('</main>'));
 	expect(results).toMatch(/\{#if !readyStack\.length && library\.length\}/);
 	expect(results).toMatch(/readyEmptyState\(\{ searchActive, libraryCount: library\.length, query \}\)/);
 	expect(results).toContain('Show all {empty.showAllCount}');
@@ -607,8 +634,8 @@ test('the docked band survives the on-screen keyboard, by the one mechanism that
 	// the calc() invalid and slides the box under the title with nothing failing out loud. Pinning the
 	// ABSENCE of both is the stronger claim: it stops the box re-entering a competition for the viewport
 	// that the band now wins outright.
-	expect(FIND).not.toMatch(/\.findbox \{[^}]*position:\s*(?:sticky|fixed)/s);
-	expect(FIND).not.toContain('position: fixed');
+	expect(HOME).not.toMatch(/\.findbox \{[^}]*position:\s*(?:sticky|fixed)/s);
+	expect(HOME).not.toContain('position: fixed');
 });
 
 // ── non-vacuity ─────────────────────────────────────────────────────────────────────────────────
@@ -634,12 +661,18 @@ test('this guard really read every route it claims to, and really stripped their
 	// which is where the `position: fixed; bottom: 0` that used to be `.dock` in the layout now lives. It
 	// is a small file, so its floors are proportionally smaller — the point of a floor is that it is
 	// sensitive to THIS file being mis-read, not that every file scores the same number.
+	//
+	// THE MERGE COLLAPSES TWO ENTRIES INTO ONE and RAISES the survivor. `find` and `home` were separate
+	// files with separate floors; they are one file, and it is bigger than either was (the search block, the
+	// library groups and the result groups all landed in the page that already held the queue). So the pair
+	// moves UP (34000/11000 -> 60000/17000) rather than the two being averaged: a floor's job is to be
+	// sensitive to THIS file being mis-read, and a floor set for the smaller of two merged files would sit
+	// far enough below the real size to pass against a truncated read.
 	for (const [name, raw, stripped, rawFloor, codeFloor] of [
-		['find', FIND_RAW, FIND, 12000, 7000],
 		['layout', LAYOUT_RAW, LAYOUT, 5000, 1800],
 		['band', BAND_RAW, BAND, 9000, 2800],
 		['room', ROOM_RAW, ROOM, 12000, 5000],
-		['home', HOME_RAW, HOME, 34000, 11000],
+		['home', HOME_RAW, HOME, 60000, 17000],
 		['drawer', DRAWER_RAW, DRAWER, 12000, 6000],
 		['content', DRAWER_CONTENT_RAW, DRAWER_CONTENT, 2500, 1200]
 	] as const) {
@@ -653,14 +686,16 @@ test('this guard really read every route it claims to, and really stripped their
 	// comments name the very mechanisms the arms above ban — a no-op stripper would red every one of them.
 	// One proof per reversal that has prose to prove it against:
 	//   home   names the deleted chip state       (mechanism 1)
-	//   find   names the retired upward stacking  (R2)
+	//          …and the retired upward stacking   (R2) — both proofs read the one page now
 	//   layout names the retired `.search-dock`   (R1)
 	//   drawer names the retired nested disclosure the range sat behind (R7)
 	//   content names the decorative-handle defect the copy-in shipped (R8)
 	expect(HOME_RAW).toContain('`showReady`/`showProcessing`/`showRaw`');
 	expect(HOME).not.toContain('`showReady`/`showProcessing`/`showRaw`');
-	expect(FIND_RAW).toContain('results expand upward IN PLACE');
-	expect(FIND).not.toContain('results expand upward IN PLACE');
+	// Short enough to survive a comment re-wrap: a proof phrase long enough to span a line break is a
+	// proof that reds on `bun run format` rather than on a broken stripper.
+	expect(HOME_RAW).toContain('stacked them upward');
+	expect(HOME).not.toContain('stacked them upward');
 	expect(LAYOUT_RAW).toContain('`.search-dock` in the route');
 	expect(LAYOUT).not.toContain('`.search-dock` in the route');
 	expect(DRAWER_RAW).toContain('behind a nested "Vocal range" Collapsible');

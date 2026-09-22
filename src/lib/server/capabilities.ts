@@ -21,7 +21,10 @@
 //   - settings:write-room   — room-scoped settings stay open (safe for anyone by construction).
 //   - queue:remove-any      — removing someone else's entry stays open.
 // Q5 (queue-depth cap) ruled A: no per-singer depth cap; validateCommand's add arm stays uncapped. The
-// unrelated process cap MAX_CONCURRENT_PROCESSES_PER_SINGER = 3 is kept.
+// unrelated PROCESS cap is kept and is a setting as of 2026-09-22 — `GlobalSettings.maxProcessesPerSinger`,
+// default 3, `0` for none — writable by any joined singer through the same open `settings:write-global`
+// this file rules on. That is consistent rather than a hole: it bounds how much WORK one guest can start
+// on a shared fleet, not who may do anything, so it is party policy like every other global field.
 //
 // The one thing it does enforce now: you must be a person in the room. That is not a host gate, it is
 // the difference between a guest and a stranger's script.

@@ -250,7 +250,12 @@ export const globalSettings = sqliteTable('global_settings', {
 	// then to the request. Global because it names the deployment's own address; stored rather than
 	// env-only because the TV's own URL is often unusable from a phone (a WSL2 host can reach itself
 	// only as `localhost`) and whoever knows the real address may not be able to restart the process.
-	joinOrigin: text('join_origin').notNull().default('')
+	joinOrigin: text('join_origin').notNull().default(''),
+	// How many processes ONE singer may have in flight. 0 = uncapped. Global because the right number is a
+	// function of this deployment's worker fleet, not of one party. It was a hardcoded 3 in
+	// server/jobs/process.ts until 2026-09-22; the default here is that same 3, so an existing box behaves
+	// identically until someone moves the slider on the Server tab.
+	maxProcessesPerSinger: integer('max_processes_per_singer').notNull().default(3)
 });
 
 // One party's own policy, keyed by room so multi-room is a row per room rather than a migration.

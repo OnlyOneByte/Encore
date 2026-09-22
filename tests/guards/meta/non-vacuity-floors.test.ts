@@ -215,10 +215,10 @@ const FLOORS: Record<string, Floor[]> = {
 	'tests/guards/design-system/ui-card-surface.test.ts': [
 		{
 			subject: 'callers.length',
-			min: 7,
+			min: 6,
 			count: 1,
 			guards:
-				'the elements that take the shared `.card` surface rather than a <Card.Root>. The rule "app.css must define.card with a background" is unfalsifiable if nothing uses the class, and S4 deleted the rule after an audit whose grep (`class="card[ "]`) only matched class lists STARTING with card — nine spell it mid-list. This counts the population both directions of that check depend on. 8 -> 7 on 2026-09-21: routes/+page.svelte left the population when the reorder bar was deleted with the mode it dressed, and its other card surface (the search dock) had already moved to /find.'
+				'the elements that take the shared `.card` surface rather than a <Card.Root>. The rule "app.css must define.card with a background" is unfalsifiable if nothing uses the class, and S4 deleted the rule after an audit whose grep (`class="card[ "]`) only matched class lists STARTING with card — nine spell it mid-list. This counts the population both directions of that check depend on. 8 -> 7 on 2026-09-21: routes/+page.svelte left the population when the reorder bar was deleted with the mode it dressed, and its other card surface (the search dock) had already moved to /find. 7 -> 6 on 2026-09-22: MyPositionCard was DELETED — it restated the queue row beneath it and its one unique line, the wait, moved onto that row. Both steps remove a caller that no longer exists, which is the only reason this number may fall.'
 		},
 		{
 			subject: 'rules.length',
@@ -523,10 +523,10 @@ const FLOORS: Record<string, Floor[]> = {
 	'tests/guards/layout/phone-inventory.test.ts': [
 		{
 			subject: 'PHONE_ROUTES.length',
-			min: 5,
+			min: 4,
 			count: 1,
 			guards:
-				'the filesystem-derived phone route set behind the state inventory; an over-broad exemption match or a moved routes/ dir would enumerate nothing and pass. Re-anchored 3 -> 4 by the phone-remote rebuild, which split search out of / onto its own /find route, so the set is /, /find, /settings, /stats'
+				'the filesystem-derived phone route set behind the state inventory; an over-broad exemption match or a moved routes/ dir would enumerate nothing and pass. Re-anchored 3 -> 4 by the phone-remote rebuild (search split out of / onto /find), 4 -> 5 when /song/[mediaId] arrived, and 5 -> 4 on 2026-09-22 when /find was merged back into / — the field, the library and the result groups are sections of home again, so the set is /, /settings, /song/[mediaId], /stats. The route it counted no longer exists and the surface it covered is inside a route still on the list, which is the one direction this may move down in.'
 		},
 		{
 			subject: 'filesScanned',

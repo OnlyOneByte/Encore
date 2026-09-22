@@ -33,7 +33,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SEL } from '../contract.ts';
 // The one shared post-join sequence for reaching the search box (tests/e2e/lib/phone.mjs). Imported
-// because the remote pass now measures the `/find` surface too, and a second private way to reach that
+// because the remote pass measures the search targets too, and a second private way to reach them
 // field is exactly the drift the helper was extracted to prevent.
 import { openBrowseFromHome } from '../lib/phone.mjs';
 
@@ -441,13 +441,13 @@ async function measureRemote(label, w, h) {
 		// '.row .byline' and dropped the dead '.filter-chip' and '.b' targets (no component declares
 		// either class).
 		//
-		// WHAT LEFT THIS ARRAY, AND WHY IT MOVED RATHER THAN BEING DROPPED. The phone-remote rebuild
-		// made '/' queue-only: search became the '/find' route, and SongRow renders THERE. So the search
-		// field (was '.searchbox input' / '.searchbox button'), the row title/byline, both row actions
-		// and the row chip cannot resolve on '/' any more — every one of them would have been a read
-		// that silently skips, which is exactly the dead-target class G1 exists to red on. They are in
-		// the find-surface array below, measured on the surface that renders them, so the coverage is
-		// unchanged rather than quietly lost.
+		// WHAT LEFT THIS ARRAY, AND WHY IT MOVED RATHER THAN BEING DROPPED. These targets only resolve with
+		// a QUERY up: the search field (was '.searchbox input' / '.searchbox button'), the row title/byline,
+		// both row actions and the row chip. On the resting queue view every one of them would be a read
+		// that silently skips, which is exactly the dead-target class G1 exists to red on. They are in the
+		// search-view array below, measured in the state that renders them, so the coverage is unchanged
+		// rather than quietly lost. (For one release that state was a separate route, '/find'; the array
+		// split survives the merge because it was never about the route — it was about the query.)
 		const targets = ['h1','h2','.qrow .t',${JSON.stringify(SEL.dashCard)},'p','a'];
 		const out = {};
 		for (const sel of targets) {
@@ -469,29 +469,27 @@ async function measureRemote(label, w, h) {
 		return out;
 	})()`);
 	/*
-	 * THE FIND SURFACE, IN THE SAME PASS AND AT THE SAME SIZE.
+	 * THE SEARCH TARGETS, IN THE SAME PASS AND AT THE SAME SIZE.
 	 *
-	 * Search left `/` for the `/find` route, and the targets that went with it are the ones this probe
-	 * most needs at 200% text: a text FIELD (the only one on the remote), the control that clears it, and
-	 * the song row's title / byline / actions / chip. Measuring them on `/` after the move would report
-	 * nothing at all — `querySelector` returns null, the loop `continue`s, and the probe still exits 0 —
-	 * so the read follows the surface instead of the file it used to live in.
+	 * These are the targets this probe most needs at 200% text: a text FIELD (the only one on the remote),
+	 * the control that clears it, and the song row's title / byline / actions / chip. They lived on `/`,
+	 * then on the `/find` route, and are back on `/` since that route was merged into home (2026-09-22) —
+	 * so the read follows the SURFACE rather than a file, which is what stops it reporting nothing at all
+	 * (a `querySelector` miss makes the loop `continue` and the probe still exits 0).
 	 *
-	 * A query is typed first, deliberately: with an empty box `/find` lists the library (ready rows
-	 * only), so the raw-row action and the clear control never render and two targets would skip.
-	 * `SEL.search` / `SEL.songRow` come from the contract, so this navigation inherits the same anchor
-	 * guarantees as everything else here.
+	 * NO NAVIGATION ANY MORE, and a query is still typed first — for the same reason as before: with an
+	 * empty box home lists the queue and the library (ready rows only), so the raw-row action and the clear
+	 * control never render and two targets would skip. `SEL.search` / `SEL.songRow` come from the contract,
+	 * so this inherits the same anchor guarantees as everything else here.
 	 *
-	 * Its own try/catch: a find-surface hiccup must not cost the `/` measurements already in hand, which
+	 * Its own try/catch: a search hiccup must not cost the queue-view measurements already in hand, which
 	 * are the whole record for this viewport size.
 	 */
 	try {
-		await page.goto(`http://127.0.0.1:${PORT}/find`);
-		// The shared post-join path, called defensively. After this navigation the field is already on
-		// screen, which is the helper's own documented no-op case (it probes for the box first and
-		// returns), so this costs one short probe — and it keeps this probe on the ONE helper every other
-		// driver reaches search through, rather than growing a second private sequence here. When that
-		// helper learns to tap the band instead of waiting, the change lands there and not here.
+		// The shared path to the field, called defensively. The field is already on screen here, which is
+		// the helper's own documented no-op case (it probes for the box first and returns), so this costs one
+		// short probe — and it keeps this probe on the ONE helper every other driver reaches search through,
+		// rather than growing a second private sequence here.
 		await openBrowseFromHome(page);
 		await page.fill(SEL.search, 'caroline');
 		await page
@@ -525,9 +523,9 @@ async function measureRemote(label, w, h) {
 		})()`);
 		// Namespaced rather than merged flat: `h1` and `p` exist on both surfaces, and one key overwriting
 		// the other would report one measurement as if it covered both.
-		for (const [k, v] of Object.entries(findPairs)) contrastPairs['/find ' + k] = v;
+		for (const [k, v] of Object.entries(findPairs)) contrastPairs['/ search ' + k] = v;
 	} catch (err) {
-		contrastPairs['/find (unreachable)'] = { fg: '', bg: '', fontSizePx: 0, fontWeight: '', text: String(err) };
+		contrastPairs['/ search (unreachable)'] = { fg: '', bg: '', fontSizePx: 0, fontWeight: '', text: String(err) };
 	}
 	/** @type {Record<string, any>} */
 	const contrastReport = {};

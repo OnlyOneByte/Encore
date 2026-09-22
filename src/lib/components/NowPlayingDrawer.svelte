@@ -91,8 +91,11 @@
 		artist?: string | null;
 		singerName?: string | null;
 		singerColor?: string | null;
-		/** The band row's magnifier. */
-		onsearch?: () => void;
+		/*
+		 * `onsearch` RETIRED (2026-09-22) with the band's magnifier. Search is a field at the top of home, so
+		 * app chrome has nothing to open — and the row the magnifier vacated is what lets the transport be
+		 * visible at all times instead of being revealed as the sheet rises.
+		 */
 		/** The song's musical profile — this component derives every key and range string from it. */
 		profile?: SongProfile | null;
 		keyShift?: number;
@@ -134,7 +137,6 @@
 		artist = null,
 		singerName = null,
 		singerColor = null,
-		onsearch = undefined,
 		profile = null,
 		keyShift = 0,
 		keyShiftEnabled = false,
@@ -369,92 +371,29 @@
 	const collapse = () => (activeSnapPoint = SNAP_BAND);
 
 	/*
-	 * IS THE SHEET UP — the only thing the band row needs to know, and it is deliberately NOT a prop of
-	 * `NowPlayingBand`.
+	 * ── THE SHEET-UP REVEAL IS GONE (2026-09-22), AND WHAT IT COST IS THE RECORD WORTH KEEPING ────────
 	 *
-	 * It is what REVEALS RESTART AND SKIP in the band row. The band renders the pair at all times and hides
-	 * it at rest (`.tp-side { display: none }`), so the collapsed bar keeps exactly the controls it always
-	 * had — title, magnifier, disc — and the sheet being up is the one thing that brings the rest of the
-	 * transport out. The disc is untouched at either height: it is still the app's only play/pause.
+	 * WHAT WAS HERE. `TP_ANIM_MS`, a `faceEl` node ref, a `lastSeated` local and an `$effect` that toggled
+	 * `sheet-up` / `sheet-down` classes on a `.band-face` wrapper as the sheet rose and fell — because
+	 * restart and skip were HIDDEN in the collapsed bar (`.tp-side { display: none }` in the band) and grew
+	 * in around the disc while the sheet was up, with three pairs of keyframes replaying the two distances
+	 * as transforms.
 	 *
-	 * A CLASS AND A CSS RULE, NOT A PROP — which is what makes this legal at all. The band cannot take an
-	 * `expanded` prop: any prop of it that CHANGES after mount re-runs the size bindings on `.band-slot` /
-	 * `.np-fit`, and a geometry read on the mount rung is a throw by design. Measured: a
-	 * reactive prop took three of `phone-home`'s mounts down. The file already records the same escape
-	 * hatch for `aria-expanded` ("an attribute write re-renders nothing"). It also keeps the DOM tree
-	 * identical at both heights, which is what the census arm in `phone-home` asserts.
+	 * WHY IT IS GONE. The reveal existed because the magnifier shared the band row and four controls was too
+	 * many for a collapsed bar. Search is a field at the top of home now, the magnifier has left the band,
+	 * and the transport is simply visible at all times — so there is no state to reveal, nothing to animate,
+	 * and no wrapper to hold a class.
 	 *
-	 * HELD THROUGH THE `null` BLIP. `activeSnapPoint` is written to `null` for one tick by every re-seat
-	 * (see `armResizeReseat` and the content-height effect), and `null` is not a height — reading it as
-	 * "collapsed" would blink the pair away on every resize. So this only ever updates on a real value.
-	 *
-	 * AN IMPERATIVE ATTRIBUTE WRITE, NOT A `class:` DIRECTIVE — AND THAT IS MEASURED, TWICE.
-	 *
-	 * Both reactive forms reopen the hazard the CSS route exists to avoid, because `.band-slot` carries
-	 * `bind:clientHeight` and ANY reactive update in that part of the template re-runs its size binding —
-	 * which on the mount rung is a deliberate throw:
-	 *
-	 *   1. `$state` + `$effect`: the write lands in a MICROTASK, so the refusal is raised from
-	 *      `run_micro_tasks`, outside the synchronous window `openDrawer` swallows it in. Three of
-	 *      `phone-home`'s mounts went down.
-	 *   2. `$derived` read by `class:sheet-up={…}`: same three mounts. Bisected by deleting the directive
-	 *      alone, with the derived left in place — 18/18 passed. So it is the reactive DOM UPDATE that
-	 *      costs, not the state or the effect, which is the same mechanism the note on `expanded` below
-	 *      records for a band prop and the same escape hatch it names: "an attribute write re-renders
-	 *      nothing".
-	 *
-	 * So the class is toggled on a node ref. The effect reads `activeSnapPoint` (reading is free) and
-	 * writes only to the DOM, so no template expression depends on it and nothing is invalidated.
-	 *
-	 * HELD THROUGH THE `null` BLIP in an untracked local, for the reason above: `activeSnapPoint` goes
-	 * `null` for one tick on every re-seat and `null` is not a height, so reading it as "collapsed" would
-	 * flash the disc back on every resize.
-	 *
-	 * `faceEl` IS A PLAIN `let`, not `$state`: `bind:this` assigns it once at mount, and the effect's first
-	 * run is after that, so nothing here needs to be reactive — and a `$state` ref would put a reactive
-	 * write back into the mount path, which is hazard 1 again.
+	 * WHAT THE DELETION MUST NOT LOSE, because it was learned the hard way and the hazard is still live:
+	 * `.band-slot` carries `bind:clientHeight`, so ANY reactive update in that part of the template re-runs
+	 * its size binding — and a geometry read on the mount rung is a deliberate throw. Both reactive spellings
+	 * of "is the sheet up" took three of `phone-home`'s mounts down (`$state` + `$effect`, because the write
+	 * lands in a microtask outside the window `openDrawer` swallows in; and `$derived` read by a
+	 * `class:sheet-up={…}` directive, bisected by deleting the directive alone — 18/18 passed). That is why
+	 * the band still takes no `expanded` prop and why `aria-expanded` is written as an ATTRIBUTE: an
+	 * attribute write re-renders nothing. Anything that ever needs to know the sheet's height again belongs
+	 * on a node ref and a class, never on a prop or a reactive directive.
 	 */
-	/*
-	 * THE EXIT IS ANIMATED TOO, and it needs a class of its own because `display: none` leaves nothing to
-	 * animate. Reported: the pair appears beautifully and then vanishes.
-	 *
-	 * `sheet-down` HOLDS THE OPEN LAYOUT for the length of the animation — the pair stays `display: grid`,
-	 * so the row keeps its full width — while transforms move the magnifier and the disc to exactly where
-	 * they will land and the pair fades out in place. When the class drops, the layout collapses to a state
-	 * the screen is ALREADY showing, so the snap is invisible. It is the same FLIP as the entry, run
-	 * backwards: the distances are the same two tokens and nothing is measured.
-	 *
-	 * THE TIMER MUST MATCH THE CSS, so `TP_ANIM_MS` and the `260ms` in the keyframe rules are one fact in
-	 * two places — the shell guard asserts they agree rather than trusting it.
-	 *
-	 * SKIPPED ENTIRELY UNDER REDUCE MOTION. With no animation declared, holding the open layout for 260ms
-	 * would just be a stutter before the pair blinks out, so the class is never added and the collapse is
-	 * immediate. `matchMedia` is a preference read, not a geometry read — safe on the mount rung.
-	 */
-	const TP_ANIM_MS = 260;
-	let faceEl: HTMLElement | undefined;
-	let lastSeated: number | string = SNAP_BAND;
-	$effect(() => {
-		const at = activeSnapPoint;
-		if (at !== null && at !== undefined) lastSeated = at;
-		// Snap 0 is a px STRING and snap 1 is a fraction, which is the same discriminator the re-seat
-		// effect above uses.
-		const up = typeof lastSeated === 'number';
-		const el = faceEl;
-		if (!el) return;
-		const wasUp = el.classList.contains('sheet-up');
-		el.classList.toggle('sheet-up', up);
-		el.classList.remove('sheet-down');
-		if (!wasUp || up || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-		el.classList.add('sheet-down');
-		const timer = setTimeout(() => el.classList.remove('sheet-down'), TP_ANIM_MS);
-		// Cleared on re-run as well as teardown: a guest who pulls the sheet straight back up must not have
-		// the old timer strip `sheet-down` out from under the new state.
-		return () => {
-			clearTimeout(timer);
-			el.classList.remove('sheet-down');
-		};
-	});
 
 	// null (not 0) for an unknown length, so the seek row HIDES rather than pinning a bar at zero,
 	// which reads as a stalled song.
@@ -721,35 +660,26 @@
 				file — which reported five of this component's own plain-element classes as handed to a child.)
 			-->
 			<!--
-				`.band-face` CARRIES THE "SHEET IS UP" STATE, AND IT IS A SEPARATE ELEMENT FROM `.band-slot` FOR A
-				MEASURED REASON.
-
-				The class started on `.band-slot` itself, which is the element carrying `bind:clientHeight`, and
-				that reopened the hazard the whole CSS route exists to avoid: updating the bound element re-runs
-				its size binding, and a geometry read on the mount rung is a throw by design. Three
-				of `phone-home`'s mounts went down with the refusal escaping `openDrawer`'s swallow — the
-				same failure shape a reactive `expanded` PROP produced, which is what the note on `onexpand`
-				below records. So the state lives one level in, on an element nothing measures.
-
-				`display: contents`, so the wrapper is invisible to layout: `.band-slot`'s box, its fixed height
-				and the strip inside it are exactly as they were, and only the CSS descendant path changes.
+				`.band-face` IS GONE with the reveal it carried (2026-09-22) — a `display: contents` wrapper whose
+				only job was to hold the `sheet-up` / `sheet-down` class one level in from `.band-slot`, because
+				the class could NOT go on `.band-slot` itself: that is the element carrying `bind:clientHeight`,
+				and updating it re-runs the size binding, which on the mount rung is a deliberate throw (three of
+				`phone-home`'s mounts went down that way). The constraint is still live for anything that ever
+				needs a state class here — see the block above the `progress` derivation.
 			-->
-			<div class="band-face" bind:this={faceEl}>
-				<NowPlayingBand
-					title={title}
-					artist={artist}
-					singerName={singerName}
-					singerColor={singerColor}
-					progress={progress}
-					isPlaying={isPlaying}
-					canStart={canStart}
-					onsearch={onsearch}
-					ontoggleplay={ontoggleplay}
-					onrestart={onrestart}
-					onskip={onskip}
-					onexpand={() => (activeSnapPoint = activeSnapPoint === SNAP_OPEN ? SNAP_BAND : SNAP_OPEN)}
-				/>
-			</div>
+			<NowPlayingBand
+				title={title}
+				artist={artist}
+				singerName={singerName}
+				singerColor={singerColor}
+				progress={progress}
+				isPlaying={isPlaying}
+				canStart={canStart}
+				ontoggleplay={ontoggleplay}
+				onrestart={onrestart}
+				onskip={onskip}
+				onexpand={() => (activeSnapPoint = activeSnapPoint === SNAP_OPEN ? SNAP_BAND : SNAP_OPEN)}
+			/>
 		</div>
 		<!--
 			`.np-fit` EXISTS TO BE MEASURED, and it is a plain block so it changes nothing about the layout:
@@ -963,150 +893,24 @@
 		border-top: 0;
 		box-shadow: none;
 	}
-	.band-face {
-		/* Layout-neutral by construction — see the markup note for why the state cannot live on
-		   `.band-slot`, the element whose height is snap 0. */
-		display: contents;
-	}
 	/*
-	 * THE SHEET BEING UP IS WHAT REVEALS RESTART AND SKIP. The band renders the pair at all times and hides
-	 * it (`.tp-side { display: none }`); this is the one rule that brings it back, so the collapsed bar keeps
-	 * exactly the controls it always had and /components — five bands with no drawer — is untouched.
+	 * ── `.band-face` AND THE SIX TRANSPORT KEYFRAMES ARE GONE (2026-09-22) ─────────────────────────────
 	 *
-	 * IT REACHES INTO THE BAND ON PURPOSE, the same `:global()` composition as `.band-slot :global(.band)`
-	 * above: the band is right in BOTH call sites and only the composition site can tell them apart.
+	 * What stood here: a `display: contents` wrapper, two `display: grid` reveals reaching into the band
+	 * through `:global()`, and three pairs of keyframes — the magnifier sliding aside by `--tp-grow`, the
+	 * disc shifting by `--tp-disc-shift`, and the pair growing out from under it — each with a reverse for
+	 * the collapse, all inside `@media (prefers-reduced-motion: no-preference)`.
 	 *
-	 * `display: grid` restores what `.btn` gives the pair (`place-items: center` comes with it from the
-	 * band's own rule; only the `display` is overridden). It beats the band's `.btn.tp-side { display: none }`
-	 * on specificity — three classes to two — rather than on source order, which is what that rule had to be
-	 * compounded for in the first place (see its note there).
+	 * They existed because revealing the pair is a LAYOUT change (`display: none` → `grid` widens the row and
+	 * moves its siblings by reflow), and neither `display` nor a reflow is transitionable while
+	 * `width`/`gap`/`inset` are outside the composited allowlist `motion.test.ts` enforces. The keyframes
+	 * were therefore a FLIP without the measuring step: state the from-position in `transform` only, with the
+	 * distances expressed as token arithmetic so nothing ever read geometry. That technique is the part worth
+	 * remembering — it is how any future layout change on this row can be animated at all.
 	 *
-	 * A CSS REVEAL, NOT A PROP — see `sheetUp` for the measured reason: a prop of the band that changes
-	 * after mount re-runs the size bindings, and a geometry read on the mount rung is a throw.
+	 * The reveal itself is retired because the transport is always visible now: search left the band, the row
+	 * has the space, and there is no state change left to animate.
 	 */
-	.band-face:global(.sheet-up) :global(.tp-side) {
-		display: grid;
-	}
-	/*
-	 * THE REVEAL IS ANIMATED — the magnifier slides aside and the pair grows in behind it.
-	 *
-	 * KEYFRAMES, NOT A TRANSITION, and that is forced. The whole change is a LAYOUT one: `display: none` →
-	 * `grid` widens the row, which moves the magnifier and the disc by reflow. Neither `display` nor a
-	 * reflow is transitionable, and `width`/`gap`/`inset` are outside the composited allowlist
-	 * motion.test.ts enforces (transform, opacity, background, color, box-shadow — nothing else). A
-	 * keyframe can state the FROM position explicitly, so the layout jump happens instantly and the
-	 * animation replays the distance each element just travelled, in `transform` only. That is a FLIP
-	 * without the measuring step — the distances are `--tp-grow` and `--tp-disc-shift`, declared on
-	 * `.strip` from `--tap` and `--space-md`, so nothing here reads geometry.
-	 *
-	 * GATED ON `no-preference`, which is how this file's other motion is suppressed: with Reduce Motion on,
-	 * no `animation` is declared at all and the pair simply appears. Nothing to reset.
-	 *
-	 * ONE DIRECTION ONLY, stated rather than hidden: collapsing sets `display: none` on the same frame, so
-	 * there is no element left to animate out. The sheet's own half-second slide is what the eye follows
-	 * down, and it is going the other way anyway.
-	 *
-	 * The names are `-global-` prefixed because the selectors that use them are `:global()` — a scoped
-	 * keyframe name would be rewritten for this component's own elements and these are the band's.
-	 */
-	@media (prefers-reduced-motion: no-preference) {
-		.band-face:global(.sheet-up) :global(.btn:not(.tp-side)) {
-			animation: tp-slide-aside 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
-		}
-		.band-face:global(.sheet-up) :global(.disc) {
-			animation: tp-disc-shift 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
-		}
-		.band-face:global(.sheet-up) :global(.tp-side) {
-			animation: tp-grow-in 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
-		}
-	}
-	/*
-	 * The magnifier's whole journey: it starts where it sat with the pair hidden — `--tp-grow` to the RIGHT
-	 * of where it has just landed — and travels to its new place.
-	 */
-	@keyframes -global-tp-slide-aside {
-		from {
-			transform: translateX(var(--tp-grow, 0));
-		}
-		to {
-			transform: none;
-		}
-	}
-	/* The disc moves less: only the restart that arrives on its left pushes it. */
-	@keyframes -global-tp-disc-shift {
-		from {
-			transform: translateX(var(--tp-disc-shift, 0));
-		}
-		to {
-			transform: none;
-		}
-	}
-	/*
-	 * The pair itself, growing out from under the disc rather than fading in place: `scale` is composited,
-	 * and starting slightly right puts restart where the disc was a moment ago, which is what makes the two
-	 * read as one movement instead of two.
-	 */
-	@keyframes -global-tp-grow-in {
-		from {
-			opacity: 0;
-			transform: translateX(calc(var(--tp-disc-shift, 0) * -0.35)) scale(0.72);
-		}
-		to {
-			opacity: 1;
-			transform: none;
-		}
-	}
-	/*
-	 * THE COLLAPSE, which is the entry run backwards — and the reason it needs its own class rather than a
-	 * reversed direction on the same one: `display: none` arrives on the same frame as the state change, so
-	 * there would be nothing left to animate. `sheet-down` keeps the pair displayed (and therefore the row
-	 * at its open width) while the transforms carry the magnifier and the disc to their collapsed positions;
-	 * the class is removed after `TP_ANIM_MS` and the layout catches up with what is already on screen.
-	 *
-	 * `both` fill mode is what holds that end state for the handover. Without it the elements would snap
-	 * back to `transform: none` — their OPEN positions — for the frame between the animation ending and the
-	 * class dropping.
-	 */
-	.band-face:global(.sheet-down) :global(.tp-side) {
-		display: grid;
-	}
-	@media (prefers-reduced-motion: no-preference) {
-		.band-face:global(.sheet-down) :global(.btn:not(.tp-side)) {
-			animation: tp-slide-back 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
-		}
-		.band-face:global(.sheet-down) :global(.disc) {
-			animation: tp-disc-back 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
-		}
-		.band-face:global(.sheet-down) :global(.tp-side) {
-			animation: tp-shrink-out 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
-		}
-	}
-	@keyframes -global-tp-slide-back {
-		from {
-			transform: none;
-		}
-		to {
-			transform: translateX(var(--tp-grow, 0));
-		}
-	}
-	@keyframes -global-tp-disc-back {
-		from {
-			transform: none;
-		}
-		to {
-			transform: translateX(var(--tp-disc-shift, 0));
-		}
-	}
-	@keyframes -global-tp-shrink-out {
-		from {
-			opacity: 1;
-			transform: none;
-		}
-		to {
-			opacity: 0;
-			transform: translateX(calc(var(--tp-disc-shift, 0) * -0.35)) scale(0.72);
-		}
-	}
 	/*
 	 * FULL-HEIGHT CONTENT, AND `max-height` DEFEATED — this is what makes the snap offsets land.
 	 *

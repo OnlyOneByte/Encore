@@ -13,10 +13,10 @@ import {
 	processState,
 	settleStemsGate,
 	countInFlightProcesses,
-	MAX_CONCURRENT_PROCESSES_PER_SINGER,
+	maxProcessesPerSinger,
 	type ProcessDeps
 } from '$lib/server/jobs/process';
-import { pendingGates, EMPTY_SONG_PROFILE } from '$lib/contract';
+import { pendingGates, EMPTY_SONG_PROFILE, DEFAULT_GLOBAL_SETTINGS, PROCESSES_UNCAPPED } from '$lib/contract';
 import { JobRepository } from '$lib/server/jobs/repository';
 import { AuthoritativeState } from '$lib/server/state/store';
 import { nextPlayable, isEntryReady } from '$lib/server/rotation';
@@ -331,10 +331,19 @@ test('countInFlightProcesses counts a singer’s distinct processing songs, not 
 	expect(countInFlightProcesses('alice', d)).toBe(1);
 });
 
+/*
+ * THE CAP IS A SETTING NOW (2026-09-22): `MAX_CONCURRENT_PROCESSES_PER_SINGER` became
+ * `GlobalSettings.maxProcessesPerSinger`, read through `maxProcessesPerSinger(deps)`. These tests pass no
+ * `getSettings`, which is the anonymous-caller path, so they exercise the SHIPPED DEFAULT — and they read it
+ * from the same function the app calls rather than restating 3, so a change to the default cannot leave them
+ * asserting a number the app no longer uses.
+ */
+const CAP = maxProcessesPerSinger({});
+
 test('a singer at the cap is refused a NEW process (over-limit), and the count is honest', () => {
 	const d = deps();
-	for (let i = 0; i < MAX_CONCURRENT_PROCESSES_PER_SINGER; i++) runProcess(d, 'm' + i, 'alice');
-	expect(countInFlightProcesses('alice', d)).toBe(MAX_CONCURRENT_PROCESSES_PER_SINGER);
+	for (let i = 0; i < CAP; i++) runProcess(d, 'm' + i, 'alice');
+	expect(countInFlightProcesses('alice', d)).toBe(CAP);
 
 	// One more distinct song → refused.
 	d.mediaById.set('over', media('over'));
@@ -346,7 +355,7 @@ test('a singer at the cap is refused a NEW process (over-limit), and the count i
 
 test('the cap is PER singer and only bounds concurrency — another singer and a freed slot both proceed', () => {
 	const d = deps();
-	for (let i = 0; i < MAX_CONCURRENT_PROCESSES_PER_SINGER; i++) runProcess(d, 'm' + i, 'alice');
+	for (let i = 0; i < CAP; i++) runProcess(d, 'm' + i, 'alice');
 	// A different singer is unaffected.
 	expect(processState('m0', d, 'bob')).not.toBe('over-limit'); // (m0 is already processing, so 'processing')
 	d.mediaById.set('bobsong', media('bobsong'));
@@ -361,9 +370,39 @@ test('the cap is PER singer and only bounds concurrency — another singer and a
 	expect(requestProcess('again', d, 'alice')).not.toBeNull();
 });
 
+test('the cap comes from the SETTING, so a deployment can raise it', () => {
+	// The cap was a hardcoded 3 until 2026-09-22. A box with more workers can now say so, and the gate must
+	// read that number rather than the default it replaced.
+	const d = { ...deps(), getSettings: () => ({ ...DEFAULT_GLOBAL_SETTINGS, maxProcessesPerSinger: 5 }) };
+	for (let i = 0; i < 5; i++) runProcess(d, 'm' + i, 'alice');
+	expect(countInFlightProcesses('alice', d)).toBe(5);
+	// …and the raised cap still BINDS at its own number, or "settable" would mean "unbounded".
+	d.mediaById.set('sixth', media('sixth'));
+	d.state.applyQueueOp({ op: 'add', entry: entry('q-sixth', 'sixth', 'alice') });
+	expect(processState('sixth', d, 'alice')).toBe('over-limit');
+});
+
+test('a cap of 0 means UNCAPPED, not "refuse everything"', () => {
+	/*
+	 * THE INVERSION THIS EXISTS FOR. `count >= cap` is true for every singer when the cap is 0, so the naive
+	 * reading of the sentinel turns the bound all the way UP instead of off — a deployment that meant "no
+	 * limit" would refuse the first process every guest ever requested. The gate checks the sentinel before
+	 * the count for exactly this reason.
+	 */
+	const d = {
+		...deps(),
+		getSettings: () => ({ ...DEFAULT_GLOBAL_SETTINGS, maxProcessesPerSinger: PROCESSES_UNCAPPED })
+	};
+	for (let i = 0; i < 8; i++) runProcess(d, 'm' + i, 'alice');
+	d.mediaById.set('ninth', media('ninth'));
+	d.state.applyQueueOp({ op: 'add', entry: entry('q-ninth', 'ninth', 'alice') });
+	expect(processState('ninth', d, 'alice')).toBe('processable');
+	expect(requestProcess('ninth', d, 'alice')).not.toBeNull();
+});
+
 test('an anonymous request (no singerId) imposes no cap — internal callers are never blocked', () => {
 	const d = deps();
-	for (let i = 0; i < MAX_CONCURRENT_PROCESSES_PER_SINGER + 2; i++) {
+	for (let i = 0; i < CAP + 2; i++) {
 		d.mediaById.set('n' + i, media('n' + i));
 		d.state.applyQueueOp({ op: 'add', entry: entry('qn' + i, 'n' + i, 'alice') });
 		expect(requestProcess('n' + i, d)).not.toBeNull(); // no singerId → no cap
@@ -373,7 +412,7 @@ test('an anonymous request (no singerId) imposes no cap — internal callers are
 test('re-tapping a song already processing is never counted against its own owner (dedup, not a block)', () => {
 	const d = deps();
 	// alice fills the cap, then re-taps one of her own processing songs.
-	for (let i = 0; i < MAX_CONCURRENT_PROCESSES_PER_SINGER; i++) runProcess(d, 'm' + i, 'alice');
+	for (let i = 0; i < CAP; i++) runProcess(d, 'm' + i, 'alice');
 	// m0 is already processing; a repeat request dedupes to the same job rather than being refused.
 	const again = requestProcess('m0', d, 'alice');
 	expect(again).not.toBeNull();
@@ -392,13 +431,13 @@ test('the per-singer cap holds even when NO queue entry exists (dropped add over
 	const d = deps();
 	// alice taps Sing on MAX distinct songs while her socket is reconnecting: the process lands, the
 	// add never does, so state.entries stays empty for all of them.
-	for (let i = 0; i < MAX_CONCURRENT_PROCESSES_PER_SINGER; i++) {
+	for (let i = 0; i < CAP; i++) {
 		d.mediaById.set('m' + i, media('m' + i));
 		expect(requestProcess('m' + i, d, 'alice')).not.toBeNull();
 	}
 	expect(d.state.entries).toHaveLength(0); // the whole point: no entries were ever added
 	// Ledger-derived count is honest despite the empty queue.
-	expect(countInFlightProcesses('alice', d)).toBe(MAX_CONCURRENT_PROCESSES_PER_SINGER);
+	expect(countInFlightProcesses('alice', d)).toBe(CAP);
 
 	// One more distinct tap in the same window → MUST be refused. Under the entry-derived cap this
 	// admitted the burst (count was 0); the ledger-derived cap refuses it.

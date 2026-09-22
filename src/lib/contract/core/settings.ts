@@ -124,7 +124,36 @@ export interface GlobalSettings {
 	 * with an env var set.
 	 */
 	joinOrigin: string;
+	/**
+	 * How many processes ONE singer may have in flight at once. `0` means NO CAP.
+	 *
+	 * WHY THE CAP EXISTS AT ALL, because that reasoning is what makes it a setting rather than a constant
+	 * to delete: `requestProcess` dedups on stems-existence alone, so nothing stops one phone from tapping
+	 * Sing down a whole page of search results and enqueueing a 1–2 minute GPU job per distinct song. That
+	 * is a self-inflicted denial of service needing no malice, just an impatient guest, and the cap bounds
+	 * the fan-out a single guest can impose on a shared box's worker fleet.
+	 *
+	 * WHY IT IS GLOBAL. It is a property of the FLEET, not of a party: the right number is a function of how
+	 * many workers this deployment has and how fast they are. A box with a GPU and three workers wants a
+	 * different answer from a laptop with one, and two rooms on one core cannot meaningfully disagree about
+	 * it — which is the same test every other field here passes.
+	 *
+	 * NOT A LIFETIME QUOTA. A guest whose earlier songs have finished can always start more; this bounds
+	 * only what is processing RIGHT NOW. It was the hardcoded `MAX_CONCURRENT_PROCESSES_PER_SINGER = 3`
+	 * until 2026-09-22, and 3 remains the default for the reason that constant gave: generous for a real
+	 * singer who queues a couple ahead, while still capping a runaway.
+	 */
+	maxProcessesPerSinger: number;
 }
+
+/** No cap at all — the value `maxProcessesPerSinger` takes to mean "do not bound a singer's fan-out". */
+export const PROCESSES_UNCAPPED = 0;
+/**
+ * The largest cap the API will store. Not a policy about parties — a bound on the NUMBER ITSELF, so a
+ * fat-fingered 3000 in the field cannot be persisted as a de-facto uncapped value that reads as a limit.
+ * A deployment that genuinely wants no bound sets 0, which says so.
+ */
+export const MAX_PROCESSES_PER_SINGER_CEILING = 20;
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
 	defaultFetcher: DEFAULT_FETCHER,
@@ -137,7 +166,9 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
 	syncMode: DEFAULT_SYNC_MODE,
 	// Empty, not a guess: an unset value defers to the env var and then to the request, both of which
 	// are right more often than any literal this file could name.
-	joinOrigin: ''
+	joinOrigin: '',
+	// 3, carried over verbatim from the constant this replaced, so making it settable moved no behaviour.
+	maxProcessesPerSinger: 3
 };
 
 /**
@@ -163,6 +194,22 @@ export function normalizeJoinOrigin(input: unknown): string | null {
 	}
 	if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
 	return parsed.origin;
+}
+
+/**
+ * Coerce a client-supplied process cap to a storable one, or `null` when it cannot be one — which the
+ * caller reads as "keep the current value" rather than "clear it".
+ *
+ * INTEGERS ONLY, and floored rather than rounded: `2.7` is not "three processes", it is a client that did
+ * not mean a number of jobs, and flooring it cannot admit more work than the operator typed. A negative
+ * value is rejected outright rather than clamped to 0, because 0 MEANS UNCAPPED here — clamping would turn
+ * a typo into the removal of the bound.
+ */
+export function normalizeMaxProcesses(input: unknown): number | null {
+	if (typeof input !== 'number' || !Number.isFinite(input)) return null;
+	const n = Math.floor(input);
+	if (n < 0 || n > MAX_PROCESSES_PER_SINGER_CEILING) return null;
+	return n;
 }
 
 /** Coerce a partial/untrusted object to valid GlobalSettings, falling back per-field. Used by the
@@ -201,7 +248,8 @@ export function normalizeGlobalSettings(
 		syncMode: input?.syncMode && isValidSyncMode(input.syncMode) ? input.syncMode : d.syncMode,
 		// A value that is not a usable origin keeps the current one rather than clearing it: silently
 		// falling back to auto-detection is how a party ends up with `localhost` in the QR again.
-		joinOrigin: normalizeJoinOrigin(input?.joinOrigin) ?? d.joinOrigin
+		joinOrigin: normalizeJoinOrigin(input?.joinOrigin) ?? d.joinOrigin,
+		maxProcessesPerSinger: normalizeMaxProcesses(input?.maxProcessesPerSinger) ?? d.maxProcessesPerSinger
 	};
 }
 

@@ -69,15 +69,19 @@ const CALLERS: { file: string; why: string }[] = [
 	 *
 	 * This is the direction the second test below is for: the caller left, so the entry leaves with it.
 	 */
-	{ file: 'lib/components/MyPositionCard.svelte', why: 'a single line telling a singer where they are' },
 	{ file: 'lib/components/CodeEntry.svelte', why: 'one character box of a room-code entry' },
 	{ file: 'lib/tv/TvProgress.svelte', why: 'the TV progress track — a ten-foot surface, no card structure' }
 	/*
-	 * `routes/+page.svelte` LEFT THIS LIST (2026-09-21). Its two `card` surfaces were the reorder bar and the
-	 * search dock, and both are gone: the dock moved to /find when search became a route, and the bar went
-	 * with the reorder MODE when the drag became a live sort (no Done, no Cancel, nothing to dress). The
-	 * route paints no shared surface of its own now — its rows are QueueRow and ProcessingCard, which are
-	 * listed above and carry their own.
+	 * `routes/+page.svelte` LEFT THIS LIST (2026-09-21) and has NOT rejoined it. Its two `card` surfaces were
+	 * the reorder bar and the search dock: the bar went with the reorder MODE when the drag became a live
+	 * sort (no Done, no Cancel, nothing to dress), and the dock moved to /find when search became a route.
+	 * Search is back on home (2026-09-22) and still does not belong here — `.findbox` and `.skel-row` paint
+	 * themselves from the `--card` TOKEN rather than wearing the shared `.card` class, which is the
+	 * distinction this list is about. Its rows are QueueRow and ProcessingCard, listed above.
+	 *
+	 * `lib/components/MyPositionCard.svelte` LEFT THIS LIST the same day, by deletion: the card sat above the
+	 * home queue restating the row beneath it, and its one unique line (the wait) is now a clause on that
+	 * row's byline. This is the direction the second test below is for — the caller left, so the entry does.
 	 */
 ];
 
@@ -123,11 +127,13 @@ function callersInTree(): string[] {
 test('while anything uses `card`, app.css defines it WITH a background', () => {
 	const callers = callersInTree();
 	// Non-vacuity: the population is real. An empty set would make the rule below unfalsifiable.
-	// 7, WAS 8 (2026-09-21): `routes/+page.svelte` left the population when the reorder bar was deleted with
-	// the mode it dressed (the drag is a live sort — nothing to confirm or abandon), and its other `card`
-	// surface, the search dock, had already moved to /find. The floor tracks the population; it must never be
-	// lowered to accommodate a caller that quietly stopped being scanned.
-	expect(callers.length).toBeGreaterThanOrEqual(7); // @nvf-floor callers.length
+	// 6, WAS 7 (2026-09-22), WAS 8 (2026-09-21). `routes/+page.svelte` left first, when the reorder bar was
+	// deleted with the mode it dressed (the drag is a live sort — nothing to confirm or abandon) and its other
+	// `card` surface, the search dock, had already moved to /find. `MyPositionCard.svelte` leaves now, by
+	// DELETION: the card restated the queue row beneath it and its one unique line moved onto that row.
+	// Both steps lower this floor by a caller that is GONE, which is the one legitimate reason to move it —
+	// it must never be lowered to accommodate a caller that quietly stopped being scanned.
+	expect(callers.length).toBeGreaterThanOrEqual(6); // @nvf-floor callers.length
 
 	const css = readFileSync(join(SRC, 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
 

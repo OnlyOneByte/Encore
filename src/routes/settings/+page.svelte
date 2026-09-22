@@ -63,6 +63,8 @@
 		SONG_INTRO_STEP_MS,
 		MIN_PRESENCE_GRACE_MINUTES,
 		MAX_PRESENCE_GRACE_MINUTES,
+		PROCESSES_UNCAPPED,
+		MAX_PROCESSES_PER_SINGER_CEILING,
 		QUEUE_ORDERS,
 		FETCHERS,
 		type PublicSinger,
@@ -135,6 +137,12 @@
 
 	// Minutes read badly past an hour ("120 minutes"), and 0 needs saying in words rather than as a
 	// number that looks like a missing value.
+	// 0 is the sentinel for "no cap", and a bare 0 beside a label reads as a broken value — say it in words.
+	const processCapLabel = $derived(
+		settings.global.maxProcessesPerSinger === PROCESSES_UNCAPPED
+			? 'no limit'
+			: String(settings.global.maxProcessesPerSinger)
+	);
 	const graceLabel = $derived.by(() => {
 		const m = settings.room.presenceGraceMinutes;
 		if (m === 0) return 'no grace';
@@ -272,6 +280,10 @@
 	// baseline is `committed`, so an intermediate drag value never becomes the value we revert to.
 	function liveRoom<K extends keyof RoomSettings>(field: K, value: RoomSettings[K]) {
 		settings = { ...settings, room: { ...settings.room, [field]: value } };
+	}
+	/** The same, for a GLOBAL field — the process cap's readout is the only display of its value. */
+	function liveGlobal<K extends keyof GlobalSettings>(field: K, value: GlobalSettings[K]) {
+		settings = { ...settings, global: { ...settings.global, [field]: value } };
 	}
 
 	function pickEngine(id: string) {
@@ -1011,6 +1023,33 @@
 						EVERY new process downloads its source through, and a worker that cannot run it fails the
 						fetch before any separation starts.
 					-->
+
+							<!--
+						THE PER-SINGER PROCESS CAP, which was a hardcoded 3 in `server/jobs/process.ts` until
+						2026-09-22. It belongs on the SERVER tab because the right number is a function of this
+						box's worker fleet, not of one party — the same test every other field in this card passes.
+
+						A SLIDER RATHER THAN A NUMBER FIELD: the range is short and bounded at both ends, so
+						dragging is the whole interaction, and a text field would invite the 3000 that
+						`normalizeMaxProcesses` exists to refuse. The readout is the only display of the value, so
+						it moves with the thumb (`liveGlobal`) and commits on release.
+					-->
+							<Field.Label for="max-processes">Songs one singer can make at once · {processCapLabel}</Field.Label>
+							<Slider
+								id="max-processes"
+								type="single"
+								min={PROCESSES_UNCAPPED}
+								max={MAX_PROCESSES_PER_SINGER_CEILING}
+								step={1}
+								value={settings.global.maxProcessesPerSinger}
+								onValueChange={(v) => liveGlobal('maxProcessesPerSinger', v)}
+								onValueCommit={(v) => onglobal({ maxProcessesPerSinger: v })}
+							/>
+							<Field.Description>
+								A guest can start this many karaoke jobs at a time; finished songs free a slot straight away. Nothing
+								stops one phone tapping Sing down a whole page of results, and each tap is a 1–2 minute job for your
+								workers.
+							</Field.Description>
 						</Card.Content>
 					</Card.Root>
 
@@ -1185,15 +1224,35 @@
 	 *
 	 * So the cap moves DOWN a level. The page fills the shell like every other surface
 	 * (`--measure-grid`, which is `--max-w`, so the shell needs no opt-out and settings widens in
-	 * the same two steps as everything else), and the CONTROLS inside each card carry
-	 * `--measure-prose` instead. A card is then a full-width panel with a readable form in it —
-	 * the shape GitHub's and macOS's settings both use — and the `<select>` is bounded by the row
-	 * it lives in rather than by the page it lives on, which is what the old comment actually
-	 * wanted.
+	 * the same two steps as everything else), and the readable measure moves onto the COLUMN a card
+	 * sits in rather than onto the card's contents.
+	 *
+	 * WHY IT IS THE COLUMN AND NOT THE CONTENTS — the correction this block carries. Capping
+	 * `card-content` at `--measure-prose` did keep the controls readable, but it left every card a
+	 * full-width panel with its form pinned to the LEFT 560px and the rest of the panel empty: at
+	 * the 1080 step the You card ran 0→1044 while its name field stopped at 560, so the card read as
+	 * a half-drawn box. Centring the 560 would only have moved the void to both sides; the width was
+	 * there and nothing was spending it.
+	 *
+	 * `.panel` spends it, by pairing CARDS instead of stretching controls. `auto-fit` + `minmax`
+	 * makes that a property of the available width rather than of a breakpoint: below two readable
+	 * columns' worth the panel is one column and each card's form fills it, and at the 1080 step two
+	 * cards sit side by side at ~530 each — which is under `--measure-prose` on its own, so a
+	 * `<select>` still cannot span a monitor and the old comment's requirement is met by the
+	 * geometry rather than by a cap. Cards are the only thing that pairs: the footer buttons and the
+	 * dashboard links span the full row (see below), because a half-width "Done" beside a card would
+	 * read as belonging to it.
 	 */
 	.settings-page {
 		/* Level 1 — THE PAGE. The grid role: fill whatever the shell gives us. */
 		--page-measure: var(--measure-grid);
+		/*
+		 * Level 2 — THE COLUMN A CARD SITS IN. Not `--measure-prose` (560): this is the width below
+		 * which a SECOND column stops being readable, and two 560s plus the gap need 1132 — more than
+		 * the widest shell (1080), so the prose measure as a threshold would never pair anything. At
+		 * 420 the panel pairs from 852 up, which is the 1080 step and nothing narrower.
+		 */
+		--settings-col: 420px;
 	}
 
 	main {
@@ -1218,19 +1277,13 @@
 	}
 
 	/*
-	 * Level 2 — THE ROWS. This is where the narrow cap the old comment argued for now lives, and it
-	 * is `card-content` rather than the card because the card is the PANEL (its own surface, its own
-	 * ring, its title) while its content is the form. Reached with `:global()` because scoped CSS
-	 * cannot address an element ui/card renders, and scoped under `main` so it claims only this
-	 * page's cards.
-	 *
-	 * Every control on this page is a child of one of these, which is what makes one declaration
-	 * enough: the selects, the sliders, the switches, the colour input and the paired name+save row
-	 * are all bounded by it, so none of them can reach a monitor's width no matter how wide the page
-	 * gets.
+	 * Level 3 — THE ROWS. The `max-width: var(--measure-prose)` that used to open this rule is GONE:
+	 * the column above is the measure now, and a cap here on top of it is what left the void inside
+	 * each card. What stays is the rhythm, which was always the other half of this rule. Reached with
+	 * `:global()` because scoped CSS cannot address an element ui/card renders, and scoped under
+	 * `main` so it claims only this page's cards.
 	 */
 	main :global([data-slot='card-content']) {
-		max-width: var(--measure-prose);
 		/*
 		 * ── THE RHYTHM: A LABEL BINDS TO ITS OWN CONTROL ──────────────────────────────────────────────
 		 *
@@ -1295,9 +1348,29 @@
 	 * registry keeps this rhythm and which also fixes it for any future card body — Phase 2.
 	 */
 	.panel {
-		display: flex;
-		flex-direction: column;
+		/*
+		 * A GRID, not a flex column, and that is the whole "settings fills the width" fix — see the
+		 * two-measures block at the top of this style for why the width is spent on a second column of
+		 * cards rather than on wider controls. `auto-fit` collapses the empty tracks, so at one column
+		 * this is byte-for-byte the old stacked layout with the same gap.
+		 *
+		 * `align-items: start` matters: the default `stretch` would make both cards in a row as tall as
+		 * the taller one, so the You card's ring would sit in a box padded out to match Leaving.
+		 */
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--settings-col)), 1fr));
+		align-items: start;
 		gap: var(--space-lg);
+	}
+	/*
+	 * Everything in a panel that is NOT a card spans the row: the footer Done on all three tabs and
+	 * the /stats and /metrics links. Each is about the PANEL rather than about one card, and a
+	 * half-width one would land beside a card and read as part of it. `:not([data-slot='card'])` keys
+	 * on shadcn's own attribute, so a new footer control gets this without being listed here. (The
+	 * save-failure Alert is a child of `main`, above the tabs, so it is not one of these.)
+	 */
+	.panel > :global(:not([data-slot='card'])) {
+		grid-column: 1 / -1;
 	}
 
 	.pair {
