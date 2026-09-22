@@ -1,7 +1,7 @@
 # `src/lib/components/ui/` — the design-library copy-in target
 
 shadcn-svelte components land **here**, as real files in `src/`. That is the whole reason
-shadcn-svelte was chosen over a headless dependency (`docs/DECISIONS.md`): copy-in keeps component
+shadcn-svelte was chosen over a headless dependency: copy-in keeps component
 CSS somewhere the source-scanning design guards can still read and edit it. A headless library moves
 that CSS into `node_modules`, where a 38 px button, a 14 px input, a `vh` sheet cap and a
 `content: '✕'` all become **invisible rather than illegal**.
@@ -55,11 +55,11 @@ there is still exactly one place any colour is chosen.
 **3.38:1** on `--card`, **3.10:1** on `--card2` and **2.90:1** on `--card-tint2` — four AA failures.
 Registering `--color-primary` hands out `text-primary` in the same breath as `bg-primary`, and there
 is no per-family opt-out. So the hazard is handled where it actually lives:
-`shadcn-ink-ban-913.test.ts` bans `text-primary`, `text-destructive` and their siblings **in app
+`shadcn-ink-ban.test.ts` bans `text-primary`, `text-destructive` and their siblings **in app
 source**, and exempts this directory by path. A vendored component pairing `bg-primary` with
 `text-primary-foreground` is correct — white on `#7254e6` is 5.09:1.
 
-Still not registered, and not negotiable: the **player hues**. #840's 48-stop palette splits `ink`
+Still not registered, and not negotiable: the **player hues**. The 48-stop palette splits `ink`
 from `fill` per stop (13 of 48 differ), which no single minted utility can respect.
 `tailwind-toolchain.test.ts` pins that.
 
@@ -84,7 +84,7 @@ Two correct forms:
 - put the class on a plain element **this** file renders. `card`, `input`, `native-select`, `badge`,
   `skeleton`, `spinner` and `table` can do this because their root is a real tag.
 
-`ui-scoped-style-reach-913.test.ts` fails on the broken form.
+`ui-scoped-style-reach.test.ts` fails on the broken form.
 
 ## 3. This is the only directory Tailwind scans
 
@@ -104,7 +104,7 @@ Two consequences, and the migration hit both:
 ## 4. Motion is banned by name, and transitions are transform/opacity only
 
 `motion.test.ts` rejects `transition-*`, `animate-*`, `duration-*` and `ease-*` as utility names
-tree-wide, because a keyframes utility cannot honour Reduce Motion. Nine of #913's components shipped
+tree-wide, because a keyframes utility cannot honour Reduce Motion. Nine of the migrated components shipped
 `transition-all`; all of it was stripped.
 
 Live motion is allowed when it is declared CSS on a composited property. `progress.svelte` transitions
@@ -125,7 +125,7 @@ do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if 
 
 ## Adding the next component
 
-1. `cd . && ./node_modules/.bin/shadcn-svelte add <name> --yes` (`bunx` fails — CodeArtifact
+1. `cd. &&./node_modules/.bin/shadcn-svelte add <name> --yes` (`bunx` fails — CodeArtifact
    401). Run `bun test` from the **repo root** afterwards; `bunfig.toml` and its preload live there,
    and running from `.` reports phantom failures.
 2. Strip every motion utility (§4) and check `var()` references resolve — a name that exists only in
@@ -142,15 +142,15 @@ do not re-add the global import to get it. `tailwind-toolchain.test.ts` reds if 
    change, or retire it on the record with its successors named (`non-vacuity-floors.test.ts` has a
    `RETIRED` registry for that). A guard whose premise a change ends must not be left passing
    vacuously.
-6. Look at it. #913's four worst defects were all correct in source and wrong on screen, and every one
-   was found by comparing before/after screenshots — `tests/e2e/shoot-913.mjs` is the capture
+6. Look at it. The four worst defects of the migration were all correct in source and wrong on screen, and every one
+   was found by comparing before/after screenshots — `tests/e2e/shoot.mjs` is the capture
    script, and it runs against either tree.
 
 ## What is deliberately NOT here
 
 - `.card` in `app.css` is **not** dead and must stay. **Nine** elements take the shared surface rather
   than a `<Card.Root>`: three queue/list rows, the hero, the TV progress track, a code-entry segment, the
-  reorder bar, `MyPositionCard` and `JoinLanding`. `ui-card-surface-913.test.ts` holds that list and
+  reorder bar, `MyPositionCard` and `JoinLanding`. `ui-card-surface.test.ts` holds that list and
   enforces it in both directions, so the authoritative enumeration is there rather than here — if the two
   ever disagree, the test is right.
 - `ColourPicker`'s hue slider stays a native range: its track **is** an oklch colour space and its

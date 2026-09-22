@@ -21,7 +21,7 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 // Both subjects are named from the REPO ROOT rather than from wherever this test happens to sit
-// (XR-VER-05). `read()` throws on a miss, so a wrong path reds loudly instead of stripping an empty
+//. `read()` throws on a miss, so a wrong path reds loudly instead of stripping an empty
 // string and reporting three green arms over nothing.
 const PAGE = stripComments(read('src/routes/find/+page.svelte'));
 const ROOM = stripComments(read('src/lib/stores/room.ts'));

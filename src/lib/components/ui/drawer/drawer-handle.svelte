@@ -12,7 +12,7 @@
 	 *
 	 * Encore needs `handleOnly`, because the drawer's body is sliders (the guiding track) and a
 	 * drag-to-dismiss surface underneath a slider fights the thumb — which is the whole substance of
-	 * XR-PH-15's ban on a control sharing a drag surface. So this file exists and Content uses it.
+	 * the ban on a control sharing a drag surface. So this file exists and Content uses it.
 	 */
 	import { Drawer as DrawerPrimitive } from 'vaul-svelte';
 	import { cn } from '$lib/utils.js';
@@ -33,7 +33,7 @@
 	 * target is unusable with a thumb — vaul renders its own `data-vaul-handle-hitarea` span for
 	 * exactly this, but ships no dimensions for it, so without this rule the hit area is the bar.
 	 *
-	 * Sized from `--tap`, never a literal (XR-PH-01), and pulled back with negative margins so the
+	 * Sized from `--tap`, never a literal, and pulled back with negative margins so the
 	 * enlarged target does not add height to the drawer's header. `:global` because the span is
 	 * rendered by a child component, which Svelte's scope hash cannot reach.
 	 */
@@ -51,7 +51,7 @@
 		height: var(--tap);
 		/*
 		 * Centre the tap box on the bar and take its overhang back out of the flow, so a full-tap grab
-		 * area costs the drawer's header no height. Both terms are tokens (XR-PH-01), so this stays
+		 * area costs the drawer's header no height. Both terms are tokens, so this stays
 		 * correct if either moves.
 		 */
 		margin-block: calc((var(--tap) - var(--space-xs)) / -2);

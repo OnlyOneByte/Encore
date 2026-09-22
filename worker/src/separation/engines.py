@@ -344,7 +344,7 @@ class AudioSepEngine(SeparatorDefaults):
     The fast RoFormer path `bs-roformer-infer` cannot reach: audio-separator runs mel-band checkpoints
     as a first-class MDXC path, and `mel instrumental_becruily` measures rt 1.28 on the reference box
     versus `bs_roformer-1297`'s rt 13.29 — a 10.4x RoFormer-family instrumental process, no GPU
-    (docs/benchmarks/SUMMARY.md §4). Adopted ALONGSIDE roformer, not replacing it — both engines, issue
+    (measured). Adopted ALONGSIDE roformer, not replacing it — both engines, issue
     an earlier change owner ruling Q1(b).
 
     Shape-wise it sits between demucs and roformer. Like demucs, its input is a single named WAV (not a

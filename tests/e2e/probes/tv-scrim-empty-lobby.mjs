@@ -18,7 +18,7 @@
  * premise — a never-tapped TV is the only TV that can reach this state, and it is the state a wall-
  * mounted television lives in permanently. Two inputs get here and neither is a tap.
  *
- *   EPORT=5362 bun tests/e2e/probes/tv-scrim-empty-lobby-736.mjs
+ *   EPORT=5362 bun tests/e2e/probes/tv-scrim-empty-lobby.mjs
  *
  * Exit 0 all passed / 1 a real failure / 2 the environment could not host the test.
  */
@@ -39,7 +39,7 @@ import { openJoin } from '../lib/join.mjs';
 const PORT = process.env.EPORT ?? '3000';
 const base = 'http://127.0.0.1:' + PORT;
 const SCRATCH = process.env.E2E_SCRATCH ?? '/tmp';
-const SHOTS = join(SCRATCH, 'shots-736');
+const SHOTS = join(SCRATCH, 'shots-tv-scrim-empty-lobby');
 
 /** @type {Check[]} */
 const checks = [];

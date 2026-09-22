@@ -589,7 +589,7 @@
 	 * primitive would have stacked typical/average/worst/songs into four full-width rows and lost the
 	 * side-by-side comparison that is the whole point of the strip. Overriding it back to a grid is not
 	 * available either: a `class` handed to Item.Group is scoped to THIS file and cannot reach the
-	 * element the component renders (ui-scoped-style-reach-913.test.ts), and Tailwind mints no utilities
+	 * element the component renders (ui-scoped-style-reach.test.ts), and Tailwind mints no utilities
 	 * for app source (`source(none)`), so there is no spelling of the override that would apply.
 	 */
 	.kv {
@@ -631,7 +631,7 @@
 	/*
 	 * --ink with an underline, NOT an accent colour. --accent measures 3.38:1 on --card — it is built
 	 * to CARRY --on-accent, not to be text — so it fails AA for normal-size link text. (The old
-	 * --accent-strong was worse at 3.52:1 and is retired; XR-COL-11.) The underline also stops
+	 * --accent-strong was worse at 3.52:1 and is retired;.) The underline also stops
 	 * the link being signalled by colour alone. min-height gives the stacked links a real tap target.
 	 *
 	 * The <a> is still rendered BY THIS PAGE (inside Item.Content's slot), so it carries this file's

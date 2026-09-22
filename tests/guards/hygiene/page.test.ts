@@ -81,7 +81,7 @@ test('the docked toast declares a width a phone can actually use (S5, was the le
 });
 
 /*
- * RETIRED BY S5 (XR-VER-07): 'the error toast docks off the undo toast MEASURED height'.
+ * RETIRED BY S5: 'the error toast docks off the undo toast MEASURED height'.
  *
  * It pinned `--error-dock: calc(... + var(--undo-h) ...)` against a real bug -- the undo toast's height
  * is content-dependent and unbounded, so ANY fixed px reserve is the same overlap at a longer title.

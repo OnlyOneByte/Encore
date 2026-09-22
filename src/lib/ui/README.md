@@ -12,7 +12,7 @@ confusing thing in this tree. Read them this way:
 | `src/lib/ui/` | **authored** — Encore's own | Yes |
 
 Neither name predicts its contents, so the rule has to be written down rather than inferred. It is
-also stated in `docs/DECISIONS.md` §4 and in `docs/LAYOUT.md` §1.
+also stated §4 and in `docs/LAYOUT.md` §1.
 
 ## Why the vendored directory is off limits
 
@@ -43,7 +43,7 @@ Three files, and none of them wraps a shadcn primitive:
 
 ## The wrapper layer this was meant to hold
 
-`docs/DECISIONS.md` §4 describes the intended shape: keep the vendored tree pristine and wrap it one
+The intended shape: keep the vendored tree pristine and wrap it one
 layer up, with `ActionButton.svelte` built on the vendored `Button` as the worked example.
 
 **That file does not exist, and no file here wraps a vendored primitive.** The wrapper layer is

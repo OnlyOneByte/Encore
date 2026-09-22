@@ -1,4 +1,4 @@
-// XR-PH-15's honest degradation, at its NEW ADDRESS.
+// the honest degradation, at its NEW ADDRESS.
 //
 // ── WHAT MOVED, AND WHAT THIS FILE NOW WATCHES ─────────────────────────────────────────────────────
 //
@@ -24,14 +24,14 @@
 // named `p16-hero-live-controls`, is registered under that path in `tests/e2e/run-probes.mjs` and
 // `tests/guards/hygiene/contract.test.ts`, is tabulated in `tests/e2e/HARNESS.md`, and reads the
 // surface through selectors literally called `SEL.hero` / `SEL.heroTitle`. Renaming this half to
-// `drawer-live-controls-835` would leave the two halves of one issue under two different names, and
+// `drawer-live-controls` would leave the two halves of one change under two different names, and
 // leave the pointer in this header aiming at a file that still says "hero" — which is precisely the
 // confusion a rename is supposed to remove.
 //
 // The rename is worth doing as ONE sweep, when someone next touches p16 (which is itself now stale —
 // it drives a component that no longer exists). Renaming both, plus the two prose references to THIS
-// path in `src/lib/components/ui/slider/slider.svelte` and `docs/ux/04-verification.md`, is that
-// commit's work. `-835` is the anchor that keeps the pair findable in the meantime.
+// path in `src/lib/components/ui/slider/slider.svelte`, is that
+// commit's work. The shared stem is what keeps the pair findable in the meantime.
 //
 // ── THE CAPABILITY BOUNDARY: THIS DRAWER CANNOT BE MOUNTED AT ALL ──────────────────────────────────
 //
@@ -44,7 +44,7 @@
 //   `use-prevent-scroll.svelte.js:185` read `document.documentElement.clientWidth` to size the
 //   scrollbar gutter for a MODAL drawer, and `use-drawer-root.svelte.js:67-68,248-269,423-424` read
 //   `getBoundingClientRect()` on the same path. Both were reached by flipping `open` false → true, and
-//   `svelte-dom-preload.ts` replaces every geometry API with a throw (XR-VER-03) because happy-dom
+//   `svelte-dom-preload.ts` replaces every geometry API with a throw because happy-dom
 //   fabricates a zero. So the drawer mounted closed and refused to open.
 //
 //   WHAT IT IS NOW, MEASURED. The sheet is permanently mounted, so there is nothing to flip: the
@@ -65,12 +65,12 @@
 //   refusal never fires. That is why arm 2's matcher is the `ReferenceError` rather than the preload's
 //   own "cannot measure on the MOUNT rung" message.
 //
-//   AND IT IS THE COMPONENT'S OWN MEASUREMENT NOW, which is an XR-VER-02 ruling and not a dependency's
+//   AND IT IS THE COMPONENT'S OWN MEASUREMENT NOW, which is an ruling and not a dependency's
 //   accident: a component that measures its own layout belongs on rung L. Every rendered claim about
 //   this drawer is a layout-rung claim, full stop.
 //
 // Faking the observer would manufacture exactly the silent green those refusals exist to prevent —
-// `docs/ux/04-verification.md` records that ruling for this very file, where four arms moved to p16
+// The rung split records that ruling for this very file, where four arms moved to p16
 // "rather than being kept alive with a faked width and a faked observer" — so it is not faked here
 // either. Instead the boundary is an ASSERTION (arm 2), not a paragraph: if a future Svelte, a future
 // `vaul`, or a drawer that stops measuring itself makes this mountable, that arm reds and sends the
@@ -83,10 +83,10 @@
 import { test, expect } from 'bun:test';
 import { mount, flushSync } from '$setup/svelte-client';
 import { read } from '@encore/test-support';
-import DrawerHarness from './hero-live-controls-835.harness.svelte';
+import DrawerHarness from './hero-live-controls.harness.svelte';
 
 /**
- * Comments stripped, exactly as `drawer-ui-cleanup-253.test.ts` does and for the same reason: both the
+ * Comments stripped, exactly as `drawer-ui-cleanup.test.ts` does and for the same reason: both the
  * drawer and `GuidingTrack` carry prose that NAMES the sentence under test, so an unstripped read would
  * let a comment satisfy a presence check or trip an absence check. Stripping keeps every guard on this
  * subject reading the same bytes.
@@ -210,7 +210,7 @@ function snapIdentifiers(drawer: string): string[] {
  * and a bare `expect(fn).toThrow()` can only carry the first two.
  *
  * `drawerNodes` is a COUNT, not an element, and that is a measured choice this file inherits from
- * `phone-home-832.test.ts`: bun formats the received value on a red, and formatting a happy-dom element
+ * `phone-home.test.ts`: bun formats the received value on a red, and formatting a happy-dom element
  * walks its properties — including the six geometry accessors the preload replaced with a throw. A count
  * formats as a number, so a red reads `Expected: 0 / Received: 1` at once.
  *
@@ -239,7 +239,7 @@ function attemptMount(snap: string | number): {
 	// Queried on the DOCUMENT, not the host: vaul portals content to the end of `document.body`, so a
 	// host-scoped query would report "absent" for content that had in fact rendered.
 	const drawerNodes = document.querySelectorAll(
-		'[data-slot="drawer-content"], .np-drawer, .band-slot, [data-slot="slider"], .tools-note'
+		'[data-slot="drawer-content"],.np-drawer,.band-slot, [data-slot="slider"],.tools-note'
 	).length;
 	host.remove();
 	for (const node of Array.from(document.body.childNodes)) {
@@ -250,7 +250,7 @@ function attemptMount(snap: string | number): {
 
 // ── 1. permanent mount: the DOM does not vary with the snap point ─────────────────────────────────
 
-test('the sheet is PERMANENTLY MOUNTED, and no snap state gates anything inside it (XR-PH-15)', () => {
+test('the sheet is PERMANENTLY MOUNTED, and no snap state gates anything inside it', () => {
 	/*
 	 * ── WHAT THIS RETIRES, AND WHY THE GUARANTEE IS GONE RATHER THAN MOVED ────────────────────────
 	 *
@@ -272,7 +272,7 @@ test('the sheet is PERMANENTLY MOUNTED, and no snap state gates anything inside 
 	 * That is not a defect on the phone (the Slider has a layout engine there) but it IS the end of the
 	 * old claim, so the old claim is retired rather than reworded. Its rendered successor — that the
 	 * body is off-screen at snap 0 and on-screen at snap 1 — is a TRANSFORM OFFSET, which is a
-	 * layout-rung claim (XR-VER-01) and belongs in `tests/e2e/probes/`. Recorded here so the next reader
+	 * layout-rung claim and belongs in `tests/e2e/probes/`. Recorded here so the next reader
 	 * does not go looking for it on this rung.
 	 *
 	 * WHAT IS DECIDABLE HERE, and what this arm now asserts, is the DOM half of the same subject: the
@@ -315,7 +315,7 @@ test('the sheet is PERMANENTLY MOUNTED, and no snap state gates anything inside 
 	}
 
 	/*
-	 * RECORDED MUTATIONS (XR-VER-04), each applied to the string this arm reads and each measured to red
+	 * RECORDED MUTATIONS, each applied to the string this arm reads and each measured to red
 	 * exactly this arm: gating `.tools-body` on `!collapsed && hasSong`; gating it on a NEW
 	 * `$derived(activeSnapPoint === SNAP_BAND)`; wrapping `<Drawer.Root>` in an `{#if}`; flipping `open`
 	 * to `$bindable(false)`; making `activeSnapPoint` a plain `let`; deleting `snapPoints`; and breaking
@@ -329,7 +329,7 @@ test('the sheet is PERMANENTLY MOUNTED, and no snap state gates anything inside 
 
 // ── 2. the boundary, asserted rather than narrated ────────────────────────────────────────────────
 
-test('MOUNTING the drawer is NOT decidable on the mount rung (XR-VER-03), and says which API blocks it', () => {
+test('MOUNTING the drawer is NOT decidable on the mount rung, and says which API blocks it', () => {
 	/*
 	 * Mounted the way the app mounts it, which since the merge is the ONLY way there is: born open, at a
 	 * snap point. The previous version of this arm mounted closed and then clicked a stand-in for the
@@ -391,7 +391,7 @@ test('MOUNTING the drawer is NOT decidable on the mount rung (XR-VER-03), and sa
 	expect(LAYOUT).toContain('bind:bandH={dockH}');
 
 	/*
-	 * RECORDED MUTATIONS (XR-VER-04), both measured to red exactly this arm: deleting
+	 * RECORDED MUTATIONS, both measured to red exactly this arm: deleting
 	 * `bind:clientHeight={bandH}` from `.band-slot` (the named cause disappears); and installing a no-op
 	 * `ResizeObserver` on `globalThis` before the mount, which stands in for the rung gaining one or the
 	 * drawer stopping measuring itself — the drawer then MOUNTS, `threw` is no longer the
@@ -457,7 +457,7 @@ test('the drawer derives the sentence from the song, not from the flag alone (Q1
 
 // ── 4. placement: the reason is read BEFORE the dead control, and only when a song is playing ─────
 
-test('the sentence renders BEFORE the control it explains, inside the hasSong gate (XR-PH-15)', () => {
+test('the sentence renders BEFORE the control it explains, inside the hasSong gate', () => {
 	/*
 	 * WAS: two of the four arms that moved to p16 — "the sentence is in the disclosure BODY, never in
 	 * the collapsed summary", and the idle arm's rendered form ("nothing playing offers no live control
@@ -497,13 +497,13 @@ test('the sentence renders BEFORE the control it explains, inside the hasSong ga
 	expect(control).toBeGreaterThan(note);
 });
 
-// ── 5. XR-PH-03: dimmed by a token, never by an alpha on it or on anything above it ───────────────
+// ── 5. dimmed by a token, never by an alpha on it or on anything above it ───────────────
 
-test('the sentence is dimmed by an ink token, never by an opacity on it or an ancestor (XR-PH-03)', () => {
+test('the sentence is dimmed by an ink token, never by an opacity on it or an ancestor', () => {
 	/*
 	 * WAS: a MOUNTED arm (moved to p16) asserting the sentence sat OUTSIDE the subtree `.gt.disabled`
 	 * dimmed with `opacity`. That subtree no longer exists — `GuidingTrack` deleted
-	 * `.gt.disabled { opacity: .5 }` and now dims `.gt-val` with `--ink-dim`, which is the same rule
+	 * `.gt.disabled { opacity:.5 }` and now dims `.gt-val` with `--ink-dim`, which is the same rule
 	 * this arm enforces. So the claim is read from the other side and STRENGTHENED rather than
 	 * re-pointed: the note carries its own token, and no rule on the note or on any of its ancestors in
 	 * this component declares an alpha at all.
@@ -527,7 +527,7 @@ test('the sentence is dimmed by an ink token, never by an opacity on it or an an
 	expect(noteRules[0]).not.toMatch(/(^|[^-])\bopacity\s*:/);
 
 	/*
-	 * And the containment half, which is what made this an XR-PH-03 claim in the first place: the note
+	 * And the containment half, which is what made this an claim in the first place: the note
 	 * is a SIBLING of the control rather than a child of it, so nothing `GuidingTrack` does to its own
 	 * subtree can reach the sentence. `<GuidingTrack … />` is self-closing, so it HAS no subtree in this
 	 * file — that is the structural form of the guarantee.
@@ -539,7 +539,7 @@ test('the sentence is dimmed by an ink token, never by an opacity on it or an an
 // ── 6. reversed-proof, preserved verbatim in substance ────────────────────────────────────────────
 
 test('stays reversed-proof: the reason is on the drawer, NOT back inside GuidingTrack', () => {
-	// The whole point of arm D. `drawer-ui-cleanup-253.test.ts` bans this phrase from the component and
+	// The whole point of arm D. `drawer-ui-cleanup.test.ts` bans this phrase from the component and
 	// this asserts the same boundary from the other side, so a future edit that relocates the sentence
 	// into the component reds here as well as there. Unchanged by the hero→drawer move and by the
 	// band/drawer merge: the ruling was about which side of the component boundary the copy lives on,

@@ -35,15 +35,15 @@
 		 */
 		shift?: -1 | 0 | 1;
 		/**
-		 * XR-PH-17 — show the drag grip. The caller passes `gripVisible()` from `$lib/reorder-mode`,
+		 * show the drag grip. The caller passes `gripVisible()` from `$lib/reorder-mode`,
 		 * never a raw boolean: the grip is a promise that a `move` will land, and the four conditions
 		 * that make it true are argued there. Independent of `reorderable` on purpose — the up/down
-		 * buttons are the single-pointer alternative (XR-PH-20) and must not be coupled to the grip.
+		 * buttons are the single-pointer alternative and must not be coupled to the grip.
 		 */
 		grip?: boolean;
 		/**
-		 * XR-PH-18 — this row is not a legal drop target while the reorder mode is open (it is another
-		 * guest's song). De-emphasised with a SURFACE token, never `opacity`: XR-PH-03, and the
+		 * this row is not a legal drop target while the reorder mode is open (it is another
+		 * guest's song). De-emphasised with a SURFACE token, never `opacity`:, and the
 		 * `.pending` comment below records what subtree opacity did to this very row's contrast.
 		 */
 		dimmed?: boolean;
@@ -55,7 +55,7 @@
 		ongripdown?: (e: PointerEvent) => void;
 		/**
 		 * Click / keyboard activation of the grip: opens the mode without a pointer drag. Receives the
-		 * grip ELEMENT, not nothing: XR-PH-19 requires focus to return to the grip that opened the mode,
+		 * grip ELEMENT, not nothing: the rule requires focus to return to the grip that opened the mode,
 		 * and the page cannot name that element on its own. Driving the mode is what found this — the
 		 * handler passed `null`, so a keyboard guest who opened the mode and pressed Escape was left with
 		 * focus on `<body>`.
@@ -64,7 +64,7 @@
 		/**
 		 * The queue entry's id, published on the grip as `data-grip`.
 		 *
-		 * Focus return (XR-PH-19) cannot be done by holding the element: entering the mode inserts the
+		 * Focus return cannot be done by holding the element: entering the mode inserts the
 		 * drop-slot buttons into this list, and Svelte recreates the row's DOM around them — so the grip
 		 * the guest pressed is a detached node by the time the mode closes, and focusing it puts focus
 		 * nowhere. Measured by driving the mode in a real browser, where `activeElement` was `<body>` after Escape even
@@ -110,7 +110,7 @@
 
 	/**
 	 * What the unconfirmed marker SAYS. An optimistic reorder used to borrow the add path's word and
-	 * announce "adding…" on a row that was already in the queue (XR-PH-10). One expression,
+	 * announce "adding…" on a row that was already in the queue. One expression,
 	 * so the two states cannot drift into saying the same thing again.
 	 */
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
@@ -153,10 +153,10 @@
 					action on it.
 
 					NO OUTLINE: `variant="ghost"` rather than `outline`. The three siblings it used to stand in a
-					row with are gone (the arrows are retired — see XR-PH-20 in `$lib/reorder-mode` — and remove
+					row with are gone (the arrows are retired — in `$lib/reorder-mode` — and remove
 					keeps its own box on the right), so a border here would be the only one left, framing a texture.
 
-					STILL A REAL BUTTON, and still `press="grab"` — which is not styling: XR-PH-17's last clause is
+					STILL A REAL BUTTON, and still `press="grab"` — which is not styling: the last clause is
 					that `cursor: grab` lives on this control and never on a row, and `press="grab"` is where the
 					button variant declares both that cursor and the `touch-action: none` the drag needs to stop
 					the browser claiming the vertical gesture for scrolling.
@@ -167,7 +167,7 @@
 					the action rather than the gesture so it is honest for both paths.
 				-->
 				<!--
-					XR-PH-10: INERT WHILE A MOVE IS UNCONFIRMED. `pending` gates the grip for the same reason it gated
+					INERT WHILE A MOVE IS UNCONFIRMED. `pending` gates the grip for the same reason it gated
 					the arrows it replaced — a second reorder against a position the server has not agreed to yet would
 					issue an op for an index that no longer means what the guest saw. The seq bubble stays, so the row
 					keeps its place in the list while it settles; only the handle to move it goes.
@@ -227,7 +227,7 @@
 						two 44px outlined buttons on every row to move a song one place, which is what "the up/down
 						buttons take up too much space" was about. Their job — a reorder without a drag — did not go
 						with them; it moved onto the grip above, where Arrow Up/Down does the same one-place step for
-						no layout at all. See the header of `$lib/reorder-mode` for why that keeps XR-PH-20 (a
+						no layout at all. See the header of `$lib/reorder-mode` for why that keeps (a
 						conformance row, SC 2.5.7 / 2.1.1) satisfied rather than traded away.
 					-->
 					{#if removable}
@@ -340,11 +340,11 @@
 	   `.icon-btn` in app.css was deleted when its ten consumers became that variant; this
 	   block and ProcessingCard's were byte-identical, each with its own copy of the same rationale. */
 	/*
-	 * XR-PH-18 — another guest's row while the reorder mode is open: not a legal drop target, so it is
+	 * another guest's row while the reorder mode is open: not a legal drop target, so it is
 	 * de-emphasised and made non-interactive (the `inert` attribute is set by the caller, which is what
 	 * removes pointer AND keyboard reach in one declaration rather than two half-measures).
 	 *
-	 * DE-EMPHASISED WITH A SURFACE, NOT `opacity` (XR-PH-03). Subtree opacity on this exact row is
+	 * DE-EMPHASISED WITH A SURFACE, NOT `opacity`. Subtree opacity on this exact row is
 	 * already a recorded defect — see the `.pending` comment above, where `opacity: 0.55` dropped the
 	 * byline to 2.68:1 and the singer dot to 2.57:1. These rows stay INFORMATIONAL during the mode:
 	 * they are who you are being ordered around, so the inactive-component contrast exemption does not
@@ -364,13 +364,13 @@
 	 * `--drag` idiom the reorder mode uses for every drag on this screen (the queue sheet's pull used
 	 * it too, before that surface was deleted).
 	 *
-	 * There is deliberately NO `transition` and no keyframe on this rule, which is what makes XR-PH-06
+	 * There is deliberately NO `transition` and no keyframe on this rule, which is what makes
 	 * hold by construction rather than by a media query: nothing is interpolated over time, so there is
 	 * no duration for `prefers-reduced-motion` to have to zero out. The row's position is a 1:1
 	 * response to the pointer's position — the same class of movement as scrolling — and the commit is
 	 * instant, because the authoritative list re-derives `rotationSeq` on the patch. This is also why
 	 * no drag library is pulled in: a library would animate the settle in JS, which is precisely the
-	 * defect XR-PH-06 names and which `motion.test.ts` cannot see.
+	 * defect the standard names and which `motion.test.ts` cannot see.
 	 */
 	.moving {
 		transform: translateY(var(--drag-y, 0px));
@@ -378,7 +378,7 @@
 		position: relative;
 		z-index: var(--z-row-lifted);
 		/*
-		 * `var(--accent)`, not the retired `--accent-strong` (XR-COL-11): the fill IS the strong
+		 * `var(--accent)`, not the retired `--accent-strong`: the fill IS the strong
 		 * value now that the accent is registry stop 41, and this is a BORDER — non-text, so the 3:1
 		 * floor applies and stop 41 clears it on both dark surfaces.
 		 */
@@ -392,7 +392,7 @@
 		 */
 		pointer-events: none;
 	}
-	/* XR-PH-17's last clause: `cursor: grab` lives on the grip BUTTON and on nothing else, so it can
+	/* the last clause: `cursor: grab` lives on the grip BUTTON and on nothing else, so it can
 	   never appear on a row that has no reorder path. `touch-action: none` because a vertical drag
 	   starting on this button must move the row rather than scroll the page. */
 	/*
@@ -404,7 +404,7 @@
 	 * the movement a `transform`, which is the only kind `motion.test.ts` allows to be animated.
 	 *
 	 * THE TRANSITION IS GATED, not unconditional — this is the one interpolated movement on this row, so
-	 * unlike `.moving` (a 1:1 response to the finger, XR-PH-06 by construction) it has a duration that
+	 * unlike `.moving` (a 1:1 response to the finger, by construction) it has a duration that
 	 * `prefers-reduced-motion` must be able to remove. Under `reduce` no transition is declared at all and
 	 * the rows simply appear in their new places, which is still a correct live sort.
 	 */

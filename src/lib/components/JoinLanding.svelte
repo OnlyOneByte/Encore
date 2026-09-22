@@ -1,5 +1,5 @@
 <!--
-	JoinLanding — the UNJOINED state of `/` (XR-PH-14). `/` is the landing page now; there is
+	JoinLanding — the UNJOINED state of `/`. `/` is the landing page now; there is
 	no separate `/join` route (Q2-A retired it), and this component is what an unjoined visitor sees
 	instead of the queue.
 
@@ -559,7 +559,7 @@
 	 *
 	 *   `.err`   — `e2e/contract.ts` addresses it as `.err[role=alert]`, so the class has to sit on the
 	 *              alerting element itself. <Field.Error> emits the role, but a class handed to it could
-	 *              not carry a scoped rule (ui-scoped-style-reach-913.test.ts), and contract.ts is not
+	 *              not carry a scoped rule (ui-scoped-style-reach.test.ts), and contract.ts is not
 	 *              editable from here.
 	 *   `.confirm` — this is the scanned path's HEADLINE ("Maya and Dana are here"), the one sentence
 	 *              that surface exists to state: --ink, --ph-text-lg, 600. <Field.Description> is

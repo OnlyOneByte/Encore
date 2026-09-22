@@ -62,7 +62,7 @@ Three ways it differs from a probe, all deliberate:
   under a simulated inset, and the painted focus ring. `src/lib/measured-design-gate.test.ts`
   is its always-on half — it runs in `bun test` on every box and asserts the gate stays wired.
 
-Two methodology notes it paid for, beyond the ones in `docs/ux/04-verification.md`:
+Two methodology notes it paid for, beyond the ones:
 
 - **Chromium hit-tests `border-radius`.** Sweeping a control's vertical extent at a far-edge x measures
   the chord through its own rounded corner, so every 44px pill read 34–42px and the floor was
@@ -71,7 +71,7 @@ Two methodology notes it paid for, beyond the ones in `docs/ux/04-verification.m
 - **Headless has no notch.** Every `env(safe-area-inset-*)` resolves to 0, so
   `calc(10px + env(safe-area-inset-bottom, 0px))` and a bare `10px` measure identically and a guard
   comparing them proves nothing. `page.safeAreaInsets({ bottom: 34 })` is what makes that arm real —
-  the helper #827's spike added to `driver.mjs`, which this gate consumes rather than adding a second copy
+  the helper the drawer spike added to `driver.mjs`, which this gate consumes rather than adding a second copy
   of. Two identical helpers under two names on the shared driver is the drift `lib/chromium.mjs`'s
   single-source rule exists to prevent.
 
@@ -80,7 +80,7 @@ Two methodology notes it paid for, beyond the ones in `docs/ux/04-verification.m
 Every probe gets its own port and media dir, so runs never collide.
 
 ```bash
-cd .
+cd.
 PORT=52NN                      # yours alone
 SCRATCH=$KIROCREW_SCRATCH/e2e-$PORT
 rm -rf "$SCRATCH"; mkdir -p "$SCRATCH/media"
@@ -89,7 +89,7 @@ MEDIA_DIR="$SCRATCH/media" bun run tests/e2e/seed-media.mjs      # 4 demo tracks
 
 ENCORE_EPHEMERAL=1 PORT=$PORT HOST=127.0.0.1 MEDIA_DIR="$SCRATCH/media" \
   ENCORE_LYRICS_BACKFILL=0 ENCORE_VOCALS_BACKFILL=0 \
-  nohup bun run ./server.ts > "$SCRATCH/server.log" 2>&1 &
+  nohup bun run./server.ts > "$SCRATCH/server.log" 2>&1 &
 
 until curl -sf "http://127.0.0.1:$PORT/health" >/dev/null; do sleep 0.5; done
 
@@ -210,8 +210,8 @@ its docstring names the mistake.
 | `p15-phone-reflow` | **passes** 4/4 — needs a built UI, the runner checks for one |
 | `p16-hero-live-controls` | **passes** 11/11 |
 | `p5-process-lifecycle` | reported a real `[HIGH]`: a floor-level silent instrumental published as READY with no defence in the core. **Fixed** — the loudness probe is now wired into the live publish path, not only the boot backfill |
-| `p10-scaling`, `admin-delete-639`, `shoot-913` | capture only; they exit 0 whatever they saw, so the summary says `ran`, not `ok`. `p10` records 12 phases and 7 of them were `remote-*` timeouts worth reading |
-| `p1-gapless`, `p3-key-shift`, `p6-lyrics`, `tv-scrim-empty-lobby-736` | **still red**, all four on the same next step: the search returns 13 rows, twelve remote `.sing` and one local `.add`, and clicking the `.add` reports success while queueing nothing. Which control a READY song actually offers is the open question |
+| `p10-scaling`, `admin-delete`, `shoot` | capture only; they exit 0 whatever they saw, so the summary says `ran`, not `ok`. `p10` records 12 phases and 7 of them were `remote-*` timeouts worth reading |
+| `p1-gapless`, `p3-key-shift`, `p6-lyrics`, `tv-scrim-empty-lobby` | **still red**, all four on the same next step: the search returns 13 rows, twelve remote `.sing` and one local `.add`, and clicking the `.add` reports success while queueing nothing. Which control a READY song actually offers is the open question |
 | `p15-reload-resume` | environment bail: the server position never passes 3s, so there is no resume to test |
 
 Two things to know before touching any of them. The probes do not agree on which variable names the

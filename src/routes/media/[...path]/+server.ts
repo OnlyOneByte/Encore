@@ -31,7 +31,7 @@ const CACHE = 'public, max-age=86400';
 
 export const GET: RequestHandler = async ({ params, request }) => {
 	const ref = params.path ?? '';
-	// the guard rejects traversal / absolute / NUL / .thumbs before we hit the store
+	// the guard rejects traversal / absolute / NUL /.thumbs before we hit the store
 	if (!safeMediaPath(ref)) return new Response('not found', { status: 404 });
 
 	const store = getApp().mediaStore;
@@ -51,11 +51,11 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	// tests, which is why the absence stayed invisible to coverage. It is deleted rather than wired up
 	// because wiring it would regress three things at once: (1) a cross-origin media element taints
 	// `MediaElementAudioSourceNode`, so the deferred FFT visualizer work silently goes flat with no
-	// error (docs/DECISIONS.md, "Audio-REACTIVE visualizers"); (2) LyricsOverlay `fetch`es its
+	// error ("Audio-REACTIVE visualizers"); (2) LyricsOverlay `fetch`es its
 	// artifacts from this origin and would need bucket CORS; (3) a presigned URL is a bearer credential
 	// for a media file with a TTL nobody specified, and a song plus its queue wait can outlive an hour.
 	// Re-adding a URL member is therefore a product decision about same-origin playback, not a store
-	// detail — see docs/arch/01-media.md XR-MED-10. The guard is
+	// detail — see docs/arch/01-media.md. The guard is
 	// tests/guards/subsystem-media/store-members-have-production-callers.test.ts.
 	if (typeof store.size !== 'function' || typeof store.getRange !== 'function') {
 		const stream = await store.get(ref);

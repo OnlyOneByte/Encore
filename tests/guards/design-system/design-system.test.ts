@@ -31,7 +31,7 @@ const REPO = repoRoot;
 // comment in app.css must NOT count as real (the asymmetric-stripping hole).
 const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
 
-/** Every .svelte under src, recursively. */
+/** Every.svelte under src, recursively. */
 
 /**
  * Strip comments before scanning. A comment explaining WHY a literal was kept must not itself trip
@@ -77,7 +77,7 @@ function palette(): Map<string, string> {
 }
 
 /**
- * The full guest-visible .svelte surface, computed ONCE. Every scan below iterates it; a
+ * The full guest-visible.svelte surface, computed ONCE. Every scan below iterates it; a
  * `.filter(bad).toEqual([])` / `missing.toEqual([])` scan passes vacuously if the walk returns
  * nothing, so pin a floor here. If a refactor moves files out of src/, this reds
  * loudly instead of silently guarding nothing. 25 files today; floor well below that.
@@ -125,7 +125,7 @@ test('no component hard-codes a colour the palette already owns', () => {
 test('no component hard-codes an rgb()/rgba() colour the palette already owns', () => {
 	// SIBLING of the #hex scan above, for the rgb()/rgba() FORM. The hex scan is blind to functional
 	// notation, which is exactly how the attract-screen fade drifted: `linear-gradient(..., rgba(3,3,8,
-	// 0.9), ...)` in tv/+page.svelte duplicates `--bg` (#0b0b12 fades to a different black than its twin
+	// 0.9),...)` in tv/+page.svelte duplicates `--bg` (#0b0b12 fades to a different black than its twin
 	// TvLobby fade, which was converted to color-mix(var(--bg)) for this reason) while the #hex guard
 	// never sees it. This scan owns the rgb()/rgba() form: a literal whose R,G,B equals a palette
 	// token's is an offence regardless of its alpha (the alpha is a fade depth, the RGB is the colour
@@ -151,7 +151,7 @@ test('no component hard-codes an rgb()/rgba() colour the palette already owns', 
 			const tokenName = byRgb.get(key);
 			if (!tokenName) continue;
 			offences.push(
-				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${m[0]} duplicates var(--${tokenName}); use color-mix(in srgb, var(--${tokenName}) ...) so it tracks the theme`
+				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${m[0]} duplicates var(--${tokenName}); use color-mix(in srgb, var(--${tokenName})...) so it tracks the theme`
 			);
 		}
 	}
@@ -259,7 +259,7 @@ test('a component never references a token that exists only in the @theme bridge
 			if (local.has(name)) continue; // the file declares it itself, so it resolves
 			if (!bridgeOnly.has(name)) continue;
 			offences.push(
-				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: var(--${name}) is declared only in @theme, which mints a utility but emits no custom property — it paints nothing. Use the :root token it forwards to.`
+				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: var(--${name}) is declared only in @theme, which mints a utility but emits no custom property — it paints nothing. Use the:root token it forwards to.`
 			);
 		}
 	}
@@ -269,7 +269,7 @@ test('a component never references a token that exists only in the @theme bridge
 	expect(offences).toEqual([]);
 });
 
-test('every @theme bridge entry forwards to a real :root token, and never to itself', () => {
+test('every @theme bridge entry forwards to a real:root token, and never to itself', () => {
 	// A bridge entry is `--spacing-sm: var(--space-sm)` — a DIFFERENT name on each side, forwarding to a
 	// token `:root` really declares. Two ways that breaks, both silent, both invisible to either side
 	// read alone:
@@ -292,7 +292,7 @@ test('every @theme bridge entry forwards to a real :root token, and never to its
 			if (target === name) {
 				offences.push(`--${name} forwards to itself — it resolves to nothing and paints nothing`);
 			} else if (!ROOT_TOKENS.has(target)) {
-				offences.push(`--${name} forwards to var(--${target}), which :root never declares`);
+				offences.push(`--${name} forwards to var(--${target}), which:root never declares`);
 			}
 		}
 	}
@@ -350,7 +350,7 @@ function rules(src: string): Array<[string, string, number]> {
 }
 
 test('no component hard-codes a spacing value the scale already owns', () => {
-	// Scope is gap / margin / padding, which is XR-PH-04's own scope ("every gap/margin/padding in a
+	// Scope is gap / margin / padding, which is the own scope ("every gap/margin/padding in a
 	// phone surface resolves to a spacing step"). Positional offsets -- top/right/bottom/left/inset -- are
 	// deliberately NOT in it: they place a box against its container rather than space one from another,
 	// and the incumbent values there are edge offsets whose meaning is positional, not rhythmic.
@@ -456,7 +456,7 @@ test('no component hard-codes a motion duration the scale already owns', () => {
 	// hide behind the other's unit.
 	//
 	// A DURATION TOKEN IS NOT A REDUCED-MOTION MECHANISM. This scan says nothing about whether an
-	// animation is gated -- components/motion.test.ts owns that, and XR-TV-05's rule that a reduced-motion
+	// animation is gated -- components/motion.test.ts owns that, and the rule that a reduced-motion
 	// branch HALTS rather than shortens is unaffected by which token spells the duration it halts.
 	const ms = (v: string) => {
 		const m = v.match(/^([\d.]+)(ms|s)$/);
@@ -493,8 +493,8 @@ test('every z-index in a component names a paint-order tier, never a bare intege
 	// integers in its stacking context, so the number alone cannot say what it sits above -- which is the
 	// defect, not a side effect of it. The tree had `9` and `10` meaning the TV's status dot and tap
 	// affordance in one file and the phone sheet's scrim and surface in another, and nothing in either
-	// said which ladder a reader was looking at. XR-TV-10 asks for exactly this ("each value is a
-	// var(--z-tv-…) reference"), and XR-PH-04 for its phone half.
+	// said which ladder a reader was looking at. the standard asks for exactly this ("each value is a
+	// var(--z-tv-…) reference"), and for its phone half.
 	//
 	// A duplication rule could not express it anyway: the two ladders SHARE values by design (--z-header
 	// and --z-tv-video are both 1, and --z-sheet matched --z-tv-affordance at 10 before the sheet tiers
@@ -541,7 +541,7 @@ test('each paint-order ladder still climbs in its documented order', () => {
 	// re-ORDERING it cannot.
 	const value = (t: string) => {
 		const d = ROOT_DECLS.find(([n]) => n === t);
-		expect(d, `--${t} must be declared in :root`).toBeDefined();
+		expect(d, `--${t} must be declared in:root`).toBeDefined();
 		const n = Number(d![1]);
 		expect(Number.isInteger(n), `--${t} must be an integer, got ${d![1]}`).toBe(true);
 		return n;
@@ -570,13 +570,13 @@ test('each paint-order ladder still climbs in its documented order', () => {
 			);
 		}
 	}
-	// Every tier in :root belongs to exactly one ladder, so a tier added without a place in the order
+	// Every tier in:root belongs to exactly one ladder, so a tier added without a place in the order
 	// reds here rather than joining the scheme unordered.
 	const laddered = new Set(Object.values(LADDERS).flat());
 	const unplaced = [...ROOT_TOKENS].filter((t) => /^z-/.test(t) && !laddered.has(t));
 	expect(unplaced).toEqual([]);
-	// XR-VER-06 RECORD — this floor went 11 -> 10 when the queue sheet was deleted, and here is what left scope. The INVARIANT is
-	// unchanged: every z-* tier in :root belongs to exactly one ladder and each ladder climbs in its
+	// RECORD — this floor went 11 -> 10 when the queue sheet was deleted, and here is what left scope. The INVARIANT is
+	// unchanged: every z-* tier in:root belongs to exactly one ladder and each ladder climbs in its
 	// documented order. What shrank is the POPULATION: --z-sheet-scrim (9) and --z-sheet (10) were the
 	// queue sheet's two tiers, and the drawer surface that was their only reader was deleted, so the
 	// phone ladder went from five tiers (four rungs) to three (two rungs). Nothing is unenforced by the
@@ -630,7 +630,7 @@ test('every @media width literal in source is a declared breakpoint', () => {
 	// MEMBERSHIP, NOT EQUALITY — the owner's Q1-C ruling. The reviewer widths are eyeballing
 	// widths; these are switch widths. The two are DIFFERENT lists on purpose, so this asserts only
 	// that every `@media` width literal is a MEMBER of the declared `--bp-*` set. It does NOT touch
-	// `docs/loop/REVIEW-PASSES.md` and does NOT assert the two lists are equal.
+	// a review pass's own list, and does NOT assert the two lists are equal.
 	//
 	// The set is read from app.css's `:root` at run time (never a copy here), so adding a `--bp-*`
 	// step starts permitting that width by itself — the same self-updating property the colour and
@@ -646,11 +646,11 @@ test('every @media width literal in source is a declared breakpoint', () => {
 	// pass by having nothing to compare against.
 	expect(BP.size).toBeGreaterThanOrEqual(4);
 	// 320px (WCAG 2.2 SC 1.4.10 Reflow) is a declared member even though no rule branches at it — the
-	// "320 is a member, or one line says why not" half of XR-VER-21's acceptance.
+	// "320 is a member, or one line says why not" half of the acceptance.
 	expect(BP.has(320)).toBe(true);
 
 	// Collect `@media (min-width|max-width: Npx)` literals across apps/*/src AND packages/*/src, per the
-	// acceptance's scope. styleFiles walks .svelte + .css (the widths live in component <style> blocks
+	// acceptance's scope. styleFiles walks.svelte +.css (the widths live in component <style> blocks
 	// AND in app.css), and *.test.* files are excluded — the 5000px in motion.test.ts and the 380px in
 	// song-row-sparkle-sibling.test.ts are guard prose about queries, not queries.
 	const roots = [join(REPO, 'src')].filter((d) => existsSync(d));
@@ -667,7 +667,7 @@ test('every @media width literal in source is a declared breakpoint', () => {
 				if (!BP.has(w)) {
 					offences.push(
 						`${f.replace(REPO + '/', '')}:${lineOf(src, m.index!)}: @media width ${w}px is not a declared breakpoint — ` +
-							`add --bp-${w} to app.css :root, or move this query onto an existing --bp-* width. Declared: ${[...BP.keys()].sort((a, b) => a - b).join('/')}px`
+							`add --bp-${w} to app.css:root, or move this query onto an existing --bp-* width. Declared: ${[...BP.keys()].sort((a, b) => a - b).join('/')}px`
 					);
 				}
 			}
@@ -725,7 +725,7 @@ test('the colour picker wires its swatch tabindex to presetTabStopIndex', () => 
 test('the colour picker anchors arrow movement on nextSwatchIndex, not a bare indexOf', () => {
 	// THE BUG THIS BOUNDS. The tab stop reads presetTabStopIndex (falls back to swatch 0 for a
 	// wheel value), but the arrow-key handler used to compute its base from a bare
-	// `(SINGER_COLORS as ...).indexOf(value)`, which is -1 for any wheel hex. After a hue pick the two
+	// `(SINGER_COLORS as...).indexOf(value)`, which is -1 for any wheel hex. After a hue pick the two
 	// disagreed: focus sat on swatch 0 while movement started from -1, so the first ArrowRight did not
 	// move and ArrowLeft skipped mint. nextSwatchIndex in $lib/contract shares presetTabStopIndex's
 	// anchor and is unit-tested there -- but that closes only the helper; the handler is a Svelte
@@ -735,9 +735,9 @@ test('the colour picker anchors arrow movement on nextSwatchIndex, not a bare in
 	// It must IMPORT the shared helper (reverting the import alone leaves a call to an unimported
 	// symbol — a build break bun test does not see, so the import must be pinned here too)...
 	expect(picker).toMatch(/import \{[^}]*\bnextSwatchIndex\b[^}]*\} from '\$lib\/contract';/);
-	// ...and the arrow handler must derive `next` from that helper...
+	//...and the arrow handler must derive `next` from that helper...
 	expect(picker).toMatch(/const next = nextSwatchIndex\(value, step\);/);
-	// ...and must NOT reintroduce the divergent bare-indexOf arrow base (the original defect). Comments are
+	//...and must NOT reintroduce the divergent bare-indexOf arrow base (the original defect). Comments are
 	// stripped first, so the rationale prose above cannot satisfy or trip this.
 	expect(picker).not.toMatch(/indexOf\(value\)/);
 });
@@ -778,7 +778,7 @@ test('no component leaks a stray comment terminator into the page', () => {
 
 test('form controls never sit below the 16px iOS zoom threshold', () => {
 	// THE BUG: iOS Safari zooms the page in when a focused input computes under 16px, and does not
-	// zoom back out. The settings page shipped `select, .text { font-size: 0.9rem }` (14.4px) and a
+	// zoom back out. The settings page shipped `select,.text { font-size: 0.9rem }` (14.4px) and a
 	// 0.86rem LAN-address field, so tapping either left the whole surface zoomed and off-centre.
 	//
 	// THE VALUE IS RESOLVED THROUGH A TOKEN, NOT ONLY READ AS A LITERAL. Before the type ladder
@@ -807,7 +807,7 @@ test('form controls never sit below the 16px iOS zoom threshold', () => {
 			const ref = value.match(/^var\(\s*(--[a-z0-9-]+)\s*\)$/);
 			if (ref) {
 				const target = ROOT_DECLS.find(([n]) => '--' + n === ref[1]);
-				if (!target) continue; // not a :root token — the @theme-only scan above owns that defect
+				if (!target) continue; // not a:root token — the @theme-only scan above owns that defect
 				value = target[1]!.trim();
 				controlSizesResolved++;
 			}
@@ -934,14 +934,14 @@ test('the bottom-docked band clears the home indicator', () => {
 	// The band's inset must stay INSIDE the measured element, which is the reservation contract every
 	// docked control offsets from.
 	const drawer = stripComments(readFileSync(join(SRC, 'lib/components/NowPlayingDrawer.svelte'), 'utf8'));
-	expect(drawer, '--dock-h must still be measured off the .band-slot that holds the band').toMatch(
+	expect(drawer, '--dock-h must still be measured off the.band-slot that holds the band').toMatch(
 		/class="band-slot"[^>]*bind:clientHeight=\{bandH\}/
 	);
 	const suppress = drawer.match(/\.band-slot\s+:global\(\.band\)\s*\{([^}]*)\}/);
-	expect(suppress, 'the drawer must still suppress the band surface paint via :global(.band)').not.toBeNull();
+	expect(suppress, 'the drawer must still suppress the band surface paint via:global(.band)').not.toBeNull();
 	expect(
 		suppress![1]!,
-		'the :global(.band) suppression must not reach the band padding — env(safe-area-inset-bottom) lives there and --dock-h measures it'
+		'the:global(.band) suppression must not reach the band padding — env(safe-area-inset-bottom) lives there and --dock-h measures it'
 	).not.toMatch(/padding/);
 });
 
@@ -956,7 +956,7 @@ test('every documentElement custom-property write (--dock-h) tears down on unmou
 	// SCOPE: the original --peek-h site was the queue sheet, deleted with the drawer surface. Each site
 	// must both WRITE its property and RETURN a cleanup that removeProperty's it.
 	/*
-	 * S5 RETIRED the `--undo-h` site (XR-VER-07). It was a real instance of this leak class — a
+	 * S5 RETIRED the `--undo-h` site. It was a real instance of this leak class — a
 	 * setProperty $effect publishing the undo toast's measured height, skewing the --error-dock stack
 	 * after the route unmounted — and it no longer exists: the toasts are sonner's, sonner stacks its
 	 * own, and there is no second surface to offset. The property, its measurement and its teardown were
@@ -986,7 +986,7 @@ test('every documentElement custom-property write (--dock-h) tears down on unmou
 	 * and the whole measured-height chain it fed went with the hand-rolled toasts — so the floor is
 	 * lowered to the ONE writer that remains, on the record, in the same change that removed the other.
 	 * That is the required shape: a floor is never nudged to make a suite pass, and a writer whose
-	 * premise a slice ends is retired with its reason (XR-VER-07). The band phase changed that writer's
+	 * premise a slice ends is retired with its reason. The band phase changed that writer's
 	 * ADDRESS without changing the count, so the floor is untouched by it.
 	 */
 	expect(sites.length).toBeGreaterThanOrEqual(1);
@@ -1081,7 +1081,7 @@ test('every identity-dot rule declares a non-shrinking flex basis', () => {
 	// this guard pins it for every identity-dot rule so a future edit can't drop it.
 	//
 	// RE-ANCHORED (the primitive-adoption pass). The dot was FOUR byte-identical copies — QueueRow's `.who i`,
-	// ProcessingCard's `.who i`, NowPlayingHero's `.eyebrow .dot` and ColourPicker's larger
+	// ProcessingCard's `.who i`, NowPlayingHero's `.eyebrow.dot` and ColourPicker's larger
 	// `.colour-chip`. They are now ONE shared `.singer-dot` rule in app.css, so scanning components for
 	// `.who i` would count zero and this arm would pass while guarding nothing. It therefore follows the
 	// dot to its new home: the invariant is unchanged and is now asserted where the dot is actually
@@ -1090,7 +1090,7 @@ test('every identity-dot rule declares a non-shrinking flex basis', () => {
 	const dotRules: { where: string; body: string }[] = [];
 	// The shared rule (app.css). `css` is already comment-stripped at the top of this file.
 	for (const m of css.matchAll(/\.singer-dot\s*\{([^}]*)\}/g)) {
-		dotRules.push({ where: `src/app.css:${lineOf(css, m.index!)} .singer-dot`, body: m[1]! });
+		dotRules.push({ where: `src/app.css:${lineOf(css, m.index!)}.singer-dot`, body: m[1]! });
 	}
 	// Any component-local copy that comes back, under either historical selector.
 	for (const f of FILES) {
@@ -1136,7 +1136,7 @@ test('a route page block that caps its width also centres it under the app-shell
 		if (!f.endsWith('+page.svelte')) continue;
 		const raw = readFileSync(f, 'utf8');
 		// The route's page block is the first top-level element in the template that carries a class —
-		// it becomes the direct .app-shell child. Look only at markup BEFORE the <style> block.
+		// it becomes the direct.app-shell child. Look only at markup BEFORE the <style> block.
 		const styleAt = raw.indexOf('<style');
 		const markup = styleAt === -1 ? raw : raw.slice(0, styleAt);
 		const rootClassMatch = markup.match(/<(?:section|main|div|article)\b[^>]*\sclass="([a-z][a-z0-9-]*)/i);
@@ -1164,7 +1164,7 @@ test('a route page block that caps its width also centres it under the app-shell
 			/margin-(left|right):\s*auto/.test(body);
 		if (!autoMargin) {
 			offences.push(
-				`${f.replace(SRC, 'src')}: .${rootClass} caps its width (max-width) but sets no inline auto margin, so it hangs left of the centred .app-shell — add margin-inline:auto (with width:100% to keep the stretch)`
+				`${f.replace(SRC, 'src')}:.${rootClass} caps its width (max-width) but sets no inline auto margin, so it hangs left of the centred.app-shell — add margin-inline:auto (with width:100% to keep the stretch)`
 			);
 		}
 	}

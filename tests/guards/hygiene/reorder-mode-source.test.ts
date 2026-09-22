@@ -1,4 +1,4 @@
-// XR-PH-20 / XR-PH-03 / XR-PH-06 — the parts of reordering whose acceptance is a statement about the
+// / / — the parts of reordering whose acceptance is a statement about the
 // SOURCE, scanned here because they are claims about what the template can never do rather than about a
 // value it computes.
 //
@@ -10,7 +10,7 @@
 // to a global index, so "draw the legal positions" became "draw one per row", and four controls per row plus
 // a bar plus a target between every pair of rows was reported on sight).
 //
-// XR-PH-20 IS STILL A WCAG 2.5.7 CONFORMANCE ROW AND IS STILL SCANNED HERE. Its check reads "source scan
+// IS STILL A WCAG 2.5.7 CONFORMANCE ROW AND IS STILL SCANNED HERE. Its check reads "source scan
 // that the mode's row template includes the button pair unconditionally", and the MECHANISM it named is
 // gone — so these arms assert the successor at the same strength: the grip is a real button, it carries
 // `aria-keyshortcuts`, its keydown routes Arrow Up/Down to the page, and the page commits them through
@@ -29,7 +29,7 @@ const row = () => readFileSync(ROW, 'utf8');
 const page = () => readFileSync(PAGE, 'utf8');
 /*
  * moved the grip's own declarations out of QueueRow and into the shared Button, so the file
- * that must be scanned for XR-PH-17's `cursor: grab` is now this one. The invariant is UNCHANGED — the
+ * that must be scanned for the standard's `cursor: grab` is now this one. The invariant is UNCHANGED — the
  * declaration is still on the grip control and on no row — only its address moved.
  */
 const BUTTON = at('src/lib/components/ui/button/button.svelte');
@@ -44,9 +44,9 @@ function markup(src: string): string {
 	return stripComments(src).replace(/<style[\s\S]*?<\/style>/gi, '');
 }
 
-// ── XR-PH-20 · the single-pointer alternative stays, and stays reachable ──────────────────────────
+// ── the single-pointer alternative stays, and stays reachable ──────────────────────────
 
-test('XR-PH-20 · the grip IS the non-drag path, and it is a real button', () => {
+test('the grip IS the non-drag path, and it is a real button', () => {
 	const m = markup(row());
 	// Sentinel: we are reading the row template and it still has a grip at all.
 	expect(m).toContain('data-grip=');
@@ -74,7 +74,7 @@ test('XR-PH-20 · the grip IS the non-drag path, and it is a real button', () =>
 		expect(m, `${gone} was retired with the arrow pair — the grip carries the keyboard path now`).not.toContain(gone);
 });
 
-test('XR-PH-20 · the label names the ACTION, so it is honest for both paths', () => {
+test('the label names the ACTION, so it is honest for both paths', () => {
 	const m = markup(row());
 	/*
 	 * "Reorder — drag, or use arrow keys": the old label said "Reorder your songs", which described the
@@ -86,7 +86,7 @@ test('XR-PH-20 · the label names the ACTION, so it is honest for both paths', (
 	void label;
 });
 
-test('XR-PH-20 · the page commits a keyboard step through the pure predicate, not by arithmetic', () => {
+test('the page commits a keyboard step through the pure predicate, not by arithmetic', () => {
 	const p = page();
 	// Sentinel: the page wires the row's nudge at all.
 	expect(p).toMatch(/onnudge=\{\(delta\) => nudge\(e\.id, delta\)\}/);
@@ -101,7 +101,7 @@ test('XR-PH-20 · the page commits a keyboard step through the pure predicate, n
 	expect(p).toMatch(/liveMsg = `Moved to \$\{ordinal\(to \+ 1\)\} in the queue\.`/);
 });
 
-test('XR-PH-10 · the grip goes inert while a move is unconfirmed', () => {
+test('the grip goes inert while a move is unconfirmed', () => {
 	const m = markup(row());
 	/*
 	 * The arrows used to carry this: they lived inside `{#if !pending}` with the remove button. The grip is
@@ -111,9 +111,9 @@ test('XR-PH-10 · the grip goes inert while a move is unconfirmed', () => {
 	expect(m).toMatch(/\{#if grip && !pending\}/);
 });
 
-// ── XR-PH-03 · de-emphasis never uses subtree opacity ─────────────────────────────────────────────
+// ── de-emphasis never uses subtree opacity ─────────────────────────────────────────────
 
-test('XR-PH-03 · the dimmed row is de-emphasised with a surface token, not opacity', () => {
+test('the dimmed row is de-emphasised with a surface token, not opacity', () => {
 	const src = row();
 	const rule = /\.dimmed\s*\{([^}]*)\}/.exec(stripComments(src));
 	expect(rule).not.toBeNull(); // sentinel: the rule exists to be judged
@@ -124,7 +124,7 @@ test('XR-PH-03 · the dimmed row is de-emphasised with a surface token, not opac
 	expect(/(^|[;\s])opacity\s*:/.test(body)).toBe(false);
 });
 
-test('XR-PH-03 · the dimmed row is not hidden from assistive tech', () => {
+test('the dimmed row is not hidden from assistive tech', () => {
 	// The dimmed rows stay INFORMATIONAL during the mode — they are who you are being ordered around —
 	// so the mode must not reach for `inert` or `aria-hidden` on a row to make it non-interactive. It
 	// drops the row's controls instead (`rowFrozen`).
@@ -133,15 +133,15 @@ test('XR-PH-03 · the dimmed row is not hidden from assistive tech', () => {
 	expect(m).not.toMatch(/aria-hidden=\{?["']?true/);
 });
 
-// ── XR-PH-17 · cursor: grab exists only where a reorder is real ───────────────────────────────────
+// ── cursor: grab exists only where a reorder is real ───────────────────────────────────
 
 // `grab` must not match `grabbing`: the grip legitimately declares `cursor: grabbing` on :active, and
 // a prefix match reported that as a second offender. Anchored on the value's own terminator.
 const GRAB_RULE = /([^{}]+)\{([^}]*cursor:\s*grab\s*(?=[;}])[^}]*)\}/g;
 
-test('XR-PH-17 · cursor:grab is declared on the grip button and on no row', () => {
+test('cursor:grab is declared on the grip button and on no row', () => {
 	/*
-	 * RE-ANCHORED BY (XR-VER-07). This previously scanned QueueRow, where `.grip` declared its
+	 * RE-ANCHORED BY. This previously scanned QueueRow, where `.grip` declared its
 	 * own cursor. The grip is now <Button press="grab">, so the declaration lives on the shared control
 	 * keyed by that attribute. What is asserted is the same thing it always was: the grab cursor is on
 	 * ONE selector, and that selector is the grip control rather than a row.
@@ -159,7 +159,7 @@ test('XR-PH-17 · cursor:grab is declared on the grip button and on no row', () 
 	expect(/cursor:\s*grab\s*[;}]/.test(stripComments(row()))).toBe(false);
 });
 
-test('XR-PH-17 · no other component reintroduces a row-level grab cursor', () => {
+test('no other component reintroduces a row-level grab cursor', () => {
 	// The removed affordance came back once already. Scanned across the two files this issue touches.
 	for (const src of [stripComments(row()), stripComments(page())]) {
 		for (const m of src.matchAll(GRAB_RULE)) {
@@ -168,7 +168,7 @@ test('XR-PH-17 · no other component reintroduces a row-level grab cursor', () =
 	}
 });
 
-test('XR-PH-17 · the grip binding goes through the predicate, never a literal', () => {
+test('the grip binding goes through the predicate, never a literal', () => {
 	// Found by mutation: `grip={true}` on every row left the whole suite green — and that is exactly the
 	// recorded regression (a grip on another guest's song where it was the sole affordance). The
 	// predicate's own tests cannot see this: they prove `gripVisible` answers correctly, not that the
@@ -197,7 +197,7 @@ test('XR-PH-17 · the grip binding goes through the predicate, never a literal',
 // element identity or hit-testing rather than about a value. Each was found by DRIVING the mode in a
 // real browser with a trusted pointer, and none of them is visible to a value-level test — so these
 // scans are what keeps them from coming back. They are a floor, not a proof: the rendered rung for
-// XR-PH-18's target count and XR-PH-19's focus return is still owed (XR-PH-21).
+// the target count and the focus return is still owed.
 
 test('driven-find 1 · the drag listens on window, not on the grip element', () => {
 	// Opening the mode inserts the drop slots, so Svelte re-renders the rows and the pressed grip becomes
@@ -273,7 +273,7 @@ test('driven-find 5 · focus return is re-found by attribute, not by a held elem
 
 test('· the .dimmed rule stays a surface token, not opacity — and no row is dimmed by the mode', () => {
 	// The `.dimmed` rule is retained on both row kinds (the prop survives for a future mode that needs
-	// it), and XR-PH-03 still governs its SHAPE: a surface token, never subtree opacity. But made
+	// it), and still governs its SHAPE: a surface token, never subtree opacity. But made
 	// every queued row a legal drop target, so the mode dims NOTHING now — both call sites bind
 	// `dimmed={false}`.
 	const src = stripComments(readFileSync(at('src/lib/components/ProcessingCard.svelte'), 'utf8'));
@@ -287,9 +287,9 @@ test('· the .dimmed rule stays a surface token, not opacity — and no row is d
 	expect(stripComments(page())).not.toContain('dimmed={reorderOpen');
 });
 
-// ── XR-PH-06 · the mode's motion is CSS-driven ────────────────────────────────────────────────────
+// ── the mode's motion is CSS-driven ────────────────────────────────────────────────────
 
-test('XR-PH-06 · the drag is a CSS transform reading a var, with nothing interpolated over time', () => {
+test('the drag is a CSS transform reading a var, with nothing interpolated over time', () => {
 	const src = stripComments(row());
 	const moving = /\.moving\s*\{([^}]*)\}/.exec(src);
 	expect(moving).not.toBeNull(); // sentinel
@@ -303,7 +303,7 @@ test('XR-PH-06 · the drag is a CSS transform reading a var, with nothing interp
 	expect(/animation/.test(body)).toBe(false);
 });
 
-test('XR-PH-06 · no drag library is pulled in for the mode', () => {
+test('no drag library is pulled in for the mode', () => {
 	// The requirement names `svelte-dnd-action` as the hazard: its motion is written as inline styles
 	// by JS, which `motion.test.ts` cannot see by construction. The mode is built on Pointer Events +
 	// a CSS var instead, so the enforcement gap is never opened.
@@ -315,9 +315,9 @@ test('XR-PH-06 · no drag library is pulled in for the mode', () => {
 	expect(Object.keys(deps)).not.toContain('svelte-dnd-action');
 });
 
-// ── XR-PH-18 · the slots are drawn, and a drop cannot be approximated ────────────────────────────
+// ── the slots are drawn, and a drop cannot be approximated ────────────────────────────
 
-test('XR-PH-18 · the committed index IS the rendered one, so a release cannot land elsewhere', () => {
+test('the committed index IS the rendered one, so a release cannot land elsewhere', () => {
 	/*
 	 * REPLACED (2026-09-21), not dropped. Four arms here pinned the drawn drop targets: a `.dropslot` button
 	 * per queued row carrying its ordinal, rendered only while the mode was open, derived from the whole
@@ -348,7 +348,7 @@ test('XR-PH-18 · the committed index IS the rendered one, so a release cannot l
 		expect(src, `\`${gone}\` belongs to the retired mode`).not.toContain(gone);
 });
 
-test('XR-PH-18 · a drag that has not moved commits nothing, and neither does a cancel', () => {
+test('a drag that has not moved commits nothing, and neither does a cancel', () => {
 	const src = stripComments(page());
 	// `commit` false is the cancel path — Escape and an invalidation both take it.
 	expect(src).toMatch(/function endDrag\(commit: boolean, note = ''\)/);

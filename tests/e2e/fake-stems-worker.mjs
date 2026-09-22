@@ -28,7 +28,7 @@
  *                               vocals is no longer what makes a song un-guidable — withholding the mix
  *                               is, and by default this worker publishes none. Use FAKE_GUIDE_MIX=1
  *                               below for the ENABLED arm. This is the
- *                               ONLY way to reach XR-PH-15's degraded arm on the layout rung.
+ *                               ONLY way to reach the degraded arm on the layout rung.
  *   FAKE_SKIP_WRITE=1           report a ref for a file never written (the unservable path)
  *   FAKE_NO_PROFILE=1           complete with no songProfile (the gate must not deadlock)
  *   FAKE_GUIDE_MIX=1            publish the 4-channel guide mix ref too, which is the ONLY thing that

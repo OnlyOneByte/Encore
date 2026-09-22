@@ -1,4 +1,4 @@
-// guard: a path a document cites resolves to a file that exists — XR-VER-07.
+// guard: a path a document cites resolves to a file that exists.
 //
 // WHY THIS EXISTS. The requirement register's `Check` field names the test that enforces each row. That
 // makes a path in a document load-bearing: a reader follows it to decide whether a rule is actually
@@ -40,18 +40,26 @@ const CITED = /\b((?:src|worker|tests)\/[A-Za-z0-9_./-]+\.(?:test\.ts|harness\.s
  * at a file that never produced those numbers would make the record FALSE rather than current, which is
  * strictly worse than leaving it stale — so the document is annotated in place and exempted here.
  */
-const HISTORICAL: { doc: string; why: string }[] = [
-	{
-		doc: 'docs/research/827-queuesheet-drawer-spike.md',
-		why: 'a spike record. The file it measured was deleted with the dead drawer surface it pinned; the command is kept verbatim because the document records a measurement that happened, and is annotated in place to say so.'
-	}
-];
+/*
+ * EMPTY, AND THAT IS CURRENT (2026-09-22). It held one entry: a spike record under `docs/research/`
+ * whose cited file had been deleted, kept because the document recorded a measurement that really
+ * happened. The docs cleanup removed `docs/research/` entirely, so the exemption has no subject — and the
+ * arm below asserts exactly that, which is why deleting the entry is the fix rather than an oversight.
+ *
+ * The list stays declared: an exemption is the kind of thing that will be wanted again, and the arm that
+ * keeps each one honest is worth more than the two lines it costs.
+ */
+const HISTORICAL: { doc: string; why: string }[] = [];
 
 test('every source path cited in a document resolves to a tracked file', () => {
 	const docs = filesUnder('docs', ['.md']);
 	// Non-vacuity: the walk found the documents. An empty walk yields an empty offender list, which reads
 	// exactly like a tree with no stale references — the failure mode this whole suite keeps re-learning.
-	expect(docs.length).toBeGreaterThan(20); // @nvf-floor docs.length
+	// 6, WAS 20 (2026-09-22): the docs tree was cleaned up — `docs/ux`, `docs/loop`, `docs/research`,
+	// `DECISIONS.md` and others were deleted — so the population this walks is the architecture and deploy
+	// trees plus two root documents. The floor tracks the population; it must never be lowered to
+	// accommodate a walk that quietly stopped finding files.
+	expect(docs.length).toBeGreaterThan(6); // @nvf-floor docs.length
 
 	const exempt = new Set(HISTORICAL.map((h) => h.doc));
 	const offenders: string[] = [];

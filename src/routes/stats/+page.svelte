@@ -209,7 +209,7 @@
 		gap: 1rem;
 		/*
 		 * 3rem (48px) is off-scale — the scale stops at --space-4xl (20px) — so it stays a literal, and
-		 * --dock-h is added to it to RESERVE THE BAND (XR-PH-12). The band became app chrome on every
+		 * --dock-h is added to it to RESERVE THE BAND. The band became app chrome on every
 		 * phone surface, so this column has fixed chrome at its bottom edge where it previously had none;
 		 * without the reservation the last tile sits under it with no way to scroll clear. No env() term
 		 * here: the band carries the only home-indicator inset and it reaches this column through
@@ -278,8 +278,8 @@
 	 * narrow columns. Measured examples ranged from ~27px to ~51px of bottom-edge spread at 1080px
 	 * depending on the strings, against 0.0px with this rule present. Deliberately NOT asserted as a
 	 * figure anywhere: rendered geometry cannot be measured on the mount rung, which breaks
-	 * `getBoundingClientRect` on purpose (XR-VER-03). What IS guarded is that the class resolves to a rule
-	 * at all — `app-class-resolution-913.test.ts` — because the defect was the missing rule, not the pixel
+	 * `getBoundingClientRect` on purpose. What IS guarded is that the class resolves to a rule
+	 * at all — `app-class-resolution.test.ts` — because the defect was the missing rule, not the pixel
 	 * count.
 	 *
 	 * Phone width hid it entirely: `auto-fit` collapses to one column, so every tile is its own row and

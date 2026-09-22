@@ -13,7 +13,7 @@
 // removed from the queue, or one that reordering pushed behind another singer, and `syncSlots`
 // pre-warms the hidden gapless slot from that same stale entry.
 //
-// This is taxonomy shape 3 (docs/loop/COMMON.md), "transitions handled where steady state was": the
+// This is taxonomy shape 3, "transitions handled where steady state was": the
 // invariant "the advertised next equals the true next" was maintained across every PLAYBACK transition
 // and across none of the QUEUE transitions.
 //

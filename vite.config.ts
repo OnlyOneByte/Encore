@@ -17,7 +17,7 @@ export default defineConfig({
 		 * only widened its peer range to `^8` in 4.2.2 — every release up to 4.2.1 declares `^5.2.0 || ^6
 		 * || ^7` and would have installed against Vite 8 with an unmet peer. 4.3.3 declares `^8`, and the
 		 * PostCSS fallback the issue authorised is therefore unused; the verdict is recorded in the PR and
-		 * in docs/DECISIONS.md rather than only here.
+		 * in the architecture notes rather than only here.
 		 *
 		 * Ordered BEFORE `sveltekit()` as Tailwind's own SvelteKit guidance specifies.
 		 */

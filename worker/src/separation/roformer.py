@@ -44,7 +44,7 @@ from ..retry_policy import BoundaryError
 #: Deliberately NOT silently repointed to some other slug: swapping the processed model without a
 #: listening test is the failure this comment exists to prevent. The engine-package decision
 #: (adopt python-audio-separator ALONGSIDE bs-roformer-infer — both engines, owner ruling
-#: Q1(b)) is recorded in docs/DECISIONS.md, and the dependency pin carries the same reason in
+#: Q1(b)) is on the record, and the dependency pin carries the same reason in
 #: worker/requirements.txt. Both are named on purpose: a single pointer orphans the claim the
 #: moment either file is reorganised, which is how this comment came to cite a register that did not
 #: yet hold the ruling.

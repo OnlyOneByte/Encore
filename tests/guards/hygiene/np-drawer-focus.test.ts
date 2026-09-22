@@ -26,7 +26,7 @@
  *
  * WHY THIS RUNG. `NowPlayingDrawer` cannot be mounted on the mount rung at all — its own
  * `bind:clientHeight` needs a `ResizeObserver` the rung refuses to install (see the boundary arm in
- * `hero-live-controls-835.test.ts`) — and a `focusin` interception is a rendered, event-ordering claim
+ * `hero-live-controls.test.ts`) — and a `focusin` interception is a rendered, event-ordering claim
  * besides. So the mechanism is pinned at its source, and the rendered proof is an e2e measurement: at
  * 1440x900 and 1440x700, sheet pulled up, `document.activeElement` after a real `click` on the search
  * input is that input rather than `div[data-slot=drawer-content]`.

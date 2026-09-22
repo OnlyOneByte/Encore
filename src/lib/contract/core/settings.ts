@@ -84,7 +84,7 @@ import type { LyricsTiming } from '../lyrics/lyrics';
  * Deployment-wide separator and process policy. Writable by ANY joined singer via `PUT /api/settings`
  * (`settings:write-global`, which `can()` grants to every joined singer) — NOT operator-owned. This is
  * the owner's confirmed ruling (Q3, 2026-09-09): deployment-scoped settings stay open,
- * accepted. Published policy: docs/ux/05-concurrency.md § "Owner rulings".
+ * accepted. The policy is the ruling recorded in `capabilities.ts` and asserted by its guard.
  */
 export interface GlobalSettings {
 	/** Engine+model every new process uses. Must be a `liveSelectable` pairing. */

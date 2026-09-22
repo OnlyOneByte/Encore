@@ -35,7 +35,7 @@
 		`text-sm` (14px, sentence case) through ui/label, and this is an 11px uppercase EYEBROW sitting
 		beside a bold readout — adopting the primitive's type would make the label larger than the value
 		it labels. The declarations sit on a plain <span> this file renders, so the scoped rule reaches it
-		(a class handed to <Field.Label> would not — ui-scoped-style-reach-913.test.ts).
+		(a class handed to <Field.Label> would not — ui-scoped-style-reach.test.ts).
 	-->
 	<Field.Label data-inline for="guiding-track">
 		<span class="lab">Guiding track</span>
@@ -78,13 +78,13 @@
 	 * 4.67:1 — the label under AA outright. contrast.test.ts's ancestor-opacity ban never reached it
 	 * because that arm scopes itself to card ROOTS and `.gt` is not one, which is how this survived.
 	 *
-	 * The replacement is XR-PH-03's rule, the one QueueRow, ProcessingCard, MyPositionCard and
+	 * The replacement is the rule, the one QueueRow, ProcessingCard, MyPositionCard and
 	 * RangeBar all record: dim by TOKEN, never by opacity on a subtree. The readout drops --ink →
 	 * --ink-dim (6.27:1, its own measured pair with the card) and says "Off"; the CONTROL keeps its own
 	 * `data-disabled:opacity-50`, which is a single leaf carrying no text, the in-repo pattern
 	 * contrast.test.ts explicitly steers toward.
 	 *
-	 * XR-PH-03's containment claim is untouched: the reason sentence still sits OUTSIDE `.gt` entirely,
+	 * the containment claim is untouched: the reason sentence still sits OUTSIDE `.gt` entirely,
 	 * on the hero (an earlier change Q1-D), and `class:disabled` remains the anchor p16 reads it by.
 	 */
 	.gt.disabled .gt-val {

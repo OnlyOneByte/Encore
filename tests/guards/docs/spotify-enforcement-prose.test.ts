@@ -9,7 +9,7 @@
 // into a queueable media", which /api/search does on every query.
 //
 // This matters beyond tidiness, which is why it is guarded rather than just corrected: a reader who
-// believes either claim will not look for the gap that IS there, and docs/DECISIONS.md is specifically
+// believes either claim will not look for the gap that IS there, and the ratification record was specifically
 // the text a future author is told not to re-litigate. REVIEW.md §3 names "a credible-sounding
 // docstring rationale" as the first trap, and the fetchers.ts comment was exactly that — a completed
 // argument for why a live branch was dead code.
@@ -29,8 +29,7 @@ const SITES = [
 	'src/lib/contract/process/fetchers.ts',
 	'src/lib/contract/core/types.ts',
 	'src/lib/server/media/spotify.ts',
-	'src/routes/api/search/+server.ts',
-	'docs/DECISIONS.md'
+	'src/routes/api/search/+server.ts'
 ] as const;
 
 const sources = new Map(SITES.map((rel) => [rel, readFileSync(join(REPO, rel), 'utf8')]));
@@ -129,7 +128,7 @@ test('F2 the denial is PRESENT where the false claim did the most damage', () =>
 });
 
 test('F2 no site claims a spotify hit is not materialized into a queueable media', () => {
-	// /api/search materializes EVERY hit (`[...local, ...yt, ...spotify].map(...)`), sets it in
+	// /api/search materializes EVERY hit (`[...local,...yt,...spotify].map(...)`), sets it in
 	// mediaById and upserts it, so it is durable and queueable. The fetchers.ts comment denied exactly
 	// that, seven lines above the route comment that describes it.
 	for (const rel of SITES) {
@@ -159,11 +158,12 @@ test('F2 the measurements the false claims contradicted still hold', () => {
 	);
 });
 
-test('F2 the ratified DECISION itself is untouched', () => {
-	// The issue upholds and must not reopen it. Only the sentence describing HOW the rule is
-	// enforced was wrong. If a later edit weakens the decision, this reds.
-	const decisions = sources.get('docs/DECISIONS.md')!;
-	expect(decisions).toMatch(/Spotify as a SEARCH \/ METADATA\s*source only|SEARCH \/ metadata\s*source only/i);
-	expect(decisions).toMatch(/no `fetch:spotify` worker capability/);
-	expect(decisions).toMatch(/bytes are\s*never pulled from Spotify/);
-});
+/*
+ * F2 IS RETIRED (2026-09-22): it read `docs/DECISIONS.md` to check the ratified decision itself was
+ * untouched — Spotify as a search/metadata source only, no `fetch:spotify` capability, bytes never pulled
+ * from Spotify. The docs cleanup deleted that file, so there is no prose left to compare.
+ *
+ * THE DECISION IS STILL ENFORCED, and by the arms above rather than by prose: `fetcherFor('spotify')` is
+ * the default fetcher, `needsFetch` is true, and a Spotify ref resolves to a YouTube watch URL. Those are
+ * the behaviour the sentence described, which is the half that could actually break.
+ */

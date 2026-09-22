@@ -4,7 +4,7 @@
 // component and mount it:
 //
 //   1. Install a DOM. Svelte's client runtime (`mount`/`unmount`/effects) needs `document`,
-//      `customElements`, `Node`, `HTMLElement`, `requestAnimationFrame`, `MutationObserver`, … .
+//      `customElements`, `Node`, `HTMLElement`, `requestAnimationFrame`, `MutationObserver`, ….
 //      happy-dom provides them; we copy the ones Svelte touches onto `globalThis`. This is the one
 //      new devDependency decision B calls for — no second test RUNNER, `bun test` stays the one gate.
 //   2. Load Svelte files. bun has no built-in Svelte loader, so a plugin compiles each `.svelte`
@@ -15,12 +15,12 @@
 //      `tests/setup/kit/`, so a ROUTE component — not just a leaf — can be imported.
 //      SvelteKit synthesises those specifiers at build time and they resolve to nothing under
 //      `bun test`, which is what previously made every route component unmountable.
-//   4. Make the harness's unimplemented geometry APIs FAIL LOUDLY (XR-VER-03). happy-dom
+//   4. Make the harness's unimplemented geometry APIs FAIL LOUDLY. happy-dom
 //      has NO LAYOUT ENGINE and returns an all-zero `DOMRect`, so the natural guard shape
 //      `if (h > 0) expect(h).toBeGreaterThanOrEqual(44)` is silently vacuous. A geometry API that
 //      cannot measure is made absent-with-a-message rather than wrong-with-a-zero.
 //
-// THE CAPABILITY BOUNDARY (XR-VER-01, written down in `docs/ux/04-verification.md`). This file is the
+// THE CAPABILITY BOUNDARY (written down). This file is the
 // MOUNT rung: mounting, the cascade, computed DECLARED values, effects and event handling. Box
 // geometry, clipping/overflow, `env()`, `dvh`/`vh`, computed colour and computed font-size are NOT
 // decidable here and belong to the LAYOUT rung — a real headless Chromium driven through
@@ -98,15 +98,15 @@ if (typeof g.document === 'undefined') {
 	}
 }
 
-// ── 1b. Unimplemented geometry FAILS LOUDLY (XR-VER-03) ─────────────────────────────────
+// ── 1b. Unimplemented geometry FAILS LOUDLY ─────────────────────────────────
 // happy-dom 20.x has NO LAYOUT ENGINE, so every geometry read is a fabricated zero:
 //   Element.js:795   getBoundingClientRect() { /* TODO: Not full implementation */ return new DOMRect(); }
 //   Element.js:808   getClientRects()  — pushes that same all-zero rect into a list
-//   Element.js:141   get scrollHeight() / :149 get scrollWidth()
-//   HTMLElement.js:440 get offsetHeight() / :448 offsetWidth / :472 clientHeight / :480 clientWidth
+//   Element.js:141   get scrollHeight() /:149 get scrollWidth()
+//   HTMLElement.js:440 get offsetHeight() /:448 offsetWidth /:472 clientHeight /:480 clientWidth
 // A zero a guard can mistake for a real measurement is worse than no API at all: it turns
 // `expect(width).toBeGreaterThan(0)` into a permanent red nobody trusts and
-// `if (width > 0) expect(...)` into a permanent SILENT GREEN. All SIX APIs XR-VER-03 enumerates are
+// `if (width > 0) expect(...)` into a permanent SILENT GREEN. All SIX APIs the guard enumerates are
 // therefore replaced by a throw naming the rung and where the measurement CAN be taken.
 //
 // TWO PROTOTYPES, and that is load-bearing: `scrollWidth`/`scrollHeight` are defined on
@@ -136,16 +136,16 @@ if (rungPrototypes.length === 0) {
 function unmeasurable(api: string): never {
 	throw new Error(
 		`${api} cannot measure on the MOUNT rung: happy-dom has no layout engine and fabricates a zero ` +
-			`(node_modules/happy-dom/lib/nodes/element/Element.js, .../html-element/HTMLElement.js). Box ` +
+			`(node_modules/happy-dom/lib/nodes/element/Element.js,.../html-element/HTMLElement.js). Box ` +
 			`geometry, clipping, env() and dvh/vh are decidable only on the LAYOUT rung — drive a real ` +
 			`render through tests/e2e/driver.mjs (see tests/e2e/HARNESS.md and ` +
-			`docs/ux/04-verification.md, XR-VER-03). Do not read a zero here as a measurement.`
+			`the layout rung). Do not read a zero here as a measurement.`
 	);
 }
 
 for (const proto of rungPrototypes) {
 	for (const method of ['getBoundingClientRect', 'getClientRects'] as const) {
-		proto[method] = (): never => unmeasurable(`${method}()`);
+		proto[method] = (): never => unmeasurable(`${method}`);
 	}
 	for (const prop of [
 		'offsetWidth',
@@ -266,7 +266,7 @@ plugin({
 //
 //   Cannot find package 'runed' from …/.bun/svelte-sonner@…/node_modules/svelte-sonner/dist/internal/ctx.js
 //
-// Declaring it in . AND at the workspace root, and a forced reinstall, all left it failing, so
+// Declaring it in. AND at the workspace root, and a forced reinstall, all left it failing, so
 // this is the test runtime's module resolution rather than the manifest. The consequence is not
 // cosmetic: the home route imports the Toaster, so WITHOUT this the mount rung cannot load
 // `routes/+page.svelte` at all.

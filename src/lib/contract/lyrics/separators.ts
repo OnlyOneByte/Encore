@@ -176,7 +176,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				label: 'Mel-Band Instrumental (becruily)',
 				note: 'RoFormer-quality instrumental, ~10× faster than BS-RoFormer on CPU.',
 				/**
-				 * 5.14s per 8s window at fp32, × overlap 2 ⇒ rt 1.28 (docs/benchmarks/SUMMARY.md §4).
+				 * 5.14s per 8s window at fp32, × overlap 2 ⇒ rt 1.28.
 				 * fp32 rather than bf16 because bf16 measured a LOSS on this 8s-window mel-band model
 				 * (7.09s/window vs 5.14) — the sign of the bf16 win reverses per checkpoint, which is why
 				 * cpuPrecision is a per-model measurement, not a global switch. `overlap` is this model's

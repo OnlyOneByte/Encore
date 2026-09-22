@@ -32,7 +32,7 @@ function stripComments(src: string): string {
 
 /*
  * The interactive-control derivation — `markupControls`, plus the bare-tag allowlist it consults —
- * lives in ./test-helpers (XR-VER-14). It was a private copy here; it decides which CSS rules
+ * lives in ./test-helpers. It was a private copy here; it decides which CSS rules
  * this guard even looks at, so a drift between it and any other consumer silently narrows the
  * population one guard examines while the others keep their own answer.
  */
@@ -138,7 +138,7 @@ test('every phone control that sizes its own box reaches the tap standard', () =
 	 * those controls' boxes now live. When this number reaches 0, retire this arm and say so there.
 	 */
 	expect(controlRulesSeen).toBeGreaterThan(6); // @nvf-floor controlRulesSeen
-	// …and pin the SCANNED POPULATION too (XR-VER-14 Acceptance). FILES is a tree walk over
+	// …and pin the SCANNED POPULATION too. FILES is a tree walk over
 	// lib/components and lib/ui PLUS six hand-named route pages, so a walk that stops finding
 	// components still leaves six files — and six files carry enough control rules to clear the floor
 	// above. The two floors fail on different regressions: `controlRulesSeen` on a broken derivation,
@@ -148,7 +148,7 @@ test('every phone control that sizes its own box reaches the tap standard', () =
 });
 
 /**
- * THE EXPRESSION, not the number (XR-PH-01).
+ * THE EXPRESSION, not the number.
  *
  * The test above pins the VALUE, and it was green on a repo where 15 control declarations across five
  * files spelled `44px` by hand. That is the whole defect this arm exists for: `--tap` and the controls
@@ -356,7 +356,7 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 			name: 'the find search input'
 		},
 		/*
-		 * RE-ANCHORED BY S2 (XR-VER-07). These three controls were `select`, `.text` and `.name-input`
+		 * RE-ANCHORED BY S2. These three controls were `select`, `.text` and `.name-input`
 		 * rules inside settings/+page.svelte. They are now <NativeSelect> and <Input>, and their appearance
 		 * moved INTO those components — Svelte's scoped CSS cannot reach an element inside a child
 		 * component, and under `source(none)` a utility written at a call site is minted by nothing, so the
@@ -410,7 +410,7 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 			 * `data-slot`, not a class. The rule was `.encore-slider` until a screenshot showed it applying
 			 * to nothing: the root is a Bits UI component, so Svelte's scope hash lands on no element and
 			 * the whole rule was dead in the build — WHILE THIS ARM PASSED, because it reads the rule text
-			 * and the text was correct. `ui-scoped-style-reach-913.test.ts` is the check for that gap; this
+			 * and the text was correct. `ui-scoped-style-reach.test.ts` is the check for that gap; this
 			 * token follows the rule to the selector that actually reaches the element.
 			 */
 			token: /data-slot='slider'/,
@@ -433,7 +433,7 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule', 
 			if (sel.includes('::') || !token.test(sel)) continue;
 			anyRule = true;
 			if (reachesFloor(body)) sized = true;
-			// a bare `44px` is the drift shape XR-PH-01 names — report it even if another rule is clean.
+			// a bare `44px` is the drift shape the standard names — report it even if another rule is clean.
 			if (restatesTapNumber(body))
 				offenders.push(`${file.replace(SRC, 'src')}: ${name} → restates ${TAP}px instead of var(--tap)`);
 		}

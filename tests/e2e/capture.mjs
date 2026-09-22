@@ -129,7 +129,7 @@ async function scope(page, id) {
  * The desktop pages (/stats, /metrics, the gallery) vary enormously in height with how much data the
  * instance has, and a fixed tall viewport turns a 660px page into a frame that is two thirds black —
  * which reads as a rendering bug rather than a small library. Capped at 2000px because a frame past
- * that cannot be read back by the agent tooling that reviews these (see docs/mocks/README.md).
+ * that cannot be read back by the agent tooling that reviews these.
  */
 /** @param {Page} page @param {number} width @param {{ min?: number, max?: number, pad?: number }} [opts] */
 async function fitViewport(page, width, { min = 600, max = 2000, pad = 40 } = {}) {

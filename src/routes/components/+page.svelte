@@ -47,7 +47,7 @@
 
 	// The dark stage backdrop every TV overlay demo sits on, as ONE constant so the wrappers cannot
 	// drift apart. It re-expresses the real stage glow (--stage-glow over --bg); tokens, not literals,
-	// so it tracks a theme change the way the real .stage does.
+	// so it tracks a theme change the way the real.stage does.
 	const stageBg = 'radial-gradient(120% 90% at 50% 20%, var(--stage-glow), var(--bg))';
 
 	// A tiny inline QR stand-in for the gallery — the real one is generated server-side per room.
@@ -606,11 +606,11 @@
 	<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
 	<QueueRow seq={4} title="Sweet Caroline" singerName="Liam" singerColor="#5cb8ff" />
 	<QueueRow seq={5} title="Wonderwall" singerName="You" singerColor={PINK} mine pending="add" />
-	<!-- an earlier change / XR-PH-10: the unconfirmed REORDER, which had no fixture because the state did not exist —
+	<!-- an earlier change / the unconfirmed REORDER, which had no fixture because the state did not exist —
 	     a pending move was indistinguishable from a landed one. Paired directly below its `pending="add"`
 	     twin so the only difference under review is the WORD: a row already in the queue must say
 	     "moving…", never "adding…". Both share the warn surface, which is the state signal (never
-	     opacity, per XR-PH-03). -->
+	     opacity). -->
 	<QueueRow seq={6} title="Wonderwall" singerName="You" singerColor={PINK} mine pending="move" />
 	<!-- issue an earlier change: a 32-char name (the profile-name maxlength) overflows the byline. The identity dot
 	     (.who i) must keep its 10px width — it is flex:0 0 auto, not a shrinkable flex item — so the
@@ -835,8 +835,7 @@
 		itself: the ratified phone design has no drawer, an earlier change built the inline-rows/hero/docked-band
 		home instead, and the gallery was the only place either component still rendered — so a fix landed
 		here reached no guest. The band contract they carried now lives on.cta-dock /.search-dock in
-		routes/+page.svelte, which publish --dock-h; see docs/research/827-queuesheet-drawer-spike.md for
-		the vaul port spike this also retires.
+		routes/+page.svelte, which publish --dock-h for the vaul port spike this also retires.
 	-->
 
 	<h2 class="section">LyricsOverlay (TV) · VERIFIED text</h2>
@@ -1161,7 +1160,7 @@ WHOSE COLOUR THE HIGHLIGHT IS.
 		color: var(--ink-dim);
 	}
 	/*
-	 * The per-demo caption. Same reason as .section: the RangeBar block arrived with six identical
+	 * The per-demo caption. Same reason as.section: the RangeBar block arrived with six identical
 	 * inline copies of this, and a state that deliberately renders NOTHING is only readable as
 	 * intentional if its caption says so -- so the captions have to stay legible and consistent.
 	 */

@@ -1,4 +1,4 @@
-// guard: the fifth gate is WIRED, and its register is not vacuous (XR-VER-02).
+// guard: the fifth gate is WIRED, and its register is not vacuous.
 //
 // ── WHY A SOURCE SCAN GUARDS A MEASURED GATE ───────────────────────────────────────────────────
 //
@@ -9,7 +9,7 @@
 //
 // So this asserts the WIRING, which is decidable from source on every box:
 //
-//   1. the gate exists and imports the layout-rung driver — literally XR-VER-02's own Check
+//   1. the gate exists and imports the layout-rung driver — literally the own Check
 //   2. it is declared as a script in the root package.json, so `bun run gate:measured` resolves
 //   3. it is in the gate list of ALL FOUR committed briefs, because that list is what every lane reads
 //   4. it has no skip path — owner ruling on Q1 was A over B, "a missing browser is a red gate"
@@ -18,7 +18,7 @@
 //   6. the register's constants still agree with the tokens they mirror
 //
 // What this file deliberately does NOT do is re-implement any of the four claims. A source scan
-// standing in for a measurement is the exact thing XR-VER-02 forbids; the four assertions live in the
+// standing in for a measurement is the exact thing the rule forbids; the four assertions live in the
 // gate, on the rung where they are decidable.
 import { test, expect } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -46,39 +46,37 @@ const gate = readFileSync(join(REPO, GATE_REL), 'utf8');
 const SCRIPT = 'gate:measured';
 
 /** The four ratified requirements, one per claim, each of which must be measured by the gate. */
-const CLAIMS = ['XR-VER-09', 'XR-VER-10', 'XR-VER-11', 'XR-VER-12'];
-
-/**
- * Briefs that ENUMERATE the gate list, so each must name the fifth gate by script name. Verified site by
- * site on b798643: COMMON.md:59-68, CODING-BOT.md:133-142, CONDUCTOR.md:113 + :176, PR-BOT.md:158 + :173,
- * HANDOFF.md:81-87.
+/*
+ * The four measured claims, keyed on the SUBJECT each one measures rather than on a requirement id.
+ *
+ * It was a list of four requirement ids the gate carried in its `record()` strings. The ids are gone from the
+ * tree with the register that defined them, and keying on them was the weaker form anyway: an id proves a
+ * label was pasted in, where this proves the gate still measures the thing. A renamed claim that stops
+ * measuring its subject now reds; before, it passed as long as the tag survived.
  */
-const GATE_LIST_BRIEFS = [
-	'docs/loop/COMMON.md',
-	'docs/loop/CODING-BOT.md',
-	'docs/loop/CONDUCTOR.md',
-	'docs/loop/PR-BOT.md',
-	'docs/HANDOFF.md'
+const CLAIMS = [
+	'measured hit extent',
+	'text-entry field computes',
+	"--dock-h equals the docked band's REAL rendered height",
+	'outline in the resolved --focus'
 ];
 
 /**
- * EVERY brief a lane can be seeded from, derived by WALKING `docs/loop/` rather than hand-listed, plus the
- * repo handoff. A hand-listed population is how `/metrics` and `lib/charts` stayed invisible:
- * the guard was correct and simply never looked at them. Three new files landed into `docs/loop/`
- * DURING this PR's review and one of them (`REVIEW-ORCHESTRATOR.md`) carried the same stale count — a walk
- * picks that up on the next run with nobody remembering to extend a list.
+ * Briefs that ENUMERATE the gate list, so each must name the fifth gate by script name. Verified site by
+ * site on b798643: COMMON.md:59-68, CODING-BOT.md:133-142, CONDUCTOR.md:113 +:176, PR-BOT.md:158 +:173,
+ * HANDOFF.md:81-87.
  */
-function briefFiles(): string[] {
-	const dir = join(REPO, 'docs', 'loop');
-	const out = readdirSync(dir, { withFileTypes: true })
-		.filter((e) => e.isFile() && e.name.endsWith('.md'))
-		.map((e) => `docs/loop/${e.name}`);
-	out.push('docs/HANDOFF.md');
-	return out;
-}
-
+/*
+ * `GATE_LIST_BRIEFS` AND `briefFiles` WERE DELETED HERE (2026-09-22) with the documents they read.
+ *
+ * They enumerated every lane brief under `docs/loop/` (by WALKING the directory rather than hand-listing
+ * it — a hand-listed population was how three new briefs stayed invisible) plus `docs/HANDOFF.md`, so the
+ * two arms below could check that each brief listing the gates listed the fifth one and stated no stale
+ * COUNT. The docs cleanup deleted that whole tree, so there is no prose copy of the gate list to keep in
+ * step with the script.
+ */
 test('the measured-design gate imports the layout-rung driver, and names each claim it measures', () => {
-	// XR-VER-02's Check, verbatim: "for each measurement-classified entry, assert its implementing
+	// the standard's Check, verbatim: "for each measurement-classified entry, assert its implementing
 	// file imports the layout-rung driver". `driver.mjs` IS the layout rung.
 	expect(gate).toMatch(/import \{[^}]*\bconnect\b[^}]*\} from '\.\.\/driver\.mjs';/);
 	// …and the Chromium it drives is discovered through the single-sourced helper, not a private copy
@@ -107,66 +105,18 @@ test(`the fifth gate is declared as \`${SCRIPT}\` in the root package.json`, () 
 	expect(pkg.scripts[SCRIPT]).toContain(GATE_REL);
 });
 
-test('every brief that enumerates the gates lists the fifth one', () => {
-	// A brief that ENUMERATES the gate list must name the fifth gate, or a lane seeded from it runs four and
-	// the four measurement claims are decided by nothing. Verified site by site on b798643.
-	//
-	// REVIEW-ORCHESTRATOR.md is deliberately NOT here: it delegates the gate list to COMMON.md by reference
-	// rather than restating it, so demanding the string there would force a mention into a file whose whole
-	// point is not carrying its own copy. The count arm below is what guards it — and that arm is the one
-	// that would have caught the defect THIS test missed.
-	const missing: string[] = [];
-	for (const rel of GATE_LIST_BRIEFS) {
-		const src = readFileSync(join(REPO, rel), 'utf8');
-		if (!src.includes(SCRIPT)) missing.push(rel);
-	}
-	expect(missing).toEqual([]);
-	// non-vacuity: an emptied list would make the loop above examine nothing and pass
-	expect(GATE_LIST_BRIEFS.length).toBeGreaterThanOrEqual(5);
-});
-
-test('no brief still states a stale gate COUNT — the gap that let a partial update pass', () => {
-	// THE DEFECT THIS EXISTS FOR, and it was this file's own. The test above asserts `gate:measured` appears
-	// SOMEWHERE in each brief. `docs/loop/CONDUCTOR.md` satisfied that — the fifth gate was in its dispatch
-	// list at :113 — while two OPERATIVE rules in the same file still said four:
-	//
-	//   :22  "Workers MUST run all four gates every time."          <- the worker-seed instruction
-	//   :142 "the four gates, re-measured, never taken on trust."   <- self-merge criterion 1
-	//
-	// So a worker seeded from that file ran four gates, `gate:measured` never ran on its own PR, and :142
-	// authorised a self-merge on four green. A presence check cannot see that: the string it looks for was
-	// right there in the same file, a hundred lines from a rule contradicting it. Nine further sites carried
-	// the same drift across CONDUCTOR, COMMON, CODING-BOT, REVIEW-ORCHESTRATOR and HANDOFF.
-	//
-	// So this arm checks the NUMBER instead of a mention, and it is forward-proof on purpose: any count word
-	// before "gates" other than "five" reds, so adding a SIXTH gate breaks this test rather than silently
-	// leaving eleven briefs claiming five.
-	const STALE_COUNT = /\b(?:one|two|three|four|six|seven|eight|nine|ten|\d+)\s+gates\b/i;
-	// "gates … all four" and "all four … gates" on ONE line — HANDOFF.md's phrasing, which the count pattern
-	// alone does not match. Line-scoped so it cannot reach across sentences, and it does not fire on
-	// PR-BOT.md's "The four charters — run all four on every PR", which says no "gates".
-	const COUNTS = 'one|two|three|four|six|seven|eight|nine|ten';
-	const STALE_ALL = new RegExp(`(?:gates[^.\\n]*\\ball (?:${COUNTS})\\b|\\ball (?:${COUNTS})\\b[^.\\n]*gates)`, 'i');
-
-	const offenders: string[] = [];
-	const scanned: string[] = [];
-	for (const rel of briefFiles()) {
-		const src = readFileSync(join(REPO, rel), 'utf8');
-		scanned.push(rel);
-		src.split('\n').forEach((line, i) => {
-			const count = line.match(STALE_COUNT);
-			if (count) offenders.push(`${rel}:${i + 1}: a stale gate count — ${JSON.stringify(count[0])}`);
-			const all = line.match(STALE_ALL);
-			if (all) offenders.push(`${rel}:${i + 1}: an "all <n>" gate instruction — ${JSON.stringify(all[0])}`);
-		});
-	}
-	expect(offenders).toEqual([]);
-	// Non-vacuity floor (XR-VER-05): a walk that stops finding briefs reports zero offenders over zero files,
-	// which is exactly the silent-green this arm exists to prevent, one level up. 12 files under docs/loop
-	// plus docs/HANDOFF.md on b798643. A firing floor is a FINDING, never a number to adjust (XR-VER-06).
-	expect(scanned.length).toBeGreaterThanOrEqual(10);
-});
-
+/*
+ * THE TWO BRIEF ARMS ARE RETIRED (2026-09-22), with the documents they read (see the note above the gate
+ * list they used).
+ *
+ * They pinned that every lane brief enumerating the gates listed the fifth one, and that no brief still
+ * stated a stale gate COUNT — the gap that had let a partial update pass, where one brief was extended and
+ * its siblings kept a count that was quietly wrong.
+ *
+ * WHAT STILL HOLDS IT: the arm above asserts the fifth gate is declared in the root `package.json`, which is
+ * the EXECUTABLE definition the prose copies were always meant to agree with. One source cannot disagree
+ * with itself, which is the state those arms existed to approximate.
+ */
 test('the CDP driver exposes exactly ONE safe-area method, and every caller uses that name', () => {
 	// THE COLLISION THIS EXISTS FOR. Two branches both needed a safe-area override and both added one to
 	// the shared driver in the same hour: `setSafeAreaInsets` here, `safeAreaInsets` on main. Same
@@ -204,7 +154,7 @@ test('the CDP driver exposes exactly ONE safe-area method, and every caller uses
 				callsSeen++;
 				if (!defined.includes(name)) {
 					offenders.push(
-						`${abs.slice(REPO.length + 1)}: calls .${name}(), but the driver defines ${JSON.stringify(defined)}`
+						`${abs.slice(REPO.length + 1)}: calls.${name}(), but the driver defines ${JSON.stringify(defined)}`
 					);
 				}
 			}
@@ -212,10 +162,10 @@ test('the CDP driver exposes exactly ONE safe-area method, and every caller uses
 	};
 	walk(join(REPO, 'tests/e2e'));
 	expect(offenders).toEqual([]);
-	// Non-vacuity floor (XR-VER-05): TWO call sites today — this gate's live docked-band arm sets a
+	// Non-vacuity floor: TWO call sites today — this gate's live docked-band arm sets a
 	// simulated inset and then resets it. A walk that finds none would pass while enforcing nothing.
 	//
-	// XR-VER-06 RECORD — LOWERED 4 -> 2 by the queue-sheet removal. The INVARIANT is untouched: one name for the capability,
+	// RECORD — LOWERED 4 -> 2 by the queue-sheet removal. The INVARIANT is untouched: one name for the capability,
 	// and every caller in the e2e tree spells it. What shrank is the POPULATION. The other two callers
 	// were the drawer probe (e2e/probes/spike827-queuesheet-drawer.mjs, deleted whole with the drawer
 	// surface) and this gate's own sheet half (deleted with it, since it measured the peek's safe-area
@@ -229,7 +179,7 @@ test('every quarantined control carries a substantive reason and a real identity
 	const offenders: string[] = [];
 	for (const q of QUARANTINE) {
 		const who = `${q.where} ${q.match.tag}`;
-		// Same 60-character bar as non-vacuity-floors.test.ts's RETIRED map: XR-VER-06 wants the
+		// Same 60-character bar as non-vacuity-floors.test.ts's RETIRED map: the standard wants the
 		// invariant, what left scope, and what covers it now, none of which fits in a few words.
 		if (q.reason.trim().length < 60)
 			offenders.push(`${who}: reason is not substantive (${q.reason.trim().length} chars)`);
@@ -238,8 +188,7 @@ test('every quarantined control carries a substantive reason and a real identity
 		if (fields < 2) offenders.push(`${who}: matches on ${fields} field(s) — too loose to be a single control`);
 		// A number at or above the floor is not a quarantine, it is a stale entry.
 		if (q.measured >= TAP) offenders.push(`${who}: recorded at ${q.measured}px, which is not below the ${TAP}px floor`);
-		if (q.measured <= 0)
-			offenders.push(`${who}: recorded at ${q.measured}px — a zero measurement is UNMEASURED (XR-VER-03)`);
+		if (q.measured <= 0) offenders.push(`${who}: recorded at ${q.measured}px — a zero measurement is UNMEASURED`);
 	}
 	// A RETIRED entry (a control that WAS quarantined and is now resolved) carries the same
 	// identity + substantive-reason bar. `was` is the number it measured while quarantined, so it
@@ -251,13 +200,13 @@ test('every quarantined control carries a substantive reason and a real identity
 		const fields = Object.values(q.match).filter((v) => v !== undefined).length;
 		if (fields < 2) offenders.push(`${who}: matches on ${fields} field(s) — too loose to be a single control`);
 		if (q.was >= TAP) offenders.push(`${who}: recorded at ${q.was}px, which was never below the ${TAP}px floor`);
-		if (q.was <= 0) offenders.push(`${who}: recorded at ${q.was}px — a zero measurement is UNMEASURED (XR-VER-03)`);
+		if (q.was <= 0) offenders.push(`${who}: recorded at ${q.was}px — a zero measurement is UNMEASURED`);
 	}
 	expect(offenders).toEqual([]);
 	// non-vacuity: the gate started with four known sub-floor controls. All four were later resolved — three
 	// CSS fixes and one false positive — so they moved from QUARANTINE to RETIRED rather than vanishing.
 	// Pin the COMBINED set at the original four so neither list can be silently emptied: dropping a
-	// quarantine entry without recording its resolution in RETIRED reds here. (XR-VER-06/07.)
+	// quarantine entry without recording its resolution in RETIRED reds here.
 	expect(QUARANTINE.length + RETIRED.length).toBeGreaterThanOrEqual(4);
 });
 
@@ -268,13 +217,13 @@ test('the register mirrors the tokens it measures against, so the two cannot dri
 	// register imports a separate floor — is whether the token still holds the app's commitment.
 	expect(css).toMatch(/--tap:\s*[0-9.]+px\s*;/);
 	expect(TAP).toBeGreaterThanOrEqual(TAP_FLOOR);
-	// XR-VER-11 RECORD — the sheet-cap arm was RETIRED here with the queue-sheet removal, not weakened. It asserted
+	// RECORD — the sheet-cap arm was RETIRED here with the queue-sheet removal, not weakened. It asserted
 	// `SHEET_CAP_FRACTION === 0.82` and that QueueSheet.svelte declared `max-height: 82dvh`; the drawer
 	// surface that owned that declaration was deleted, so the number had no source left to mirror and
 	// SHEET_CAP_FRACTION went with it out of the register. Nothing docked caps itself in a viewport
 	// fraction now — the docked band is sized by its own content and published as --dock-h — so there is
 	// no successor declaration to re-point at, and inventing one would pin a cap no surface asks for.
-	// SIMULATED_BOTTOM_INSET deliberately STAYS: the live .cta-dock safe-area arm still uses it.
+	// SIMULATED_BOTTOM_INSET deliberately STAYS: the live.cta-dock safe-area arm still uses it.
 	// The 16px threshold is a WebKit behaviour, renegotiable only on evidence about WebKit.
 	expect(MIN_FIELD_PX).toBe(16);
 });
@@ -286,7 +235,7 @@ test('the gate derives its control set from roles, not from a class allowlist', 
 	for (const needed of ['button', 'a[href]', 'select', 'textarea', '[role="button"]']) {
 		expect(CONTROL_SELECTOR).toContain(needed);
 	}
-	// The gate's own non-vacuity floors must exist and be meaningful — XR-VER-05 applies to a measured
+	// The gate's own non-vacuity floors must exist and be meaningful — the rule applies to a measured
 	// guard as much as to a source scan, because a drive that navigates but finds nothing reports every
 	// assertion satisfied over an empty set. A firing floor is a FINDING, never a number to adjust.
 	for (const [name, min] of Object.entries(FLOORS)) {

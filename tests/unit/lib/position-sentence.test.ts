@@ -1,4 +1,4 @@
-// XR-PH-09 — the guest's position is stated in WORDS, and the wait degrades HONESTLY when it cannot
+// the guest's position is stated in WORDS, and the wait degrades HONESTLY when it cannot
 // be known.
 //
 // The requirement's acceptance is two-armed and the second arm is the one that ships bugs: "Given any
@@ -41,7 +41,7 @@ test('the direction promise renders verbatim when every duration ahead is known'
 	expect(w!.wait).toBe('Roughly 11 minutes.');
 });
 
-test('an entry ahead with no resolvable length omits the minutes clause entirely (XR-PH-09)', () => {
+test('an entry ahead with no resolvable length omits the minutes clause entirely', () => {
 	// `Media.durationSec` is REQUIRED, so the reachable unknown is an entry whose media is absent from
 	// the catalog — the caller maps that to null. One null makes the sum unknown.
 	const w = positionWords({

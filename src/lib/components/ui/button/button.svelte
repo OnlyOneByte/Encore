@@ -19,11 +19,13 @@
 	 * 3. A `press` axis and its scoped styles at the bottom of this file — three incumbent behaviours
 	 * over one shape. `touch-action: none` on the grab case is load-bearing for the drag:
 	 * without it the browser claims the vertical gesture for scrolling and `onpointerdown` never
-	 * fires. `cursor: grab` must stay pinned to this control and never reach a row (XR-PH-17,
-	 * guarded by `reorder-mode-source-836.test.ts`).
+	 * fires. `cursor: grab` must stay pinned to this control and never reach a row (* guarded by `reorder-mode-source.test.ts`).
 	 * 4. An `iconPrimary` variant for NowPlayingDrawer's transport (NowPlayingHero's, before the drawer
 	 * replaced it): accent fill while actionable, falling
 	 * back to the icon surface when disabled, which is what says the transport is dead not idle.
+	 * 6. `bg-transparent` on the `ghost` variant. The registry paints ghost only on hover, which assumes
+	 * Preflight zeroed the UA's `buttonface`; Preflight is OFF here, so a ghost BUTTON showed a mid-grey
+	 * slab (measured rgb(107,107,107) on the queue grip). Every earlier ghost call site was an `<a>`.
 	 * 5. Three more role-named variants for the phone home's controls — `identity`, `keycap`, `eyebrow`.
 	 * Each is documented at its own entry below, and each exists because a REQUIREMENT of its call site
 	 * contradicts the base: `shrink-0` defeats an ellipsis, and `whitespace-nowrap` defeats the 320px
@@ -72,7 +74,7 @@
 				 *
 				 * `min-h-tap` because it declares no height of its own and so inherited the default
 				 * `h-9` — 36px, measured on the render by `gate:measured`, which is the four pixels
-				 * XR-VER-09 is about. It is the phone's only route to the profile editor, so it is not a
+				 * is about. It is the phone's only route to the profile editor, so it is not a
 				 * control a thumb can afford to miss. The header's row height is set by the brand line
 				 * beside it, so raising this one to the floor changes no layout.
 				 */
@@ -84,7 +86,7 @@
 				 * 1. The base sets `whitespace-nowrap`, but "semitone" is one unbreakable token and at
 				 *    200% text a full-width button is still narrower than it — so nowrap forced the row,
 				 *    and the sheet around it, past 320px. `whitespace-normal` plus
-				 *    `[overflow-wrap:anywhere]` lets the word break instead of the layout (XR-PH-02).
+				 *    `[overflow-wrap:anywhere]` lets the word break instead of the layout.
 				 * 2. DASHED means inert. The incumbent drew a dashed border while the shift was clamped
 				 *    at +/-7 and switched to solid when actionable, which reads as "no further" without
 				 *    relying on colour. Expressed here as the RESTING state upgraded by `enabled:`,
@@ -118,7 +120,7 @@
 				 * and its ink against the page: measured on the join CTA (the first control a guest sees, and
 				 * it starts disabled) the painted pair was #3F307C under #9F97BE — a label at 4.0:1, under
 				 * AA, on the app's primary action. `NowPlayingBand`'s `.disc:disabled` states the rule this
-				 * breaks: "Unavailable is a SURFACE change, never a subtree opacity: XR-PH-03 and
+				 * breaks: "Unavailable is a SURFACE change, never a subtree opacity: and
 				 * layout/phone-inventory.test.ts both reject dimming a subtree, because compositing ink
 				 * against the page at 45% is what quietly drops it under 4.5:1."
 				 *
@@ -133,8 +135,21 @@
 					'border-border bg-background shadow-xs hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50',
 				secondary:
 					'bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
+				/*
+				 * `bg-transparent` IS DEVIATION 6, and it is a defect fix rather than a preference.
+				 *
+				 * The registry's `ghost` sets a background only on hover, which is correct in a tree where
+				 * Preflight has zeroed `button { background }`. Preflight is OFF here (see app.css), so a
+				 * `<button variant="ghost">` painted the UA's `buttonface` — MEASURED as rgb(107,107,107), a
+				 * mid-grey slab, on the queue row's drag grip. Every earlier ghost call site escaped it by
+				 * being an `<a>` (the drawer's `···`, the settings links), which has no UA background, so the
+				 * first BUTTON to use the variant was the first to see it.
+				 *
+				 * Fixed on the variant rather than at that call site: a class handed to a component is scoped
+				 * to the caller and stripped there, and the next ghost button would hit the same slab.
+				 */
 				ghost:
-					'hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50',
+					'bg-transparent hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50',
 				destructive:
 					'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
 				link: 'text-primary underline-offset-4 hover:underline'

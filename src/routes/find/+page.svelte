@@ -393,7 +393,7 @@
 	main {
 		flex: 1;
 		/*
-		 * Reserves the band in NORMAL FLOW (XR-PH-12) off the height the layout measures, so the last
+		 * Reserves the band in NORMAL FLOW off the height the layout measures, so the last
 		 * row cannot bleed under it. No env() term here — the band carries the only one, and adding a
 		 * second doubles the gap on a notched phone.
 		 */
@@ -451,7 +451,7 @@
 	 * So the ring moves out one level. `:focus-within` rather than `:focus-visible` on the wrapper because
 	 * a wrapper is never itself focused; the inner rule below suppresses the global so only one ring is
 	 * ever drawn. Same token, same width — this changes WHERE the indicator is, not whether there is one,
-	 * so XR-VER-12's measured floor (a >=2px outline in the resolved `--focus`) still holds, now on a box
+	 * so the measured floor (a >=2px outline in the resolved `--focus`) still holds, now on a box
 	 * that contains everything it is indicating.
 	 */
 	.findbox:has(input:focus-visible) {

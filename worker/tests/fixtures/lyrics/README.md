@@ -30,7 +30,7 @@ would only break the trace from a fixture back to its source.
 ## The files
 
 Machine-readable provenance — media id, source ref, duration, sha256, and the one property each file
-exists to pin — is in `manifest.json`, which `tests/test_lyrics_corpus_668.py` reads. The duration
+exists to pin — is in `manifest.json`, which `tests/test_lyrics_corpus.py` reads. The duration
 lives there rather than in the artifacts because a published lyrics artifact carries only
 `{language, lines, words}`; the audio duration comes from the media sidecar, and the overshoot
 measurement needs it.
@@ -85,5 +85,5 @@ ordering dependency recorded on the issue — those tracks carry rolling scroll-
 , which inflates token counts, so a count-aware metric calibrated on them would be measuring
 YouTube's cue format rather than the song.
 
-`tests/test_lyrics_corpus_668.py` pins the pair count at one, so the day an interior pair is added
+`tests/test_lyrics_corpus.py` pins the pair count at one, so the day an interior pair is added
 the suite reds and this section has to be rewritten with a real band.

@@ -1,4 +1,4 @@
-// guard: the test tree's own dependencies stay in lockstep with the package they test — XR-VER-05.
+// guard: the test tree's own dependencies stay in lockstep with the package they test.
 //
 // WHY THIS EXISTS. Moving the tests into `tests/` moved them out of the reach of `node_modules`.
 // Node resolves a bare specifier by walking UP from the importing file, so a test at
@@ -97,7 +97,7 @@ test('every external package the test tree imports is declared somewhere it can 
  *
  * That risk no longer exists. There is one manifest, so there are no two numbers to disagree. The arm is
  * removed rather than rewritten to compare a thing with itself, which is what "no assertion" looks like
- * when it is dressed as a passing test (XR-VER-06/07). Its floor was retired from the registry in the same
+ * when it is dressed as a passing test. Its floor was retired from the registry in the same
  * commit, for the same reason.
  */
 

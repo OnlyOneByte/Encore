@@ -1,5 +1,5 @@
 /**
- * The guest's own place in the rotation, stated in words (XR-PH-09).
+ * The guest's own place in the rotation, stated in words.
  *
  * Direction A's core promise is "3rd — you're up after Sam, roughly 11 minutes" rather than a bare
  * ordinal, and the hard half is the minutes clause: an ETA is a CLAIM, and a wrong one in a shared

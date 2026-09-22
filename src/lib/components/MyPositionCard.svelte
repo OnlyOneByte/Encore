@@ -1,6 +1,6 @@
 <script lang="ts">
 	/*
-	 * The guest's own place in the rotation, in WORDS (XR-PH-09).
+	 * The guest's own place in the rotation, in WORDS.
 	 *
 	 * "3rd — you're up after Sam, roughly 11 minutes" is direction A's core promise, and the reason it
 	 * is a component rather than a string in the route is the DEGRADATION: the minutes clause is a
@@ -37,7 +37,7 @@
 		behaviour here: Item.Title is `line-clamp-1` and Item.Description `line-clamp-2`, and this card's
 		first line is the promise it exists to make ("You're up after Bartholomew.") — a clamp truncates
 		it on a 320px phone rather than wrapping. Both classes are also pinned by name in
-		`phone-home-832.test.ts`, which queries `.big` and `.wait` on the mounted render, so each would
+		`phone-home.test.ts`, which queries `.big` and `.wait` on the mounted render, so each would
 		need a plain inner element inside the primitive anyway.
 	-->
 	<Item.Root variant="bare" size="bare">
@@ -76,7 +76,7 @@
 		font-weight: 800;
 		/* --accent2, NOT --accent. The mockup draws this numeral in the violet accent, but --accent
 		   exists to be a BACKGROUND carrying --on-accent: as text it measures 3.38:1 on --card, under
-		   AA. (The old --accent-strong was worse still at 3.52:1 and is now retired — XR-COL-11 —
+		   AA. (The old --accent-strong was worse still at 3.52:1 and is now retired — —
 		   so there is no darkened sibling to reach for either.) --accent2 is the family's text-safe
 		   member and already this route's text accent (.range-peek, .browse-active): MEASURED 6.05:1 on
 		   --card and 5.92:1 on the --card-tint this gradient ends at. */
@@ -86,7 +86,7 @@
 	.lead {
 		color: var(--ink);
 	}
-	/* Dimmed by TOKEN, never by opacity on the subtree (XR-PH-03): --ink-dim is a measured pair with
+	/* Dimmed by TOKEN, never by opacity on the subtree: --ink-dim is a measured pair with
 	   the card surface, where an alpha would composite against whatever sits behind it. */
 	.wait {
 		color: var(--ink-dim);

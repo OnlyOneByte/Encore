@@ -20,7 +20,7 @@
  */
 import { test, expect } from 'bun:test';
 import { mount, flushSync } from '$setup/svelte-client';
-import Probe from './tabs-keyboard-913.harness.svelte';
+import Probe from './tabs-keyboard.harness.svelte';
 
 /** The rendered tabs, in document order. */
 function tabsOf(host: HTMLElement): HTMLElement[] {

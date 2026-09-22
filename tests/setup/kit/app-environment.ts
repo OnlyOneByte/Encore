@@ -2,7 +2,7 @@
 //
 // No first-party file imports this today (verified across apps/ and packages/ — the only hits are
 // generated files under .svelte-kit/). It is stubbed anyway because it is the module a component
-// reaches for the moment it needs to branch on client-vs-server, and issue #822's acceptance names
+// reaches for the moment it needs to branch on client-vs-server, and the harness contract names
 // it explicitly.
 //
 // `browser` is TRUE: the harness installs a DOM and mounts with Svelte's CLIENT runtime, so a

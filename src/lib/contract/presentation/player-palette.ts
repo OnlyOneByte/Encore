@@ -2,7 +2,7 @@
 //
 // `player-palette-48.json` beside this file is a GENERATED, MEASURED registry: every stop carries its
 // fill, the ink that may sit on it, and the contrast ratios that fill was measured at against the real
-// `--bg` / `--card` tokens (see tests/guards/design-system/palette-registry-820.test.ts, which
+// `--bg` / `--card` tokens (see tests/guards/design-system/palette-registry.test.ts, which
 // regenerates it byte-identically and re-derives every published `r_*` figure). This module is the only
 // place the app reads it, so a consumer never has to know the JSON's shape.
 //

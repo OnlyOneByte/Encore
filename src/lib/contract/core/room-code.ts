@@ -1,10 +1,10 @@
 // Room-code vocabulary — the shared truth for the short join code a phone types or a QR encodes.
 //
-// This lives in $lib/contract, not ., ON PURPOSE. The code is now read at BOTH ends of
+// This lives in $lib/contract, not., ON PURPOSE. The code is now read at BOTH ends of
 // the wire: the server mints and validates it (`src/lib/server/rooms/repository.ts`), and the
-// phone's six-segment entry (`routes/+page.svelte`, XR-PH-14) must reject a character the server would
+// phone's six-segment entry (`routes/+page.svelte`) must reject a character the server would
 // reject rather than accept it and fail the join later. Two copies of one alphabet with no parity guard
-// is the `internal` defect shape `docs/loop/COMMON.md` names — so the alphabet has one home, imported by
+// is the `internal` defect shape — so the alphabet has one home, imported by
 // both. `repository.ts` re-exports these so its existing importers do not move.
 
 /**
@@ -42,5 +42,5 @@ export function normalizeRoomCodeInput(raw: string): string {
 	return out;
 }
 
-/** The excluded characters, stated for the keystroke-rejection message (XR-PH-14 / SC 3.3.1). */
+/** The excluded characters, stated for the keystroke-rejection message. */
 export const CODE_EXCLUDED_NOTE = 'Letters and numbers only — not O, I, L, 0 or 1.';

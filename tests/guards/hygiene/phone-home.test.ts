@@ -3,7 +3,7 @@
 // These MOUNT the components under the repo's happy-dom + compiled-Svelte harness (tests/setup/,
 // wired by the root bunfig.toml) rather than scanning their source, because every claim below is
 // about what RENDERS: whether the song is a heading, whether the progress row exists, whether a
-// disclosure ended up between a singer and a control they need mid-song. XR-PH-21 is explicit that a
+// disclosure ended up between a singer and a control they need mid-song. is explicit that a
 // measurement claim cannot be satisfied by a source scan, and this repo's own record is that the
 // defects that shipped were invisible to a passing suite.
 //
@@ -42,8 +42,7 @@
 //    test reds (`openDrawer` asserts there is exactly one) instead of quietly satisfying a query.
 //
 // 2. IT MEASURES — INCIDENTALLY, AND NOT ON ANY PATH THIS FILE ASSERTS ABOUT. Opening the drawer
-//    reaches two geometry reads the mount rung deliberately replaces with a throw (XR-VER-03,
-//    tests/setup/svelte-dom-preload.ts):
+//    reaches two geometry reads the mount rung deliberately replaces with a throw (//    tests/setup/svelte-dom-preload.ts):
 //
 //      - `document.documentElement.clientWidth`, from bits-ui's body-scroll-lock, which computes
 //        scrollbar-width compensation when a modal dialog opens
@@ -59,7 +58,7 @@
 //    the refusal's own message — and rethrows anything else.
 //
 //    THIS IS NOT FAKING GEOMETRY, and the distinction is the whole reason it is allowed here.
-//    `hero-live-controls-835.test.ts` moved four arms to rung L rather than install a zero-returning
+//    `hero-live-controls.test.ts` moved four arms to rung L rather than install a zero-returning
 //    `offsetWidth` and a no-op `ResizeObserver`, because a fabricated measurement is a silent green.
 //    Nothing is fabricated here: the refusal still throws, no zero is produced, and no assertion in
 //    this file reads a geometry value. What is skipped is a dependency's scrollbar padding and the
@@ -73,7 +72,7 @@ import { read } from '@encore/test-support';
 import { mount, unmount, flushSync } from '$setup/svelte-client';
 import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 import QueueRow from '$lib/components/QueueRow.svelte';
-import NowPlayingDrawerHarness from './phone-home-832.harness.svelte';
+import NowPlayingDrawerHarness from './phone-home.harness.svelte';
 import { positionWords } from '$lib/phrasing/position-sentence';
 import { SNAP_BAND as SHEET_SNAP_BAND } from '$lib/sheet-snap';
 import type { SongProfile } from '$lib/contract';
@@ -107,7 +106,7 @@ function render<P extends Record<string, unknown>>(Comp: unknown, props: P): HTM
 
 // ── the mount rung's geometry refusal, let through rather than faked ─────────────────────────────
 
-/** The preload's refusal message (XR-VER-03). Matched on, never suppressed globally. */
+/** The preload's refusal message. Matched on, never suppressed globally. */
 const GEOMETRY_REFUSAL = /^(\S+?)(?:\(\))? cannot measure on the MOUNT rung/;
 
 /**
@@ -163,9 +162,9 @@ function swallowGeometryRefusal(fn: () => void): void {
  *
  * WHY LENDING IT FABRICATES NOTHING, which is the whole reason it is allowed. A `ResizeObserver` is a
  * NOTIFICATION API, not a measurement one. This stub notifies nobody, and all six geometry accessors
- * XR-VER-03 enumerates — `clientHeight` included — still throw, so there is no path to a fabricated
+ * the guard enumerates — `clientHeight` included — still throw, so there is no path to a fabricated
  * zero: `bandH` simply keeps the default `NowPlayingDrawer` declares for it, and NOTHING in this file
- * reads a bound size. That is the distinction `hero-live-controls-835.test.ts` drew when it refused a
+ * reads a bound size. That is the distinction `hero-live-controls.test.ts` drew when it refused a
  * zero-returning `offsetWidth`; a stub that measures nothing is not a stub that measures wrong.
  *
  * SCOPED, and self-policing. It is installed for the duration of one call and deleted in a `finally`,
@@ -466,7 +465,7 @@ test('the transport is disabled when there is nothing for it to act on', () => {
 
 /*
  * TRANSFORMED, AND BACK ON THIS RUNG. The claim used to be 'the live controls render in the
- * disclosure BODY, never in its summary (XR-PH-15)', and S5 moved it to
+ * disclosure BODY, never in its summary', and S5 moved it to
  * `tests/e2e/probes/p16-hero-live-controls.mjs` because the hero's disclosure was a Bits UI
  * Collapsible reading `getBoundingClientRect()` — so the hero could not be mounted here at all.
  *
@@ -474,7 +473,7 @@ test('the transport is disabled when there is nothing for it to act on', () => {
  * sits directly below the key row rather than behind a second disclosure of its own (ratified
  * 2026-09-14). So "the control is not in the toggle" has no toggle to be about; what survives it is
  * the stronger structural claim below — that no disclosure exists between a singer and a control they
- * need mid-song — plus the adjacency the ruling was about. p16 keeps the XR-PH-15 degradation arms,
+ * need mid-song — plus the adjacency the ruling was about. p16 keeps the degradation arms,
  * which still need a real layout engine.
  */
 test('no disclosure stands between the singer and the live controls', () => {
@@ -564,7 +563,7 @@ test('an idle drawer says "Nothing playing" exactly once', () => {
  * "Bohemian Rhapsody") are now FALSE rather than vacuous — they were deleted, not neutered.
  *
  * "The controls are not reachable while collapsed" therefore has no mount-rung expression at all: what
- * hides them is a transform offset on a full-height box, which is a LAYOUT-rung claim (XR-VER-01) and
+ * hides them is a transform offset on a full-height box, which is a LAYOUT-rung claim and
  * lives in `tests/e2e/probes/`. Nothing here can substitute for it, and pretending otherwise is exactly
  * the green no-op this file refuses.
  *
@@ -655,7 +654,7 @@ test('the band row is the sheet itself, and the body stays mounted at the collap
  * NEW, AND CARRYING THE OLD HARNESS'S REASON FOR EXISTING.
  *
  * The old harness passed a `{#snippet controls()}` block containing a range input, because the hero
- * took its live controls as a SNIPPET and XR-PH-15's constraint was about where a range input may
+ * took its live controls as a SNIPPET and the constraint was about where a range input may
  * live. The drawer takes props instead and renders those controls itself — so the thing that used to
  * need a harness-supplied snippet is now the drawer's own output, and this asserts it: with candidates
  * handed in and no snippet anywhere, lyrics re-selection renders inside the live-controls body.
@@ -725,7 +724,7 @@ test('the drawer NAMES the lyrics source and does not re-pick it', () => {
 });
 
 // ── the position card, and its honest degradation ────────────────────────────────────────────────
-test('the position card states the ordinal, who you follow, and the wait (XR-PH-09)', () => {
+test('the position card states the ordinal, who you follow, and the wait', () => {
 	const host = render(MyPositionCard, {
 		words: positionWords({ place: 3, beforeName: 'Sam', nowRemainingSec: 120, aheadDurationsSec: [200, 341] })
 	});
@@ -736,7 +735,7 @@ test('the position card states the ordinal, who you follow, and the wait (XR-PH-
 	expect(host.querySelector('section')?.getAttribute('aria-label')).toBe('Your place in the queue');
 });
 
-test('an unknown wait renders NO minutes clause — not a zero, not a guess (XR-PH-09)', () => {
+test('an unknown wait renders NO minutes clause — not a zero, not a guess', () => {
 	const host = render(MyPositionCard, {
 		words: positionWords({ place: 3, beforeName: 'Sam', nowRemainingSec: 120, aheadDurationsSec: [200, null] })
 	});
@@ -752,7 +751,7 @@ test('an unknown wait renders NO minutes clause — not a zero, not a guess (XR-
 	expect(text).not.toContain('null');
 });
 
-test('the card de-emphasises the wait with a token, never with subtree opacity (XR-PH-03)', () => {
+test('the card de-emphasises the wait with a token, never with subtree opacity', () => {
 	const host = render(MyPositionCard, {
 		words: positionWords({ place: 2, beforeName: 'Maya', nowRemainingSec: 60, aheadDurationsSec: [] })
 	});
@@ -771,7 +770,7 @@ test('a guest with nothing queued gets no card at all', () => {
 	expect((host.textContent ?? '').trim()).toBe('');
 });
 
-// ── the unconfirmed marker says which mutation it is waiting on (XR-PH-10) ───────────────────────
+// ── the unconfirmed marker says which mutation it is waiting on ───────────────────────
 /*
  * `reorderable`, `canUp` and `canDown` LEFT THIS FIXTURE (2026-09-21) with the props they named: the arrow
  * pair is retired and whether a row can move is `grip` (the caller's `gripVisible()` predicate), while
@@ -793,7 +792,7 @@ const ROW = {
 	gripId: 'entry-1'
 };
 
-test('a pending REORDER says "moving…", never "adding…" (XR-PH-10)', () => {
+test('a pending REORDER says "moving…", never "adding…"', () => {
 	const moving = render(QueueRow, { ...ROW, pending: 'move' });
 	expect(moving.textContent).toContain('moving…');
 	expect(moving.textContent).not.toContain('adding…');
@@ -808,7 +807,7 @@ test('a pending REORDER says "moving…", never "adding…" (XR-PH-10)', () => {
 	expect(settled.querySelector('.adding')).toBeNull();
 });
 
-test('a row awaiting confirmation makes its own reorder controls inert (XR-PH-10)', () => {
+test('a row awaiting confirmation makes its own reorder controls inert', () => {
 	/*
 	 * "…and its reorder controls are inert" is part of the requirement: a second reorder of a move that has
 	 * not landed would issue an op against a position the server has not agreed to yet.
@@ -831,7 +830,7 @@ test('a row awaiting confirmation makes its own reorder controls inert (XR-PH-10
 	expect(settled.querySelector('button[aria-label="move down"]')).toBeNull();
 });
 
-test('the pending state is signalled on the row SURFACE, not by dimming its subtree (XR-PH-03)', () => {
+test('the pending state is signalled on the row SURFACE, not by dimming its subtree', () => {
 	const moving = render(QueueRow, { ...ROW, pending: 'move' });
 	const root = moving.querySelector('.qrow') as HTMLElement;
 	expect(root.className).toContain('pending');
@@ -864,7 +863,7 @@ test('the gallery carries the drawer and BOTH position branches, adjacent', () =
 	 * A drawer is portalled and fixed to the viewport, so two open at once occupy the same 82dvh and a
 	 * stack of them would show one frame with the rest invisible underneath. The gallery therefore
 	 * drives ONE drawer through a `drawerHasSong` state and a trigger per state — so what has to be
-	 * pinned is that the idle arm is still REACHABLE, which is the same guarantee (XR-PH-08: the empty
+	 * pinned is that the idle arm is still REACHABLE, which is the same guarantee (the empty
 	 * state is a designed state, not an accident of no data).
 	 */
 	expect(gallery).toMatch(/drawerHasSong = false;/);
@@ -879,12 +878,12 @@ test('the gallery carries the drawer and BOTH position branches, adjacent', () =
 });
 
 // ── the swallow stays honest ─────────────────────────────────────────────────────────────────────
-test('nothing beyond the KNOWN incidental geometry reads was swallowed (XR-VER-03)', () => {
+test('nothing beyond the KNOWN incidental geometry reads was swallowed', () => {
 	/*
 	 * `openDrawer` lets the mount rung's geometry refusal through so the rendered content can be
 	 * asserted at all. That catch is narrow — anything that is not the refusal rethrows — but it would
 	 * still absorb a NEW measuring dependency, and a component that started measuring its own layout
-	 * belongs on rung L rather than here (XR-VER-02). So the swallowed names are bounded.
+	 * belongs on rung L rather than here. So the swallowed names are bounded.
 	 *
 	 * Every known entry is a read on a path this file asserts nothing about:
 	 *   offsetWidth  — the Bits UI Slider inside GuidingTrack, which mounts whenever hasSong is true.

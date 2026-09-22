@@ -1,4 +1,4 @@
-// XR-MED-10 (docs/arch/01-media.md) — "A `MediaStore` member with no production caller is not a
+// (docs/arch/01-media.md) — "A `MediaStore` member with no production caller is not a
 // capability." Every method on the `MediaStore` interface has at least one PRODUCTION call site, or it
 // is named in the ledger below with the reason it has none.
 //
@@ -31,7 +31,7 @@ const ROUTE = 'src/routes/media/[...path]/+server.ts';
 
 // Repo stripComments convention (icon-centring.test.ts et al.), extended to // line comments. BLANKS
 // rather than deletes so any reported offset still lines up. Load-bearing here: the route's on-record
-// note NAMES every deleted symbol (`MediaStore.url()`, `mediaProxyUrl`, `presign`, ...) precisely so a
+// note NAMES every deleted symbol (`MediaStore.url()`, `mediaProxyUrl`, `presign`,...) precisely so a
 // reader does not re-add them as an oversight. Without blanking, that note would trip the very
 // assertions it exists to explain.
 function stripComments(src: string): string {
@@ -39,7 +39,7 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-/** The `export interface MediaStore { ... }` body, comments stripped, brace-sliced. */
+/** The `export interface MediaStore {... }` body, comments stripped, brace-sliced. */
 function mediaStoreInterfaceBody(): string {
 	const src = stripComments(read(STORE));
 	const start = src.indexOf('export interface MediaStore');
@@ -122,7 +122,7 @@ const NO_CONSUMER_BY_DESIGN: Record<string, string> = {
 
 // Names that may NEVER be reinstated on this interface, ledger or not. A store answers BYTES; the
 // same-origin /media route is the sole URL builder. Re-adding one of these is a product decision about
-// cross-origin playback (docs/DECISIONS.md deferred FFT work depends on same-origin), so it must break
+// cross-origin playback (the deferred FFT work depends on same-origin), so it must break
 // a test and be argued, not land as a plausible-looking convenience method.
 const FORBIDDEN_MEMBERS = ['url', 'presignedUrl', 'signedUrl', 'directUrl', 'publicUrl'];
 
@@ -193,7 +193,7 @@ test('the route carries the on-record note explaining the removal', () => {
 	expect(route).toMatch(/no production caller|ZERO production callers/);
 });
 
-// ── non-vacuity floors (XR-VER-05): prove the scanner can answer BOTH ways ─────────────────────────
+// ── non-vacuity floors: prove the scanner can answer BOTH ways ─────────────────────────
 
 test('NON-VACUITY: the scanner finds the real call sites it is supposed to find', () => {
 	// If these came back empty, every "has no consumer" verdict above would be meaningless.

@@ -1,5 +1,5 @@
 /*
- * P16 — THE NOW-PLAYING DRAWER'S LIVE CONTROLS, AND THEIR HONEST DEGRADATION (XR-PH-15, XR-PH-03).
+ * P16 — THE NOW-PLAYING DRAWER'S LIVE CONTROLS, AND THEIR HONEST DEGRADATION.
  *
  * ── WHAT MOVED, AND WHY THIS FILE CHANGED SHAPE ────────────────────────────────────────────────
  *
@@ -28,12 +28,12 @@
  * ── WHY THE FILENAME STILL SAYS `hero` ─────────────────────────────────────────────────────────
  *
  * Deliberate, and the churn is the reason. This issue's coverage is a PAIR of rungs: this probe and
- * `tests/guards/hygiene/hero-live-controls-835.test.ts`, whose header rules that renaming ONE half
+ * `tests/guards/hygiene/hero-live-controls.test.ts`, whose header rules that renaming ONE half
  * "would leave the two halves of one issue under two different names" and that the rename is worth
  * doing as a single sweep. That sweep is: both files, the registration in `tests/e2e/run-probes.mjs`,
  * the `KNOWN_OFFENDERS` key in `tests/guards/hygiene/contract.test.ts`, the row in
  * `tests/e2e/HARNESS.md`, and the prose pointers in `tests/e2e/contract.ts`,
- * `tests/guards/hygiene/phone-home-832.test.ts`, `docs/ux/04-verification.md`,
+ * `tests/guards/hygiene/phone-home.test.ts`,
  * `src/lib/components/ui/slider/slider.svelte` and `src/lib/components/LyricsReselect.svelte`.
  * This change is scoped to the PROBE, so renaming here would produce exactly the split that header
  * argues against while leaving its pointer aimed at a file that still says "hero". `-835` / `p16` are
@@ -50,7 +50,7 @@
  *   - a sentence explains why, and it names what still works, because a reason alone leaves a singer
  *     thinking the whole control group is dead;
  *   - the sentence renders BEFORE the control it explains, and is not dimmed by ANY ancestor
- *     `opacity` (XR-PH-03) — an explanation at 50% alpha is the one element that must stay legible.
+ *     `opacity` — an explanation at 50% alpha is the one element that must stay legible.
  *
  * And the inverse arm: a song WITH a stem gets a live control and NO explanation, because an
  * explanation for a working control is noise.
@@ -60,7 +60,7 @@
  * `NowPlayingDrawer` sets `handleOnly` on its Root, restricting drag-to-dismiss to the handle. That
  * prop exists because the drawer's body is SLIDERS: a drag surface underneath a slider thumb makes
  * the two gestures one gesture, and the drawer wins because it is the ancestor. That is the substance
- * of XR-PH-15, and no source scan can prove a gesture BEHAVES — `handleOnly` also silently does
+ * of, and no source scan can prove a gesture BEHAVES — `handleOnly` also silently does
  * nothing if the vendored drawer stops rendering vaul's real Handle (shadcn ships a decorative div,
  * which is why `drawer-handle.svelte` exists). So this probe drives both halves with a real pointer:
  *
@@ -88,7 +88,7 @@
  *   - `disabled={false}` on the <Slider> → "the control STAYS on screen, disabled" FAILS, and
  *     `data-disabled` disappears entirely (Bits UI omits the attribute when enabled and emits it as
  *     `data-disabled=""` when disabled, so PRESENCE is the correct test, not the value).
- *   - `class:disabled={false}` on `.gt` → the XR-PH-03 containment arm FAILS, because nothing is
+ *   - `class:disabled={false}` on `.gt` → the containment arm FAILS, because nothing is
  *     dimmed for the reason to sit outside of.
  *   - dropping `handleOnly` from `Drawer.Root` → "the slider drag does NOT dismiss the drawer" FAILS:
  *     vaul takes the pointer from the slider and the content unmounts mid-drag.
@@ -302,7 +302,7 @@ async function ensureProbeWs(phone) {
 	await phone.evaluate(`
 		(async () => {
 			if (window.probeWs && window.probeWs.readyState === 1) return;
-			const ws = new WebSocket((location.protocol === 'https:' ? 'wss' : 'ws') + '://' + location.host + '/ws?role=phone');
+			const ws = new WebSocket((location.protocol === 'https:' ? 'wss': 'ws') + '://' + location.host + '/ws?role=phone');
 			await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error('probeWs open failed')); });
 			window.probeWs = ws;
 		})()
@@ -399,7 +399,7 @@ const CLOSED_EXPR = `(() => {
  * DEEPEST element whose own text is exactly the range label wins — that is the label span itself,
  * not the section wrapping it.
  *
- * `noteDimmedByAncestor` is XR-PH-03 measured rather than inferred. The containment field beside it
+ * `noteDimmedByAncestor` is measured rather than inferred. The containment field beside it
  * (`noteInsideDimmedSubtree`) is the ORIGINAL form of that claim and is kept because `class:disabled`
  * on `.gt` is still the anchor the contract pins; but GuidingTrack's `opacity: 0.5` moved onto the
  * control leaf, so containment alone no longer proves nothing dims the sentence. This walks every
@@ -742,7 +742,7 @@ async function main() {
 		JSON.stringify(closed.bandTitleText)
 	);
 	check(
-		'no control exists on the page while the drawer is shut (XR-PH-15)',
+		'no control exists on the page while the drawer is shut',
 		closed.sliderCount === 0 && !closed.notePresent,
 		JSON.stringify(closed)
 	);
@@ -757,21 +757,21 @@ async function main() {
 		live.drawerPresent && live.bodyPresent && live.dragHandlePresent,
 		JSON.stringify(live)
 	);
-	// REPLACES 'the control lives in the disclosure BODY, never inside its toggle'. Same XR-PH-15
+	// REPLACES 'the control lives in the disclosure BODY, never inside its toggle'. Same
 	// substance, new drag surface: the control must be in the body and NOT inside vaul's handle, which
 	// `handleOnly` makes the drawer's only draggable element.
 	check(
-		'the control is in the drawer BODY, never on the drag handle (XR-PH-15)',
+		'the control is in the drawer BODY, never on the drag handle',
 		live.sliderPresent && live.sliderInBody && !live.sliderOnDragHandle,
 		JSON.stringify(live)
 	);
 	check(
-		'a song WITH an isolated stem gets a live control (XR-PH-15)',
+		'a song WITH an isolated stem gets a live control',
 		live.sliderPresent && live.sliderPainted && !live.sliderDisabled,
 		JSON.stringify(live)
 	);
 	check(
-		'…and no explanation, because a working control needs none (XR-PH-15)',
+		'…and no explanation, because a working control needs none',
 		!live.notePresent && !live.pageTextHasFragment,
 		JSON.stringify(live)
 	);
@@ -850,13 +850,13 @@ async function main() {
 	await sleep(500);
 	const guideAfter = pctOf(await phone.text(SEL.guideReadout));
 	check(
-		'a pointer drag ON THE SLIDER moves the guiding track (XR-PH-15)',
+		'a pointer drag ON THE SLIDER moves the guiding track',
 		guideAfter !== null && Math.abs(guideAfter - guideBefore) >= 10,
 		`readout ${guideBefore}% → ${guideAfter === null ? 'unreadable' : `${guideAfter}%`} across ${Math.round(sliderBox.w)}px of track`
 	);
 	const afterSliderDrag = /** @type {any} */ (await phone.evaluate(stateExpr(expectedRange)));
 	check(
-		'…and that drag does NOT dismiss the drawer — handleOnly is in force (XR-PH-15)',
+		'…and that drag does NOT dismiss the drawer — handleOnly is in force',
 		afterSliderDrag.drawerPresent && afterSliderDrag.sliderPresent && afterSliderDrag.bodyPresent,
 		JSON.stringify(afterSliderDrag)
 	);
@@ -887,7 +887,7 @@ async function main() {
 	const degraded = /** @type {any} */ (await phone.evaluate(stateExpr(expectedRange)));
 
 	check(
-		'the control STAYS on screen, disabled, for a song with no stem (XR-PH-15)',
+		'the control STAYS on screen, disabled, for a song with no stem',
 		degraded.sliderPresent && degraded.sliderPainted && degraded.sliderDisabled,
 		JSON.stringify(degraded)
 	);
@@ -897,7 +897,7 @@ async function main() {
 		`readout=${JSON.stringify(degraded.readout)}`
 	);
 	check(
-		'the reason is on screen and names what still works (XR-PH-15)',
+		'the reason is on screen and names what still works',
 		degraded.notePresent && /still work/i.test(degraded.noteText ?? ''),
 		JSON.stringify(degraded.noteText)
 	);
@@ -909,16 +909,16 @@ async function main() {
 		degraded.noteInBody && degraded.noteBeforeControl,
 		JSON.stringify({ inBody: degraded.noteInBody, beforeControl: degraded.noteBeforeControl })
 	);
-	// XR-PH-03, both forms: the original containment claim (the anchor the contract pins is
+	//, both forms: the original containment claim (the anchor the contract pins is
 	// `class:disabled` on `.gt`), plus the measured one — no ancestor of the sentence paints below full
 	// alpha. The second is what still holds now that the dimming moved onto the control leaf.
 	check(
-		'the reason sits OUTSIDE the subtree the disabled control marks (XR-PH-03)',
+		'the reason sits OUTSIDE the subtree the disabled control marks',
 		degraded.gtDimmed && !degraded.noteInsideDimmedSubtree,
 		`gtDimmed=${degraded.gtDimmed} inside=${degraded.noteInsideDimmedSubtree}`
 	);
 	/*
-	 * The measured half of XR-PH-03, with one re-read. vaul animates its content in, and an ancestor
+	 * The measured half of, with one re-read. vaul animates its content in, and an ancestor
 	 * caught mid-transition can report below full alpha for a frame or two — a probe that calls THAT a
 	 * dimmed explanation is crying wolf about an animation. So a dim ancestor is only believed once it
 	 * survives a settle; a real `opacity` rule does, a transition does not.
@@ -929,7 +929,7 @@ async function main() {
 		dimmedBy = /** @type {any} */ (await phone.evaluate(stateExpr(expectedRange))).noteDimmedByAncestor;
 	}
 	check(
-		'…and no ancestor dims the reason with opacity (XR-PH-03, measured)',
+		'…and no ancestor dims the reason with opacity (measured)',
 		degraded.notePresent && dimmedBy === null,
 		`firstDimmedAncestor=${JSON.stringify(dimmedBy)}`
 	);

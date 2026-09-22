@@ -340,7 +340,7 @@ export class MediaRepository {
 	}
 
 	/** Browse facet: ready songs grouped by descriptive `tag`, most songs first. Mirrors
-	 *  `artistFacets` and reads the same pairs #690's `byTag` filter reads, so the count and the
+	 *  `artistFacets` and reads the same pairs the `byTag` filter reads, so the count and the
 	 *  filter cannot disagree. Tags are the sidecar-written 'tag'-kind values (`setTags(id, 'tag', …)`),
 	 *  already trimmed + lower-cased at the write boundary, so the distinct values need no further
 	 *  normalisation. Only READY songs are counted — a tag on a song you cannot sing yet would offer a

@@ -5,7 +5,7 @@
  * TypeScript (the authority) and in `worker/src/lyrics/chain.py` (a hand-kept mirror). Duplicated
  * vocabulary with no parity guard is the defect class this repo keeps filing, and the two suites cannot
  * import each other. So both read THIS table: the TS suite in `lyrics.test.ts`, the Python suite in
- * `worker/tests/test_lyrics_agreement_542.py`, which source-scans this file rather than importing
+ * `worker/tests/test_lyrics_agreement.py`, which source-scans this file rather than importing
  * it. A drift on EITHER side reds that side's suite against the same numbers.
  *
  * WHY THE EXPECTATIONS ARE INTEGER PAIRS. Every field is `[numerator, denominator]` — the raw counts,

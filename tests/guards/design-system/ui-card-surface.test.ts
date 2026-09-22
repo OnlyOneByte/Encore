@@ -126,7 +126,7 @@ test('while anything uses `card`, app.css defines it WITH a background', () => {
 	// 7, WAS 8 (2026-09-21): `routes/+page.svelte` left the population when the reorder bar was deleted with
 	// the mode it dressed (the drag is a live sort — nothing to confirm or abandon), and its other `card`
 	// surface, the search dock, had already moved to /find. The floor tracks the population; it must never be
-	// lowered to accommodate a caller that quietly stopped being scanned (XR-VER-06).
+	// lowered to accommodate a caller that quietly stopped being scanned.
 	expect(callers.length).toBeGreaterThanOrEqual(7); // @nvf-floor callers.length
 
 	const css = readFileSync(join(SRC, 'app.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');

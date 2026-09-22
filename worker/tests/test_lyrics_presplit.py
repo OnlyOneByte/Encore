@@ -42,7 +42,7 @@ def _repo_root() -> Path:
     layer changed that distance — the computed root landed one level ABOVE the repo, so both TypeScript
     reads below resolved outside it and raised FileNotFoundError. The marker is the same file the
     TypeScript harness locates its own root by, so both sides agree by construction rather than by
-    two hop counts being kept in step. Mirrors `_repo_root()` in test_lyrics_agreement_542.py.
+    two hop counts being kept in step. Mirrors `_repo_root()` in test_lyrics_agreement.py.
     """
     here = Path(__file__).resolve()
     for candidate in [here.parent, *here.parents]:
@@ -123,7 +123,7 @@ def test_agreement_thresholds_mirror_the_ts_authority():
     # values and assert the Python copies equal them, so a threshold change on the authority side reds.
     # SUSPECT_COVERAGE replaced SUSPECT_AGREEMENT in an earlier change — a different metric on a different
     # axis, so
-    # the constant was renamed rather than re-valued. tests/test_lyrics_agreement_542.py carries the
+    # the constant was renamed rather than re-valued. tests/test_lyrics_agreement.py carries the
     # behavioural half of that parity guard (a shared corpus both suites assert against).
     assert MIN_TOKENS_TO_COMPARE == _ts_number(_SHARED_LYRICS_TS, "MIN_TOKENS_TO_COMPARE")
     assert SUSPECT_COVERAGE == _ts_number(_SHARED_LYRICS_TS, "SUSPECT_COVERAGE")

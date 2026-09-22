@@ -550,7 +550,7 @@
 		}).length
 	);
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
-	// an earlier change/XR-TV-14: the lobby shows the WHOLE roster with no "+N more" — the reason to show it is that
+	// an earlier change/the lobby shows the WHOLE roster with no "+N more" — the reason to show it is that
 	// it must not degrade as the party grows, so it is never truncated. Pass Infinity so nothing is
 	// capped; TvLobby renders every chip and steps the chip size down above a threshold instead.
 	const roster = $derived(lobbyRoster(online, away, singers, Infinity));
@@ -842,7 +842,7 @@
 	const loadingDisplay = $derived(songDisplay(mediaOf(current)));
 
 	/*
-	 * THE ATTRACT PHRASE (XR-TV-16/17/18). A fixed `Karaoke` label with one of seven phrases
+	 * THE ATTRACT PHRASE. A fixed `Karaoke` label with one of seven phrases
 	 * rotating beneath it in a fixed two-line box. The order is a shuffled bag reseeded per room
 	 * (phrases.ts), advanced every 8s, with no repeat until the whole set has shown.
 	 *
@@ -850,7 +850,7 @@
 	 * the phrase bag is built to satisfy, and testable because both are pure. A code-less TV (no active
 	 * room resolved) falls back to a fixed seed, which is fine: the sequence just is not room-specific.
 	 *
-	 * REDUCED MOTION (XR-TV-05/17). Under `prefers-reduced-motion: reduce` the cycle does not start at
+	 * REDUCED MOTION. Under `prefers-reduced-motion: reduce` the cycle does not start at
 	 * all: one phrase is chosen per room and HELD for the session — Minecraft's own splash behaviour.
 	 * The crossfade itself is a CSS animation gated on `(prefers-reduced-motion: no-preference)` (see the
 	 * `.phrase-line` rule), never a Svelte `transition:` directive (motion.test.ts rejects those because
@@ -876,7 +876,7 @@
 			clearInterval(timer);
 			timer = undefined;
 			if (prefersReducedMotion) {
-				// Hold ONE phrase for the session (XR-TV-17). No clock, no crossfade.
+				// Hold ONE phrase for the session. No clock, no crossfade.
 				attractPhrase = reducedMotionPhrase(phraseSeed);
 				return;
 			}
@@ -1028,7 +1028,7 @@
 			<div class="asplit-l">
 				<div class="phrase-kick">Karaoke</div>
 				<!--
-					The phrase box is a FIXED height for --tv-phrase-lines lines (XR-TV-18): a one-line and a
+					The phrase box is a FIXED height for --tv-phrase-lines lines: a one-line and a
 					two-line phrase must not move the column. The crossfade is a CSS animation on `.phrase-line`
 					gated on (prefers-reduced-motion: no-preference); it replays because `{#key attractPhrase}`
 					remounts the line on each 8s tick. Under reduce the cycle never ticks (the clock is not
@@ -1209,7 +1209,7 @@
 		     THE TV KNOWS ONLY A COARSE "processing" STATE: an earlier change deliberately stripped per-media process tracking
 		     from the TV (a process for one song was reaching another's playhead), so there is no per-media
 		     MediaStatus to read here. processStep() is a pure, total MediaStatus->step mapping (guarded in
-		     screen.test.ts and shared in shape with the phone, XR-TV-15); the TV feeds it the representative
+		     screen.test.ts and shared in shape with the phone); the TV feeds it the representative
 		     mid-process step 'separating' (the mockup's bolded "Removing vocals") rather than inventing the
 		     per-media tracking the TV was purpose-built not to hold. -->
 		{@const processMedia = mediaOf(current)}
@@ -1248,7 +1248,7 @@
 	{/if}
 
 	<!--
-		THE JOIN BLOCK SURVIVES EVERY TAKEOVER (XR-TV-13), dimmed to 72%, in the same
+		THE JOIN BLOCK SURVIVES EVERY TAKEOVER, dimmed to 72%, in the same
 		bottom-right slot as during playback. A song change is exactly when a new guest looks up, so
 		blanking the code then would lose the join path precisely when it is most wanted. Rendered
 		whenever a takeover is up (`transient` set) — the corner treatment is the identical component the
@@ -1398,13 +1398,13 @@
 
 <style>
 	/*
-	 * THE TV TYPE FLOOR — THE ONE DECLARATION (XR-TV-01). Every --tv-* type tier in app.css
+	 * THE TV TYPE FLOOR — THE ONE DECLARATION. Every --tv-* type tier in app.css
 	 * is a `rem` multiple of THIS root, so the floor is defined in exactly one place. It MUST live on
 	 * `:root` (the document root), NOT on `.tv`: `rem` resolves against the document root font-size
 	 * unconditionally, so a `font-size` on `.tv` would not re-root `rem` for its descendants.
 	 *
 	 * `:global(:root)` inside THIS component's <style> — not global in app.css — is the resolution of
-	 * XR-TV-02's "one declaration vs the phone is unaffected", stated rather than defaulted: a Svelte
+	 * the standard's "one declaration vs the phone is unaffected", stated rather than defaulted: a Svelte
 	 * component's stylesheet is injected only WHILE the component is mounted and removed when the last
 	 * instance is destroyed, so this root floor applies to the /tv document alone. A global :root in
 	 * app.css would re-root the phone's --ph-* rem ladder to ~19px on a phone viewport and regress
@@ -1417,12 +1417,12 @@
 	 * the windowed/dev case where every physical assumption collapses (2.2vh = 20px on a 900px laptop).
 	 *
 	 * --ui-scale is a persisted preference, range 0.8–1.6, default 1. PERSISTENCE IS DEFERRED to a
-	 * follow-up (XR-TV-07's room-setting plumbing lives in packages/shared, out of an earlier change's TV-only scope);
+	 * follow-up (the room-setting plumbing lives in packages/shared, out of an earlier change's TV-only scope);
 	 * until then it defaults to 1 here. The clamp() is defensive: whatever a future setting writes into
 	 * --ui-scale, the multiplier can never leave 0.8–1.6, so the floor holds.
 	 */
 	/*
-	 * --ui-scale registered as a typed custom property (XR-TV-07 default + the reviewer's non-numeric
+	 * --ui-scale registered as a typed custom property (the declared default + the reviewer's non-numeric
 	 * advisory on an earlier change). `@property` with `syntax: '<number>'` means a non-numeric write (e.g.
 	 * `--ui-scale: banana`) is rejected at parse time and FALLS BACK to `initial-value: 1`, instead of
 	 * poisoning the clamp() and dropping the whole font-size declaration — which would silently remove
@@ -1535,7 +1535,7 @@
 		justify-content: center;
 	}
 	/* `Karaoke` — the FIXED label. It never rotates: it is the only thing telling a stranger what they
-	   are looking at (XR-TV-18). */
+	   are looking at. */
 	.phrase-kick {
 		font-size: var(--tv-name);
 		font-weight: 700;
@@ -1545,7 +1545,7 @@
 	}
 	/*
 	 * The phrase box is a FIXED height for exactly --tv-phrase-lines lines, content vertically centred
-	 * (XR-TV-18), so a one-line and a two-line phrase never move the label above or the panel beside it.
+	 *, so a one-line and a two-line phrase never move the label above or the panel beside it.
 	 * Height = phrase font-size × line-height × lines; the line-height here (1.03) matches the mockup and
 	 * is what the box height is computed from.
 	 */
@@ -1563,7 +1563,7 @@
 	}
 	/*
 	 * THE CROSSFADE — opacity only, and a CSS animation gated on (prefers-reduced-motion: no-preference)
-	 * (XR-TV-05/17). It replays because `{#key attractPhrase}` remounts `.phrase-line` on each 8s tick.
+	 *. It replays because `{#key attractPhrase}` remounts `.phrase-line` on each 8s tick.
 	 * NEVER a Svelte transition: directive — motion.test.ts bans those because the transition runtime
 	 * never consults the media query. Under `reduce` this @media block does not apply AND the JS clock is
 	 * never started, so the phrase is simply held with no animation.
@@ -1603,7 +1603,7 @@
 		   (stage-scale.test.ts requires a full-bleed painted container to pad with --tv-safe-*). The
 		   left edge is the INTERIOR 2px border, not a screen edge, so it takes a plain gutter rather
 		   than a second full overscan inset — charging --tv-safe-x on both sides stole ~192px of a
-		   600px panel and was half of why the join address clipped (XR-TV-19). The other half was the
+		   600px panel and was half of why the join address clipped. The other half was the
 		   panel being too narrow; --tv-attract-right is now sized so a 23-char address fits at
 		   --tv-name (see the token comment in app.css). */
 		padding: var(--tv-safe-y) var(--tv-safe-x) var(--tv-safe-y) var(--space-4xl);
@@ -1629,7 +1629,7 @@
 		/*
 		 * An address is ONE unbreakable token, so shrinking beats breaking — it renders at the --tv-name
 		 * (44px) budget and never wraps (NO overflow-wrap; the ratified-states guard pins both the size
-		 * and the absence of an escape hatch). What makes 44px actually FIT — the real XR-TV-19 fix — is
+		 * and the absence of an escape hatch). What makes 44px actually FIT — the real fix — is
 		 * the panel width: --tv-attract-right is sized from the measured width of a 23-char address at
 		 * this size plus the overscan padding, so the token fits one line at 720p/1080p/4K. The previous
 		 * regression left this at --tv-joinurl (88px) in a 600px panel, where a LAN address split
@@ -1891,7 +1891,7 @@
 		border-left: var(--tv-takeover-border) solid transparent;
 	}
 	/* Next up — accent family. Singer name is the hero at --tv-takeover-name (132px). --accent (not the
-	   retired --accent-strong, an earlier change/XR-COL-11) as a NON-TEXT border/fill, which is exactly what --accent
+	   retired --accent-strong) as a NON-TEXT border/fill, which is exactly what --accent
 	   is certified for; the text on this takeover is --ink / --accent2, never --accent as ink. */
 	.state-next.takeover {
 		border-left-color: var(--accent);
@@ -1911,7 +1911,7 @@
 	 * Skipping — danger family. Names what is GOING and what REPLACES it. Keeps a distinct family AND a
 	 * distinct eyebrow, so colour is not the only carrier. It no longer needs the old near-opaque wash:
 	 * the border + gradient + mark make a skip unmistakable, and the join block below must stay visible
-	 * through it (XR-TV-13), which a near-opaque wash would have hidden.
+	 * through it, which a near-opaque wash would have hidden.
 	 */
 	.state-error.takeover {
 		border-left-color: var(--danger);
@@ -1981,10 +1981,10 @@
 		color: var(--ink);
 	}
 	/*
-	 * THE JOIN BLOCK SURVIVES EVERY TAKEOVER, dimmed to 72% (XR-TV-13). It wraps the identical corner
+	 * THE JOIN BLOCK SURVIVES EVERY TAKEOVER, dimmed to 72%. It wraps the identical corner
 	 * JoinBadge the playing state uses, so the bottom-right slot does not move; only the opacity changes.
 	 * The composited --ink-dim run inside it still clears 3:1 at ≥24px because --tv-small is 27px
-	 * (XR-TV-04). Sits above the takeover (z-tv-status) so the dimmed block is never painted over.
+	 *. Sits above the takeover (z-tv-status) so the dimmed block is never painted over.
 	 */
 	.takeover-join {
 		position: absolute;
@@ -2026,7 +2026,7 @@
 	 * drops with the fade so a hidden button can never eat a tap meant for the stage.
 	 *
 	 * The clamp's floor is var(--tap) — app.css's own tap-target minimum, named rather than restated
-	 * (XR-PH-01, issue an earlier change). A TV remote's pointer needs that floor as much as a thumb does, and this
+	 * (issue an earlier change). A TV remote's pointer needs that floor as much as a thumb does, and this
 	 * comment used to CLAIM the binding while the code held a bare `44px`: the one control whose stated
 	 * reason for its size was a token it did not read.
 	 */
@@ -2110,7 +2110,7 @@
 	 *
 	 * Sized off the TV type ladder (`--tv-body` / `--tv-small`) rather than a viewport term, because the
 	 * `.tv` root is already vh-scaled and a per-token viewport unit multiplies the panel twice
-	 * (XR-TV-02). Kept comfortably past the 44px touch floor because it is a real target on a
+	 *. Kept comfortably past the 44px touch floor because it is a real target on a
 	 * touchscreen TV.
 	 */
 	.pitch-hint {
@@ -2151,7 +2151,7 @@
 		height: clamp(64px, 12vmin, 160px);
 		border-radius: 50%;
 		background: color-mix(in srgb, var(--accent) 26%, transparent);
-		/* the mark glyph, sized off the root ladder (XR-TV-01): 2.881rem ≈ 84px at --ui-scale 1, and
+		/* the mark glyph, sized off the root ladder: 2.881rem ≈ 84px at --ui-scale 1, and
 		   it tracks the floor down on a short panel so it stays inside the vmin-scaled circle. */
 		font-size: 2.881rem;
 	}
@@ -2194,7 +2194,7 @@
 		height: clamp(64px, 12vmin, 160px);
 		border-radius: 50%;
 		background: color-mix(in srgb, var(--warn, #e0a63a) 26%, transparent);
-		/* the mark glyph, sized off the root ladder (XR-TV-01): 2.881rem ≈ 84px at --ui-scale 1, and
+		/* the mark glyph, sized off the root ladder: 2.881rem ≈ 84px at --ui-scale 1, and
 		   it tracks the floor down on a short panel so it stays inside the vmin-scaled circle. */
 		font-size: 2.881rem;
 	}

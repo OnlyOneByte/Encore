@@ -66,7 +66,7 @@ test('the pending mark clears when the server rejects the add', () => {
 	expect(store.entries).toHaveLength(0); // rolled back
 });
 
-test('a pending REORDER marks its row as move — not as an add, and not as nothing (XR-PH-10)', () => {
+test('a pending REORDER marks its row as move — not as an add, and not as nothing', () => {
 	const { store } = makeStore();
 	store.addSong('m1'); // id0 entry, id1 opId
 	store.onServerEvent({ type: 'queue:patch', patch: { rev: 1, ops: [], causedBy: 'id1' } });
@@ -102,7 +102,7 @@ test('a pending REORDER marks its row as move — not as an add, and not as noth
 // the same self-anchoring defect as `join(import.meta.dir, '..')` wearing a different hat — it resolves
 // against THIS file's address, so it silently re-pointed when the test left `src/lib/stores/` — and it is
 // the worse of the two, because a `new URL` miss surfaces as a bare ENOENT from readFileSync rather than
-// naming the guard whose subject went missing (XR-VER-05).
+// naming the guard whose subject went missing.
 const PAGE = read('src/routes/+page.svelte');
 const ROW = read('src/lib/components/QueueRow.svelte');
 const PROC = read('src/lib/components/ProcessingCard.svelte');
@@ -138,7 +138,7 @@ test('QueueRow takes the pending KIND, defaults it, and derives one label from i
 	// The type and the default are TYPE-level and default-level facts: reverting either changes no
 	// runtime behaviour the suite can observe (a boolean `true` still renders the add marker), so they
 	// are asserted here as the syntax claims they are. The RENDERED difference between the two kinds is
-	// measured against the real DOM in lib/components/phone-home-832.test.ts.
+	// measured against the real DOM in lib/components/phone-home.test.ts.
 	expect(ROW).toMatch(/pending\?:\s*'add' \| 'move' \| null/); // interface field
 	expect(ROW).toMatch(/pending\s*=\s*null,/); // destructuring default — absent means CONFIRMED
 	// ONE expression decides the word, so the two states cannot drift back into saying the same thing.

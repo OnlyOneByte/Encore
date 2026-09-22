@@ -77,7 +77,7 @@ export async function ytDlpAvailable(spawn = Bun.spawn, now: () => number = Date
 		_available = !r.timedOut && r.code === 0;
 	} catch (err) {
 		// §3: an UNBOUND catch here is the whole reason "why is YouTube search empty?" is
-		// answerable only from docs/HANDOFF.md:68 ("yt-dlp is invoked by name via PATH, so that
+		// answerable only ("yt-dlp is invoked by name via PATH, so that
 		// directory must be on PATH or YouTube search silently returns empty"). Bind the reason and
 		// warn, the shape this directory already adopted for the same defect class (retention.ts:277,
 		// sidecar.ts:343). The degrade itself is UNCHANGED — a missing binary still yields [], never a
@@ -112,7 +112,7 @@ export interface YtDlpSearchDeps {
  * YtSearchBackend: run `yt-dlp ytsearchN:<query> --dump-json --flat-playlist`.
  *
  * ATTRIBUTABLE EMPTY. The graceful degrade is deliberately UNCHANGED — an absent yt-dlp still
- * yields `[]` rather than throwing (file header, docs/HANDOFF.md:68). What changes is that an empty
+ * yields `[]` rather than throwing (see the file header). What changes is that an empty
  * page is no longer anonymous:
  *
  *  - a KILLED search is reported, because the timeout is now owned by the shared `runCapturing`

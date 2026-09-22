@@ -85,7 +85,7 @@ export class QueueStore {
 
 	/**
 	 * What each visible row is still waiting on — the truth behind every unconfirmed marker on the
-	 * phone (XR-PH-10).
+	 * phone.
 	 *
 	 * `'add'` is the original case: a row is unconfirmed between addSong() and the server
 	 * ack/reject of that add. The earlier call site tested the placeholder

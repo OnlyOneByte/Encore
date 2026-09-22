@@ -1,4 +1,4 @@
-// guard: every HTTP route's auth posture is pinned, per METHOD — XR-API-12.
+// guard: every HTTP route's auth posture is pinned, per METHOD.
 //
 // WHY THIS EXISTS. There are 15 route modules under `routes/api`, carrying eight session checks and two
 // capability gates, and before this file NO test in the repository asserted any of them. Deleting the gate
@@ -35,7 +35,7 @@ type Posture = 'session' | 'capability' | 'none';
 const POSTURE: Record<string, { gate: Posture; why: string }> = {
 	'audit/[mediaId] GET': {
 		gate: 'none',
-		why: 'self-admittedly ungated: "there is no admin identity in Encore". The payload is one song\'s process history. OPEN: it also carries worker hostnames and raw error strings, which XR-API-11 argues exceeds what the room can already see.'
+		why: 'self-admittedly ungated: "there is no admin identity in Encore". The payload is one song\'s process history. OPEN: it also carries worker hostnames and raw error strings, which argues exceeds what the room can already see.'
 	},
 	'delete-media POST': {
 		gate: 'session',
@@ -65,11 +65,11 @@ const POSTURE: Record<string, { gate: Posture; why: string }> = {
 	},
 	'search GET': {
 		gate: 'none',
-		why: 'matches library and stats. NOTE: despite two files describing it as read-only, it persists a row per hit — see XR-API-09, which asks for that to stop or be renamed, not for a gate.'
+		why: 'matches library and stats. NOTE: despite two files describing it as read-only, it persists a row per hit —, which asks for that to stop or be renamed, not for a gate.'
 	},
 	'settings GET': {
 		gate: 'none',
-		why: 'UNDECIDED, not decided. `GET` is `async () =>` and takes no arguments while `PUT` on the same path is capability-gated, and no comment in either file says that asymmetry was chosen. Recorded as `none` because that is what the code does; XR-API-11 carries the question.'
+		why: 'UNDECIDED, not decided. `GET` is `async () =>` and takes no arguments while `PUT` on the same path is capability-gated, and no comment in either file says that asymmetry was chosen. Recorded as `none` because that is what the code does; carries the question.'
 	},
 	'settings PUT': { gate: 'capability', why: 'writes deployment-wide configuration.' },
 	'settings/room PUT': { gate: 'capability', why: 'writes room-scoped configuration.' },

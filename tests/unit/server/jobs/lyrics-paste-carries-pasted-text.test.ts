@@ -1,7 +1,7 @@
 // A PASTED lyrics re-pick must reach the worker. The endpoint answered 200, the media was pinned to a
 // `manual` ref, an align job was enqueued — and the words the guest typed were never stored anywhere, so
 // `dispatch.assignParams` had nothing to put behind `pinnedText`. The worker's pinned path reads
-// `pinnedText` (see worker/tests/test_lyrics_pinned_reselect_640.py, arm 1) and, given a ref that names a
+// `pinnedText` (see worker/tests/test_lyrics_pinned_reselect.py, arm 1) and, given a ref that names a
 // file no one has written yet, STOPs with "carry no readable text" — the guest watches the wrong words
 // scroll after being told it worked.
 //

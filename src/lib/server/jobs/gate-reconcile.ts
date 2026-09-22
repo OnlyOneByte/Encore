@@ -1,4 +1,4 @@
-// Boot reconciliation of STALE readiness gates — the durable half of XR-JOB-04 that a persistence
+// Boot reconciliation of STALE readiness gates — the durable half of that a persistence
 // sink cannot reach.
 //
 // WHY THIS EXISTS. `stem_status` and `lyrics_status` are STORED columns and the *processing* flip is

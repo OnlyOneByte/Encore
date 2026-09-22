@@ -156,9 +156,7 @@ function wrap(page, context) {
 				} catch (err) {
 					last = String(err);
 				}
-				throw new Error(
-					`waitFor timed out after ${timeout}ms: ${expression}\n  last value: ${JSON.stringify(last)}`
-				);
+				throw new Error(`waitFor timed out after ${timeout}ms: ${expression}\n  last value: ${JSON.stringify(last)}`);
 			}
 		},
 
@@ -192,7 +190,10 @@ function wrap(page, context) {
 		 * @param {string} name
 		 */
 		async clickByRole(role, name) {
-			await page.getByRole(/** @type {any} */ (role), { name }).first().click({ timeout: DEFAULT_TIMEOUT });
+			await page
+				.getByRole(/** @type {any} */ (role), { name })
+				.first()
+				.click({ timeout: DEFAULT_TIMEOUT });
 		},
 
 		/** @param {string} name */
@@ -352,8 +353,7 @@ function wrap(page, context) {
 		count: (selector) => page.locator(selector).count(),
 
 		/** Every match's trimmed text, in document order. @param {string} selector */
-		texts: async (selector) =>
-			(await page.locator(selector).allTextContents()).map((t) => t.trim()),
+		texts: async (selector) => (await page.locator(selector).allTextContents()).map((t) => t.trim()),
 
 		/**
 		 * The first match's trimmed text, or '' when absent — absent reads as empty rather than throwing,

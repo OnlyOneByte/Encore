@@ -1,10 +1,10 @@
-// CodeEntry behaviour (XR-PH-14) at the MOUNT rung: the six-segment typed path's LOGIC —
+// CodeEntry behaviour at the MOUNT rung: the six-segment typed path's LOGIC —
 // keystroke rejection of the excluded alphabet, auto-advance, backspace, a whole-code paste, and the
 // completion callback. Driven with REAL InputEvent/KeyboardEvent/ClipboardEvent, because that logic is
 // pure DOM-event handling and does not measure geometry.
 //
 // The SEGMENT GEOMETRY (six boxes, one tab stop, 320px reflow) is a rung-L driven-browser check by
-// enforcement: happy-dom's getBoundingClientRect throws here (XR-VER-03), and the XR-PH-14 row says so.
+// enforcement: happy-dom's getBoundingClientRect throws here, and the row says so.
 // This file pins the parts that ARE decidable without a layout engine; each test reds on a revert of
 // the hunk it targets.
 import { test, expect } from 'bun:test';

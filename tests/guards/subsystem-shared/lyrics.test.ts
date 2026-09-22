@@ -241,7 +241,7 @@ test('agreement is count- and position-aware (repeats and reorders cost the scor
 });
 
 test('agreement matches the shared cross-language corpus (parity with the Python mirror)', () => {
-	// The Python suite (worker/tests/test_lyrics_agreement_542.py) asserts this SAME table, so a
+	// The Python suite (worker/tests/test_lyrics_agreement.py) asserts this SAME table, so a
 	// drift on either implementation reds one of the two suites. Expectations are integer [num, den]
 	// pairs worked out by hand — not by running this code — so a bug cannot agree with itself.
 	for (const c of AGREEMENT_PARITY_CORPUS) {
@@ -312,7 +312,7 @@ test('hasUsableTiming is true for word/line, false for none', () => {
 // behavioural test by construction — re-adding the constant reds nothing — so this is a source-scan
 // guard: it reads the real production module as TEXT and asserts the declaration is gone.
 //
-// The Python mirror asserts the same thing (tests/test_lyrics_agreement_542.py), but that suite is not
+// The Python mirror asserts the same thing (tests/test_lyrics_agreement.py), but that suite is not
 // the one a change to lyrics.ts runs, so the guard has to exist on BOTH sides to actually bite here.
 //
 // Matched as a DECLARATION, not as a substring: the surviving constant's own doc comment names

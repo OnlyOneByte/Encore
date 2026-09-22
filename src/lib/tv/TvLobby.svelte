@@ -60,7 +60,7 @@
 	const count = $derived(roster.length + overflow);
 
 	/*
-	 * FULL ROSTER, NO TRUNCATION (XR-TV-14).
+	 * FULL ROSTER, NO TRUNCATION.
 	 *
 	 * The lobby shows EVERY guest — the reason to show the roster at all is that it must not degrade as
 	 * the party grows, so a "+N more" fold (the previous behaviour) is exactly the degradation to avoid.
@@ -282,7 +282,7 @@
 	.stack :global(.hero) {
 		margin-top: 2.8vh;
 	}
-	/* The typed join address. Same 44px budget and no-break rule as the attract's .jt-url (XR-TV-19):
+	/* The typed join address. Same 44px budget and no-break rule as the attract's .jt-url:
 	   an address is one unbreakable token, so it is sized to fit one line rather than wrapped mid-octet.
 	   The query is already stripped in the script, so this is host:port/join — short enough at --tv-name. */
 	.url {
@@ -341,7 +341,7 @@
 		/*
 		 * In normal flow at the foot of the .lobby column, not `position: absolute; bottom: 0`. Its height
 		 * is part of layout, which reserves the band above it. It now shows the WHOLE roster
-		 * (XR-TV-14), so it WRAPS to multiple rows rather than clipping — a party is not truncated.
+		 *, so it WRAPS to multiple rows rather than clipping — a party is not truncated.
 		 */
 		flex: none;
 		/*
@@ -351,7 +351,7 @@
 		 * one place a guest confirms the room actually saw them join. A guard that only inspects edge
 		 * OFFSETS cannot catch this shape, which is why it survived the first pass of the stage scale.
 		 *
-		 * RESERVE THE CORNER CONTROLS (XR-TV-14 blocker). The fullscreen button (.fs-btn) and the
+		 * RESERVE THE CORNER CONTROLS. The fullscreen button (.fs-btn) and the
 		 * join corner badge are `position: absolute` in the bottom-right at `right: var(--tv-safe-x)`,
 		 * ABOVE this strip in the paint order (--z-tv-card > --z-tv-reel). A wrapped roster's rightmost
 		 * chip used to land UNDER the button (elementFromPoint returned .fs-btn at 10–12 guests), which is
@@ -381,7 +381,7 @@
 		max-height: 26vh;
 	}
 	/*
-	 * THE CHIP STEP-DOWN RULE (XR-TV-14). Above CHIP_STEPDOWN (12) guests the chip type and dot
+	 * THE CHIP STEP-DOWN RULE. Above CHIP_STEPDOWN (12) guests the chip type and dot
 	 * step down a tier, so 13+ still fit two rows inside the title-safe area instead of pushing chips
 	 * off-screen. A RULE, applied by the `dense` class the script derives, rather than a size a party
 	 * discovers by overflowing. Written as `.dense .name` / `.dense .swatch` (not `.dense .person`) so

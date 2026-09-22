@@ -23,7 +23,7 @@ function stripComments(src: string): string {
 }
 
 /**
- * The four per-stop roles an interpolated colour can now carry (XR-COL-24).
+ * The four per-stop roles an interpolated colour can now carry.
  *
  * The scans below used to look for the identifier `color` alone, which was complete while a stop was
  * ONE value. A stop now ships four — `fill`, `on_fill`, `accent_ink` and `accent2` — and the trap is

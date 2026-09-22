@@ -3,7 +3,7 @@
   "snapshotCommit": "e5ffab6",
   "snapshotArchive": "debug_encore/archive2.zip",
   "snapshotArchiveBytes": 1746000,
-  "note": "Provenance for the curated real-lyrics corpus. Every field here is READ by tests/test_lyrics_corpus_668.py — durationSec is what the overshoot measurement needs and the artifacts themselves do not carry it, and sha256 pins the bytes so a re-export cannot silently move a measured number. Renaming or dropping the media ids was considered and rejected: the raw archive is already committed with the ids intact on the branch above, so renaming here would not un-commit them and would only break the trace back to the source.",
+  "note": "Provenance for the curated real-lyrics corpus. Every field here is READ by tests/test_lyrics_corpus.py — durationSec is what the overshoot measurement needs and the artifacts themselves do not carry it, and sha256 pins the bytes so a re-export cannot silently move a measured number. Renaming or dropping the media ids was considered and rejected: the raw archive is already committed with the ids intact on the branch above, so renaming here would not un-commit them and would only break the trace back to the source.",
   "specimens": [
     {
       "file": "wrong-version-overshoot-total-eclipse.json",

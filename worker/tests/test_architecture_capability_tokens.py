@@ -2,7 +2,7 @@
 can actually ADVERTISE.
 
 The doc twice named tokens the probe cannot emit: `stems:ensemble` (hard-coded unavailable by
-#118's own fix) and `stems:mlx` (never a token -- capabilities key on the ENGINE, not the backend).
+an earlier fix) and `stems:mlx` (never a token -- capabilities key on the ENGINE, not the backend).
 Both are the exact "the doc conforms to code that does something else" class the generated-region
 freshness test (test_worker_layers.py) exists to prevent, but this prose sits ~90 lines above the
 generated markers and is hand-maintained, so nothing caught the drift.

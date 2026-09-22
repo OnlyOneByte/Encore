@@ -15,16 +15,16 @@
      reason, so the two now agree and the pair reads as one family at two sizes.
   2. The root keeps `min-height: var(--tap)`. A 6px track is not a 44px target; the old rule got there
      with `height: var(--tap)` on the input and this does the same, which is what touch-targets.test.ts
-     reads. `touch-none` stays: #836's drag must not be re-read as a page scroll.
+     reads. `touch-none` stays: the reorder drag must not be re-read as a page scroll.
   3. The fill is `var(--accent)`. This is the ONE deliberate visible change in the slice — a native
      range draws no filled portion, so the settings sliders gain one. It is not invention: GuidingTrack
      already shows a fill and drove it with a `--fill` custom property, which this replaces with the
      Range element Bits UI provides for exactly that purpose.
   4. GUIDINGTRACK IS NOT ON THIS COMPONENT, and the reason is a hard conflict rather than a preference.
      Bits UI's Slider reads `offsetWidth` to place its thumb. Encore's mount rung deliberately hardens
-     `offsetWidth` to THROW (XR-VER-03), because happy-dom fabricates a zero and a fabricated zero is
+     `offsetWidth` to THROW, because happy-dom fabricates a zero and a fabricated zero is
      worse than no answer. So a Bits UI Slider cannot be MOUNTED in this harness at all — and
-     `hero-live-controls-835.test.ts` mounts GuidingTrack seven times to hold XR-PH-15, XR-PH-03 and
+     `hero-live-controls.test.ts` mounts GuidingTrack seven times to hold and
      The settings sliders are unaffected because every settings test is a source scan; nothing
      mounts that page. Migrating GuidingTrack means moving those seven renders to the LAYOUT rung, which
      skips wherever Chromium is absent — a coverage trade that is the owner's call, not this commit's.
@@ -110,7 +110,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 	 * floor with it, and the 28px thumb overflowed upward into the label above every settings slider.
 	 *
 	 * Nothing in the suite could see it. touch-targets.test.ts reads the RULE, so it passed on a rule
-	 * that never applied — which is why `ui-scoped-style-reach-913.test.ts` now checks reach, and why
+	 * that never applied — which is why `ui-scoped-style-reach.test.ts` now checks reach, and why
 	 * this was found by a screenshot instead.
 	 */
 	:global([data-slot='slider']) {

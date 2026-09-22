@@ -155,14 +155,14 @@
 	 * reveal — so `routes/settings` is the vendored Collapsible's remaining consumer. The argument below
 	 * is unaffected either way.) It cannot be had here: Bits UI's CollapsibleContent reads `getBoundingClientRect()` in a
 	 * watcher that fires the moment its element gets a ref, and the mount rung replaces that accessor
-	 * with a throw because happy-dom fabricates a zero (XR-VER-03, test-setup/svelte-dom-preload.ts).
+	 * with a throw because happy-dom fabricates a zero (test-setup/svelte-dom-preload.ts).
 	 * Measured on a scratch component: the disclosure WORKS — the trigger gets `aria-expanded`, the
 	 * content gets an id and the trigger gets a matching `aria-controls` for free — and then the deferred
 	 * read throws and fails the test that mounted it. That is what took NowPlayingHero's four disclosure
 	 * claims off this rung and into `e2e/probes/p16-hero-live-controls.mjs` — the hero has since been
 	 * replaced by NowPlayingDrawer, so those claims now describe the drawer's controls.
 	 *
-	 * lyrics-reselect-640.test.ts MOUNTS this component for all four of its claims — the candidate list,
+	 * lyrics-reselect.test.ts MOUNTS this component for all four of its claims — the candidate list,
 	 * the marked pick, `onpick`, `onpaste` and the peek. Adopting Collapsible would trade those four for
 	 * an e2e probe, so the toggle stays a real <button> and supplies by hand the one thing Collapsible
 	 * would have given it: `aria-controls={bodyId}` against the body's `id`.
@@ -265,6 +265,6 @@
 	 *
 	 * They are addressed by `data-act` rather than by a styling class: a class that exists only so a test
 	 * can find it is what left the orphaned `.chip` here in the first place, and a scoped rule cannot
-	 * reach a class handed to a child component anyway (ui-scoped-style-reach-913 enforces that).
+	 * reach a class handed to a child component anyway (ui-scoped-style-reach enforces that).
 	 */
 </style>

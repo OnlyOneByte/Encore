@@ -10,7 +10,7 @@
 // partial baseline was convicted as ANOTHER SONG on a number that decided nothing.
 //
 // A comment-STRIPPED scan is the wrong shape here because the subject IS the comments — same reason
-// `pin-base-prose-790.test.ts` and `spotify-enforcement-prose-742.test.ts` assert prose. Each assertion
+// `pin-base-prose-790.test.ts` and `spotify-enforcement-prose.test.ts` assert prose. Each assertion
 // is anchored on the doc block of the symbol it documents, so the same words elsewhere in the file
 // cannot satisfy it, and each is discriminating: reverting the corresponding hunk restores wording that
 // fails it. This is what pins those four comment-only hunks, which by construction cannot red a

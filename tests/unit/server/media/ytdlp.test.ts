@@ -63,7 +63,7 @@ test('objects without id are skipped', () => {
 });
 
 test('GRACEFUL DEGRADE: search returns [] when yt-dlp is unavailable (no throw)', async () => {
-	// The degrade is documented (module header, docs/HANDOFF.md:68) and the spawn-boundary fix deliberately did NOT
+	// The degrade is documented (module header) and the spawn-boundary fix deliberately did NOT
 	// change it: an unavailable binary still resolves to [] rather than rejecting.
 	const r = await ytDlpSearch('anything', 5, { available: async () => false });
 	expect(r).toEqual([]);

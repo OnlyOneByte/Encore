@@ -1,4 +1,4 @@
-// — the LyricsReselect control's rendered behaviour, mounted (XR-PH-21 idiom: assert what renders
+// — the LyricsReselect control's rendered behaviour, mounted (the idiom: assert what renders
 // and what a tap reports, not a source scan). Pins: the candidate list with provenance, the current
 // pick marked, the pick/paste callbacks firing with the right payload, and the "a better version
 // exists" peek. Each reds if the corresponding branch of the component is reverted.

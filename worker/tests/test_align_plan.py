@@ -1116,7 +1116,7 @@ def test_agreement_score_matches_the_TS_semantics():
     # agreement_score/agreement take (candidate, baseline) order since an earlier change, and the score is now
     # count- and position-aware, not set Jaccard. Behaviour that must hold: a near-identical pair scores
     # high, a different song scores near zero, and too-short text abstains. The full parity contract
-    # lives in test_lyrics_agreement_542.py against the shared corpus; this pins the same shapes here so
+    # lives in test_lyrics_agreement.py against the shared corpus; this pins the same shapes here so
     # the align seam's own view of the metric cannot drift silently.
     near = "we could be heroes just for one day standing near the wall guns above their heads and we kissed"
     assert agreement_score(_SUNG, near) > 0.7

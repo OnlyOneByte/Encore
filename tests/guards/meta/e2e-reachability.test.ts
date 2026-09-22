@@ -1,4 +1,4 @@
-// guard: every e2e driver and probe is reachable from a command, or is recorded as not being — XR-VER-05.
+// guard: every e2e driver and probe is reachable from a command, or is recorded as not being.
 //
 // WHY THIS EXISTS. Moving `e2e/` into `tests/e2e/` would otherwise have laundered dead code into
 // a tidier address. 19 of the 38 files here are reachable from NOTHING: no npm script, no import, not even

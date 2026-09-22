@@ -3,8 +3,8 @@
  *
  * The behavioural arms live in tests/unit/server/jobs/gate-reconcile-boot.test.ts and drive
  * `reconcileStrandedGates` directly. They stay green if app.ts never calls it — which is the whole
- * defect class this fix belongs to: XR-JOB-04's first half was a settle that worked in memory and was
- * never persisted, and the sibling XR-JOB-11 was a TTL whose check was never reached because nothing
+ * defect class this fix belongs to: the first half was a settle that worked in memory and was
+ * never persisted, and the sibling was a TTL whose check was never reached because nothing
  * called the function that held it. A repair nobody invokes is indistinguishable from no repair.
  *
  * Three things are pinned, each because getting it wrong would silently un-fix the bug:
@@ -79,7 +79,7 @@ test('a failed reconciliation cannot stop the party server booting', () => {
 /*
  * ── ONE settlement rule, two readers ───────────────────────────────────────────────────────────────
  *
- * The two halves of XR-JOB-04 answer the same question from opposite ends — "this job just died, which
+ * The two halves of answer the same question from opposite ends — "this job just died, which
  * gate does it settle" and "no job can ever settle this gate, so settle it now" — and a second copy of
  * the per-type mapping is precisely how they would drift. A future step added to one list and not the
  * other reintroduces the worst failure in this subsystem (a song reading as processing forever) in the

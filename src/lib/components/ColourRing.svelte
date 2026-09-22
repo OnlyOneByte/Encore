@@ -17,7 +17,7 @@
 	on the dark surfaces and stays distinguishable from the next guest's. What the registry adds over
 	live arithmetic is a NAME per stop (so a screen reader says "Turquoise" rather than "21"), which is
 	what the hub shows, and a measured contrast ratio, which is checked in
-	`palette-registry-820.test.ts` and deliberately NOT shown to the person picking.
+	`palette-registry.test.ts` and deliberately NOT shown to the person picking.
 
 	OPERABLE WITHOUT A POINTER, which is the load-bearing half: this replaces a native `<input
 	type=range>`, so nothing is inherited. It is one `role="slider"` — a single tab stop — carrying
@@ -181,7 +181,7 @@
 			deciding which dot is theirs on the TV was being shown a developer's evidence; "Denim" is the
 			whole of what they need, and it is what a screen reader already says through `aria-valuetext`.
 			The measurement did not stop mattering — it moved back to where it is checked, which is
-			`palette-registry-820.test.ts` re-deriving every stop's `r_dot_card` from its fill.
+			`palette-registry.test.ts` re-deriving every stop's `r_dot_card` from its fill.
 		-->
 		<span class="cr-hub" aria-hidden="true">
 			<span class="cr-dot" style="--cr-fill:{stop.fill}"></span>

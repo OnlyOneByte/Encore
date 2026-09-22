@@ -352,7 +352,7 @@ test('the play/pause transport button still allows a ready queue while nothing p
 	// surface owns the gate's SHAPE and its host owns the value it is fed. Both halves are asserted,
 	// because either one alone can break it — a surface that ANDs the two conditions is useless if its
 	// host stops passing `canStart`, and vice versa. The behavioural half is also now covered by a
-	// real mounted assertion (lib/components/phone-home-832.test.ts); this stays a source scan so a UI
+	// real mounted assertion (lib/components/phone-home.test.ts); this stays a source scan so a UI
 	// refactor reds only its own line, kept SEPARATE from the reconcile check above.
 	//
 	// RE-POINTED, at the same strength, because both halves moved together. `NowPlayingHero` is DELETED:

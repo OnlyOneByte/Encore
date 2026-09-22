@@ -65,7 +65,7 @@
 	 * scoped CSS cannot reach an element another component renders; `[data-button]` is sonner's own
 	 * attribute for it, so it survives a re-vendor where a class of ours would not.
 	 *
-	 * var(--tap), named rather than restated (XR-PH-01).
+	 * var(--tap), named rather than restated.
 	 */
 	:global([data-sonner-toast] [data-button]) {
 		min-height: var(--tap);

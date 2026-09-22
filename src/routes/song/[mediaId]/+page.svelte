@@ -219,7 +219,7 @@
 		margin-inline: auto;
 		width: 100%;
 		box-sizing: border-box;
-		/* Reserves the band in normal flow (XR-PH-12); no env() term — the band carries the only one. */
+		/* Reserves the band in normal flow; no env() term — the band carries the only one. */
 		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	.offline-note {
@@ -230,7 +230,7 @@
 		color: var(--warn);
 		font-size: var(--ph-text-sm);
 	}
-	/* Dimmed by token, never by an ancestor opacity — XR-PH-03. */
+	/* Dimmed by token, never by an ancestor opacity. */
 	.load-error {
 		margin: 0 0 var(--space-md);
 		color: var(--warn);

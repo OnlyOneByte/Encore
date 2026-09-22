@@ -1,4 +1,4 @@
-// XR-PH-19 (drag rewired to the whole queue in) — the reorder mode against the REAL
+// (drag rewired to the whole queue in) — the reorder mode against the REAL
 // server, not a fixture.
 //
 // The requirement names this mechanism explicitly: "a harness test drives real ops through
@@ -62,7 +62,7 @@ function queuedList(state: AuthoritativeState) {
 	return state.entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
 }
 
-test('XR-PH-19 · another guest queueing mid-drag re-orders the list, and the mode tracks the new length', () => {
+test('another guest queueing mid-drag re-orders the list, and the mode tracks the new length', () => {
 	const { state, deps } = harness('s1');
 	handleQueueCommand(addCmd('a', 'm1', 's1'), deps);
 	handleQueueCommand(addCmd('b', 'm2', 's1'), deps);
@@ -96,7 +96,7 @@ test('XR-PH-19 · another guest queueing mid-drag re-orders the list, and the mo
 	expect(liveSortTarget({ fromIndex: 0, offsetPx: 10_000, rowHeightPx: 60, count: queuedList(state).length })).toBe(2);
 });
 
-test('XR-PH-19 · the queue dropping below two songs closes the mode with a reason', () => {
+test('the queue dropping below two songs closes the mode with a reason', () => {
 	const { state, deps } = harness('s1');
 	handleQueueCommand(addCmd('a', 'm1', 's1'), deps);
 	handleQueueCommand(addCmd('b', 'm2', 's1'), deps);
@@ -114,7 +114,7 @@ test('XR-PH-19 · the queue dropping below two songs closes the mode with a reas
 	expect(gripVisible({ queuedCount: queued.length, reorderMeaningful: true })).toBe(false);
 });
 
-test('XR-PH-19 · the moving song being removed elsewhere closes the mode with its own reason', () => {
+test('the moving song being removed elsewhere closes the mode with its own reason', () => {
 	const { state, deps } = harness('s1');
 	handleQueueCommand(addCmd('a', 'm1', 's1'), deps);
 	handleQueueCommand(addCmd('b', 'm2', 's1'), deps);
@@ -125,7 +125,7 @@ test('XR-PH-19 · the moving song being removed elsewhere closes the mode with i
 	expect(modeInvalidation(queuedList(state), 'a', undefined)).toBe('That song left the queue — nothing was moved.');
 });
 
-test('XR-PH-19 · the moving song starting playback closes the mode with its own reason', () => {
+test('the moving song starting playback closes the mode with its own reason', () => {
 	const { state, deps } = harness('s1');
 	handleQueueCommand(addCmd('a', 'm1', 's1'), deps);
 	handleQueueCommand(addCmd('b', 'm2', 's1'), deps);
@@ -133,7 +133,7 @@ test('XR-PH-19 · the moving song starting playback closes the mode with its own
 	// Driven through the SERVER's own path, not a forged op. A `status` op is server-owned and
 	// `validateCommand` rejects it off the wire (hub.ts:278), so a client-shaped status command would
 	// have tested the reject rather than the state — exactly the sort of fixture the harness rule in
-	// XR-PH-19 exists to avoid. `reconcileOnReady` is what actually starts a song, and is the same
+	// the rule exists to avoid. `reconcileOnReady` is what actually starts a song, and is the same
 	// composition `autostart.test.ts` drives.
 	reconcileOnReady(deps);
 

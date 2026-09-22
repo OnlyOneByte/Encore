@@ -14,7 +14,7 @@
 // direct link. This interface used to also carry `url(ref)` (and a `mediaProxyUrl` helper) that
 // presigned a time-limited direct S3 URL; it had no production caller and was removed — see the
 // on-record note at src/routes/media/[...path]/+server.ts. Do not re-add a URL member here: the
-// same-origin guarantee is depended on elsewhere (docs/DECISIONS.md, deferred FFT work), so making a
+// same-origin guarantee is depended on elsewhere (deferred FFT work), so making a
 // media element cross-origin is a product decision, not a store detail.
 
 import type { MediaStoreConfig } from '../../contract';

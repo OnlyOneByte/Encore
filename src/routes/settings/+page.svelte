@@ -1202,7 +1202,7 @@
 		max-width: var(--measure-grid);
 		margin: 0 auto;
 		/*
-		 * RESERVES THE BAND (XR-PH-12), and drops the env() term it used to carry itself.
+		 * RESERVES THE BAND, and drops the env() term it used to carry itself.
 		 *
 		 * Both halves are consequences of the band becoming app chrome: the layout mounts it on every
 		 * phone surface, so this column now has fixed chrome at its bottom edge where it previously had
@@ -1260,8 +1260,8 @@
 	/*
 	 * S4: `.seg`, `.tab` and `.tab.on` left this file. Their appearance is ui/tabs's now, keyed on
 	 * shadcn's `data-slot` — scoped CSS cannot reach an element a child component renders. Both guarded
-	 * facts moved with it verbatim: `min-height: var(--tap)` (XR-PH-01) and the certified
-	 * --accent/--on-accent pair at 5.09:1 (XR-COL-12).
+	 * facts moved with it verbatim: `min-height: var(--tap)` and the certified
+	 * --accent/--on-accent pair at 5.09:1.
 	 */
 
 	/* ── cards ──────────────────────────────────────────────────────────── */
@@ -1289,7 +1289,7 @@
 	 * internal — so the eleven sibling Card.Root boxes stacked with 0px between them and two adjacent
 	 * rings touched, reading as one 2px divider. `.panel` had NO rule at all before this (its rule was
 	 * dropped before the shadcn migration and never replaced, which is why it sat in
-	 * app-class-resolution-913.test.ts's PRE_EXISTING allowlist; that entry is deleted with this rule).
+	 * app-class-resolution.test.ts's PRE_EXISTING allowlist; that entry is deleted with this rule).
 	 *
 	 * This is the panel-level fix. The deeper one is Field.Group / Field.Field, which is where the
 	 * registry keeps this rhythm and which also fixes it for any future card body — Phase 2.

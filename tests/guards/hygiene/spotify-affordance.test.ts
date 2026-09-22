@@ -1,9 +1,9 @@
 // Guards for's rendered half — the phone must stop OFFERING an action it cannot honour.
 //
 // Encore has no jsdom for these surfaces, so — like song-row-tags.test.ts, song-row-sparkle-sibling
-// and failed-process-turn-741.test.ts — every UI invariant here is a decidable property of the component
+// and failed-process-turn.test.ts — every UI invariant here is a decidable property of the component
 // source. The BEHAVIOURAL half (canProcess's verdict, processState's state, the route's arm) is pinned in
-// spotify-not-processable-742.test.ts and not-processable-arm-742.test.ts; these guards pin that the source
+// spotify-not-processable.test.ts and not-processable-arm.test.ts; these guards pin that the source
 // WIRES those decisions into the markup, which a unit test on a pure helper cannot see.
 //
 // Why BOTH actions have to go, not just Sing: SongRow's two branches are an either/or (`{#if onmake}`

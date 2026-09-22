@@ -15,10 +15,10 @@
  *
  * | Claim | Requirement | Read from the render |
  * |---|---|---|
- * | 1 button heights | XR-VER-09 | every control's vertical HIT EXTENT vs `--tap`, at three viewports |
- * | 2 input font size | XR-VER-10 | `getComputedStyle(field).fontSize` on real fields |
- * | 3 docked band | XR-VER-11 | `--dock-h` vs the band's real rendered height, and the safe-area term under a simulated 34px inset |
- * | 4 focus-ring form | XR-VER-12 | computed `outline-style/-width/-color` on a genuinely `:focus-visible` element |
+ * | 1 button heights | | every control's vertical HIT EXTENT vs `--tap`, at three viewports |
+ * | 2 input font size | | `getComputedStyle(field).fontSize` on real fields |
+ * | 3 docked band | | `--dock-h` vs the band's real rendered height, and the safe-area term under a simulated 34px inset |
+ * | 4 focus-ring form | | computed `outline-style/-width/-color` on a genuinely `:focus-visible` element |
  *
  * None of the four is decidable on the mount rung: happy-dom has no layout engine, and
  * `tests/setup/svelte-dom-preload.ts:101` now replaces `getBoundingClientRect` with a throw naming
@@ -26,7 +26,7 @@
  * read a DECLARATION; three of the four defects this gate found on its first run are invisible to a
  * declaration, because the control declares no height at all.
  *
- * ── METHODOLOGY, FROM THREE RECORDED WRONG ANSWERS (XR-VER-22) ─────────────────────────────────
+ * ── METHODOLOGY, FROM THREE RECORDED WRONG ANSWERS ─────────────────────────────────
  *
  *  - Hit-test only after `scrollIntoView({ block: 'center' })`: `elementFromPoint` returns null
  *    outside the viewport, so an un-scrolled control measures 0 and reads as catastrophic.
@@ -300,7 +300,7 @@ const server = spawn('bun', ['run', './server.ts'], {
 		HOST: '127.0.0.1',
 		// A routable (non-loopback) public origin so the TV attract renders its REACHABLE join panel
 		// (.jt-url), not the loopback .badqr notice — and a realistic long LAN address is exactly the
-		// worst case the XR-TV-19 URL-break probe (CLAIM 6) needs to measure.
+		// worst case the URL-break probe (CLAIM 6) needs to measure.
 		ENCORE_PUBLIC_ORIGIN: `http://192.168.1.20:${port}`,
 		MEDIA_DIR: mediaDir,
 		ENCORE_LYRICS_BACKFILL: '0',
@@ -455,7 +455,7 @@ try {
 	}
 
 	check(
-		`CLAIM 1 (XR-VER-09) every control's measured hit extent reaches ${TAP}px, or is quarantined at a recorded number`,
+		`CLAIM 1 every control's measured hit extent reaches ${TAP}px, or is quarantined at a recorded number`,
 		newOffenders.length === 0,
 		newOffenders.join('\n        ')
 	);
@@ -467,7 +467,7 @@ try {
 	check(
 		'CLAIM 1 no quarantine entry has gone stale — a defect that no longer reproduces is a finding',
 		staleQuarantine.length === 0,
-		`${staleQuarantine.join('\n        ')}\n        Re-decide the entry in measured-design-register.mjs on the record (XR-VER-07); do not adjust a number.`
+		`${staleQuarantine.join('\n        ')}\n        Re-decide the entry in measured-design-register.mjs on the record; do not adjust a number.`
 	);
 	check(
 		'CLAIM 1 no control is occluded along its own centre line — the reason a rendered reading beats a declared one',
@@ -475,13 +475,13 @@ try {
 		occludedControls.join('\n        ')
 	);
 	check(
-		`CLAIM 2 (XR-VER-10) every text-entry field computes at or above ${MIN_FIELD_PX}px`,
+		`CLAIM 2 every text-entry field computes at or above ${MIN_FIELD_PX}px`,
 		smallFields.length === 0,
 		smallFields.join('\n        ')
 	);
 
 	/*
-	 * ── CLAIM 3 (XR-VER-11): the docked band's published height and its safe-area term ──────────
+	 * ── CLAIM 3: the docked band's published height and its safe-area term ──────────
 	 *
 	 * WHERE THIS IS MEASURED KEEPS CHANGING, and the claim has not. It began as `--peek-h`/`.peek` on the
 	 * QueueSheet; Direction A made the queue the home screen and the 2026-09-09 owner correction moved it
@@ -574,7 +574,7 @@ try {
 		 * value was WRITTEN by the layout's measurement rather than inherited from a stylesheet default.
 		 */
 		check(
-			"CLAIM 3 (XR-VER-11) --dock-h equals the docked band's REAL rendered height — the contract every docked control offsets from",
+			"CLAIM 3 --dock-h equals the docked band's REAL rendered height — the contract every docked control offsets from",
 			dock.dockVar !== '' &&
 				dock.dockVar === dock.dockInline &&
 				Math.abs(parseFloat(dock.dockVar) - dock.dockOuterHeight) <= 1,
@@ -586,7 +586,7 @@ try {
 			`band occupies ${dock.dockTop.toFixed(1)}..${dock.dockBottom.toFixed(1)} of a ${dock.innerHeight}px viewport (1px of sub-pixel slack allowed)`
 		);
 		check(
-			'CLAIM 3 the scrolling column RESERVES the band rather than being overlapped by it (XR-PH-12)',
+			'CLAIM 3 the scrolling column RESERVES the band rather than being overlapped by it',
 			dock.mainPadBottom >= dock.dockClientHeight,
 			`main padding-bottom ${dock.mainPadBottom}px against a ${dock.dockClientHeight}px band`
 		);
@@ -615,7 +615,7 @@ try {
 	 *
 	 * So the subject got SIMPLER and the assertion got WIDER, which is why this is a re-point and not a
 	 * retirement. There is exactly one docked band in the app and it is the SAME element here as on `/`,
-	 * so XR-VER-11 — "the published height is the real rendered height" — is now asserted on BOTH
+	 * so — "the published height is the real rendered height" — is now asserted on BOTH
 	 * surfaces instead of only on the browse screen, and a mismatch on either is the same defect. Both
 	 * are worth measuring even though one element publishes the token: the layout WRITES `--dock-h`, but
 	 * each route's own `main` CONSUMES it (`calc(var(--dock-h, 0px) + 28px)` in both
@@ -634,7 +634,7 @@ try {
 	 *     end, which is the case `main`'s reservation exists for and the only one where it can fail.
 	 *
 	 * The reflow half of the results screen (320px at 200% text) is deliberately NOT re-asserted here:
-	 * `src/lib/phone-inventory.test.ts` owns XR-PH-02, and two independent geometry checks of
+	 * `src/lib/phone-inventory.test.ts` owns, and two independent geometry checks of
 	 * one criterion is the duplicated-vocabulary shape the spec warns about.
 	 */
 	await page.viewport(390, 844);
@@ -698,7 +698,7 @@ try {
 		);
 	} else {
 		check(
-			"CLAIM 3 (XR-VER-11) --dock-h on /find is the BAND's REAL rendered height — the contract every column offsets from",
+			"CLAIM 3 --dock-h on /find is the BAND's REAL rendered height — the contract every column offsets from",
 			browse.dockVar !== '' &&
 				browse.dockVar === browse.dockInline &&
 				Math.abs(parseFloat(browse.dockVar) - browse.dockOuterHeight) <= 1,
@@ -712,7 +712,7 @@ try {
 		 * single-surface reading above can see that; only the comparison can.
 		 */
 		check(
-			'CLAIM 3 (XR-VER-11) the ONE band renders to the SAME height on / and on /find — one element, one token, no per-surface drift',
+			'CLAIM 3 the ONE band renders to the SAME height on / and on /find — one element, one token, no per-surface drift',
 			dock !== null && Math.abs(browse.dockOuterHeight - dock.dockOuterHeight) <= 1,
 			dock === null
 				? 'the / reading is missing, so the two surfaces could not be compared'
@@ -724,7 +724,7 @@ try {
 			`band occupies ${browse.dockTop.toFixed(1)}..${browse.dockBottom.toFixed(1)} of a ${browse.innerHeight}px viewport`
 		);
 		check(
-			'CLAIM 3 the find column RESERVES the band rather than being overlapped by it (XR-PH-12)',
+			'CLAIM 3 the find column RESERVES the band rather than being overlapped by it',
 			browse.mainPadBottom >= browse.dockClientHeight,
 			`main padding-bottom ${browse.mainPadBottom}px against a ${browse.dockClientHeight}px band`
 		);
@@ -792,7 +792,7 @@ try {
 	 * where `main`'s `calc(var(--dock-h, 0px) + 28px)` reservation can be observed doing its job — at rest
 	 * the last row of a long list is off-screen entirely, so the at-rest occlusion arm above passes over a
 	 * row nobody can see. Scrolled to the end, a reservation that is missing, stale, or measured off the
-	 * wrong element puts the final row under fixed chrome, which is exactly XR-PH-12's defect.
+	 * wrong element puts the final row under fixed chrome, which is exactly the defect.
 	 */
 	await page.evaluate('window.scrollTo(0, document.documentElement.scrollHeight)');
 	await sleep(400); // no smooth scrolling in this app; this is paint settle, not animation
@@ -831,7 +831,7 @@ try {
 			`scrolled to ${end.scrollY} of a possible ${end.maxScroll} (a result set shorter than the viewport reports 0/0, which is a pass)`
 		);
 		check(
-			'CLAIM 3 (XR-PH-12) the LAST row clears the band with the list scrolled to its end — what the reservation is for',
+			'CLAIM 3 the LAST row clears the band with the list scrolled to its end — what the reservation is for',
 			end.lastRowBottom <= end.dockTop + 1,
 			`last row's bottom is at y=${end.lastRowBottom.toFixed(1)} against a band starting at y=${end.dockTop.toFixed(1)}`
 		);
@@ -853,7 +853,7 @@ try {
 	 *
 	 * THE PROBE IS KEPT AND RE-AIMED, because a non-matching query is still the cheapest way to reach a
 	 * genuinely different GEOMETRY — a column with nothing in it, shorter than the viewport, unable to
-	 * scroll. XR-VER-11 has to hold there too: a band whose measured height only survives while content
+	 * scroll. has to hold there too: a band whose measured height only survives while content
 	 * pushes against it is a band whose height is a coincidence. And the empty line, wherever it sits,
 	 * must not be under the band. `.empty` is `SEL.empty` (`.encore-empty`) — the find surface renders it
 	 * for a query that matched nothing.
@@ -895,20 +895,20 @@ try {
 			`${short.rowCount} rows, scrollHeight ${short.scrollHeight} against innerHeight ${short.innerHeight}`
 		);
 		check(
-			"CLAIM 3 (XR-VER-11) --dock-h still equals the band's rendered height with an EMPTY column — the height is measured, not a coincidence of content",
+			"CLAIM 3 --dock-h still equals the band's rendered height with an EMPTY column — the height is measured, not a coincidence of content",
 			short.dockVar !== '' &&
 				short.dockVar === short.dockInline &&
 				Math.abs(parseFloat(short.dockVar) - short.dockOuterHeight) <= 1,
 			`--dock-h resolved "${short.dockVar}" (inline "${short.dockInline}") against a band whose outer box is ${short.dockOuterHeight.toFixed(1)}px`
 		);
 		check(
-			'CLAIM 3 the empty-state line is not occluded by the band (XR-PH-12 with one line of content)',
+			'CLAIM 3 the empty-state line is not occluded by the band',
 			short.emptyBottom <= short.dockTop + 1,
 			`empty-state line occupies ${short.emptyTop.toFixed(1)}..${short.emptyBottom.toFixed(1)} against a band starting at y=${short.dockTop.toFixed(1)}`
 		);
 	}
 
-	// ── CLAIM 4 (XR-VER-12): the focus indicator's FORM, on a genuinely :focus-visible element ──
+	// ── CLAIM 4: the focus indicator's FORM, on a genuinely :focus-visible element ──
 	await page.viewport(390, 844);
 
 	const focusProbe = `(() => {
@@ -955,7 +955,7 @@ try {
 	const focusedMeasured = focusReadings.length;
 	for (const f of focusReadings) {
 		const who = `${f.tag} "${f.what}"`;
-		// XR-VER-03: an element we could not put into :focus-visible is UNMEASURED, never satisfied.
+		// an element we could not put into :focus-visible is UNMEASURED, never satisfied.
 		if (!f.focusVisible) {
 			badFocus.push(`${who}: could not be driven into :focus-visible, so its indicator is UNMEASURED — not passed`);
 			continue;
@@ -971,13 +971,13 @@ try {
 		}
 	}
 	check(
-		'CLAIM 4 (XR-VER-12) every focusable control draws a >=2px outline in the resolved --focus, measured on the render',
+		'CLAIM 4 every focusable control draws a >=2px outline in the resolved --focus, measured on the render',
 		badFocus.length === 0,
 		badFocus.join('\n        ')
 	);
 
 	/*
-	 * ── CLAIM 5 (XR-TV-01/02): the TV type floor is ONE declaration and the ladder is rem ─
+	 * ── CLAIM 5: the TV type floor is ONE declaration and the ladder is rem ─
 	 *
 	 * This is the measured half — the source-scan half (no px literal, tokens are rem, no
 	 * per-token viewport term) lives in stage-scale.test.ts and CANNOT make a computed claim. What only a
@@ -1031,13 +1031,13 @@ try {
 	} else {
 		// Root: 2.7vh of 1080 = 29.16px, * ui-scale 1.
 		check(
-			'CLAIM 5 (XR-TV-01) the .tv root font-size resolves to 29.16px at 1920x1080, --ui-scale 1',
+			'CLAIM 5 the .tv root font-size resolves to 29.16px at 1920x1080, --ui-scale 1',
 			Math.abs(tv1.rootPx - 29.16) <= 0.5,
 			`.tv root computed to ${tv1.rootPx}px (expected 29.16 ± 0.5)`
 		);
 		const smallest1 = Math.min(...Object.values(tv1.tiers));
 		check(
-			'CLAIM 5 (XR-TV-01) the smallest rendered TV tier is >= 27px, and none below 24px, at --ui-scale 1',
+			'CLAIM 5 the smallest rendered TV tier is >= 27px, and none below 24px, at --ui-scale 1',
 			smallest1 >= 27 - 0.5,
 			`smallest tier ${smallest1}px across ${JSON.stringify(tv1.tiers)}`
 		);
@@ -1046,7 +1046,7 @@ try {
 			([, px]) => Math.abs(px / tv1.rootPx - Math.round((px / tv1.rootPx) * 1000) / 1000) > 0.05
 		);
 		check(
-			'CLAIM 5 (XR-TV-02) every TV tier is a rem multiple of the root — it moves when the root moves',
+			'CLAIM 5 every TV tier is a rem multiple of the root — it moves when the root moves',
 			untracked.length === 0,
 			`tiers not resolving as a clean rem multiple of the ${tv1.rootPx}px root: ${JSON.stringify(untracked)}`
 		);
@@ -1058,13 +1058,13 @@ try {
 		const tv08 = await page.evaluate(tvProbe);
 		const smallest08 = tv08 ? Math.min(...Object.values(tv08.tiers)) : 0;
 		check(
-			'CLAIM 5 (XR-TV-01) at --ui-scale 0.8 no TV tier falls below 20px',
+			'CLAIM 5 at --ui-scale 0.8 no TV tier falls below 20px',
 			tv08 !== null && smallest08 >= 20 - 0.5,
 			`smallest tier at 0.8 = ${smallest08}px across ${JSON.stringify(tv08?.tiers)}`
 		);
 		// And that the root itself scaled with it (proves --ui-scale is the multiplier, not inert).
 		check(
-			'CLAIM 5 (XR-TV-01) --ui-scale actually scales the root — 0.8 * 29.16 ~= 23.33px',
+			'CLAIM 5 --ui-scale actually scales the root — 0.8 * 29.16 ~= 23.33px',
 			tv08 !== null && Math.abs(tv08.rootPx - 29.16 * 0.8) <= 0.5,
 			`.tv root at --ui-scale 0.8 computed to ${tv08?.rootPx}px (expected ~23.33)`
 		);
@@ -1089,7 +1089,7 @@ try {
 		await sleep(200);
 		const tv720 = await page.evaluate(tvProbe);
 		check(
-			'CLAIM 5 (XR-TV-01) at a 720-tall viewport the root floors on the 20px px-term of max(2.7vh, 20px)',
+			'CLAIM 5 at a 720-tall viewport the root floors on the 20px px-term of max(2.7vh, 20px)',
 			tv720 !== null && Math.abs(tv720.rootPx - 20) <= 0.5,
 			`.tv root at 1280x720 computed to ${tv720?.rootPx}px (expected 20 — the px floor, since 2.7vh = 19.44px there)`
 		);
@@ -1097,7 +1097,7 @@ try {
 	}
 
 	/*
-	 * ── CLAIM 5b (XR-TV-889): .fs-btn overlaps NO z-tier-7 chrome box, on the RENDER ─────────────────
+	 * ── CLAIM 5b: .fs-btn overlaps NO z-tier-7 chrome box, on the RENDER ─────────────────
 	 *
 	 * the fullscreen button and the corner chrome (join QR, lower-third, Up-next) all sit at
 	 * z-tier 7. Whichever is later in the DOM paints on top at equal z, so a shared anchor is a silent
@@ -1199,7 +1199,7 @@ try {
 		await sleep(150);
 		const o = await page.evaluate(overlapProbe);
 		check(
-			`CLAIM 5b (XR-TV-889) .fs-btn overlaps no z-tier-7 chrome box at ${w}x${h}`,
+			`CLAIM 5b .fs-btn overlaps no z-tier-7 chrome box at ${w}x${h}`,
 			o !== null && !o.noScope && o.overlaps.length === 0,
 			o === null
 				? 'no .tv root to mount the probe on'
@@ -1211,14 +1211,14 @@ try {
 	await page.viewport(1920, 1080);
 
 	/*
-	 * ── CLAIM 6 (XR-TV-14 / XR-TV-19): the ratified TV states measured on the render ──────
+	 * ── CLAIM 6: the ratified TV states measured on the render ──────
 	 *
 	 * The source-scan half (room-code-is-largest, the CSS-gated crossfade, the family borders) lives in
 	 * routes/tv/tv-ratified-states.test.ts and CANNOT make a measured claim. What only a render settles,
 	 * and what shipped green past a source scan on the first pass:
-	 *   • XR-TV-19 — the join URL is one unbreakable token: `.jt-url` must not break mid-octet
+	 *   • — the join URL is one unbreakable token: `.jt-url` must not break mid-octet
 	 *     (scrollWidth <= clientWidth), at the realistic long LAN address the repo documents.
-	 *   • XR-TV-14 — every roster member is shown with no chip OCCLUDED by a corner control. A name
+	 *   • — every roster member is shown with no chip OCCLUDED by a corner control. A name
 	 *     painted under .fs-btn is worse than the "+N more" it replaced, and is invisible to a source
 	 *     scan. Swept with LONG-name fixtures at 6/10/12/13 guests (name length is load-bearing here).
 	 *
@@ -1227,7 +1227,7 @@ try {
 	 * source-scan guard; this gate covers attract and lobby, the two the drive can reach honestly.
 	 */
 	{
-		// Long-name fixtures (name length is load-bearing for XR-TV-14). Colours are irrelevant to the
+		// Long-name fixtures (name length is load-bearing for). Colours are irrelevant to the
 		// occlusion measurement and are passed as a CSS named colour, NOT a `#hex` literal — a `#`-led
 		// string reads as an id selector to the driver-selector-ban guard (contract.test.ts).
 		const NAMES = [
@@ -1269,8 +1269,8 @@ try {
 
 		// The lobby is where the two measured invariants are both reachable in this drive: the phone-flow
 		// claims above already joined a singer, so the TV is in the LOBBY (not attract). The lobby carries
-		// the same join panel (.url) and the roster, so the URL-no-break (XR-TV-19) and the
-		// roster-not-occluded (XR-TV-14) invariants are measured here. The attract `.jt-url` and the three
+		// the same join panel (.url) and the roster, so the URL-no-break and the
+		// roster-not-occluded invariants are measured here. The attract `.jt-url` and the three
 		// takeover frames stay on the source-scan guard (the takeovers need live WS playback the
 		// self-hosting drive has no processed media for).
 		const lobbyProbe = `(() => {
@@ -1317,15 +1317,15 @@ try {
 			// chipCount is a FLOOR (>=): the drive may already carry a phone-flow singer, so the point is
 			// occlusion + no overflow, not an exact count.
 			check(
-				`CLAIM 6 (XR-TV-14) lobby at >=${count} guests renders every chip with none occluded by a control`,
+				`CLAIM 6 lobby at >=${count} guests renders every chip with none occluded by a control`,
 				r !== null && r.chipCount >= count && r.occluded === 0 && r.intersects === 0 && r.docOverflow <= 0,
 				`chips=${r?.chipCount} (>= ${count}) occluded=${r?.occluded} ${JSON.stringify(r?.hits)} intersects=${r?.intersects} docOverflow=${r?.docOverflow}`
 			);
-			// XR-TV-19: the typed join URL must fit one line — checked once, on the first populated sweep.
+			// the typed join URL must fit one line — checked once, on the first populated sweep.
 			if (!urlChecked && r && r.urlScrollW !== null) {
 				urlChecked = true;
 				check(
-					'CLAIM 6 (XR-TV-19) the lobby join URL fits one line — no mid-token break',
+					'CLAIM 6 the lobby join URL fits one line — no mid-token break',
 					r.urlScrollW <= r.urlClientW + 1 && r.urlLines <= 1,
 					`.url "${r.urlText}" scrollW=${r.urlScrollW} clientW=${r.urlClientW} lines=${r.urlLines} — an address is one unbreakable token, shrinking beats breaking`
 				);
@@ -1333,7 +1333,7 @@ try {
 		}
 		if (!urlChecked)
 			check(
-				'CLAIM 6 (XR-TV-19) the lobby join URL was measured',
+				'CLAIM 6 the lobby join URL was measured',
 				false,
 				'the .lobby .url element never rendered — the probe could not reach it'
 			);
@@ -1343,7 +1343,7 @@ try {
 	check(
 		`the drive measured a real population — >=${FLOORS.controlsMeasured} control readings`,
 		controlsMeasured >= FLOORS.controlsMeasured,
-		`measured ${controlsMeasured}. A firing floor is a FINDING, never a number to adjust (XR-VER-06): the drive reached fewer controls than it did when this gate landed, so something it used to sweep is no longer reachable.`
+		`measured ${controlsMeasured}. A firing floor is a FINDING, never a number to adjust: the drive reached fewer controls than it did when this gate landed, so something it used to sweep is no longer reachable.`
 	);
 	check(
 		`the drive reached a real set of surfaces — >=${FLOORS.surfacesSwept}`,

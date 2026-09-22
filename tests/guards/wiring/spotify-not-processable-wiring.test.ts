@@ -1,7 +1,7 @@
 // Wiring guards for the Spotify not-processable ruling — the hunks whose revert a runtime suite cannot see.
 //
-// The behavioural halves live in spotify-not-processable-742.test.ts (processState's verdict, the rotation
-// consequence), not-processable-arm-742.test.ts (the route arm) and spotify-affordance-742.test.ts (the
+// The behavioural halves live in spotify-not-processable.test.ts (processState's verdict, the rotation
+// consequence), not-processable-arm.test.ts (the route arm) and spotify-affordance.test.ts (the
 // markup). What is left is four hunks that are TYPE-ONLY or PROSE, plus one relocated predicate — none
 // of which can red a runtime assertion, so `prove_per_hunk.py` reports them green-when-reverted. Each
 // gets a scan against the REAL production file here, so reverting it fails a named test instead of only
@@ -36,7 +36,7 @@ test('non-vacuous: the three production files were really read', () => {
 });
 
 test('ProcessState DECLARES not-processable (the member the compiler does not force)', () => {
-	// Type-only hunk. Its runtime effect is proven in spotify-not-processable-742.test.ts; this pins the
+	// Type-only hunk. Its runtime effect is proven in spotify-not-processable.test.ts; this pins the
 	// declaration itself. Reverting it makes processState return a value outside its own union — a
 	// typecheck failure and nothing else, which `bun test` would sail straight past.
 	const union = processCode.match(/export type ProcessState =[\s\S]*?;/);
@@ -126,8 +126,8 @@ test("requestProcess's docstring no longer makes a promise it breaks", () => {
 
 test("canProcess's docstring SUMMARY states that it reads the media, not readiness alone", () => {
 	// Prose hunk on the client gate. The signature change is pinned by behaviour
-	// (spotify-not-processable-742.test.ts) and by the four template call sites
-	// (spotify-affordance-742.test.ts); this pins the reason, because the next author to add a fifth row
+	// (spotify-not-processable.test.ts) and by the four template call sites
+	// (spotify-affordance.test.ts); this pins the reason, because the next author to add a fifth row
 	// reads the docstring, not the issue.
 	//
 	// Asserted on the SUMMARY specifically — the first sentence, which is what an editor tooltip shows
@@ -143,7 +143,7 @@ test("canProcess's docstring SUMMARY states that it reads the media, not readine
 
 test('SongRow DECLARES the processable prop (type-only, so nothing else pins it)', () => {
 	// Type-only hunk in the Props interface. Its rendered effect is pinned in
-	// spotify-affordance-742.test.ts; reverting the declaration alone breaks only the typecheck.
+	// spotify-affordance.test.ts; reverting the declaration alone breaks only the typecheck.
 	expect(songRowRaw).toMatch(/processable\?\s*:\s*boolean;/);
 	// declared optional AND defaulted true, which together are what make this change safe for the
 	// existing callers that pass nothing.

@@ -13,7 +13,7 @@
 // different components stacked.
 //
 // WHY NOTHING CAUGHT IT, which is the reason this file exists rather than a comment:
-//   - `app-class-resolution-913.test.ts` asks whether a class matches SOME rule that can reach it.
+//   - `app-class-resolution.test.ts` asks whether a class matches SOME rule that can reach it.
 //     `.np-head` still did — the wrong one — so it was satisfied.
 //   - `gate:measured` drives phone viewports (390/360/430), and below `--max-w` a capped box and an
 //     uncapped one are the same width. The bug is invisible at every viewport that gate uses.

@@ -49,7 +49,7 @@ test('objectKey joins prefix + ref', () => {
 });
 
 test('mediaProxyUrl and MediaStore.url are GONE — the route is the only URL builder', () => {
-	// Deleted for having no production caller (docs/arch/01-media.md XR-MED-10). Asserted here as
+	// Deleted for having no production caller (docs/arch/01-media.md). Asserted here as
 	// well as in the source-scan guard because this file is where the deleted behaviour was pinned,
 	// and an import of a removed export must fail as a missing member rather than as `undefined`.
 	const store: Record<string, unknown> = new LocalMediaStore() as unknown as Record<string, unknown>;

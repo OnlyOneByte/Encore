@@ -45,7 +45,7 @@ ignores the setting rather than reporting it:
 wsl --version              # want: WSL version 2.0.0 or newer
 wsl --update               # in-place update of the WSL runtime + kernel
 wsl --update --pre-release # only if --version is still too old after the above
-wsl --shutdown             # required for a new .wslconfig to be read
+wsl --shutdown             # required for a new.wslconfig to be read
 ```
 
 `wsl --update` updates the WSL _runtime_, not your distro's packages. Those are separate:
@@ -372,7 +372,7 @@ $EC exec worker python -c \
    CPU regardless of what anything claims.
 
 8. **Re-measure.** Run the committed benchmark scripts on this box and add a CUDA column to
-   `docs/benchmarks/SUMMARY.md`:
+   the benchmark record:
    `docs/benchmarks/scripts/checkpoint_cost.py` and `docs/benchmarks/scripts/family_bench.sh`. Every
    realtime factor recorded so far is from a 32-core Graviton 3 CPU box, and the ranking may reorder
    entirely — the mel-band checkpoints won on CPU partly for architectural reasons that matter less

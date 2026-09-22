@@ -21,7 +21,7 @@ const CANON = 'lib/chromium.mjs';
 /**
  * Every .mjs under e2e/, recursively, as paths relative to the e2e root.
  *
- * Non-vacuity floor (XR-VER-05). This walk had NO floor, and two of its four consumers
+ * Non-vacuity floor. This walk had NO floor, and two of its four consumers
  * assert `offenders` EMPTY (`:40` the import rule, `:62` the personal-home-path ban) — so pointing the
  * walk at a missing directory, renaming the extension, or widening the prune list made both pass with
  * ZERO drivers examined, which is a green guard enforcing nothing. The other two tests self-anchor
@@ -31,7 +31,7 @@ const CANON = 'lib/chromium.mjs';
  * The floor lives IN the walk rather than in each test, so a future consumer inherits it instead of
  * having to remember it — the way test 3 in motion.test.ts had to be retro-fitted.
  *
- * A firing floor is a FINDING, never a number to adjust — see XR-VER-06 and
+ * A firing floor is a FINDING, never a number to adjust — and
  * `non-vacuity-floors.test.ts`.
  */
 function e2eDrivers(): string[] {

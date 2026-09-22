@@ -9,9 +9,9 @@ it. That last one is what the per-engine allowlist is for, and it is the propert
 puts at risk.
 
 There is no test asserting a particular default, because there is deliberately no default: see
-`docs/benchmarks/SUMMARY.md` §7. The repo's only batching measurement is §2 (BS-RoFormer on the Graviton
+the benchmark record. The repo's only batching measurement is the BS-RoFormer on the Graviton
 box, 1.02x, "32 cores already saturate at batch 1") and its own reasoning says it does not transfer to
-Metal. `docs/benchmarks/scripts/mlx_batch_bench.sh` is what would justify a value.
+Metal. A measured benchmark is what would justify a value.
 """
 
 from __future__ import annotations
@@ -102,12 +102,10 @@ def test_the_field_is_named_for_its_engine() -> None:
     )
 
 
-def test_the_benchmark_script_exists_and_refuses_non_apple_silicon() -> None:
-    """The script is the thing that would justify a default, so it is part of this change, not a TODO."""
-    from pathlib import Path
-
-    script = Path(__file__).resolve().parents[2] / "docs" / "benchmarks" / "scripts" / "mlx_batch_bench.sh"
-    assert script.exists(), "the benchmark that would justify a default is missing"
-    body = script.read_text(encoding="utf-8")
-    assert "Darwin" in body and "arm64" in body, "it must refuse a box demucs-mlx cannot run on"
-    assert "maximum resident set size" in body, "peak memory is half the result — batching trades for it"
+# THE BENCHMARK ARM IS RETIRED (2026-09-22): it asserted that `docs/benchmarks/scripts/mlx_batch_bench.sh`
+# existed and refused a non-Apple-Silicon box, on the reasoning that the script is what would justify a
+# default batch size — so it was part of the change rather than a TODO. The docs cleanup deleted the whole
+# benchmarks tree, script included.
+#
+# THE RULE IT SERVED STILL HOLDS, and by the arm above rather than by the script's existence:
+# `test_there_is_no_default_batch_size` is what keeps a value from being invented without evidence.

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 const PORT = process.env.EPORT || '52639';
 const base = 'http://127.0.0.1:' + PORT;
-const OUT = process.argv[2] || '/tmp/shots-639';
+const OUT = process.argv[2] || '/tmp/shots-admin-delete';
 mkdirSync(OUT, { recursive: true });
 const chromium = findChromium();
 if (!chromium) {
@@ -22,11 +22,11 @@ try {
 	await page.viewport(900, 1100, 1);
 	await page.goto(base + '/admin');
 	for (let i = 0; i < 80 && (await page.count(SEL.adminSongRow)) === 0; i++) await sleep(100);
-	await page.screenshot(join(OUT, '639-admin-list-eyeson.png'));
+	await page.screenshot(join(OUT, 'admin-list-eyeson.png'));
 	console.log('captured list');
 	await page.click(SEL.adminDelete);
 	for (let i = 0; i < 40 && (await page.count(SEL.adminConfirmDelete)) === 0; i++) await sleep(100);
-	await page.screenshot(join(OUT, '639-admin-confirm-eyeson.png'));
+	await page.screenshot(join(OUT, 'admin-confirm-eyeson.png'));
 	console.log('captured confirm');
 	await browser.close?.();
 } catch (e) {

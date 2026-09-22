@@ -28,8 +28,8 @@ docker compose --profile stems up    # core + the worker that makes karaoke trac
 **Local dev (Bun ≥ 1.3), from the repo root:**
 
 ```bash
-bun install                        # workspaces; uses public npm via the repo .npmrc
-bun run build && bun run start     # prod build, served on :3000
+bun install                        # workspaces; uses public npm via the repo.npmrc
+bun run build && bun run start     # prod build, served on:3000
 # or: bun run dev                  # vite dev server — UI HMR only, no realtime (see below)
 ```
 
@@ -62,13 +62,13 @@ To run it natively instead of in Docker:
 
 ```bash
 cd worker
-python3 -m venv .venv
+python3 -m venv.venv
 .venv/bin/pip install -r requirements.txt        # torch + demucs + whisperx (multi-GB)
 
 PATH="$PWD/.venv/bin:$PATH" \
   ENCORE_CORE_WS='ws://localhost:3000/ws?role=worker' \
   MEDIA_DIR=../core/media \
-  .venv/bin/python -m src.dial_home
+.venv/bin/python -m src.dial_home
 ```
 
 Those two variables are the whole configuration — the worker measures the rest and prints what it
@@ -93,7 +93,7 @@ available` — which reads as a broken worker rather than a missing dependency. 
 
 Separately: **not every YouTube video will download.** Upstream bot-checking rejects some, and a
 handful of failed processes on specific videos is not a broken install — see
-[`docs/HANDOFF.md`](docs/HANDOFF.md).
+.
 
 `ENCORE_PROCESSOR=stub` swaps in a no-ML processor for smoke-testing the plumbing, and needs only
 `pip install websockets`. Two caveats worth knowing before you reach for it: it writes a
@@ -250,7 +250,7 @@ or you want to deliberately limit a box:
   16 GB one mid-song, which reads as a failed song. Run
   [`docs/benchmarks/scripts/mlx_batch_bench.sh`](docs/benchmarks/scripts/mlx_batch_bench.sh) before setting
   it; the open question and the results table are
-  [`docs/benchmarks/SUMMARY.md`](docs/benchmarks/SUMMARY.md) §7)
+  §7)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only
   fallbacks for a job carrying neither, `ENCORE_LRCLIB_BASE` (point at a mirror when lrclib.net is
   blocked), `ENCORE_ANNOTATE` (`1`; set `0` on a box with no outbound network), `ENCORE_KEEP_RAW_CAPTIONS` (`0`; set `1` to retain the raw `.vtt`/`.srt` caption track in `derived/captions/` for post-process diagnosis — counted and evicted by the `ENCORE_MEDIA_MAX_GB` cap)
@@ -285,8 +285,8 @@ that prefers Opus over legacy AAC.
 improves the ASR lyrics tier, which reads the vocals stem), hot-titles persistence, and accounts +
 multi-room. Open work
 in GitHub issues. Ratified decisions and the parked scope fence are in
-[`docs/DECISIONS.md`](docs/DECISIONS.md). Agent and
-human onboarding: [`docs/HANDOFF.md`](docs/HANDOFF.md).
+. Agent and
+human onboarding:.
 
 ## Dev notes
 
@@ -298,8 +298,8 @@ bun run typecheck # both workspaces
 # Worker (worker) — install the pinned dev toolchain once, then run all four gates:
 cd worker && pip install -r requirements.txt -r requirements-dev.txt
 pytest -q                    # worker unit tests (asyncio_mode=auto)
-ruff check .                 # lint (pyflakes/pycodestyle/isort/bugbear/pyupgrade/tidy-imports)
-ruff format --check .        # format gate (ruff is the formatter; no separate black)
+ruff check.                 # lint (pyflakes/pycodestyle/isort/bugbear/pyupgrade/tidy-imports)
+ruff format --check.        # format gate (ruff is the formatter; no separate black)
 mypy                         # type-check src/ (config in pyproject.toml)
 ```
 
@@ -315,9 +315,9 @@ clean tree; any non-zero exit is a real finding.
   families moved and the suite stayed green.
 - `tests/e2e/party.mjs` — the full two-phone + TV flow against a live server.
 - `tests/e2e/capture.mjs` — regenerates every frame in `docs/mocks/`. See
-  [`docs/mocks/README.md`](docs/mocks/README.md) for how to run it and the two things that make the
+  for how to run it and the two things that make the
   playing-state frames possible.
 - Every UI surface is eyes-on verified; frames live in `docs/mocks/` as `tour-<what>-eyeson.png` —
   one regenerable set with stable filenames, so refreshing a frame updates every reference to it.
 - A green suite is the floor, not the bar — several real defects here were invisible to passing tests
-  and only surfaced by driving the app. See [`docs/HANDOFF.md`](docs/HANDOFF.md) §8.
+  and only surfaced by driving the app. See §8.

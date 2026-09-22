@@ -1,4 +1,4 @@
-// guard: no test under `tests/` may derive a path from its own location — docs/ux/04-verification.md XR-VER-05.
+// guard: no test under `tests/` may derive a path from its own location — XR-VER-md.
 //
 // THE DEFECT THIS EXISTS FOR, AND IT IS NOT HYPOTHETICAL. The reorganisation moved 141 guards out of
 // `src` into `tests/guards/`. Four separate agents moved files correctly and left their path
@@ -12,7 +12,7 @@
 //
 // AND THEIR NON-VACUITY FLOORS DID NOT CATCH IT EITHER. This is the part worth remembering: a floor
 // protects against an EMPTY walk, not against a walk over the WRONG tree. `expect(files.length)
-// .toBeGreaterThan(15)` is satisfied perfectly well by fifteen files in `tests/guards/`. XR-VER-05 closes
+//.toBeGreaterThan(15)` is satisfied perfectly well by fifteen files in `tests/guards/`. the rule closes
 // the "scanned nothing" hole; it says nothing about "scanned the wrong thing". This guard closes that one.
 //
 // THE RULE. A test under `tests/` names its subject from the repo root, through `@encore/test-support`,
@@ -175,7 +175,7 @@ test('module resolution is not mistaken for path arithmetic, and real anchoring 
 	expect(SELF_ANCHOR.test(withoutModuleResolution("const d = new URL('../..', import.meta.url);"))).toBe(true);
 });
 
-test('the walk covers .mjs, which is where the defect that widened it lived', () => {
+test('the walk covers.mjs, which is where the defect that widened it lived', () => {
 	/*
 	 * The six probes resolved their root one hop short for as long as this guard read only `*.test.ts`.
 	 * Pinned so a future narrowing of the extension list is a visible decision rather than a quiet

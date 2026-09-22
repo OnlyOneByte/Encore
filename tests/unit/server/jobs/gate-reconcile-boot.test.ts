@@ -1,6 +1,6 @@
 // unit: boot reconciliation of a readiness gate left in-flight by a process that can never finish.
 //
-// THE SECOND HALF OF XR-JOB-04. The first half made the settle DURABLE: `reportTerminalFailure` now
+// THE SECOND HALF OF. The first half made the settle DURABLE: `reportTerminalFailure` now
 // hands the settled media id to a `persist` sink, so a process that dies from here on writes
 // `stem_status`/`lyrics_status` back before the room is told (see terminal-failure-durability.test.ts).
 //

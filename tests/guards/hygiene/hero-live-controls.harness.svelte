@@ -1,6 +1,6 @@
 <script lang="ts">
 	/*
-	 * Test harness for the now-playing drawer's LIVE controls and their honest degradation (XR-PH-15).
+	 * Test harness for the now-playing drawer's LIVE controls and their honest degradation.
 	 *
 	 * WHAT IT USED TO BE, AND WHY BOTH OF ITS REASONS ARE GONE. It first wrapped `NowPlayingHero` for one
 	 * measured reason: the hero took its controls as a SNIPPET prop, and building a snippet inside a
@@ -35,7 +35,7 @@
 	 * of a bound prop, not a stand-in for an affordance.
 	 *
 	 * The fixture is a song that HAS a title and a length but NO isolated vocals stem, because that is
-	 * XR-PH-15's degraded arm — `guideEnabled` defaults false here on purpose.
+	 * the degraded arm — `guideEnabled` defaults false here on purpose.
 	 *
 	 * Not shipped: nothing in the app imports it.
 	 */

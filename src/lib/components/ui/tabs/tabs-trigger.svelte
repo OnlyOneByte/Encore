@@ -11,10 +11,10 @@
   floor invisible to the guard that exists to protect it.
 
   Two facts carried over verbatim, both guarded elsewhere:
-    - `min-height: var(--tap)`, named rather than restated (XR-PH-01). A 38px pill would be the one
+    - `min-height: var(--tap)`, named rather than restated. A 38px pill would be the one
       control on this page under the 44px floor.
     - the active fill is `var(--accent)` with `var(--on-accent)` ink — the certified pair that carries
-      a label at 5.09:1 (XR-COL-12). The fill and its ink are set together, never separately.
+      a label at 5.09:1. The fill and its ink are set together, never separately.
     - `font-size: var(--ph-text-base)` (16px) so iOS does not auto-zoom when a tab takes focus.
 -->
 <script lang="ts">
@@ -32,7 +32,7 @@
 		/*
 		 * var(--tap), not a smaller literal: touch-targets.test.ts checks every control rule that
 		 * declares a box, and a 38px pill would be the one control on the settings page under the 44px
-		 * floor. The token is NAMED rather than restated (XR-PH-01).
+		 * floor. The token is NAMED rather than restated.
 		 */
 		min-height: var(--tap);
 		border: 0;
@@ -45,7 +45,7 @@
 		cursor: pointer;
 	}
 	/*
-	 * --accent + --on-accent is the certified pair that carries a label: 5.09:1 (XR-COL-12 — the
+	 * --accent + --on-accent is the certified pair that carries a label: 5.09:1 (the
 	 * fill and its ink are set together, never separately). `data-active` is Bits UI's own state
 	 * attribute, verified by a real mount rather than assumed.
 	 */

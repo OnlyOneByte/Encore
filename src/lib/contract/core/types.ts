@@ -11,8 +11,7 @@ import type { TvBackgroundStyle } from '../presentation/tv-background';
  * `youtube` and `local` are also ACQUIRABLE - a fetcher knows how to pull their bytes (see
  * fetchers.ts). `spotify` is a SEARCH / metadata source ONLY: Spotify gives clean canonical
  * artist/title/duration where a YouTube upload title has to be reverse-engineered, but its bytes
- * are never fetched from Spotify. The audio is still acquired from YouTube (the annotator pattern,
- * docs/DECISIONS.md), so a spotify-sourced media is not processable - `isProcessableSource` in fetchers.ts
+ * are never fetched from Spotify. The audio is still acquired from YouTube (the annotator pattern,), so a spotify-sourced media is not processable - `isProcessableSource` in fetchers.ts
  * is the one authority that says so, and every layer that decides whether a process is possible asks it.
  * (`fetcherFor` does NOT refuse a spotify source; it returns the default downloader as a floor.)
  * This needs no DB migration (the column is plain text, no CHECK) and no fetch:spotify capability.

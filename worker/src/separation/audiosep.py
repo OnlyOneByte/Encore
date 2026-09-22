@@ -11,9 +11,8 @@ that `bs-roformer-infer` cannot. `bs_roformer`'s `get_model_from_config` impleme
 through that package (see roformer.py's `#: KNOWN MISMATCH` note). audio-separator runs them as a
 first-class MDXC path. The measured win is large: `mel instrumental_becruily` benchmarks at rt 1.28 on
 the reference box (32-core Graviton 3, CPU) versus `bs_roformer-1297` at rt 13.29 — a 10.4x
-RoFormer-family instrumental process, no GPU (docs/benchmarks/SUMMARY.md §4). Adopted ALONGSIDE
-`bs-roformer-infer`, not replacing it — both engines, issue an earlier change owner ruling Q1(b)
-(docs/DECISIONS.md).
+RoFormer-family instrumental process, no GPU (measured). Adopted ALONGSIDE
+`bs-roformer-infer`, not replacing it — both engines, issue an earlier change owner ruling Q1(b).
 
 INTEGRATION: audio-separator exposes a CLI (`audio-separator <input> --model_filename <ckpt>
 --model_file_dir <dir> --output_dir <dir> --output_format FLAC`), confirmed against the repo's own

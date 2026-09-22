@@ -7,7 +7,7 @@
 //    generator. Reading fills out of a JSON file gives that up: nothing about an import guarantees the
 //    48 values clear `isLegibleSingerColor`, and a stop that does not would be a guest whose identity dot
 //    is invisible on somebody else's TV — the failure the validator exists for, and one they cannot see.
-//    The registry's own guard (palette-registry-820.test.ts) measures the CHROMATIC variant against the
+//    The registry's own guard (palette-registry.test.ts) measures the CHROMATIC variant against the
 //    role floors; this measures the UNIFORM variant against the app's own singer-colour gate, which is a
 //    different function with a different threshold.
 //

@@ -3,14 +3,14 @@
 Encore 48-stop player palette, where a guest's identity colour IS their UI accent.
 
 This is the generator behind `src/shared/presentation/player-palette-48.json`, the one machine-readable
-source of truth for the 48 stops (`XR-COL-01`). Run it from anywhere; paths are repo-relative:
+source of truth for the 48 stops. Run it from anywhere; paths are repo-relative:
 
     python3 src/shared/scripts/_player_palette.py
 
 The surfaces every figure is measured against are READ from `src/app.css`, never restated
-here (`XR-COL-04`) -- see `css_token` below for what that cost when they were restated. Regenerating
-against unchanged inputs reproduces the committed registry byte-for-byte, which is `XR-COL-02` and
-what `palette-registry-820.test.ts` asserts.
+here -- see `css_token` below for what that cost when they were restated. Regenerating
+against unchanged inputs reproduces the committed registry byte-for-byte, which is the reproducibility
+claim `palette-registry.test.ts` asserts.
 
 Two variants, both fully measured:
 
@@ -89,7 +89,7 @@ def css_token(name):
     `#060a18 / #131a2e / #1a2238` — the mockup's surfaces, not the app's — so all 192 measured
     figures described a card the app never paints, and six stops shipped below AA as ink. Reading the
     token means changing `--card` in `app.css` changes what a regeneration produces, which is
-    `XR-COL-04`'s second acceptance clause. Same regex as the guard in `colors.test.ts`, and it
+    the second acceptance clause. Same regex as the guard in `colors.test.ts`, and it
     raises rather than defaulting so a renamed token stops the build instead of measuring a stale
     copy.
     """
@@ -337,7 +337,7 @@ def build(mode):
             if d < worst:
                 worst, pair = d, (stops[a]["name"], stops[b]["name"])
 
-    # Strict comparisons, deliberately. `XR-COL-04`'s acceptance is that every stop clears its floor
+    # Strict comparisons, deliberately. the acceptance is that every stop clears its floor
     # with margin > 0 -- a stop sitting exactly ON the floor is what this issue is about, so it
     # counts as a failure here. The figures compared are the rounded ones the registry publishes, so
     # a true 4.502 rounds to 4.5 and is flagged: erring toward a loud failure is the point.

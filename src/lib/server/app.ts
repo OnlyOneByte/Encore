@@ -248,7 +248,7 @@ export function getApp(): EncoreApp {
 	hydrateMediaCatalog(mediaRepo.all(), mediaById);
 
 	// Re-derive any readiness gate the durable row claims is in flight while the job ledger says nothing
-	// alive can ever finish it (XR-JOB-04). SYNCHRONOUS and here, immediately after the hydrate that
+	// alive can ever finish it. SYNCHRONOUS and here, immediately after the hydrate that
 	// reads the stale value and BEFORE the party is serveable — unlike the detached passes below this
 	// does no directory scan and no network call (a handful of indexed lookups over only the rows that
 	// claim to be processing), and its whole purpose is that a stranded song must not be observable as
