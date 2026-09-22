@@ -24,7 +24,7 @@ const COMPOSITED_PROPS = new Set([
 
 // every .svelte AND .css file under a directory — the CSS lives in both component <style> blocks
 // and the shared design system (src/app.css), so a scan restricted to .svelte is blind to app.css.
-// The walk itself is `styleFiles` in @encore/test-support/scan (XR-VER-14): it was a private copy here,
+// The walk itself is `styleFiles` in @encore/test-support/scan: it was a private copy here,
 // which is why widening this guard's scope left every other guard's scope untouched.
 function assertScanIntact(files: string[]): void {
 	expect(files.some((f) => f.endsWith('app.css'))).toBe(true);
@@ -620,7 +620,7 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 });
 
 /*
- * ── The utility-class arm (XR-VER-15) ──────────────────────────────────────────────────
+ * ── The utility-class arm ──────────────────────────────────────────────────
  *
  * THE INVISIBILITY TRAP THIS CLOSES. Every scan above reads CSS DECLARATIONS or Svelte DIRECTIVES. A
  * Tailwind-style utility class expresses the same motion with NEITHER: `class="transition-all"` puts no
@@ -637,14 +637,14 @@ test('every animation declaration honours prefers-reduced-motion', () => {
  * file's single source of truth. Two consequences worth stating, because both are deliberate:
  *   - an UNKNOWN utility key (a project-specific `transition-foo`) is an OFFENDER, not a skip. A
  *     blocklist that waves through what it cannot parse is vacuous exactly where utilities are most
- *     idiomatic (XR-VER-15 Check).
+ *     idiomatic.
  *   - a utility that resolves to a real property outside COMPOSITED_PROPS reds and NAMES that property.
  *     The correct response is to add the property to COMPOSITED_PROPS as a recorded decision — never to
- *     delete this arm. See XR-VER-06 and `non-vacuity-floors.test.ts`.
+ *     delete this arm. See and `non-vacuity-floors.test.ts`.
  */
 
 // Tailwind's built-in `transition-*` keys and the properties each animates, plus the layout-hazard keys
-// XR-VER-15 enumerates (a config can mint these, and `spacing`/`inset`/`gap`/`flex` are layout by
+// the guard enumerates (a config can mint these, and `spacing`/`inset`/`gap`/`flex` are layout by
 // definition). `all` resolves to the pseudo-property `all`, which is never in COMPOSITED_PROPS — that is
 // how `transition-all`, the row's headline case, reds.
 const UTILITY_TRANSITION_PROPS: Record<string, string[]> = {
@@ -656,7 +656,7 @@ const UTILITY_TRANSITION_PROPS: Record<string, string[]> = {
 	opacity: ['opacity'],
 	shadow: ['box-shadow'],
 	transform: ['transform'],
-	// layout-hazard keys named by XR-VER-15
+	// layout-hazard keys named by
 	width: ['width'],
 	height: ['height'],
 	spacing: ['margin', 'padding'],
@@ -689,7 +689,7 @@ function utilityOffenders(tokens: string[]): string[] {
 	});
 	for (const t of tokens) {
 		if (t === 'UNRESOLVED') {
-			// XR-VER-15 Check: a class expression the scan cannot resolve is where a utility hides, so it
+			// Check: a class expression the scan cannot resolve is where a utility hides, so it
 			// is an offender. Zero such expressions exist today, so this cannot fire on current source.
 			out.push('unresolvable class expression (a motion utility here would be invisible)');
 			continue;
@@ -717,7 +717,7 @@ function utilityOffenders(tokens: string[]): string[] {
 		}
 		// duration/ease/delay: inert on their own, and correct beside an allowed transition. Reported only
 		// when nothing in the list says WHAT they are timing — then they are tuning motion this scan
-		// cannot attribute, which is the invisibility XR-VER-15 exists to close.
+		// cannot attribute, which is the invisibility the rule exists to close.
 		if (!allowedTransition) out.push(`timing utility \`${t}\` with no resolvable transition property`);
 	}
 	return out;
@@ -771,8 +771,8 @@ function classLists(markup: string): { where: string; tokens: string[] }[] {
 
 test('no utility class expresses motion the declaration scans cannot see', () => {
 	const svelte = [...svelteFiles(at('src/lib')), ...svelteFiles(at('src/routes'))];
-	// Non-vacuity floor + which-files sentinel, the same pair tests 1-3 carry (XR-VER-05). A firing
-	// floor is a FINDING, never a number to adjust — XR-VER-06.
+	// Non-vacuity floor + which-files sentinel, the same pair tests 1-3 carry. A firing
+	// floor is a FINDING, never a number to adjust.
 	expect(svelte.length).toBeGreaterThanOrEqual(20); // @nvf-floor svelte.length
 	expect(svelte.some((f) => f.includes(join('lib', 'tv')))).toBe(true);
 
@@ -811,7 +811,7 @@ test('no utility class expresses motion the declaration scans cannot see', () =>
 	}
 	expect(offenders).toEqual([]);
 	// Non-vacuity for the exemption itself: if `ui/**` ever stops being scanned, the skip above is
-	// silently unnecessary and this arm has quietly narrowed. XR-VER-05.
+	// silently unnecessary and this arm has quietly narrowed..
 	expect(svelte.some((f) => f.includes(UI_COPY_IN))).toBe(true);
 });
 
@@ -825,7 +825,7 @@ test('no motion utility name appears anywhere in source, in any position', () =>
 	expect(netFiles.length).toBeGreaterThanOrEqual(40); // @nvf-floor netFiles.length
 
 	// Only the names that are unambiguously motion utilities: `transition-all` and the layout-hazard
-	// keys XR-VER-15 enumerates, plus `animate-<name>`. A bare `duration-`/`ease-` is deliberately NOT
+	// keys the guard enumerates, plus `animate-<name>`. A bare `duration-`/`ease-` is deliberately NOT
 	// in the net — those are ordinary English fragments and the extractor above judges them in context.
 	const LAYOUT_KEYS = Object.keys(UTILITY_TRANSITION_PROPS).filter(
 		(k) => k !== '' && k !== 'none' && !UTILITY_TRANSITION_PROPS[k]!.every((p) => COMPOSITED_PROPS.has(p))

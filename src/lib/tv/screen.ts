@@ -161,7 +161,7 @@ export function isUnreachableJoinOrigin(origin: string | null | undefined): bool
 }
 
 /**
- * The three guest-facing steps of the still-processing takeover (XR-TV-15).
+ * The three guest-facing steps of the still-processing takeover.
  *
  * The media model has FIVE stages (`MEDIA_STAGES`) but the takeover shows THREE, so the collapse is a
  * real mapping — and if the TV hand-wrote it, the wall and the phone could describe the same song
@@ -170,7 +170,7 @@ export function isUnreachableJoinOrigin(origin: string | null | undefined): bool
 export const PROCESS_STEPS = ['Downloaded', 'Removing vocals', 'Timing the lyrics'] as const;
 
 /**
- * Map a `MediaStatus` onto the three displayed process steps (XR-TV-15). TOTAL over every status: exactly
+ * Map a `MediaStatus` onto the three displayed process steps. TOTAL over every status: exactly
  * one step is current for any value, so the takeover never renders with no step marked. Returns the
  * current step `index` (0-based into `PROCESS_STEPS`) and a `fraction` for the bounded progress bar.
  *

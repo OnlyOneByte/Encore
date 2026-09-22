@@ -2,7 +2,7 @@
 the "many layers of checks" the owner asked for (ruling 2026-09-07 20:51Z).
 
 WHAT A `part` IS. A stable, ABSTRACT label — `"A"`, `"B"`, … — for which voice sings a line. Abstract
-on purpose: #632's ROADMAP/ARCHITECTURE note keeps the plays table `singer_id`-free, and the render
+on purpose: the architecture note keeps the plays table `singer_id`-free, and the render
 half only needs "same part → same colour", never a name. It rides a line exactly as
 `romanization` does (`lyrics.ts:LyricLine.part?`): display-only, absent when the song is not a
 confident duet, and it drives no ball.

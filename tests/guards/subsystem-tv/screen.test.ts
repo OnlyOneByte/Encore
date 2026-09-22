@@ -198,7 +198,7 @@ describe('the element-advancing signal is wired from the master element to the g
 	});
 });
 
-describe('processStep (XR-TV-15)', () => {
+describe('processStep', () => {
 	// The still-processing takeover shows THREE steps while the media model has FIVE stages, so the
 	// collapse is a real mapping. It must be TOTAL over MediaStatus so the takeover never renders with
 	// no step marked, and the labels are guest words shared in shape with the phone.

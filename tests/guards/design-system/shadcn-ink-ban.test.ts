@@ -1,5 +1,5 @@
 /*
- * THE INK BAN, MOVED FROM EXISTENCE TO USE (the shadcn restructure, XR-COL-14 successor).
+ * THE INK BAN, MOVED FROM EXISTENCE TO USE (the shadcn restructure successor).
  *
  * `app.css`'s `@theme` used to register no colour at all, so `text-primary` could not be minted. That
  * prevented the class from EXISTING — and it also made every vendored shadcn component unusable

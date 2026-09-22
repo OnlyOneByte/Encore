@@ -1,4 +1,4 @@
-// guard (XR-TV-16/17): the attract phrase SET is admissible by construction, and the
+// guard: the attract phrase SET is admissible by construction, and the
 // shuffled bag is a per-pass permutation with no repeat until the whole set has shown.
 //
 // Both are DATA claims, decidable without a DOM: the admission rule reads the exported array's string
@@ -21,7 +21,7 @@ test('the phrase set is exactly the seven ratified phrases', () => {
 	]);
 });
 
-test('XR-TV-16: every phrase is admissible — at most 24 characters', () => {
+test('every phrase is admissible — at most 24 characters', () => {
 	// The whole point of enforcing the rule against the DATA: a copy edit that overflows the fixed
 	// two-line box (measured at 84px/900 in the 820px panel) reds HERE instead of spilling to three
 	// lines on a wall. The longest admitted phrase, "You know all the words." at 23, sets the box height.
@@ -31,14 +31,14 @@ test('XR-TV-16: every phrase is admissible — at most 24 characters', () => {
 	expect(MAX_PHRASE_CHARS).toBe(24);
 });
 
-test('XR-TV-16: a 30-character control phrase would be rejected by the same rule', () => {
+test('a 30-character control phrase would be rejected by the same rule', () => {
 	// The measured over-length control from the spec: "Nobody is judging you tonight." overflows to
 	// three lines. It must fail the admission bound the set passes, or the bound enforces nothing.
 	const control = 'Nobody is judging you tonight.';
 	expect(control.length).toBeGreaterThan(MAX_PHRASE_CHARS);
 });
 
-test('XR-TV-17: each pass is a permutation of the whole set', () => {
+test('each pass is a permutation of the whole set', () => {
 	const bag = makePhraseBag(seedFromString('room-alpha'));
 	const n = ATTRACT_PHRASES.length;
 	for (let pass = 0; pass < 3; pass++) {
@@ -48,7 +48,7 @@ test('XR-TV-17: each pass is a permutation of the whole set', () => {
 	}
 });
 
-test('XR-TV-17: no phrase repeats across the pass seam', () => {
+test('no phrase repeats across the pass seam', () => {
 	// The one place a repeat could sneak in: the last draw of one pass and the first of the next. Draw
 	// several full passes and assert no two ADJACENT draws are equal anywhere, including every seam.
 	const n = ATTRACT_PHRASES.length;
@@ -61,7 +61,7 @@ test('XR-TV-17: no phrase repeats across the pass seam', () => {
 	}
 });
 
-test('XR-TV-17: the bag is deterministic in its seed', () => {
+test('the bag is deterministic in its seed', () => {
 	const a = makePhraseBag(12345);
 	const b = makePhraseBag(12345);
 	const seqA = Array.from({ length: 20 }, () => a.next());
@@ -73,7 +73,7 @@ test('XR-TV-17: the bag is deterministic in its seed', () => {
 	expect(seqC).not.toEqual(seqA);
 });
 
-test('XR-TV-17: the reduced-motion phrase is a member of the set and stable per seed', () => {
+test('the reduced-motion phrase is a member of the set and stable per seed', () => {
 	for (const room of ['x', 'y', 'z', 'the-party']) {
 		const seed = seedFromString(room);
 		const held = reducedMotionPhrase(seed);

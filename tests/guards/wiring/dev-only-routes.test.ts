@@ -33,7 +33,7 @@ const GATE = 'src/routes/components/+page.server.ts';
  */
 const FIXTURE_CONSUMERS = [
 	'tests/guards/hygiene/queue-pending-add.test.ts',
-	'tests/guards/hygiene/phone-home-832.test.ts',
+	'tests/guards/hygiene/phone-home.test.ts',
 	'tests/guards/design-system/processing-card-longname-fixture.test.ts',
 	'tests/guards/design-system/lyrics-singer-colour-gallery.test.ts',
 	'tests/guards/layout/lyrics-scale-gallery.test.ts'

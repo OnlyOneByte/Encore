@@ -49,7 +49,7 @@ test('the processing copy explains the wait rather than asking for another pick'
 	 * "tap Turn" named a control that no longer exists anywhere: SongRow's actions are icon-only and
 	 * "Add a turn" survives only as an `aria-label`, so the lobby's prompt now reads "pick a song". Once
 	 * the old string was gone from the file, asserting its ABSENCE from one branch was satisfied by every
-	 * possible edit — the vacuity XR-VER-07 rejects. The claim was never about those two words; it is that
+	 * possible edit — the vacuity the rule rejects. The claim was never about those two words; it is that
 	 * the processing branch must not ask for ANOTHER pick while the last one is still cooking. So this
 	 * pins the prompt's actual verb, which is also what the not-processing branch is asserted to carry.
 	 */

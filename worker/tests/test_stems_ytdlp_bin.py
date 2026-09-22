@@ -115,7 +115,7 @@ async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_stems_plan(tmp_
 
 
 def test_every_plan_step_holds_the_configured_bin_not_the_default():
-    """CLASS guard (issue #316's own fix direction). Build each registered plan with a DISTINCTIVE
+    """CLASS guard (the original fix direction). Build each registered plan with a DISTINCTIVE
     configured value for every `*_bin` it accepts, then assert no step in any plan still carries the
     module default. This catches the next binary threaded into two plans out of three — including the N1
     row (align's own AcquireAudio) that was silent before this issue — in one assertion.

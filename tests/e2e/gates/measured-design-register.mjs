@@ -25,7 +25,7 @@
  *
  * The gate FAILS when a quarantined control reaches the 44px floor, not just when it regresses. A
  * quarantine entry whose defect no longer reproduces is a guard that can no longer fail, which is
- * what XR-VER-07 exists to stop; and because these numbers come from a real browser, "no longer
+ * what the rule exists to stop; and because these numbers come from a real browser, "no longer
  * reproduces" can also mean "this box ships a different UA default", which is equally something a
  * reader must be told rather than a green run. Either way the resolution is to re-decide the entry
  * on the record, never to nudge a number.
@@ -42,7 +42,7 @@ import { repoRoot as REPO_ROOT } from '../lib/repo-root.mjs';
  * too". The gate does read the token live per box; THIS constant did not, so the sentence was true of
  * the gate and false of the register, and the two agreed on 44 only because nobody had moved the token.
  * `--tap: 48px` moved the design and left this measuring against 44, which is the same
- * pinned-number/unbound-expression defect XR-PH-01 names in the components.
+ * pinned-number/unbound-expression defect the standard names in the components.
  *
  * `TAP_FLOOR` is the half that must stay a written-down number: it is the commitment, not the current
  * value, so raising `--tap` is allowed and lowering it below the commitment is not.
@@ -58,17 +58,17 @@ function readTapToken() {
 	// a token below the commitment would quietly lower the measured floor for every control on every
 	// viewport, and the gate would report a clean pass while doing it.
 	if (tap < TAP_FLOOR) {
-		throw new Error(`--tap is ${tap}px, below the ${TAP_FLOOR}px floor this app committed to (XR-VER-09)`);
+		throw new Error(`--tap is ${tap}px, below the ${TAP_FLOOR}px floor this app committed to`);
 	}
 	return tap;
 }
 
-/** The 16px iOS-zoom threshold — XR-VER-10. A WebKit behaviour, not a published success criterion. */
+/** The 16px iOS-zoom threshold. A WebKit behaviour, not a published success criterion. */
 export const MIN_FIELD_PX = 16;
 
 /*
  * RETIRED — `SHEET_CAP_FRACTION = 0.82`, the queue sheet's cap as a fraction of the visual
- * viewport (XR-VER-11). Its source declaration was `max-height: 82dvh` in QueueSheet.svelte, and the
+ * viewport. Its source declaration was `max-height: 82dvh` in QueueSheet.svelte, and the
  * whole drawer surface was deleted, so the number had nothing left to mirror and its CLAIM 3 arm was
  * removed rather than re-pointed: nothing docked caps itself in a viewport fraction now — the docked
  * band is sized by its own content and published as --dock-h. Do not re-add it without a surface that
@@ -79,7 +79,7 @@ export const MIN_FIELD_PX = 16;
 export const SIMULATED_BOTTOM_INSET = 34;
 
 /**
- * The viewports every control is measured at — XR-VER-09's acceptance names these three.
+ * The viewports every control is measured at — the acceptance names these three.
  * @type {{ name: string, w: number, h: number }[]}
  */
 export const VIEWPORTS = [
@@ -103,7 +103,7 @@ export const CONTROL_SELECTOR = [
 	'[tabindex]:not([tabindex="-1"])'
 ].join(', ');
 
-/** Text-entry input types, for XR-VER-10. A range or colour input has no text to zoom. */
+/** Text-entry input types, for. A range or colour input has no text to zoom. */
 export const TEXT_INPUT_TYPES = ['text', 'search', 'email', 'url', 'tel', 'number', 'password', ''];
 
 /*
@@ -124,7 +124,7 @@ export const INERT_SELECTOR = '[inert]';
 /** The wrapper whose text names a bare control (a checkbox has no accessible name of its own). */
 export const LABEL_SELECTOR = 'label';
 
-/** The state XR-VER-12 is about. An element not in it is UNMEASURED, never satisfied (XR-VER-03). */
+/** The state is about. An element not in it is UNMEASURED, never satisfied. */
 export const FOCUS_VISIBLE = ':focus-visible';
 
 /**
@@ -141,7 +141,7 @@ export const FOCUS_VISIBLE = ':focus-visible';
  * ── EMPTIED ────────────────────────────────────────────────────────────────────────────────────
  *
  * The four entries this gate first surfaced are all resolved now, and each is recorded in RETIRED
- * below rather than deleted — XR-VER-06/07: a quarantine whose defect no longer reproduces is
+ * below rather than deleted — a quarantine whose defect no longer reproduces is
  * re-decided on the record, never a number nudged and never a line silently dropped. Three were real
  * CSS shortfalls closed by one declaration each (min-height: var(--tap)); the fourth was a false
  * positive of the gate's own reader, closed by crediting the wrapping label's hit extent in
@@ -153,7 +153,7 @@ export const FOCUS_VISIBLE = ':focus-visible';
 export const QUARANTINE = [];
 
 /**
- * Controls that WERE quarantined and are now resolved, kept on the record (XR-VER-06/07). The same
+ * Controls that WERE quarantined and are now resolved, kept on the record. The same
  * shape as `non-vacuity-floors.test.ts`'s RETIRED map: `was` is the number it measured while
  * quarantined and `reason` names what changed so a reader sees why it left the set rather than a
  * silent deletion. `measured-design-gate.test.ts` checks each reason is substantive.
@@ -192,14 +192,14 @@ export const RETIRED = [
 ];
 
 /**
- * NON-VACUITY FLOORS FOR THE GATE ITSELF — XR-VER-05 applies to a measured guard as much as to a
+ * NON-VACUITY FLOORS FOR THE GATE ITSELF — the rule applies to a measured guard as much as to a
  * source scan. A driver that navigates successfully but finds no controls (a changed selector, a
  * route that now redirects, a join that silently failed) would otherwise report every assertion
  * satisfied over an empty set. Measured on 2026-09-09 against `origin/main` d325c64: 7 controls on
  * the collapsed home route, 22 on /settings You, 1 on /metrics, 62 in total across the whole drive
  * at one viewport. The floors sit well under those so ordinary UI churn does not trip them.
  *
- * A firing floor here is a FINDING, never a number to adjust — see XR-VER-06.
+ * A firing floor here is a FINDING, never a number to adjust —.
  */
 export const FLOORS = {
 	/** interactive controls measured, summed over every surface and every viewport */

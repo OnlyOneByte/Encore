@@ -1,5 +1,5 @@
 /*
- * ── RETIRED BY'S RESTRUCTURE (XR-VER-07) ────────────────────────────────────────────────────────
+ * ── RETIRED BY'S RESTRUCTURE ────────────────────────────────────────────────────────
  *
  * This file asserted that a copied-in component references NO shadcn theme name — `bg-primary`,
  * `text-muted-foreground`, `border-ring` — because `app.css` defined none of them, so such a class
@@ -12,7 +12,7 @@
  * them would forbid the thing the architecture is built on.
  *
  * SUCCESSORS, which together cover strictly more than this file did:
- *   - `shadcn-ink-ban-913.test.ts` — bans the INK direction (`text-primary`, `text-destructive`, …) in
+ *   - `shadcn-ink-ban.test.ts` — bans the INK direction (`text-primary`, `text-destructive`, …) in
  *     app source, exempting the vendored tree by path. That is the real hazard: `--accent` as ink
  *     measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2, 2.90 on --card-tint2. Four AA failures.
  *   - `tailwind-toolchain.test.ts` — still bans registering a PLAYER HUE in `@theme`, whose per-stop

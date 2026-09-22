@@ -1,15 +1,15 @@
 // @ts-check
 /*
- * XR-PH-02 — REFLOW AT 320 CSS px AND 200% TEXT SCALE, MEASURED.
+ * REFLOW AT 320 CSS px AND 200% TEXT SCALE, MEASURED.
  *
- * `docs/ux/02-phone.md` XR-PH-02 asks that every phone surface reflow at a 320px viewport with the
+ * the standard asks that every phone surface reflow at a 320px viewport with the
  * guest's text size at 200%: `scrollWidth <= clientWidth` on the scrolling element, no clipping, no
  * horizontal scrollbar (SC 1.4.10 Reflow, AA). Its own Check row says the measurement is
  * "Rendered-DOM or driven-browser measurement. **Not a source scan** — both halves are geometry",
- * and defers to the rendered rung XR-PH-21. This file is that rendered rung for the reflow half.
+ * and defers to the rendered rung. This file is that rendered rung for the reflow half.
  *
  * WHY IT HAD TO BE A DRIVEN BROWSER. `/stats` overflowed a 320px viewport by 8px at 200%
- * while `phone-inventory.test.ts`'s XR-PH-02 arm was green, and that arm was not broken: it flags a
+ * while `phone-inventory.test.ts`'s arm was green, and that arm was not broken: it flags a
  * single declaration wider than 320px, and this overflow was a SUM — two grid tracks plus two cards'
  * padding, against a word that cannot wrap once type doubles. No scan over declarations can add that
  * up, because the addends are resolved lengths that only exist after layout. Read the scan arm as the
@@ -150,7 +150,7 @@ const READ = `(() => {
 		const r = el.getBoundingClientRect();
 		if (r.width === 0 && r.height === 0) continue;
 		if (r.right <= de.clientWidth + 0.5) continue;
-		const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\\s+/).join('.') : '';
+		const cls = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\\s+/).join('.'): '';
 		out.offenders.push({
 			sel: el.tagName.toLowerCase() + cls,
 			right: Math.round(r.right * 100) / 100,
@@ -216,14 +216,14 @@ console.log(`viewport ${VIEWPORT_W}x${VIEWPORT_H} @ DPR 2, root font-size ${SCAL
 
 await measure('/', '/');
 // `/join` was retired (Q2-A): the unjoined `/` above IS the join surface now, and its six-segment
-// code entry (XR-PH-14) is the widest fixed row on it — six boxes in a flex row at a 32px root is the
+// code entry is the widest fixed row on it — six boxes in a flex row at a 32px root is the
 // exact reflow class this rung is about, and `measure('/', '/')` renders it (no session → unjoined).
 await measure('/settings', '/settings');
 await measure('/stats', '/stats');
 
 /*
  * The browse screen is `/` with a session, which is a different layout from the unjoined `/` above —
- * it adds the search dock and the queue peek, the two bottom-docked bands XR-PH-02's rationale names.
+ * it adds the search dock and the queue peek, the two bottom-docked bands the rationale names.
  * Joining from inside the page is what puts the cookie on this context; a fetch from the probe process
  * would authenticate the probe and leave the browser unjoined. A unique name per run: singer names are
  * unique per room and a 409 leaves the page sitting on the join screen, which measures as a pass. No
@@ -247,7 +247,7 @@ if (!joined) bail('could not join the ephemeral room, so the browse screen could
  * than a song") that `.chip`'s blanket `white-space: nowrap` turned into an unshrinkable ~230px box,
  * pushing the row — and the browse page — past a 320px viewport. An EMPTY joined room renders no rows
  * at all, so measuring it would be a clean 320 over a surface that never grew the label the criterion
- * is about — the XR-VER-05 vacuity the register exists to forbid, and the reason this arm was rejected once.
+ * is about — the vacuity the register exists to forbid, and the reason this arm was rejected once.
  *
  * So the arm SEARCHES first. `openBrowseFromHome` is the shared post-join step — it reaches the
  * browse screen and its search box the one sanctioned way — and typing into `SEL.search` surfaces the
@@ -275,7 +275,7 @@ await browser.close();
 const failed = checks.filter((c) => !c.ok);
 console.log(`\n${checks.length - failed.length}/${checks.length} passed`);
 if (failed.length) {
-	console.log('\nXR-PH-02 (docs/ux/02-phone.md) is not met — see docs/ux/04-verification.md for the rung.');
+	console.log('\nThe 320px reflow requirement is not met.');
 	process.exit(1);
 }
 // Exit explicitly. The spawned server and browser are live child processes, so an implicit exit never

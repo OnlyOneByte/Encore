@@ -24,7 +24,7 @@
 	 * WHAT A SNAP POINT DOES **NOT** CHANGE, and the test file says this at the one arm that depends on
 	 * it: which elements are MOUNTED. A snap-pointed sheet keeps its whole body in the document and
 	 * translates it below the fold, so placing the sheet at `'80px'` renders exactly the same tree as the
-	 * open snap. Which of the two is on SCREEN is a transform offset — a LAYOUT-rung claim (XR-VER-01),
+	 * open snap. Which of the two is on SCREEN is a transform offset — a LAYOUT-rung claim,
 	 * measured in `tests/e2e/probes/`, not here.
 	 *
 	 * Not shipped: nothing in the app imports it. It sits beside its test, mirroring

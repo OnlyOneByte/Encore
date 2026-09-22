@@ -167,7 +167,7 @@ test('the contract exposes a hook for each surface the flow has to reach', () =>
 
 /*
  * Every .svelte source file under src — the whole surface the flow can drive — comes from
- * `svelteFiles` in @encore/test-support/scan (XR-VER-14). This file used to carry a local walker
+ * `svelteFiles` in @encore/test-support/scan. This file used to carry a local walker
  * that was a VERBATIM copy of it under a different name, so the two could disagree about what the
  * flow's surface even is while the design guards under src/lib kept the other answer.
  */
@@ -175,7 +175,7 @@ test('the contract exposes a hook for each surface the flow has to reach', () =>
 /*
  * `classPresent` — does a token appear as a CLASS in a Svelte source, via `class="…"`, a
  * `class:token` directive, or a `.token` rule in <style>? — is imported from
- * @encore/test-support/scan (XR-VER-14), where its exact-token semantics are documented.
+ * @encore/test-support/scan, where its exact-token semantics are documented.
  * The `G2` case below exercises the shared function directly, so a regression there reds here.
  */
 
@@ -334,13 +334,13 @@ test('every SEL selector resolves to an anchor in the source (the guard, non-vac
 	// and this resolution disagree about what is source, and a dead selector living in a comment stays green.
 	const sources = guardSources();
 
-	// NON-VACUITY FLOOR on the SCANNED POPULATION (XR-VER-14 Acceptance). `unresolved` and
+	// NON-VACUITY FLOOR on the SCANNED POPULATION. `unresolved` and
 	// `unmodelled` are both asserted EMPTY below, and an empty-array assertion is what a working guard
 	// produces AND what a guard reading nothing produces. Over a NARROWED walk — a moved directory, a
 	// copy-in path the walk misses — the surviving files can still carry every SEL anchor while whole
 	// surfaces go unexamined, and nothing says so. The walk finds 27 `.svelte` files under
 	// src today. A firing floor is a FINDING: restore the walk's scope, never lower the
-	// number (XR-VER-06).
+	// number.
 	expect(sources.length).toBeGreaterThanOrEqual(20); // @nvf-floor sources.length
 
 	/*
@@ -727,11 +727,11 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 	],
 	'probes/p14-playhead-vs-process.mjs': ['#ff5cae', 'audio'],
 	/*
-	 * `shoot-913.mjs` is a CAPTURE script, not a driver: it produces the before/after evidence for an
+	 * `shoot.mjs` is a CAPTURE script, not a driver: it produces the before/after evidence for an
 	 * accepted visual change and asserts nothing. It still goes through this guard because the guard
 	 * enumerates every driver under `e2e/` rather than a hand-kept list, which is the right default.
 	 */
-	'shoot-913.mjs': [
+	'shoot.mjs': [
 		// The join colour: a swatch VALUE, the same shape rule p2, p14 and p16 rely on.
 		'#ff5cae',
 		// The join/continue control, found by accessible text — it now sits on the vendored <Button>,
@@ -951,7 +951,7 @@ test('Group B — p8-presence .err[role=alert] moved from KNOWN_OFFENDERS into S
 });
 
 test('Group C — the resolver still models a `tag.class` compound part (re-anchored after the readiness chip row was deleted)', () => {
-	// RE-ANCHORED, ON THE RECORD (XR-VER-07). This test used to pin SEL.readyChip ('.chips button.ok')
+	// RE-ANCHORED, ON THE RECORD. This test used to pin SEL.readyChip ('.chips button.ok')
 	// through two halves: that KNOWN_OFFENDERS no longer waved the literal through, and that the SEL
 	// entry resolved against real source. The readiness chip row was deleted, so both halves now name
 	// markup nothing renders — they cannot hold, and lowering them to a `null` check would leave the
@@ -1161,7 +1161,7 @@ test('G1 — every literal p10-scaling contrast target resolves to a real anchor
 	// the remote pass measures two surfaces — the queue on `/` and the find surface — and the targets
 	// that used to sit in the `/` array (the search field, the row title/byline/actions/chip) moved to
 	// the find array rather than being dropped. Raising this number tracks a probe that covers MORE, and
-	// it must never be lowered to accommodate an array that quietly stopped being scanned (XR-VER-06).
+	// it must never be lowered to accommodate an array that quietly stopped being scanned.
 	expect(arrays.length).toBe(3);
 	expect(lits.length).toBeGreaterThanOrEqual(19); // @nvf-floor lits.length
 

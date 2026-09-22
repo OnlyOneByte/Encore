@@ -1,4 +1,4 @@
-// Spotify resolver — a SEARCH / metadata source only (docs/DECISIONS.md, the annotator pattern).
+// Spotify resolver — a SEARCH / metadata source only (the annotator pattern).
 // A Spotify hit carries clean canonical artist/title/duration, but its bytes are never fetched from
 // Spotify: the audio is still acquired from YouTube, and `fetcherFor` refuses a spotify source. There
 // is no fetch:spotify worker capability and no librespot acquisition — that half stays parked.

@@ -1,4 +1,4 @@
-// The attract screen's rotating phrase set and its shuffled-bag order (XR-TV-16/17).
+// The attract screen's rotating phrase set and its shuffled-bag order.
 //
 // The attract screen shows a FIXED `Karaoke` label with one of these phrases rotating beneath it. A
 // guest who glances up during any phrase still learns what they are looking at (the label never
@@ -12,7 +12,7 @@
  * The seven ratified phrases, in their canonical (pre-shuffle) order. This is the source of truth for
  * the copy — the mockup's `.pgrid` and `.film` are renders of exactly this set.
  *
- * ADMISSION RULE (XR-TV-16): every phrase is ≤ MAX_PHRASE_CHARS. Measured in-browser at 84px/900 in
+ * ADMISSION RULE: every phrase is ≤ MAX_PHRASE_CHARS. Measured in-browser at 84px/900 in
  * the 820px attract panel: all seven fit within two lines (the longest, "You know all the words." at
  * 23 chars, is the one that sets the fixed box height); a 30-char control overflows to three lines.
  * 24 is a chosen boundary inside the measured [23 fits, 30 fails] bracket, with one char of headroom.
@@ -32,7 +32,7 @@ export const ATTRACT_PHRASES = [
 /**
  * The admission ceiling, in characters. A phrase longer than this overflows the fixed two-line box at
  * the attract scale, so it is rejected by `phrases.test.ts` at the DATA layer rather than discovered
- * as a three-line spill on a wall. See XR-TV-16 for the measured derivation.
+ * as a three-line spill on a wall. See for the measured derivation.
  */
 export const MAX_PHRASE_CHARS = 24;
 
@@ -80,7 +80,7 @@ function shuffledIndices(n: number, rng: () => number): number[] {
 }
 
 /**
- * The shuffled bag (XR-TV-17). Draws phrases as a random permutation reseeded per room: each pass is
+ * The shuffled bag. Draws phrases as a random permutation reseeded per room: each pass is
  * the whole set in a shuffled order, and when a pass is exhausted the next pass is a FRESH shuffle — so
  * every phrase is seen once per pass and no phrase repeats until all seven have shown. The only place
  * a repeat could sneak in is across the seam between two passes (the last of pass N and the first of
@@ -126,7 +126,7 @@ export function makePhraseBag(seed: number, phrases: readonly string[] = ATTRACT
 }
 
 /**
- * The single phrase held under `prefers-reduced-motion: reduce` (XR-TV-17, XR-TV-05). One phrase is
+ * The single phrase held under `prefers-reduced-motion: reduce`. One phrase is
  * chosen per room from the seed and held for the session with no crossfade — Minecraft's own splash
  * behaviour, the reference rather than a lesser version. Deterministic in the seed so the choice is
  * stable for a room.

@@ -3,7 +3,7 @@
 //
 // Source scans over the TV route + app.css, in the same shape as stage-scale.test.ts / motion.test.ts.
 // The RENDERED-geometry claims (identical left-column bounds across phrases, 12-guest no-overflow) are
-// XR-TV-19's job and live in the measured gate; these pin the structural preconditions that make those
+// the job and live in the measured gate; these pin the structural preconditions that make those
 // claims true, and mutation-red on the specific hunk each names.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -36,7 +36,7 @@ test('XR-TV: the room code is the largest type element on the attract screen', (
 	expect(code, '--tv-code must be a rem token').not.toBeNull();
 	// The other type tokens ACTUALLY rendered on the attract screen: the wordmark + phrase label AND the
 	// typed join URL all use --tv-name (the URL sits at the mockup's 44px budget so it never breaks
-	// mid-token — XR-TV-19), the rotating phrase is --tv-phrase, the "Go to"/"or scan" steps are
+	// mid-token), the rotating phrase is --tv-phrase, the "Go to"/"or scan" steps are
 	// --tv-body / --tv-small. NOT --tv-joinurl (nothing on the attract renders it any more — see the
 	// jt-url assertion below), and NOT --tv-hero / --tv-takeover-name (those are the takeover screens,
 	// which the attract never renders).
@@ -53,7 +53,7 @@ test('XR-TV: the room code is the largest type element on the attract screen', (
 	expect(jtCode).toContain('font-size: var(--tv-code)');
 	expect(clean).toContain('class="jt-code"');
 	// And the join URL must actually render in the --tv-name (44px) tier, NOT the 88px --tv-joinurl one
-	// (XR-TV-19). Ordering alone cannot see this — both 44px and 88px are smaller than the code — so pin
+	//. Ordering alone cannot see this — both 44px and 88px are smaller than the code — so pin
 	// the RENDERED tier here: reverting `.jt-url` back to var(--tv-joinurl) (the mid-token-break
 	// regression) reds this assertion. Mirrors the jt-code shape above: "the markup must actually render
 	// … or the token ordering guards nothing."
@@ -66,7 +66,7 @@ test('XR-TV: the room code is the largest type element on the attract screen', (
 	expect(clean).toContain('class="jt-url"');
 });
 
-test('XR-TV-16: the attract phrase system is wired to the pure phrase module, not a hand-written cycle', () => {
+test('the attract phrase system is wired to the pure phrase module, not a hand-written cycle', () => {
 	const clean = stripComments(ROUTE);
 	// The set and the bag come from the guarded pure module (phrases.ts), so the ≤24-char rule and the
 	// no-repeat bag are enforced at the data layer rather than re-implemented in the component.
@@ -75,7 +75,7 @@ test('XR-TV-16: the attract phrase system is wired to the pure phrase module, no
 	expect(clean).toContain('reducedMotionPhrase');
 });
 
-test('XR-TV-05/17: the phrase crossfade is a CSS animation gated on prefers-reduced-motion, never a Svelte transition', () => {
+test('the phrase crossfade is a CSS animation gated on prefers-reduced-motion, never a Svelte transition', () => {
 	const clean = stripComments(ROUTE);
 	// The crossfade must be a CSS @keyframes on OPACITY, applied only inside a no-preference @media.
 	expect(/@keyframes\s+phrase-fade\s*\{[^}]*opacity/.test(clean)).toBe(true);
@@ -91,7 +91,7 @@ test('XR-TV-05/17: the phrase crossfade is a CSS animation gated on prefers-redu
 	expect(/if\s*\(prefersReducedMotion\)\s*\{[\s\S]*?reducedMotionPhrase/.test(clean)).toBe(true);
 });
 
-test('XR-TV-05/17: no Svelte transition/in/out/animate directive drives the phrase (motion.test.ts also bans these globally)', () => {
+test('no Svelte transition/in/out/animate directive drives the phrase (motion.test.ts also bans these globally)', () => {
 	// A targeted restatement scoped to the attract markup: the phrase must remount via {#key} + CSS,
 	// never a Svelte transition directive, because that runtime ignores prefers-reduced-motion.
 	const clean = stripComments(ROUTE);
@@ -102,7 +102,7 @@ test('XR-TV-05/17: no Svelte transition/in/out/animate directive drives the phra
 	expect(/\b(in|out|animate):(fade|fly|slide|scale|blur)/.test(clean)).toBe(false);
 });
 
-test('XR-TV-13: the join block survives every takeover, dimmed to 72%, in the bottom-right slot', () => {
+test('the join block survives every takeover, dimmed to 72%, in the bottom-right slot', () => {
 	const clean = stripComments(ROUTE);
 	// The takeover join block renders whenever a transient is up, wrapping the SAME corner JoinBadge the
 	// playing state uses (so the slot does not move), dimmed to 0.72.
@@ -114,7 +114,7 @@ test('XR-TV-13: the join block survives every takeover, dimmed to 72%, in the bo
 	expect(/opacity:\s*0\.72/.test(joinBlock)).toBe(true);
 });
 
-test('XR-TV-11: each takeover owns one colour family, drawn as a family-coloured left border', () => {
+test('each takeover owns one colour family, drawn as a family-coloured left border', () => {
 	const clean = stripComments(ROUTE);
 	// One family each: accent (next), warn (processing), danger (skip) — the border colour is the carrier,
 	// and it differs per state so the three cannot be confused.
@@ -132,7 +132,7 @@ test('XR-TV-11: each takeover owns one colour family, drawn as a family-coloured
 	}
 	// three distinct families, so colour is a real discriminator
 	expect(seen.size).toBe(3);
-	// the retired --accent-strong (XR-COL-11) must not have crept back in
+	// the retired --accent-strong must not have crept back in
 	expect(clean).not.toContain('--accent-strong');
 	// the takeover border width is one shared token
 	expect(/border-left:\s*var\(--tv-takeover-border\)\s*solid/.test(clean)).toBe(true);

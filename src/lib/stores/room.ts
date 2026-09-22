@@ -90,7 +90,7 @@ export class RoomLink {
 	/** The optimistic queue. Undefined until a joined singer connects. */
 	queue: QueueStore | undefined;
 	entries: QueueEntry[] = [];
-	/** What each row is still waiting on, republished on every store emit (XR-PH-10). */
+	/** What each row is still waiting on, republished on every store emit. */
 	pendingKind = new Map<string, 'add' | 'move'>();
 
 	#ws: WsClient | undefined;

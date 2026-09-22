@@ -6,7 +6,7 @@
 // cannot be mounted at all (`lib/tv/wake-lock.test.ts:18-27` states the blocker). Every claim that is
 // a MEASUREMENT rather than a wiring fact — what renders, what the transport's disabled state is,
 // whether the wait clause appears — is asserted against the real DOM in
-// `lib/components/phone-home-832.test.ts` instead, per XR-PH-21.
+// `lib/components/phone-home.test.ts` instead.
 //
 // The shape here matters: these are the assertions that RED when the corresponding relocation hunk is
 // reverted. A markup move is invisible to a behavioural suite (nothing imports the route), so without
@@ -32,7 +32,7 @@
 //   3. THE ZERO-QUERY STATE SHOWS THE LIBRARY, not the queue. Home is queue-only and renders no result
 //      surface at all; the find surface's default content is the songs that can be sung right now.
 //
-// What did NOT change: XR-PH-12 (the band is reserved in normal flow off its MEASURED height, never a
+// What did NOT change: (the band is reserved in normal flow off its MEASURED height, never a
 // constant), the one-env() rule (exactly one `env(safe-area-inset-bottom)` in the docked stack, on the
 // element that actually sits at the bottom edge), the query-driven split, and the retirement of the
 // `+ Add a turn` interstitial. Each is asserted at its new address at the same or greater strength.
@@ -52,7 +52,7 @@
 //      the hero, into its DISCLOSURE BODY" — and both are replaced at greater strength rather than
 //      re-pointed, because the new arrangement supports claims the old one could not make.
 //
-//      XR-PH-15's SUBSTANCE SURVIVES UNCHANGED and is still pinned: a control must not share a drag
+//      the standard's SUBSTANCE SURVIVES UNCHANGED and is still pinned: a control must not share a drag
 //      surface. The hero satisfied it by having no drag surface at all. The drawer HAS one — vaul drags
 //      to dismiss from anywhere in its content by default — and its body is sliders, so the guiding
 //      track's thumb and the dismiss gesture would be the same gesture, with the drawer winning because
@@ -221,7 +221,7 @@ test('the rotation rows render inside <main>, not inside a pull-up sheet', () =>
 	expect(PAGE).not.toContain('findbox');
 });
 
-test('the live singing controls live in the DRAWER, which IS the revealing, and home carries none (XR-PH-15)', () => {
+test('the live singing controls live in the DRAWER, which IS the revealing, and home carries none', () => {
 	/*
 	 * REVERSED (header note §4), and the reversal is the DISCLOSURE rather than the controls. This arm
 	 * required guide / key / range to sit in a `controls()` snippet passed into the hero's Collapsible
@@ -236,7 +236,7 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	 *       so a nested block cannot make the arm report a false absence;
 	 *   (2) that body is gated on a song playing NOW, so an idle room is not offered knobs with nothing
 	 *       behind them — the hero's Collapsible could not claim this, since it rendered regardless;
-	 *   (3) XR-PH-15's substance, which is what the disclosure was standing in for: the guiding-track
+	 *   (3) the substance, which is what the disclosure was standing in for: the guiding-track
 	 *       slider must not share a drag surface with the drawer's dismiss gesture. `handleOnly` on the
 	 *       Root is the mechanism, AND the real vaul Handle it restricts dragging TO is pinned with it —
 	 *       shadcn's copy-in shipped a decorative div, and `handleOnly` with no `data-vaul-handle` in the
@@ -286,7 +286,7 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	);
 	// …and the control really does still exist on the song page, or this is a deletion with no successor.
 	expect(read('src/routes/song/[mediaId]/+page.svelte')).toContain('<LyricsReselect');
-	// The guide's reason-before-the-dead-row note (XR-PH-03) came with them.
+	// The guide's reason-before-the-dead-row note came with them.
 	expect(toolsBody).toContain('class="tools-note"');
 
 	// (2) gated on a song playing NOW — the transport survives an idle room, the knobs do not.
@@ -319,8 +319,8 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	 * no-op: the state, the node it is written to, and the rule that acts on it.
 	 *
 	 * The band cannot take an `expanded`-style prop: a prop of it that CHANGES after mount re-runs the
-	 * drawer's size bindings, and a geometry read on the mount rung is a throw (XR-VER-03). Both reactive
-	 * forms were tried and both took the same three phone-home-832 mounts down — an effect writing `$state`
+	 * drawer's size bindings, and a geometry read on the mount rung is a throw. Both reactive
+	 * forms were tried and both took the same three phone-home mounts down — an effect writing `$state`
 	 * (the write lands in a microtask, where `openDrawer` cannot swallow the refusal) and a `$derived` read
 	 * by `class:sheet-up={…}`. Bisected by deleting the directive alone with the derived left in: 18/18
 	 * passed. So it is the reactive DOM UPDATE that costs, and an imperative attribute write is the escape
@@ -365,7 +365,7 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	);
 
 	/*
-	 * (3) XR-PH-15, at the address the drawer answers it — AND THE ADDRESS MOVED (2026-09-21).
+	 * (3), at the address the drawer answers it — AND THE ADDRESS MOVED (2026-09-21).
 	 *
 	 * It was `handleOnly` on the Root: dragging restricted to the 6px grab bar, which the note at the head of
 	 * this file calls "a whitelist that cannot be forgotten when the next control is added". The top edge of
@@ -382,9 +382,7 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	expect(DRAWER, 'handleOnly is retired — the band row is the drag surface').not.toMatch(
 		/<Drawer\.Root\b[^>]*\bhandleOnly\b/
 	);
-	expect(DRAWER, 'the sheet body must be excluded from dragging (XR-PH-15)').toMatch(
-		/<div class="np-fit" data-vaul-no-drag\b/
-	);
+	expect(DRAWER, 'the sheet body must be excluded from dragging').toMatch(/<div class="np-fit" data-vaul-no-drag\b/);
 	// …and the band's own controls with it: vaul captures the pointer, so a drag begun on the disc would
 	// fire its click on release and pause the song on the way to opening the sheet.
 	const BAND_DRAG = read('src/lib/components/NowPlayingBand.svelte');
@@ -433,7 +431,7 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 		expect(PAGE, `home must not carry the live control \`${gone}\` — the drawer owns it`).not.toContain(gone);
 });
 
-// ── the position, in words, fed from real durations (XR-PH-09) ───────────────────────────────────
+// ── the position, in words, fed from real durations ───────────────────────────────────
 test('the position card is fed the built sentence, not a formatted string from the route', () => {
 	expect(PAGE).toContain('<MyPositionCard words={myPosition} />');
 	// The route must not re-implement the sentence: one builder, unit-tested, no second copy to drift.
@@ -441,7 +439,7 @@ test('the position card is fed the built sentence, not a formatted string from t
 	expect(PAGE).not.toMatch(/You're\s+#\$\{/);
 });
 
-test('the wait is summed from the CATALOG, with an absent media reported as unknown (XR-PH-09)', () => {
+test('the wait is summed from the CATALOG, with an absent media reported as unknown', () => {
 	// `Media.durationSec` is required, so the reachable unknown is an entry whose media is not in the
 	// client catalog. `?? null` is what carries that to the builder — `?? 0` would silently understate
 	// the wait, which is the dishonest rendering the requirement exists to prevent.
@@ -452,10 +450,10 @@ test('the wait is summed from the CATALOG, with an absent media reported as unkn
 	expect(PAGE).toMatch(/if \(nowDurationSec <= 0\) return null;/);
 });
 
-// ── the docked band reserves its space (XR-PH-12) ────────────────────────────────────────────────
-test('the docked band reserves its band in flow instead of overlapping rows (XR-PH-12)', () => {
+// ── the docked band reserves its space ────────────────────────────────────────────────
+test('the docked band reserves its band in flow instead of overlapping rows', () => {
 	/*
-	 * RE-POINTED, AND THE OWNERSHIP IS WHAT MOVED (header note §1, then §5). XR-PH-12 itself is
+	 * RE-POINTED, AND THE OWNERSHIP IS WHAT MOVED (header note §1, then §5). itself is
 	 * untouched: the band's height is MEASURED and reserved in normal flow, never guessed at with a
 	 * constant. What changed is who measures and who reserves. `.search-dock` in this route used to do
 	 * both; then a `.dock` wrapper in `routes/+layout.svelte` bound the band's clientHeight; now the band
@@ -742,8 +740,8 @@ test('every result surface is gated on the query — an empty box shows the LIBR
 	expect(PAGE).not.toContain('search-dock');
 });
 
-// ── the unconfirmed marker (XR-PH-10) ────────────────────────────────────────────────────────────
-test('both row kinds are told WHICH mutation they are waiting on (XR-PH-10)', () => {
+// ── the unconfirmed marker ────────────────────────────────────────────────────────────
+test('both row kinds are told WHICH mutation they are waiting on', () => {
 	const wired = PAGE.match(/pending=\{pendingKind\.get\(e\.id\) \?\? null\}/g) ?? [];
 	expect(wired.length).toBe(2); // QueueRow and ProcessingCard
 	// Both hops since the room-link hoist: the link re-reads the kind map off the QueueStore it now
@@ -796,7 +794,7 @@ test('the shell imports what it is built from — a missing one is a build break
 test('the route no longer declares the transport styles the drawer now owns', () => {
 	// A PURE DELETION, so reverting it re-adds rules nothing selects and the suite stays green — the
 	// exit-20 case §3 names, closed by scanning the real production file. Two arms, because the finding
-	// is not only "unused": the block held four of this route's `44px` literals, and XR-PH-01's whole
+	// is not only "unused": the block held four of this route's `44px` literals, and the whole
 	// point is that a literal is invisible to the standard it is meant to express.
 	expect(PAGE).not.toMatch(/^\s*\.ic\s*\{/m);
 	expect(PAGE).not.toMatch(/^\s*\.ic\.play\s*\{/m);
@@ -837,7 +835,7 @@ test('the route no longer declares the transport styles the drawer now owns', ()
 	/*
 	 * RE-POINTED AT THE COMMENT-STRIPPED SOURCE (§5), and this one is a false positive rather than a moved
 	 * claim. `44px` is an assertion about a DECLARATION — a control sized by the number instead of by
-	 * `--tap`, which is XR-PH-01's whole point. The drawer's snap-point rationale now records its measured
+	 * `--tap`, which is the whole point. The drawer's snap-point rationale now records its measured
 	 * symptoms in an "844px viewport", which CONTAINS that substring, so a raw scan reds on prose
 	 * documenting vaul's translate arithmetic. `DRAWER` is the same production file with its comments
 	 * blanked, which is the only text where a literal-versus-token claim can be about code.

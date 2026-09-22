@@ -13,9 +13,9 @@
  * from inside the sheet and the click was refused as intercepted.
  *
  * WHY THIS IS A UNIT SWEEP AND NOT A RENDERED ARM. A translate offset is a LAYOUT-rung claim
- * (XR-VER-01), and `NowPlayingDrawer` cannot be mounted on the rung below it at all — its own
+ *, and `NowPlayingDrawer` cannot be mounted on the rung below it at all — its own
  * `bind:clientHeight` needs a `ResizeObserver` this rung refuses to install (see the boundary arm in
- * `hero-live-controls-835.test.ts`). Left inline in the component, the clamp could only have been
+ * `hero-live-controls.test.ts`). Left inline in the component, the clamp could only have been
  * guarded as a STRING. Pulled out as a pure function it is checked at every height instead, including
  * the ones nobody would think to open a browser at — which is the entire failure mode here: the flat
  * fraction was *correct at the height it was developed on*.

@@ -380,7 +380,7 @@ def test_the_wrong_longer_version_shows_the_directional_fingerprint():
     """High coverage, low fidelity — the "right song, wrong version" shape, which one number cannot say.
 
     And the reason the judgement must not be asked to catch it: coverage is HIGH, exactly as it should be
-    (it IS the song's words), so this case belongs to the comparison and to #667's overshoot demotion, not
+    (it IS the song's words), so this case belongs to the comparison and to the overshoot demotion, not
     to a threshold. What this metric buys is that the comparison can now see it at all.
     """
     baseline = asr_baseline(SONG, 0.20)
@@ -432,7 +432,7 @@ def _text(body: str, *, role: str, source: str, rank: int | None = None, variant
 def test_selection_prefers_the_right_version_over_the_longer_master():
     """The call chain the issue describes: acquire → select_by_baselines → publish.
 
-    #542's report is a wrong-version pick winning selection. Both candidates are the same song, so no
+    The report was a wrong-version pick winning selection. Both candidates are the same song, so no
     threshold can order them (`SUSPECT_COVERAGE` correctly fires on neither) — the argmax over the ranking
     score has to, and it can only do that if the score is count- and position-aware. On origin/main both
     candidates score within a few percent of each other on set Jaccard.

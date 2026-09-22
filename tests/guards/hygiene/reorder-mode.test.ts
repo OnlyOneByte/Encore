@@ -1,7 +1,7 @@
-// XR-PH-17 / XR-PH-18 / XR-PH-19 (; drag rewired to the whole queue in) — the reorder
+// / / (; drag rewired to the whole queue in) — the reorder
 // mode, tested where its logic actually lives. These are the "pure predicate" checks the requirements
 // name: `bunfig.toml` cannot mount a component importing `$app` (lib/tv/wake-lock.test.ts:18-27,
-// restated as XR-PH-21), so a predicate inlined in `routes/+page.svelte` could only be tested by
+// restated as), so a predicate inlined in `routes/+page.svelte` could only be tested by
 // RECONSTRUCTING it here — which pins the copy in the test rather than the code the page runs. Every
 // assertion below imports the same function `+page.svelte` calls.
 import { test, expect } from 'bun:test';
@@ -21,13 +21,13 @@ const PAGE = at('src/routes/+page.svelte');
 // The both-true case, so each test below can negate exactly one condition.
 const OK = { queuedCount: 2, reorderMeaningful: true };
 
-// ── XR-PH-17 · the grip appears ONLY where a reorder is real ──────────────────────────────────────
+// ── the grip appears ONLY where a reorder is real ──────────────────────────────────────
 
-test('XR-PH-17 · a grip renders when two or more songs are queued under a reordering policy', () => {
+test('a grip renders when two or more songs are queued under a reordering policy', () => {
 	expect(gripVisible(OK)).toBe(true);
 });
 
-test('XR-PH-17 · the grip renders on ANY queued row, not only the guest\u2019s own', () => {
+test('the grip renders on ANY queued row, not only the guest\u2019s own', () => {
 	// Under `move-to-index` any queued row can be dragged to any global slot (the server gates a
 	// non-owner on `queue:reorder-any`), so the grip no longer takes a `mine` argument at all. The old
 	// regression (a grip that was the SOLE affordance on another guest's row) cannot return: the row
@@ -36,28 +36,28 @@ test('XR-PH-17 · the grip renders on ANY queued row, not only the guest\u2019s 
 	expect(gripVisible({ queuedCount: 2, reorderMeaningful: true })).toBe(true);
 });
 
-test('XR-PH-17 · no grip with fewer than two songs queued', () => {
+test('no grip with fewer than two songs queued', () => {
 	// One song has no second position to move it to; zero is empty.
 	expect(gripVisible({ ...OK, queuedCount: 1 })).toBe(false);
 	expect(gripVisible({ ...OK, queuedCount: 0 })).toBe(false);
 });
 
-test('XR-PH-17 · no grip under an ordering that ignores addedAt — a move there is a legal no-op', () => {
+test('no grip under an ordering that ignores addedAt — a move there is a legal no-op', () => {
 	// `shuffle` ranks by entry id (`respectsAddedAt: false`), so a move changes nothing and a grip
 	// would promise a reorder the reducer discards. Constant-true under the stored-list model today.
 	expect(gripVisible({ ...OK, reorderMeaningful: false })).toBe(false);
 });
 
-// ── XR-PH-18 · legal slots span the WHOLE queued list ─────────────────────────────────────────────
+// ── legal slots span the WHOLE queued list ─────────────────────────────────────────────
 
 /*
- * XR-PH-18's SLOT ARMS BECAME LIVE-SORT ARMS (2026-09-21). They pinned `queueSlots` (one labelled target per
+ * the standard's SLOT ARMS BECAME LIVE-SORT ARMS (2026-09-21). They pinned `queueSlots` (one labelled target per
  * queued position) and `dropTarget` (a release off a target commits nothing). Both are deleted with the mode
  * — see the header of `$lib/reorder-mode` — and the requirement they served, "a release cannot commit
  * somewhere the guest did not choose", is now met by identity: one expression places the rows and commits.
  * So these arms test that expression instead, including the two rounding edges a drawn target never had.
  */
-test('XR-PH-18 · the target follows the finger, a row at a time', () => {
+test('the target follows the finger, a row at a time', () => {
 	const at = (offsetPx: number) => liveSortTarget({ fromIndex: 1, offsetPx, rowHeightPx: 60, count: 5 });
 	// Not moved: still where it started, so a release commits nothing (the page early-returns on same-index).
 	expect(at(0)).toBe(1);
@@ -70,7 +70,7 @@ test('XR-PH-18 · the target follows the finger, a row at a time', () => {
 	expect(at(180)).toBe(4);
 });
 
-test('XR-PH-18 · dragging past either end lands on the end, never outside the list', () => {
+test('dragging past either end lands on the end, never outside the list', () => {
 	const at = (fromIndex: number, offsetPx: number) =>
 		liveSortTarget({ fromIndex, offsetPx, rowHeightPx: 60, count: 3 });
 	// Clamping is right HERE and only here: the finger has left the list, and the nearest end is
@@ -81,7 +81,7 @@ test('XR-PH-18 · dragging past either end lands on the end, never outside the l
 	expect(at(1, 6000)).toBe(2);
 });
 
-test('XR-PH-18 · a degenerate row height cannot move anything', () => {
+test('a degenerate row height cannot move anything', () => {
 	// A detached node measures 0, and dividing by it would make every offset infinite — i.e. a commit at an
 	// end of the list for a gesture that never left its row.
 	expect(liveSortTarget({ fromIndex: 1, offsetPx: 400, rowHeightPx: 0, count: 4 })).toBe(1);
@@ -90,7 +90,7 @@ test('XR-PH-18 · a degenerate row height cannot move anything', () => {
 	expect(liveSortTarget({ fromIndex: 0, offsetPx: 0, rowHeightPx: 60, count: 0 })).toBe(0);
 });
 
-test('XR-PH-18 · the rows between the two positions shift exactly one place, and no others', () => {
+test('the rows between the two positions shift exactly one place, and no others', () => {
 	// Dragging row 1 down to 3: rows 2 and 3 come up one, everything else stays.
 	expect([0, 1, 2, 3, 4].map((i) => rowShift(i, 1, 3))).toEqual([0, 0, -1, -1, 0]);
 	// Dragging row 3 up to 1: rows 1 and 2 go down one.
@@ -101,7 +101,7 @@ test('XR-PH-18 · the rows between the two positions shift exactly one place, an
 	expect(rowShift(1, 1, 4)).toBe(0);
 });
 
-test('XR-PH-20 · the keyboard step moves one place and DECLINES at the ends', () => {
+test('the keyboard step moves one place and DECLINES at the ends', () => {
 	// The non-drag path (SC 2.5.7 / 2.1.1), which replaced the move up / move down buttons.
 	expect(keyboardMoveTarget(1, -1, 4)).toBe(0);
 	expect(keyboardMoveTarget(1, 1, 4)).toBe(2);
@@ -118,7 +118,7 @@ test('XR-PH-20 · the keyboard step moves one place and DECLINES at the ends', (
 	expect(keyboardMoveTarget(1.5, 1, 4)).toBeNull();
 });
 
-test('XR-PH-20 · the ordinals the keyboard path announces stay correct past the irregular teens', () => {
+test('the ordinals the keyboard path announces stay correct past the irregular teens', () => {
 	// The announcement is "Moved to Nth in the queue", so these are read aloud rather than drawn.
 	expect(ordinal(1)).toBe('1st');
 	expect(ordinal(2)).toBe('2nd');
@@ -133,32 +133,32 @@ test('XR-PH-20 · the ordinals the keyboard path announces stay correct past the
 	expect(ordinal(111)).toBe('111th');
 });
 
-test('XR-PH-19 · a valid open mode reports no reason to close', () => {
+test('a valid open mode reports no reason to close', () => {
 	expect(modeInvalidation([{ id: 'a' }, { id: 'b' }], 'a', 'queued')).toBeNull();
 });
 
-test('XR-PH-19 · no mode open means nothing to invalidate', () => {
+test('no mode open means nothing to invalidate', () => {
 	expect(modeInvalidation([], null, undefined)).toBeNull();
 });
 
-test('XR-PH-19 · the mode closes with a reason when the moving song begins playing', () => {
+test('the mode closes with a reason when the moving song begins playing', () => {
 	const reason = modeInvalidation([{ id: 'a' }, { id: 'b' }], 'a', 'playing');
 	expect(reason).toBe('That song started playing — nothing was moved.');
 });
 
-test('XR-PH-19 · the mode closes with a reason when the moving song leaves the queue', () => {
+test('the mode closes with a reason when the moving song leaves the queue', () => {
 	// Removed elsewhere: the entry is gone from `entries`, so its status is undefined.
 	expect(modeInvalidation([{ id: 'b' }], 'a', undefined)).toBe('That song left the queue — nothing was moved.');
 });
 
-test('XR-PH-19 · the mode closes with a reason when the queue drops below two songs', () => {
+test('the mode closes with a reason when the queue drops below two songs', () => {
 	// The last other song is removed elsewhere, leaving one queued entry — nothing left to reorder.
 	expect(modeInvalidation([{ id: 'a' }], 'a', 'queued')).toBe(
 		'Only one song is queued now — there is nothing to reorder.'
 	);
 });
 
-test('XR-PH-19 · every close reason states what happened AND that nothing moved, or why', () => {
+test('every close reason states what happened AND that nothing moved, or why', () => {
 	// A mode that dissolves silently is the defect; a reason that does not say the move was dropped is
 	// half of one. Enumerated so a future reason cannot be added without a consequence in it.
 	const reasons = [
@@ -173,7 +173,7 @@ test('XR-PH-19 · every close reason states what happened AND that nothing moved
 	}
 });
 
-test('XR-PH-19 · the moving song can be ANY guest\u2019s now, not only the actor\u2019s', () => {
+test('the moving song can be ANY guest\u2019s now, not only the actor\u2019s', () => {
 	// The collection is the whole queued list, and `movingId` need only still be a queued entry — it
 	// does not have to be one of the actor's picks. A drag on another guest's song stays valid while
 	// that song is queued and two or more songs remain.

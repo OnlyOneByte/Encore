@@ -47,11 +47,11 @@
  * build of this branch emitted 50 utilities that way, harvested from string literals nobody wrote as a
  * class, and TWO of them collided with class names this app already applies to real elements:
  *
- *   .underline  ← the `ball` marker style. `class="ball {ball}"` with ball === 'underline' produces
+ *.underline  ← the `ball` marker style. `class="ball {ball}"` with ball === 'underline' produces
  *                 `<span class="ball underline">`, and Tailwind's `.underline` then painted a real
  *                 `text-decoration-line: underline` on the lyrics ball. MEASURED on /components,
  *                 with Preflight already off, so this was the utilities layer and nothing else.
- *   .block      ← the same enum's `block` marker. Survived only because the app's own `.ball.block`
+ *.block      ← the same enum's `block` marker. Survived only because the app's own `.ball.block`
  *                 rule (specificity 0,2,0) outranks a bare `.block` (0,1,0) for `display`. It is a
  *                 near miss, not a safe case.
  *
@@ -62,7 +62,7 @@
  *
  * So utilities are minted from ONE directory, and within it from `.svelte` FILES ONLY: the
  * design-library copy-in target, which is the only place a utility is supposed to be written at all
- * (docs/DECISIONS.md — copy-in is why shadcn was chosen). App source keeps its hand-written CSS and
+ * (copy-in is why shadcn was chosen). App source keeps its hand-written CSS and
  * gets no utilities minted from its class names.
  *
  * THE `*.svelte` HALF OF THAT GLOB IS NOT TIDINESS EITHER, and it was learned the same way. A first
@@ -95,7 +95,7 @@
 	/*
 	 * accents
 	 *
-	 * ── THE FILL IS THE ACTIONABLE ACCENT (XR-COL-11) ───────────────────────────────────────
+	 * ── THE FILL IS THE ACTIONABLE ACCENT ───────────────────────────────────────
 	 *
 	 * `--accent-strong` USED TO LIVE HERE and is RETIRED, not renamed. It was defined as "a 3% darken
 	 * of --accent" and existed for exactly one reason: white on `--accent` #7c5cff measures 4.35:1,
@@ -128,7 +128,7 @@
 	--warn: #ffb84d;
 	/*
 	 * --grad is DECORATION ONLY: progress fills, the wordmark via background-clip. NEVER put a text
-	 * label on it, ON ANY STOP (XR-COL-13).
+	 * label on it, ON ANY STOP.
 	 *
 	 * THE BAN STANDS; ITS REASON IS NO LONGER ONE NUMBER. It used to rest on a single measurement —
 	 * white on the pink stop, 2.84:1 — but with `accent2` derived per stop this is 48 gradients, so
@@ -146,7 +146,7 @@
 	 */
 	--grad: linear-gradient(135deg, var(--accent), var(--accent2));
 	/*
-	 * The only ink permitted on --accent, and NO LONGER A CONSTANT (XR-COL-12).
+	 * The only ink permitted on --accent, and NO LONGER A CONSTANT.
 	 *
 	 * It reads #ffffff because that is stop 41's `on_fill` — not because white is the rule. Across the
 	 * 48 stops `on_fill` is 36 DARK / 12 white, a per-stop fact. So the pairing discipline that used to
@@ -180,14 +180,14 @@
 	 * Accent as INK, lightened until it clears AA on a card. `--accent` itself is too dark to read at
 	 * 0.65rem, which is why a one-off #c4a9ff kept reappearing wherever accent-coloured text was wanted.
 	 *
-	 * A REQUIRED, DISTINCT TOKEN — do not collapse it into `--accent` (XR-COL-10). In the 48-stop
+	 * A REQUIRED, DISTINCT TOKEN — do not collapse it into `--accent`. In the 48-stop
 	 * registry `accent_ink` differs from `fill` for 13 of 48 stops (Redline, Scarlet, Cerulean, Cobalt,
 	 * Denim, Periwinkle, Iris, Violet, Magenta, Fuchsia, Orchid, Rose, Hibiscus), because a deep stop
 	 * cannot be its own card ink. Collapsing the two silently downgrades those 13 to sub-AA text.
 	 *
 	 * ── WHY THIS VALUE IS NOT YET STOP 41's `accent_ink`, WHICH IS A MEASURED GAP, NOT AN OVERSIGHT ──
 	 *
-	 * `XR-COL-07` certifies `accent_ink` against `--card`, and there all 48 pass (min 4.56:1).
+	 * the contrast record certifies `accent_ink` against `--card`, and there all 48 pass (min 4.56:1).
 	 * But the app draws accent ink on `--card-tint2` — `SongRow.svelte`'s `.chip.kind.lyric` and
 	 * `.chip.tag`, the only two `var(--accent-ink)` read sites in the tree. Measured on that surface:
 	 *
@@ -365,7 +365,7 @@
 	 * ── LINE HEIGHT ───────────────────────────────────────────────────────────────────────────────
 	 *
 	 * Unitless, so each resolves against the element's OWN font-size and a tier can be paired with any
-	 * step of any type ladder (XR-PH-05 asks for size + line-height pairs). A px line-height would break
+	 * step of any type ladder (the standard asks for size + line-height pairs). A px line-height would break
 	 * that pairing the moment the type scaled.
 	 *
 	 * SURFACE-NEUTRAL, unlike the type ladders, and that is what the unitlessness BUYS. `--ph-*` and
@@ -396,8 +396,8 @@
 	 *
 	 * A DURATION TOKEN IS NOT A REDUCED-MOTION MECHANISM, and conflating the two is the trap this
 	 * comment exists to close. Nothing about `var(--motion-fast)` respects a preference; the gating is
-	 * the `@media (prefers-reduced-motion: ...)` wrapper, and `components/motion.test.ts` is what
-	 * enforces it. These tokens make the durations consistent INSIDE that wrapper. XR-TV-05's rule
+	 * the `@media (prefers-reduced-motion:...)` wrapper, and `components/motion.test.ts` is what
+	 * enforces it. These tokens make the durations consistent INSIDE that wrapper. the rule
 	 * still stands and is unaffected: a reduced-motion branch HALTS an animation, it does not
 	 * substitute a shorter token.
 	 *
@@ -422,7 +422,7 @@
 	 *
 	 * MEMBERSHIP, NOT EQUALITY — the owner's Q1-C ruling. Two DIFFERENT lists are in play and
 	 * conflating them was the original defect: 390 / 820 / 1440 px are widths a reviewer EYEBALLS
-	 * (`docs/loop/REVIEW-PASSES.md:223`), while these are the widths the CSS actually SWITCHES at. The
+	 * (a review pass recorded them), while these are the widths the CSS actually SWITCHES at. The
 	 * reviewer list is left exactly as it is; the guard asserts only that every `@media` width literal
 	 * in source is a MEMBER of this set. The seven queries collapse to four switch widths:
 	 *   --bp-xs  380px  — SongRow single-column, settings single-column
@@ -433,7 +433,7 @@
 	 * a media prelude cannot read a custom property (the query is evaluated before the cascade), so
 	 * this is a declared SET the guard compares against, not a set of values the preludes interpolate.
 	 *
-	 * 320px IS A MEMBER, per XR-VER-21's Source note and WCAG 2.2 SC 1.4.10 Reflow, which requires the
+	 * 320px IS A MEMBER Source note and WCAG 2.2 SC 1.4.10 Reflow, which requires the
 	 * layout to work down to a 320px CSS width. No `@media` branches at 320 today, so it is a declared
 	 * floor the guard tolerates as an unused-but-legal member rather than a width some rule must use —
 	 * recording it here is the "320px is a member, or one line says why not" half of the acceptance.
@@ -457,7 +457,7 @@
 	 * in each: the phone's queue sheet sat at 9/10 (retired with the drawer surface) while the
 	 * TV's status dot and tap affordance also sat at 9/10. Bare integers cannot say which of those a
 	 * `10` is, so a reader had to reconstruct the
-	 * scheme from a comment in one route -- and XR-TV-10 asks for exactly this: named tiers, each used
+	 * scheme from a comment in one route -- and the standard asks for exactly this: named tiers, each used
 	 * by the layers documented for it.
 	 *
 	 * Values are unchanged from what the tree already painted; the gaps between them (2 -> 5) are the
@@ -467,7 +467,7 @@
 	 * is a bare-value utility computed from the class name -- so there is no key to register them under,
 	 * and inventing one would mint nothing. `:root` is the whole mechanism here.
 	 *
-	 * THE TV STAGE, bottom to top. Sharing a tier is legal where it is stated (XR-TV-10), and two
+	 * THE TV STAGE, bottom to top. Sharing a tier is legal where it is stated, and two
 	 * tiers below are shared on purpose:
 	 *   card  -- the lower-third, the up-next strip, the join/QR corner, the progress topbar/pill/
 	 *            edgebar and the fullscreen button. All are edge chrome that never overlaps another
@@ -492,9 +492,9 @@
 	 */
 	--z-header: 1;
 	/*
-	 * A ROW LIFTED OUT OF ITS LIST while it is dragged (#836's `.moving`). Above its siblings so the
+	 * A ROW LIFTED OUT OF ITS LIST while it is dragged (the queue's `.moving`). Above its siblings so the
 	 * next row's surface cannot clip it mid-travel, and below every page-level chrome tier so a row
-	 * being dragged never paints over a toast or the dock. XR-PH-04 names the lifted drag
+	 * being dragged never paints over a toast or the dock. the standard names the lifted drag
 	 * row as a surface that must name a step rather than carry a bare integer.
 	 *
 	 * ITS ORDER AGAINST --z-header IS NOMINAL, not a paint claim: --z-header belongs to PageHeader,
@@ -564,7 +564,7 @@
 	 */
 	/* env(safe-area-inset-*) is specified for NON-RECTANGULAR displays, so a rectangular TV reports 0
 	   and cannot help today — but folding it into the max() costs nothing now and improves automatically
-	   if this is ever wrapped in a webview that DOES report insets ("Also in scope", XR-TV-03). The
+	   if this is ever wrapped in a webview that DOES report insets ("Also in scope"). The
 	   5vw floor is the ratified action-safe margin. */
 	--tv-safe-x: max(env(safe-area-inset-left), env(safe-area-inset-right), 48px, 5vw);
 	/* 6vh (64.8px at 1080p), not 5vh: the old max(32px,5vh) resolved to exactly 54px, sitting right on
@@ -572,16 +572,16 @@
 	   folded in for the same reason as --tv-safe-x above; the ratified 6vh floor is unchanged. */
 	--tv-safe-y: max(env(safe-area-inset-top), env(safe-area-inset-bottom), 40px, 6vh);
 	/*
-	 * ── TV TYPE LADDER — rem OFF THE ONE ROOT FLOOR (XR-TV-01/02) ──────────────────────
+	 * ── TV TYPE LADDER — rem OFF THE ONE ROOT FLOOR ──────────────────────
 	 *
 	 * THE FLOOR LIVES IN EXACTLY ONE DECLARATION. It is NOT here: it is `font-size` on `:root`, injected
 	 * by the /tv route (routes/tv/+page.svelte's <svelte:head>) only while that route is mounted, and it
 	 * computes to `calc(max(2.7vh, 20px) * clamp(0.8, var(--ui-scale), 1.6))` — 29.16px at a 1080-tall
 	 * CSS viewport and --ui-scale 1. Every tier below is a `rem` multiple of THAT root, so raising the
 	 * floor is a one-line change and no tier can drift off it. Scoped to the /tv document, not global
-	 * :root here, because a global root would re-root the phone's --ph-* rem ladder (XR-TV-02).
+	 *:root here, because a global root would re-root the phone's --ph-* rem ladder.
 	 *
-	 * WHY THE FLOOR CARRIES THE ONLY VIEWPORT TERM (XR-TV-02). These tokens used to each carry their
+	 * WHY THE FLOOR CARRIES THE ONLY VIEWPORT TERM. These tokens used to each carry their
 	 * own `clamp(px, Nvh, px)`. Under a `vh`-scaled root a second `vh` on the token multiplies the
 	 * panel twice and the ladder stops being a ladder — so the root owns the `vh`/`px` scale and the
 	 * tokens own only ratios. A source scan (stage-scale.test.ts) pins that none of these carries a
@@ -609,8 +609,8 @@
 	   linesBefore/linesAfter. Colour already separates sung / singing / coming. 3.121rem ≈ 91px. */
 	--tv-lyric: 3.121rem;
 	/* THE CORNERS. Sized DOWN from the reel on purpose — see the ladder note above. */
-	/* the smallest TV tier and the floor of this ladder (XR-TV-01: no tier below 0.93rem). 0.93rem
-	   ≈ 27px, the composited-contrast dependency in XR-TV-04 — dropping it below 24px breaks --ink-dim. */
+	/* the smallest TV tier and the floor of this ladder (no tier below 0.93rem). 0.93rem
+	   ≈ 27px, the composited-contrast dependency in — dropping it below 24px breaks --ink-dim. */
 	--tv-small: 0.93rem;
 	/* eyebrow labels ("Now singing", "Up next", "In the room"). Was 16px (failed the floor). */
 	--tv-eyebrow: 0.93rem;
@@ -621,11 +621,11 @@
 	/* who is singing. 1.509rem ≈ 44px. */
 	--tv-name: 1.509rem;
 	/*
-	 * An 88px idle join-URL tier. RETAINED BUT NOT CURRENTLY RENDERED (XR-TV-19). It used to
+	 * An 88px idle join-URL tier. RETAINED BUT NOT CURRENTLY RENDERED. It used to
 	 * size the attract/lobby typed address, but at 88px a real LAN address split mid-octet in the 600px
 	 * attract panel, so the join URL was moved DOWN to --tv-name (44px, the mockup's `.url` budget) where
 	 * an address is one unbreakable token that fits one line. This token stays declared because it is a
-	 * well-formed rung of the rem type ladder the XR-TV-01 guard enumerates (stage-scale.test.ts) and the
+	 * well-formed rung of the rem type ladder the guard enumerates (stage-scale.test.ts) and the
 	 * recorded ladder's 88px room-code band — not because a component reads it. If a future idle surface
 	 * needs an 88px tier it is here; otherwise it is a candidate for retirement in a token sweep.
 	 * 3.02rem ≈ 88px.
@@ -635,16 +635,16 @@
 	   hero, 3.567rem ≈ 104px. */
 	--tv-hero: 3.567rem;
 	/*
-	 * ── THE RATIFIED TV STATES (XR-TV-09) ──────────────────────────────────────────────
+	 * ── THE RATIFIED TV STATES ──────────────────────────────────────────────
 	 * The attract phrase, the room code, and the takeover heroes are their own tiers because the
 	 * decided design's guarantees are MADE OF them: the fixed phrase box (no layout shift) is sized from
 	 * --tv-phrase × --tv-phrase-lines, and "the room code is the largest element" is a claim about these
-	 * tokens' ORDERING. rem off the one root floor like the rest of the ladder (XR-TV-01/02) — no
+	 * tokens' ORDERING. rem off the one root floor like the rest of the ladder — no
 	 * viewport term on a type token — so a source scan can keep pinning that none of them carries one.
 	 */
 	/* The rotating attract phrase. 2.881rem ≈ 84px, the size the ≤24-char admission rule was measured
 	   at (phrases.ts). Its box is a FIXED height of --tv-phrase-lines lines so rotation never shifts the
-	   left column (XR-TV-18). */
+	   left column. */
 	--tv-phrase: 2.881rem;
 	/* The number of lines the phrase box always reserves. Unitless (a multiplier), so it is exempt from
 	   the "no viewport term" scan the same way --tv-phrase-lines is not a length at all. */
@@ -669,19 +669,19 @@
 	--tv-qr: clamp(300px, 26vmin, 460px);
 	/*
 	 * ── GEOMETRY (BOXES, not type) ── these size layout boxes, so like --tv-safe-* / --tv-qr they
-	 * are the named exemption to the "no viewport term" rule and may carry vw/vmin (XR-TV-02, XR-TV-09).
+	 * are the named exemption to the "no viewport term" rule and may carry vw/vmin.
 	 */
 	/* The attract split: a left column at the title-safe x carrying the label + phrase, and a flat-filled
 	   right panel carrying the join block. Widths are `clamp(floor, Nvw, ceiling)` so the panel is
 	   proportional to the wall and GROWS on a 4K stage instead of freezing at a phone-sized column while
-	   the vh-scaled type doubles (XR-TV-19). The right panel's 37.5vw term and floor are sized from
+	   the vh-scaled type doubles. The right panel's 37.5vw term and floor are sized from
 	   a MEASURED fact: a 23-char LAN address ("192.168.1.100:3721/join") rendered at --tv-name is 414px
 	   @720p / 604px @1080p / 1208px @4K, and the panel must clear that PLUS its overscan padding
 	   (--tv-safe-x ≈ 48/96/192px + a 20px interior gutter). 37.5vw yields ~480/720/1440px at those
-	   widths, so the address fits ONE line at --tv-name everywhere — which is what lets .jt-url keep the
+	   widths, so the address fits ONE line at --tv-name everywhere — which is what lets.jt-url keep the
 	   fixed 44px budget the ratified-states guard pins, with no font escape hatch and no mid-token break.
 	   Old form was `min(820px, 44vw)` / `min(600px, 32vw)`, which cap AT the px term — too narrow at
-	   1080p AND frozen at 4K, the two composing halves of the XR-TV-19 clip. */
+	   1080p AND frozen at 4K, the two composing halves of the clip. */
 	--tv-attract-left: clamp(560px, 44vw, 1400px);
 	--tv-attract-right: clamp(482px, 37.5vw, 1440px);
 	/* The attract panel's own QR (not the --tv-qr hero): 230px in the mockup, in vmin so it grows. */
@@ -695,11 +695,11 @@
 	/* Horizontal clearance the lobby roster strip must keep from the bottom-right corner controls
 	   (.fs-btn / the join corner badge, both position:absolute at right:var(--tv-safe-x), above the
 	   strip in the paint order). = the control's 88px cap + the safe inset + a gap, applied to BOTH
-	   sides so the centred roster stays centred and no wrapped chip lands under a control (XR-TV-14). */
+	   sides so the centred roster stays centred and no wrapped chip lands under a control. */
 	--tv-strip-corner-clear: calc(var(--tv-safe-x) + 88px + var(--space-2xl));
 	/* No bottom-dock height token lives here. The phone's docked band publishes its own MEASURED
-	   height as --dock-h from routes/+page.svelte (.cta-dock on home, .search-dock on browse), so
-	   there is deliberately no :root fallback to go stale against it — consumers spell the fallback
+	   height as --dock-h from routes/+page.svelte (.cta-dock on home,.search-dock on browse), so
+	   there is deliberately no:root fallback to go stale against it — consumers spell the fallback
 	   inline as var(--dock-h, 0px). The band contract is documented at those two rules. */
 
 	/*
@@ -738,7 +738,7 @@
 	 * The join/QR corner card is the SHORTER of the two bottom cards (an 88px code plus 12px padding),
 	 * so sizing against the lower-third covers both.
 	 *
-	 * Built from clamp()/vh, not a bare px edge offset: stage-scale.test.ts source-scans the TV .svelte
+	 * Built from clamp()/vh, not a bare px edge offset: stage-scale.test.ts source-scans the TV.svelte
 	 * files for fixed px edge offsets, and reserving the band from the same responsive tokens is what
 	 * keeps the reservation correct across resolutions — the whole reason the cards are token-sized.
 	 *
@@ -861,7 +861,7 @@
 	 * stays enforced independently by `contrast.test.ts` (which already records accent-as-ink leaving
 	 * scope as a universal fact and becoming per-stop).
 	 *
-	 * Prevent the road being TAKEN, not the road existing. See `shadcn-ink-ban-913.test.ts`.
+	 * Prevent the road being TAKEN, not the road existing. See `shadcn-ink-ban.test.ts`.
 	 */
 	--color-primary: var(--primary);
 	--color-primary-foreground: var(--primary-foreground);
@@ -944,7 +944,7 @@
 	 * -normal / -relaxed / -loose already, and this app's tight is 1.1 against their 1.25: an unprefixed
 	 * entry would quietly retune `leading-tight` for every copy-in component. `app` rather than `ph`
 	 * because the scale is surface-neutral — a unitless ratio carries no viewing distance, so the TV uses
-	 * these too (see the :root block).
+	 * these too (see the:root block).
 	 */
 	--leading-app-none: var(--lh-none);
 	--leading-app-tight: var(--lh-tight);
@@ -989,7 +989,7 @@
  *     bare control. So every vendored Button/Input/NativeSelect rendered in the browser's default UI
  *     font. (Nine hand-rolled controls in app source set `font: inherit` themselves; the vendored
  *     primitives were the only ones that did not, which is the tell.)
- *   - `ul, ol { margin: 0; padding: 0 }`. Field.Error is a `<ul class="ml-4 ...">`; without the reset
+ *   - `ul, ol { margin: 0; padding: 0 }`. Field.Error is a `<ul class="ml-4...">`; without the reset
  *     the UA adds `margin-block: 1em` + `padding-inline-start: 40px`, so `ml-4` stacks on top of a 40px
  *     UA indent. list-style is left to the components (Field.Error opts back into `list-disc`).
  *
@@ -1015,12 +1015,12 @@ ol {
  * suppressed above and most controls here are custom-styled, so without this a keyboard or switch user
  * can operate the whole app while never seeing where they are.
  *
- * :focus-visible rather than :focus so a mouse or touch press does not leave a ring behind.
+ *:focus-visible rather than:focus so a mouse or touch press does not leave a ring behind.
  *
- * Listed as a normal selector list rather than :where() on purpose: :where() has specificity 0,0,0,
+ * Listed as a normal selector list rather than:where() on purpose::where() has specificity 0,0,0,
  * so the ring LOST to `.searchbox input { outline: none }` (0,1,1) and to inline outline:none, leaving
  * the remote's primary control and the join screen's first input keyboard-invisible. A plain selector
- * list gives every branch specificity 0,0,1 + the :focus-visible pseudo-class (0,1,1), which beats a
+ * list gives every branch specificity 0,0,1 + the:focus-visible pseudo-class (0,1,1), which beats a
  * bare class rule and forces the rule authors that want to suppress it to say so explicitly.
  */
 a:focus-visible,
@@ -1067,7 +1067,7 @@ body {
 	   What it WAS is a trap: font-size inherits, so the first phone text added without a font-size of
 	   its own would silently become unscalable, and nothing would say so. `100%` resolves to the same
 	   browser default (identical rendering for a guest who has not changed the setting) and inherits
-	   the setting for one who has. SC 1.4.4 Resize Text, XR-PH-02; enforced by
+	   the setting for one who has. SC 1.4.4 Resize Text; enforced by
 	   lib/phone-inventory.test.ts, which bans absolute font sizes on phone surfaces with no exemption
 	   for the base — this line is what lets that rule have no hole in it. */
 	font-size: 100%;
@@ -1117,8 +1117,8 @@ body {
 	margin: 0 auto;
 	display: flex;
 	flex-direction: column;
-	padding: env(safe-area-inset-top) max(var(--space-2xl), env(safe-area-inset-right))
-		env(safe-area-inset-bottom) max(var(--space-2xl), env(safe-area-inset-left));
+	padding: env(safe-area-inset-top) max(var(--space-2xl), env(safe-area-inset-right)) env(safe-area-inset-bottom)
+		max(var(--space-2xl), env(safe-area-inset-left));
 }
 
 /* shared primitives used across surfaces */
@@ -1139,7 +1139,7 @@ body {
  * The 28 CONTENT cards did migrate and are <Card.Root>. These nine are a different thing: a surface on
  * a bespoke component — a hero, three list rows, a progress track, a code-entry segment, a reorder bar.
  * shadcn's Card is a container with Header/Title/Content; none of these want that structure, they want
- * three declarations. `ui-card-surface-913.test.ts` now keeps this rule and its callers together.
+ * three declarations. `ui-card-surface.test.ts` now keeps this rule and its callers together.
  */
 .card {
 	background: var(--card);

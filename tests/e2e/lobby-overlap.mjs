@@ -150,7 +150,7 @@ try {
 				const hit = document.elementFromPoint(cx, cy);
 				const chips = [...document.querySelectorAll(${JSON.stringify(SEL.lobbyStripPerson)})];
 				const cut = sb ? chips.filter((p) => { const r = p.getBoundingClientRect(); return r.bottom > sb.bottom + 0.5 || r.right > sb.right + 0.5; }).length : 0;
-				// XR-TV-14: no chip may be OCCLUDED by a corner control (.fs-btn / the join corner badge),
+				// no chip may be OCCLUDED by a corner control (.fs-btn / the join corner badge),
 				// which are position:absolute above the strip in the paint order. A name under a control is
 				// worse than the "+N more" this replaced and is invisible to a clip check.
 				const occluded = chips.filter((p) => {
@@ -175,7 +175,7 @@ try {
 			// The address must not intersect the strip AND must be the element painted at its own centre.
 			// The address must be clear AND painted AND the strip must not clip OR occlude any roster
 			// member: the full-roster fix must not trade the burial for silently dropping the people
-			// it names, and no chip may hide under a corner control (XR-TV-14).
+			// it names, and no chip may hide under a corner control.
 			const ok =
 				m.overlap === 0 &&
 				m.painted === SEL.lobbyAddress &&

@@ -23,7 +23,7 @@
 // prop supplied by +page.server.ts's load (mounting it means constructing that payload), and it reads
 // `el.offsetHeight` for the card band, which THROWS on the mount rung — that follow-up made all six geometry
 // APIs raise an error naming the rung instead of returning happy-dom's fabricated zero
-// (docs/ux/04-verification.md, XR-VER-03), so a mount here would fail at that read rather than
+//, so a mount here would fail at that read rather than
 // silently measure nothing. So the invariants here stay source scans over the component text, like
 // autoplay-recovery.test.ts: which API is called, that it is guarded, that the lock is released on
 // cleanup, and that a visibilitychange handler re-acquires it — all decidable from the source.

@@ -49,7 +49,7 @@
 		 * They live HERE rather than in the sheet's body because one transport split across two rows is what
 		 * the last two rounds of this were reported as. Callbacks, so they are stable for the life of the
 		 * mount: a prop of this component that CHANGES after mount re-runs the drawer's size bindings, which
-		 * the mount rung throws on (XR-VER-03). Absent (the /components gallery) leaves the pair inert, and it
+		 * the mount rung throws on. Absent (the /components gallery) leaves the pair inert, and it
 		 * is hidden at rest there anyway — see `.tp-side`.
 		 */
 		onrestart?: () => void;
@@ -123,8 +123,8 @@
 	 * The press TOGGLES the sheet, so "open the player" is wrong half the time — and the obvious fix, an
 	 * `expanded` prop the drawer feeds from its snap point, cannot be had: ANY prop of this component that
 	 * changes after mount re-runs the size bindings in the drawer's `.band-slot` / `.np-fit`, and on the
-	 * mount rung a geometry read is a throw by design (XR-VER-03). Measured: a reactive `expanded` took
-	 * three of `phone-home-832`'s mounts down, a constant one passed. So the name says WHAT this is rather
+	 * mount rung a geometry read is a throw by design. Measured: a reactive `expanded` took
+	 * three of `phone-home`'s mounts down, a constant one passed. So the name says WHAT this is rather
 	 * than which way it will move, which is true in both states and is what a mini-player's info row is
 	 * called anyway. The visible text is contained in it either way (SC 2.5.3).
 	 *
@@ -147,7 +147,7 @@
 	 * number to match rather than a new one to invent.
 	 *
 	 * NO GEOMETRY IS READ. `pageY` is a property of the event, not a layout query, so this is safe on the
-	 * mount rung (XR-VER-03) — and no pointer event fires there at all.
+	 * mount rung — and no pointer event fires there at all.
 	 */
 	const DRAG_CANCEL_PX = 10;
 	let pressY: number | null = null;
@@ -245,7 +245,7 @@
 
 				A CSS REVEAL RATHER THAN A PROP, and that is a constraint rather than a preference: any prop of this
 				component that CHANGES after mount re-runs the drawer's size bindings, and a geometry read on the
-				mount rung is a throw by design (XR-VER-03). `onrestart` and `onskip` are safe because they are
+				mount rung is a throw by design. `onrestart` and `onskip` are safe because they are
 				callbacks — stable for the life of the mount, exactly like `ontoggleplay` beside them — and the
 				disabled state reads `hasSong`, which this component already derives from `title`.
 
@@ -475,7 +475,7 @@
 	 * of it. The result reads as a pale box bolted around the play button, which is what it was reported as.
 	 *
 	 * A NEGATIVE offset, so the indicator sits just inside the disc's own edge and clear of the arc. Width
-	 * and colour are untouched, so XR-VER-12's measured floor — a >=2px outline in the resolved `--focus` —
+	 * and colour are untouched, so the measured floor — a >=2px outline in the resolved `--focus` —
 	 * is unaffected; only where it is drawn changes.
 	 */
 	.disc:focus-visible {
@@ -496,7 +496,7 @@
 		/*
 		 * HOW MUCH THIS ROW GROWS when the transport pair is revealed, as a token expression rather than a
 		 * measurement — which is what lets the reveal be animated at all without reading geometry (a
-		 * geometry read on the mount rung is a throw, XR-VER-03).
+		 * geometry read on the mount rung is a throw).
 		 *
 		 * It is exactly the two buttons plus the two gaps that arrive with them. `.tp` is `flex: 0 0 auto`
 		 * and `.meta` is `flex: 1`, so the title absorbs all of it: the magnifier slides LEFT by the whole
@@ -512,7 +512,7 @@
 	 *
 	 * `gate:measured` caught this the first time it ran after the expand action moved here: the button's box
 	 * is its text, which is 18px with nothing playing and ~36px with a byline — a primary control at 18px,
-	 * failing XR-VER-09's 44px floor on every phone surface. The declared markup looked fine; the rendered
+	 * failing the standard's 44px floor on every phone surface. The declared markup looked fine; the rendered
 	 * extent is what failed, which is the whole reason that gate reads a browser.
 	 *
 	 * On `.meta` rather than on `.meta-btn`, so the inert `<div>` the gallery renders and the `<button>` the
@@ -532,7 +532,7 @@
 		flex: 1 1 auto;
 		/* min-width:0 is what lets the ellipsis engage: a flex child's automatic minimum is its
 		   min-content width, so an unbreakable title would otherwise size the band instead of
-		   truncating inside it — the 320px reflow failure XR-PH-02 measures. */
+		   truncating inside it — the 320px reflow failure the reflow standard measures. */
 		min-width: 0;
 	}
 	.title {
@@ -590,7 +590,7 @@
 		background: none;
 	}
 	/*
-	 * Unavailable is a SURFACE change, never a subtree opacity: XR-PH-03 and
+	 * Unavailable is a SURFACE change, never a subtree opacity: and
 	 * layout/phone-inventory.test.ts both reject dimming a subtree, because compositing ink against
 	 * the page at 45% is what quietly drops it under 4.5:1.
 	 */
@@ -606,7 +606,7 @@
 	 * at all, which on a laptop reads as "not a control" and was reported as exactly that. The rules
 	 * above this point are a `min-height` and a z-tier — nothing that answers a pointer.
 	 *
-	 * A SURFACE LIFT, NEVER AN OPACITY CHANGE. XR-PH-03 rejects a subtree alpha for any state (the
+	 * A SURFACE LIFT, NEVER AN OPACITY CHANGE. the rule rejects a subtree alpha for any state (the
 	 * disabled case above uses an ink token for the same reason), so hover mixes a little `--ink` into
 	 * the fill the control already has. That is the move the `secondary` variant already makes, and it
 	 * keeps hover reading as "the same surface, warmer" rather than as a new colour with its own

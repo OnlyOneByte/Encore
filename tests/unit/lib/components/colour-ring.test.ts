@@ -9,7 +9,7 @@
 // exists; only a driven mount can see that ArrowRight moves ONE stop, that the ends WRAP, and that what a
 // screen reader would say is the stop's NAME rather than its number.
 //
-// GEOMETRY IS NOT HERE, by enforcement: happy-dom's getBoundingClientRect throws (XR-VER-03), so the ring
+// GEOMETRY IS NOT HERE, by enforcement: happy-dom's getBoundingClientRect throws, so the ring
 // box, the knob's tap extent and the hub's fit are driven-browser readings. What is decidable without a
 // layout engine is the state machine and the announced value, and that is what this pins.
 import { test, expect, beforeEach, afterEach } from 'bun:test';

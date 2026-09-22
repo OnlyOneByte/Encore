@@ -77,7 +77,7 @@ const PROBES = [
 		subject: 'the now-playing drawer: live controls, and the slider that must not dismiss it'
 	},
 	{
-		path: 'tests/e2e/shoot-913.mjs',
+		path: 'tests/e2e/shoot.mjs',
 		mode: 'boots',
 		kind: 'captures',
 		subject: 'shadcn-migration screenshots (evidence, not assertions)'
@@ -95,14 +95,14 @@ const PROBES = [
 	},
 	{ path: 'tests/e2e/probes/p10-scaling.mjs', mode: 'serves', kind: 'captures', subject: 'TV stage scaling' },
 	{
-		path: 'tests/e2e/probes/admin-delete-639.mjs',
+		path: 'tests/e2e/probes/admin-delete.mjs',
 		mode: 'serves',
 		kind: 'captures',
 		subject: 'admin delete and its confirmation posture'
 	},
 	{ path: 'tests/e2e/probes/tv-audiocontext-resume.mjs', mode: 'serves', subject: 'the TV AudioContext gesture A/B' },
 	{
-		path: 'tests/e2e/probes/tv-scrim-empty-lobby-736.mjs',
+		path: 'tests/e2e/probes/tv-scrim-empty-lobby.mjs',
 		mode: 'serves',
 		subject: 'the TV scrim over an empty lobby'
 	},
@@ -345,7 +345,7 @@ async function main() {
 	 *
 	 * Sharing was the obvious optimisation and it is wrong here. Several of these probes assert on a
 	 * PRISTINE room: `p8-presence-resilience` bails outright with "server was not empty at start of run",
-	 * and `tv-scrim-empty-lobby-736` checks "one entry, nothing behind it". Run them after a probe that
+	 * and `tv-scrim-empty-lobby` checks "one entry, nothing behind it". Run them after a probe that
 	 * joined singers and queued songs and they report an environment failure that says nothing about the
 	 * behaviour they exist to measure — and the ones that report a finding rather than bailing would report
 	 * a FALSE one.

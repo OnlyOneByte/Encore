@@ -30,7 +30,7 @@
 	// What each row is still waiting on ('add' | 'move'), republished on every store emit so the
 	// QueueRow/ProcessingCard `pending` affordance reflects the real pending map instead of the
 	// placeholder rotationSeq that applyAndReseq overwrites in the same frame. A KIND
-	// rather than a set of ids since an earlier change: a pending REORDER is marked too (XR-PH-10), and it must not
+	// rather than a set of ids since an earlier change: a pending REORDER is marked too, and it must not
 	// borrow the add path's "adding…" word.
 	let pendingKind = $state<Map<string, 'add' | 'move'>>(new Map());
 	let singers = $state<Map<string, PublicSinger>>(new Map());
@@ -55,7 +55,7 @@
 	// from /api/library on load, so a reload mid-process doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 	/*
-	 * DIRECTION A + the 2026-09-09 owner correction (docs/DECISIONS.md, issues earlier changes): the room's
+	 * DIRECTION A + the 2026-09-09 owner correction (issues earlier changes): the room's
 	 * queue IS the home screen, and the search box is docked at the bottom of it AT ALL TIMES for a
 	 * joined singer — it is the add affordance, so there is no `+ Add a turn` push and no browse MODE.
 	 * Typing expands the results UPWARD IN PLACE over the queue (direction B's layout), so there is no
@@ -289,7 +289,7 @@
 	 * the list declines instead of emitting a move to the position the row already occupies.
 	 */
 
-	/* ── REORDERING: A LIVE SORT (XR-PH-17 … XR-PH-20) ───────────────────────────────────────────────
+	/* ── REORDERING: A LIVE SORT ───────────────────────────────────────────────
 	 *
 	 * The row follows the finger, the rows it passes shift out of its way, and the release commits where it
 	 * visibly is. There is no mode: no Done, no Cancel, no drawn drop targets, nothing to dismiss.
@@ -302,9 +302,9 @@
 	 * position is legal, so "draw the legal positions" became "draw one per row", which is what the list
 	 * already shows. Reported as popup hell with places to drop it, and it was.
 	 *
-	 * XR-PH-18 IS SATISFIED MORE STRONGLY, not waived: `liveSortTarget` is the same expression that places
+	 * IS SATISFIED MORE STRONGLY, not waived: `liveSortTarget` is the same expression that places
 	 * the rows on screen and the one that commits, so a release cannot land somewhere the guest did not see.
-	 * XR-PH-20 (SC 2.5.7 / 2.1.1, a conformance row) moved onto the grip: Arrow Up/Down while it has focus
+	 * (SC 2.5.7 / 2.1.1, a conformance row) moved onto the grip: Arrow Up/Down while it has focus
 	 * steps the row one place. See the header of `$lib/reorder-mode` for both in full.
 	 */
 	/** The row being dragged, and the live offset of the finger from where the press began. */
@@ -322,7 +322,7 @@
 	// Why a drag ended itself. Announced through the SAME polite region the queue already uses (`liveMsg`)
 	// rather than a second one, and rendered as visible text: a sighted guest needs the reason too.
 	let reorderNote = $state('');
-	/** The grip the gesture began on, so focus can be returned to it (XR-PH-19). */
+	/** The grip the gesture began on, so focus can be returned to it. */
 	let openerEl: HTMLElement | null = null;
 	let dragTeardown: (() => void) | null = null;
 
@@ -363,7 +363,7 @@
 	}
 
 	/**
-	 * XR-PH-20 — the non-drag reorder, one place per press, straight from the grip.
+	 * the non-drag reorder, one place per press, straight from the grip.
 	 *
 	 * It commits IMMEDIATELY rather than opening anything: `keyboardMoveTarget` declines at the ends of the
 	 * list, so a press that cannot move says nothing instead of emitting a move to where the row already is.
@@ -397,7 +397,7 @@
 		reorderNote = note;
 		if (note) liveMsg = note;
 		/*
-		 * XR-PH-19: focus goes back to the control the guest was working from, on every exit. After `tick()`
+		 * focus goes back to the control the guest was working from, on every exit. After `tick()`
 		 * and by ATTRIBUTE rather than by the element reference: the row's DOM is recreated at its new
 		 * position, so the grip that was pressed is a detached node and focusing the captured reference put
 		 * focus nowhere — measured, not assumed. `openerEl` is the fallback for when the row itself has gone
@@ -413,7 +413,7 @@
 
 	/**
 	 * The pointer drag. The idiom: publish the offset as a CSS custom property and let a transform do the
-	 * moving, so no position is ever interpolated in JS (XR-PH-06). That is unchanged from the mode this
+	 * moving, so no position is ever interpolated in JS. That is unchanged from the mode this
 	 * replaced; what is gone is the hit-testing — there is nothing to hit-test now, because the target is
 	 * arithmetic over one row height rather than a search for a drawn slot under the finger.
 	 */
@@ -460,7 +460,7 @@
 	}
 
 	/*
-	 * XR-PH-19 — the queue moves underneath a drag in flight, and that is NORMAL. `assignSeqs` re-derives
+	 * the queue moves underneath a drag in flight, and that is NORMAL. `assignSeqs` re-derives
 	 * every rotationSeq on every mutation, so another guest's add re-orders the flat list under the finger.
 	 * That case needs no handling and deliberately gets none: the live sort is relative to where the dragged
 	 * row IS, so a stranger's entry simply moves the row the guest is holding along with the list. What DOES
@@ -504,7 +504,7 @@
 	});
 	const nowDurationSec = $derived(nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0);
 
-	// ── the guest's own place in the rotation, in WORDS (XR-PH-09, issue an earlier change) ──────────────
+	// ── the guest's own place in the rotation, in WORDS (issue an earlier change) ──────────────
 	// My soonest queued pick, and where it sits in the room's order.
 	const myNextEntry = $derived(
 		entries
@@ -613,7 +613,7 @@
 -->
 <main style="--row-h:{rowH}px">
 	{#if me}
-		<!-- The guest's own place, in words, with the wait omitted rather than guessed (XR-PH-09). -->
+		<!-- The guest's own place, in words, with the wait omitted rather than guessed. -->
 		<MyPositionCard words={myPosition} />
 
 		<h2 class="grouphead">Queued</h2>
@@ -625,7 +625,7 @@
 			are all gone (2026-09-21). Reported as popup hell, along with the drop targets.
 
 			The NOTE stays, and it is not mode chrome: a drag can still be invalidated mid-flight by the queue
-			moving (XR-PH-19 — the song starts playing, or leaves), and a gesture that dissolves under a
+			moving (the song starts playing, or leaves), and a gesture that dissolves under a
 			guest's finger has to say why. Visible as well as announced, because a reason only a screen reader
 			gets is not a reason.
 		-->
@@ -644,14 +644,14 @@
 				so the sentence was describing a discovery the layout now makes for itself.
 				`Empty.Description` goes with it rather than being emptied — the slot carried the copy.
 
-				`Empty.Root` STAYS, and not decoratively: XR-PH-08's inventory detector recognises a route's
+				`Empty.Root` STAYS, and not decoratively: the inventory detector recognises a route's
 				designed empty state by `<Empty.Root>` (phone-inventory.test.ts), so replacing the primitive
 				with a bare `<p>` would report this route as having no empty state at all.
 
 				SIZED AND PLACED FROM A PAGE-OWNED WRAPPER. `Empty.Title` is a vendored element carrying
 				`text-lg`, which an inherited font-size cannot beat, and a utility written in this file is
 				emitted nowhere (Tailwind scans only `components/ui`) — so the one rule reaches the vendored
-				`data-slot` through `.queue-empty`, the same shape as `.band-slot :global(.band)` in the drawer.
+				`data-slot` through `.queue-empty`, the same shape as `.band-slot:global(.band)` in the drawer.
 			-->
 			<Empty.Root>
 				<div class="queue-empty">
@@ -669,7 +669,7 @@
 					open, labelled with the ordinal it committed, and the drag hit-tested for the one under the
 					finger. Deleted (2026-09-21): under `move-to-index` every position is legal, so one target per
 					row is exactly what the list already shows — and a release now commits `dragTo`, the same
-					expression that places the rows on screen, which is XR-PH-18's substance without the chrome.
+					expression that places the rows on screen, which is the substance without the chrome.
 				-->
 				{#if card === 'processing' || card === 'failed'}
 					{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
@@ -734,8 +734,7 @@
 	but present in the DOM from first render so the assistive tech is already observing it when the
 	first announcement lands. See the `liveMsg` effect for what is (and is not) announced.
 -->
-<!--
-	XR-PH-19 — ESCAPE CANCELS A DRAG IN FLIGHT and commits NOTHING. Bound on the window rather than on a
+<!-- — ESCAPE CANCELS A DRAG IN FLIGHT and commits NOTHING. Bound on the window rather than on a
 	row because mid-gesture the pointer is captured and focus sits on the grip, while a keyboard cancel has
 	to work wherever focus happens to be.
 
@@ -750,7 +749,7 @@
 <style>
 	/*
 	 * The search dock is docked at the bottom, so the column must be able to scroll clear of it
-	 * (XR-PH-12): the padding reserves the band's MEASURED height (--dock-h), which is what keeps the
+	 *: the padding reserves the band's MEASURED height (--dock-h), which is what keeps the
 	 * last queue row (empty box) or the top-ranked result (searching) reachable at every scroll position
 	 * instead of parked under the band. The fallback covers the first frame before the effect publishes
 	 * a measurement. Since an earlier change there is exactly ONE band on this route — the search dock, present in
@@ -912,14 +911,14 @@
 	 * queue is non-empty because the whole block is gone.
 	 *
 	 * `overflow-wrap: anywhere` IS THE 320px CLAUSE, not a tidiness one. At `--ph-text-3xl` and 200% text a
-	 * single unbreakable word is wider than a 320px viewport, which is exactly the reflow failure XR-PH-02
+	 * single unbreakable word is wider than a 320px viewport, which is exactly the reflow failure
 	 * measures — the same reason the `keycap` button variant carries this pair. The word breaks instead of
 	 * the layout.
 	 *
 	 * THE FONT-SIZE REACHES A VENDORED SLOT. `Empty.Title` carries Tailwind's `text-lg` on its own element,
 	 * so an inherited size cannot win, and a utility written in this file is never emitted (app.css is
 	 * `source(none)` over `components/ui`). One `:global()` at a `data-slot`, which is the shape
-	 * `ui-scoped-style-reach-913` asks for: the attribute is emitted by markup in this tree.
+	 * `ui-scoped-style-reach` asks for: the attribute is emitted by markup in this tree.
 	 */
 	.queue-empty {
 		display: grid;
@@ -928,7 +927,7 @@
 		padding: var(--space-2xl) var(--space-md);
 		text-align: center;
 	}
-	.queue-empty :global([data-slot='empty-title']) {
+	.queue-empty:global([data-slot='empty-title']) {
 		font-size: var(--ph-text-3xl);
 		line-height: var(--lh-snug);
 		font-weight: 700;
@@ -940,7 +939,7 @@
 	/*
 	 * The key head line. Sits ABOVE the ± buttons (see the markup comment for why it cannot be inline).
 	 * Same label idiom as.gt-head /.key.lab. The original→sounding pair reads left to right; the
-	 * sounding key takes the warn colour to echo `.key.shifted .lab`, so "you have changed the key" is
+	 * sounding key takes the warn colour to echo `.key.shifted.lab`, so "you have changed the key" is
 	 * signalled the same way in both places.
 	 */
 	/* The arrow is an Icon (banned as a glyph); size it to the text and dim it so the keys read as the
@@ -1035,7 +1034,7 @@
 	 * the chrome shrinks and at least a couple of rows stay visible.
 	 *
 	 * The docked band itself is NOT shrunk by a token here: --dock-h carries the button's own MEASURED
-	 * height, and an inline custom property on :root outranks this rule — so a smaller value written
+	 * height, and an inline custom property on:root outranks this rule — so a smaller value written
 	 * here would be silently defeated the moment the measurement landed. The band is one 44px control,
 	 * which is what makes that acceptable.
 	 */

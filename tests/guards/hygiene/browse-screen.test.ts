@@ -5,7 +5,7 @@
 // headings are gone. That is a set of syntax claims, and syntax claims are what a scan can settle. The
 // geometry those claims imply — the box really reachable through a long scroll, the band really sitting
 // at the bottom edge, nothing occluded with the keyboard up — is a MEASUREMENT and is not asserted here
-// (XR-PH-21); `bun run gate:measured` drives the real render for that.
+//; `bun run gate:measured` drives the real render for that.
 //
 // The shape matters: a deletion is invisible to a behavioural suite. Nothing imports these routes, so
 // every mechanism below could be restored with the whole suite green. These are the assertions that
@@ -21,7 +21,7 @@
 // So this guard reads FOUR sources rather than one. Each is stripped and floored separately (see the
 // non-vacuity arm), because a re-point that silently reads the wrong file asserts nothing.
 //
-// RETIREMENT RECORDED HERE (XR-VER-07). `routes/library-tag-filter-wiring.test.ts` is DELETED by this
+// RETIREMENT RECORDED HERE. `routes/library-tag-filter-wiring.test.ts` is DELETED by this
 // change, not weakened. It pinned five render seams of the tag filter — `facets.tags` state, a
 // `browseFilter` that could hold a tag, `setBrowse('tag', …)`, the `?tag=` query and the tag rail
 // itself — every one of which is a mechanism direction B removes. Its premise was "the tag filter is
@@ -30,7 +30,7 @@
 // `routes/api/library/library-tag-filter-wiring.test.ts`), which is why only one of the three
 // similarly-named files retires. The absence is pinned below so it cannot creep back in unnoticed.
 //
-// ── REVERSALS RECORDED HERE (XR-VER-07 again: a retired requirement is recorded, never vanished) ────
+// ── REVERSALS RECORDED HERE (a retired requirement is recorded, never vanished) ────
 //
 // Five arms of this guard pinned a LAYOUT ruling that the phone-remote rebuild reversed on purpose.
 // None of the five is deleted; each is rewritten to assert the decision that replaced it, and the
@@ -53,7 +53,7 @@
 //      consequence of R1's docked box and nothing else. NOW the surface reads DOWNWARD from a page
 //      header, so the best match comes FIRST: no `.reverse()` anywhere, and the section order is ready
 //      before needs-karaoke. The `column-reverse` ban is KEPT unchanged and now does more work than it
-//      did: DOM order must still equal visual order (XR-PH-12), and a reversing container is the one
+//      did: DOM order must still equal visual order, and a reversing container is the one
 //      way to break that without touching the markup order this arm reads.
 //
 //  R3. "the bottom-anchored column reserves the top for the back control".
@@ -269,7 +269,7 @@ test('mechanisms 2+3 — the phone asks the library endpoint for the whole libra
 });
 
 test('the retired tag-filter wiring guard is deleted, and its server sibling is not', () => {
-	// A retired guard left in the suite is indistinguishable from one that is working (XR-VER-07).
+	// A retired guard left in the suite is indistinguishable from one that is working.
 	//
 	// The three paths below MOVED in the test reorganisation and are now named from the repo root, which
 	// is also what makes this arm honest: the retirement claim is about one guard among three that share
@@ -477,7 +477,7 @@ test('the band owns the bottom edge and publishes the measured --dock-h; the fin
 
 test('the results read DOWNWARD: every result list is emitted with its best match first', () => {
 	// R2. The ranking reaches the DOM in ranking order — no reversal anywhere — which is what keeps DOM
-	// order equal to visual order (XR-PH-12) now that the column reads from a header downward. A
+	// order equal to visual order now that the column reads from a header downward. A
 	// `column-reverse` container would paint the column against its DOM order and invert the focus
 	// sequence with it, so the ban is part of the claim and is kept from the arm this replaces.
 	expect(FIND).toMatch(/\{@const readyStack = readyResults\}/);

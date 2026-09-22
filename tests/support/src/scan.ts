@@ -12,7 +12,7 @@
 // resolve the same token instead of two numbers that merely agreed.
 import { filesIn, read } from './tree.ts';
 //
-// SCOPE IS THE POINT (XR-VER-14). Four of the five named scan helpers were still per-file
+// SCOPE IS THE POINT. Four of the five named scan helpers were still per-file
 // copies: `styleFiles` in components/motion.test.ts, `markupControls` in touch-targets.test.ts,
 // `allSvelte` and `classPresent` in e2e/contract.test.ts. These helpers decide WHAT A GUARD CAN
 // SEE, so a copy that drifts — a different glob, a missed directory, an extra exclusion — silently
@@ -24,10 +24,10 @@ import { filesIn, read } from './tree.ts';
 // carry one today (`tsSources`, `tsFiles`, `allDrivers`), which is a separate, reported issue.
 
 /**
- * Directories a source walk must never descend into (XR-VER-14 Acceptance).
+ * Directories a source walk must never descend into.
  *
  * `.svelte-kit/` and `build/` hold BUILT COPIES of every component's CSS. A walk that reaches them
- * reads stale duplicates and reports on colours the app no longer paints — XR-VER-08's failure mode
+ * reads stale duplicates and reports on colours the app no longer paints — the failure mode
  * arriving through the scope door. They sit beside `src/` today rather than inside it, so no current
  * caller reaches them; this is the exclusion set being present at the one place scope is decided
  * instead of at the one guard (`telemetry-frame-lean.test.ts`) that happened to carry it.
@@ -72,7 +72,7 @@ export function styleFiles(dir: string): string[] {
 export const TAP_FLOOR = 44;
 
 /**
- * The app's minimum interactive touch-target size, in px, READ OUT OF `app.css` (XR-PH-01).
+ * The app's minimum interactive touch-target size, in px, READ OUT OF `app.css`.
  *
  * It used to be a hand-written `44` here, and the comment above said outright that no production
  * constant existed. That made every touch guard measure against a number the design layer did not
@@ -119,7 +119,7 @@ export function expressesTap(body: string): boolean {
 
 /**
  * Does a CSS rule body size a box with the token's number written as a BARE px literal? This is the
- * offender shape for XR-PH-01: the control is the right size today and drifts the moment `--tap` moves.
+ * offender shape for the control is the right size today and drifts the moment `--tap` moves.
  */
 export function restatesTapNumber(body: string, tap: number = TAP): boolean {
 	return new RegExp(`(?:min-)?(?:width|height)\\s*:[^;]*(?<![0-9.])${tap}px`).test(body);

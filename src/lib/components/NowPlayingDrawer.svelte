@@ -12,7 +12,7 @@
 	 * THE BAND ROW IS THE DRAG SURFACE, AND `.np-fit` IS EXCLUDED. vaul drawers drag-to-dismiss from
 	 * anywhere in their content by default, and this drawer's body is sliders — the guiding-track thumb
 	 * and, on the way past, the range visualizer. A drag surface underneath a slider is precisely what
-	 * XR-PH-15 bans: the two gestures are the same gesture, and the drawer wins because it is the
+	 * the rule bans: the two gestures are the same gesture, and the drawer wins because it is the
 	 * ancestor. This was `handleOnly` — dragging restricted to the 6px grab bar — until the top edge of a
 	 * sheet that plainly looks draggable was reported as not being. So the exclusion inverted: ONE
 	 * `data-vaul-no-drag` on `.np-fit` covers the head, the body and every control ever added below the
@@ -24,7 +24,7 @@
 	 * See drawer-handle.svelte.)
 	 *
 	 * THE SLIDER'S MOUNT CONSTRAINT IS SATISFIED STRUCTURALLY. GuidingTrack wraps a Bits UI Slider that
-	 * reads `offsetWidth`, and the mount rung replaces that with a throw (XR-VER-03), so it must not
+	 * reads `offsetWidth`, and the mount rung replaces that with a throw, so it must not
 	 * mount while hidden. The hero needed an explicit `{#if controlsOpen}` INSIDE its Collapsible for
 	 * this, because Collapsible renders its content always and merely hides it. A drawer's content is
 	 * portalled on open and destroyed on close, so there is nothing to guard — the constraint is met by
@@ -211,7 +211,7 @@
 	 * which is the other half of "I can't type in the song search bar".
 	 *
 	 * THE ARITHMETIC LIVES IN `$lib/sheet-snap`, not here, because it is the half of this fix that can be
-	 * WRONG at a height nobody happened to try. A rendered offset is a layout-rung claim (XR-VER-01) and
+	 * WRONG at a height nobody happened to try. A rendered offset is a layout-rung claim and
 	 * this component cannot even be mounted on the rung below it, so a formula written inline could only
 	 * ever be guarded as a string. As a pure function it is swept across every viewport height instead.
 	 *
@@ -379,10 +379,10 @@
 	 *
 	 * A CLASS AND A CSS RULE, NOT A PROP — which is what makes this legal at all. The band cannot take an
 	 * `expanded` prop: any prop of it that CHANGES after mount re-runs the size bindings on `.band-slot` /
-	 * `.np-fit`, and a geometry read on the mount rung is a throw by design (XR-VER-03). Measured: a
-	 * reactive prop took three of `phone-home-832`'s mounts down. The file already records the same escape
+	 * `.np-fit`, and a geometry read on the mount rung is a throw by design. Measured: a
+	 * reactive prop took three of `phone-home`'s mounts down. The file already records the same escape
 	 * hatch for `aria-expanded` ("an attribute write re-renders nothing"). It also keeps the DOM tree
-	 * identical at both heights, which is what the census arm in `phone-home-832` asserts.
+	 * identical at both heights, which is what the census arm in `phone-home` asserts.
 	 *
 	 * HELD THROUGH THE `null` BLIP. `activeSnapPoint` is written to `null` for one tick by every re-seat
 	 * (see `armResizeReseat` and the content-height effect), and `null` is not a height — reading it as
@@ -392,11 +392,11 @@
 	 *
 	 * Both reactive forms reopen the hazard the CSS route exists to avoid, because `.band-slot` carries
 	 * `bind:clientHeight` and ANY reactive update in that part of the template re-runs its size binding —
-	 * which on the mount rung is a deliberate throw (XR-VER-03):
+	 * which on the mount rung is a deliberate throw:
 	 *
 	 *   1. `$state` + `$effect`: the write lands in a MICROTASK, so the refusal is raised from
 	 *      `run_micro_tasks`, outside the synchronous window `openDrawer` swallows it in. Three of
-	 *      `phone-home-832`'s mounts went down.
+	 *      `phone-home`'s mounts went down.
 	 *   2. `$derived` read by `class:sheet-up={…}`: same three mounts. Bisected by deleting the directive
 	 *      alone, with the derived left in place — 18/18 passed. So it is the reactive DOM UPDATE that
 	 *      costs, not the state or the effect, which is the same mechanism the note on `expanded` below
@@ -517,7 +517,7 @@
 
 	/*
 	 * Stated AHEAD of the control it explains, so the reason is read before the dead row rather than
-	 * after it, and never dimmed by an ancestor `opacity` — XR-PH-03. This is the XR-PH-15 degradation:
+	 * after it, and never dimmed by an ancestor `opacity`. This is the degradation:
 	 * the guide row stays VISIBLE and disabled, because "this song has no isolated vocals" is
 	 * information, and hiding the control would leave the singer wondering where it went.
 	 */
@@ -589,7 +589,7 @@
 	what "let me drag from anywhere at the top" means. The 6px grab bar (44px of hit area) was the only
 	place a thumb could take hold of a sheet whose entire top edge looks draggable.
 
-	XR-PH-15 IS UNCHANGED, and this is the part that needed care rather than courage. `handleOnly` is
+	THE RULE IS UNCHANGED, and this is the part that needed care rather than courage. `handleOnly` is
 	all-or-nothing in vaul — it simply skips the CONTENT's pointer handlers — so turning it off makes the
 	body's sliders drag surfaces again, which is exactly the ban: the guiding-track thumb and the drawer
 	dismiss would be one gesture, with the drawer winning as the ancestor. So `.np-fit` carries
@@ -661,7 +661,7 @@
 
 			`bind:clientHeight` here is what makes snap 0 equal the band's REAL rendered height instead of
 			a guess, and the layout re-publishes it as `--dock-h` so every docked control still offsets
-			from one measured number (XR-VER-11).
+			from one measured number.
 		-->
 		<div class="band-slot" style="--snap-band: {SNAP_BAND}" bind:clientHeight={bandH}>
 			<!--
@@ -693,7 +693,7 @@
 				a re-seat that restarts vaul's transform transition.
 
 				THE DRAG IS WIDER THAN IT WAS: the whole band row takes hold of the sheet now, and the body of
-				sliders is still not a drag surface (XR-PH-15) — see `data-vaul-no-drag` on `.np-fit`. This
+				sliders is still not a drag surface — see `data-vaul-no-drag` on `.np-fit`. This
 				press path is what a guest who cannot drag at all uses, and it is the only one that can
 				CLOSE the sheet by tap.
 
@@ -709,14 +709,14 @@
 				NO `expanded` PROP GOES WITH IT, and the reason is worth recording because it is not obvious.
 				The band's press label would ideally name its direction, which needs the snap state as a prop —
 				and ANY prop of `NowPlayingBand` that changes after mount re-runs the size bindings below
-				(`.band-slot`, `.np-fit`), which on the mount rung is a deliberate throw (XR-VER-03). Measured:
-				a reactive prop took three of `phone-home-832`'s mounts down; the same prop as a constant
+				(`.band-slot`, `.np-fit`), which on the mount rung is a deliberate throw. Measured:
+				a reactive prop took three of `phone-home`'s mounts down; the same prop as a constant
 				passed. So the band's label is state-independent (see its own note) and this stays a plain
 				toggle. An `aria-expanded` written onto the button from an effect here would be the way to add
 				direction later — an attribute write re-renders nothing.
 
 				(The rationale lives here rather than inside the prop because a comment inside a component tag
-				is scanned as part of that tag: `ui-scoped-style-reach-913.test.ts` walks a tag to its closing
+				is scanned as part of that tag: `ui-scoped-style-reach.test.ts` walks a tag to its closing
 				`>` tracking quote state, and an apostrophe in prose there flips it and swallows the rest of the
 				file — which reported five of this component's own plain-element classes as handed to a child.)
 			-->
@@ -726,8 +726,8 @@
 
 				The class started on `.band-slot` itself, which is the element carrying `bind:clientHeight`, and
 				that reopened the hazard the whole CSS route exists to avoid: updating the bound element re-runs
-				its size binding, and a geometry read on the mount rung is a throw by design (XR-VER-03). Three
-				of `phone-home-832`'s mounts went down with the refusal escaping `openDrawer`'s swallow — the
+				its size binding, and a geometry read on the mount rung is a throw by design. Three
+				of `phone-home`'s mounts went down with the refusal escaping `openDrawer`'s swallow — the
 				same failure shape a reactive `expanded` PROP produced, which is what the note on `onexpand`
 				below records. So the state lives one level in, on an element nothing measures.
 
@@ -760,7 +760,7 @@
 			`data-vaul-no-drag` IS WHAT REPLACED `handleOnly` (see the Root above). Everything below the band
 			row — the head, the seek row, the transport's siblings, the guiding-track slider, the ± keycaps,
 			the range visualiser — is excluded from dragging by this ONE attribute, because vaul resolves it
-			with `closest()`. That is what keeps XR-PH-15 satisfied while the band row above becomes the drag
+			with `closest()`. That is what keeps satisfied while the band row above becomes the drag
 			surface, and it cannot be forgotten when the next control lands in the body.
 		-->
 		<div class="np-fit" data-vaul-no-drag bind:clientHeight={fitH}>
@@ -776,7 +776,7 @@
 				nothing is left here.
 
 				WHY THE ELEMENT STAYS. `Drawer.Header` is what bits-ui/vaul give the sheet its `data-slot`
-				structure from, and `phone-home-832` asserts a header renders BELOW the band slot — the fact that
+				structure from, and `phone-home` asserts a header renders BELOW the band slot — the fact that
 				replaced "closed renders nothing" when the sheet became permanently mounted. It is zero-height with
 				no padding, so it costs no space; deleting the component instead would red that arm for a reason
 				that has nothing to do with what this sheet shows.
@@ -982,7 +982,7 @@
 	 * compounded for in the first place (see its note there).
 	 *
 	 * A CSS REVEAL, NOT A PROP — see `sheetUp` for the measured reason: a prop of the band that changes
-	 * after mount re-runs the size bindings, and a geometry read on the mount rung is a throw (XR-VER-03).
+	 * after mount re-runs the size bindings, and a geometry read on the mount rung is a throw.
 	 */
 	.band-face:global(.sheet-up) :global(.tp-side) {
 		display: grid;
@@ -997,7 +997,7 @@
 	 * keyframe can state the FROM position explicitly, so the layout jump happens instantly and the
 	 * animation replays the distance each element just travelled, in `transform` only. That is a FLIP
 	 * without the measuring step — the distances are `--tp-grow` and `--tp-disc-shift`, declared on
-	 * `.strip` from `--tap` and `--space-md`, so nothing here reads geometry (XR-VER-03).
+	 * `.strip` from `--tap` and `--space-md`, so nothing here reads geometry.
 	 *
 	 * GATED ON `no-preference`, which is how this file's other motion is suppressed: with Reduce Motion on,
 	 * no `animation` is declared at all and the pair simply appears. Nothing to reset.
@@ -1297,7 +1297,7 @@
 	}
 	/* Dimmed with the INK token, never with `opacity` on a subtree — an ancestor alpha flattens the
 	   sentence and the surface behind it into one buffer, so measured contrast stops being what is
-	   painted (XR-PH-03). */
+	   painted. */
 	.tools-note {
 		margin: 0 0 var(--space-2xs);
 		font-size: var(--ph-text-2xs);

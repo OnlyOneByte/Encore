@@ -110,7 +110,7 @@ test('the scope tabs are reachable and named for assistive tech', () => {
 	 * weakened. What is checkable HERE is the wiring — that the page really uses the primitive, that
 	 * the tablist still carries its accessible name, and that the URL sync is still attached. The
 	 * BEHAVIOUR the old spelling stood in for — roving tabindex, arrows, Home/End, focus following
-	 * selection — is proven by mounting it in `tabs-keyboard-913.test.ts`, which is strictly more than
+	 * selection — is proven by mounting it in `tabs-keyboard.test.ts`, which is strictly more than
 	 * a grep for the string "ArrowRight" ever established.
 	 */
 	// A tablist with no accessible name is announced as an unlabelled group of three unrelated buttons.

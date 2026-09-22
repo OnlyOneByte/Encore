@@ -10,7 +10,7 @@
  *   - "Use these lyrics" (`chip` alone) matched NOTHING. With Preflight off and no global control
  *     reset, it rendered as a ~21px native OS button in the wrong font on a dark sheet.
  *
- * `app-class-resolution-913.test.ts` stayed green throughout, and its miss is mechanical rather than
+ * `app-class-resolution.test.ts` stayed green throughout, and its miss is mechanical rather than
  * careless: its `classNamesIn()` pulls every `.token` out of a selector with
  * `/\.([a-zA-Z][\w-]*)/g`, so the single rule `.chip.ghost` registers BOTH `chip` and `ghost` as
  * "defined". A compound selector vouches for each of its own parts — including parts no rule can match
@@ -42,7 +42,7 @@
  *
  * Utilities are not a factor: `app.css` uses `source(none)` with a single `@source` over
  * `lib/components/ui`, so no utility is minted for app source and there is no "maybe Tailwind defines
- * it" escape hatch on this side of the tree — the same reasoning app-class-resolution-913 records.
+ * it" escape hatch on this side of the tree — the same reasoning app-class-resolution records.
  */
 import { describe, expect, test } from 'bun:test';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -123,7 +123,7 @@ function requirementSets(css: string): Set<string>[] {
 /**
  * Class lists as WRITTEN on elements, one entry per `class="…"` attribute, split into static tokens.
  * `{…}` spans become a marker rather than a space, so `class="hl-{i}"` reads as one dynamic name instead
- * of leaving `hl-` looking static — the treatment app-class-resolution-913 records as load-bearing.
+ * of leaving `hl-` looking static — the treatment app-class-resolution records as load-bearing.
  *
  * A list containing ANY dynamic span is skipped entirely: `class:foo` directives and interpolated names
  * can add the very token a compound rule needs, so the static text alone cannot decide the question.
@@ -153,7 +153,7 @@ function matchable(list: string[], reqs: Set<string>[]): boolean {
  * tall. An unstyled `<div>` gets nothing at all, because a div has no UA appearance to inherit. So a
  * layout-neutral wrapper whose children are positioned by their own rules is genuinely inert, while a
  * control never is. Every entry below is a div/wrapper, and all three are already recorded as
- * intentionally-unresolved in app-class-resolution-913.test.ts's PRE_EXISTING list — this keeps the two
+ * intentionally-unresolved in app-class-resolution.test.ts's PRE_EXISTING list — this keeps the two
  * guards' pictures of the tree consistent rather than inventing a second, disagreeing set.
  *
  * Do NOT add a control here. If a button, input or select lands in this list, that is the defect.
@@ -213,7 +213,7 @@ describe('every element class list is matchable by some rule', () => {
 		expect([...new Set(offenders)]).toEqual([]);
 
 		// The allowlist stays honest in the other direction too: an entry that now matches a rule is stale
-		// and must go, or the list stops describing the tree (app-class-resolution-913's own rule).
+		// and must go, or the list stops describing the tree (app-class-resolution's own rule).
 		const stale = Object.keys(ALLOWED_UNSTYLED).filter((k) => !allowedHit.has(k));
 		expect(stale, 'these entries no longer match an unstyled element — delete them from ALLOWED_UNSTYLED').toEqual([]);
 	});

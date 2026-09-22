@@ -12,7 +12,7 @@
 // role, an ENCORE_HOST_TOKEN, a first-joiner-is-host rule — is an edit HERE and nowhere else.
 //
 // The five rulings (2026-09-09), all "any joined singer" — the published, non-source
-// statement of record is docs/ux/05-concurrency.md § "Owner rulings", which this comment must stay
+// statement of record is this file and the arms in its guard, which this comment must stay
 // consistent with:
 //   - player:control       — skip (Q1) and the live guide/pitch/range controls (Q2) stay open to anyone.
 //   - queue:reorder-any     — cross-singer reorder (Q4) stays open to everyone; pinning is being removed

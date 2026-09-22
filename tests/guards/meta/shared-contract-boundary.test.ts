@@ -1,4 +1,4 @@
-// guard: the isomorphic contract cannot reach into the app — XR-VER-07.
+// guard: the isomorphic contract cannot reach into the app.
 //
 // WHAT THIS STILL GUARDS, AND WHAT THE FRAMEWORK TOOK BACK.
 //

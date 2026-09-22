@@ -1,5 +1,5 @@
 <!--
-	CodeEntry — the typed join path (XR-PH-14). Six single-character boxes, not a free text field: the
+	CodeEntry — the typed join path. Six single-character boxes, not a free text field: the
 	segment count teaches the format without an instruction line, and the boxes reflect the SERVER's
 	restricted alphabet (`$lib/contract/room-code`, the one copy) so a character the server would reject
 	is refused at the keystroke rather than accepted and failed at the join.
@@ -135,7 +135,7 @@
 		}
 	}
 
-	// A 6-char paste into ANY box fills all six (XR-PH-14): the code is copied off a TV as one string,
+	// A 6-char paste into ANY box fills all six: the code is copied off a TV as one string,
 	// so making the guest place each character defeats the paste. Normalised through the same shared
 	// filter, so `ABCD-23` or lower case still lands as `ABCD23`.
 	function onPaste(e: ClipboardEvent, i: number) {

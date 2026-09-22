@@ -13,7 +13,7 @@
 
   So the container wraps Encore's own accessible marks, and the marks paint from the config's
   variables. `min-width: 0` is added because this container now sits between /stats' card and the
-  chart's own scroll region: a flex/grid item defaults to min-content, and #144's containment chain
+  chart's own scroll region: a flex/grid item defaults to min-content, and the containment chain
   (measured: document overflow 21px → 0) breaks if any link in it can be sized by its content.
 
   ── PHASE 2: THE REGISTRY'S LAYOUT CLASSES AND ITS layerchart OVERRIDES ARE BOTH REMOVED ───────────
@@ -83,7 +83,7 @@
 </div>
 
 <style>
-	/* See the note above: a link in #144's containment chain must not min-content-size. */
+	/* See the note above: a link in that containment chain must not min-content-size. */
 	.encore-chart-container {
 		min-width: 0;
 	}

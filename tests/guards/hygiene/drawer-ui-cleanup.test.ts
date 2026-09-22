@@ -44,7 +44,7 @@ test('GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the c
 	expect(code).not.toMatch(/no isolated vocals/i);
 	expect(code).not.toMatch(/re-?process it to get a guiding track/i);
 	/*
-	 * RETIRED, ON THE RECORD (XR-VER-07): the three arms that pinned the HINT'S EXISTENCE —
+	 * RETIRED, ON THE RECORD: the three arms that pinned the HINT'S EXISTENCE —
 	 *   const hint = $derived(...)  ·  `available ? … : ''`  ·  {#if hint}<p class="gt-hint">
 	 *
 	 * The hint is gone entirely. It existed to explain the effect ("Fades the original singer back in,

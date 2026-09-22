@@ -1,7 +1,7 @@
 // Spotify backend — catalog SEARCH / metadata via Spotify's Web API (Search endpoint), used as an
 // ANNOTATOR only. Spotify has clean canonical artist/title/duration where a YouTube upload title has
 // to be reverse-engineered by parseTrackTitle; a Spotify hit sharpens the query, but its bytes are
-// NEVER pulled from Spotify — the audio is still acquired from YouTube (docs/DECISIONS.md, the
+// NEVER pulled from Spotify — the audio is still acquired from YouTube (the
 // annotator pattern). So there is no fetch:spotify capability and no librespot acquisition here.
 //
 // CREDENTIALS live in ENV VARS, matching LRCLIB and every existing deployment knob (there is no

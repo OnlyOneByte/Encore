@@ -25,7 +25,7 @@
 		 * invisible on the exact path that creates it. Dims the card, appends the pending marker, and
 		 * hides the remove/reorder cluster until the server acks.
 		 *
-		 * A KIND, not a boolean (XR-PH-10, issue an earlier change): a pending REORDER of a processing entry must not
+		 * A KIND, not a boolean (issue an earlier change): a pending REORDER of a processing entry must not
 		 * announce that it is "adding".
 		 */
 		pending?: 'add' | 'move' | null;
@@ -46,10 +46,10 @@
 		 */
 		shift?: -1 | 0 | 1;
 		/**
-		 * XR-PH-18 — another guest's row while the own-picks reorder mode is open. A processing
+		 * another guest's row while the own-picks reorder mode is open. A processing
 		 * song is still a queue entry, so another guest's process is one of the rows the mode has to
 		 * de-emphasise; found by driving the mode, where the only non-mine row on screen was a processing
-		 * card and stayed at full weight. Surface token, never `opacity` (XR-PH-03) — same rule and same
+		 * card and stayed at full weight. Surface token, never `opacity` — same rule and same
 		 * reason as QueueRow's.
 		 */
 		dimmed?: boolean;
@@ -76,7 +76,7 @@
 	// pct is shown separately in the .stage row, so the line itself omits it.
 	const stageLabel = $derived(processStageLabel(status));
 	// What the unconfirmed marker SAYS — one expression, so a pending reorder cannot re-borrow the
-	// add path's word (XR-PH-10, issue an earlier change). Mirrors QueueRow's derivation of the same name.
+	// add path's word (issue an earlier change). Mirrors QueueRow's derivation of the same name.
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
 	// A terminally failed process is NOT in flight. It reaches this card because the singer's own
 	// queue slot must say the process died — a dead turn used to render as a plain waiting row,
@@ -243,10 +243,10 @@
 		color: var(--warn);
 	}
 	/*
-	 * XR-PH-18 — another guest's processing row while the reorder mode is open. Mirrors QueueRow's
+	 * another guest's processing row while the reorder mode is open. Mirrors QueueRow's
 	 * `.dimmed` exactly, token for token, because the two row kinds sit in the same list and a mode
 	 * that de-emphasised only one of them would read as "this row is special" rather than as
-	 * "this row is not a target". Surface + border, never `opacity` (XR-PH-03) — this card's own
+	 * "this row is not a target". Surface + border, never `opacity` — this card's own
 	 * `.pending` comment above records what subtree opacity did to it.
 	 * After `.pending` for the same source-order reason that rule documents.
 	 */
@@ -370,7 +370,7 @@
 	 * the movement a `transform`, which is the only kind `motion.test.ts` allows to be animated.
 	 *
 	 * THE TRANSITION IS GATED, not unconditional — this is the one interpolated movement on this row, so
-	 * unlike `.moving` (a 1:1 response to the finger, XR-PH-06 by construction) it has a duration that
+	 * unlike `.moving` (a 1:1 response to the finger, by construction) it has a duration that
 	 * `prefers-reduced-motion` must be able to remove. Under `reduce` no transition is declared at all and
 	 * the rows simply appear in their new places, which is still a correct live sort.
 	 */

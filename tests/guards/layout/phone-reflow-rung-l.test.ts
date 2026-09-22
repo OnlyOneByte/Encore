@@ -1,11 +1,11 @@
-// guard: the XR-PH-02 reflow row has a RENDERED guard, and it cannot be quietly defanged.
+// guard: the reflow row has a RENDERED guard, and it cannot be quietly defanged.
 //
 // THE BUG THIS EXISTS FOR. `/stats` overflowed a 320px viewport by 8px at 200% text scale — an SC
-// 1.4.10 Reflow failure — while `phone-inventory.test.ts`'s XR-PH-02 arm was green. That arm was not
+// 1.4.10 Reflow failure — while `phone-inventory.test.ts`'s arm was green. That arm was not
 // broken: it flags a single DECLARATION wider than 320px, and this overflow was a SUM (two grid tracks
 // plus two cards' padding, against a word that cannot wrap once type doubles). The addends are resolved
-// lengths that exist only after layout, so no scan over declarations can add them up. `docs/ux/02-phone.md`
-// says as much in XR-PH-02's own Check row: "Rendered-DOM or driven-browser measurement. **Not a source
+// lengths that exist only after layout, so no scan over declarations can add them up. `02-phone.md`
+// says as much in the own Check row: "Rendered-DOM or driven-browser measurement. **Not a source
 // scan** — both halves are geometry."
 //
 // SO WHY IS *THIS* FILE A SOURCE SCAN. Because it does not guard the overflow — it guards the GUARD.
@@ -32,7 +32,7 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// ., anchored at the repo root rather than counted up from this file's own location.
+//., anchored at the repo root rather than counted up from this file's own location.
 const CORE = repoRoot;
 const PROBE_PATH = at('tests', 'e2e', 'probes', 'p15-phone-reflow.mjs');
 const STATS_PATH = join(CORE, 'src', 'routes', 'stats', '+page.svelte');
@@ -47,7 +47,7 @@ test('the rung-L reflow probe exists and this guard is not vacuous', () => {
 const PROBE = stripComments(readFileSync(PROBE_PATH, 'utf8'));
 
 test('the reflow probe measures on the LAYOUT rung, not the mount rung', () => {
-	// XR-VER-02's Check: a measurement-classified entry must import the layout-rung driver. happy-dom
+	// the standard's Check: a measurement-classified entry must import the layout-rung driver. happy-dom
 	// returns an all-zero DOMRect, so the same assertions on rung M are a permanent silent green.
 	expect(PROBE).toMatch(/from\s*'\.\.\/driver\.mjs'/);
 	expect(PROBE).toMatch(/\bconnect\b/);
@@ -70,8 +70,8 @@ test('the reflow probe measures at the criterion\u2019s own numbers: 320 CSS px 
 	expect(PROBE).toMatch(/scrollWidth\s*<=\s*m\.clientWidth/);
 });
 
-test('the reflow probe covers every XR-PH-02 surface, and /stats by name', () => {
-	// XR-PH-02's Acceptance named `/`, `/join`, `/settings`, `/stats` and the browse screen. `/join` was
+test('the reflow probe covers every surface, and /stats by name', () => {
+	// the standard's Acceptance named `/`, `/join`, `/settings`, `/stats` and the browse screen. `/join` was
 	// retired (Q2-A) into the unjoined branch of `/`, so `measure('/', '/')` now IS the join
 	// surface — the four named surfaces are `/`, `/settings`, `/stats` and browse. A probe that silently
 	// stopped visiting one would report a green row over an unmeasured surface.
@@ -102,7 +102,7 @@ test('the reflow probe FAILS on an overflow instead of merely reporting one', ()
 test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender', () => {
 	// The browse-screen reflow is fixed, so the surface is now asserted like the other four rather
 	// than recorded as a known overflow. The quarantine that used to live here reddened the day the fix
-	// landed (its arm asserted the surface STILL overflowed) and was deleted, per XR-VER-06/07 — a
+	// landed (its arm asserted the surface STILL overflowed) and was deleted — a
 	// resolved quarantine is removed, never left to sit green over a fixed defect. Its machinery must be
 	// gone: no residual constant, and no "still overflows" arm that would re-quarantine the surface.
 	expect(PROBE).not.toMatch(/BROWSE_QUARANTINE_ISSUE/);
@@ -110,7 +110,7 @@ test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender'
 	// The browse measurement must FAIL on an overflow like the others — proven by the shared `measure()`
 	// call asserted above, not a `measureRaw` that reads without asserting.
 	expect(PROBE).not.toMatch(/measureRaw\('browse/);
-	// NON-VACUITY + DISCRIMINATION (XR-VER-05). An EMPTY joined room renders no rows, so a bare browse
+	// NON-VACUITY + DISCRIMINATION. An EMPTY joined room renders no rows, so a bare browse
 	// measurement is a clean 320 over an unexercised layout — a green guard insensitive to the fix, which
 	// is exactly why the first version of this arm was rejected. So the arm SEARCHES the browse screen
 	// first — via the shared `openBrowseFromHome` step and a `fill` of the contract's `SEL.search`
@@ -198,7 +198,7 @@ test('the odd-duration chip wraps its phrase instead of forcing the row wider', 
  * content`. It asserted `.sheet-surface > * { min-width: 0 }` in app.css, and that rule was
  * deleted with the drawer surface it dressed.
  *
- * XR-VER-06 record. (a) The invariant: a `left:0; right:0` fixed box only honours min(max-width,
+ * record. (a) The invariant: a `left:0; right:0` fixed box only honours min(max-width,
  * viewport) while its flex children CAN shrink to it — a flex child's automatic minimum is its
  * min-content width, so an unbreakable control label at 200% text sized the sheet by content it could
  * not shrink below (436px inside a 320px viewport, SC 1.4.10). (b) What left scope: `.sheet-surface`

@@ -157,7 +157,7 @@ test('status colors pass AA as text on a card', () => {
 });
 
 /*
- * THE ACTIONABLE PAIR, re-anchored by the colour-token rework (XR-COL-11, XR-COL-12).
+ * THE ACTIONABLE PAIR, re-anchored by the colour-token rework.
  *
  * This used to read `ratio(token('on-accent'), token('accent-strong'))`. `--accent-strong` is retired:
  * it was a 3% darken of `--accent` whose sole job was getting white to 4.5:1, and per-stop `on_fill`
@@ -182,16 +182,16 @@ test('--on-accent passes AA on --accent (the actionable pair)', () => {
  * shipped as `color: var(--accent)` and the suite stayed green, because every other test here checks
  * whether a PAIR is safe and none checked whether this pair was in USE. A reviewer then proposed to
  * "fix" it by switching to the darker --accent-strong, which would have made the contrast worse while
- * looking like a remedy -- that token is now retired (XR-COL-11), so the wrong remedy is no
+ * looking like a remedy -- that token is now retired, so the wrong remedy is no
  * longer reachable, but the wrong INSTINCT is. So this test scans for anyone using the fill as ink, the
  * same belt-and-braces shape as the --grad usage scan.
  *
- * ── RECORDED RULING FOR THE PALETTE MIGRATION (XR-VER-07) ──────────────────────────────
+ * ── RECORDED RULING FOR THE PALETTE MIGRATION ──────────────────────────────
  *
  * READ THIS BEFORE TOUCHING THE `toBeLessThan(AA_TEXT)` LOOP BELOW.
  *
  * The redesign handoff (`encore-design-handoff.md` §3) predicted this guard would begin passing
- * VACUOUSLY once every Chromatic stop clears AA as ink, and XR-VER-07 quotes that prediction.
+ * VACUOUSLY once every Chromatic stop clears AA as ink, and quotes that prediction.
  *
  * **That prediction is backwards, and the direction matters.** The first arm is an assertion that the
  * pairs are UNUSABLE (`toBeLessThan`), not that they are safe. So the moment a stop clears AA as ink
@@ -211,23 +211,23 @@ test('--on-accent passes AA on --accent (the actionable pair)', () => {
  *        expiry is a real finding worth one line in the retirement record, not a silent edit.
  *     2. KEEP the offenders scan verbatim, and keep this test. Re-anchor its name to the surviving
  *        claim: the accent tokens are backgrounds by design, so nothing sets them as `color:`.
- *     3. Record the swap per XR-VER-06: which invariant left scope (accent-as-ink fails AA) and what
+ *     3. Record the swap: which invariant left scope (accent-as-ink fails AA) and what
  *        still covers the surface (the usage scan). Do NOT relax the loop's threshold to keep it green
- *        -- a threshold nudged to preserve a green is the exact reflex XR-VER-06 exists to stop.
+ *        -- a threshold nudged to preserve a green is the exact reflex the rule exists to stop.
  *
  * `non-vacuity-floors.test.ts` holds the machine-checkable half of this: it asserts this record and the
  * guard it describes are still both present, so the ruling cannot rot out from under the guard.
  *
- * ── THE RULING, EXECUTED BY THE COLOUR-TOKEN REWORK. SWAP RECORDED PER XR-VER-06 ───────────────────
+ * ── THE RULING, EXECUTED BY THE COLOUR-TOKEN REWORK. SWAP RECORDED PER ───────────────────
  *
  * Carried out exactly as written above, and the trigger was the one the ruling did NOT predict: not a
- * red, but `--accent-strong`'s retirement (XR-COL-11) removing the loop's second operand outright.
+ * red, but `--accent-strong`'s retirement removing the loop's second operand outright.
  * `token('accent-strong')` throws by design, so the arm could not have been left alone in any case.
  *
  *   LEFT SCOPE: "accent-as-ink fails AA" as a UNIVERSAL contrast fact. It is now per-stop and mostly
  *   FALSE -- 35 of the 48 registry fills clear AA on --card (min 3.27:1, max 12.87:1). Asserting
  *   `toBeLessThan(AA_TEXT)` against whichever single stop happens to be seeded would have been a green
- *   that says nothing about the palette, which is the shape XR-VER-06 exists to refuse. The threshold
+ *   that says nothing about the palette, which is the shape the rule exists to refuse. The threshold
  *   was NOT relaxed and the arm was NOT inverted; it was dropped, and this is its one line of record.
  *
  *   STILL COVERED: the offenders scan below, kept VERBATIM. "The accent fill is a background, not ink"
@@ -313,7 +313,7 @@ test('every focus outline is drawn in --focus, not --accent or the surface colou
  * means someone put a label back on it. Scanning rule blocks rather than whole files keeps this from
  * firing on a bar fill that merely sits near an unrelated color declaration.
  *
- * THE SCAN IS UNCHANGED BY THE COLOUR-TOKEN REWORK; ITS REASON IS RE-STATED PER STOP (XR-COL-13). The ban rested on
+ * THE SCAN IS UNCHANGED BY THE COLOUR-TOKEN REWORK; ITS REASON IS RE-STATED PER STOP. The ban rested on
  * one figure -- white on the pink stop, 2.84:1 -- and with `accent2` derived per stop this is 48
  * gradients, so that number licenses nothing about the other 47. Re-measured over the registry: a
  * stop's OWN certified `on_fill` clears AA at BOTH endpoints for only 36 of 48 (worst `Scarlet`,

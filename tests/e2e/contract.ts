@@ -155,7 +155,7 @@ export const SEL = {
 	dockRow: '.band-slot',
 	/**
 	 * The scrolling content column. The measured gate reads its padding-bottom to prove the docked band
-	 * is RESERVED rather than overlapping the list (XR-PH-12), which is a geometry claim about this
+	 * is RESERVED rather than overlapping the list, which is a geometry claim about this
 	 * element and so cannot be spelled out at the call site.
 	 */
 	mainColumn: 'main',
@@ -199,7 +199,7 @@ export const SEL = {
 	 *
 	 * THE DRIVER MIGRATION IS NOT DONE, and recording it is the point of writing it here rather than
 	 * discovering it in a browser. `SEL.hero` is read by lib/phone.mjs, probes/p16-hero-live-controls.mjs
-	 * and shoot-913.mjs; `SEL.heroTitle` by party.mjs, probes/p4-transport.mjs and p16. Those reads now
+	 * and shoot.mjs; `SEL.heroTitle` by party.mjs, probes/p4-transport.mjs and p16. Those reads now
 	 * address nothing and must become `homeReady`/`npDrawer` and `bandTitle`/`npSong` — and p16 must PULL
 	 * THE SHEET UP (`activeSnapPoint` to `0.82`) before MEASURING any of the controls, which it never had
 	 * to do for a hero. Note what the merge changed about that requirement: the controls are mounted at
@@ -213,7 +213,7 @@ export const SEL = {
 	 * into lib/phone.mjs, party.mjs and p4-transport.mjs). That is the SAME already-accepted red the last
 	 * retirement left — `searchDock` has been failing that gate with 3 errors since the band took the
 	 * bottom edge — so this is a known shape rather than a new one. But p16-hero-live-controls.mjs and
-	 * shoot-913.mjs are not in tests/tsconfig.e2e.json's `include`, so their reads fail SILENTLY at
+	 * shoot.mjs are not in tests/tsconfig.e2e.json's `include`, so their reads fail SILENTLY at
 	 * runtime (`document.querySelector(undefined)` matches nothing) and only this record says so.
 	 */
 	/*
@@ -240,7 +240,7 @@ export const SEL = {
 	 * See the drawer block below for the deliberate call on each, and for what changed about the body's
 	 * reason.
 	 */
-	/** GuidingTrack's root; `.gt.disabled` is the subtree dimmed with opacity — XR-PH-03's subject. */
+	/** GuidingTrack's root; `.gt.disabled` is the subtree dimmed with opacity — the subject. */
 	guidingTrackRoot: '.gt',
 	/** Its readout, which reads 'Off' rather than a live-looking number when the track is dead. */
 	guideReadout: '.gt-val',
@@ -544,7 +544,7 @@ export const SEL = {
 	 * Addressed by the `data-slot` the vendored component maintains.
 	 *
 	 * It is the only drag surface in the drawer: the Root sets `handleOnly` because the body is sliders, and
-	 * a drag-to-dismiss surface under a slider thumb is the gesture collision XR-PH-15 bans. That makes its
+	 * a drag-to-dismiss surface under a slider thumb is the gesture collision the rule bans. That makes its
 	 * absence a silent failure rather than a cosmetic one — with no element carrying vaul's handle attribute
 	 * the drawer cannot be dragged AT ALL and nothing warns, which is precisely what shadcn's copy-in did
 	 * with a decorative div and why drawer-handle.svelte exists. The merge RAISED that stake: the same
@@ -568,9 +568,9 @@ export const SEL = {
 	 * survived into the drawer. A wrong decision here does not go red; it leaves a selector quietly
 	 * resolving to something it was not written for.
 	 *
-	 * `toolsNote` is unambiguous: same class, same sentence, same claim, new file. XR-PH-15 IS this sentence
+	 * `toolsNote` is unambiguous: same class, same sentence, same claim, new file. IS this sentence
 	 * ("No isolated vocals for this song…"); it is still rendered AHEAD of the control it explains, still
-	 * un-dimmed by any ancestor `opacity` (XR-PH-03), and still present exactly when something is owed and
+	 * un-dimmed by any ancestor `opacity`, and still present exactly when something is owed and
 	 * absent when nothing is. Only the file moved, so the hook moved with it.
 	 *
 	 * `toolsBody` needed deciding. Its recorded reason was disclosure-relative — "the explanation must sit
@@ -762,7 +762,7 @@ export const SEL = {
 	/*
 	 * LOBBY strip the overlap probe reads. `.strip` is the joined-singers ribbon, `.person` a
 	 * chip in it, `.url` the lobby's typed join address. Scoped forms are what lobby-overlap.mjs queries.
-	 * The "+N more" overflow chip is RETIRED (XR-TV-14): the lobby now shows every guest with no
+	 * The "+N more" overflow chip is RETIRED: the lobby now shows every guest with no
 	 * truncation, so there is no overflow chip and no `.person.more` anchor.
 	 */
 	lobbyUrl: '.lobby .url',
@@ -770,7 +770,7 @@ export const SEL = {
 	lobbyStripPerson: '.lobby .strip .person',
 	lobbyAddress: '.url',
 	/* The bottom-right fullscreen control. It is position:absolute above the lobby roster strip,
-	   so the roster must not paint a chip UNDER it (XR-TV-14) — the measured gate and lobby-overlap
+	   so the roster must not paint a chip UNDER it — the measured gate and lobby-overlap
 	   probe sweep the roster against this. */
 	fsBtn: '.fs-btn',
 	/* KEY-SHIFT control the transpose probe reads: the +/- buttons and the current-key label.
@@ -998,13 +998,13 @@ export const HOOKS: Hook[] = [
 		id: 'toolsNote',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: 'class="tools-note"',
-		why: 'XR-PH-15 IS this sentence; p16 asserts its presence for a dead control and its absence for a live one — unchanged by the move except for the file'
+		why: 'the no-shared-drag-surface rule IS this sentence; p16 asserts its presence for a dead control and its absence for a live one — unchanged by the move except for the file'
 	},
 	{
 		id: 'guidingTrackRoot',
 		file: 'src/lib/components/GuidingTrack.svelte',
 		anchor: 'class:disabled={!available}',
-		why: 'XR-PH-03 is a containment question about THIS dimmed subtree, so the dimming is the anchor'
+		why: 'it is a containment question about THIS dimmed subtree, so the dimming is the anchor'
 	},
 	{
 		id: 'guideReadout',
@@ -1126,7 +1126,7 @@ export const HOOKS: Hook[] = [
 	 * `drawerHandleOnly` BECAME `drawerBodyNoDrag` (2026-09-21) — the same claim, from the other side.
 	 *
 	 * It anchored the `handleOnly` prop: dragging restricted to the grab bar, so a body made of sliders was
-	 * not also a drag surface (XR-PH-15). Reported: the top edge of a sheet that plainly looks draggable was
+	 * not also a drag surface. Reported: the top edge of a sheet that plainly looks draggable was
 	 * draggable only at one 6px bar. `handleOnly` is all-or-nothing in vaul, so the fix was to drop it and
 	 * EXCLUDE instead — `data-vaul-no-drag` on `.np-fit`, resolved by `closest()`, covering the head, the
 	 * body, the guiding-track slider, the keycaps and the range visualiser in one attribute.
@@ -1140,7 +1140,7 @@ export const HOOKS: Hook[] = [
 		id: 'drawerBodyNoDrag',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
 		anchor: '<div class="np-fit" data-vaul-no-drag',
-		why: 'the band row is the drag surface, so this attribute is the whole of XR-PH-15 on this sheet: without it vaul drags from anywhere in a body made of sliders and the guiding-track thumb and the dismiss gesture become one gesture, with the drawer winning as the ancestor — a gesture collision rather than a missing element'
+		why: 'the band row is the drag surface, so this attribute is the whole of on this sheet: without it vaul drags from anywhere in a body made of sliders and the guiding-track thumb and the dismiss gesture become one gesture, with the drawer winning as the ancestor — a gesture collision rather than a missing element'
 	},
 	{
 		id: 'bandTitle',

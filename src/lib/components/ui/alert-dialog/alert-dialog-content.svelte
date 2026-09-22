@@ -31,7 +31,7 @@
      it. Any `max-w-*` / `w-*` / `min-w-*` in a vendored component carries this hazard. An arbitrary
      value cannot, because it resolves nothing through a namespace.
   8. The width is a viewport calc rather than a fixed rem, so it keeps a real gutter at the 320px
-     reflow floor (XR-PH-02) instead of running edge to edge.
+     reflow floor instead of running edge to edge.
 -->
 <script lang="ts">
 	import { AlertDialog as AlertDialogPrimitive } from 'bits-ui';

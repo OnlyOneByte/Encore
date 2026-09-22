@@ -1,4 +1,4 @@
-// Reordering the queue, as pure functions (XR-PH-17 … XR-PH-20).
+// Reordering the queue, as pure functions.
 //
 // ── FROM A MODE WITH DRAWN SLOTS TO A LIVE SORT (2026-09-21) ──────────────────────────────────────
 //
@@ -18,27 +18,27 @@
 // the release commits where it visibly is. No mode to open, nothing to draw, nothing to cancel — the
 // gesture IS the transaction.
 //
-// XR-PH-18'S SUBSTANCE SURVIVES, which is the part that mattered: "a release cannot commit somewhere the
+//'S SUBSTANCE SURVIVES, which is the part that mattered: "a release cannot commit somewhere the
 // guest did not choose." It was satisfied by declining a release outside a drawn target; it is now
 // satisfied by the target being WHAT THE GUEST CAN SEE — `liveSortTarget` is the same arithmetic that
 // positions the rows on screen, so the committed index and the rendered order cannot disagree.
 //
-// XR-PH-20 IS A CONFORMANCE ROW (SC 2.5.7 / 2.1.1) AND IS NOT WEAKENED. The up/down buttons are gone —
+// IS A CONFORMANCE ROW (SC 2.5.7 / 2.1.1) AND IS NOT WEAKENED. The up/down buttons are gone —
 // two 44px controls per row, which is what the report was about — and the non-drag path moved ONTO THE
 // GRIP: it is a real button, so focus it and Arrow Up/Down move the row one place each, committing
 // immediately. Every ordering reachable by dragging is reachable that way, it costs no layout, and it
 // covers keyboard users as the arrows did. `keyboardMoveTarget` is that path's whole logic.
 //
-// WHY THE LOGIC IS HERE AND NOT IN THE COMPONENT. XR-PH-17's and XR-PH-18's acceptance are claims about a
+// WHY THE LOGIC IS HERE AND NOT IN THE COMPONENT. the and the acceptance are claims about a
 // predicate and an index, and `bunfig.toml` cannot mount a component that imports `$app` (see
-// lib/tv/wake-lock.test.ts:18-27, restated as XR-PH-21). A predicate extracted into a real module is
+// lib/tv/wake-lock.test.ts:18-27, restated as). A predicate extracted into a real module is
 // testable against the code the page actually calls; one inlined in a template can only be tested by
 // reconstructing it, which pins nothing.
 
 import type { EntryStatus } from '$lib/contract';
 
 /**
- * XR-PH-17 — the grip renders ONLY where a reorder is real.
+ * the grip renders ONLY where a reorder is real.
  *
  * Two conditions, each a way for a drag to be a lie:
  *  • `queuedCount > 1` — with one song queued there is no second position to move it to.
@@ -79,7 +79,7 @@ export function ordinal(n: number): string {
 }
 
 /**
- * XR-PH-18 — where the dragged row currently IS, as a queued index.
+ * where the dragged row currently IS, as a queued index.
  *
  * THE ONE ARITHMETIC, READ TWICE: once to place the rows on screen and once to commit on release. That is
  * what replaced the drawn drop targets, and it is a stronger guarantee rather than a looser one — the old
@@ -98,7 +98,7 @@ export function ordinal(n: number): string {
  *
  * CLAMPED TO THE LIST, which is the one place clamping is right: a finger can leave the list in either
  * direction, and the nearest end is unambiguously what the guest is aiming at. That is not the "commit
- * somewhere unchosen" case XR-PH-18 is about — the row is visibly sitting there when they let go.
+ * somewhere unchosen" case is about — the row is visibly sitting there when they let go.
  */
 export function liveSortTarget(opts: {
 	fromIndex: number;
@@ -115,7 +115,7 @@ export function liveSortTarget(opts: {
 }
 
 /**
- * XR-PH-20 — the non-drag path, as one step of the same reorder.
+ * the non-drag path, as one step of the same reorder.
  *
  * `delta` is -1 for Arrow Up and +1 for Arrow Down. Returns the index to commit, or NULL at the ends of
  * the list — null rather than a clamp so the caller can leave the row where it is and say nothing, rather
@@ -150,7 +150,7 @@ function clampIndex(i: number, count: number): number {
 }
 
 /**
- * XR-PH-19 — has a concurrent change invalidated the DRAG IN FLIGHT? Returns the reason to STATE, or null
+ * has a concurrent change invalidated the DRAG IN FLIGHT? Returns the reason to STATE, or null
  * while it is still valid.
  *
  * "Mode" in this function's name and prose is historical: there is no mode to exit any more (see the

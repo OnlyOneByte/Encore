@@ -6,7 +6,7 @@
  * phone viewport, and shoots the four surfaces whose components this PR replaced.
  *
  * Run it once per tree and diff the pairs:
- *   EPORT=5217 OUT=/tmp/after  bun tests/e2e/shoot-913.mjs
+ *   EPORT=5217 OUT=/tmp/after  bun tests/e2e/shoot.mjs
  *
  * Deliberately NOT added to any gate list. A screenshot cannot fail a build, and a capture script that
  * pretends to be a check is how a suite grows something nobody reads.
@@ -150,7 +150,7 @@ async function main() {
 	 */
 	async function shot(name, { fullPage = true } = {}) {
 		await sleep(700);
-		await page.screenshot(join(OUT, `913-${name}-eyeson.png`), { fullPage });
+		await page.screenshot(join(OUT, `${name}-eyeson.png`), { fullPage });
 		console.log(`  shot ${name}`);
 	}
 

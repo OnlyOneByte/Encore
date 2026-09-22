@@ -411,7 +411,7 @@ export function isValidLyricsCase(id: unknown): id is LyricsCaseId {
  * Text size as a PERCENT of the computed distance-based scale — never an absolute size.
  *
  * A stored pixel size would discard the `vh` term in `clamp(3.1rem, 6.4vh, 6rem)`, so the same room
- * would render wrong the moment the TV's resolution changed. That is precisely the bug PR #8's scale
+ * would render wrong the moment the TV's resolution changed. That is precisely the bug the earlier scale
  * fixed, and a settings field is not worth reintroducing it. A multiplier keeps the adaptive scale and
  * layers the room's preference on top.
  *

@@ -1,6 +1,6 @@
 // GET /api/room-preview?code=CODE — resolve a scanned/typed join code to a WORDS confirmation for an
 // unjoined guest: how many people are here now, a couple of their names, and the identity colours they
-// hold (XR-PH-14, Q1-B).
+// hold (Q1-B).
 //
 // Unauthenticated on purpose, and it is no new exposure: /tv reads no session and already renders the
 // present singers BY NAME on the big screen (`lib/tv/screen.ts`), and /metrics is ungated too — there is
@@ -8,7 +8,7 @@
 //
 // Rooms have no name column (schema.ts is {id, code, createdAt}) and no naming surface, so the
 // confirmation is built from presence, not a room name — that is exactly what Q1-B decided over the
-// rejected "Room ABCD23 · 6 people here", which re-presents the code XR-PH-14 says has no function left
+// rejected "Room ABCD23 · 6 people here", which re-presents the code says has no function left
 // once the guest has arrived.
 //
 // The count comes from `roomMembership`, which is also what the name-uniqueness rule refuses from — see
@@ -29,7 +29,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const code = normalizeRoomCodeInput(url.searchParams.get('code') ?? '');
 	if (code.length !== CODE_LENGTH) {
 		// A malformed code is not "room not found" — it never named a room. The phone shows the typed
-		// path with this reason rather than a bare form (XR-PH-14 error-identification half).
+		// path with this reason rather than a bare form.
 		return json({ error: 'That code is not six characters.' }, { status: 400 });
 	}
 

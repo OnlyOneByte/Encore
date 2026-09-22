@@ -20,7 +20,7 @@
 //
 // These are FILE-SET censuses, not line coordinates: the fix moves lines, so asserting a `path:line`
 // would red on the very change it is meant to protect. Each arm names the file that must own the
-// construct and requires no other non-test production file in . to carry it.
+// construct and requires no other non-test production file in. to carry it.
 //
 // Sentinels below exist so no arm can be satisfied by DELETING the thing it protects — a census that
 // only counts occurrences passes at zero.
@@ -41,7 +41,7 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-/** Every NON-TEST production .ts/.svelte in ., including the Bun.serve entry at the package
+/** Every NON-TEST production.ts/.svelte in., including the Bun.serve entry at the package
  *  root — server.ts sits OUTSIDE src/, and a src-scoped walk would miss the very file this guards. */
 function collectNonTestSources(): string[] {
 	const out: string[] = [];
@@ -130,8 +130,8 @@ test('ARM 1 cannot be satisfied by deleting the invariant — the resolution tes
 
 // ── PROSE ARM: the comment that tells the next developer the predicate is single-sourced ────────────
 // This pins the comment-only hunk of this fix, which by construction cannot red a behavioural test —
-// `docs/loop/CODING-BOT.md` §3 sanctions exactly this shape, and the in-repo precedents are
-// src/lib/contract/pin-base-prose-790.test.ts and spotify-enforcement-prose-742.test.ts. Read RAW
+// The repo's own convention sanctions exactly this shape, and the in-repo precedents are
+// src/lib/contract/pin-base-prose-790.test.ts and spotify-enforcement-prose.test.ts. Read RAW
 // (not stripComments), because the comment text IS the subject: blanking comments would make every
 // assertion below vacuous.
 //

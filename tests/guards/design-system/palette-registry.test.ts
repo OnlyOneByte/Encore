@@ -12,8 +12,8 @@ import { contrastRatio } from '$lib/contract';
 import registry from '$lib/contract/presentation/player-palette-48.json';
 
 /**
- * The 48-stop player palette registry (`XR-COL-01`), and the guards that keep its published figures
- * describing the surfaces the app actually paints (`XR-COL-04`).
+ * The 48-stop player palette registry, and the guards that keep its published figures
+ * describing the surfaces the app actually paints.
  *
  * WHY THIS FILE EXISTS. The registry's figures were generated against the MOCKUP's surfaces
  * — `#060a18 / #131a2e / #1a2238` — not the app's `--bg / --card / --card2`. Nothing measured the
@@ -46,14 +46,14 @@ function token(name: string): string {
 	return m[1]!;
 }
 
-/** Role floors, from `XR-COL-05` (non-text) and `XR-COL-06` / `XR-COL-07` (text). */
+/** Role floors: non-text and text. */
 const NON_TEXT = 3;
 const AA = 4.5;
 
 const CHROMATIC = registry.variants.chromatic;
 const STOPS = CHROMATIC.stops;
 
-test('the 48-stop registry is measured against the surfaces app.css paints: the registry surfaces ARE the app.css tokens — not the mockup values (XR-COL-04)', () => {
+test('the 48-stop registry is measured against the surfaces app.css paints: the registry surfaces ARE the app.css tokens — not the mockup values', () => {
 	// The assertion this file exists for. The generator reads these three tokens; this proves the
 	// committed artifact was generated from the values the app still declares. Change `--card` in
 	// `app.css` without regenerating and this reds, naming the declared and the recorded value.
@@ -66,7 +66,7 @@ test('the 48-stop registry is measured against the surfaces app.css paints: the 
 	expect(registry.surfaces.card).not.toBe('#131a2e');
 });
 
-test('the 48-stop registry is measured against the surfaces app.css paints: all 48 stops carry a distinct, canonical fill (XR-COL-09)', () => {
+test('the 48-stop registry is measured against the surfaces app.css paints: all 48 stops carry a distinct, canonical fill', () => {
 	expect(STOPS.length).toBe(48);
 	expect(new Set(STOPS.map((s) => s.fill)).size).toBe(48);
 	expect(STOPS.filter((s) => !/^#[0-9a-f]{6}$/.test(s.fill))).toEqual([]);
@@ -75,21 +75,21 @@ test('the 48-stop registry is measured against the surfaces app.css paints: all 
 const bg = token('bg');
 const card = token('card');
 
-test('every stop clears every role floor with margin > 0: fill is visible as an identity dot on --bg and on --card (XR-COL-05, 3:1)', () => {
+test('every stop clears every role floor with margin > 0: fill is visible as an identity dot on --bg and on --card (3:1)', () => {
 	const weak = STOPS.filter(
 		(s) => contrastRatio(s.fill, bg) <= NON_TEXT || contrastRatio(s.fill, card) <= NON_TEXT
 	).map((s) => s.name);
 	expect(weak).toEqual([]);
 });
 
-test('every stop clears every role floor with margin > 0: on_fill clears AA against its own fill (XR-COL-06, 4.5:1)', () => {
+test('every stop clears every role floor with margin > 0: on_fill clears AA against its own fill (4.5:1)', () => {
 	// Surface-independent, so the surface remeasurement did not move it. Pinned here because it is one of the four
 	// roles the registry claims to have measured, and nothing else measures it.
 	const weak = STOPS.filter((s) => contrastRatio(s.on_fill, s.fill) <= AA).map((s) => s.name);
 	expect(weak).toEqual([]);
 });
 
-test('every stop clears every role floor with margin > 0: accent_ink clears AA as text on the real --card (XR-COL-07, 4.5:1)', () => {
+test('every stop clears every role floor with margin > 0: accent_ink clears AA as text on the real --card (4.5:1)', () => {
 	const weak = STOPS.filter((s) => contrastRatio(s.accent_ink, card) <= AA).map((s) => s.name);
 	expect(weak).toEqual([]);
 });
@@ -110,7 +110,7 @@ test('every stop clears every role floor with margin > 0: the six stops named ab
 
 test('every stop clears every role floor with margin > 0: the published r_* figures agree with a fresh measurement', () => {
 	// Catches a hand-edited hex whose recorded ratio was not updated with it — the cheap half of
-	// `XR-COL-02`, which runs without a Python interpreter.
+	// the reproducibility claim, which runs without a Python interpreter.
 	const drift = STOPS.filter(
 		(s) =>
 			Math.abs(contrastRatio(s.fill, bg) - s.r_dot_bg) > 0.005 ||
@@ -127,7 +127,7 @@ test('every stop clears every role floor with margin > 0: the generator recorded
 	expect(CHROMATIC.stats.surfaces).toEqual(registry.surfaces);
 });
 
-test('the registry regenerates byte-identically from its committed inputs (XR-COL-02)', () => {
+test('the registry regenerates byte-identically from its committed inputs', () => {
 	// "Generated, never hand-edited" is only true if a hand edit is detectable. This is the only
 	// assertion that detects one, so it pays ~10s of interpreter time to run the real generator.
 	const out = join(mkdtempSync(join(tmpdir(), 'palette-')), 'regenerated.json');
@@ -144,7 +144,7 @@ test('the registry regenerates byte-identically from its committed inputs (XR-CO
 	const committed = readFileSync(join(REPO, 'src/lib/contract/presentation/player-palette-48.json'), 'utf8');
 	const regenerated = readFileSync(out, 'utf8');
 	if (regenerated !== committed) {
-		// Name the stop that differs, per XR-COL-02's acceptance, instead of dumping 42 KB of JSON.
+		// Name the stop that differs acceptance, instead of dumping 42 KB of JSON.
 		const a = JSON.parse(committed) as typeof registry;
 		const b = JSON.parse(regenerated) as typeof registry;
 		const differing = a.variants.chromatic.stops

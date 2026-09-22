@@ -40,7 +40,7 @@ const ROOTS = new Set(['/']);
 /**
  * Every routed page under src/routes, as { route, file, src }.
  *
- * Non-vacuity floor (XR-VER-05). This walk had NO floor, and both consumers assert
+ * Non-vacuity floor. This walk had NO floor, and both consumers assert
  * `offenders` EMPTY (`:70` the single-h1 rule, `:80` the back affordance) — so a moved `routes/`, a
  * renamed `+page.svelte`, or a walk root typo made both pass with ZERO pages examined. That is the
  * exact shape that let /stats and /metrics ship as dead ends in the first place, reappearing one level
@@ -48,7 +48,7 @@ const ROOTS = new Set(['/']);
  *
  * The floor lives IN the walk, not in each test, so a third consumer inherits it.
  *
- * A firing floor is a FINDING, never a number to adjust — see XR-VER-06 and
+ * A firing floor is a FINDING, never a number to adjust — and
  * `non-vacuity-floors.test.ts` (cited by bare filename: a `../` pointer was arithmetic about where
  * this test lived, and it stopped resolving the moment the file moved).
  */

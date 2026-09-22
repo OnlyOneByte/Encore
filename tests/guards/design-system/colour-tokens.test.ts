@@ -1,26 +1,26 @@
 /*
  * ── THE COLOUR TOKEN LAYER UNDER THE 48-STOP PALETTE ──────────────────────────────────
  *
- * `XR-COL-10` through `XR-COL-13` and `XR-COL-24`. Three of Encore's encoded colour prohibitions change
+ * Three of Encore's encoded colour prohibitions change
  * MEANING under the 48-stop palette and one disappears, and every one of them fails silently:
  *
- *   XR-COL-11  `--accent-strong` is RETIRED. It was "a 3% darken of --accent" existing solely so white
+ *  `--accent-strong` is RETIRED. It was "a 3% darken of --accent" existing solely so white
  *              reached 4.88:1. With per-stop `on_fill` the fill IS the strong value, so keeping it would
  *              be two tokens claiming one job with no rule for which wins. Its failure mode is a token
  *              that lingers in one forgotten rule and quietly re-introduces the second accent.
- *   XR-COL-10  `--accent-ink` stays a REQUIRED, DISTINCT token. `accent_ink` differs from `fill` for 13
+ *  `--accent-ink` stays a REQUIRED, DISTINCT token. `accent_ink` differs from `fill` for 13
  *              of 48 stops, so collapsing the two downgrades those 13 to sub-AA text.
- *   XR-COL-12  `--on-accent` stops being the constant `#ffffff` and becomes per-stop — 36 dark / 12
+ *  `--on-accent` stops being the constant `#ffffff` and becomes per-stop — 36 dark / 12
  *              white. The pairing that used to be free (there was one ink) now has 48 chances to go
  *              wrong, so a fill and its ink must be EMITTED AS ONE PAIR and never separately.
- *   XR-COL-24  All four per-stop values reach CSS as CUSTOM PROPERTIES, not just the fill — otherwise a
+ *  All four per-stop values reach CSS as CUSTOM PROPERTIES, not just the fill — otherwise a
  *              component needing `on_fill` reaches for a literal.
  *
  * WHY THIS FILE AND NOT `contrast.test.ts`. That file is deliberately a pure token-VALUE guard: it reads
  * `app.css` as text and computes ratios, and it does not know the registry exists. The claims here are
  * about the relationship between the token layer and the registry, so they need the registry — imported
- * the same way `src/lib/contract/presentation/palette-registry-820.test.ts:7` imports it, from the one committed
- * artifact `XR-COL-01` makes the only place a stop's values exist.
+ * the same way `src/lib/contract/presentation/palette-registry.test.ts:7` imports it, from the one committed
+ * artifact is the only place a stop's values exist.
  *
  * The ratios below are recomputed from the hex values rather than read out of the registry's `r_*`
  * fields, for the palette registry's reason: a test that trusts the numbers the generator printed cannot catch a
@@ -46,13 +46,13 @@ const APP_CSS = read('src/app.css');
 const FILES = [...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 
 /**
- * `variants.chromatic` is the ratified palette (`docs/DECISIONS.md`, *Palette — Chromatic, 48 stops*).
+ * `variants.chromatic` is the ratified palette (*Palette — Chromatic, 48 stops*).
  * The `uniform` variant is the rejected one and is still in the artifact as the comparison it was
  * rejected against — reading the wrong key here would measure a palette the app never ships.
  */
 const STOPS = registry.variants.chromatic.stops;
 
-/** WCAG AA for normal-size text. The floor `XR-COL-06` and `XR-COL-07` both use. */
+/** WCAG AA for normal-size text. The floor both contrast rules use. */
 const AA = 4.5;
 
 function channels(hex: string): [number, number, number] {
@@ -96,7 +96,7 @@ function stripSvelteComments(src: string): string {
 	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
 }
 
-// ── XR-COL-11 — the retirement is real ─────────────────────────────────────────────────────────────
+// ── the retirement is real ─────────────────────────────────────────────────────────────
 
 /**
  * Acceptance 1, both halves. A declaration left behind is a second accent nothing rules between; a
@@ -107,7 +107,7 @@ function stripSvelteComments(src: string): string {
  * order to explain why it is gone, and prose must not be able to fail the guard. That strip is what
  * lets the reason be recorded next to the absence instead of somewhere it will rot.
  */
-test('--accent-strong is retired, not carried forward (XR-COL-11): nothing declares or reads it, anywhere in the token layer or the components', () => {
+test('--accent-strong is retired, not carried forward: nothing declares or reads it, anywhere in the token layer or the components', () => {
 	const offenders: string[] = [];
 
 	if (/--accent-strong\s*:/.test(stripCssComments(APP_CSS))) {
@@ -129,7 +129,7 @@ test('--accent-strong is retired, not carried forward (XR-COL-11): nothing decla
  * Non-vacuity. The scan above reports offenders from a file walk, so a walk that found
  * nothing would pass while proving nothing. 25 files today; floor well below.
  */
-test('--accent-strong is retired, not carried forward (XR-COL-11): the retirement scan actually reads the component surface', () => {
+test('--accent-strong is retired, not carried forward: the retirement scan actually reads the component surface', () => {
 	expect(FILES.length).toBeGreaterThan(15);
 });
 
@@ -138,11 +138,11 @@ test('--accent-strong is retired, not carried forward (XR-COL-11): the retiremen
  * carry a label on its own now, which is the whole claim that made the darkened sibling redundant.
  * If this ever reds, retiring the token was premature rather than the guard being wrong.
  */
-test('--accent-strong is retired, not carried forward (XR-COL-11): the fill it was darkened from now carries its ink at AA on its own', () => {
+test('--accent-strong is retired, not carried forward: the fill it was darkened from now carries its ink at AA on its own', () => {
 	expect(ratio(token('on-accent'), token('accent'))).toBeGreaterThanOrEqual(AA);
 });
 
-// ── XR-COL-24 / acceptance 2 — all four roles reach CSS ────────────────────────────────────────────
+// ── acceptance 2 — all four roles reach CSS ────────────────────────────────────────────
 
 /**
  * Acceptance 2. Not just the fill: a component that needs `on_fill` and cannot reach it as a custom
@@ -152,7 +152,7 @@ test('--accent-strong is retired, not carried forward (XR-COL-11): the fill it w
  * the gradient is DEFINED as `var(--accent), var(--accent2)` — the custom property IS the second stop,
  * and pinning that composition is what makes the claim true rather than incidental.
  */
-test('every per-stop role reaches CSS as a custom property (XR-COL-24): the fill, its ink, the accent ink and the gradient second stop are all declared', () => {
+test('every per-stop role reaches CSS as a custom property: the fill, its ink, the accent ink and the gradient second stop are all declared', () => {
 	const css = stripCssComments(APP_CSS);
 	const missing = (['accent', 'on-accent', 'accent-ink', 'accent2'] as const).filter(
 		(name) => !new RegExp(`--${name}:\\s*#[0-9a-fA-F]{3,8}\\s*;`).test(css)
@@ -163,20 +163,20 @@ test('every per-stop role reaches CSS as a custom property (XR-COL-24): the fill
 	expect(css).toMatch(/--grad:\s*linear-gradient\([^;]*var\(--accent\)[^;]*var\(--accent2\)[^;]*\);/);
 });
 
-// ── XR-COL-12 / acceptance 3 — one pair, never separately ──────────────────────────────────────────
+// ── acceptance 3 — one pair, never separately ──────────────────────────────────────────
 
 /**
  * The `:root` seed is a REGISTRY PAIR, not two independently chosen hexes.
  *
  * This is the assertion that makes "read from the single source" enforceable in a stylesheet, which
  * cannot import JSON. Same price, and for the same stated reason, as `SURFACES` in
- * `src/lib/contract/presentation/colors.ts` and the surfaces block in `palette-registry-820.test.ts`: the
+ * `src/lib/contract/presentation/colors.ts` and the surfaces block in `palette-registry.test.ts`: the
  * literal lives in one place and a named test reds the moment it stops matching the artifact.
  *
  * It deliberately does NOT pin WHICH stop. Re-seeding the brand default is a design decision; taking
  * fill from one stop and ink from another is a defect, and only the second is what this refuses.
  */
-test('a fill and its ink are emitted as one pair (XR-COL-12): the seeded --accent / --on-accent pair is one stop from the registry', () => {
+test('a fill and its ink are emitted as one pair: the seeded --accent / --on-accent pair is one stop from the registry', () => {
 	const fill = token('accent').toLowerCase();
 	const ink = token('on-accent').toLowerCase();
 
@@ -207,7 +207,7 @@ test('a fill and its ink are emitted as one pair (XR-COL-12): the seeded --accen
  * declaration inside a rule block, and a Svelte inline `style="--accent:…"` / `style:--accent`
  * binding. `NowPlayingHero.svelte`'s `style="--singer:{…}"` is the in-repo precedent for the second.
  */
-test('a fill and its ink are emitted as one pair (XR-COL-12): no site sets the fill property without setting its ink property too', () => {
+test('a fill and its ink are emitted as one pair: no site sets the fill property without setting its ink property too', () => {
 	const offenders: string[] = [];
 
 	for (const f of [join(SRC, 'app.css'), ...FILES]) {
@@ -226,7 +226,7 @@ test('a fill and its ink are emitted as one pair (XR-COL-12): no site sets the f
 			// `--accent:` exactly — not `--accent-ink:`, `--accent2:`, and not a var() READ.
 			if (!/(^|[;\s"])--accent\s*:/.test(b.body)) continue;
 			if (/(^|[;\s"])--on-accent\s*:/.test(b.body)) continue;
-			if (b.body.includes(':root')) continue; // defensive; :root's own block is matched above
+			if (b.body.includes(':root')) continue; // defensive;:root's own block is matched above
 			offenders.push(`${where}:${src.slice(0, b.index).split('\n').length}: sets --accent without --on-accent`);
 		}
 
@@ -250,24 +250,24 @@ test('a fill and its ink are emitted as one pair (XR-COL-12): no site sets the f
  * The registry-level premise the pairing rule exists FOR. If `on_fill` were one rule rather than 48
  * facts, adjacency would still be enough and this whole discipline would be over-engineering.
  */
-test('a fill and its ink are emitted as one pair (XR-COL-12): on_fill is a per-stop fact, not a rule — 36 dark and 12 white', () => {
+test('a fill and its ink are emitted as one pair: on_fill is a per-stop fact, not a rule — 36 dark and 12 white', () => {
 	const white = STOPS.filter((s) => s.on_fill.toLowerCase() === '#ffffff');
 	expect(white.length).toBe(12);
 	expect(STOPS.length - white.length).toBe(36);
 });
 
-/** `XR-COL-06`: every pair the registry offers is usable, so a wrong PAIRING is the only way to fail. */
-test('a fill and its ink are emitted as one pair (XR-COL-12): every stop carries its own ink at AA', () => {
+/** Every pair the registry offers is usable, so a wrong PAIRING is the only way to fail. */
+test('a fill and its ink are emitted as one pair: every stop carries its own ink at AA', () => {
 	const weak = STOPS.filter((s) => ratio(s.on_fill, s.fill) < AA).map(
 		(s) => `${s.name}: ${ratio(s.on_fill, s.fill).toFixed(2)}`
 	);
 	expect(weak).toEqual([]);
 });
 
-// ── XR-COL-10 — accent ink stays distinct, and the surface gap that blocks wiring it ───────────────
+// ── accent ink stays distinct, and the surface gap that blocks wiring it ───────────────
 
 /** It is still declared, and it is still NOT the fill. Collapsing the two is the failure. */
-test('--accent-ink remains a required, distinct token (XR-COL-10): it is declared, and it is not a copy of the fill', () => {
+test('--accent-ink remains a required, distinct token: it is declared, and it is not a copy of the fill', () => {
 	expect(token('accent-ink').toLowerCase()).not.toBe(token('accent').toLowerCase());
 });
 
@@ -276,7 +276,7 @@ test('--accent-ink remains a required, distinct token (XR-COL-10): it is declare
  * measurement that makes the token REQUIRED rather than tidy: for these 13 the deep fill cannot be
  * its own card ink, so a build resolving both to one value ships 13 sub-AA text colours.
  */
-test('--accent-ink remains a required, distinct token (XR-COL-10): ink differs from fill for exactly the 13 stops that cannot be their own card ink', () => {
+test('--accent-ink remains a required, distinct token: ink differs from fill for exactly the 13 stops that cannot be their own card ink', () => {
 	const divergent = STOPS.filter((s) => s.accent_ink.toLowerCase() !== s.fill.toLowerCase()).map((s) => s.name);
 	expect(divergent).toEqual([
 		'Redline',
@@ -295,8 +295,8 @@ test('--accent-ink remains a required, distinct token (XR-COL-10): ink differs f
 	]);
 });
 
-/** `XR-COL-07`, on the surface the registry actually measured: all 48 clear AA as ink on `--card`. */
-test('--accent-ink remains a required, distinct token (XR-COL-10): every stop clears AA as ink on the surface the registry measured', () => {
+/** On the surface the registry actually measured: all 48 clear AA as ink on `--card`. */
+test('--accent-ink remains a required, distinct token: every stop clears AA as ink on the surface the registry measured', () => {
 	const weak = STOPS.filter((s) => ratio(s.accent_ink, token('card')) < AA).map(
 		(s) => `${s.name}: ${ratio(s.accent_ink, token('card')).toFixed(2)}`
 	);
@@ -308,7 +308,7 @@ test('--accent-ink remains a required, distinct token (XR-COL-10): every stop cl
  *
  * This test asserts a DEFECT still exists, which is unusual, so read why before "fixing" it.
  *
- * `XR-COL-07` certifies `accent_ink` against `--card`, and the test above shows all 48 pass there.
+ * The registry certifies `accent_ink` against `--card`, and the test above shows all 48 pass there.
  * But the app does not draw accent ink on `--card`. Both `var(--accent-ink)` read sites in the tree
  * — `SongRow.svelte`'s `.chip.kind.lyric` and `.chip.tag` — sit on `--card-tint2`, a surface the
  * registry's own `surfaces` block has never contained. On it, 16 of 48 stops FAIL AA.
@@ -322,7 +322,7 @@ test('--accent-ink remains a required, distinct token (XR-COL-10): every stop cl
  * Two ways to close it, both wider than the token layer and neither this issue's to choose: regenerate
  * the palette with the tint surfaces in scope, or move those two chips onto `--card`.
  */
-test('--accent-ink remains a required, distinct token (XR-COL-10): the tint surfaces the app paints ink on are still outside the registry\u2019s measured set', () => {
+test('--accent-ink remains a required, distinct token: the tint surfaces the app paints ink on are still outside the registry\u2019s measured set', () => {
 	expect(Object.keys(registry.surfaces).sort()).toEqual(['bg', 'card', 'card2']);
 
 	const tint2 = token('card-tint2');

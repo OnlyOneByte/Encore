@@ -183,7 +183,7 @@ test('F1 the mechanism that DID win is still the one the code uses', () => {
 // parenthetical was the stated justification for `listPublic` stripping `roomId` while three other
 // row-returning projections did not — and it was false at three sites: /api/join returns `roomId`
 // explicitly, and both /api/me handlers let it ride along (one of them into a broadcast). The behaviour
-// is fixed and pinned in routes/api/me/me-room-strip-797.test.ts; these two arms pin the PROSE, because
+// is fixed and pinned in routes/api/me/me-room-strip.test.ts; these two arms pin the PROSE, because
 // a corrected mechanism under a comment that still recommends the old reasoning is how the next writer
 // skips the strip again.
 

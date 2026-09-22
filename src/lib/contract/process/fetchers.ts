@@ -76,7 +76,7 @@ export function isValidFetcher(id: string): id is FetcherId {
 export function fetcherFor(source: MediaSource, defaultFetcher: string = DEFAULT_FETCHER): FetcherId {
 	if (source === 'local') return 'local';
 	// `spotify` is a METADATA-ONLY source: there is deliberately no `fetch:spotify` fetcher, so its
-	// bytes are never pulled from Spotify (docs/DECISIONS.md, the annotator pattern). `fetcherFor` does
+	// bytes are never pulled from Spotify (the annotator pattern). `fetcherFor` does
 	// NOT refuse it — it returns the default downloader as a FLOOR, so callers always get a valid
 	// FetcherId. The refusal lives in `isProcessableSource` below, which is the ONE authority every layer
 	// asks. Do NOT read this fallback as proof the branch is unreachable: `/api/search` DOES
@@ -98,7 +98,7 @@ export const METADATA_ONLY_SOURCES: readonly MediaSource[] = ['spotify'];
 /**
  * Can a song from this source be processed at all?
  *
- * The SINGLE authority for the ratified "Spotify is search/metadata only" rule (docs/DECISIONS.md).
+ * The SINGLE authority for the ratified "Spotify is search/metadata only" rule.
  * It lives here, in the acquisition registry, because the reason is an acquisition fact: no fetcher
  * knows how to pull these bytes.
  *

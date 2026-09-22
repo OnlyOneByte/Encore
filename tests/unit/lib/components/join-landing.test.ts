@@ -1,4 +1,4 @@
-// JoinLanding branching (XR-PH-14) at the mount rung. `/` is the landing page now; this
+// JoinLanding branching at the mount rung. `/` is the landing page now; this
 // component is its unjoined state. Three shapes are pinned here, each reds on a revert of the branch it
 // targets:
 //   • no code       → BOTH a scan affordance and the six-segment inputs are present.

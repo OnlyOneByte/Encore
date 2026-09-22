@@ -20,7 +20,7 @@
 // WHY THERE IS NO `readIfExists`. A missing path is always an error here, never a skip. A permissive
 // variant would reproduce the RETIRED hole at 130x scale: every guard that lost its subject would quietly
 // examine nothing. If a caller genuinely needs to tolerate absence it must say so at its own call site,
-// where a reviewer can see the decision, and it must carry a non-vacuity floor (XR-VER-05).
+// where a reviewer can see the decision, and it must carry a non-vacuity floor.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';

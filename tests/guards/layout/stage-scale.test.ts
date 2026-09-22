@@ -64,10 +64,10 @@ test('no TV type is sized below the ten-foot floor with a literal size', () => {
 });
 
 /*
- * / XR-TV-01/02 — the TV type floor lives in exactly ONE declaration and the whole ladder is rem.
+ * / — the TV type floor lives in exactly ONE declaration and the whole ladder is rem.
  *
  * The floor test above only rejects a literal size BELOW the ten-foot floor, so it would happily pass
- * a hard-coded `44px` on the stage — which is precisely the drift XR-TV-01/02 closes: a px font-size anywhere
+ * a hard-coded `44px` on the stage — which is precisely the drift the rule closes: a px font-size anywhere
  * under the TV tree is a tier that no longer tracks the one root floor. The ONE exemption is the root
  * declaration itself — `.tv { font-size: calc(max(2.7vh, 20px) * clamp(0.8, var(--ui-scale), 1.6)) }`
  * — because that IS the floor every rem tier multiplies. `em` stays out of scope for the reason the
@@ -95,10 +95,10 @@ test('no TV font-size is a px literal or a per-token viewport term — the floor
 					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: font-size "${value}" carries a px literal — size it in rem off the .tv root floor (var(--tv-*))`
 				);
 			}
-			// A per-token viewport term under a vh-scaled root multiplies the panel twice (XR-TV-02).
+			// A per-token viewport term under a vh-scaled root multiplies the panel twice.
 			if (/\b[0-9.]+(vh|vw|vmin|vmax)\b/.test(value)) {
 				offenders.push(
-					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: font-size "${value}" carries a viewport term — only the .tv root may (XR-TV-02); tokens express rem ratios`
+					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: font-size "${value}" carries a viewport term — only the .tv root may; tokens express rem ratios`
 				);
 			}
 		}
@@ -113,7 +113,7 @@ test('no TV font-size is a px literal or a per-token viewport term — the floor
 
 test('the TV type ladder in app.css is rem off the root — no tier carries a viewport term', () => {
 	const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
-	// XR-TV-02's enumerated type tokens: each must be a bare rem multiple, none may carry vh/vw/vmin.
+	// the enumerated type tokens: each must be a bare rem multiple, none may carry vh/vw/vmin.
 	// (--tv-safe-* and --tv-qr are the named geometry exemption and are intentionally NOT in this list.)
 	const TYPE_TOKENS = [
 		'--tv-small',
@@ -145,7 +145,7 @@ test('the TV type ladder in app.css is rem off the root — no tier carries a vi
 		smallestRem = Math.min(smallestRem, Number(rem[1]));
 	}
 	expect(offenders).toEqual([]);
-	// XR-TV-01: no TV tier is smaller than 0.93rem (≈27px at the 29.16px root, ≥24px floor).
+	// no TV tier is smaller than 0.93rem (≈27px at the 29.16px root, ≥24px floor).
 	expect(smallestRem).toBeGreaterThanOrEqual(0.93);
 });
 
@@ -270,7 +270,7 @@ test('the --tv-qr token exists and scales the QR in vmin, not a fixed px', () =>
 });
 
 /*
- * The fullscreen button's tap floor, bound to the TOKEN (XR-PH-01).
+ * The fullscreen button's tap floor, bound to the TOKEN.
  *
  * `touch-targets.test.ts` walks the PHONE surfaces only, deliberately — the TV's controls are not a
  * phone in someone's hand — so `.fs-btn` sat outside every touch guard while its own comment claimed
@@ -561,7 +561,7 @@ test('the unverified tint overrides variables only — it never re-selects a wor
  * 2/9 with the cap removed, so it pins both halves of the fix; before/after frames are in the PR body.
  */
 test('the lobby roster strip wraps the full roster in flow — not absolutely docked, not clipped', () => {
-	// RETARGETED (XR-TV-14/XR-TV-20). The ORIGINAL design capped the roster and folded the surplus
+	// RETARGETED. The ORIGINAL design capped the roster and folded the surplus
 	// into a "+N more" chip, and this guard pinned that cap. The current design ratifies the OPPOSITE: the lobby shows
 	// EVERY guest with no truncation, because the point of the roster is that it must not degrade as the
 	// party grows. So the strip WRAPS (was flex-wrap:nowrap + a max-height cap) and the step-down rule
@@ -583,7 +583,7 @@ test('the lobby roster strip wraps the full roster in flow — not absolutely do
 });
 
 test('the lobby shows the whole roster with a chip step-down rule, never a "+N more" fold', () => {
-	// RETARGETED (XR-TV-14). The ORIGINAL design bounded the roster with MAX_CHIPS and a "+N more" fold; the current one
+	// RETARGETED. The ORIGINAL design bounded the roster with MAX_CHIPS and a "+N more" fold; the current one
 	// ratifies showing EVERY guest, so the fold is gone and the step-down (chips shrink above a
 	// threshold) is what keeps a big party inside the title-safe band. This guard now pins the
 	// step-down rule and the ABSENCE of the fold, so a future edit cannot silently reintroduce the cap.
@@ -604,7 +604,7 @@ test('the lobby shows the whole roster with a chip step-down rule, never a "+N m
 		)
 	).toBe(true);
 	// …and it stays a RULE derived from the DATA. A geometry read here would be the "discovery at a
-	// party" the design rejects, and would not work under the mount rung at all (XR-VER-03).
+	// party" the design rejects, and would not work under the mount rung at all.
 	const denseDecl = lobby.slice(lobby.indexOf('const dense'), lobby.indexOf('const dense') + 200);
 	expect(/getBoundingClientRect|offsetHeight|clientHeight|scrollHeight/.test(denseDecl)).toBe(false);
 	// The each-loop iterates the WHOLE roster, not a capped slice — every guest is shown.

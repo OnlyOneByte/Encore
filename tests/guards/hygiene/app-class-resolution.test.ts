@@ -16,7 +16,7 @@ import { srcDir } from '@encore/test-support';
  *      lists STARTING with card. Nine elements spell it mid-list and lost their surface.
  *   2-3. Two grids left on the wrong element when the markup gained a wrapper.
  *   4. `.encore-slider` scoped onto a Bits UI root, so the rule could never match (see
- *      ui-scoped-style-reach-913.test.ts, which owns that direction).
+ *      ui-scoped-style-reach.test.ts, which owns that direction).
  *   5. `.tile-slot` — a wrapper introduced with no rule at all, so `Card.Root` never filled its grid
  *      slot and the three stats tiles stair-stepped at desktop width instead of lining up. The size of
  *      the gap depends on the tiles' text; the defect is the absent rule.
@@ -106,7 +106,7 @@ const PRE_EXISTING: Record<string, string> = {
 	// now resolves, so the entry had to go — which the both-directions arm below detected and refused to
 	// let pass, exactly as it did for `stub-controls`.
 	//
-	// `stub-controls` was here, justified by phone-home-832.harness.svelte. That harness moved out of
+	// `stub-controls` was here, justified by phone-home.harness.svelte. That harness moved out of
 	// src with its test, so the token is no longer in this scan's population and the entry had to
 	// go — which the both-directions arm below detected and refused to let pass. If a harness ever returns
 	// to the app tree, its entry returns with it.
@@ -165,7 +165,7 @@ test('every static class in app markup resolves to a rule that can reach it', ()
 		news,
 		'a class token in app markup resolves to nothing, so it renders nothing. Either add the rule, or ' +
 			'delete the token. If the class sits on a COMPONENT, the rule cannot live in the page — see ' +
-			'ui-scoped-style-reach-913.test.ts. If it is genuinely pre-existing, prove it against origin/main ' +
+			'ui-scoped-style-reach.test.ts. If it is genuinely pre-existing, prove it against origin/main ' +
 			'and record it in PRE_EXISTING with why.'
 	).toEqual([]);
 });
@@ -197,7 +197,7 @@ test('the resolution check catches the shapes it can reach', () => {
 	 *   - shapes 2 and 3 were layout on the wrong ELEMENT. Both classes resolved fine; what was wrong was
 	 *     which box carried them. No class-resolution check can see that, and nothing here claims to.
 	 *   - shape 4 (`.encore-slider`) is a scoped rule that cannot reach a child component's element. That
-	 *     is `ui-scoped-style-reach-913.test.ts`'s territory and is mutation-proved there, including the
+	 *     is `ui-scoped-style-reach.test.ts`'s territory and is mutation-proved there, including the
 	 *     `data-slot` direction the fix opened.
 	 * The remaining arms are hygiene, not shapes: a comment must not define a class, a style-block-only
 	 * class must not count as applied, and a clean file must report nothing.

@@ -154,7 +154,7 @@ def test_a_demoted_overshooting_candidate_still_gets_an_overshoot_note_naming_th
 
 
 def test_an_overshooting_published_pick_is_not_reported_as_demoted(tmp_path):
-    """F2: no rival, so the over-covered candidate is the only claim and still publishes (#667's stated
+    """F2: no rival, so the over-covered candidate is the only claim and still publishes (the stated
     cost). On base its note said "demoted in selection" for a pick that WON and is shown on the TV —
     false safety in the operator log. Head must NOT claim the published pick was demoted, and must say
     it published anyway."""
@@ -191,7 +191,7 @@ def test_a_demoted_wrong_song_pick_is_not_reported_as_caused_by_the_overshoot_pe
     metric, not on the penalty. The CONTROL — `select_by_baselines(texts, None)`, the penalty switched
     off entirely — publishes the SAME winner, proving the demotion decided nothing. Base still worded
     the note "DEMOTED, published fits-the-audio instead", asserting a causation it never checked and
-    doing so on the one line an operator reads to decide whether #667's demotion did anything. Head must
+    doing so on the one line an operator reads to decide whether the demotion did anything. Head must
     NOT claim it was demoted, must say it was NOT published, and must name the winner it lost to."""
     wrong = _timed(SOURCE_LRCLIB, WRONG_SONG_LONGER, "wrong-song-longer", per_word_end=180.0)
     fits = _timed(SOURCE_CAPTIONS, AUDIBLE_268, "fits-the-audio", per_word_end=90.0)

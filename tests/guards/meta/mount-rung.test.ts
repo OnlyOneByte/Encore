@@ -1,8 +1,8 @@
-// guard: the MOUNT-RUNG harness contract — `docs/ux/04-verification.md` XR-VER-01 and XR-VER-03.
+// guard: the MOUNT-RUNG harness contract — and.
 //
 // TWO THINGS ARE PINNED HERE, and they pull in opposite directions on purpose.
 //
-// 1. XR-VER-01 (rung M exists). SvelteKit synthesises `$app/*` and `$env/*` at build time, so under
+// 1. (rung M exists). SvelteKit synthesises `$app/*` and `$env/*` at build time, so under
 //    `bun test` those specifiers resolved to nothing and EVERY route component failed to load before
 //    a single effect ran — only leaves with zero `$app` imports (TvPlayer.svelte) could mount. The
 //    preload now maps them to real stub modules under `tests/setup/kit/`, so a route component can be
@@ -11,7 +11,7 @@
 //    route that imports both modules — a stubbed `page.url` reaches the component's `$derived`, and
 //    its `goto` lands in the stub's log.
 //
-// 2. XR-VER-03 (a geometry API that cannot measure fails loudly). happy-dom has no layout engine:
+// 2. (a geometry API that cannot measure fails loudly). happy-dom has no layout engine:
 //    `getBoundingClientRect()` returns an all-zero `DOMRect` and `getClientRects()` puts that same
 //    rect in a list. Zero is not a measurement, and the two natural guard shapes both go wrong with
 //    it — `expect(w).toBeGreaterThan(0)` is a permanent red nobody trusts, and
@@ -21,8 +21,8 @@
 //    `ResizeObserver` that `bind:clientHeight` needs, which is deliberately NOT installed.
 //
 // The tension is the point: making zeros loud is what keeps a component that MEASURES off this rung,
-// which is why XR-VER-01's five-mount clause cannot be satisfied for a measuring component here and
-// XR-VER-02 sends every measured claim to rung L.
+// which is why the five-mount clause cannot be satisfied for a measuring component here and
+// sends every measured claim to rung L.
 //
 // EVERY STUB IS IMPORTED LAZILY, INSIDE the test that needs it, and BY ITS `$app`/`$env` SPECIFIER —
 // never at module scope. Two reasons, both load-bearing: importing by specifier is what proves the
@@ -85,7 +85,7 @@ beforeEach(async () => {
 
 // ── 1. Every `$app`/`$env` import site loads ──────────────────────────────────────────────────
 // Derived from the tree, not hand-listed, so a component that starts importing a virtual module is
-// covered the moment it lands. Carries a non-vacuity floor (XR-VER-05): a walk that finds nothing
+// covered the moment it lands. Carries a non-vacuity floor: a walk that finds nothing
 // must fail rather than pass with zero files examined.
 test('every component importing a $app/$env virtual module loads under the mount rung', async () => {
 	const importers: { file: string; specifiers: string[] }[] = [];
@@ -227,7 +227,7 @@ test('the landing join surface mounts, reads the stubbed page.url, and its goto 
 	flushSync();
 
 	try {
-		// Effects ran and the component rendered — the mount half of XR-VER-01.
+		// Effects ran and the component rendered — the mount half of.
 		// the field is <Input>, whose appearance lives in the component, so `.name-input` is gone.
 		// `data-slot` is shadcn's own contract for the rendered element and survives a re-vendor.
 		/*
@@ -277,8 +277,8 @@ test('the landing join surface mounts, reads the stubbed page.url, and its goto 
 	}
 });
 
-// ── 4. XR-VER-01 clause 2: the capability boundary stays written down ─────────────────────────
-test('the preload documents the mount rung and where measurement is decidable (XR-VER-01)', () => {
+// ── 4. clause 2: the capability boundary stays written down ─────────────────────────
+test('the preload documents the mount rung and where measurement is decidable', () => {
 	const src = readFileSync(PRELOAD, 'utf8');
 	// Only the file's HEADER counts — the code below it names these things incidentally (the stub
 	// table, the throw message), and a boundary that lives only inside an error string is not written
@@ -289,16 +289,14 @@ test('the preload documents the mount rung and where measurement is decidable (X
 		'$app', // which virtual modules this rung supplies
 		'$env',
 		'NO LAYOUT ENGINE', // why measurement is undecidable here
-		'XR-VER-03',
-		'driver.mjs', // where it IS decidable
-		'docs/ux/04-verification.md' // the checked-in capability document
+		'driver.mjs' // where it IS decidable
 	]) {
 		expect(header, `the preload header no longer names ${needle}`).toContain(needle);
 	}
 });
 
-// ── 5. XR-VER-03: geometry that cannot measure throws instead of reporting zero ───────────────
-// All SIX APIs XR-VER-03 enumerates, not just the two methods. The four offset/client accessors are
+// ── 5. geometry that cannot measure throws instead of reporting zero ───────────────
+// All SIX APIs the guard enumerates, not just the two methods. The four offset/client accessors are
 // defined on `HTMLElement.prototype`, which SHADOWS `Element.prototype`, so a patch applied only to
 // Element would leave every one of them returning 0 on exactly the elements a test mounts — which is
 // why this asserts on a real `<div>` rather than on a prototype descriptor.
@@ -312,7 +310,7 @@ const GEOMETRY_PROPS = [
 	'scrollHeight'
 ] as const;
 
-test('all six geometry APIs fail loudly on the mount rung (XR-VER-03)', () => {
+test('all six geometry APIs fail loudly on the mount rung', () => {
 	const el = document.createElement('div');
 	document.body.appendChild(el);
 	try {
@@ -345,7 +343,7 @@ test('all six geometry APIs fail loudly on the mount rung (XR-VER-03)', () => {
 });
 
 // ── 6. The no-op ResizeObserver stays absent, and the patch is not coupled to the DOM install ─
-test('ResizeObserver is not installed, so bind:clientHeight has no silent path to 0 (XR-VER-03)', () => {
+test('ResizeObserver is not installed, so bind:clientHeight has no silent path to 0', () => {
 	// happy-dom ships a ResizeObserver whose `observe()` is `// TODO: Not implemented`, so a
 	// `bind:clientHeight` would never fire and the bound value would sit at its initial value forever.
 	// Copying it onto globalThis would turn a loud ReferenceError at mount into a measurement of
@@ -379,7 +377,7 @@ test('no test still documents the $app/$env virtual modules as un-aliased', () =
 	 * This walked `SRC` alone, which was the whole population when every test sat beside its source. The
 	 * reorganisation moves them into `tests/`, and a walk rooted at `SRC` would then examine only what had
 	 * not moved yet. The floor below is `> 50`, and 139 files stay behind, so that walk would keep passing
-	 * while its coverage quietly halved — the exact silent-vacuity shape XR-VER-05 exists to refuse.
+	 * while its coverage quietly halved — the exact silent-vacuity shape the rule exists to refuse.
 	 *
 	 * Anchored on the repo root via `@encore/test-support`, so this arm does not care where a test lives
 	 * and does not need editing again the next time they move.
@@ -401,7 +399,7 @@ test('no test still documents the $app/$env virtual modules as un-aliased', () =
 	for (const file of scanned) {
 		if (stale.test(readFileSync(file, 'utf8'))) offenders.push(file);
 	}
-	// Floor (XR-VER-05): this suite has hundreds of test files; a walk finding a handful is broken. Raised
+	// Floor: this suite has hundreds of test files; a walk finding a handful is broken. Raised
 	// from 50 to 200 now that the walk spans every root — a floor set for one subtree is nearly vacuous
 	// once the population triples, and a floor that cannot fall is not a floor.
 	expect(scanned.length, 'the test-file walk is broken').toBeGreaterThan(200); // @nvf-floor scanned.length

@@ -151,7 +151,7 @@
 	 * THE BAND CONTRACT, and it lives here now because the band is the bottom-most thing on the screen.
 	 *
 	 * Its REAL rendered height is published to documentElement so every scrolling column can reserve it
-	 * in normal flow (XR-PH-12) instead of having the band float over the last row. MEASURED, not a
+	 * in normal flow instead of having the band float over the last row. MEASURED, not a
 	 * constant, and that is the whole point: a hardcoded guess leaves the last row bleeding under the
 	 * band the moment the copy, the font or the safe-area inset changes.
 	 *

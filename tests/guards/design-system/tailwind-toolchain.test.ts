@@ -108,7 +108,7 @@ function themeBlocks(css: string): string[] {
 }
 
 /*
- * ── THE COLOUR-TOKEN VOCABULARY (XR-COL-14) ────────────────────────────────────────────
+ * ── THE COLOUR-TOKEN VOCABULARY ────────────────────────────────────────────
  *
  * The value-bridge arm below must red on a `@theme` entry that FORWARDS to one of the app's own colour
  * tokens (`--color-x: var(--accent)` mints `text-accent` just as surely as a literal hex does). The
@@ -147,7 +147,7 @@ const COLOUR_TOKEN_RE =
 const COLOUR_TOKEN_RE_G = new RegExp(COLOUR_TOKEN_RE.source, 'g');
 
 /**
- * Every offence a single `--name: value` declaration commits against XR-COL-14, or []. Shared by the
+ * Every offence a single `--name: value` declaration commits, or []. Shared by the
  * app.css `@theme` scan and the tailwind-config scan so the two cannot drift apart.
  */
 function colourOffences(name: string, value: string): string[] {
@@ -155,7 +155,7 @@ function colourOffences(name: string, value: string): string[] {
 	/*
 	 * a `--color-*` name is no longer an offence by itself — the semantic layer (`--color-primary`
 	 * and friends) is registered deliberately so vendored components work unedited, and the ink
-	 * direction is banned by NAME in `shadcn-ink-ban-913.test.ts` instead. What stays an offence is
+	 * direction is banned by NAME in `shadcn-ink-ban.test.ts` instead. What stays an offence is
 	 * registering a PLAYER HUE, because those vary per stop and `onFill`/`ink` differ for 13 of the 48 —
 	 * a minted `text-<hue>` would offer the illegal pairing for every one of them.
 	 */
@@ -187,7 +187,7 @@ function colourOffences(name: string, value: string): string[] {
  * `tailwind.config.*` (a JS config would be the v3 shape — app.css says so at its bridge comment). But
  * the palette investigation flagged that the original guard reads ONLY app.css, so a v3-style config file
  * reintroduced later — `theme: { extend: { colors: { accent: '#7254e6' } } }` — would register the
- * whole colour family completely outside the guard's sight. XR-COL-14 must hold "given a Tailwind
+ * whole colour family completely outside the guard's sight. must hold "given a Tailwind
  * config exists in the tree", whatever its shape.
  *
  * So the guard walks the repo for `tailwind.config.{js,cjs,mjs,ts,cts,mts}` and text-scans each for a
@@ -244,7 +244,7 @@ function configColourOffences(src: string, rel: string): string[] {
 		out.push(`${rel}: bridges the colour token ${m[0]} in a theme config`);
 	// the mere presence of a colors key is itself the violation — the family is minted with or without a
 	// value the scans above recognise, so report it so a `colors: { accent: someImportedConst }` is caught
-	out.push(`${rel}: declares a \`colors\` key in a Tailwind config — registers a colour utility family (XR-COL-14)`);
+	out.push(`${rel}: declares a \`colors\` key in a Tailwind config — registers a colour utility family`);
 	return out;
 }
 
@@ -257,7 +257,7 @@ it('the @theme block registers no colour: finds the @theme block at all — the 
 });
 
 /*
- * ── RETIRED BY THE REGISTRY RESTRUCTURE, ON THE RECORD (XR-VER-07) ─────────────────────────────────────
+ * ── RETIRED BY THE REGISTRY RESTRUCTURE, ON THE RECORD ─────────────────────────────────────
  *
  * This arm asserted `@theme` registers NO colour, so `text-<hue>` could never be minted. Its
  * measurement was never wrong: `--accent` as ink is 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2
@@ -269,7 +269,7 @@ it('the @theme block registers no colour: finds the @theme block at all — the 
  * across the whole registry migration, to prevent a class from EXISTING when the hazard is the class
  * being USED.
  *
- * SUCCESSOR: `shadcn-ink-ban-913.test.ts` bans those utility NAMES in app source, exempting the
+ * SUCCESSOR: `shadcn-ink-ban.test.ts` bans those utility NAMES in app source, exempting the
  * vendored tree by path. That is the same mechanism `components/motion.test.ts`'s net arm already
  * uses for `transition-all`. The per-stop half stays with `contrast.test.ts`, which records
  * accent-as-ink leaving scope as a universal fact and becoming per-stop across the palette's 48 stops.
@@ -288,11 +288,11 @@ it('the @theme block registers no colour: registers no PLAYER HUE, so no per-sto
 	 * The `ball`-marker lesson applies here too: the check is on what the declaration IS, not on
 	 * whether its name looks colour-ish.
 	 *
-	 * XR-COL-14 widens this two ways over the original: the value-bridge now catches the
+	 * widens this two ways over the original: the value-bridge now catches the
 	 * per-stop INK tokens (`--on-accent`, `--on-fill-N`) that the anchored family list used to miss,
 	 * and the scan covers any `tailwind.config.*` in the tree as well as app.css's `@theme`, since a
 	 * v3-shape config would register colours entirely outside app.css. `mintSurfaces` counts every
-	 * surface actually examined so the arm cannot pass by looking at nothing (XR-VER-05/06).
+	 * surface actually examined so the arm cannot pass by looking at nothing.
 	 */
 	const offenders: string[] = [];
 	let mintSurfaces = 0;
@@ -310,7 +310,7 @@ it('the @theme block registers no colour: registers no PLAYER HUE, so no per-sto
 		offenders.push(...configColourOffences(readFileSync(cfg, 'utf8'), cfg.slice(REPO.length + 1)));
 	}
 	expect(offenders).toEqual([]);
-	// NON-VACUITY (XR-VER-05/06): the rule is unenforceable if no @theme block and no config were
+	// NON-VACUITY: the rule is unenforceable if no @theme block and no config were
 	// seen, and an empty `offenders` from an empty scan reads identically to a clean tree. Fail
 	// LOUDLY here instead — the day Tailwind is uninstalled, or the @theme regex stops matching, is
 	// the day this arm must go red rather than green. `blocks.length >= 1` above is the app.css leg;
@@ -505,7 +505,7 @@ it('the copy-in target is genuinely in guard scope: is not excluded by SKIP_DIRS
 it('the copy-in target is genuinely in guard scope: svelteFiles and styleFiles both reach a file placed there', () => {
 	const probe = join(UI_DIR, '__scope-probe.svelte');
 	/*
-	 * NON-VACUITY, RE-ANCHORED BY S1 (XR-VER-07).
+	 * NON-VACUITY, RE-ANCHORED BY S1.
 	 *
 	 * This previously asserted the walk returns NOTHING from this directory, and used that emptiness
 	 * to prove a later hit was the walk arriving rather than the walk being indiscriminate. S1

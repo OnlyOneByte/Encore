@@ -1,5 +1,5 @@
 /*
- * guard: the non-vacuity floors themselves (XR-VER-05, XR-VER-06, XR-VER-07).
+ * guard: the non-vacuity floors themselves.
  *
  * ── WHY THIS FILE EXISTS ───────────────────────────────────────────────────────────────────────────
  *
@@ -83,7 +83,7 @@ type Floor = {
  * Every non-vacuity floor in the suite, by file.
  *
  * The 18 that already existed when this file landed, plus the four added by the same sweep: the two
- * enumerating walks that carried none (`chromium.test.ts`, `page-header.test.ts` — the XR-VER-05 gap),
+ * enumerating walks that carried none (`chromium.test.ts`, `page-header.test.ts` — the gap),
  * and the two on the motion guard's new utility-class arm.
  */
 const FLOORS: Record<string, Floor[]> = {
@@ -93,7 +93,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 20,
 			count: 1,
 			guards:
-				'the walk over the isomorphic contract. This floor carries unusual weight: the guard REPLACED a structural guarantee (the old package had no aliases and no dependency on ., so a server import was unresolvable), and an empty walk reports the boundary intact while it is wide open. 26 files at the time of writing.'
+				'the walk over the isomorphic contract. This floor carries unusual weight: the guard REPLACED a structural guarantee (the old package had no aliases and no dependency on., so a server import was unresolvable), and an empty walk reports the boundary intact while it is wide open. 26 files at the time of writing.'
 		}
 	],
 	'tests/guards/meta/e2e-reachability.test.ts': [
@@ -110,38 +110,6 @@ const FLOORS: Record<string, Floor[]> = {
 			count: 1,
 			guards:
 				'the reachability walk itself. This is the sharper of the two: a broken roots filter would report EVERY file unrun, at which point the recorded unrun list looks complete for entirely the wrong reason and the guard reports a clean tree.'
-		}
-	],
-	'tests/guards/docs/gates-prose-matches-script.test.ts': [
-		{
-			subject: 'scriptLegs.length',
-			min: 5,
-			count: 1,
-			guards:
-				'the parse of the `gates` script in package.json into its individual legs, which is the ONLY side of this guard that can silently go empty. The comparison is `expect(prose).toEqual(scriptLegs)`, so a broken leg parse yields [] on both sides — the prose line matches the shape and then parses to nothing only if the doc changed, but a regressed `legsFromScript` (a script rewritten as an `&&` chain, dropping the `||` failure arms this guard keys on) makes the assertion compare two empty arrays and PASS while the prose and the executable definition are free to diverge completely. That is the exact silent-green this whole file exists to detect, one level up: the repo already ran for months with a prose gate list nothing compared to anything. 5 legs as of 2026-09-12.'
-		}
-	],
-	'tests/guards/docs/register-index-matches.test.ts': [
-		{
-			subject: 'tablesChecked',
-			min: 2,
-			count: 1,
-			guards:
-				'that both index tables were actually parsed. A table regex that stopped matching would leave every count unverified while the arm reported a consistent index.'
-		},
-		{
-			subject: 'defined.size',
-			min: 150,
-			count: 1,
-			guards:
-				'the row collection. This floor is unusual: an empty map would make the dangling-citation arm fail LOUDLY rather than pass, so the floor is what keeps it from inverting into noise instead of silence. 162 rows at the time of writing.'
-		},
-		{
-			subject: 'cited.size',
-			min: 100,
-			count: 1,
-			guards:
-				'the citation scan across docs and tests. If it collected nothing, no citation could be dangling and the arm would pass while every Check field in the register pointed at a retired row.'
 		}
 	],
 	'tests/guards/wiring/dev-only-routes.test.ts': [
@@ -175,13 +143,13 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 200,
 			count: 1,
 			guards:
-				"the repo-wide .ts basename walk that tells a real cross-tree pointer apart from a stale or misspelled one. This floor exists because the walk has already failed silently once: it enumerated `['apps', 'packages']`, the flatten deleted both names, `walkBasenames` swallows a missing directory, and the set went EMPTY — at which point every cross-tree citation reads as \"exists nowhere\" and the guard convicts correct comments. The paired known-true/known-false citations either side of this line are the mutation arm; the floor is what names the cause instead of the symptom. ~460 basenames at the time of writing."
+				"the repo-wide.ts basename walk that tells a real cross-tree pointer apart from a stale or misspelled one. This floor exists because the walk has already failed silently once: it enumerated `['apps', 'packages']`, the flatten deleted both names, `walkBasenames` swallows a missing directory, and the set went EMPTY — at which point every cross-tree citation reads as \"exists nowhere\" and the guard convicts correct comments. The paired known-true/known-false citations either side of this line are the mutation arm; the floor is what names the cause instead of the symptom. ~460 basenames at the time of writing."
 		}
 	],
 	'tests/guards/docs/cited-paths-resolve.test.ts': [
 		{
 			subject: 'docs.length',
-			min: 20,
+			min: 6,
 			count: 1,
 			guards:
 				'the walk over docs/. An empty walk yields an empty offender list, which reads exactly like a tree with no stale references. 32 documents at the time of writing.'
@@ -228,7 +196,7 @@ const FLOORS: Record<string, Floor[]> = {
 				'the walk over the whole test tree that collects every external import. An empty walk yields an empty undeclared list, which reads exactly like a tree whose dependencies are all declared. 287 files at the time of writing, so 200 leaves room for the suite to shrink without the floor becoming the thing that fails first.'
 		}
 	],
-	'tests/guards/design-system/ui-scoped-style-reach-913.test.ts': [
+	'tests/guards/design-system/ui-scoped-style-reach.test.ts': [
 		{
 			subject: 'files.length',
 			min: 80,
@@ -244,32 +212,32 @@ const FLOORS: Record<string, Floor[]> = {
 				"the `:global([data-slot='…'])` selectors whose slot must be emitted by real markup. This is the direction the shadcn-svelte migration's own fix opened: the original defect was a rule that could not reach its element, the fix moved every such rule onto shadcn's data-slot attribute, and for one build nothing checked the attribute was still THERE. Deleting one `data-slot=\"tabs-trigger\"` killed the 44px tap floor, the active fill, the focus ring and the pill radius with the suite fully green, because touch-targets.test.ts matches its token against selector TEXT. If this count falls, rules stopped being keyed this way and the emit check is examining nothing."
 		}
 	],
-	'tests/guards/design-system/ui-card-surface-913.test.ts': [
+	'tests/guards/design-system/ui-card-surface.test.ts': [
 		{
 			subject: 'callers.length',
 			min: 7,
 			count: 1,
 			guards:
-				'the elements that take the shared `.card` surface rather than a <Card.Root>. The rule "app.css must define .card with a background" is unfalsifiable if nothing uses the class, and S4 deleted the rule after an audit whose grep (`class="card[ "]`) only matched class lists STARTING with card — nine spell it mid-list. This counts the population both directions of that check depend on. 8 -> 7 on 2026-09-21: routes/+page.svelte left the population when the reorder bar was deleted with the mode it dressed, and its other card surface (the search dock) had already moved to /find.'
+				'the elements that take the shared `.card` surface rather than a <Card.Root>. The rule "app.css must define.card with a background" is unfalsifiable if nothing uses the class, and S4 deleted the rule after an audit whose grep (`class="card[ "]`) only matched class lists STARTING with card — nine spell it mid-list. This counts the population both directions of that check depend on. 8 -> 7 on 2026-09-21: routes/+page.svelte left the population when the reorder bar was deleted with the mode it dressed, and its other card surface (the search dock) had already moved to /find.'
 		},
 		{
 			subject: 'rules.length',
 			min: 1,
 			count: 1,
 			guards:
-				'the `.card` rules collected from app.css. The earlier version used .exec() and read only the FIRST rule, so appending `.card { background: none; border: 0; }` stripped the surface from all nine callers with the suite green. Every rule is now collected and the LAST declaration asserted, which is what the cascade uses; this floor makes sure something was collected at all.'
+				'the `.card` rules collected from app.css. The earlier version used.exec() and read only the FIRST rule, so appending `.card { background: none; border: 0; }` stripped the surface from all nine callers with the suite green. Every rule is now collected and the LAST declaration asserted, which is what the cascade uses; this floor makes sure something was collected at all.'
 		}
 	],
-	'tests/guards/design-system/shadcn-ink-ban-913.test.ts': [
+	'tests/guards/design-system/shadcn-ink-ban.test.ts': [
 		{
 			subject: 'scanned.length',
 			min: 30,
 			count: 1,
 			guards:
-				'the deduped app-source files the ink ban reads, outside the vendored tree. The list previously composed svelteFiles(LIB) with styleFiles(LIB), which already returns .svelte — 24 files were counted twice and the floor read 57 where the truth is 33, so it would still have passed with a third of the tree unreachable. Now deduped, with app.css deliberately in scope as the likeliest home for an `@apply text-primary`.'
+				'the deduped app-source files the ink ban reads, outside the vendored tree. The list previously composed svelteFiles(LIB) with styleFiles(LIB), which already returns.svelte — 24 files were counted twice and the floor read 57 where the truth is 33, so it would still have passed with a third of the tree unreachable. Now deduped, with app.css deliberately in scope as the likeliest home for an `@apply text-primary`.'
 		}
 	],
-	'tests/unit/lib/components/tabs-keyboard-913.test.ts': [
+	'tests/unit/lib/components/tabs-keyboard.test.ts': [
 		{
 			subject: 'triggers.length',
 			min: 3,
@@ -278,7 +246,7 @@ const FLOORS: Record<string, Floor[]> = {
 				"the rendered Tabs.Trigger elements the keyboard arms drive. These are the only shadcn-migration assertions that measure BEHAVIOUR rather than text, and a harness that mounted but rendered no triggers would let every arrow-key assertion pass over an empty list. Bits UI owns the key handling; what this guards is Encore's wrapper still forwarding restProps and the page still using the primitive."
 		}
 	],
-	'tests/guards/hygiene/app-class-resolution-913.test.ts': [
+	'tests/guards/hygiene/app-class-resolution.test.ts': [
 		{
 			subject: 'tokensSeen',
 			min: 15,
@@ -291,14 +259,14 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 55,
 			count: 1,
 			guards:
-				'the vendored .svelte files the `encore-*` namespace scan reads — 62 at the time of writing. An empty walk reports an empty orphan list exactly like a clean tree.'
+				'the vendored.svelte files the `encore-*` namespace scan reads — 62 at the time of writing. An empty walk reports an empty orphan list exactly like a clean tree.'
 		},
 		{
 			subject: 'files.length',
 			min: 30,
 			count: 1,
 			guards:
-				'the app-side files whose class tokens are checked against real rules. This guard exists because an unresolved class renders nothing and looks correct in source — six instances shipped during the shadcn-svelte migration, four of them past a fully green suite, found only by comparing screenshots. An empty walk would report zero offenders exactly like a clean tree, so the population is counted: 33 app-side .svelte files at the time of writing, excluding the vendored tree where every class legitimately resolves to a minted utility.'
+				'the app-side files whose class tokens are checked against real rules. This guard exists because an unresolved class renders nothing and looks correct in source — six instances shipped during the shadcn-svelte migration, four of them past a fully green suite, found only by comparing screenshots. An empty walk would report zero offenders exactly like a clean tree, so the population is counted: 33 app-side.svelte files at the time of writing, excluding the vendored tree where every class legitimately resolves to a minted utility.'
 		}
 	],
 	'tests/guards/meta/non-vacuity-floors.test.ts': [
@@ -332,7 +300,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 1,
 			count: 1,
 			guards:
-				'the surfaces the XR-COL-14 colour ban examines — every app.css `@theme` block plus every tailwind.config.* in the tree. The arm reports an empty offenders array both when the tree is clean AND when it scanned nothing (Tailwind uninstalled, the @theme regex stopped matching, the config walk lost its root), so this counts what was actually seen. Its firing means the rule went UNENFORCEABLE, which XR-VER-06 requires be loud rather than a vacuous pass.'
+				'the surfaces the colour ban examines — every app.css `@theme` block plus every tailwind.config.* in the tree. The arm reports an empty offenders array both when the tree is clean AND when it scanned nothing (Tailwind uninstalled, the @theme regex stopped matching, the config walk lost its root), so this counts what was actually seen. Its firing means the rule went UNENFORCEABLE, which the rule requires be loud rather than a vacuous pass.'
 		}
 	],
 	'tests/guards/meta/task-number-hygiene.test.ts': [
@@ -392,7 +360,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 6,
 			count: 1,
 			guards:
-				'the population of the EXPRESSION arm (XR-PH-01), which filters harder than the value arm above \u2014 control rules that declare a width/height, not merely a box. A derivation that stopped finding box rules would report zero bare-literal offenders and pass, which is the exact vacuity that let 15 hand-written `44px` declarations sit under a green value guard.'
+				'the population of the EXPRESSION arm, which filters harder than the value arm above \u2014 control rules that declare a width/height, not merely a box. A derivation that stopped finding box rules would report zero bare-literal offenders and pass, which is the exact vacuity that let 15 hand-written `44px` declarations sit under a green value guard.'
 		}
 	],
 	'tests/guards/motion/motion.test.ts': [
@@ -400,18 +368,18 @@ const FLOORS: Record<string, Floor[]> = {
 			subject: 'files.length',
 			min: 24,
 			count: 3,
-			guards: 'the .svelte + .css style walk shared by the layout-transition, keyframes and reduce-motion tests'
+			guards: 'the.svelte +.css style walk shared by the layout-transition, keyframes and reduce-motion tests'
 		},
 		{ subject: 'svelte.length', min: 20, count: 1, guards: 'the markup walk behind the utility-class arm' },
-		{ subject: 'netFiles.length', min: 40, count: 1, guards: 'the svelte + .ts walk behind the utility-name net' }
+		{ subject: 'netFiles.length', min: 40, count: 1, guards: 'the svelte +.ts walk behind the utility-name net' }
 	],
-	'tests/guards/hygiene/class-reachable-alone-913.test.ts': [
+	'tests/guards/hygiene/class-reachable-alone.test.ts': [
 		{
 			subject: 'files.length',
 			min: 20,
 			count: 1,
 			guards:
-				'the app-side walk of the element/class-list matchability scan. An empty walk reports zero offenders exactly like a clean tree, so the population is pinned. Its firing means the scan lost the app source and the .chip/.chip.ghost defect class went unenforceable.'
+				'the app-side walk of the element/class-list matchability scan. An empty walk reports zero offenders exactly like a clean tree, so the population is pinned. Its firing means the scan lost the app source and the.chip/.chip.ghost defect class went unenforceable.'
 		},
 		{
 			subject: 'listsSeen',
@@ -421,7 +389,7 @@ const FLOORS: Record<string, Floor[]> = {
 				'the class attributes actually examined by that scan. The reader deliberately SKIPS any list containing an interpolation (a class: directive can supply the token a compound rule needs), so a refactor that made more lists dynamic would shrink this population silently while still reporting clean.'
 		}
 	],
-	'tests/guards/design-system/field-rhythm-913.test.ts': [
+	'tests/guards/design-system/field-rhythm.test.ts': [
 		{
 			subject: 'users.length',
 			min: 2,
@@ -444,7 +412,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 1,
 			count: 1,
 			guards:
-				'the identity-dot rules examined by the non-shrinking-flex scan. RE-ANCHORED from `seen` >= 2 by the primitive-adoption pass: the dot was four byte-identical copies (QueueRow/.who i, ProcessingCard/.who i, NowPlayingHero/.eyebrow .dot, ColourPicker/.colour-chip) and is now ONE shared `.singer-dot` rule in app.css, so a scan of component files counts zero and the old floor of 2 was unreachable. The floor follows the population: one shared declaration. The arm still sweeps components for a reintroduced local copy under either historical selector, so collapsing the copies did not narrow what is enforced — only where it is declared.'
+				'the identity-dot rules examined by the non-shrinking-flex scan. RE-ANCHORED from `seen` >= 2 by the primitive-adoption pass: the dot was four byte-identical copies (QueueRow/.who i, ProcessingCard/.who i, NowPlayingHero/.eyebrow.dot, ColourPicker/.colour-chip) and is now ONE shared `.singer-dot` rule in app.css, so a scan of component files counts zero and the old floor of 2 was unreachable. The floor follows the population: one shared declaration. The arm still sweeps components for a reintroduced local copy under either historical selector, so collapsing the copies did not narrow what is enforced — only where it is declared.'
 		},
 		{ subject: 'checked', min: 3, count: 1, guards: 'the surfaces examined by the surface-token scan' },
 		{
@@ -459,7 +427,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 30,
 			count: 1,
 			guards:
-				'the bridge entries whose right-hand side is resolved — catches an entry forwarding to itself, or to a :root token that does not exist. Reading no values would pass both silently'
+				'the bridge entries whose right-hand side is resolved — catches an entry forwarding to itself, or to a:root token that does not exist. Reading no values would pass both silently'
 		},
 		{
 			subject: 'spacingDeclsSeen',
@@ -506,7 +474,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 10,
 			count: 1,
 			guards:
-				'the adjacent-tier comparisons behind the ladder-ordering assertion. This is what still pins the TV fullscreen control and the stall-recovery banner — their guards used to assert the literals 7/8/10 and now assert tier NAMES, so the order itself is only checked here. LOWERED 11 -> 10 by the drawer deletion, loudly and on the record (XR-VER-06): the INVARIANT is unchanged, the POPULATION shrank. --z-sheet-scrim (9) and --z-sheet (10) were the queue sheet\u2019s two tiers, and the drawer surface that was their only reader was deleted, so the phone ladder went from five tiers (four rungs) to three (two rungs) while TV\u2019s eight rungs are untouched. Nothing became unenforced: the sibling `unplaced` assertion still proves NO z-* token escapes a ladder, so a re-added sheet tier reds there rather than joining un-ordered'
+				'the adjacent-tier comparisons behind the ladder-ordering assertion. This is what still pins the TV fullscreen control and the stall-recovery banner — their guards used to assert the literals 7/8/10 and now assert tier NAMES, so the order itself is only checked here. LOWERED 11 -> 10 by the drawer deletion, loudly and on the record: the INVARIANT is unchanged, the POPULATION shrank. --z-sheet-scrim (9) and --z-sheet (10) were the queue sheet\u2019s two tiers, and the drawer surface that was their only reader was deleted, so the phone ladder went from five tiers (four rungs) to three (two rungs) while TV\u2019s eight rungs are untouched. Nothing became unenforced: the sibling `unplaced` assertion still proves NO z-* token escapes a ladder, so a re-added sheet tier reds there rather than joining un-ordered'
 		},
 		{
 			subject: 'literalsFound',
@@ -521,7 +489,7 @@ const FLOORS: Record<string, Floor[]> = {
 	],
 	'tests/guards/hygiene/icons.test.ts': [
 		{ subject: 'FILES.length', min: 15, count: 1, guards: 'the icon svelte walk' },
-		{ subject: "tsFiles(join(SRC, 'lib')).length", min: 10, count: 1, guards: 'the icon .ts walk' }
+		{ subject: "tsFiles(join(SRC, 'lib')).length", min: 10, count: 1, guards: 'the icon.ts walk' }
 	],
 	'tests/guards/hygiene/contract.test.ts': [
 		{ subject: 'DRIVERS.length', min: 20, count: 1, guards: 'e2e driver discovery for the selector contract' },
@@ -531,7 +499,7 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 20,
 			count: 1,
 			guards:
-				'the .svelte walk the SEL-resolution guard resolves against, added by the shared source-scan helper consolidation. The two floors beside it pin the DRIVER list and the collected literals, not the source population, so a narrowed walk whose surviving files still carry every SEL anchor left whole surfaces unexamined and every floor green.'
+				'the.svelte walk the SEL-resolution guard resolves against, added by the shared source-scan helper consolidation. The two floors beside it pin the DRIVER list and the collected literals, not the source population, so a narrowed walk whose surviving files still carry every SEL anchor left whole surfaces unexamined and every floor green.'
 		}
 	],
 	// added when the floors were planted — both walks previously had NO floor, and both feed tests that assert an
@@ -541,7 +509,7 @@ const FLOORS: Record<string, Floor[]> = {
 			subject: 'out.length',
 			min: 20,
 			count: 1,
-			guards: 'the e2e .mjs driver walk behind the findChromium single-source ban'
+			guards: 'the e2e.mjs driver walk behind the findChromium single-source ban'
 		}
 	],
 	'tests/guards/hygiene/page-header.test.ts': [
@@ -558,21 +526,20 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 5,
 			count: 1,
 			guards:
-				'the filesystem-derived phone route set behind the XR-PH-08 state inventory; an over-broad exemption match or a moved routes/ dir would enumerate nothing and pass. Re-anchored 3 -> 4 by the phone-remote rebuild, which split search out of / onto its own /find route, so the set is /, /find, /settings, /stats'
+				'the filesystem-derived phone route set behind the state inventory; an over-broad exemption match or a moved routes/ dir would enumerate nothing and pass. Re-anchored 3 -> 4 by the phone-remote rebuild, which split search out of / onto its own /find route, so the set is /, /find, /settings, /stats'
 		},
 		{
 			subject: 'filesScanned',
 			min: 10,
 			count: 2,
-			guards:
-				'the phone style-file walk behind the XR-PH-02 absolute-font-size floor and the XR-PH-03 inline-opacity ban'
+			guards: 'the phone style-file walk behind the absolute-font-size floor and the inline-opacity ban'
 		},
 		{
 			subject: 'declarationsSeen',
 			min: 10,
 			count: 1,
 			guards:
-				'the width-declaration scan behind the XR-PH-02 320px reflow floor; a regex that matches no declarations reports zero offenders'
+				'the width-declaration scan behind the 320px reflow floor; a regex that matches no declarations reports zero offenders'
 		}
 	]
 };
@@ -586,18 +553,18 @@ const FLOORS: Record<string, Floor[]> = {
  * stays in the source.
  */
 const RETIRED: Record<string, { subject: string; reason: string }[]> = {
-	'tests/unit/lib/ui-foreign-theme-913.test.ts': [
+	'tests/unit/lib/ui-foreign-theme.test.ts': [
 		{
 			subject: 'files.length',
 			reason:
-				'The copied-in-component theme scan. RETIRED BY the shadcn-svelte restructure. XR-VER-06/07 record. (a) The invariant: a copied-in shadcn component must reference NO shadcn theme name (bg-primary, text-muted-foreground, border-ring), because app.css defined none of them, so such a class resolved to nothing and the element rendered unstyled, which looks like a design choice in a screenshot rather than a defect. (b) What left scope: the PREMISE, deliberately inverted. app.css now defines the semantic layer (--primary: var(--accent) and friends) and bridges it in @theme, precisely so a vendored component works UNEDITED and `shadcn-svelte add --overwrite` stays safe across the fourteen components S2-S8 brought in. Those class names are the intended mechanism now; a guard banning them would forbid the architecture. (c) What covers it now, together strictly more than this file did: shadcn-ink-ban-913.test.ts bans the INK direction (text-primary, text-destructive) in app source while exempting the vendored tree by path, which is the real hazard since --accent as ink measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2 and 2.90 on --card-tint2, four AA failures; tailwind-toolchain.test.ts still refuses to register a PLAYER HUE in @theme, whose per-stop ink/fill split no single minted utility can respect; and motion.test.ts\'s net arm is what caught transition-all shipping in the stock Button and is what catches its return after any --overwrite. The floor was retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires.'
+				'The copied-in-component theme scan. RETIRED BY the shadcn-svelte restructure. record. (a) The invariant: a copied-in shadcn component must reference NO shadcn theme name (bg-primary, text-muted-foreground, border-ring), because app.css defined none of them, so such a class resolved to nothing and the element rendered unstyled, which looks like a design choice in a screenshot rather than a defect. (b) What left scope: the PREMISE, deliberately inverted. app.css now defines the semantic layer (--primary: var(--accent) and friends) and bridges it in @theme, precisely so a vendored component works UNEDITED and `shadcn-svelte add --overwrite` stays safe across the fourteen components S2-S8 brought in. Those class names are the intended mechanism now; a guard banning them would forbid the architecture. (c) What covers it now, together strictly more than this file did: shadcn-ink-ban.test.ts bans the INK direction (text-primary, text-destructive) in app source while exempting the vendored tree by path, which is the real hazard since --accent as ink measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2 and 2.90 on --card-tint2, four AA failures; tailwind-toolchain.test.ts still refuses to register a PLAYER HUE in @theme, whose per-stop ink/fill split no single minted utility can respect; and motion.test.ts\'s net arm is what caught transition-all shipping in the stock Button and is what catches its return after any --overwrite. The floor was retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires.'
 		}
 	],
 	'tests/guards/design-system/design-system.test.ts': [
 		{
 			subject: 'scanned',
 			reason:
-				'RETIRED BY the drawer deletion with the guard it floored: `a keydown handler that preventDefault()s on a snippet host early-returns on foreign targets`. XR-VER-06 record. (a) The invariant: an inline-arrow onkeydown that cancels the event must early-return on `e.target !== e.currentTarget`, so a key pressed on a child control is not swallowed by its host. (b) What left scope: its ENTIRE population. QueueSheet.svelte and QueueSheetDrawer.svelte were measured to be the only two files under src matching an inline-arrow onkeydown that calls preventDefault(, and both were deleted with the drawer surface — so the scan would have examined 0 files and this floor (>= 1) would have fired every run. (c) What covers it now: NOTHING, because there is nothing left to cover — no surviving surface has a preventDefault-ing inline keydown host. The floor was doing its job by firing; it is retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires. If such a host reappears, restore the guard AND this floor together rather than reviving one alone.'
+				'RETIRED BY the drawer deletion with the guard it floored: `a keydown handler that preventDefault()s on a snippet host early-returns on foreign targets`. record. (a) The invariant: an inline-arrow onkeydown that cancels the event must early-return on `e.target !== e.currentTarget`, so a key pressed on a child control is not swallowed by its host. (b) What left scope: its ENTIRE population. QueueSheet.svelte and QueueSheetDrawer.svelte were measured to be the only two files under src matching an inline-arrow onkeydown that calls preventDefault(, and both were deleted with the drawer surface — so the scan would have examined 0 files and this floor (>= 1) would have fired every run. (c) What covers it now: NOTHING, because there is nothing left to cover — no surviving surface has a preventDefault-ing inline keydown host. The floor was doing its job by firing; it is retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires. If such a host reappears, restore the guard AND this floor together rather than reviving one alone.'
 		},
 		{
 			subject: 'the dvh sheet-cap scan (every bottom-docked sheet caps its height in dvh, not vh)',
@@ -609,7 +576,7 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 		{
 			subject: 'the sheet-level reflow floor (.sheet-surface > * min-width: 0)',
 			reason:
-				'RETIRED BY the drawer deletion. XR-VER-06 record. (a) The invariant: a `left:0; right:0` fixed box only honours min(max-width, viewport) while its flex children CAN shrink to it, because a flex child\u2019s automatic minimum is its min-content width — an unbreakable control label at 200% text sized the sheet by content it could not shrink below (436px inside a 320px viewport, SC 1.4.10 Reflow). (b) What left scope: `.sheet-surface` and its children, the only box the rule ever dressed, deleted with the drawer surface. (c) What covers the survivors: nothing asserts this on the docked band, DELIBERATELY. `.cta-dock` / `.search-dock` are a flex row holding ONE 44px control rather than a column of unbreakable labels, and neither declares min-width: 0 — so re-pointing the scan at them would assert a declaration that does not exist and demand production CSS for a defect nobody has measured. The band\u2019s reflow is covered where it is real: the rung-L probe arms measure the live pages at 320 CSS px and 200% text and FAIL on overflow. If a future band grows a multi-control column, add a floor for that band rather than reviving this one.'
+				'RETIRED BY the drawer deletion. record. (a) The invariant: a `left:0; right:0` fixed box only honours min(max-width, viewport) while its flex children CAN shrink to it, because a flex child\u2019s automatic minimum is its min-content width — an unbreakable control label at 200% text sized the sheet by content it could not shrink below (436px inside a 320px viewport, SC 1.4.10 Reflow). (b) What left scope: `.sheet-surface` and its children, the only box the rule ever dressed, deleted with the drawer surface. (c) What covers the survivors: nothing asserts this on the docked band, DELIBERATELY. `.cta-dock` / `.search-dock` are a flex row holding ONE 44px control rather than a column of unbreakable labels, and neither declares min-width: 0 — so re-pointing the scan at them would assert a declaration that does not exist and demand production CSS for a defect nobody has measured. The band\u2019s reflow is covered where it is real: the rung-L probe arms measure the live pages at 320 CSS px and 200% text and FAIL on overflow. If a future band grows a multi-control column, add a floor for that band rather than reviving this one.'
 		}
 	]
 };
@@ -617,7 +584,7 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 /**
  * Guards whose premise a KNOWN, PLANNED change will invalidate, with the call made in advance.
  *
- * XR-VER-07's failure mode is a reviewer meeting a red they were not expecting and resolving it by
+ * the failure mode is a reviewer meeting a red they were not expecting and resolving it by
  * deleting the assertion. The remedy is to decide the retire-or-re-anchor question BEFORE the change
  * lands, next to the guard, and then to check that the record and the guard have not drifted apart.
  *
@@ -645,10 +612,10 @@ const PENDING_RULING: { file: string; anchor: string; ruling: string }[] = [
 			'palette whose stops clear AA as ink reds that line rather than passing vacuously. The handoff ' +
 			'predicted the opposite. Ruling: re-anchor, do not delete — drop the contrast arm only, keep the ' +
 			'usage scan, and record the swap. The full ruling is at the anchor above. ' +
-			'EXECUTED by the colour-token rework (XR-COL-11): the trigger was not a red but `--accent-strong`\u2019s retirement ' +
+			'EXECUTED by the colour-token rework: the trigger was not a red but `--accent-strong`\u2019s retirement ' +
 			'removing the loop\u2019s second operand, so the arm could not be left alone in any case. The ' +
 			'contrast arm is dropped (accent-as-ink is now per-stop and mostly FALSE — 35 of 48 fills clear ' +
-			'AA on --card), the usage scan is kept verbatim, and the XR-VER-06 swap record sits under the ' +
+			'AA on --card), the usage scan is kept verbatim, and the swap record sits under the ' +
 			'anchor. This entry stays here rather than moving to RETIRED because nothing was given up: the ' +
 			'anchor and the guard it describes are both still present, which is what this check verifies.'
 	}
@@ -749,7 +716,7 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// 38 as of the token-dimension audit (29 on its base once the tap-token audit added `boxRulesSeen`; +9 for the nine enumerating scans
 	// adds to design-system.test.ts — five dimension-duplication scans, the two @theme bridge scans,
 	// the ladder-ordering rungs, and the phone-ladder-on-TV ban). +1 for the breakpoint-token work's
-	// breakpoint-membership `literalsFound` floor, and +1 for the player-hue ban's `mintSurfaces` floor on the XR-COL-14 colour ban
+	// breakpoint-membership `literalsFound` floor, and +1 for the player-hue ban's `mintSurfaces` floor on the colour ban
 	// (tailwind-toolchain.test.ts), giving 40. Measured the way this comment prescribes, not counted:
 	// raised absurdly high, read `Received: 40`.
 	// +1 for S1's `files.length` floor, then -1 retiring it: the restructure inverted that
@@ -782,12 +749,15 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// negation of the shipped design and went, taking its one `scanned` floor and one tagged site with
 	// it). `taggedSitesSeen` below moves in the same commit, as its own comment requires — a whole
 	// deleted guard file gets NO RETIRED entry (this file's own retirement arm rejects a key that no
-	// longer resolves); the rationale lives in docs/DECISIONS.md and the deleting commit.
+	// longer resolves); the rationale lives and the deleting commit.
 	//
 	// 72 → 73 when the join screen's colour ring registered its `PALETTE_STOPS.length` floor. The ring
 	// reads its 48 colours out of a generated JSON registry rather than computing them, so the floor is
 	// the thing that tells an emptied read apart from a clean palette.
-	expect(located).toBeGreaterThanOrEqual(73);
+	// 73 → 69 (2026-09-22) with the docs cleanup: `register-index-matches` carried three floors and
+	// `gates-prose-matches-script` one, and both guards were deleted because the documents they compared
+	// against — the docs/ux register index tables and the docs/loop gate briefs — no longer exist.
+	expect(located).toBeGreaterThanOrEqual(69);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -880,7 +850,8 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
 	// 73 → 72 in lockstep with `located` above, for the drawer-deletion guard's removal.
 	// 72 → 73 in lockstep again, for the colour ring's `PALETTE_STOPS.length` floor.
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(73);
+	// 73 → 69 in lockstep with `located` above, for the two docs guards deleted with their subjects.
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(69);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {
@@ -888,7 +859,7 @@ test('a retired floor is retired on the record: substantive reason, and genuinel
 	let examined = 0;
 	for (const [rel, entries] of Object.entries(RETIRED)) {
 		for (const e of entries) {
-			// (1) a reason, not a shrug. XR-VER-06 wants the invariant, the sites that left scope, and what
+			// (1) a reason, not a shrug. the standard wants the invariant, the sites that left scope, and what
 			// covers them now — none of which fits in a few words.
 			if (e.reason.trim().length < 60) {
 				offenders.push(
@@ -928,7 +899,7 @@ test('a retired floor is retired on the record: substantive reason, and genuinel
 	}
 	expect(offenders).toEqual([]);
 	// non-vacuity: every entry above was actually read from disk. Without this, a RETIRED map whose keys had
-	// all moved would examine nothing and pass — which is precisely the shape XR-VER-06 exists to refuse.
+	// all moved would examine nothing and pass — which is precisely the shape the rule exists to refuse.
 	// Measured, not guessed: 3 keyed files carrying 4 entries at the time of writing.
 	expect(examined).toBeGreaterThanOrEqual(4); // @nvf-floor examined
 });

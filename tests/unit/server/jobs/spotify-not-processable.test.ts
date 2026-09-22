@@ -1,6 +1,6 @@
 // Guards: tapping Sing on a Spotify search hit booked a turn that could never play.
 //
-// The ratified rule (docs/DECISIONS.md) is that Spotify is a SEARCH / metadata source only: its bytes
+// The ratified rule is that Spotify is a SEARCH / metadata source only: its bytes
 // are never pulled, so no process can ever run for one of its hits. That rule was ENFORCED at exactly one
 // point — a `media.source === 'spotify'` line inside `requestProcess` — and ASSERTED at five
 // others. Enforcement there is too late to help: `processState` still answered `'processable'`, so the phone

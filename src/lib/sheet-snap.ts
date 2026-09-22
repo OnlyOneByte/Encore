@@ -12,7 +12,7 @@
  * by three pixels at 900 and covered it at 700 — `document.elementFromPoint` at the input's centre
  * returned a `<span>` from inside the sheet, and the click never reached the input.
  *
- * A rendered offset is a LAYOUT-rung claim (XR-VER-01) and cannot be measured on the mount rung — the
+ * A rendered offset is a LAYOUT-rung claim and cannot be measured on the mount rung — the
  * drawer cannot even mount there, because its own `bind:clientHeight` needs a `ResizeObserver` the rung
  * refuses to install. Pulling the arithmetic out as a pure function moves the half that decides whether
  * the bug is fixed onto a rung that CAN sweep every viewport height, instead of leaving it as a formula

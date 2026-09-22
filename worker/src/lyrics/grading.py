@@ -159,7 +159,7 @@ def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]
 # Mirrors agreement / agreementScore / SUSPECT_COVERAGE / SEQUENCE_WEIGHT / MIN_TOKENS_TO_COMPARE in
 # src/lib/contract/lyrics/lyrics.ts, and every number below is cross-checked against that authority by
 # tests/test_lyrics_presplit.py's source-scan guard plus the shared-corpus parity guard in
-# tests/test_lyrics_agreement_542.py.
+# tests/test_lyrics_agreement.py.
 # Computed HERE, in the worker, because this is the only place both texts exist in memory at once — the
 # core holds refs, and reading two artifacts back off disk inside the realtime hub to compare them would
 # be I/O on the wrong side of the seam.
@@ -180,7 +180,7 @@ MIN_TOKENS_TO_COMPARE = 12
 #: mix the two directions of the comparison, so they cannot tell "the candidate is a different song"
 #: from "the baseline only heard part of the song" — and a partial baseline is the NORMAL case here,
 #: because YouTube's ASR suppresses sung vocals. Measured on the synthetic corpus in
-#: tests/test_lyrics_agreement_542.py: a CORRECT candidate against a baseline covering a third of the
+#: tests/test_lyrics_agreement.py: a CORRECT candidate against a baseline covering a third of the
 #: audio scores 0.292 on set Jaccard (accepted at 0.25 by a hair) and 0.186 on the ranking score
 #: (rejected) — while a DIFFERENT song scores 0.165 on that same ranking score. Those two bands are
 #: 0.02 apart, so no threshold on a mixed score can separate them. Coverage — how much of what IS

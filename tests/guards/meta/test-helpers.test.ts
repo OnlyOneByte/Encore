@@ -1,5 +1,5 @@
 /*
- * guard: each scan helper has exactly one definition (XR-VER-14).
+ * guard: each scan helper has exactly one definition.
  *
  * ── WHAT THIS IS FOR ───────────────────────────────────────────────────────────────────────────────
  *
@@ -58,7 +58,7 @@ const HOME = 'tests/support/src/scan.ts';
  */
 const WALK_HOME = 'tests/support/src/tree.ts';
 
-/** The five helpers XR-VER-14 names, and the one module allowed to declare them. */
+/** The five helpers the standard names, and the one module allowed to declare them. */
 const HELPERS = ['svelteFiles', 'styleFiles', 'markupControls', 'allSvelte', 'classPresent'];
 
 /**
@@ -142,13 +142,13 @@ test('every consumer that uses a scan helper imports it from the one home', () =
 });
 
 test('the shared walk excludes built and vendored trees, and allowlists no directory', () => {
-	// XR-VER-14 Acceptance, first half, asserted on the exported set rather than on the source text so
+	// Acceptance, first half, asserted on the exported set rather than on the source text so
 	// it pins the value the walk actually consults.
 	for (const d of ['node_modules', 'build', '.svelte-kit', 'dist', '.git']) {
 		expect(SKIP_DIRS.has(d)).toBe(true);
 	}
 
-	// XR-VER-14 Acceptance, second half: `src/lib/components/ui/` — the design-library copy-in target —
+	// Acceptance, second half: `src/lib/components/ui/` — the design-library copy-in target —
 	// must be in scope BY CONSTRUCTION. It does not exist yet, so it cannot be asserted by walking for
 	// it; what is assertable is that the walk descends into every directory it is not told to skip.
 	// The source check is the honest instrument for that: exactly one `readdirSync` in the module that
@@ -186,7 +186,7 @@ test('the shared walk actually skips a directory in the exclusion set', () => {
 });
 
 test('the shared markupControls and classPresent are the ones the guards behaved with', () => {
-	// The two helpers that are NOT scan walks moved here as code organisation (XR-VER-14 names them;
+	// The two helpers that are NOT scan walks moved here as code organisation (the standard names them;
 	// a drifted glob is not their failure mode — they take a source string). Pin their behaviour at the
 	// new home so the move is not a silent semantic change, and so a later edit to the shared copy
 	// cannot quietly weaken every consumer at once.

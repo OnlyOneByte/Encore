@@ -1,4 +1,4 @@
-// GET /api/room-preview — the scanned-guest confirmation source (XR-PH-14, Q1-B). Drives the
+// GET /api/room-preview — the scanned-guest confirmation source (Q1-B). Drives the
 // REAL handler against a real SingerRepository + PresenceTracker on a migrated in-memory DB.
 //
 // Two load-bearing properties, and the second is what this endpoint was getting wrong.

@@ -1,5 +1,5 @@
 //
-// PHONE INVENTORIES AND PROPERTY FLOORS — docs/ux/02-phone.md rows XR-PH-08, XR-PH-13, XR-PH-02, XR-PH-03.
+// PHONE INVENTORIES AND PROPERTY FLOORS.
 //
 // THE BUG THIS EXISTS FOR. Every guard in this directory answers "is THIS surface right?", so each one
 // is only as complete as the list of surfaces somebody remembered to put in it. The failure that ships
@@ -17,8 +17,8 @@
 // failure message says so.
 //
 // SCOPE. Phone surfaces only. The TV has its own scale and geometry guards (tv/stage-scale.test.ts) and
-// is a named exemption of XR-PH-08 in the spec; the operator surfaces (/admin, /metrics) are covered by
-// the Ops section. XR-PH-03's CSS-RULE half already lives in contrast.test.ts ("no card root dims its
+// is a named exemption of in the spec; the operator surfaces (/admin, /metrics) are covered by
+// the Ops section. the standard's CSS-RULE half already lives in contrast.test.ts ("no card root dims its
 // own subtree with opacity"); this file adds only the INLINE-STYLE dimension, which a CSS-rule scan
 // structurally cannot see, and which is the mechanism the spec's own rationale flags.
 import { test, expect } from 'bun:test';
@@ -56,7 +56,7 @@ function routePath(file: string): string {
 }
 
 // ---------------------------------------------------------------------------------------------------
-// XR-PH-08 — INVENTORY: every phone route has a designed empty, loading, error and offline state
+// INVENTORY: every phone route has a designed empty, loading, error and offline state
 // ---------------------------------------------------------------------------------------------------
 
 /*
@@ -88,7 +88,7 @@ const IDIOMS: Record<Condition, { name: string; find: (src: string) => boolean }
 		 * The two idioms above PREDATE this repo vendoring shadcn's `Empty` primitive
 		 * (`lib/components/ui/empty/`), which is now the codebase's actual designed empty state:
 		 * `<Empty.Root><Empty.Header><Empty.Description>` renders the heading-plus-next-action shape
-		 * XR-PH-08 asks for. A route that ships one and calls no builder was therefore reported as
+		 * the standard asks for. A route that ships one and calls no builder was therefore reported as
 		 * having NO empty state at all — a false negative, and a live one: `routes/+page.svelte`
 		 * renders `Empty.Root` with "Nothing queued." and this guard
 		 * could not see it. Measured across the whole tree, the blind spot covered six files —
@@ -211,11 +211,11 @@ const PHONE_ROUTES = ALL_ROUTES.filter((r) => !isExempt(r.route));
  * too: every name in it must still resolve to a real route, so renaming an exempt route surfaces the
  * new name here instead of leaving a dead exemption behind and the new surface unchecked.
  */
-test('XR-PH-08: the phone route set is derived from the filesystem, and every exemption is the spec\u2019s', () => {
+test('the phone route set is derived from the filesystem, and every exemption is the spec\u2019s', () => {
 	// Re-anchored 3 -> 4 by the phone-remote rebuild, which split search out of `/` onto its own
 	// `/find` route (`/` is queue-only now, and `NowPlayingBand` moved to +layout.svelte as app chrome).
 	// So the real phone-route set is `/`, `/find`, `/settings`, `/stats`. Re-anchored UPWARD on the
-	// record rather than left slack (XR-VER-06): a floor below the measured set is a floor that would not
+	// record rather than left slack: a floor below the measured set is a floor that would not
 	// notice the set shrinking back. Re-anchored 3 -> 4 when `/find` arrived and 4 -> 5 when
 	// `/song/[mediaId]` did, so the phone-route set is `/`, `/find`, `/settings`, `/song/[mediaId]`,
 	// `/stats`. Still non-vacuous — a walk that enumerates fewer (an over-broad exemption or a moved
@@ -238,7 +238,7 @@ test('XR-PH-08: the phone route set is derived from the filesystem, and every ex
 	}
 });
 
-test('XR-PH-08: every phone route renders a designed empty, loading, error and offline state', () => {
+test('every phone route renders a designed empty, loading, error and offline state', () => {
 	const baseline = new Set(KNOWN_ABSENT.map((k) => `${k.route} \u00d7 ${k.condition}`));
 	const missing: string[] = [];
 	let pairsChecked = 0;
@@ -264,7 +264,7 @@ test('XR-PH-08: every phone route renders a designed empty, loading, error and o
 	expect(missing).toEqual([]);
 });
 
-test('XR-PH-08: the known-absent baseline is bounded, well-formed, and has not rotted', () => {
+test('the known-absent baseline is bounded, well-formed, and has not rotted', () => {
 	expect(KNOWN_ABSENT.length).toBeLessThanOrEqual(KNOWN_ABSENT_CEILING);
 
 	const phone = new Set(PHONE_ROUTES.map((r) => r.route));
@@ -291,7 +291,7 @@ test('XR-PH-08: the known-absent baseline is bounded, well-formed, and has not r
 });
 
 // ---------------------------------------------------------------------------------------------------
-// XR-PH-13 — INVENTORY: announcements — what is announced, and when
+// INVENTORY: announcements — what is announced, and when
 // ---------------------------------------------------------------------------------------------------
 
 /*
@@ -317,7 +317,7 @@ const PHONE_ANNOUNCING_FILES = [
  * an enumeration because each one looks reasonable in its own file.
  */
 const LIVE_REGIONS: { file: string; purpose: string }[] = [
-	{ file: 'routes/+page.svelte', purpose: 'XR-PH-13 announcement region (`sr-live`) — queue changes under the guest' },
+	{ file: 'routes/+page.svelte', purpose: 'the announcement region (`sr-live`) — queue changes under the guest' },
 	{ file: 'routes/+page.svelte', purpose: 'connection loss/restore (`offline-pill`)' },
 	{ file: 'lib/components/SongRow.svelte', purpose: "a row's readiness chip changing while the guest looks at it" },
 	{ file: 'lib/components/ProcessingCard.svelte', purpose: 'a process that failed, and why it stopped' },
@@ -325,16 +325,16 @@ const LIVE_REGIONS: { file: string; purpose: string }[] = [
 	{
 		file: 'lib/components/CodeEntry.svelte',
 		purpose:
-			'XR-PH-14 join-code entry — a rejected keystroke names the excluded characters (SC 3.3.1) and the disabled-Continue reason (SC 3.3.2), without interrupting typing'
+			'join-code entry — a rejected keystroke names the excluded characters (SC 3.3.1) and the disabled-Continue reason (SC 3.3.2), without interrupting typing'
 	},
 	{
 		file: 'lib/components/JoinLanding.svelte',
 		purpose:
-			'XR-PH-14 landing — the reason Continue is disabled (enter your name / finish the code), stated in words rather than by disabled state alone (SC 3.3.2)'
+			'landing — the reason Continue is disabled (enter your name / finish the code), stated in words rather than by disabled state alone (SC 3.3.2)'
 	}
 ];
 
-test('XR-PH-13: every phone live region is inventoried, and all are polite', () => {
+test('every phone live region is inventoried, and all are polite', () => {
 	const found: { file: string; politeness: string }[] = [];
 	for (const f of PHONE_ANNOUNCING_FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
@@ -360,7 +360,7 @@ test('XR-PH-13: every phone live region is inventoried, and all are polite', () 
 });
 
 /*
- * THE EVENT INVENTORY: the seven events XR-PH-13 says the polite region announces. Every write to
+ * THE EVENT INVENTORY: the seven events says the polite region announces. Every write to
  * `liveMsg` must map to one of them, so an eighth announcement fails — the spec's own falsification
  * condition. `implemented: false` records the three the redesign still owes (the reorder mode and the
  * guest's own position); they are listed so the set is the spec's set and not merely today's code.
@@ -382,7 +382,7 @@ const ANNOUNCED_EVENTS: { event: string; implemented: boolean; match?: RegExp }[
 	 */
 	{ event: 'a keyboard reorder step from the grip', implemented: true, match: /Moved to \$\{ordinal/ }
 	/*
-	 * A DRAG THAT DISSOLVED MID-FLIGHT (XR-PH-19) IS ANNOUNCED TOO — the song started playing, left the queue,
+	 * A DRAG THAT DISSOLVED MID-FLIGHT IS ANNOUNCED TOO — the song started playing, left the queue,
 	 * or the queue fell below two — but it is deliberately NOT an entry here, and the reason is about this
 	 * scan rather than about the event. Its strings live in `$lib/reorder-mode`'s `modeInvalidation` and reach
 	 * the region as a VARIABLE (`if (note) liveMsg = note`), so the literal-site regex below cannot see it
@@ -393,7 +393,7 @@ const ANNOUNCED_EVENTS: { event: string; implemented: boolean; match?: RegExp }[
 	// through `liveMsg`, so it has no assignment site here.
 ];
 
-test('XR-PH-13: every phone announcement is one of the inventoried events, and the first sync is silent', () => {
+test('every phone announcement is one of the inventoried events, and the first sync is silent', () => {
 	const src = stripComments(readFileSync(join(ROUTES, '+page.svelte'), 'utf8'));
 
 	// Assignment sites only — the `$state('')` declaration and the initial-sync reset are not events.
@@ -402,7 +402,7 @@ test('XR-PH-13: every phone announcement is one of the inventoried events, and t
 	const unlisted = sites.filter((s) => !ANNOUNCED_EVENTS.some((e) => e.match?.test(s)));
 	expect(
 		unlisted,
-		'an announcement reaches the phone live region that XR-PH-13 does not inventory — add the event to ANNOUNCED_EVENTS (and to docs/ux/02-phone.md), or stop announcing it'
+		'an announcement reaches the phone live region that this file does not inventory — add the event to ANNOUNCED_EVENTS, or stop announcing it'
 	).toEqual([]);
 
 	// Floor: the implemented events really are wired. Without this, deleting an announcement passes.
@@ -425,7 +425,7 @@ test('XR-PH-13: every phone announcement is one of the inventoried events, and t
 });
 
 // ---------------------------------------------------------------------------------------------------
-// XR-PH-02 — property floor: text and controls survive 200% text scaling and a 320px viewport
+// property floor: text and controls survive 200% text scaling and a 320px viewport
 // ---------------------------------------------------------------------------------------------------
 
 /*
@@ -473,7 +473,7 @@ const PX_FONT_SIZE_EXEMPTIONS: { file: string; declaration: string; reason: stri
 	}
 ];
 
-test('XR-PH-02: no phone text is sized in absolute units, so the user\u2019s text setting reaches it', () => {
+test('no phone text is sized in absolute units, so the user\u2019s text setting reaches it', () => {
 	const exempt = new Set(PX_FONT_SIZE_EXEMPTIONS.map((e) => `${e.file} ${e.declaration}`));
 	const offenders: string[] = [];
 	let filesScanned = 0;
@@ -509,9 +509,9 @@ test('XR-PH-02: no phone text is sized in absolute units, so the user\u2019s tex
  * 320 — a real overflow, from `span.n`/`span.k` in the stat tiles — while this arm was GREEN, because
  * no single declaration is wider than 320px: the overflow is the SUM of a grid's tracks and padding
  * once the type grows. The overflow reproduces identically before and after this change, so it is
- * pre-existing and reported rather than fixed here (one concern). The spec says as much — XR-PH-02's
+ * pre-existing and reported rather than fixed here (one concern). The spec says as much — the standard's
  * check is "Rendered-DOM or driven-browser measurement. Not a source scan" and depends on the rendered
- * rung (XR-PH-21). Read this arm as the cheap always-on floor beneath that, not as the row's proof.
+ * rung. Read this arm as the cheap always-on floor beneath that, not as the row's proof.
  *
  * NAMED EXEMPTIONS: deliberately empty. Nothing in the phone tree fixes a width above 320px today, so
  * this floor holds the line rather than quarantining a debt — an entry added here needs a reason.
@@ -519,7 +519,7 @@ test('XR-PH-02: no phone text is sized in absolute units, so the user\u2019s tex
 const REFLOW_WIDTH_EXEMPTIONS: { file: string; declaration: string; reason: string }[] = [];
 const REFLOW_MIN_VIEWPORT = 320;
 
-test('XR-PH-02: no phone rule fixes a horizontal dimension wider than a 320px viewport', () => {
+test('no phone rule fixes a horizontal dimension wider than a 320px viewport', () => {
 	const exempt = new Set(REFLOW_WIDTH_EXEMPTIONS.map((e) => `${e.file} ${e.declaration}`));
 	const offenders: string[] = [];
 	let declarationsSeen = 0;
@@ -552,7 +552,7 @@ test('XR-PH-02: no phone rule fixes a horizontal dimension wider than a 320px vi
 });
 
 // ---------------------------------------------------------------------------------------------------
-// XR-PH-03 — property floor: de-emphasis never uses subtree opacity (the INLINE dimension)
+// property floor: de-emphasis never uses subtree opacity (the INLINE dimension)
 // ---------------------------------------------------------------------------------------------------
 
 /*
@@ -574,7 +574,7 @@ const INLINE_OPACITY_EXEMPTIONS: { file: string; reason: string }[] = [
 	}
 ];
 
-test('XR-PH-03: no phone markup de-emphasises a subtree with an inline opacity', () => {
+test('no phone markup de-emphasises a subtree with an inline opacity', () => {
 	const exempt = new Set(INLINE_OPACITY_EXEMPTIONS.map((e) => e.file));
 	const offenders: string[] = [];
 	let filesScanned = 0;

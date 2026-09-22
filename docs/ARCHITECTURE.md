@@ -740,47 +740,47 @@ coarse `Stage` values are what the phone's progress bar reads; the step names ar
 
 **`fetch`** — stages: downloading
 
-| #   | step               | stage       | reads                                               | writes                                                                                            |
-| --- | ------------------ | ----------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 1   | `acquire-audio`    | downloading | `job`, `runner`                                     | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
-| 2   | `annotate`         | downloading | `audio.duration_sec`, `audio.youtube_credit`, `job` | `out`                                                                                             |
-| 3   | `publish-original` | downloading | `audio.path`                                        | `out`                                                                                             |
+| # | step | stage | reads | writes |
+|---|---|---|---|---|
+| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
+| 2 | `annotate` | downloading | `audio.duration_sec`, `audio.youtube_credit`, `job` | `out` |
+| 3 | `publish-original` | downloading | `audio.path` | `out` |
 
 **`stems`** — stages: downloading → separating
 
-| #   | step            | stage       | reads                                            | writes                                                                                            |
-| --- | --------------- | ----------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| 1   | `acquire-audio` | downloading | `job`, `runner`                                  | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
-| 2   | `decode-to-wav` | separating  | `audio.path`, `runner`, `work`                   | `audio.decoded_wav`                                                                               |
-| 3   | `separate`      | separating  | `audio.decoded_wav`, `engines`, `runner`, `work` | `out`, `stems.raw`                                                                                |
-| 4   | `probe-silence` | separating  | `runner`, `stems.raw`                            | `stems`                                                                                           |
-| 5   | `key-and-range` | separating  | `job`, `stems.raw`                               | `stems.song_profile`                                                                              |
-| 6   | `publish-stems` | separating  | `job`, `runner`, `stems`, `stems.raw`            | `out`, `stems.published`                                                                          |
+| # | step | stage | reads | writes |
+|---|---|---|---|---|
+| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
+| 2 | `decode-to-wav` | separating | `audio.path`, `runner`, `work` | `audio.decoded_wav` |
+| 3 | `separate` | separating | `audio.decoded_wav`, `engines`, `runner`, `work` | `out`, `stems.raw` |
+| 4 | `probe-silence` | separating | `runner`, `stems.raw` | `stems` |
+| 5 | `key-and-range` | separating | `job`, `stems.raw` | `stems.song_profile` |
+| 6 | `publish-stems` | separating | `job`, `runner`, `stems`, `stems.raw` | `out`, `stems.published` |
 
 **`stems-upgrade`** — stages: downloading → separating
 
-| #   | step            | stage       | reads                                            | writes                                                                                            |
-| --- | --------------- | ----------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| 1   | `acquire-audio` | downloading | `job`, `runner`                                  | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
-| 2   | `decode-to-wav` | separating  | `audio.path`, `runner`, `work`                   | `audio.decoded_wav`                                                                               |
-| 3   | `separate`      | separating  | `audio.decoded_wav`, `engines`, `runner`, `work` | `out`, `stems.raw`                                                                                |
-| 4   | `probe-silence` | separating  | `runner`, `stems.raw`                            | `stems`                                                                                           |
-| 5   | `key-and-range` | separating  | `job`, `stems.raw`                               | `stems.song_profile`                                                                              |
-| 6   | `publish-stems` | separating  | `job`, `runner`, `stems`, `stems.raw`            | `out`, `stems.published`                                                                          |
+| # | step | stage | reads | writes |
+|---|---|---|---|---|
+| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
+| 2 | `decode-to-wav` | separating | `audio.path`, `runner`, `work` | `audio.decoded_wav` |
+| 3 | `separate` | separating | `audio.decoded_wav`, `engines`, `runner`, `work` | `out`, `stems.raw` |
+| 4 | `probe-silence` | separating | `runner`, `stems.raw` | `stems` |
+| 5 | `key-and-range` | separating | `job`, `stems.raw` | `stems.song_profile` |
+| 6 | `publish-stems` | separating | `job`, `runner`, `stems`, `stems.raw` | `out`, `stems.published` |
 
 **`align`** — stages: downloading → aligning
 
-| #   | step                      | stage       | reads                                                                                                         | writes                                                                                            |
-| --- | ------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| 1   | `acquire-audio`           | downloading | `job`, `runner`                                                                                               | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
-| 2   | `fetch-captions:authored` | downloading | `audio.is_local`, `job`, `runner`, `work`                                                                     | `lyrics.authored_cues`                                                                            |
-| 3   | `fetch-captions:machine`  | downloading | `audio.is_local`, `job`, `runner`, `work`                                                                     | `lyrics.machine_cues`                                                                             |
-| 4   | `acquire-texts`           | aligning    | `audio.duration_sec`, `audio.path`, `audio.vocals_path`, `job`, `lyrics.authored_cues`, `lyrics.machine_cues` | `lyrics.texts`                                                                                    |
-| 5   | `presplit-texts`          | aligning    | `lyrics.texts`                                                                                                | `lyrics.texts`                                                                                    |
-| 6   | `grade-and-select`        | aligning    | `audio.duration_sec`, `lyrics.texts`                                                                          | `lyrics.baselines`, `lyrics.selection`, `lyrics.texts`                                            |
-| 7   | `time-texts`              | aligning    | `audio.path`, `audio.vocals_path`, `engines`, `job`, `lyrics.baselines`, `lyrics.selection`, `lyrics.texts`   | `out`                                                                                             |
-| 8   | `diarize`                 | aligning    | `audio.vocals_path`, `job`, `out`                                                                             | `out`                                                                                             |
-| 9   | `publish-lyrics`          | aligning    | `engines`, `job`, `out`                                                                                       | `out`                                                                                             |
+| # | step | stage | reads | writes |
+|---|---|---|---|---|
+| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
+| 2 | `fetch-captions:authored` | downloading | `audio.is_local`, `job`, `runner`, `work` | `lyrics.authored_cues` |
+| 3 | `fetch-captions:machine` | downloading | `audio.is_local`, `job`, `runner`, `work` | `lyrics.machine_cues` |
+| 4 | `acquire-texts` | aligning | `audio.duration_sec`, `audio.path`, `audio.vocals_path`, `job`, `lyrics.authored_cues`, `lyrics.machine_cues` | `lyrics.texts` |
+| 5 | `presplit-texts` | aligning | `lyrics.texts` | `lyrics.texts` |
+| 6 | `grade-and-select` | aligning | `audio.duration_sec`, `lyrics.texts` | `lyrics.baselines`, `lyrics.selection`, `lyrics.texts` |
+| 7 | `time-texts` | aligning | `audio.path`, `audio.vocals_path`, `engines`, `job`, `lyrics.baselines`, `lyrics.selection`, `lyrics.texts` | `out` |
+| 8 | `diarize` | aligning | `audio.vocals_path`, `job`, `out` | `out` |
+| 9 | `publish-lyrics` | aligning | `engines`, `job`, `out` | `out` |
 
 ```mermaid
 flowchart LR

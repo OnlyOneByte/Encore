@@ -1,4 +1,4 @@
-// The scanned-guest confirmation, in words (XR-PH-14, Q1-B). Pure and DOM-free so it unit-tests without
+// The scanned-guest confirmation, in words (Q1-B). Pure and DOM-free so it unit-tests without
 // a browser: the "confirmed in words" acceptance is a string property, and it is the one thing this
 // screen must get right for a guest who cannot see the QR they scanned.
 //
@@ -36,7 +36,7 @@ export interface RoomPreview {
 }
 
 /**
- * A sentence naming the room by its people. Never re-presents the code (that is the thing XR-PH-14
+ * A sentence naming the room by its people. Never re-presents the code (that is the thing
  * rules out once the guest has arrived).
  *
  *   0 present  → "This room is empty right now — you'll be the first here."

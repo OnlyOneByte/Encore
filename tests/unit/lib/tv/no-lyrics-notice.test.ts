@@ -34,7 +34,7 @@ function render(props: Record<string, unknown>): HTMLElement {
 
 // A doc whose line list is EMPTY. This is the one doc shape that exercises the notice's `!doc` term
 // without rendering the reel, and staying off the reel matters: `measureReel` reads `offsetHeight`,
-// which the harness makes throw LOUDLY on purpose (XR-VER-03 — happy-dom has no layout engine and
+// which the harness makes throw LOUDLY on purpose (happy-dom has no layout engine and
 // would otherwise fabricate a zero), so reel rendering is a LAYOUT-rung concern proven through
 // tests/e2e/driver.mjs, not here. Note that `activeLineIndex` returns -1 only for an empty list — for
 // a populated doc it clamps to the preceding line rather than going null in a gap, so there is no

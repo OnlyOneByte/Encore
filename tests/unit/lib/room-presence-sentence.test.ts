@@ -1,4 +1,4 @@
-// Pins the scanned-guest confirmation, in words (XR-PH-14, Q1-B). This is the one screen a
+// Pins the scanned-guest confirmation, in words (Q1-B). This is the one screen a
 // non-sighted guest who scanned cannot otherwise perceive, so the sentence is the acceptance — and it
 // must NEVER re-present the code. Each assertion targets one branch of the builder.
 import { test, expect } from 'bun:test';
@@ -7,7 +7,7 @@ import { roomPresenceSentence } from '$lib/phrasing/room-presence-sentence';
 test('an empty room says the guest will be first — not "0 people"', () => {
 	const s = roomPresenceSentence({ code: 'ABCD23', presentCount: 0, names: [] });
 	expect(s).toBe("This room is empty right now — you'll be the first here.");
-	// The code never appears (XR-PH-14: once transcription happened the code has no function).
+	// The code never appears (once transcription happened the code has no function).
 	expect(s.includes('ABCD23')).toBe(false);
 });
 

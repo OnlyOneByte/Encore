@@ -312,7 +312,7 @@
 	 * WHICH PART colour the current line paints. The worker's diarization writes an
 	 * abstract `part` letter ("A", "B") on each line of a CONFIDENT duet, and NOTHING on a solo or a
 	 * song it could not split. `duetPartColors` maps those letters onto distinct, legible
-	 * `SINGER_COLORS` — the same identity-dot palette #634's singer colour draws from, gated by the
+	 * `SINGER_COLORS` — the same identity-dot palette the singer colour draws from, gated by the
 	 * same `isLegibleSingerColor` floor — so two singers see which lines are theirs in the app's
 	 * established vocabulary.
 	 *
@@ -498,7 +498,7 @@
 		 * `part` on a confident duet, so an undiarized song, a solo, and the dev gallery all fall
 		 * through to `--reel-singer` (itself `--accent2` unless a singer colour is up) and render
 		 * exactly what they rendered before this feature existed. This is the single place the duet
-		 * fallback is named, the same discipline `--reel-singer` uses for #634's fallback one line up.
+		 * fallback is named, the same discipline `--reel-singer` uses for its fallback one line up.
 		 *
 		 * `--reel-line` and `--reel-now` read THIS rather than `--reel-singer` so the `word` and
 		 * `line` treatments agree about which colour is showing, and adding the part axis is one

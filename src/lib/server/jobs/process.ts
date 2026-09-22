@@ -166,7 +166,7 @@ export function requestProcess(mediaId: string, deps: ProcessDeps, singerId?: st
 	if (!media) return null;
 
 	const state = processState(mediaId, deps, singerId);
-	// Spotify is a SEARCH / metadata source only (docs/DECISIONS.md, the annotator pattern): its
+	// Spotify is a SEARCH / metadata source only (the annotator pattern): its
 	// sourceRef is a Spotify track id, NOT anything a fetcher can pull, so processing one would enqueue a
 	// fetch that forms `youtube.com/watch?v=<spotify-track-id>` and dies at ffmpeg — the exact
 	// shape-inference bug the fetcher registry exists to kill. A Spotify hit sharpens the query; the
