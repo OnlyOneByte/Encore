@@ -25,8 +25,15 @@
  * A CONSTANT, and that is a correctness requirement rather than a simplification — see the component,
  * which records both mechanisms in this version of vaul that a re-measured snap 0 breaks silently. It
  * reaches the stylesheet as `--snap-band` so the rendered strip and the snap point cannot drift.
+ *
+ * 88, NOT 80 (2026-09-21), and the 8px bought one thing: room between the sheet's top edge and the header
+ * content inside it. The strip filled the old 80 almost exactly — the handle's own 16px top margin plus its
+ * 6px bar plus a 44px control row and 12px under it — so `.strip`'s new `padding-top` had nowhere to come
+ * from, and `.band-slot` is `overflow: hidden` at exactly this height. The two move together or the row
+ * clips. The cost is stated rather than hidden: this height IS `--dock-h`, so every scrolling column now
+ * reserves 8 more pixels of chrome.
  */
-export const BAND_SNAP_PX = 80;
+export const BAND_SNAP_PX = 88;
 
 /** Snap 0 in the form vaul wants: a px string, which it parses rather than scaling by the viewport. */
 export const SNAP_BAND = `${BAND_SNAP_PX}px`;

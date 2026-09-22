@@ -520,7 +520,22 @@ export const SEL = {
 	 *  it cannot be confused with the band's copy of the same fact. Mounted at all times since the merge,
 	 *  so prefer `bandTitle` for a bare "what is playing" read: this one is only ON SCREEN once the sheet
 	 *  is at `0.82`. */
-	npSong: '.np-drawer .np-song',
+	/*
+	 * RETIRED: `npSong` was the drawer HEAD's own copy of the playing title (`.np-drawer .np-song`), and the
+	 * head no longer renders one (2026-09-21).
+	 *
+	 * With the sheet open it was one of three second copies stacked 40px under the band row's — an eyebrow
+	 * against the band's byline, a `Drawer.Title` against its title, a `Drawer.Description` whose artist was
+	 * in that byline and whose key is stated again above the ± keycaps. Reported as the now playing/now
+	 * singing being duplicated, and the band row is the copy that survives because it is on screen at BOTH
+	 * snap points.
+	 *
+	 * `bandTitle` ('.band .title') CARRIES THE CLAIM, and it is strictly better for a driver rather than a
+	 * consolation: the band is composed inside this sheet, so it still reads the song identity out of the
+	 * open drawer, and it needs no gesture because it is also the collapsed face. p16's two call sites moved
+	 * there. The name is banned rather than re-pointed for the reason `SEL.play` is: `bandTitle` already
+	 * names that element, and a second id on it would let two flows disagree about which surface they are on.
+	 */
 	/*
 	 * The sheet's DRAG handle — and since the merge, the ONLY handle in the app, doing both jobs: it is the
 	 * way IN (drag up from the collapsed band to snap `0.82`) and the drag surface once there. It replaced
@@ -588,23 +603,29 @@ export const SEL = {
 	 * THE SHEET'S PLAY/PAUSE IS BACK, AND IT DELIBERATELY HAS NO SELECTOR OF ITS OWN. Recorded here because
 	 * the absence of an id used to MEAN the absence of a control, and it no longer does.
 	 *
-	 * The row was Restart + Skip for a while: two play/pause controls on one open surface about 100px apart
-	 * was the duplicate-transport report, and the disc was the one kept (visible at BOTH snap points, carries
-	 * the progress ring, sits in the thumb zone). The cost was a transport split across the sheet — disc at
-	 * the top right, its siblings at the bottom left in a different shape — reported as the controls not being
-	 * unified, and the ruling reversed: the row is a whole prev·play·next transport again.
+	 * THE WHOLE TRANSPORT IS IN THE BAND ROW NOW — `restart`, the disc and `skip` sit with the magnifier as
+	 * one header cluster (2026-09-21), so all three are addressed on the SAME surface and there is no
+	 * second play/pause anywhere in the app.
 	 *
-	 * SO WHY NO ID. Both controls name themselves `aria-label={isPlaying ? 'Pause' : 'Play'}`, so a
-	 * `{role, name}` entry could not tell them apart, and the driver resolves `.first()` — which is the disc,
-	 * since `.band-slot` precedes `.np-fit` (pinned by phone-home-832). Every flow that wants play/pause
-	 * therefore uses `bandTransport` ('.disc') and needs no gesture first, which is strictly easier than
-	 * reaching the row's copy (pull to snap 1, then click below the fold). A second id would be a selector
-	 * nobody drives, on a control the first one already reaches.
+	 * THREE ARRANGEMENTS PRECEDED IT, each reported on sight, and the sequence is worth keeping because the
+	 * selectors moved with it: (1) Restart + Skip in a row in the sheet's body with play/pause only on the
+	 * disc — one transport split across two rows and two corners; (2) that row given its own `iconPrimary`
+	 * play/pause — two identical play buttons about 100px apart; (3) the disc hidden at snap 1 to resolve
+	 * that — no duplication, but a nearly-empty band row above a group floating in the middle of the body.
 	 *
-	 * `SEL.play` STAYS BANNED. It named the deleted button's literal `aria-label="play/pause"`; the restored
-	 * control does not carry that label, so reviving the id would resolve against nothing while reading as
-	 * though the old flow still worked. If the row's copy ever does need driving, give it a class and a new
-	 * name scoped to the row — not this one.
+	 * WHAT THAT MEANS FOR A DRIVER. `bandTransport` ('.disc') is play/pause at BOTH heights, needs no
+	 * gesture, and is the cheapest control in the app to drive — the five flows that were briefly re-aimed
+	 * at a sheet-only copy are back on it. `restart` and `skip` are in the same row but are HIDDEN while the
+	 * sheet is collapsed (`.tp-side` is `display: none`; the drawer reveals the pair at snap 1), so a flow
+	 * that wants either must `openNowPlaying` first — `driver.click` waits for visibility, so a tap without
+	 * the gesture times out rather than failing loudly.
+	 *
+	 * A SHEET-ONLY `sheetTransport` ENTRY IS RETIRED WITH ARRANGEMENT 3. It named
+	 * `[data-transport="play"]` on the body row's copy, and that button no longer exists.
+	 *
+	 * `SEL.play` STAYS BANNED. It named an even earlier button's literal `aria-label="play/pause"`; nothing
+	 * carries that label now, so reviving the id would resolve against nothing while reading as though the
+	 * old flow still worked.
 	 */
 	skip: { role: 'button' as const, name: 'skip' },
 	/*
@@ -662,11 +683,18 @@ export const SEL = {
 	 * The `.badqr` operator-notice card's own text lines the SCALING probe (p10) contrast-checks —
 	 * migrated from KNOWN_OFFENDERS (Group E of the per-driver split).
 	 * All three are children of `.badqr` in src/lib/tv/JoinBadge.svelte: `.badqr-t` is the
-	 * "Join QR unavailable" title, `.badqr-b` the body paragraph, `.badqr-fix` the fix hint. p10 reads
+	 * state line ("No external IP set") and `.badqr-fix` the remedy clause beside it. p10 reads
 	 * them for existence/geometry/contrast, never clicks them.
 	 */
 	badQrTitle: '.badqr-t',
-	badQrBody: '.badqr-b',
+	/*
+	 * RETIRED: `badQrBody` ('.badqr-b'). The unreachable state is a ONE-LINE notice beside a QR that still
+	 * renders (2026-09-21) — it used to be a `--danger` card that replaced the QR, with a headline, a body
+	 * paragraph carrying the advertised address in a `<b>`, and a two-line fix hint. The body paragraph and
+	 * the address inside it went with the card: the real address is printed directly below the notice by
+	 * attract and the lobby now, so repeating an unroutable one inside the warning was the only thing
+	 * `.badqr-b` said. `badQrTitle` and `badQrFix` survive as the notice's two spans.
+	 */
 	badQrFix: '.badqr-fix',
 	/** The TV's master/guide media elements. An <audio> carries the instrumental, so a bare `video`
 	 *  selector read -1 forever and every playing frame in the gallery was silently skipped. */
@@ -953,12 +981,6 @@ export const HOOKS: Hook[] = [
 		why: 'npDrawer can only resolve because the LAYOUT mounts the sheet; the component rendering the class is not the same claim as the app showing it. Since the merge this is the TOP of a two-link chain (layout → drawer → band), and `bandMounted` is its other link — the layout mounts nothing else, so if this anchor goes the band goes with it'
 	},
 	{
-		id: 'npSong',
-		file: 'src/lib/components/NowPlayingDrawer.svelte',
-		anchor: 'class="np-song"',
-		why: "the playing song's title inside the drawer — one of the two successors to the retired heroTitle, for a flow that has already opened it"
-	},
-	{
 		id: 'drawerHandle',
 		file: 'src/lib/components/ui/drawer/drawer-handle.svelte',
 		anchor: 'data-slot="drawer-handle"',
@@ -1098,11 +1120,25 @@ export const HOOKS: Hook[] = [
 	 * rather than at a second grab bar. So BOTH hooks exist: one pins the drag restriction, one pins that
 	 * somebody still hands the band a press. Neither replaces the other, and the retired IDS stay banned.
 	 */
+	/*
+	 * `drawerHandleOnly` BECAME `drawerBodyNoDrag` (2026-09-21) — the same claim, from the other side.
+	 *
+	 * It anchored the `handleOnly` prop: dragging restricted to the grab bar, so a body made of sliders was
+	 * not also a drag surface (XR-PH-15). Reported: the top edge of a sheet that plainly looks draggable was
+	 * draggable only at one 6px bar. `handleOnly` is all-or-nothing in vaul, so the fix was to drop it and
+	 * EXCLUDE instead — `data-vaul-no-drag` on `.np-fit`, resolved by `closest()`, covering the head, the
+	 * body, the guiding-track slider, the keycaps and the range visualiser in one attribute.
+	 *
+	 * Still a whitelist in effect ("only the band row drags"): a control added to the sheet lands inside
+	 * `.np-fit` and is excluded by construction, which is the property the old prop was chosen for. A new id
+	 * rather than a re-anchor, by the `searchDock` → `findBox` rule: the mechanism changed, not just its
+	 * spelling, and a reader who greps the old name should land on this record.
+	 */
 	{
-		id: 'drawerHandleOnly',
+		id: 'drawerBodyNoDrag',
 		file: 'src/lib/components/NowPlayingDrawer.svelte',
-		anchor: 'handleOnly',
-		why: 'drawerHandle only means anything because the Root RESTRICTS dragging to it; drop this prop and vaul drags from anywhere in a body made of sliders (XR-PH-15), which is a gesture collision rather than a missing element — the successor to the retired bandExpandWired, and the same claim shape: the component renders the handle, the app decides it is the only one'
+		anchor: '<div class="np-fit" data-vaul-no-drag',
+		why: 'the band row is the drag surface, so this attribute is the whole of XR-PH-15 on this sheet: without it vaul drags from anywhere in a body made of sliders and the guiding-track thumb and the dismiss gesture become one gesture, with the drawer winning as the ancestor — a gesture collision rather than a missing element'
 	},
 	{
 		id: 'bandTitle',
@@ -1188,7 +1224,7 @@ export const HOOKS: Hook[] = [
 	// below the fold until it is pulled up to `0.82`, so a tap or a measurement still needs the drag.
 	{
 		id: 'skip',
-		file: 'src/lib/components/NowPlayingDrawer.svelte',
+		file: 'src/lib/components/NowPlayingBand.svelte',
 		anchor: 'aria-label="skip"',
 		why: 'the flow advances the rotation to prove round-robin ordering'
 	},
@@ -1344,8 +1380,8 @@ export const HOOKS: Hook[] = [
 	{
 		id: 'badQr',
 		file: 'src/lib/tv/JoinBadge.svelte',
-		anchor: 'Join QR unavailable',
-		why: 'the misconfigured-origin frame is the first-run failure worth showing; capture drives it deliberately'
+		anchor: 'No external IP set',
+		why: "the misconfigured-origin frame is the first-run failure worth showing; capture drives it deliberately. RE-ANCHORED (2026-09-21) from the card headline 'Join QR unavailable': the state is a one-line notice beside a QR that still renders, so the headline it used to anchor no longer exists — this is the line that replaced it"
 	},
 	{
 		id: 'activeWord',

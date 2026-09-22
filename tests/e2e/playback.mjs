@@ -76,8 +76,6 @@ if (!ready.length) {
 }
 console.log(`fixture: "${ready[0].title}" → ${ready[0].instrumentalRef}\n`);
 
-
-
 /** @type {Browser | undefined} */
 let browser;
 try {

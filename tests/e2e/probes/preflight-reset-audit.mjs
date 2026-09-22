@@ -162,8 +162,6 @@ const SURFACES = [
 	{ name: 'tv', url: '/tv', vp: TV }
 ];
 
-
-
 /** @type {Record<string, unknown>} */
 const result = { port: PORT, surfaces: {} };
 let failed = 0;

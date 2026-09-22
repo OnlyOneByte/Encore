@@ -102,7 +102,9 @@ function killAll() {
 	for (const p of spawned) {
 		try {
 			if (p.pid && !p.killed) process.kill(p.pid, 'SIGKILL');
-		} catch { /* the process may already have exited */ }
+		} catch {
+			/* the process may already have exited */
+		}
 	}
 	spawned.length = 0;
 }
@@ -121,7 +123,9 @@ async function waitForHealth(timeoutMs = 15000) {
 		try {
 			const r = await fetch(`${BASE}/health`);
 			if (r.ok) return true;
-		} catch { /* best-effort cleanup */ }
+		} catch {
+			/* best-effort cleanup */
+		}
 		await sleep(200);
 	}
 	return false;
@@ -207,7 +211,9 @@ async function searchLocal(q) {
 		try {
 			const r = await fetchNoKeepalive(`${BASE}/api/search?q=${encodeURIComponent(q)}`);
 			const d = await r.json();
-			const hit = /** @type {Media[]} */ ([...d.ready, ...d.processing, ...d.results]).find((x) => x.source === 'local');
+			const hit = /** @type {Media[]} */ ([...d.ready, ...d.processing, ...d.results]).find(
+				(x) => x.source === 'local'
+			);
 			if (!hit)
 				throw new Error(
 					`no local match for "${q}" — ready=${d.ready.length} processing=${d.processing.length} results=${d.results.length}`
@@ -331,7 +337,9 @@ async function openAuthedPhoneSocket(cookie) {
 	ws.onmessage = (/** @type {MessageEvent} */ m) => {
 		try {
 			events.push(JSON.parse(String(m.data)));
-		} catch { /* best-effort cleanup */ }
+		} catch {
+			/* best-effort cleanup */
+		}
 	};
 	ws.send(JSON.stringify({ type: 'hello' }));
 	await sleep(100);
@@ -379,10 +387,14 @@ async function waitForStatus(phone, mediaId, predicate, timeoutMs = 15000, label
 async function cleanupScenario(server, worker) {
 	try {
 		worker?.proc.kill('SIGKILL');
-	} catch { /* the process may already have exited */ }
+	} catch {
+		/* the process may already have exited */
+	}
 	try {
 		server?.proc.kill('SIGKILL');
-	} catch { /* the process may already have exited */ }
+	} catch {
+		/* the process may already have exited */
+	}
 	// Longer than a keep-alive: Bun's HTTP client pools sockets for 1-2s and a POST to a killed
 	// server surfaces as "Unable to connect" against the fresh boot on the next scenario.
 	await sleep(1500);
@@ -936,7 +948,9 @@ async function main() {
 		if (h.ok) {
 			bail(`port ${PORT} is already in use — probe requires an exclusive port`);
 		}
-	} catch { /* best-effort cleanup */ }
+	} catch {
+		/* best-effort cleanup */
+	}
 
 	const scenarios = [
 		scenario1_silentInstrumental,

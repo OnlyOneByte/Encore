@@ -40,6 +40,9 @@
 	 * Not shipped: nothing in the app imports it.
 	 */
 	import NowPlayingDrawer from '$lib/components/NowPlayingDrawer.svelte';
+	// The snap-0 value, IMPORTED: it was a literal '80px', and the band grew to 88 for headroom above the
+	// header. vaul looks the active point up by strict string equality, so a stale literal here seats index -1.
+	import { SNAP_BAND } from '$lib/sheet-snap';
 
 	interface Props {
 		/** Is a song playing? False is the idle arm, where no live control is owed at all. */
@@ -58,7 +61,7 @@
 		 */
 		activeSnapPoint?: number | string | null;
 	}
-	let { hasSong = true, guideEnabled = false, activeSnapPoint = $bindable('80px') }: Props = $props();
+	let { hasSong = true, guideEnabled = false, activeSnapPoint = $bindable(SNAP_BAND) }: Props = $props();
 </script>
 
 <!--

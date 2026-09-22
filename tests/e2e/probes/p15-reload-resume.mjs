@@ -60,7 +60,9 @@ function stopChildren() {
 		const p = children.pop();
 		try {
 			p?.kill('SIGKILL');
-		} catch { /* the process may already have exited */ }
+		} catch {
+			/* the process may already have exited */
+		}
 	}
 }
 process.on('exit', stopChildren);
@@ -257,7 +259,8 @@ console.log(
 	`A playing: TV t=${before.t.toFixed(2)}s decoded=${before.bytes}B | server positionSec=${roomBefore.toFixed(2)}s`
 );
 if (before.bytes <= 32768) bail(`A is not really decoding (${before.bytes}B) — a resume would prove nothing`);
-if (!Number.isFinite(roomBefore) || roomBefore <= 3) bail(`server position is not past 3s (${roomBefore}) — no resume to test`);
+if (!Number.isFinite(roomBefore) || roomBefore <= 3)
+	bail(`server position is not past 3s (${roomBefore}) — no resume to test`);
 
 // ── the actual test: RELOAD the TV mid-song ───────────────────────────────
 console.log(`\nreloading /tv mid-song (room at ${roomBefore.toFixed(2)}s) — the repro\n`);

@@ -9,12 +9,15 @@
 	 * that pushed the rotation down and duplicated, once the band existed, everything the band already
 	 * said at a glance.
 	 *
-	 * `handleOnly` IS THE LOAD-BEARING PROP. vaul drawers drag-to-dismiss from anywhere in their
-	 * content by default, and this drawer's body is sliders — the guiding-track thumb and, on the way
-	 * past, the range visualizer. A drag surface underneath a slider is precisely what XR-PH-15 bans:
-	 * the two gestures are the same gesture, and the drawer wins because it is the ancestor. So
-	 * dragging is restricted to the handle, which is a whitelist rather than a blacklist of
-	 * `data-vaul-no-drag` elements — a whitelist cannot be forgotten when a control is added later.
+	 * THE BAND ROW IS THE DRAG SURFACE, AND `.np-fit` IS EXCLUDED. vaul drawers drag-to-dismiss from
+	 * anywhere in their content by default, and this drawer's body is sliders — the guiding-track thumb
+	 * and, on the way past, the range visualizer. A drag surface underneath a slider is precisely what
+	 * XR-PH-15 bans: the two gestures are the same gesture, and the drawer wins because it is the
+	 * ancestor. This was `handleOnly` — dragging restricted to the 6px grab bar — until the top edge of a
+	 * sheet that plainly looks draggable was reported as not being. So the exclusion inverted: ONE
+	 * `data-vaul-no-drag` on `.np-fit` covers the head, the body and every control ever added below the
+	 * band row, which is still a whitelist in effect ("only the band row drags") rather than a list
+	 * someone has to remember to extend.
 	 * (That prop only works because a real `Drawer.Handle` is rendered below, inside `.band-slot`;
 	 * shadcn's copy-in shipped a decorative div in its `drawer-content.svelte` — and the vendored file
 	 * briefly rendered a real one there too, which is how the phone came to draw TWO pull-up lines.
@@ -363,6 +366,94 @@
 	/** Collapse to the band. What `open = false` used to do, expressed as a height. */
 	const collapse = () => (activeSnapPoint = SNAP_BAND);
 
+	/*
+	 * IS THE SHEET UP — the only thing the band row needs to know, and it is deliberately NOT a prop of
+	 * `NowPlayingBand`.
+	 *
+	 * It is what REVEALS RESTART AND SKIP in the band row. The band renders the pair at all times and hides
+	 * it at rest (`.tp-side { display: none }`), so the collapsed bar keeps exactly the controls it always
+	 * had — title, magnifier, disc — and the sheet being up is the one thing that brings the rest of the
+	 * transport out. The disc is untouched at either height: it is still the app's only play/pause.
+	 *
+	 * A CLASS AND A CSS RULE, NOT A PROP — which is what makes this legal at all. The band cannot take an
+	 * `expanded` prop: any prop of it that CHANGES after mount re-runs the size bindings on `.band-slot` /
+	 * `.np-fit`, and a geometry read on the mount rung is a throw by design (XR-VER-03). Measured: a
+	 * reactive prop took three of `phone-home-832`'s mounts down. The file already records the same escape
+	 * hatch for `aria-expanded` ("an attribute write re-renders nothing"). It also keeps the DOM tree
+	 * identical at both heights, which is what the census arm in `phone-home-832` asserts.
+	 *
+	 * HELD THROUGH THE `null` BLIP. `activeSnapPoint` is written to `null` for one tick by every re-seat
+	 * (see `armResizeReseat` and the content-height effect), and `null` is not a height — reading it as
+	 * "collapsed" would blink the pair away on every resize. So this only ever updates on a real value.
+	 *
+	 * AN IMPERATIVE ATTRIBUTE WRITE, NOT A `class:` DIRECTIVE — AND THAT IS MEASURED, TWICE.
+	 *
+	 * Both reactive forms reopen the hazard the CSS route exists to avoid, because `.band-slot` carries
+	 * `bind:clientHeight` and ANY reactive update in that part of the template re-runs its size binding —
+	 * which on the mount rung is a deliberate throw (XR-VER-03):
+	 *
+	 *   1. `$state` + `$effect`: the write lands in a MICROTASK, so the refusal is raised from
+	 *      `run_micro_tasks`, outside the synchronous window `openDrawer` swallows it in. Three of
+	 *      `phone-home-832`'s mounts went down.
+	 *   2. `$derived` read by `class:sheet-up={…}`: same three mounts. Bisected by deleting the directive
+	 *      alone, with the derived left in place — 18/18 passed. So it is the reactive DOM UPDATE that
+	 *      costs, not the state or the effect, which is the same mechanism the note on `expanded` below
+	 *      records for a band prop and the same escape hatch it names: "an attribute write re-renders
+	 *      nothing".
+	 *
+	 * So the class is toggled on a node ref. The effect reads `activeSnapPoint` (reading is free) and
+	 * writes only to the DOM, so no template expression depends on it and nothing is invalidated.
+	 *
+	 * HELD THROUGH THE `null` BLIP in an untracked local, for the reason above: `activeSnapPoint` goes
+	 * `null` for one tick on every re-seat and `null` is not a height, so reading it as "collapsed" would
+	 * flash the disc back on every resize.
+	 *
+	 * `faceEl` IS A PLAIN `let`, not `$state`: `bind:this` assigns it once at mount, and the effect's first
+	 * run is after that, so nothing here needs to be reactive — and a `$state` ref would put a reactive
+	 * write back into the mount path, which is hazard 1 again.
+	 */
+	/*
+	 * THE EXIT IS ANIMATED TOO, and it needs a class of its own because `display: none` leaves nothing to
+	 * animate. Reported: the pair appears beautifully and then vanishes.
+	 *
+	 * `sheet-down` HOLDS THE OPEN LAYOUT for the length of the animation — the pair stays `display: grid`,
+	 * so the row keeps its full width — while transforms move the magnifier and the disc to exactly where
+	 * they will land and the pair fades out in place. When the class drops, the layout collapses to a state
+	 * the screen is ALREADY showing, so the snap is invisible. It is the same FLIP as the entry, run
+	 * backwards: the distances are the same two tokens and nothing is measured.
+	 *
+	 * THE TIMER MUST MATCH THE CSS, so `TP_ANIM_MS` and the `260ms` in the keyframe rules are one fact in
+	 * two places — the shell guard asserts they agree rather than trusting it.
+	 *
+	 * SKIPPED ENTIRELY UNDER REDUCE MOTION. With no animation declared, holding the open layout for 260ms
+	 * would just be a stutter before the pair blinks out, so the class is never added and the collapse is
+	 * immediate. `matchMedia` is a preference read, not a geometry read — safe on the mount rung.
+	 */
+	const TP_ANIM_MS = 260;
+	let faceEl: HTMLElement | undefined;
+	let lastSeated: number | string = SNAP_BAND;
+	$effect(() => {
+		const at = activeSnapPoint;
+		if (at !== null && at !== undefined) lastSeated = at;
+		// Snap 0 is a px STRING and snap 1 is a fraction, which is the same discriminator the re-seat
+		// effect above uses.
+		const up = typeof lastSeated === 'number';
+		const el = faceEl;
+		if (!el) return;
+		const wasUp = el.classList.contains('sheet-up');
+		el.classList.toggle('sheet-up', up);
+		el.classList.remove('sheet-down');
+		if (!wasUp || up || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		el.classList.add('sheet-down');
+		const timer = setTimeout(() => el.classList.remove('sheet-down'), TP_ANIM_MS);
+		// Cleared on re-run as well as teardown: a guest who pulls the sheet straight back up must not have
+		// the old timer strip `sheet-down` out from under the new state.
+		return () => {
+			clearTimeout(timer);
+			el.classList.remove('sheet-down');
+		};
+	});
+
 	// null (not 0) for an unknown length, so the seek row HIDES rather than pinning a bar at zero,
 	// which reads as a stalled song.
 	/* One fraction, two consumers: the seek bar at snap 1 and the transport arc on the band row at
@@ -378,7 +469,6 @@
 	const rangeText = $derived(rangeLabel(profile, keyShift));
 	const octaves = $derived(rangeOctaves(profile));
 	const bandSentence = $derived(voiceBandSentence(profile, keyShift));
-	const byline = $derived([artist, keyOriginal].filter(Boolean).join(' · ') || null);
 
 	/*
 	 * While a finger is on the slider we show the LOCAL value, not the server's. Without this the thumb
@@ -471,9 +561,25 @@
 	`trapFocus` below), so an un-dimmed page is correct rather than a missing feature. What the sheet leans
 	on instead is its own edge — `border-t` in `border-border` plus the popover surface.
 
-	`handleOnly` stays, and it is load-bearing rather than decorative: the body carries sliders, so a
-	drag started anywhere on the content would fight them (XR-PH-15). The handle exists at both
-	heights and is the one drag surface.
+	`handleOnly` IS GONE, AND THE EXCLUSION INVERTED — the whole BAND ROW is the drag surface now, which is
+	what "let me drag from anywhere at the top" means. The 6px grab bar (44px of hit area) was the only
+	place a thumb could take hold of a sheet whose entire top edge looks draggable.
+
+	XR-PH-15 IS UNCHANGED, and this is the part that needed care rather than courage. `handleOnly` is
+	all-or-nothing in vaul — it simply skips the CONTENT's pointer handlers — so turning it off makes the
+	body's sliders drag surfaces again, which is exactly the ban: the guiding-track thumb and the drawer
+	dismiss would be one gesture, with the drawer winning as the ancestor. So `.np-fit` carries
+	`data-vaul-no-drag`, and vaul resolves that with `closest()` (`use-drawer-root.svelte.js:87`), so ONE
+	attribute excludes the head, the body, the sliders and everything ever added below the band row.
+
+	THAT IS STILL A WHITELIST IN PRACTICE, which is what the old note argued for: the rule is not "these
+	controls are excluded" (a list someone must remember to extend) but "only the band row drags". A control
+	added to the sheet goes in `.np-fit` and is excluded by construction — the same property, from the other
+	side, and the reason this is not the blacklist that note warned about.
+
+	THE BAND'S OWN BUTTONS ARE EXCLUDED TOO (see NowPlayingBand): vaul sets pointer CAPTURE on press, so a
+	drag begun on the disc would retarget its `pointerup` back to the button and fire a click — pausing the
+	song on the way to opening the sheet.
 -->
 <Drawer.Root
 	open={open}
@@ -481,14 +587,15 @@
 	modal={false}
 	snapPoints={[SNAP_BAND, SNAP_OPEN]}
 	bind:activeSnapPoint={activeSnapPoint}
-	handleOnly
 >
 	<!--
-		`aria-label` IS THE IDLE FALLBACK NAME, and it is here because the head's title is now
-		conditional (see `.titlecol` below). bits-ui sets `aria-labelledby` only once a `Drawer.Title`
-		has mounted and registered its id (`dialog.svelte.js:207`), so with nothing playing the
-		attribute is absent and this is what names the dialog. With a song it is inert: `aria-labelledby`
-		wins the accessible-name cascade, so the song title still names the surface.
+		`aria-label` IS THE DIALOG'S NAME, at every state — and it is no longer a fallback.
+
+		It arrived as one, because the head's `Drawer.Title` was conditional on a song and bits-ui sets
+		`aria-labelledby` only once a Title has mounted and registered its id (`dialog.svelte.js:207`). The
+		head no longer renders a Title at all — every line of it was a second copy of the band row's, see the
+		note there — so no Title ever mounts, the attribute is never set, and this names the surface. The song
+		title is still inside the dialog, in the band row, so it is read as content rather than as the name.
 	-->
 	<!--
 		`trapFocus={false}` IS WHY YOU CAN TYPE IN THE SEARCH BOX. Reported as "I can't type in the song
@@ -539,8 +646,9 @@
 				`Drawer.Handle` at the top of the content BOX as well, so the phone drew TWO stacked
 				pull-up lines — reported as exactly that. Only one of the two could be placed correctly: a
 				consumer cannot move a child the vendored component renders for it, and the band row is
-				snap point 0, so the bar has to be inside it. `handleOnly` on the Root restricts dragging
-				TO this element, which is why it must be vaul's real Handle and not a decorative bar.
+				snap point 0, so the bar has to be inside it. It must still be vaul's REAL Handle rather than a
+				decorative bar: `handleOnly` is gone, but the handle's own `onclick` is what cycles the snap
+				points for a guest who taps the bar instead of dragging it.
 			-->
 			<Drawer.Handle />
 			<!--
@@ -560,8 +668,10 @@
 				would. Guarded on it not already being there so a press on an open sheet is a no-op rather than
 				a re-seat that restarts vaul's transform transition.
 
-				Nothing about the DRAG changes: `handleOnly` still restricts dragging to the handle, so the
-				body of sliders is still not a drag surface (XR-PH-15).
+				THE DRAG IS WIDER THAN IT WAS: the whole band row takes hold of the sheet now, and the body of
+				sliders is still not a drag surface (XR-PH-15) — see `data-vaul-no-drag` on `.np-fit`. This
+				press path is what a guest who cannot drag at all uses, and it is the only one that can
+				CLOSE the sheet by tap.
 
 				IT TOGGLES, because nothing else can collapse the sheet by tap. It only opened at first, on the
 				reasoning that vaul's own handle is the way back down. It is not: `use-drawer-handle.svelte.js`
@@ -586,75 +696,90 @@
 				`>` tracking quote state, and an apostrophe in prose there flips it and swallows the rest of the
 				file — which reported five of this component's own plain-element classes as handed to a child.)
 			-->
-			<NowPlayingBand
-				title={title}
-				artist={artist}
-				singerName={singerName}
-				singerColor={singerColor}
-				progress={progress}
-				isPlaying={isPlaying}
-				canStart={canStart}
-				onsearch={onsearch}
-				ontoggleplay={ontoggleplay}
-				onexpand={() => (activeSnapPoint = activeSnapPoint === SNAP_OPEN ? SNAP_BAND : SNAP_OPEN)}
-			/>
+			<!--
+				`.band-face` CARRIES THE "SHEET IS UP" STATE, AND IT IS A SEPARATE ELEMENT FROM `.band-slot` FOR A
+				MEASURED REASON.
+
+				The class started on `.band-slot` itself, which is the element carrying `bind:clientHeight`, and
+				that reopened the hazard the whole CSS route exists to avoid: updating the bound element re-runs
+				its size binding, and a geometry read on the mount rung is a throw by design (XR-VER-03). Three
+				of `phone-home-832`'s mounts went down with the refusal escaping `openDrawer`'s swallow — the
+				same failure shape a reactive `expanded` PROP produced, which is what the note on `onexpand`
+				below records. So the state lives one level in, on an element nothing measures.
+
+				`display: contents`, so the wrapper is invisible to layout: `.band-slot`'s box, its fixed height
+				and the strip inside it are exactly as they were, and only the CSS descendant path changes.
+			-->
+			<div class="band-face" bind:this={faceEl}>
+				<NowPlayingBand
+					title={title}
+					artist={artist}
+					singerName={singerName}
+					singerColor={singerColor}
+					progress={progress}
+					isPlaying={isPlaying}
+					canStart={canStart}
+					onsearch={onsearch}
+					ontoggleplay={ontoggleplay}
+					onrestart={onrestart}
+					onskip={onskip}
+					onexpand={() => (activeSnapPoint = activeSnapPoint === SNAP_OPEN ? SNAP_BAND : SNAP_OPEN)}
+				/>
+			</div>
 		</div>
 		<!--
 			`.np-fit` EXISTS TO BE MEASURED, and it is a plain block so it changes nothing about the layout:
 			the head and the body keep their own padding and their own `--max-w` centring. It wraps
 			everything below the band row, which is what snap 1's content cap needs the height of.
 		-->
-		<div class="np-fit" bind:clientHeight={fitH}>
+		<!--
+			`data-vaul-no-drag` IS WHAT REPLACED `handleOnly` (see the Root above). Everything below the band
+			row — the head, the seek row, the transport's siblings, the guiding-track slider, the ± keycaps,
+			the range visualiser — is excluded from dragging by this ONE attribute, because vaul resolves it
+			with `closest()`. That is what keeps XR-PH-15 satisfied while the band row above becomes the drag
+			surface, and it cannot be forgotten when the next control lands in the body.
+		-->
+		<div class="np-fit" data-vaul-no-drag bind:clientHeight={fitH}>
+			<!--
+				THE HEAD NO LONGER NAMES THE SONG — the band row above it does, and once (ratified 2026-09-21).
+
+				It used to carry three things, and with the sheet open every one of them was a second copy of
+				something 40px higher up: an eyebrow ("Now singing · Maya") against the band's byline
+				("Maya is singing · Queen Official"), a `Drawer.Title` against the band's `.title`, and a
+				`Drawer.Description` ("Queen Official · G major") whose artist was in that same byline and whose key
+				is stated again, on its own line, directly above the ± keycaps. Reported on sight as the now
+				playing/now singing being duplicated.
+
+				The BAND ROW is the copy that survives, for the reason it survived the transport argument: it is on
+				screen at BOTH snap points, so the song identity never moves or disappears, and it is the collapsed
+				face of this surface. The head was only ever legible while the sheet was up — which is precisely
+				when it was a duplicate.
+
+				WHAT NAMES THE DIALOG NOW. `Drawer.Content`'s `aria-label="Now playing"` does, at every state.
+				bits-ui sets `aria-labelledby` only once a `Drawer.Title` has mounted and registered its id
+				(`dialog.svelte.js:207`), so with no Title the attribute is simply absent and the label wins the
+				accessible-name cascade — the same path the idle case already took, now the only path. The song
+				title is still IN the dialog, in the band row, so a screen reader still reads it as content; what is
+				gone is hearing it twice.
+
+				THE `···` IS ALL THAT IS LEFT, and it has to stay: it is the ONLY link to /song/[mediaId] anywhere in
+				the app. It keeps the head's padding and its own right-hand slot, so the seek row below starts where
+				it always did.
+			-->
 			<Drawer.Header class="np-head">
-				{#if singerName}
-					<div class="eyebrow">
-						<span class="singer-dot" style="--singer:{singerColor ?? 'var(--accent)'}"></span>
-						<span>Now singing · {singerName}</span>
+				{#if hasSong && mediaId}
+					<div class="more-slot">
+						<Button
+							variant="ghost"
+							size="icon"
+							href={`/song/${mediaId}`}
+							aria-label="More about this song"
+							onclick={collapse}
+						>
+							<Icon name="dots" />
+						</Button>
 					</div>
 				{/if}
-				<div class="titlerow">
-					<div class="titlecol">
-						<!--
-						THE HEAD NAMES THE SONG; IT DOES NOT RESTATE THE ROOM'S STATE.
-
-						This used to render `hasSong ? title : 'Nothing playing'`, which was correct while the
-						drawer was a SEPARATE surface that mounted on open — the band was a different element and
-						only one of the two was ever in the document. Now the band row is this sheet's own first
-						child and a snap-pointed sheet keeps its whole body mounted below the fold, so
-						"Nothing playing" was in the tree TWICE: once in `.band-slot`'s `.title` and once here.
-						Nothing on screen showed it twice — the head is past the fold at snap 0 — but a screen
-						reader reads the whole dialog, so it announced the same three words twice in a row.
-
-						The band row is the collapsed FACE of this surface and it already states the idle case, so
-						the head is the half that gives it up: with no song there is no song identity for the head
-						to carry, and its only remaining job was repetition. With a song the head keeps the title,
-						because that is the dialog's accessible name (`aria-labelledby`, see `Drawer.Content`) and
-						the band row's copy of it is a one-line glance rather than the heading.
-					-->
-						{#if hasSong}
-							<Drawer.Title class="np-song">{title}</Drawer.Title>
-						{/if}
-						<!-- No filler when there is nothing to say. "Adjust while you sing" described the drawer to the
-					     person who had just opened it, and "Queue a song to start the party" repeated the title
-					     back with encouragement attached. -->
-						{#if byline}
-							<Drawer.Description class="np-byline">{byline}</Drawer.Description>
-						{/if}
-					</div>
-					{#if hasSong && mediaId}
-						<div class="more-slot">
-							<Button
-								variant="ghost"
-								size="icon"
-								href={`/song/${mediaId}`}
-								aria-label="More about this song"
-								onclick={collapse}
-							>
-								<Icon name="dots" />
-							</Button>
-						</div>
-					{/if}
-				</div>
 			</Drawer.Header>
 
 			<div class="np-body">
@@ -672,70 +797,19 @@
 			     play additionally accepts a queue with something in it, because the server decides when
 			     "start when it is ready" becomes a start. -->
 				<!--
-				RESTART · PLAY/PAUSE · SKIP, CENTRED IN ONE ROW — a whole transport, which is what this sheet
-				had before and what this deliberately restores (ratified 2026-09-18).
+				THERE IS NO TRANSPORT ROW HERE ANY MORE — it moved INTO THE BAND ROW (ratified 2026-09-21), where it
+				sits with the magnifier as one header cluster. See `.tp` in NowPlayingBand.
 
-				The row shipped for a while as restart + skip ONLY, with play/pause living exclusively on the
-				band's disc, because two play buttons about 100px apart had been reported as duplicate
-				playback controls. They were — but the trade that bought was a transport split across the
-				surface: the two halves of one control group sat at opposite corners of the same sheet, the
-				disc at the top right of the band row and its siblings at the bottom left, in a different
-				shape (`rounded-md` icon buttons against the band's hand-rolled pills). Reported as the
-				controls not being unified. A familiar three-up transport is worth more than the absence of a
-				second glyph, so play/pause is back, in the middle, where the shape is read at a glance.
-
-				THE DISC STAYS, AND IT IS STILL THE ONE THAT SURVIVES A COLLAPSE. It is visible at BOTH snap
-				points, it carries the progress ring, and it sits in the thumb zone. Dropping it instead
-				would mean hiding it when the sheet opens — a prop of `NowPlayingBand` that changes after
-				mount, which the mount rung throws on (XR-VER-03; see the note on `expanded` above). So both
-				are on screen while the sheet is up, by decision rather than by oversight.
-
-				`canStart` STAYS ON THE DISC TOO rather than moving back here, which is the difference from
-				the arrangement this replaces. Both buttons fire the same `ontoggleplay`, so the same
-				condition belongs on both: `!hasSong && !canStart` keeps "a queue exists but nothing is
-				current, press to start" pressable from either height.
-
-				THE ACCESSIBLE NAME IS DUPLICATED ON PURPOSE, and it is the one thing to know before adding a
-				third caller. Both controls are named Play/Pause because both ARE play/pause, and the e2e
-				driver's `clickByLabel`/`clickByRole` resolve `.first()` — `.band-slot` precedes `.np-fit`, so
-				the disc is earlier in the DOM and every existing flow still drives it. No probe was re-aimed.
-
-				RESTART IS CALLED AND DRAWN AS RESTART. It always called `onrestart` and its label always said
-				"restart", but it was once drawn with the `prev` glyph — the universal previous-track mark, for
-				something this app has no concept of (a rotation has no previous).
+				THE HISTORY, because this spot has now held three different answers and each was reported on sight.
+				First the row was Restart + Skip with play/pause only on the band's disc: one transport split across
+				two rows and two corners of the same sheet. Then it grew its own `iconPrimary` play/pause and was
+				centred here: that put two identical play buttons on screen about 100px apart. Then the disc was
+				hidden at snap 1 to resolve that: no duplication, but on a laptop the band row sat nearly empty while
+				a three-button group floated in the middle of the body below it.
+				All three failed the same way — the controls were not in one place. So the pair went up to the disc
+				instead of the disc coming down to the pair, which is the one arrangement that puts every control in
+				the row the guest is already looking at and keeps the collapsed bar unchanged.
 			-->
-				<div class="transport">
-					<Button
-						variant="outline"
-						size="icon"
-						aria-label="Restart"
-						title="Play this song again from the beginning"
-						disabled={!hasSong}
-						onclick={() => onrestart?.()}
-					>
-						<Icon name="restart" />
-					</Button>
-					<Button
-						variant="iconPrimary"
-						size="icon"
-						aria-label={isPlaying ? 'Pause' : 'Play'}
-						title={isPlaying ? 'Pause' : hasSong ? 'Resume this song' : 'Start the party'}
-						disabled={!hasSong && !canStart}
-						onclick={() => ontoggleplay?.()}
-					>
-						<Icon name={isPlaying ? 'pause' : 'play'} />
-					</Button>
-					<Button
-						variant="outline"
-						size="icon"
-						aria-label="skip"
-						title="Skip to the next singer"
-						disabled={!hasSong}
-						onclick={() => onskip?.()}
-					>
-						<Icon name="next" />
-					</Button>
-				</div>
 
 				<!--
 				The live controls only exist for a song playing NOW, so an idle room shows the transport and
@@ -850,6 +924,150 @@
 		background: transparent;
 		border-top: 0;
 		box-shadow: none;
+	}
+	.band-face {
+		/* Layout-neutral by construction — see the markup note for why the state cannot live on
+		   `.band-slot`, the element whose height is snap 0. */
+		display: contents;
+	}
+	/*
+	 * THE SHEET BEING UP IS WHAT REVEALS RESTART AND SKIP. The band renders the pair at all times and hides
+	 * it (`.tp-side { display: none }`); this is the one rule that brings it back, so the collapsed bar keeps
+	 * exactly the controls it always had and /components — five bands with no drawer — is untouched.
+	 *
+	 * IT REACHES INTO THE BAND ON PURPOSE, the same `:global()` composition as `.band-slot :global(.band)`
+	 * above: the band is right in BOTH call sites and only the composition site can tell them apart.
+	 *
+	 * `display: grid` restores what `.btn` gives the pair (`place-items: center` comes with it from the
+	 * band's own rule; only the `display` is overridden). It beats the band's `.btn.tp-side { display: none }`
+	 * on specificity — three classes to two — rather than on source order, which is what that rule had to be
+	 * compounded for in the first place (see its note there).
+	 *
+	 * A CSS REVEAL, NOT A PROP — see `sheetUp` for the measured reason: a prop of the band that changes
+	 * after mount re-runs the size bindings, and a geometry read on the mount rung is a throw (XR-VER-03).
+	 */
+	.band-face:global(.sheet-up) :global(.tp-side) {
+		display: grid;
+	}
+	/*
+	 * THE REVEAL IS ANIMATED — the magnifier slides aside and the pair grows in behind it.
+	 *
+	 * KEYFRAMES, NOT A TRANSITION, and that is forced. The whole change is a LAYOUT one: `display: none` →
+	 * `grid` widens the row, which moves the magnifier and the disc by reflow. Neither `display` nor a
+	 * reflow is transitionable, and `width`/`gap`/`inset` are outside the composited allowlist
+	 * motion.test.ts enforces (transform, opacity, background, color, box-shadow — nothing else). A
+	 * keyframe can state the FROM position explicitly, so the layout jump happens instantly and the
+	 * animation replays the distance each element just travelled, in `transform` only. That is a FLIP
+	 * without the measuring step — the distances are `--tp-grow` and `--tp-disc-shift`, declared on
+	 * `.strip` from `--tap` and `--space-md`, so nothing here reads geometry (XR-VER-03).
+	 *
+	 * GATED ON `no-preference`, which is how this file's other motion is suppressed: with Reduce Motion on,
+	 * no `animation` is declared at all and the pair simply appears. Nothing to reset.
+	 *
+	 * ONE DIRECTION ONLY, stated rather than hidden: collapsing sets `display: none` on the same frame, so
+	 * there is no element left to animate out. The sheet's own half-second slide is what the eye follows
+	 * down, and it is going the other way anyway.
+	 *
+	 * The names are `-global-` prefixed because the selectors that use them are `:global()` — a scoped
+	 * keyframe name would be rewritten for this component's own elements and these are the band's.
+	 */
+	@media (prefers-reduced-motion: no-preference) {
+		.band-face:global(.sheet-up) :global(.btn:not(.tp-side)) {
+			animation: tp-slide-aside 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+		}
+		.band-face:global(.sheet-up) :global(.disc) {
+			animation: tp-disc-shift 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+		}
+		.band-face:global(.sheet-up) :global(.tp-side) {
+			animation: tp-grow-in 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+		}
+	}
+	/*
+	 * The magnifier's whole journey: it starts where it sat with the pair hidden — `--tp-grow` to the RIGHT
+	 * of where it has just landed — and travels to its new place.
+	 */
+	@keyframes -global-tp-slide-aside {
+		from {
+			transform: translateX(var(--tp-grow, 0));
+		}
+		to {
+			transform: none;
+		}
+	}
+	/* The disc moves less: only the restart that arrives on its left pushes it. */
+	@keyframes -global-tp-disc-shift {
+		from {
+			transform: translateX(var(--tp-disc-shift, 0));
+		}
+		to {
+			transform: none;
+		}
+	}
+	/*
+	 * The pair itself, growing out from under the disc rather than fading in place: `scale` is composited,
+	 * and starting slightly right puts restart where the disc was a moment ago, which is what makes the two
+	 * read as one movement instead of two.
+	 */
+	@keyframes -global-tp-grow-in {
+		from {
+			opacity: 0;
+			transform: translateX(calc(var(--tp-disc-shift, 0) * -0.35)) scale(0.72);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
+	}
+	/*
+	 * THE COLLAPSE, which is the entry run backwards — and the reason it needs its own class rather than a
+	 * reversed direction on the same one: `display: none` arrives on the same frame as the state change, so
+	 * there would be nothing left to animate. `sheet-down` keeps the pair displayed (and therefore the row
+	 * at its open width) while the transforms carry the magnifier and the disc to their collapsed positions;
+	 * the class is removed after `TP_ANIM_MS` and the layout catches up with what is already on screen.
+	 *
+	 * `both` fill mode is what holds that end state for the handover. Without it the elements would snap
+	 * back to `transform: none` — their OPEN positions — for the frame between the animation ending and the
+	 * class dropping.
+	 */
+	.band-face:global(.sheet-down) :global(.tp-side) {
+		display: grid;
+	}
+	@media (prefers-reduced-motion: no-preference) {
+		.band-face:global(.sheet-down) :global(.btn:not(.tp-side)) {
+			animation: tp-slide-back 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+		}
+		.band-face:global(.sheet-down) :global(.disc) {
+			animation: tp-disc-back 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+		}
+		.band-face:global(.sheet-down) :global(.tp-side) {
+			animation: tp-shrink-out 260ms cubic-bezier(0.32, 0.72, 0, 1) both;
+		}
+	}
+	@keyframes -global-tp-slide-back {
+		from {
+			transform: none;
+		}
+		to {
+			transform: translateX(var(--tp-grow, 0));
+		}
+	}
+	@keyframes -global-tp-disc-back {
+		from {
+			transform: none;
+		}
+		to {
+			transform: translateX(var(--tp-disc-shift, 0));
+		}
+	}
+	@keyframes -global-tp-shrink-out {
+		from {
+			opacity: 1;
+			transform: none;
+		}
+		to {
+			opacity: 0;
+			transform: translateX(calc(var(--tp-disc-shift, 0) * -0.35)) scale(0.72);
+		}
 	}
 	/*
 	 * FULL-HEIGHT CONTENT, AND `max-height` DEFEATED — this is what makes the snap offsets land.
@@ -974,59 +1192,23 @@
 	.np-body {
 		padding: 0 var(--space-2xl);
 	}
-	/* The title column takes the width; the affordance keeps its own box out of the text's flow. */
-	.titlerow {
-		display: flex;
-		align-items: flex-start;
-		gap: var(--space-md);
-	}
-	.titlecol {
-		flex: 1;
-		/* A two-line clamped title must not set a floor this column cannot go under. */
-		min-width: 0;
-	}
+	/*
+	 * THE HEAD IS THE `···` AND NOTHING ELSE now the song identity lives only in the band row. Right-aligned
+	 * in its own flex row, so the affordance sits where it always sat and the seek row below is unmoved.
+	 *
+	 * `.titlerow`, `.titlecol`, `.eyebrow`, `.singer-dot`, `.np-song` and `.np-byline` went with the markup
+	 * they styled — six rules for a title column, a byline and a singer eyebrow that were each a second copy
+	 * of something the band row states 40px higher. What they had learned and is worth keeping: the column
+	 * needed `min-width: 0` so a two-line clamped title could not set a floor the flex row cannot go under,
+	 * and the affordance needed `margin-right: -10px` to align optically with the column edge — which it
+	 * still carries below, because that part is about the `···`, not about the text beside it.
+	 */
 	.more-slot {
-		flex: 0 0 auto;
+		display: flex;
+		justify-content: flex-end;
 		/* Optical alignment with the column edge, matching PageHeader's own back-slot pull. */
 		margin-right: -10px;
 		color: var(--ink-dim);
-		display: flex;
-	}
-	.eyebrow {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		font-size: var(--ph-text-2xs);
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-		min-width: 0;
-	}
-	.eyebrow span:last-child {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	/* Two lines then ellipsis, so a full YouTube title cannot push the transport off screen. */
-	:global(.np-song) {
-		margin: var(--space-xs) 0 0;
-		font-size: var(--ph-text-xl);
-		font-weight: 800;
-		line-height: 1.15;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-	}
-	:global(.np-byline) {
-		margin: var(--space-2xs) 0 0;
-		font-size: var(--ph-text-sm);
-		color: var(--ink-dim);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 	}
 	.seekrow {
 		display: flex;
@@ -1046,20 +1228,6 @@
 	.bar-slot {
 		flex: 1;
 		min-width: 0;
-	}
-	/*
-	 * CENTRED, which is the half of "one transport" that CSS owns. Left-aligned, the pair read as two
-	 * loose buttons parked under the head; centred, the three read as prev·play·next — the arrangement
-	 * every phone player uses, and the reason the middle one is `iconPrimary` rather than `outline`.
-	 * The row is the only centred block in `.np-body`, deliberately: everything below it (the guiding
-	 * track, the keycaps, the range) is a labelled control that reads from the left.
-	 */
-	.transport {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-md);
-		margin-top: var(--space-md);
 	}
 	.tools-body {
 		margin-top: var(--space-lg);

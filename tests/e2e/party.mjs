@@ -75,8 +75,6 @@ if (!res?.ok) {
 	process.exit(2);
 }
 
-
-
 /** @type {Browser | undefined} */
 let browser;
 try {
@@ -121,7 +119,7 @@ try {
 	 * reporting `computed 0px`, which is the ORIGINAL false-failure symptom wearing a different hat. So
 	 * wait for the socket, let the sync land, and re-check the screen at the moment of measurement.
 	 */
-	const socketUp = await tv.waitForSelector(SEL.tvConnected , { timeout: 8000 }).catch(() => false);
+	const socketUp = await tv.waitForSelector(SEL.tvConnected, { timeout: 8000 }).catch(() => false);
 	if (!socketUp) {
 		console.error(`\nThe TV never opened its WebSocket to ${base}. Is the server still running?`);
 		browser0.close();
@@ -133,7 +131,7 @@ try {
 	// flake that reads as a product defect.
 	await sleep(SYNC_SETTLE_MS);
 
-	const onAttract = await tv.waitForSelector(SEL.attract , { timeout: 4000 }).catch(() => false);
+	const onAttract = await tv.waitForSelector(SEL.attract, { timeout: 4000 }).catch(() => false);
 	if (!onAttract) {
 		console.error(
 			'\nThis flow needs an empty room — the attract screen only renders before anyone joins,\n' +
@@ -239,7 +237,9 @@ try {
 	 * a number this file can know — a fixed sleep passed on one run and failed the next against the same
 	 * build, which is how an e2e earns a reputation for being flaky and stops being run.
 	 */
-	const rows = await maya.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length`, { timeout: 15_000 }).catch(() => 0);
+	const rows = await maya
+		.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length`, { timeout: 15_000 })
+		.catch(() => 0);
 	if (rows === 0) {
 		// Loud and actionable, never a silent skip — an e2e that quietly stops asserting is the exact
 		// failure this rewrite exists to prevent. An empty library is an ENVIRONMENT gap, not a UI bug,
@@ -294,7 +294,9 @@ try {
 		 * "the singer is in the rotation", so all three count; asserting only `.qrow` would report an
 		 * empty rotation for a room whose first song is playing perfectly.
 		 */
-		const heroSong = (await maya.texts(SEL.bandTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing');
+		const heroSong = (await maya.texts(SEL.bandTitle)).filter(
+			(/** @type {string} */ t) => t && t !== 'Nothing playing'
+		);
 		check(
 			'queueing puts the singer in the rotation',
 			queued + processing + heroSong.length > 0,
@@ -308,13 +310,17 @@ try {
 		// The rotation AS EACH PHONE SEES IT: the playing song (hero) followed by the waiting rows. Both
 		// halves, for the same reason as above — comparing rows alone compares two empty lists and reads
 		// as agreement when neither phone has rendered anything.
-		const rotationOf = async (/** @type {typeof maya} */ page) => [...(await page.texts(SEL.bandTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing'),...(await page.texts(SEL.queueTitle))
+		const rotationOf = async (/** @type {typeof maya} */ page) => [
+			...(await page.texts(SEL.bandTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing'),
+			...(await page.texts(SEL.queueTitle))
 		];
 		const adaSawRotation = await ada
 			.waitFor(
 				`[...document.querySelectorAll(${JSON.stringify(SEL.bandTitle)}),...document.querySelectorAll(${JSON.stringify(SEL.queueTitle)})].some(el => (el.textContent || '').trim() && (el.textContent || '').trim() !== 'Nothing playing')`,
 				{ timeout: 10_000 }
-			).then(() => true).catch(() => false);
+			)
+			.then(() => true)
+			.catch(() => false);
 		const mayaQ = await rotationOf(maya);
 		const adaQ = await rotationOf(ada);
 		check(

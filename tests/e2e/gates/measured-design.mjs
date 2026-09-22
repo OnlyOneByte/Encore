@@ -329,7 +329,6 @@ if (!healthy) {
 	);
 }
 
-
 // No CDP port to re-read any more. This used to spawn its own Chromium and recover the port from the
 // child's own argv, because the port was chosen with `await freePort()` and only the child knew it. The
 // driver launches its own browser and takes no port, so `connect()` needs no argument and there is nothing
@@ -439,7 +438,7 @@ try {
 		 */
 		await surface('/', async () => {
 			await page.goto(base + '/');
-			await page.waitForSelector(SEL.homeReady , { timeout: 15000 });
+			await page.waitForSelector(SEL.homeReady, { timeout: 15000 });
 		});
 		await surface('/ (searched)', async () => {
 			await openBrowseFromHome(page, { timeout: 15000 });
@@ -514,7 +513,7 @@ try {
 	 */
 	await page.viewport(390, 844);
 	await page.goto(base + '/');
-	await page.waitForSelector(SEL.homeReady , { timeout: 15000 });
+	await page.waitForSelector(SEL.homeReady, { timeout: 15000 });
 	await sleep(600); // let the measured --dock-h write land
 
 	/*
@@ -860,9 +859,7 @@ try {
 	 * for a query that matched nothing.
 	 */
 	await page.fill(SEL.search, 'zzzzznotasongzzzzz');
-	await page
-		.waitForSelector(SEL.empty , { timeout: 15000 })
-		.catch(() => {});
+	await page.waitForSelector(SEL.empty, { timeout: 15000 }).catch(() => {});
 	await sleep(900);
 	const shortProbe = `(() => {
 		const dock = document.querySelector(${JSON.stringify(SEL.dockRow)});
@@ -996,7 +993,7 @@ try {
 	 */
 	await page.viewport(1920, 1080);
 	await page.goto(base + '/tv');
-	await page.waitForSelector(SEL.tvRoot , { timeout: 15000 });
+	await page.waitForSelector(SEL.tvRoot, { timeout: 15000 });
 	await sleep(500);
 
 	// The eight TV type tiers, read as the ENGINE resolves them off the root (a rem tier * the root px).
@@ -1030,11 +1027,7 @@ try {
 
 	const tv1 = await page.evaluate(tvProbe);
 	if (!tv1) {
-		check(
-			'CLAIM 5 the /tv document mounts .tv so the root floor is measurable',
-			false,
-			'no .tv element found on /tv'
-		);
+		check('CLAIM 5 the /tv document mounts .tv so the root floor is measurable', false, 'no .tv element found on /tv');
 	} else {
 		// Root: 2.7vh of 1080 = 29.16px, * ui-scale 1.
 		check(
@@ -1124,7 +1117,7 @@ try {
 	 */
 	await page.viewport(1920, 1080);
 	await page.goto(base + '/tv');
-	await page.waitForSelector(SEL.tvRoot , { timeout: 15000 });
+	await page.waitForSelector(SEL.tvRoot, { timeout: 15000 });
 	await sleep(300);
 
 	const overlapProbe = `(() => {
@@ -1198,7 +1191,10 @@ try {
 		return out;
 	})()`;
 
-	for (const [w, h] of [[1920, 1080], [3840, 2160]]) {
+	for (const [w, h] of [
+		[1920, 1080],
+		[3840, 2160]
+	]) {
 		await page.viewport(w, h);
 		await sleep(150);
 		const o = await page.evaluate(overlapProbe);
@@ -1313,7 +1309,7 @@ try {
 			}
 			await sleep(700);
 			await page.goto(base + '/tv');
-			await page.waitForSelector(SEL.lobbyStripPerson , {
+			await page.waitForSelector(SEL.lobbyStripPerson, {
 				timeout: 15000
 			});
 			await sleep(900);

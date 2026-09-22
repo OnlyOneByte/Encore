@@ -172,5 +172,5 @@ test('snap 0 is still a CONSTANT px string, which is the correctness requirement
 	 */
 	expect(SNAP_BAND).toBe(`${BAND_SNAP_PX}px`);
 	expect(typeof SNAP_BAND).toBe('string');
-	expect(SNAP_BAND).toBe('80px');
+	expect(SNAP_BAND).toBe('88px');
 });

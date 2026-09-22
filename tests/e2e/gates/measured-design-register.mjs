@@ -35,7 +35,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { repoRoot as REPO_ROOT } from '../lib/repo-root.mjs';
 
-
 /**
  * Encore's own tap floor, stricter than WCAG 2.2 SC 2.5.8's 24px — READ OUT OF `--tap`.
  *

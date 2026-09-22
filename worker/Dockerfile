@@ -8,7 +8,7 @@ WORKDIR /app/worker
 
 # ffmpeg = audio decode/encode for the stems pipeline. Pinned base image (Finding #4), no bare latest.
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+	&& apt-get install -y --no-install-recommends ffmpeg ca-certificates gcc build-essential \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Python deps first for layer caching. Torch CPU wheels from the official index (override with a

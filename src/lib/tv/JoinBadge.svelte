@@ -32,6 +32,23 @@
 		 * operator notice naming the fix instead of a QR that looks fine but every scan fails silently.
 		 */
 		unreachable?: boolean;
+		/**
+		 * The room code, printed in the two treatments that carry no typed-path block of their own: the
+		 * CORNER card and the UNREACHABLE notice.
+		 *
+		 * REPORTED TWICE, and both halves were the same omission. On localhost the notice replaced the QR
+		 * outright, so the screen advertising an unroutable address offered no way in at all — yet the code
+		 * is still perfectly typable by anyone who reaches the app on another address, which is exactly the
+		 * situation an operator on a laptop is in. And mid-song the corner card carried the QR and the host
+		 * but never the code, so a latecomer whose camera will not scan had nothing to transcribe.
+		 *
+		 * The HERO treatment deliberately ignores it: attract and the lobby print the code themselves, below
+		 * the QR, as part of a sentence broken across the TV type ladder ("Go to X and enter room code Y").
+		 * A second copy from in here would render it twice on the screen where it is largest — and since the
+		 * unroutable case no longer replaces the hero with a card of its own, those two screens now print it
+		 * in every state, which is what made this prop hero-irrelevant rather than hero-conditional.
+		 */
+		roomCode?: string | null;
 	}
 
 	let {
@@ -40,7 +57,8 @@
 		placement = 'hero',
 		onlineCount = 0,
 		size = placement === 'corner' ? 88 : 238,
-		unreachable = false
+		unreachable = false,
+		roomCode = null
 	}: Props = $props();
 
 	// A number is pixels; a string is a raw CSS length. This is what --qr is set to.
@@ -58,22 +76,41 @@
 	const shortUrl = $derived(joinAddressLabel(joinUrl));
 </script>
 
-{#if unreachable}
-	<!--
-		The join address is unroutable, so a QR would be a working-looking dead end. Say what is wrong
-		and how to fix it, in the TV type scale so an operator reads it from the sofa. Same corner/ hero
-		geometry as the QR it replaces, so the layout does not jump.
-	-->
-	<div class="badqr" class:corner={placement === 'corner'} class:hero={placement === 'hero'} role="alert">
-		<div class="badqr-t">Join QR unavailable</div>
-		<div class="badqr-b">
-			<span class="badqr-lead">This screen is advertising</span>
-			<b class="badqr-addr">{shortUrl}</b>
-			<span class="badqr-lead">which no phone can reach.</span>
-		</div>
-		<div class="badqr-fix">Set the party address in Settings under Joining (or the ENCORE_PUBLIC_ORIGIN env var).</div>
-	</div>
-{:else if placement === 'corner'}
+<!--
+	THE UNROUTABLE-ADDRESS NOTICE — one line, beside a QR that still renders (ratified 2026-09-21).
+
+	IT REPLACED A CARD, and the card is why this note is long. The advertised address being unreachable used
+	to REPLACE the QR with a `--danger` panel: a headline, the address, a sentence, and a two-line fix
+	instruction, sized `clamp(320px, 44vmin, 720px)` and centred where the code should have been. It was
+	the right shape for the fault it described — a QR nobody can scan is a working-looking dead end — and
+	the wrong shape for the screen, because on a loopback address the only person looking is the operator,
+	who does not need a quarter of a wall to be told what they already configured.
+
+	SO THE QR IS SHOWN NORMALLY AND THE FAULT IS A FOOTNOTE. The stated trade, on the record: a guest CAN
+	now scan a code that will not resolve. That was the original card's whole reason for existing, and it is
+	accepted deliberately — the address is only unroutable when nobody has set a party address, which in
+	practice means a laptop showing this to itself.
+
+	The fix clause is hidden in the CORNER treatment (see `.corner .badqr-fix`) rather than written twice:
+	that card is a compact mid-song affordance in the safe area, and one string cannot drift from itself.
+-->
+{#snippet notice()}
+	{#if unreachable}
+		<!--
+			THE `.badqr` FAMILY NAMES ARE KEPT ON PURPOSE, even though nothing about this is a card any more:
+			`.badqr` is how the e2e contract, the party flow and the scaling probe all recognise "this screen is
+			advertising an address no phone can reach" (SEL.badQr and friends). Renaming it would move four
+			files for no gain. What DID retire with the card are its prose parts — `.badqr-b`, `.badqr-lead`,
+			`.badqr-addr` — because a one-line notice has no body paragraph and no advertised address to print
+			(attract and the lobby now print the real one directly below this).
+		-->
+		<p class="badqr" class:corner={placement === 'corner'} class:hero={placement === 'hero'} role="status">
+			<b class="badqr-t">No external IP set</b><span class="badqr-fix">Set the party address in Settings</span>
+		</p>
+	{/if}
+{/snippet}
+
+{#if placement === 'corner'}
 	<div class="corner" aria-label="Scan to join Encore">
 		<div class="qr" style="--qr: {qrLength}">
 			<img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} />
@@ -81,6 +118,11 @@
 		<div class="meta">
 			<div class="t">Scan to join</div>
 			<div class="u">{shortUrl}</div>
+			{@render notice()}
+			<!-- The typed path, mid-song: a camera that will not scan leaves the code as the only way in. -->
+			{#if roomCode}
+				<div class="c">code <b>{roomCode}</b></div>
+			{/if}
 			{#if onlineCount > 0}
 				<div class="n">● {onlineCount} {onlineCount === 1 ? 'singer' : 'singers'} in</div>
 			{/if}
@@ -91,6 +133,7 @@
 		<div class="qr" style="--qr: {qrLength}">
 			<img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} />
 		</div>
+		{@render notice()}
 	</div>
 {/if}
 
@@ -110,6 +153,21 @@
 		border-radius: 6px;
 	}
 
+	/*
+	 * THE HERO SHRINK-WRAPS ITS TILE. `.qr` is a block with a white fill, so in a stretch context it spread
+	 * to the panel's full width and painted a wide white slab with the code left-aligned inside it. The lobby
+	 * never showed it because its `.stack` is `align-items: center`; the attract panel's column stretches,
+	 * and until now the unroutable case replaced this whole treatment with a card — so the stretch was only
+	 * ever on screen in the reachable state, where nobody had looked at 1920 wide.
+	 *
+	 * Centring here rather than in the two callers: the tile is this component's, and a caller that forgets
+	 * would paint the slab again.
+	 */
+	.hero {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+	}
 	/* hero: breathes so it reads as a live invitation rather than a static poster */
 	.hero .qr {
 		animation: breathe 4s ease-in-out infinite;
@@ -170,6 +228,23 @@
 		font-weight: 700;
 		margin-top: 3px;
 	}
+	/*
+	 * The corner card's code line. `--tv-body` rather than the attract screen's `--tv-code` (3.29rem): this
+	 * card is a compact mid-song affordance pinned in the safe area beside a 88px QR, and the display tier
+	 * that is right when the code OWNS the screen would push the card across the stage here. The value is
+	 * bolder and in full ink so it still reads as the thing to transcribe.
+	 */
+	.c {
+		font-size: var(--tv-body);
+		color: var(--ink-dim);
+		margin-top: 3px;
+		letter-spacing: 0.04em;
+	}
+	.c b {
+		color: var(--ink);
+		font-weight: 800;
+		letter-spacing: 0.12em;
+	}
 	.n {
 		font-size: var(--tv-label);
 		color: var(--ok);
@@ -178,61 +253,47 @@
 	}
 
 	/*
-	 * The dead-QR notice. --danger family so it does not read as a normal invitation, TV type scale so
-	 * it is legible from a sofa. `hero` centres it on the stage where the QR would have been; `corner`
-	 * pins it to the same bottom-right safe-area slot as the corner QR so mid-song layout is stable.
+	 * THE NOTICE. `--danger-ink` at the smallest TV tier, so it reads as a footnote to the QR rather than as
+	 * a competing panel — which is the whole point of the change (see the markup note). No surface, no
+	 * border, no max-width: there is no prose column left to wrap badly, which is what the card needed all
+	 * of that for.
+	 *
+	 * `text-wrap: balance` rather than a width cap, for the one case the line is long: a narrow 720p panel.
+	 * A cap in `ch` is what froze the old card two words wide (its own guard records the `ch`-against-a-16px-
+	 * root trap), and a cap in vmin is a second axis to keep in step with the type scale.
 	 */
 	.badqr {
-		border-radius: var(--radius);
-		/* rgba(42,27,34,0.95) was --danger-bg at 95%. */
-		background: color-mix(in srgb, var(--danger-bg) 95%, transparent);
-		border: 1px solid var(--danger);
-		box-shadow: var(--shadow);
-	}
-	.badqr.hero {
-		/*
-		 * Prose width, not a QR's. 34ch here resolved against this element's own 16px root font
-		 * (~346px) — a column two words wide that never grew with the TV type — so the address was
-		 * forced to break mid-token and the trailing clause orphaned its comma. This is the same
-		 * vmin axis the TV type scale rides, so the card grows on a 4K wall instead of dead-ending.
-		 */
-		max-width: clamp(320px, 44vmin, 720px);
-		padding: 28px 34px;
+		margin: 1.2vh 0 0;
+		font-size: var(--tv-label);
+		font-weight: 600;
+		color: var(--danger-ink);
 		text-align: center;
-	}
-	.badqr.corner {
-		position: absolute;
-		right: var(--tv-safe-x);
-		bottom: var(--tv-safe-y);
-		z-index: var(--z-tv-card);
-		max-width: 30vw;
-		padding: var(--space-xl) var(--space-4xl);
+		text-wrap: balance;
 	}
 	.badqr-t {
-		font-size: var(--tv-name);
 		font-weight: 800;
-		color: var(--danger-ink);
-		margin-bottom: var(--space-sm);
 	}
-	.badqr-b {
-		font-size: var(--tv-body);
-		color: var(--ink);
-	}
-	/* Each part on its own line: the sentence never wraps around the address, so the comma that used
-	   to orphan onto its own line is gone with the clause it followed. */
-	.badqr-lead {
-		display: block;
-	}
-	.badqr-addr {
-		display: block;
-		margin: var(--space-3xs) 0;
-		color: var(--danger-ink);
-		/* A long advertised address still has to fit the card rather than push it wide. */
-		overflow-wrap: anywhere;
-	}
+	/*
+	 * ITS OWN LINE, not a clause after a separator. As `state · remedy` on one wrapped line the mid-sentence
+	 * `·` landed at the start of line two on a 720p panel, which reads as a bullet rather than as a join. Two
+	 * lines say the same thing with no punctuation to misread — and the corner treatment hides this one, so
+	 * the block only ever applies where there is room for it.
+	 */
 	.badqr-fix {
-		font-size: var(--tv-label);
+		display: block;
+		font-weight: 500;
 		color: var(--ink-dim);
-		margin-top: var(--space-md);
+	}
+	/*
+	 * The corner card is a compact mid-song affordance pinned in the safe area beside an 88px QR, and it is
+	 * left-aligned. The state is worth stating there — a latecomer scanning a dead code gets no other
+	 * explanation — but the remedy is not: nobody fixes an env var from the sofa mid-song.
+	 */
+	.corner .badqr {
+		margin-top: 5px;
+		text-align: left;
+	}
+	.corner .badqr-fix {
+		display: none;
 	}
 </style>

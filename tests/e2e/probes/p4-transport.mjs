@@ -102,7 +102,9 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 const searchInit = await fetch(`${base}/api/search?q=caroline`).then((r) => r.json());
 const processedIds = new Set((searchInit.ready ?? []).map((/** @type {ReadyRow} */ r) => r.id));
 if (processedIds.size === 0) {
-	bail('no READY song in the library — nothing to play.\n' + '  Seed + process one first (HARNESS.md §Process a song).');
+	bail(
+		'no READY song in the library — nothing to play.\n' + '  Seed + process one first (HARNESS.md §Process a song).'
+	);
 }
 // The first ready row is what the TV will pick up when a singer queues it.
 const firstReady = (searchInit.ready ?? [])[0];
@@ -121,7 +123,9 @@ async function readServerPlayback(timeoutMs = 2500) {
 				done = true;
 				try {
 					ws.close();
-				} catch { /* already closed, or never opened */ }
+				} catch {
+					/* already closed, or never opened */
+				}
 				reject(new Error('WS probe timeout'));
 			}
 		}, timeoutMs);
@@ -133,7 +137,9 @@ async function readServerPlayback(timeoutMs = 2500) {
 				clearTimeout(t);
 				try {
 					ws.close();
-				} catch { /* already closed, or never opened */ }
+				} catch {
+					/* already closed, or never opened */
+				}
 				resolve({ state: e.state, rev: e.rev });
 			}
 		};
@@ -148,7 +154,6 @@ async function readServerPlayback(timeoutMs = 2500) {
 }
 
 // ── browser boot ──────────────────────────────────────────────────────────────────────────────────
-
 
 // The TV probes the master element by looking for the audio element inside the VISIBLE slot. The
 // gapless controller mounts TWO slots (A and B); the hidden slot pre-warms the upNext song and
@@ -294,7 +299,9 @@ try {
 				(/** @type {ReadyRow} */ row) => row.id !== firstReady.id && !extras.some((e) => e.id === row.id)
 			);
 			if (alt) extras.push(alt);
-		} catch { /* best-effort cleanup */ }
+		} catch {
+			/* best-effort cleanup */
+		}
 		if (extras.length >= 2) break;
 	}
 	// The FIRST extra is bohemian (or the first available) — queued from phone2 so the "credit the
@@ -702,7 +709,9 @@ try {
 } finally {
 	try {
 		browser?.close();
-	} catch { /* already closed, or never opened */ }
+	} catch {
+		/* already closed, or never opened */
+	}
 }
 
 // ── report ───────────────────────────────────────────────────────────────────

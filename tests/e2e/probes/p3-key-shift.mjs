@@ -176,8 +176,6 @@ if (secondReady) {
 	console.log(`no second processable song available — song-change advance check will be an env limit\n`);
 }
 
-
-
 // The probe harness itself lives in a template literal so both the CDP driver
 // and the in-page tap read from a single source. Wraps `window.AudioContext`
 // so any pitch-shift graph built later hands us back the context and the

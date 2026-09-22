@@ -44,6 +44,17 @@
 		onsearch?: () => void;
 		ontoggleplay?: () => void;
 		/**
+		 * Restart and skip — the two controls that flank the disc while the sheet holding this band is up.
+		 *
+		 * They live HERE rather than in the sheet's body because one transport split across two rows is what
+		 * the last two rounds of this were reported as. Callbacks, so they are stable for the life of the
+		 * mount: a prop of this component that CHANGES after mount re-runs the drawer's size bindings, which
+		 * the mount rung throws on (XR-VER-03). Absent (the /components gallery) leaves the pair inert, and it
+		 * is hidden at rest there anyway — see `.tp-side`.
+		 */
+		onrestart?: () => void;
+		onskip?: () => void;
+		/**
 		 * Raising or lowering the sheet. When present, the band's own metadata block becomes a real button
 		 * that does it — see the markup. Absent (the /components gallery, which renders five bands with no
 		 * drawer) leaves it inert text, because a labelled control that swallows its press is worse than none.
@@ -61,6 +72,8 @@
 		canStart = false,
 		onsearch,
 		ontoggleplay,
+		onrestart,
+		onskip,
 		onexpand
 	}: Props = $props();
 
@@ -119,6 +132,26 @@
 	 * button's DOM node from an effect — an attribute write does not re-render the component — not a prop.
 	 */
 	const expandLabel = $derived(hasSong ? `${title} — now playing` : 'Nothing playing');
+
+	/*
+	 * A DRAG MUST NOT ALSO COUNT AS A TAP, and that is what these three handlers are for.
+	 *
+	 * The metadata block is both the sheet's press-to-toggle control AND — since `handleOnly` came off — the
+	 * biggest part of its drag surface: `.meta` is `flex: 1`, so it spans everything between the title and
+	 * the controls. vaul captures the pointer on press and never calls `preventDefault`, so dragging the
+	 * sheet from here ends with a `click` on this button: drag down to collapse, release, and the toggle
+	 * immediately reopens it. Measured as exactly that.
+	 *
+	 * So a press records where it started and a move past the threshold disarms the toggle. 10px is vaul's
+	 * own touch threshold for deciding a gesture is a swipe (`use-drawer-content.svelte.js`), which is the
+	 * number to match rather than a new one to invent.
+	 *
+	 * NO GEOMETRY IS READ. `pageY` is a property of the event, not a layout query, so this is safe on the
+	 * mount rung (XR-VER-03) — and no pointer event fires there at all.
+	 */
+	const DRAG_CANCEL_PX = 10;
+	let pressY: number | null = null;
+	let dragged = $state(false);
 </script>
 
 <!--
@@ -162,44 +195,113 @@
 	<div class="inner">
 		<div class="strip">
 			{#if onexpand}
-				<button class="meta meta-btn" type="button" aria-label={expandLabel} onclick={() => onexpand()}>
+				<button
+					class="meta meta-btn"
+					type="button"
+					aria-label={expandLabel}
+					onpointerdown={(e) => {
+						pressY = e.pageY;
+						dragged = false;
+					}}
+					onpointermove={(e) => {
+						if (pressY !== null && Math.abs(e.pageY - pressY) > DRAG_CANCEL_PX) dragged = true;
+					}}
+					onclick={() => {
+						pressY = null;
+						// The sheet has already moved under the finger; toggling now would undo the drag.
+						if (dragged) return;
+						onexpand();
+					}}
+				>
 					{@render metaBlock()}
 				</button>
 			{:else}
 				<div class="meta">{@render metaBlock()}</div>
 			{/if}
 
-			<button class="btn" type="button" aria-label="Search for a song" onclick={() => onsearch?.()}>
+			<!--
+				`data-vaul-no-drag` ON EVERY CONTROL IN THIS ROW, and it is a correctness fix rather than tidiness.
+				The sheet that composes this band drags from the band row now (`handleOnly` is gone; see the Root
+				note in NowPlayingDrawer), and vaul sets pointer CAPTURE on press — so a drag begun on the disc
+				would retarget its `pointerup` back to the button and fire a click, pausing the song on the way to
+				opening the sheet. vaul resolves the attribute with `closest()`, so the `.tp` group covers all three
+				of its buttons and this one covers the magnifier. Harmless in /components, where nothing drags.
+			-->
+			<button class="btn" type="button" aria-label="Search for a song" data-vaul-no-drag onclick={() => onsearch?.()}>
 				<Icon name="search" />
 			</button>
 
 			<!--
-			The disc: artwork, transport and progress in one control. The ring is drawn OUTSIDE the
-			button box so the tap target stays a full var(--tap) — an inset ring would eat into it, which
-			is how a 44px control silently becomes 38px.
-		-->
-			<button
-				class="disc"
-				type="button"
-				aria-label={isPlaying ? 'Pause' : 'Play'}
-				disabled={!hasSong && !canStart}
-				onclick={() => ontoggleplay?.()}
-			>
-				<span class="art"></span>
-				<span class="mark"><Icon name={isPlaying ? 'pause' : 'play'} /></span>
-				<svg class="arc" viewBox="0 0 52 52" aria-hidden="true">
-					<circle class="arc-track" cx="26" cy="26" r="22" />
-					<circle
-						class="arc-fill"
-						cx="26"
-						cy="26"
-						r="22"
-						stroke-dasharray={CIRCUMFERENCE}
-						stroke-dashoffset={dashOffset}
-						transform="rotate(-90 26 26)"
-					/>
-				</svg>
-			</button>
+				THE TRANSPORT GROUP — prev·play·next in ONE row with the magnifier, which is the whole arrangement
+				(ratified 2026-09-21). The sheet used to carry restart and skip in a centred row of its own in the
+				body, with only the disc up here: on a laptop that left this header almost empty and floated a
+				three-button group in the middle of nothing, and on a phone it split one control group across two
+				rows. Reported, twice, as the controls not being unified.
+
+				RESTART AND SKIP ARE HIDDEN AT REST — `.tp-side` is `display: none` in this file, and the DRAWER
+				reveals the pair while its sheet is up (`.band-face:global(.sheet-up)`; see NowPlayingDrawer). So
+				the collapsed bar is what it always was — title, magnifier, disc — and so is /components, which
+				renders five of these with no drawer around them.
+
+				A CSS REVEAL RATHER THAN A PROP, and that is a constraint rather than a preference: any prop of this
+				component that CHANGES after mount re-runs the drawer's size bindings, and a geometry read on the
+				mount rung is a throw by design (XR-VER-03). `onrestart` and `onskip` are safe because they are
+				callbacks — stable for the life of the mount, exactly like `ontoggleplay` beside them — and the
+				disabled state reads `hasSong`, which this component already derives from `title`.
+
+				THE DISC IS STILL THE ONE PLAY/PAUSE. It is visible at both heights, it carries the progress ring and
+				it sits in the thumb zone; the pair simply grows around it. The sheet's own duplicate copy — a second
+				play/pause about 100px below this one — is deleted again, which is what this arrangement is for.
+			-->
+			<div class="tp" data-vaul-no-drag>
+				<button
+					class="btn tp-side"
+					type="button"
+					aria-label="Restart"
+					title="Play this song again from the beginning"
+					disabled={!hasSong}
+					onclick={() => onrestart?.()}
+				>
+					<Icon name="restart" />
+				</button>
+				<!--
+				The disc: artwork, transport and progress in one control. The ring is drawn OUTSIDE the
+				button box so the tap target stays a full var(--tap) — an inset ring would eat into it, which
+				is how a 44px control silently becomes 38px.
+			-->
+				<button
+					class="disc"
+					type="button"
+					aria-label={isPlaying ? 'Pause' : 'Play'}
+					disabled={!hasSong && !canStart}
+					onclick={() => ontoggleplay?.()}
+				>
+					<span class="art"></span>
+					<span class="mark"><Icon name={isPlaying ? 'pause' : 'play'} /></span>
+					<svg class="arc" viewBox="0 0 52 52" aria-hidden="true">
+						<circle class="arc-track" cx="26" cy="26" r="22" />
+						<circle
+							class="arc-fill"
+							cx="26"
+							cy="26"
+							r="22"
+							stroke-dasharray={CIRCUMFERENCE}
+							stroke-dashoffset={dashOffset}
+							transform="rotate(-90 26 26)"
+						/>
+					</svg>
+				</button>
+				<button
+					class="btn tp-side"
+					type="button"
+					aria-label="skip"
+					title="Skip to the next singer"
+					disabled={!hasSong}
+					onclick={() => onskip?.()}
+				>
+					<Icon name="next" />
+				</button>
+			</div>
 		</div>
 	</div>
 </div>
@@ -323,6 +425,48 @@
 		z-index: var(--z-band-control);
 	}
 	/*
+	 * THE TRANSPORT GROUP. Its own box, tighter than the strip's `--space-lg`, so restart·play·skip read as
+	 * one control rather than three things that happen to be adjacent — and the gap between the magnifier
+	 * and the group stays the strip's, which is what keeps the collapsed row unchanged.
+	 */
+	.tp {
+		display: flex;
+		align-items: center;
+		gap: var(--space-md);
+		flex: 0 0 auto;
+	}
+	/*
+	 * HOW MUCH THE ROW GROWS when the pair is revealed, as a token expression rather than a measurement.
+	 *
+	 * It is exactly the two buttons plus the two gaps that arrive with them. `.tp` is `flex: 0 0 auto` and
+	 * the title is `flex: 1`, so the title absorbs all of it: the magnifier slides LEFT by this whole
+	 * amount, and the disc by one button and one gap (the restart that lands to its left). Those two
+	 * numbers are what the enter animation replays — see `.sheet-up` in NowPlayingDrawer. Declared HERE
+	 * because it is a fact about this row's layout, not about the sheet that reveals it.
+	 */
+	/*
+	 * HIDDEN AT REST, REVEALED BY THE DRAWER (`.band-face:global(.sheet-up)` in NowPlayingDrawer).
+	 *
+	 * `display: none` rather than `visibility: hidden`: this is a flex row, so the pair must take NO space
+	 * while collapsed or the disc would sit 104px in from the edge with two holes beside it. It costs the
+	 * band no HEIGHT either way — `.band-slot`'s height is fixed in `$lib/sheet-snap` — so revealing the
+	 * pair cannot move `--dock-h`.
+	 *
+	 * It is also what keeps this component honest in /components, which renders five bands with no drawer
+	 * around them: no `.sheet-up` ancestor, no transport, exactly the five states it showed before.
+	 */
+	/*
+	 * COMPOUNDED WITH `.btn` ON PURPOSE, and this is a defect fix rather than a style. As a bare `.tp-side`
+	 * it lost to `.btn`'s own `display: grid` — same single-class specificity, and that rule is declared
+	 * FURTHER DOWN this file, so source order decided it and the pair rendered in the COLLAPSED bar. Caught
+	 * on a screenshot, not by the suite: presence is all the mount rung can see, and visibility is a layout
+	 * claim. `.btn.tp-side` outranks `.btn` at any position in the file, and the drawer's reveal
+	 * (`.band-face.sheet-up .tp-side`, three classes) still outranks this.
+	 */
+	.btn.tp-side {
+		display: none;
+	}
+	/*
 	 * THE FOCUS RING HUGS THE DISC INSTEAD OF LANDING ON ITS PROGRESS RING.
 	 *
 	 * app.css draws `:focus-visible` as a 2px `--focus` outline at `outline-offset: 2px`. That offset is
@@ -342,7 +486,25 @@
 		display: flex;
 		align-items: center;
 		gap: var(--space-lg);
-		padding: 0 var(--space-2xl) var(--space-lg);
+		/*
+		 * The top term is the breathing room between the sheet's edge and this row — the handle's 16px margin
+		 * and 6px bar alone read as the header starting immediately under the drag bar. It is paid for by the
+		 * 8px `BAND_SNAP_PX` gained in `$lib/sheet-snap`, NOT taken from the bottom: `.band-slot` clips at
+		 * exactly that height, and the bottom term is what keeps the controls off a phone's screen edge.
+		 */
+		padding: var(--space-sm) var(--space-2xl) var(--space-lg);
+		/*
+		 * HOW MUCH THIS ROW GROWS when the transport pair is revealed, as a token expression rather than a
+		 * measurement — which is what lets the reveal be animated at all without reading geometry (a
+		 * geometry read on the mount rung is a throw, XR-VER-03).
+		 *
+		 * It is exactly the two buttons plus the two gaps that arrive with them. `.tp` is `flex: 0 0 auto`
+		 * and `.meta` is `flex: 1`, so the title absorbs all of it: the magnifier slides LEFT by the whole
+		 * amount and the disc by one button and one gap (the restart that lands to its left). Those are the
+		 * two distances the enter animation replays — see `.sheet-up` in NowPlayingDrawer.
+		 */
+		--tp-grow: calc(2 * var(--tap) + 2 * var(--space-md));
+		--tp-disc-shift: calc(var(--tap) + var(--space-md));
 	}
 
 	/*

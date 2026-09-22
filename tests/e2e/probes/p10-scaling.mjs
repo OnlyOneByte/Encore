@@ -98,7 +98,7 @@ async function driveRoomToPlaying() {
 	const phone = await browser.newPage();
 	await phone.viewport(430, 900, 1);
 	await phone.goto(`http://127.0.0.1:${PORT}/join`);
-	await phone.waitForSelector('input[placeholder^="e.g."]' , { timeout: 5000 });
+	await phone.waitForSelector('input[placeholder^="e.g."]', { timeout: 5000 });
 	const uniq = `Driver-${Date.now().toString(36).slice(-5)}`;
 	await phone.fill('input[placeholder^="e.g."]', uniq);
 	await phone.evaluate(
@@ -106,7 +106,7 @@ async function driveRoomToPlaying() {
 	);
 	await phone.waitFor(`location.pathname === '/'`, { timeout: 5000 });
 	// Add the ready song to the queue (whichever action is offered — .add on ready songs).
-	await phone.waitForSelector(SEL.songRow , { timeout: 6000 });
+	await phone.waitForSelector(SEL.songRow, { timeout: 6000 });
 	const clicked = await phone.evaluate(`(() => {
 		const row = document.querySelector(${JSON.stringify(SEL.songRow)});
 		if (!row) return 'no-row';
@@ -118,8 +118,10 @@ async function driveRoomToPlaying() {
 	console.log('phone queue action:', clicked);
 	// Wait for the queue to actually contain a row.
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`, { timeout: 6000 });
-	// Hit play/pause. The transport lives in the drawer now, so it has to be pulled up first — the
-	// band's disc is the one-tap play, but this probe reads the drawer's own control at 200% text.
+	// Hit play/pause — the band's disc, which is the app's only one and is on screen at BOTH sheet heights.
+	// The sheet is still pulled up first: this probe goes on to measure the drawer's own controls (the ±
+	// keycaps, the guiding track, restart/skip beside the disc) at 200% text, and they are below the fold
+	// while it is collapsed.
 	await openNowPlaying(phone);
 	await phone.evaluate(`document.querySelector(${JSON.stringify(SEL.bandTransport)})?.click()`);
 	await sleep(1200);
@@ -275,7 +277,7 @@ async function measureTv(label, w, h) {
 	const contrastPairs = await page.evaluate(`(() => {
 		// Contrast target pairs [foreground, background]. In-scope selectors for Group E are
 		// interpolated from SEL so the guard reads them from the contract; out-of-scope descendant
-		// selectors (".badqr-b b", ".lower-third .ls-artist/.ls-key", ".attract .brand/.jt-url",
+		// selectors (".lower-third .ls-artist/.ls-key", ".attract .brand/.jt-url",
 		// ".corner .t/.u") keep their literals — they carry a space so the guard's shape rule never
 		// flagged them, and they belong to selectors tracked separately, not this group. The attract
 		// instruction line reads SEL.stageHeadline (".phrase-line", the rotating phrase) — repointed
@@ -283,8 +285,11 @@ async function measureTv(label, w, h) {
 		// ".jt-url".
 		const targets = [
 			[${JSON.stringify(SEL.badQrTitle)}, ${JSON.stringify(SEL.badQrTitle)}],
-			[${JSON.stringify(SEL.badQrBody)}, ${JSON.stringify(SEL.badQrBody)}],
-			['.badqr-b b', '.badqr-b b'],
+			// RE-POINTED (2026-09-21): the unreachable state is a ONE-LINE notice beside a QR that still
+			// renders, so there is no body paragraph and no address inside it. What is left to contrast-check
+			// is the notice's own two spans -- the state and the remedy -- which badQrTitle and badQrFix
+			// already name, so the retired badQrBody pair collapses into those rather than needing a third.
+			// (No backticks in here: this comment lives inside a template literal, so one would close it.)
 			[${JSON.stringify(SEL.badQrFix)}, ${JSON.stringify(SEL.badQrFix)}],
 			[${JSON.stringify(SEL.nowNameScoped)}, ${JSON.stringify(SEL.nowNameScoped)}],
 			[${JSON.stringify(SEL.nowSongScoped)}, ${JSON.stringify(SEL.nowSongScoped)}],
@@ -393,7 +398,7 @@ async function measureRemote(label, w, h) {
 	await page.viewport(w, h, 1);
 	// Join first so the page lands on the room UI rather than the join landing.
 	await page.goto(`http://127.0.0.1:${PORT}/join`);
-	await page.waitForSelector('input[placeholder^="e.g."]' , { timeout: 5000 });
+	await page.waitForSelector('input[placeholder^="e.g."]', { timeout: 5000 });
 	const uniq = `P10-${label}-${Date.now().toString(36).slice(-4)}`;
 	await page.fill('input[placeholder^="e.g."]', uniq);
 	// Wait for submit, then click.

@@ -1042,35 +1042,32 @@
 				</div>
 			</div>
 			<div class="asplit-r">
-				{#if joinUnreachable}
-					<JoinBadge
-						qrDataUrl={data.qrDataUrl}
-						joinUrl={data.joinUrl}
-						placement="hero"
-						size="var(--tv-attract-qr)"
-						unreachable={true}
-					/>
-				{:else}
-					<!-- QR first: scanning types nothing, so it is the fast path and owns the top of the panel. -->
-					<JoinBadge
-						qrDataUrl={data.qrDataUrl}
-						joinUrl={data.joinUrl}
-						placement="hero"
-						size="var(--tv-attract-qr)"
-						unreachable={false}
-					/>
-					<!-- The typed path, broken across the ladder: "Go to <url> and enter room code <code>". -->
-					<div class="join-text">
-						<div class="jt-step">Go to</div>
-						<div class="jt-url">{attractJoinUrl}</div>
-						{#if data.roomCode}
-							<div class="jt-step jt-code-step">and enter room code</div>
-							<!-- THE LARGEST ELEMENT ON THE SCREEN (--tv-code): it is the thing being transcribed. -->
-							<div class="jt-code">{data.roomCode}</div>
-						{/if}
-						<div class="jt-or">or scan the QR code</div>
-					</div>
-				{/if}
+				<!--
+					NO BRANCH ON REACHABILITY ANY MORE (2026-09-21). An unroutable advertised address used to replace
+					this whole panel with a `--danger` card — headline, address, sentence, two-line fix — and drop the
+					typed path with it, so the one screen that could still be joined by hand offered neither the address
+					nor the code. The QR renders in every state now and `JoinBadge` appends a one-line notice; see the
+					rationale there, including the trade it accepts.
+				-->
+				<!-- QR first: scanning types nothing, so it is the fast path and owns the top of the panel. -->
+				<JoinBadge
+					qrDataUrl={data.qrDataUrl}
+					joinUrl={data.joinUrl}
+					placement="hero"
+					size="var(--tv-attract-qr)"
+					unreachable={joinUnreachable}
+				/>
+				<!-- The typed path, broken across the ladder: "Go to <url> and enter room code <code>". -->
+				<div class="join-text">
+					<div class="jt-step">Go to</div>
+					<div class="jt-url">{attractJoinUrl}</div>
+					{#if data.roomCode}
+						<div class="jt-step jt-code-step">and enter room code</div>
+						<!-- THE LARGEST ELEMENT ON THE SCREEN (--tv-code): it is the thing being transcribed. -->
+						<div class="jt-code">{data.roomCode}</div>
+					{/if}
+					<div class="jt-or">or scan the QR code</div>
+				</div>
 			</div>
 		</div>
 	{:else if screen === 'lobby'}
@@ -1082,6 +1079,7 @@
 			overflow={roster.overflow}
 			pendingCount={pendingCount}
 			unreachable={joinUnreachable}
+			roomCode={data.roomCode}
 		/>
 	{:else}
 		<!--
@@ -1158,7 +1156,13 @@
 			</div>
 		{/if}
 		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner) -->
-		<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="corner" unreachable={joinUnreachable} />
+		<JoinBadge
+			qrDataUrl={data.qrDataUrl}
+			joinUrl={data.joinUrl}
+			placement="corner"
+			unreachable={joinUnreachable}
+			roomCode={data.roomCode}
+		/>
 	{/if}
 
 	<!--
@@ -1252,7 +1256,13 @@
 	-->
 	{#if transient}
 		<div class="takeover-join">
-			<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="corner" unreachable={joinUnreachable} />
+			<JoinBadge
+				qrDataUrl={data.qrDataUrl}
+				joinUrl={data.joinUrl}
+				placement="corner"
+				unreachable={joinUnreachable}
+				roomCode={data.roomCode}
+			/>
 		</div>
 	{/if}
 
@@ -1635,6 +1645,10 @@
 		font-size: var(--tv-code);
 		font-weight: 900;
 		letter-spacing: 0.11em;
+		/* Tracking adds its space after the last glyph as well, and `.join-text` centres this as a
+		   shrink-to-fit flex item — so the box is half a letter-space wider than the glyphs and they sit
+		   left of centre. One letter-space of left padding re-centres them. Same fix as the lobby's. */
+		padding-left: 0.11em;
 		color: var(--accent-ink);
 		line-height: var(--lh-none);
 		font-variant-numeric: tabular-nums;

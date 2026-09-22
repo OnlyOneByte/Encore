@@ -54,11 +54,11 @@ const ready = await fetch(base + '/api/search?q=caroline')
 	.then((r) => r.json())
 	.then((d) => d.ready ?? []);
 if (!ready.length) {
-	bail('no READY song in the library - seed + process one first (bun run e2e:seed && bun tests/e2e/fake-stems-worker.mjs).');
+	bail(
+		'no READY song in the library - seed + process one first (bun run e2e:seed && bun tests/e2e/fake-stems-worker.mjs).'
+	);
 }
 console.log('fixture: "' + ready[0].title + '" -> ' + ready[0].instrumentalRef + '\n');
-
-
 
 /** @type {Browser | undefined} */
 let browser;
@@ -106,7 +106,9 @@ try {
 			`(() => { const e=[...document.querySelectorAll('video,audio')].filter(x=>x.currentSrc||x.src); return e.length > 0; })()`,
 			{ timeout: 25000 }
 		);
-	} catch { /* best-effort cleanup */ }
+	} catch {
+		/* best-effort cleanup */
+	}
 	await sleep(2000);
 
 	// -- STEP 1: the blocked state a real TV sits in --

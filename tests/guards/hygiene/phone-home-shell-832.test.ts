@@ -274,33 +274,108 @@ test('the live singing controls live in the DRAWER, which IS the revealing, and 
 	const hasSongGate = DRAWER.indexOf('{#if hasSong}');
 	expect(hasSongGate).toBeGreaterThan(-1);
 	expect(hasSongGate).toBeLessThan(DRAWER.indexOf('<div class="tools-body">'));
-	// …and the transport is OUTSIDE that gate, in the drawer's own body, with all three controls.
-	expect(toolsBody).not.toContain('class="transport"');
-	expect(DRAWER.indexOf('class="np-body"')).toBeLessThan(DRAWER.indexOf('<div class="transport">'));
 	/*
-	 * THREE controls in the row: Restart · Play/Pause · Skip (ratified 2026-09-18). The row was two for a
-	 * while, with play/pause only on the band's disc, because two play buttons on one open surface had been
-	 * reported as duplicates — and the cost was a transport split between the top-right of the band row and
-	 * the bottom-left of the body, in two different shapes. The ruling went the other way: a whole
-	 * prev·play·next transport, and the disc stays for the collapsed height.
+	 * …AND THE TRANSPORT IS NOT IN THIS FILE AT ALL ANY MORE (2026-09-21). It is in the BAND's strip, beside
+	 * the disc, as one header cluster with the magnifier — asserted against NowPlayingBand in the
+	 * transport-styles test below, which is the file that now declares it.
 	 *
-	 * THE PLAY/PAUSE IS MATCHED AS AN EXPRESSION, not as a literal `aria-label="…"`, because that is how it
-	 * names itself — and because the arm this replaces asserted the absence of `aria-label="play/pause"`, the
-	 * DELETED button's literal label, which would have gone on passing with the restored button in place. An
-	 * assertion that cannot fail for the thing it is about is worse than no assertion.
+	 * FOUR ARRANGEMENTS, THREE OF THEM REPORTED ON SIGHT, because this is the claim that keeps moving and the
+	 * sequence is what stops it moving back: Restart + Skip in a body row with play/pause only on the disc
+	 * (one transport split across two rows and two corners of one sheet); that row given its own
+	 * `iconPrimary` play/pause (two identical play buttons ~100px apart); the disc hidden at snap 1 to
+	 * resolve that (no duplicate, but a nearly-empty band row above a group floating in the middle of the
+	 * body); and finally the pair moved UP to the disc rather than the disc down to the pair.
+	 *
+	 * WHAT STAYS PINNED HERE is the half that is about THIS file: the sheet must not grow a transport of its
+	 * own again, in any of the three shapes it already has.
 	 */
-	for (const label of ['Restart', 'skip'])
-		expect(DRAWER, `the transport lost its \`${label}\` control`).toContain(`aria-label="${label}"`);
-	expect(DRAWER, 'the transport row lost its play/pause').toMatch(/aria-label=\{isPlaying \? 'Pause' : 'Play'\}/);
-	expect(DRAWER, 'and the play/pause must sit BETWEEN restart and skip, not beside them').toMatch(
-		/aria-label="Restart"[\s\S]*aria-label=\{isPlaying \? 'Pause' : 'Play'\}[\s\S]*aria-label="skip"/
+	for (const gone of ['class="transport"', 'data-transport="play"', 'aria-label="play/pause"'])
+		expect(DRAWER, `the sheet must not carry \`${gone}\` again — the band row is the transport`).not.toContain(gone);
+	expect(DRAWER, 'and the band it composes is where the transport lives').toContain('<NowPlayingBand');
+	// The pair is wired THROUGH to it, or the controls render inert in the row they moved to.
+	for (const wire of ['onrestart={onrestart}', 'onskip={onskip}', 'ontoggleplay={ontoggleplay}'])
+		expect(DRAWER, `the band lost its \`${wire}\` wiring`).toContain(wire);
+	/*
+	 * REVEALED BY CSS, NOT BY A PROP — and all three parts are asserted, because any one alone is a silent
+	 * no-op: the state, the node it is written to, and the rule that acts on it.
+	 *
+	 * The band cannot take an `expanded`-style prop: a prop of it that CHANGES after mount re-runs the
+	 * drawer's size bindings, and a geometry read on the mount rung is a throw (XR-VER-03). Both reactive
+	 * forms were tried and both took the same three phone-home-832 mounts down — an effect writing `$state`
+	 * (the write lands in a microtask, where `openDrawer` cannot swallow the refusal) and a `$derived` read
+	 * by `class:sheet-up={…}`. Bisected by deleting the directive alone with the derived left in: 18/18
+	 * passed. So it is the reactive DOM UPDATE that costs, and an imperative attribute write is the escape
+	 * hatch this file's own `aria-expanded` note already names.
+	 */
+	expect(DRAWER, 'the sheet must toggle its height state onto the band face imperatively').toMatch(
+		/el\.classList\.toggle\('sheet-up', up\)/
 	);
-	// Centred, which is the half of "one transport" that CSS owns — left-aligned it reads as loose buttons.
-	expect(DRAWER, 'the transport row must be centred').toMatch(/\.transport\s*\{[^}]*justify-content:\s*center/);
-	expect(DRAWER, 'and the band it composes carries the one that survives a collapse').toContain('<NowPlayingBand');
+	/*
+	 * …AND THE COLLAPSE ANIMATES TOO. Reported: the pair appears beautifully and then vanishes. `display:
+	 * none` arrives on the same frame as the state change, so the exit needs a class that HOLDS the open
+	 * layout while transforms carry the row to its collapsed positions — then the layout catches up with what
+	 * is already on screen. All three parts are pinned because any one alone is a no-op: the class, the rule
+	 * that keeps the pair displayed under it, and the timer that takes it off.
+	 */
+	expect(DRAWER, 'the collapse must hold the open layout while it animates').toMatch(
+		/el\.classList\.add\('sheet-down'\)/
+	);
+	expect(DRAWER, 'sheet-down must keep the pair displayed, or there is nothing to animate out').toMatch(
+		/\.band-face:global\(\.sheet-down\) :global\(\.tp-side\)\s*\{[^}]*display:\s*grid/
+	);
+	/*
+	 * THE TIMER AND THE KEYFRAME DURATION ARE ONE FACT IN TWO PLACES, so they are compared rather than
+	 * trusted: a timer shorter than the animation cuts the exit off mid-flight, and a longer one leaves the
+	 * row holding its open width after the movement has finished.
+	 */
+	const animMs = /const TP_ANIM_MS = (\d+);/.exec(DRAWER)?.[1];
+	expect(animMs, 'the exit timer must be declared as a named constant').toBeTruthy();
+	const durations = [...DRAWER.matchAll(/animation: tp-[a-z-]+ (\d+)ms/g)].map((m) => m[1]);
+	expect(durations.length, 'both directions declare their animations').toBeGreaterThanOrEqual(6);
+	expect(new Set([...durations, animMs!]).size, 'the timer and every keyframe duration must agree').toBe(1);
+	expect(DRAWER, 'and hold the node it writes to').toMatch(/<div class="band-face" bind:this=\{faceEl\}>/);
+	expect(DRAWER, 'and reveal the transport pair with it').toMatch(
+		/\.band-face:global\(\.sheet-up\) :global\(\.tp-side\)\s*\{[^}]*display:\s*grid/
+	);
+	expect(DRAWER, 'the sheet-up class must not be applied reactively — that re-runs the size bindings').not.toMatch(
+		/class:sheet-up=/
+	);
+	expect(DRAWER, 'and must not come back as $state written from an effect either').not.toMatch(/let sheetUp = \$state/);
+	expect(DRAWER, 'the band must not be given an expanded/sheetUp prop').not.toMatch(
+		/<NowPlayingBand[\s\S]*?(?:expanded|sheetUp)=/
+	);
 
-	// (3) XR-PH-15, at the address the drawer answers it: dragging restricted to the handle…
-	expect(DRAWER).toMatch(/<Drawer\.Root\b[^>]*\bhandleOnly\b/);
+	/*
+	 * (3) XR-PH-15, at the address the drawer answers it — AND THE ADDRESS MOVED (2026-09-21).
+	 *
+	 * It was `handleOnly` on the Root: dragging restricted to the 6px grab bar, which the note at the head of
+	 * this file calls "a whitelist that cannot be forgotten when the next control is added". The top edge of
+	 * a sheet that plainly looks draggable being draggable only at one small bar was reported, so the whole
+	 * BAND ROW takes hold of the sheet now and the exclusion inverted: `data-vaul-no-drag` on `.np-fit`,
+	 * which vaul resolves with `closest()`, covers the head, the body, the guiding-track slider, the keycaps
+	 * and the range visualiser in one attribute.
+	 *
+	 * THE SUBSTANCE IS UNCHANGED and so is the whitelist property: the rule is "only the band row drags", so
+	 * a control added to the sheet lands inside `.np-fit` and is excluded by construction. Both halves are
+	 * asserted — the prop must be GONE (leaving it with the attribute would make the attribute dead code
+	 * that reads as the live mechanism) and the attribute must be on the wrapper rather than anywhere.
+	 */
+	expect(DRAWER, 'handleOnly is retired — the band row is the drag surface').not.toMatch(
+		/<Drawer\.Root\b[^>]*\bhandleOnly\b/
+	);
+	expect(DRAWER, 'the sheet body must be excluded from dragging (XR-PH-15)').toMatch(
+		/<div class="np-fit" data-vaul-no-drag\b/
+	);
+	// …and the band's own controls with it: vaul captures the pointer, so a drag begun on the disc would
+	// fire its click on release and pause the song on the way to opening the sheet.
+	const BAND_DRAG = read('src/lib/components/NowPlayingBand.svelte');
+	expect(BAND_DRAG, 'the transport group must not be a drag surface').toMatch(/<div class="tp" data-vaul-no-drag>/);
+	expect(BAND_DRAG, 'the magnifier must not be a drag surface').toMatch(
+		/aria-label="Search for a song"[\s\S]{0,80}data-vaul-no-drag/
+	);
+	// …and a tap that was really a drag must not also toggle the sheet: the metadata block is both the
+	// press-to-toggle control and the biggest part of the drag surface.
+	expect(BAND_DRAG, 'a drag must not count as a tap on the metadata block').toContain('if (dragged) return;');
 	// …and a REAL handle for it to be restricted to. Without these two the prop is a silent no-op that
 	// makes the drawer undraggable, so asserting `handleOnly` alone would be asserting nothing.
 	//
@@ -717,13 +792,29 @@ test('the route no longer declares the transport styles the drawer now owns', ()
 	 * strength — the transport really renders where the rules went, and it is sized from the token rather
 	 * than the number — read off the real production file so a pure deletion cannot pass unnoticed.
 	 */
-	const DRAWER_SRC = read('src/lib/components/NowPlayingDrawer.svelte');
 	/*
-	 * The transport the route no longer owns is Restart + Skip now; the sheet's play/pause was deleted when
-	 * the band's disc became the app's only one. Asserting the deleted label here would pin the duplicate.
+	 * RE-POINTED AGAIN (2026-09-21): THE BAND OWNS THE TRANSPORT NOW. The claim is unchanged — the controls
+	 * this route gave up really render somewhere, sized from the token — but the address moved one component
+	 * further on. Restart and skip sit in the BAND's strip beside the disc, as one header cluster with the
+	 * magnifier, because every arrangement that kept them apart from it was reported as the controls not
+	 * being unified: a body row with play/pause only on the disc, then that row with its own play/pause (two
+	 * identical buttons ~100px apart), then the disc hidden at snap 1 (a nearly-empty band row above a group
+	 * floating mid-body).
 	 */
-	expect(DRAWER_SRC).toContain('aria-label="Restart"');
-	expect(DRAWER_SRC).toContain('aria-label="skip"');
+	const BAND_SRC = read('src/lib/components/NowPlayingBand.svelte');
+	expect(BAND_SRC).toContain('aria-label="Restart"');
+	expect(BAND_SRC).toContain('aria-label="skip"');
+	// …in ONE group with the disc, which is the whole point of the move. Order matters: prev·play·next.
+	expect(BAND_SRC).toMatch(
+		/<div class="tp"[^>]*>[\s\S]*aria-label="Restart"[\s\S]*class="disc"[\s\S]*aria-label="skip"[\s\S]*<\/div>/
+	);
+	// …hidden at rest, so the COLLAPSED bar is unchanged and /components still shows its five band states.
+	expect(BAND_SRC).toMatch(/\.tp-side\s*\{[^}]*display:\s*none/);
+	// …and the drawer is what reveals them, by CSS rather than by a prop (see the sheetUp note there).
+	expect(DRAWER).toMatch(/\.band-face:global\(\.sheet-up\) :global\(\.tp-side\)\s*\{[^}]*display:\s*grid/);
+	// The sheet must NOT grow its own copy of any of the three back again.
+	for (const gone of ['class="transport"', 'data-transport="play"'])
+		expect(DRAWER, `the sheet must not carry \`${gone}\` — the band row is the transport`).not.toContain(gone);
 	/*
 	 * RE-POINTED AT THE COMMENT-STRIPPED SOURCE (§5), and this one is a false positive rather than a moved
 	 * claim. `44px` is an assertion about a DECLARATION — a control sized by the number instead of by
@@ -733,9 +824,10 @@ test('the route no longer declares the transport styles the drawer now owns', ()
 	 * blanked, which is the only text where a literal-versus-token claim can be about code.
 	 */
 	expect(DRAWER).not.toContain('44px');
-	// Non-vacuity: the transport really is in the stripped text, so the negative examines the file that
-	// declares it rather than an empty string.
-	expect(DRAWER).toContain('class="transport"');
+	// Non-vacuity: the drawer's stripped text really is the production file, so the negative above examines
+	// something rather than an empty string. Anchored on the band row it composes, which is the element the
+	// transport now lives inside.
+	expect(DRAWER).toContain('class="band-slot"');
 });
 
 // ── the docked-band token has ONE meaning, and the prose says which ──────────────────────────────

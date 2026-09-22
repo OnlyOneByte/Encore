@@ -21,7 +21,6 @@ import { repoRoot } from './lib/repo-root.mjs';
 import { spawnChild, killChild } from './lib/child.mjs';
 import { openJoin } from './lib/join.mjs';
 
-
 const PORT = process.env.EPORT ?? '5217';
 const BASE = `http://127.0.0.1:${PORT}`;
 const CORE = repoRoot;
@@ -67,7 +66,10 @@ async function boot() {
 	mkdirSync(MEDIA, { recursive: true });
 	mkdirSync(OUT, { recursive: true });
 	await new Promise((res, rej) => {
-		const p = spawnChild('bun', ['run', 'tests/e2e/seed-media.mjs'], { cwd: CORE, env: { ...process.env, MEDIA_DIR: MEDIA } });
+		const p = spawnChild('bun', ['run', 'tests/e2e/seed-media.mjs'], {
+			cwd: CORE,
+			env: { ...process.env, MEDIA_DIR: MEDIA }
+		});
 		p.on('exit', (c) => (c === 0 ? res(null) : rej(new Error(`seed exited ${c}`))));
 	});
 	const log = join(RUN, 'server.log');
@@ -124,7 +126,6 @@ async function processMedia(q) {
 /** @type {import('node:child_process').ChildProcess|undefined} */ let wk;
 /** @type {any} */ let browser;
 
-
 async function main() {
 	mkdirSync(RUN, { recursive: true });
 	if (!existsSync(join(CORE, 'build'))) bail('build is missing — run `bun run build` first');
@@ -137,7 +138,6 @@ async function main() {
 	const song = await processMedia('caroline');
 	await processMedia('bohemian');
 	console.log(`fixture: "${song.title}" ready`);
-
 
 	browser = await waitFor(() => connect().catch(() => null), { timeout: 20_000, name: 'CDP' });
 	const page = await browser.newPage();
@@ -169,7 +169,9 @@ async function main() {
 		el.dispatchEvent(new Event('input', { bubbles: true }));
 	})()`);
 	await sleep(300);
-	await page.evaluate(`[...document.querySelectorAll('button')].find((b) => /sing|join|start|continue/i.test((b.textContent||'') + ' ' + (b.getAttribute('aria-label')||'')))?.click()`);
+	await page.evaluate(
+		`[...document.querySelectorAll('button')].find((b) => /sing|join|start|continue/i.test((b.textContent||'') + ' ' + (b.getAttribute('aria-label')||'')))?.click()`
+	);
 	await waitFor(async () => await page.evaluate(`!!document.querySelector(${JSON.stringify(SEL.hero)})`), {
 		timeout: 20_000,
 		name: 'joined home'
@@ -205,10 +207,10 @@ async function main() {
 		await page.goto(`${BASE}/settings?tab=${tab}`);
 		// Either tablist: `.seg` is the hand-rolled one this PR replaces, `[data-slot='tabs-list']` the
 		// Bits UI one that replaces it. The script has to run on BOTH trees to produce a pair.
-		await waitFor(
-			async () => await page.evaluate(`!!document.querySelector("[data-slot='tabs-list'], .seg")`),
-			{ timeout: 15_000, name: `settings ${tab}` }
-		);
+		await waitFor(async () => await page.evaluate(`!!document.querySelector("[data-slot='tabs-list'], .seg")`), {
+			timeout: 15_000,
+			name: `settings ${tab}`
+		});
 		await shot(name);
 	}
 

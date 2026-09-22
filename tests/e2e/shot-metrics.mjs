@@ -25,15 +25,83 @@ const FIXTURE = {
 	sample: { attempts: 47, processes: 19, provisional: false },
 	e2e: { n: 19, meanMs: 214_000, p50Ms: 188_000, p95Ms: 402_000 },
 	steps: [
-		{ jobType: 'fetch', n: 19, failed: 2, abandoned: 0, meanMs: 21_400, p50Ms: 18_900, p95Ms: 47_000, meanQueueWaitMs: 1_200, meanRtFactor: 0.08, provisional: false },
-		{ jobType: 'stems', n: 19, failed: 0, abandoned: 0, meanMs: 154_000, p50Ms: 141_000, p95Ms: 288_000, meanQueueWaitMs: 34_000, meanRtFactor: 0.61, provisional: false },
-		{ jobType: 'align', n: 17, failed: 1, abandoned: 0, meanMs: 38_600, p50Ms: 35_100, p95Ms: 71_000, meanQueueWaitMs: 8_400, meanRtFactor: 0.15, provisional: false },
-		{ jobType: 'stems-upgrade', n: 4, failed: 0, abandoned: 1, meanMs: 402_000, p50Ms: 390_000, p95Ms: 512_000, meanQueueWaitMs: 121_000, meanRtFactor: 1.62, provisional: true }
+		{
+			jobType: 'fetch',
+			n: 19,
+			failed: 2,
+			abandoned: 0,
+			meanMs: 21_400,
+			p50Ms: 18_900,
+			p95Ms: 47_000,
+			meanQueueWaitMs: 1_200,
+			meanRtFactor: 0.08,
+			provisional: false
+		},
+		{
+			jobType: 'stems',
+			n: 19,
+			failed: 0,
+			abandoned: 0,
+			meanMs: 154_000,
+			p50Ms: 141_000,
+			p95Ms: 288_000,
+			meanQueueWaitMs: 34_000,
+			meanRtFactor: 0.61,
+			provisional: false
+		},
+		{
+			jobType: 'align',
+			n: 17,
+			failed: 1,
+			abandoned: 0,
+			meanMs: 38_600,
+			p50Ms: 35_100,
+			p95Ms: 71_000,
+			meanQueueWaitMs: 8_400,
+			meanRtFactor: 0.15,
+			provisional: false
+		},
+		{
+			jobType: 'stems-upgrade',
+			n: 4,
+			failed: 0,
+			abandoned: 1,
+			meanMs: 402_000,
+			p50Ms: 390_000,
+			p95Ms: 512_000,
+			meanQueueWaitMs: 121_000,
+			meanRtFactor: 1.62,
+			provisional: true
+		}
 	],
 	models: [
-		{ engine: 'demucs', model: 'htdemucs', n: 12, meanRtFactor: 0.61, declared: { rtFactor: 0.35, provenance: 'vendor' }, ratioToDeclared: 1.74, provisional: false },
-		{ engine: 'demucs', model: 'htdemucs_ft', n: 3, meanRtFactor: 1.62, declared: { rtFactor: 1.4, provenance: 'vendor' }, ratioToDeclared: 1.16, provisional: true },
-		{ engine: 'audio-separator', model: 'bs-roformer-1297', n: 4, meanRtFactor: 0.44, declared: { rtFactor: 0.9, provenance: 'vendor' }, ratioToDeclared: 0.49, provisional: false }
+		{
+			engine: 'demucs',
+			model: 'htdemucs',
+			n: 12,
+			meanRtFactor: 0.61,
+			declared: { rtFactor: 0.35, provenance: 'vendor' },
+			ratioToDeclared: 1.74,
+			provisional: false
+		},
+		{
+			engine: 'demucs',
+			model: 'htdemucs_ft',
+			n: 3,
+			meanRtFactor: 1.62,
+			declared: { rtFactor: 1.4, provenance: 'vendor' },
+			ratioToDeclared: 1.16,
+			provisional: true
+		},
+		{
+			engine: 'audio-separator',
+			model: 'bs-roformer-1297',
+			n: 4,
+			meanRtFactor: 0.44,
+			declared: { rtFactor: 0.9, provenance: 'vendor' },
+			ratioToDeclared: 0.49,
+			provisional: false
+		}
 	],
 	asr: [
 		{ asrModel: 'base', syncMode: 'forced', n: 14, meanRtFactor: 0.15, meanMs: 38_600, provisional: false },
@@ -46,15 +114,37 @@ const FIXTURE = {
 	],
 	slowestProcesses: [
 		{ processingId: 'p1', mediaId: 'm1', title: 'Bohemian Rhapsody', totalMs: 640_000, workMs: 402_000, steps: 3 },
-		{ processingId: 'p2', mediaId: 'm2', title: 'Total Eclipse of the Heart', totalMs: 512_000, workMs: 331_000, steps: 3 },
-		{ processingId: 'p3', mediaId: 'm3', title: 'Telephone (feat. Beyoncé)', totalMs: 448_000, workMs: 288_000, steps: 4 }
+		{
+			processingId: 'p2',
+			mediaId: 'm2',
+			title: 'Total Eclipse of the Heart',
+			totalMs: 512_000,
+			workMs: 331_000,
+			steps: 3
+		},
+		{
+			processingId: 'p3',
+			mediaId: 'm3',
+			title: 'Telephone (feat. Beyoncé)',
+			totalMs: 448_000,
+			workMs: 288_000,
+			steps: 4
+		}
 	],
 	workers: [
 		{
 			workerId: 'stems-1',
 			capabilities: ['fetch:ytdlp', 'stems:demucs', 'align:whisperx'],
 			slotsFree: 1,
-			host: { accelerator: 'cuda', deviceName: 'NVIDIA RTX 4070', cpuCount: 16, platform: 'linux', python: '3.11.9', torch: '2.4.1', contained: true }
+			host: {
+				accelerator: 'cuda',
+				deviceName: 'NVIDIA RTX 4070',
+				cpuCount: 16,
+				platform: 'linux',
+				python: '3.11.9',
+				torch: '2.4.1',
+				contained: true
+			}
 		}
 	]
 };

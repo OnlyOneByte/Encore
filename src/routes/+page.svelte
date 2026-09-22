@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { SINGER_COLORS, DEFAULT_EFFECTIVE_SETTINGS, queueOrderLabel } from '$lib/contract';
+	import { SINGER_COLORS } from '$lib/contract';
 	import { onMount, tick } from 'svelte';
-	import type { QueueEntry, Media, PublicSinger, PlaybackState, EffectiveSettings } from '$lib/contract';
+	import type { QueueEntry, Media, PublicSinger, PlaybackState } from '$lib/contract';
 	import type { QueueStore } from '$lib/stores/queue';
 	import { room } from '$lib/stores/room';
 	import QueueRow from '$lib/components/QueueRow.svelte';
@@ -75,20 +75,37 @@
 	 * a link to that tab.
 	 */
 
-	// The room's settings, seeded from queue:sync and kept live by settings:changed — the SAME two
-	// events /tv listens to. The phone needs them for one reason beyond display: `room.queueOrder` is
-	// an input to the optimistic reducer, so an add can only land in its real position if this is
-	// current. Defaults until the first sync, which is fair rotation — the pre-setting behaviour.
-	let settings = $state<EffectiveSettings>(DEFAULT_EFFECTIVE_SETTINGS);
+	/*
+	 * NO LOCAL COPY OF THE ROOM'S SETTINGS ANY MORE, and the deletion is the tail of the heading change
+	 * below. This route mirrored `room.settings` from the queue:sync/settings:changed pair, and the
+	 * mirror's one remaining reader was `orderLabel` — the order word in the list heading. With the
+	 * heading down to "Queued" nothing here reads it, and a mirrored field nobody reads is a second copy
+	 * of room state that can only ever be stale.
+	 *
+	 * IT IS NOT NEEDED FOR THE REDUCER. The note here used to claim the phone needs `room.queueOrder`
+	 * "as an input to the optimistic reducer, so an add can only land in its real position if this is
+	 * current" — true of the STORE, which reads the order itself; this was never that copy. `room.queue`
+	 * is handed over whole below and keeps doing exactly what it did.
+	 */
 	// A reorder is ALWAYS meaningful now: the queue is a stored ordered list and a move rewrites
 	// it, so there is no policy that can discard the move. This used to be false under `shuffle`, whose
 	// rank came from the entry id and re-derived over any reorder — nothing re-derives a position now,
 	// so a drag on a shuffled list simply rearranges the stored list like anywhere else.
 	const canReorder = true;
 	// HOST reorder: a host can drag ANY song to any global slot, not just reorder their
-	// The list heading named the order "rotation" unconditionally, which stops being true the moment
-	// the room picks anything else. Eyes-on: it still said ROTATION with the room on first-come-first-served.
-	const orderLabel = $derived(queueOrderLabel(settings.room.queueOrder));
+	/*
+	 * THE LIST HEADING NAMES NO ORDER ANY MORE — it is the one word "Queued" (ratified 2026-09-21).
+	 *
+	 * It was `Up next · {orderLabel}`, and `orderLabel` existed because the heading had once named the
+	 * order "rotation" unconditionally, which stopped being true the moment the room picked anything else
+	 * (eyes-on: it still said ROTATION with the room on first-come-first-served). That fix was correct for
+	 * the heading it had. The heading is now a label rather than a sentence, so there is nothing left to
+	 * disagree with the room — which retires the derived value rather than un-fixing it.
+	 *
+	 * `queueOrderLabel` KEEPS ITS EXPORT AND ITS TESTS (`contract/queue/queue-order.ts`, asserted by
+	 * barrel-surface.test.ts); this was simply its last call site in the app. The room's order policy is
+	 * still stated where it is CHOSEN, on /settings.
+	 */
 
 	// MIRRORED from the room link, not owned here — see the onMount block. Optional because a guest
 	// who has not joined has no queue at all, which is what every `store?.` call site below reads.
@@ -129,7 +146,6 @@
 			playback = room.playback;
 			singers = room.singers;
 			mediaCatalog = room.mediaCatalog;
-			settings = room.settings;
 			awaySingers = room.awaySingers;
 			mediaStatus = room.mediaStatus;
 			entries = room.entries;
@@ -602,7 +618,7 @@
 		<!-- The guest's own place, in words, with the wait omitted rather than guessed (XR-PH-09). -->
 		<MyPositionCard words={myPosition} />
 
-		<h2 class="grouphead">Up next · {orderLabel}</h2>
+		<h2 class="grouphead">Queued</h2>
 		<!--
 			XR-PH-19 — the mode's own chrome. Done and Cancel are REAL buttons rather than a tap-anywhere
 			dismissal, because "commit" and "abandon" are different outcomes and a mode that exits one way
@@ -626,19 +642,31 @@
 		{/if}
 		{#if queued.length === 0}
 			<!--
-				THE STATE, THEN THE NEXT STEP. This was `Nothing queued.` alone: one dim line on an otherwise
-				blank screen, with the only way to act on it being an icon-only magnifier in the band 700px
-				below. A guest who has just joined has no idea the band is where songs come from.
-				`Empty.Title` carries the state and `Empty.Description` names the control, which is the
-				component's own grammar and the same register the TV already uses ("search on your phone and
-				pick a song") — an instruction rather than encouragement, which is the line this codebase
-				deliberately does not cross.
+				THE STATE, LARGE AND CENTRED, AND NOTHING ELSE (ratified 2026-09-21).
+
+				This carried a second line — "Tap the magnifier below to pick the first song." — added when the
+				state was one dim `Nothing queued.` at the top left of an otherwise blank screen, on the
+				reasoning that a guest who has just joined has no idea the band is where songs come from. The
+				instruction is dropped and the STATE is promoted instead: at display scale in the middle of the
+				empty column it is the only thing on the screen, and the magnifier is the only control under it,
+				so the sentence was describing a discovery the layout now makes for itself.
+				`Empty.Description` goes with it rather than being emptied — the slot carried the copy.
+
+				`Empty.Root` STAYS, and not decoratively: XR-PH-08's inventory detector recognises a route's
+				designed empty state by `<Empty.Root>` (phone-inventory.test.ts), so replacing the primitive
+				with a bare `<p>` would report this route as having no empty state at all.
+
+				SIZED AND PLACED FROM A PAGE-OWNED WRAPPER. `Empty.Title` is a vendored element carrying
+				`text-lg`, which an inherited font-size cannot beat, and a utility written in this file is
+				emitted nowhere (Tailwind scans only `components/ui`) — so the one rule reaches the vendored
+				`data-slot` through `.queue-empty`, the same shape as `.band-slot :global(.band)` in the drawer.
 			-->
 			<Empty.Root>
-				<Empty.Header>
-					<Empty.Title>Nothing queued.</Empty.Title>
-					<Empty.Description>Tap the magnifier below to pick the first song.</Empty.Description>
-				</Empty.Header>
+				<div class="queue-empty">
+					<Empty.Header>
+						<Empty.Title>Nothing Queued</Empty.Title>
+					</Empty.Header>
+				</div>
 			</Empty.Root>
 		{:else}
 			{#each queued as e, i (e.id)}
@@ -952,6 +980,39 @@
 	}
 	.grouphead:first-of-type {
 		margin-top: var(--space-2xs);
+	}
+	/*
+	 * THE EMPTY QUEUE — the state at display scale, centred in the space it leaves, and the only thing on
+	 * the screen (ratified 2026-09-21).
+	 *
+	 * `min-height` rather than a full-height centring trick: this is a block in a scrolling column that
+	 * also carries the position card, the heading and the band's reservation, so anything absolute here
+	 * would have to re-derive a height three other rules already own. 40vh puts the line in the middle of
+	 * what is actually empty on a phone and reads as centred on a laptop, and it costs nothing when the
+	 * queue is non-empty because the whole block is gone.
+	 *
+	 * `overflow-wrap: anywhere` IS THE 320px CLAUSE, not a tidiness one. At `--ph-text-3xl` and 200% text a
+	 * single unbreakable word is wider than a 320px viewport, which is exactly the reflow failure XR-PH-02
+	 * measures — the same reason the `keycap` button variant carries this pair. The word breaks instead of
+	 * the layout.
+	 *
+	 * THE FONT-SIZE REACHES A VENDORED SLOT. `Empty.Title` carries Tailwind's `text-lg` on its own element,
+	 * so an inherited size cannot win, and a utility written in this file is never emitted (app.css is
+	 * `source(none)` over `components/ui`). One `:global()` at a `data-slot`, which is the shape
+	 * `ui-scoped-style-reach-913` asks for: the attribute is emitted by markup in this tree.
+	 */
+	.queue-empty {
+		display: grid;
+		place-items: center;
+		min-height: 40vh;
+		padding: var(--space-2xl) var(--space-md);
+		text-align: center;
+	}
+	.queue-empty :global([data-slot='empty-title']) {
+		font-size: var(--ph-text-3xl);
+		line-height: var(--lh-snug);
+		font-weight: 700;
+		overflow-wrap: anywhere;
 	}
 	/* Centre the mark with its word. The glyphs these replaced were U+2212 and U+FF0B — the fullwidth
 	   plus carries CJK metrics, so it sat off-baseline beside Latin text at every size. */
