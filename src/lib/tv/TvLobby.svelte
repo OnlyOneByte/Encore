@@ -35,9 +35,27 @@
 		pendingCount?: number;
 		/** The advertised join address is unroutable — render the operator notice, not a dead QR. */
 		unreachable?: boolean;
+		/**
+		 * The room code — the typed way in, which this screen did not carry at all.
+		 *
+		 * REPORTED: "when people are in the room, the room code is not shown at all. Only the QR." The
+		 * attract screen prints it as the largest element on the stage, and then the moment one person
+		 * joins, the TV switches to THIS screen and the code vanishes — so the state a latecomer actually
+		 * walks in on was the one state with no code. The address in text (`.url`) was added here for the
+		 * same reason and is the same omission one step earlier.
+		 */
+		roomCode?: string | null;
 	}
 
-	let { qrDataUrl, joinUrl, roster, overflow = 0, pendingCount = 0, unreachable = false }: Props = $props();
+	let {
+		qrDataUrl,
+		joinUrl,
+		roster,
+		overflow = 0,
+		pendingCount = 0,
+		unreachable = false,
+		roomCode = null
+	}: Props = $props();
 
 	const count = $derived(roster.length + overflow);
 
@@ -118,41 +136,47 @@
 <div class="lobby">
 	<div class="stack-region">
 		<div class="stack">
-			{#if unreachable}
-				<JoinBadge
-					qrDataUrl={qrDataUrl}
-					joinUrl={joinUrl}
-					placement="hero"
-					size="var(--tv-attract-qr)"
-					unreachable={true}
-				/>
-			{:else}
-				<!--
-				ORDER: instruction, then the QR, then the typed address beneath it.
-				The QR used to come first with the copy underneath, which read as "here is a code, and
-				some text about it". Leading with the instruction and captioning the code with its own
-				address makes the pair one object — and it is the same object, at a smaller scale, that
-				sits in the corner during a song, so a guest recognises it across states.
+			<!--
+				NO BRANCH ON REACHABILITY (2026-09-21). An unroutable address used to replace this whole stack with
+				a `--danger` card, taking the headline, the roster context, the address and the code with it. The QR
+				renders in every state now and `JoinBadge` appends a one-line notice under it — see the rationale
+				there, including the trade that accepts a scannable-but-dead code on a loopback address.
 			-->
-				<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
-				<div class="copy">
-					<h1>{headline}</h1>
-					<p class="sub">{sub}</p>
-				</div>
-				<JoinBadge
-					qrDataUrl={qrDataUrl}
-					joinUrl={joinUrl}
-					placement="hero"
-					size="var(--tv-attract-qr)"
-					unreachable={false}
-				/>
-				<!--
-				The address in text as well as in the QR. The attract screen prints it and this screen did
-				not, which left the lobby — the state a latecomer actually walks in on — with no way to join
-				when a camera will not scan the code. Same treatment as attract so the two screens do not
-				disagree about what the address looks like.
+			<!--
+			ORDER: instruction, then the QR, then the typed address beneath it.
+			The QR used to come first with the copy underneath, which read as "here is a code, and
+			some text about it". Leading with the instruction and captioning the code with its own
+			address makes the pair one object — and it is the same object, at a smaller scale, that
+			sits in the corner during a song, so a guest recognises it across states.
 			-->
-				<p class="url">{joinShort}</p>
+			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
+			<div class="copy">
+				<h1>{headline}</h1>
+				<p class="sub">{sub}</p>
+			</div>
+			<JoinBadge
+				qrDataUrl={qrDataUrl}
+				joinUrl={joinUrl}
+				placement="hero"
+				size="var(--tv-attract-qr)"
+				unreachable={unreachable}
+			/>
+			<!--
+			The address in text as well as in the QR. The attract screen prints it and this screen did
+			not, which left the lobby — the state a latecomer actually walks in on — with no way to join
+			when a camera will not scan the code. Same treatment as attract so the two screens do not
+			disagree about what the address looks like.
+			-->
+			<p class="url">{joinShort}</p>
+			<!--
+				AND THE CODE, which this screen was missing entirely — the QR and the address were here and
+				the thing a guest types into the phone was not. Same ladder as the attract screen ("enter
+				room code" then the code itself), so the two states do not disagree about how to join; the
+				VALUE is one tier down from attract's `--tv-code` because this screen also carries a
+				headline, a roster strip and the QR, and the display tier would outweigh all three.
+			-->
+			{#if roomCode}
+				<p class="code"><span class="code-l">or enter room code</span><b class="code-v">{roomCode}</b></p>
 			{/if}
 		</div>
 	</div>
@@ -266,6 +290,51 @@
 		font-weight: 800;
 		color: var(--ink);
 		margin: 1.6vh 0 0;
+	}
+	/*
+	 * THE CODE LINE. One block, label above value, so the pair cannot separate as the stack reflows — and
+	 * `1.2vh` rather than the address's `1.6vh` because the two belong together: they are one typed path,
+	 * and equal gaps above both would read as three unrelated lines under the QR.
+	 *
+	 * THE VALUE IS `--tv-name`, MATCHING `.url`, NOT attract's `--tv-code` (3.29rem). This screen carries a
+	 * headline, a sub, the QR and the roster strip; the display tier is right on attract because the code is
+	 * the ONLY thing competing there, and here it would outweigh everything including the roster the screen
+	 * exists to show. The letter-spacing is what makes it transcribable at this size — a six-character code
+	 * read across a room needs its characters separated more than it needs to be bigger.
+	 */
+	/*
+	 * `text-align: center` IS LOAD-BEARING, not a default restated. `.stack` is a flex COLUMN with
+	 * `align-items: center`, so this <p> is a shrink-to-fit item sized by its WIDER child — the label — and
+	 * its two block children then inherited the stage's left alignment. The code sat flush left under a
+	 * label half again as wide, which reads as "the room code is off-centre" because it is.
+	 */
+	.code {
+		margin: 1.2vh 0 0;
+		text-align: center;
+	}
+	/*
+	 * THE `padding-left` COMPENSATES THE TRAILING LETTER-SPACE, and it is the second half of the same
+	 * off-centre report. `letter-spacing` adds its space AFTER the last glyph as well as between, and a
+	 * centred line box includes it — so the glyphs sit left of true centre by half the tracking. At 0.18em
+	 * of `--tv-name` that is a visible few pixels on a wall. One letter-space of left padding moves the
+	 * line back by half of itself, which is exactly the error. Each value matches its own tracking.
+	 */
+	.code-l {
+		display: block;
+		font-size: var(--tv-label);
+		letter-spacing: 0.16em;
+		padding-left: 0.16em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+	}
+	.code-v {
+		display: block;
+		margin-top: 0.4vh;
+		font-size: var(--tv-name);
+		font-weight: 800;
+		letter-spacing: 0.18em;
+		padding-left: 0.18em;
+		color: var(--ink);
 	}
 
 	.strip {

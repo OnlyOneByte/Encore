@@ -88,7 +88,7 @@ const spawned = [];
  * @param {import('node:child_process').SpawnOptions} [opts]
  */
 function launch(cmd, args, opts = {}) {
-	const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'],...opts });
+	const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 	spawned.push(p);
 	return p;
 }
@@ -96,7 +96,9 @@ function launch(cmd, args, opts = {}) {
 function killProc(p) {
 	try {
 		if (p?.pid && !p.killed) process.kill(p.pid, 'SIGKILL');
-	} catch { /* the process may already have exited */ }
+	} catch {
+		/* the process may already have exited */
+	}
 }
 function killAll() {
 	for (const p of spawned) killProc(p);
@@ -119,7 +121,9 @@ async function waitForHealth(timeoutMs = 15000) {
 		try {
 			const r = await fetch(`${BASE}/health`);
 			if (r.ok) return true;
-		} catch { /* best-effort cleanup */ }
+		} catch {
+			/* best-effort cleanup */
+		}
 		await sleep(200);
 	}
 	return false;
@@ -152,7 +156,7 @@ async function joinRoom(name, color = 'violet') {
 async function searchLocal(q) {
 	const r = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`);
 	const d = await r.json();
-	const hit = [...d.ready,...d.processing,...d.results].find((/** @type {any} */ x) => x.source === 'local');
+	const hit = [...d.ready, ...d.processing, ...d.results].find((/** @type {any} */ x) => x.source === 'local');
 	if (!hit) throw new Error(`no local match for "${q}"`);
 	return hit;
 }
@@ -197,7 +201,9 @@ async function openPhone(cookie) {
 	ws.onmessage = (m) => {
 		try {
 			events.push(JSON.parse(String(m.data)));
-		} catch { /* best-effort cleanup */ }
+		} catch {
+			/* best-effort cleanup */
+		}
 	};
 	ws.send(JSON.stringify({ type: 'hello' }));
 	await sleep(100);
@@ -229,7 +235,10 @@ async function waitForStatus(phone, mediaId, predicate, timeoutMs, label) {
 		if (last && predicate(last)) return last;
 		await sleep(100);
 	}
-	const seen = phone.statusOf(mediaId).map((/** @type {any} */ e) => `${e.status}@${e.pct ?? '?'}%`).join(' → ');
+	const seen = phone
+		.statusOf(mediaId)
+		.map((/** @type {any} */ e) => `${e.status}@${e.pct ?? '?'}%`)
+		.join(' → ');
 	throw new Error(`waitForStatus timeout (${label ?? ''}): media=${mediaId} seen=[${seen}]`);
 }
 
@@ -244,7 +253,7 @@ async function bootServer() {
 
 	const seed = launch('bun', ['run', 'tests/e2e/seed-media.mjs'], {
 		cwd: repoRoot,
-		env: {...process.env, MEDIA_DIR }
+		env: { ...process.env, MEDIA_DIR }
 	});
 	await new Promise((r) => seed.on('exit', r));
 
@@ -276,7 +285,7 @@ function bootWorker(env, tag) {
 	const w = Bun.file(workerLog).writer();
 	const p = launch('bun', ['tests/e2e/fake-stems-worker.mjs'], {
 		cwd: repoRoot,
-		env: {...process.env, EPORT: String(PORT), MEDIA_DIR, FAKE_WORKER_ID: tag,...env }
+		env: { ...process.env, EPORT: String(PORT), MEDIA_DIR, FAKE_WORKER_ID: tag, ...env }
 	});
 	p.stdout?.on('data', (/** @type {Buffer} */ d) => w.write(d));
 	p.stderr?.on('data', (/** @type {Buffer} */ d) => w.write(d));
@@ -291,7 +300,9 @@ function bootWorker(env, tag) {
 async function waitForWorkerCapabilities(capsPredicate, timeoutMs = 5000, label = 'worker caps') {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		const r = await fetch(`${BASE}/api/metrics`).then((r) => r.json()).catch(() => null);
+		const r = await fetch(`${BASE}/api/metrics`)
+			.then((r) => r.json())
+			.catch(() => null);
 		if (r?.workers?.length && capsPredicate(r.workers)) return r.workers;
 		await sleep(150);
 	}
@@ -304,7 +315,9 @@ async function main() {
 	try {
 		const h = await fetch(`${BASE}/health`);
 		if (h.ok) bail(`port ${PORT} is already in use — probe requires an exclusive port`);
-	} catch { /* best-effort cleanup */ }
+	} catch {
+		/* best-effort cleanup */
+	}
 
 	const chromium = findChromium();
 	if (!chromium) bail('no Chromium found; screenshots are a required deliverable of this probe');
@@ -745,7 +758,8 @@ async function main() {
 	}
 	{
 		// The retried process: 2 stems attempts (abandoned then ready), then align ready.
-		const stemsAttempts = auditPrayer.processes[0]?.attempts?.filter((/** @type {any} */ a) => a.jobType === 'stems') ?? [];
+		const stemsAttempts =
+			auditPrayer.processes[0]?.attempts?.filter((/** @type {any} */ a) => a.jobType === 'stems') ?? [];
 		const outcomes = stemsAttempts.map((/** @type {any} */ a) => a.outcome);
 		// Also: the retried stems attempt must have attempt=2 (1-based, from AttemptLedger.open).
 		const attemptNumbers = stemsAttempts.map((/** @type {any} */ a) => a.attempt);
@@ -912,7 +926,7 @@ async function main() {
 			await page.viewport(w, h, 1);
 			await page.goto(url);
 			// Wait for the h1 heading to exist so a shot of a still-loading spinner is impossible.
-			await page.waitForSelector('h1' , { timeout: 8000 }).catch(() => null);
+			await page.waitForSelector('h1', { timeout: 8000 }).catch(() => null);
 			// Give client-side fetch()es an extra beat to resolve.
 			await sleep(600);
 			await page.screenshot(path, { fullPage: true });
@@ -953,7 +967,7 @@ async function main() {
 		const dompage = await browser.newPage();
 		await dompage.viewport(1440, 900, 1);
 		await dompage.goto(`${BASE}/metrics`);
-		await dompage.waitForSelector('h1' , { timeout: 8000 });
+		await dompage.waitForSelector('h1', { timeout: 8000 });
 		await sleep(400);
 		// Column headers on the "each step" table.
 		const headerRow = await dompage.texts('table th');
@@ -1103,7 +1117,9 @@ async function main() {
 			const m = await mRes.json();
 			const a = await aRes.json();
 			const workerIds = m.workers.map((/** @type {any} */ w) => w.workerId);
-			const errStrings = a.processes.flatMap((/** @type {any} */ c) => c.attempts.map((/** @type {any} */ att) => att.error)).filter(Boolean);
+			const errStrings = a.processes
+				.flatMap((/** @type {any} */ c) => c.attempts.map((/** @type {any} */ att) => att.error))
+				.filter(Boolean);
 			record(
 				'MEDIUM',
 				'/api/metrics and /api/audit/<id> are UNGATED, as documented',
@@ -1113,7 +1129,10 @@ async function main() {
 					`observed: /api/audit/${caroline.id} → 200 without cookie`,
 					`what is exposed: worker ids, model/backend names, host details, per-attempt terminal error strings`,
 					`example error strings on the box: ${
-						errStrings.slice(0, 2).map((/** @type {any} */ e) => JSON.stringify(e)).join(', ') || '(none on this run)'
+						errStrings
+							.slice(0, 2)
+							.map((/** @type {any} */ e) => JSON.stringify(e))
+							.join(', ') || '(none on this run)'
 					}`,
 					'src/routes/api/metrics/+server.ts:1-13 — decision to bind the server to a trusted interface or add a token',
 					'src/routes/api/audit/[mediaId]/+server.ts:11-14 — same posture, one song at a time'
@@ -1140,7 +1159,7 @@ async function main() {
 				const p = await browser2.newPage();
 				await p.viewport(1440, 900, 1);
 				await p.goto(`${BASE}/stats`);
-				await p.waitForSelector(SEL.dashTileNumber , { timeout: 8000 });
+				await p.waitForSelector(SEL.dashTileNumber, { timeout: 8000 });
 				await sleep(400);
 				const tiles = await p.texts(SEL.dashTileNumber);
 				// Order in DOM: songs sung, ready to sing, different songs (see /stats markup).

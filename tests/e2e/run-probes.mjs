@@ -46,24 +46,66 @@ import { spawnChild, killChild } from './lib/child.mjs';
  */
 const PROBES = [
 	// ── self-booting ────────────────────────────────────────────────────────────────────────────────
-	{ path: 'tests/e2e/probes/p2-guiding-track.mjs', mode: 'boots', subject: 'the guiding-track mix and its 4-channel guide' },
-	{ path: 'tests/e2e/probes/p5-process-lifecycle.mjs', mode: 'boots', subject: 'process lifecycle: queue, process, retry, kill' },
-	{ path: 'tests/e2e/probes/p14-playhead-vs-process.mjs', mode: 'boots', subject: 'the playhead against a concurrent process' },
-	{ path: 'tests/e2e/probes/p15-reload-resume.mjs', mode: 'boots', subject: 'reload mid-song resumes at the right position' },
-	{ path: 'tests/e2e/probes/p15-phone-reflow.mjs', mode: 'boots', subject: 'phone reflow across viewports (needs a built UI)' },
-	{ path: 'tests/e2e/probes/p16-hero-live-controls.mjs', mode: 'boots', subject: 'the now-playing drawer: live controls, and the slider that must not dismiss it' },
-	{ path: 'tests/e2e/shoot-913.mjs', mode: 'boots', kind: 'captures', subject: 'shadcn-migration screenshots (evidence, not assertions)' },
+	{
+		path: 'tests/e2e/probes/p2-guiding-track.mjs',
+		mode: 'boots',
+		subject: 'the guiding-track mix and its 4-channel guide'
+	},
+	{
+		path: 'tests/e2e/probes/p5-process-lifecycle.mjs',
+		mode: 'boots',
+		subject: 'process lifecycle: queue, process, retry, kill'
+	},
+	{
+		path: 'tests/e2e/probes/p14-playhead-vs-process.mjs',
+		mode: 'boots',
+		subject: 'the playhead against a concurrent process'
+	},
+	{
+		path: 'tests/e2e/probes/p15-reload-resume.mjs',
+		mode: 'boots',
+		subject: 'reload mid-song resumes at the right position'
+	},
+	{
+		path: 'tests/e2e/probes/p15-phone-reflow.mjs',
+		mode: 'boots',
+		subject: 'phone reflow across viewports (needs a built UI)'
+	},
+	{
+		path: 'tests/e2e/probes/p16-hero-live-controls.mjs',
+		mode: 'boots',
+		subject: 'the now-playing drawer: live controls, and the slider that must not dismiss it'
+	},
+	{
+		path: 'tests/e2e/shoot-913.mjs',
+		mode: 'boots',
+		kind: 'captures',
+		subject: 'shadcn-migration screenshots (evidence, not assertions)'
+	},
 
 	// ── need a server this runner provides ──────────────────────────────────────────────────────────
 	{ path: 'tests/e2e/probes/p1-gapless.mjs', mode: 'serves', subject: 'the gapless seam between queued songs' },
 	{ path: 'tests/e2e/probes/p3-key-shift.mjs', mode: 'serves', subject: 'key-shift pitch handling' },
 	{ path: 'tests/e2e/probes/p6-lyrics.mjs', mode: 'serves', subject: 'lyrics rendering and the presplit contract' },
 	{ path: 'tests/e2e/probes/p8-presence-resilience.mjs', mode: 'serves', subject: 'presence across disconnects' },
-	{ path: 'tests/e2e/probes/p9-settings.mjs', mode: 'serves', subject: 'the settings surface and its join-origin fallback' },
+	{
+		path: 'tests/e2e/probes/p9-settings.mjs',
+		mode: 'serves',
+		subject: 'the settings surface and its join-origin fallback'
+	},
 	{ path: 'tests/e2e/probes/p10-scaling.mjs', mode: 'serves', kind: 'captures', subject: 'TV stage scaling' },
-	{ path: 'tests/e2e/probes/admin-delete-639.mjs', mode: 'serves', kind: 'captures', subject: 'admin delete and its confirmation posture' },
+	{
+		path: 'tests/e2e/probes/admin-delete-639.mjs',
+		mode: 'serves',
+		kind: 'captures',
+		subject: 'admin delete and its confirmation posture'
+	},
 	{ path: 'tests/e2e/probes/tv-audiocontext-resume.mjs', mode: 'serves', subject: 'the TV AudioContext gesture A/B' },
-	{ path: 'tests/e2e/probes/tv-scrim-empty-lobby-736.mjs', mode: 'serves', subject: 'the TV scrim over an empty lobby' },
+	{
+		path: 'tests/e2e/probes/tv-scrim-empty-lobby-736.mjs',
+		mode: 'serves',
+		subject: 'the TV scrim over an empty lobby'
+	},
 
 	// ── tools ───────────────────────────────────────────────────────────────────────────────────────
 	{
@@ -332,9 +374,7 @@ async function main() {
 			 * and `p10-scaling` reads `PORT` ALONE. Passing only EPORT left p10 dialling its own
 			 * hardcoded 5230 — where it got ERR_CONNECTION_REFUSED and still exited 0.
 			 */
-			results.push(
-				await runOne(probe, { EPORT: String(port), PORT: String(port), MEDIA_DIR: env.mediaDir })
-			);
+			results.push(await runOne(probe, { EPORT: String(port), PORT: String(port), MEDIA_DIR: env.mediaDir }));
 		} finally {
 			await killChild(env.worker);
 			await killChild(env.server);
@@ -360,8 +400,7 @@ async function main() {
 		 * still exited 0. Reporting that as "ok" would make this runner a false-pass machine, which is the
 		 * one thing the suite it belongs to exists to prevent.
 		 */
-		const verdict =
-			r.code !== 0 ? 'FAIL' : r.kind === 'captures' ? 'ran ' : 'ok  ';
+		const verdict = r.code !== 0 ? 'FAIL' : r.kind === 'captures' ? 'ran ' : 'ok  ';
 		process.stdout.write(`  ${verdict}  ${r.label.padEnd(28)} ${r.secs}s\n`);
 	}
 	const asserting = results.filter((r) => r.kind !== 'captures');

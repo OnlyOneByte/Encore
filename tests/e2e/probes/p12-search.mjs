@@ -161,7 +161,7 @@ const bearer = { headers: { cookie: session.cookies, 'content-type': 'applicatio
 
 /** @param {string} q @param {Record<string, string>} [extra] @returns {Promise<{ status: number, body: SearchBody }>} */
 async function search(q, extra = {}) {
-	const qs = new URLSearchParams({ q,...extra });
+	const qs = new URLSearchParams({ q, ...extra });
 	const res = await fetch(`${base}/api/search?${qs}`);
 	return { status: res.status, body: await res.json().catch(() => null) };
 }
@@ -217,7 +217,7 @@ if (!svc.body || !Array.isArray(svc.body.results)) {
 	);
 	process.exit(1);
 }
-const localCaroline = [...(svc.body.ready ?? []),...(svc.body.results ?? [])].find(
+const localCaroline = [...(svc.body.ready ?? []), ...(svc.body.results ?? [])].find(
 	(m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline')
 );
 if (!localCaroline) {
@@ -275,7 +275,7 @@ record(
 );
 
 // Dedupe by (source, sourceRef): search a second time and confirm the processed song appears exactly once.
-const idCount = [...after.body.ready,...after.body.processing,...after.body.results].filter(
+const idCount = [...after.body.ready, ...after.body.processing, ...after.body.results].filter(
 	(m) => m.id === localCaroline.id
 ).length;
 record(
@@ -291,7 +291,7 @@ record(
 // ALL three buckets since the local file might already be processed from an earlier check, which lands
 // it in `ready` while the YouTube upload stays in `results`.
 const bohRes = await search('bohemian rhapsody');
-const bohAll = [...(bohRes.body.ready ?? []),...(bohRes.body.processing ?? []),...(bohRes.body.results ?? [])];
+const bohAll = [...(bohRes.body.ready ?? []), ...(bohRes.body.processing ?? []), ...(bohRes.body.results ?? [])];
 const bohLocal = bohAll.find((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
 const bohYT = bohAll.find((m) => m.source === 'youtube');
 record(
@@ -324,7 +324,9 @@ async function subscribeMediaStatus(mediaId, timeoutMs = 20_000) {
 						resolve('done');
 					}
 				}
-			} catch { /* best-effort cleanup */ }
+			} catch {
+				/* best-effort cleanup */
+			}
 		};
 		ws.onerror = () => resolve('ws-error');
 	});
@@ -334,7 +336,7 @@ async function subscribeMediaStatus(mediaId, timeoutMs = 20_000) {
 
 // Process a fresh song so the sequence starts CLEANLY (Sweet Caroline is already ready from S1).
 const s = await search('believin');
-const believin = [...(s.body.ready ?? []),...(s.body.results ?? [])].find(
+const believin = [...(s.body.ready ?? []), ...(s.body.results ?? [])].find(
 	(m) => m.source === 'local' && m.sourceRef?.includes('believin')
 );
 if (!believin) {
@@ -351,8 +353,10 @@ if (!believin) {
 	// isn't wired via HTTP, so if it's already ready we just report S2 as a skip. Fresh run: no problem.
 	const preReadiness = await search('believin');
 	const preState = preReadiness.body.ready?.some((m) => m.id === believin.id)
-		? 'ready': preReadiness.body.processing?.some((m) => m.id === believin.id)
-			? 'processing': 'unacquired';
+		? 'ready'
+		: preReadiness.body.processing?.some((m) => m.id === believin.id)
+			? 'processing'
+			: 'unacquired';
 
 	if (preState === 'unacquired') {
 		const sub = await subscribeMediaStatus(believin.id);
@@ -443,7 +447,9 @@ if (processableCandidate) {
 				timeoutMs: 15_000,
 				name: `${processableCandidate.title} ready`
 			});
-		} catch { /* best-effort cleanup */ }
+		} catch {
+			/* best-effort cleanup */
+		}
 	} else {
 		record(
 			'MEDIUM',
@@ -600,9 +606,15 @@ record(
 const baseline = await search('caroline');
 const parenised = await search('(caroline)');
 const starred = await search('caroline*');
-const baselineHasLocal = baseline.body.results.concat(baseline.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
-const parenisedHasLocal = parenised.body.results.concat(parenised.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
-const starredHasLocal = starred.body.results.concat(starred.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
+const baselineHasLocal = baseline.body.results
+	.concat(baseline.body.ready)
+	.some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
+const parenisedHasLocal = parenised.body.results
+	.concat(parenised.body.ready)
+	.some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
+const starredHasLocal = starred.body.results
+	.concat(starred.body.ready)
+	.some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
 record(
 	'HIGH',
 	'S5b-fts-meta-silent-drop',
@@ -637,7 +649,9 @@ const titleVariants = ['Bohemian', 'bohemian', 'BOHEMIAN', 'BoHeMiAn'];
 const titleHits = [];
 for (const q of titleVariants) {
 	const r = await search(q);
-	const has = r.body.results.concat(r.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
+	const has = r.body.results
+		.concat(r.body.ready)
+		.some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
 	titleHits.push({ q, has });
 }
 record(
@@ -653,7 +667,9 @@ const artistVariants = ['queen', 'Queen', 'QUEEN', 'qUeEn'];
 const artistHits = [];
 for (const q of artistVariants) {
 	const r = await search(q);
-	const has = r.body.results.concat(r.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
+	const has = r.body.results
+		.concat(r.body.ready)
+		.some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
 	artistHits.push({ q, has });
 }
 record(
@@ -813,20 +829,24 @@ record(
 // the process completes normally, and we say so as an ENV limit rather than a defect, per HARNESS.md's
 // "never conflate 2 with 0" rule.
 try {
-	const failWorker = spawn(process.execPath.includes('bun') ? process.execPath : 'bun', ['tests/e2e/fake-stems-worker.mjs'], {
-		cwd: repoRoot,
-		env: {
-			...process.env,
-			EPORT: PORT,
-			MEDIA_DIR,
-			FAKE_FAIL: 'stems',
-			FAKE_CAPS: 'stems',
-			FAKE_WORKER_ID: `p12-fail-${Date.now()}`,
-			FAKE_SLOW_MS: '300'
-		},
-		stdio: 'ignore',
-		detached: true
-	});
+	const failWorker = spawn(
+		process.execPath.includes('bun') ? process.execPath : 'bun',
+		['tests/e2e/fake-stems-worker.mjs'],
+		{
+			cwd: repoRoot,
+			env: {
+				...process.env,
+				EPORT: PORT,
+				MEDIA_DIR,
+				FAKE_FAIL: 'stems',
+				FAKE_CAPS: 'stems',
+				FAKE_WORKER_ID: `p12-fail-${Date.now()}`,
+				FAKE_SLOW_MS: '300'
+			},
+			stdio: 'ignore',
+			detached: true
+		}
+	);
 	failWorker.unref();
 	// Give it a moment to join.
 	await sleep(1200);
@@ -920,7 +940,6 @@ if (!chromium) {
 		'skipped -- no Chromium found; the row-action + empty-state assertions need a real render'
 	);
 } else {
-
 	let browser;
 	try {
 		browser = await connect();
@@ -979,7 +998,9 @@ if (!chromium) {
 		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'zzzzzzznotasongzzzzzz');
 		await sleep(600); // debounce is 150ms; give the search a fair moment
-		const noResultsText = await phone.evaluate(`document.querySelector(${JSON.stringify(SEL.empty)})?.textContent?.trim() ?? ''`).catch(() => '');
+		const noResultsText = await phone
+			.evaluate(`document.querySelector(${JSON.stringify(SEL.empty)})?.textContent?.trim() ?? ''`)
+			.catch(() => '');
 		const mentionsYtDlpUnavailable = /yt-dlp/i.test(noResultsText);
 		record(
 			'MEDIUM',

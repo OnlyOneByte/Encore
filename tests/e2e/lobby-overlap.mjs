@@ -91,8 +91,6 @@ if (!chromium) {
 	process.exit(2);
 }
 
-
-
 /** @type {Browser | undefined} */
 let browser;
 /** @type {WebSocket[]} */
@@ -138,9 +136,7 @@ try {
 			const tv = await browser0.newPage();
 			await tv.viewport(w, h, 1);
 			await tv.goto(`${base}/tv`);
-			const rendered = await tv
-				.waitForSelector(SEL.lobbyUrl, { timeout: 8000 })
-				.catch(() => false);
+			const rendered = await tv.waitForSelector(SEL.lobbyUrl, { timeout: 8000 }).catch(() => false);
 			if (!rendered) {
 				check(`${label} @ ${w}x${h} rendered the lobby`, false, 'no .lobby .url — roster did not sync');
 				continue;
@@ -197,18 +193,24 @@ try {
 		for (const s of caseSockets) {
 			try {
 				s.close();
-			} catch { /* already closed, or never opened */ }
+			} catch {
+				/* already closed, or never opened */
+			}
 		}
 		await sleep(300); // let presence drop before the next case's room
 	}
 } finally {
 	try {
 		browser?.close();
-	} catch { /* already closed, or never opened */ }
+	} catch {
+		/* already closed, or never opened */
+	}
 	for (const s of sockets) {
 		try {
 			s.close();
-		} catch { /* already closed, or never opened */ }
+		} catch {
+			/* already closed, or never opened */
+		}
 	}
 }
 

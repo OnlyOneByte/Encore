@@ -99,8 +99,6 @@ console.log('fixture: "' + ready[0].title + '" -> ' + ready[0].instrumentalRef +
 
 mkdirSync(SHOTS, { recursive: true });
 
-
-
 /*
  * ONE in-page reading, taken identically at every step so the before/after comparison is
  * apples-to-apples. `topAtJoinCard` is the load-bearing measurement: elementFromPoint at the join

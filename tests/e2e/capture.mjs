@@ -33,7 +33,6 @@ import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 import { atRepo as at } from './lib/repo-root.mjs';
 import { openJoin } from './lib/join.mjs';
 
-
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (following the
  * same pattern as the other e2e drivers). Browser/Page are derived from driver.mjs's own return types so they
@@ -73,8 +72,6 @@ mkdirSync(OUT, { recursive: true });
 const shots = [];
 /** @type {{ name: string, why: string }[]} */
 const skipped = [];
-
-
 
 /** @param {Page} page @param {string} name @param {string} note */
 async function shoot(page, name, note) {
@@ -253,7 +250,11 @@ try {
 	await frame('join-colour-ring', async () => {
 		await maya.pressKey(SEL.colourRing, 'End');
 		await sleep(300);
-		await shoot(maya, 'join-colour-ring', 'the full hue circle — lightness and chroma stay pinned, the hub names the stop');
+		await shoot(
+			maya,
+			'join-colour-ring',
+			'the full hue circle — lightness and chroma stay pinned, the hub names the stop'
+		);
 	});
 
 	await maya.fill(SEL.nameInput, 'Maya');
@@ -353,13 +354,13 @@ try {
 			 * best-effort by design: a miss costs one frame and is reported, never the run.
 			 */
 			await frame('tv-song-intro', async () => {
-				await tv.waitForSelector(SEL.stateNext , {
+				await tv.waitForSelector(SEL.stateNext, {
 					timeout: 20_000
 				});
 				await shoot(tv, 'tv-song-intro', 'the song-intro card names who is up before the music starts');
 			});
 			// the TV naming a singer means a song is CURRENT — not that it is moving
-			await tv.waitForSelector(SEL.lowerThird , {
+			await tv.waitForSelector(SEL.lowerThird, {
 				timeout: 25_000
 			});
 			const moving = await ensurePlaying(tv, maya);
@@ -403,7 +404,7 @@ try {
 		 * frozen-playback bug also looks like. Waiting for `.word.active` proves the words are moving.
 		 */
 		await frame('tv-lyrics-word', async () => {
-			await tv.waitForSelector(SEL.activeWord , {
+			await tv.waitForSelector(SEL.activeWord, {
 				timeout: 60_000
 			});
 			await shoot(tv, 'tv-lyrics-word', 'word-timed lyrics: the ball sits on the word being sung');

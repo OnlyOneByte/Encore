@@ -81,7 +81,6 @@ import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 import { atRepo as at } from './lib/repo-root.mjs';
 import { openJoin } from './lib/join.mjs';
 
-
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json; the shapes
  * below are derived from driver.mjs's own return types so they cannot drift from the driver.
@@ -201,12 +200,16 @@ function cleanup() {
 	for (const p of owned.procs) {
 		try {
 			p.kill('SIGTERM');
-		} catch { /* the process may already have exited */ }
+		} catch {
+			/* the process may already have exited */
+		}
 	}
 	for (const d of owned.dirs) {
 		try {
 			rmSync(d, { recursive: true, force: true });
-		} catch { /* the path may already be gone */ }
+		} catch {
+			/* the path may already be gone */
+		}
 	}
 }
 process.on('SIGINT', () => {
@@ -382,7 +385,9 @@ async function catalog() {
 				for (const row of [...(r.ready ?? []), ...(r.results ?? [])]) {
 					if (row.source === 'local' && !known.has(row.id)) rawSeen.set(row.id, row);
 				}
-			} catch { /* best-effort cleanup */ }
+			} catch {
+				/* best-effort cleanup */
+			}
 		}
 	}
 	const raw = [...rawSeen.values()].filter((m) => !known.has(m.id));
@@ -478,7 +483,9 @@ function serverSnapshot(timeoutMs = 4000) {
 			clearTimeout(timer);
 			try {
 				ws.close();
-			} catch { /* already closed, or never opened */ }
+			} catch {
+				/* already closed, or never opened */
+			}
 			if (err) reject(err);
 			else resolve(out);
 		};
@@ -518,7 +525,9 @@ async function lyricsFor(ref) {
 	try {
 		const j = await fetch(`${base}/media/${ref}`).then((r) => (r.ok ? r.json() : null));
 		if (j && Array.isArray(j.lines)) doc = j;
-	} catch { /* best-effort cleanup */ }
+	} catch {
+		/* best-effort cleanup */
+	}
 	lyricsCache.set(ref, doc);
 	return doc;
 }
@@ -1160,11 +1169,12 @@ async function driveInput(input, world) {
 	 * those would put a beat in the reproduction recipe that never happened, so the state is read first.
 	 */
 	/*
-	 * The band's disc, addressed by CLASS rather than by label — it is the app's only play/pause since the
-	 * sheet's duplicate was deleted, and its accessible name alternates ("Play" / "Pause"), so there is no
-	 * fixed label to ask for. Same shape as `tapTransport` below: report a no-op rather than clicking a
-	 * control that is absent or disabled, because a fuzz step that silently does nothing is indistinguishable
-	 * from one that worked.
+	 * The band's disc, addressed by CLASS rather than by label — it is the app's only play/pause, and its
+	 * accessible name alternates ("Play" / "Pause"), so there is no fixed label to ask for. It is on screen
+	 * at BOTH sheet heights, which is what lets this driver tap it without first knowing which height the
+	 * sheet happens to be at. Same shape as `tapTransport` below: report a no-op rather than clicking a
+	 * control that is absent or disabled, because a fuzz step that silently does nothing is
+	 * indistinguishable from one that worked.
 	 */
 	async function tapDisc() {
 		const state = await page.evaluate(`(() => {
@@ -1426,9 +1436,7 @@ try {
 	tv = await browser.newPage();
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
-	await tv
-		.waitForSelector(SEL.tvConnected , { timeout: 15000 })
-		.catch(() => {});
+	await tv.waitForSelector(SEL.tvConnected, { timeout: 15000 }).catch(() => {});
 
 	// The room starts empty; seed it with one add so the first input has something to act on. Recorded
 	// in the sequence like any other input, because it is one.
@@ -1493,7 +1501,9 @@ try {
 } finally {
 	try {
 		browser?.close();
-	} catch { /* already closed, or never opened */ }
+	} catch {
+		/* already closed, or never opened */
+	}
 	cleanup();
 }
 

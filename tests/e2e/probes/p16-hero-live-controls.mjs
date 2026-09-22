@@ -113,7 +113,6 @@ import { repoRoot } from '../lib/repo-root.mjs';
 import { spawnChild, killChild } from '../lib/child.mjs';
 import { openJoin } from '../lib/join.mjs';
 
-
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
  * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
@@ -165,7 +164,10 @@ async function bootServer() {
 	if (await serverAlive()) bail(`something is already listening on ${BASE}; this probe owns the port and the workers`);
 	mkdirSync(MEDIA_DIR, { recursive: true });
 	await new Promise((res, rej) => {
-		const p = spawnChild('bun', ['run', 'tests/e2e/seed-media.mjs'], { cwd: CORE_DIR, env: { ...process.env, MEDIA_DIR } });
+		const p = spawnChild('bun', ['run', 'tests/e2e/seed-media.mjs'], {
+			cwd: CORE_DIR,
+			env: { ...process.env, MEDIA_DIR }
+		});
 		p.on('exit', (code) => (code === 0 ? res(null) : rej(new Error(`seed exited ${code}`))));
 	});
 	const logFd = join(RUN_DIR, 'server.log');
@@ -224,7 +226,6 @@ async function spawnWorker(kind) {
 	}
 	throw new Error(`worker ${kind} never welcomed (see ${logFd})`);
 }
-
 
 // ── HTTP, with the probe's session cookie ──────────────────────────────────
 let COOKIE = '';
@@ -350,7 +351,7 @@ async function queueAdd(phone, mediaId, singerId) {
 const PRELUDE = `
 	const S = {
 		drawer: ${JSON.stringify(SEL.npDrawer)},
-		song: ${JSON.stringify(SEL.npSong)},
+		song: ${JSON.stringify(SEL.bandTitle)},
 		drawerHandle: ${JSON.stringify(SEL.drawerHandle)},
 		body: ${JSON.stringify(SEL.toolsBody)},
 		note: ${JSON.stringify(SEL.toolsNote)},
@@ -511,9 +512,13 @@ async function openDrawerFor(phone, title) {
 		timeout: 10_000,
 		name: 'the now-playing drawer to open'
 	});
+	// RE-POINTED at the BAND's title (2026-09-21): the drawer head no longer names the song. Every line of
+	// it was a second copy of the band row's — reported as the now playing/now singing being duplicated —
+	// and the band is composed INSIDE this sheet, so this still reads the song identity out of the open
+	// drawer rather than off some other surface.
 	await waitFor(
 		async () =>
-			(await phone.evaluate(`document.querySelector(${JSON.stringify(SEL.npSong)})?.textContent ?? ''`))?.includes?.(
+			(await phone.evaluate(`document.querySelector(${JSON.stringify(SEL.bandTitle)})?.textContent ?? ''`))?.includes?.(
 				title
 			),
 		{ timeout: 15_000, name: `the drawer showing "${title}"` }
@@ -623,7 +628,8 @@ async function main() {
 	// The whole probe is meaningless if the two fixtures are not actually in different states, and a
 	// fixture that silently drifted into one state would otherwise read as a clean pass.
 	if (!wv?.vocalsRef) bail(`"${withStem.title}" processed with NO vocals ref; the with-stem arm has no subject`);
-	if (nv?.vocalsRef) bail(`FAKE_NO_VOCALS did not withhold the vocals ref (got ${nv.vocalsRef}); the degraded arm has no subject`);
+	if (nv?.vocalsRef)
+		bail(`FAKE_NO_VOCALS did not withhold the vocals ref (got ${nv.vocalsRef}); the degraded arm has no subject`);
 	/*
 	 * AND THE MIX, which is the ref the guide gate actually reads. Bailed on separately from vocalsRef
 	 * rather than folded into it, because the two came apart: the guide used to be played from the vocals
@@ -649,7 +655,6 @@ async function main() {
 		);
 	}
 	console.log(`fixture: expected range label ${JSON.stringify(expectedRange)}\n`);
-
 
 	// `waitFor` reports `unknown`, so the cast is where the browser handle gets its type. Held in a
 	// local as well as the module-level `browser` (which teardown needs) so the pages below are reached
@@ -713,7 +718,6 @@ async function main() {
 		await phone.evaluate(`fetch('/api/me').then((r) => r.json()).then((d) => d?.singer?.id ?? d?.id ?? '')`)
 	);
 	if (!actor) bail('could not read the joined singer id from the browser session, so a queue op would be rejected');
-
 
 	// ── ARM 1: a song WITH an isolated stem ──
 	await queueAdd(phone, withStem.id, actor);

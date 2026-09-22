@@ -60,8 +60,6 @@ if (ready.length < 2) {
 const a = await joinSinger(`LT-A-${Date.now() % 100000}`);
 const b = await joinSinger(`LT-B-${(Date.now() + 1) % 100000}`);
 
-
-
 /** @type {Browser | undefined} */
 let browser;
 /** @type {Check[]} */

@@ -138,7 +138,7 @@ async function processAndWait(query, { waitForAlign = true, timeoutMs = 15_000 }
 	const found = /** @type {SearchBody} */ (
 		await fetch(`${base}/api/search?q=${encodeURIComponent(query)}`).then((r) => r.json())
 	);
-	const raw = [...found.results,...found.ready].find((x) => x.source === 'local');
+	const raw = [...found.results, ...found.ready].find((x) => x.source === 'local');
 	if (!raw) throw new Error(`no local song matching "${query}"`);
 	if (!found.ready.some((r) => r.id === raw.id)) {
 		await fetch(`${base}/api/process`, {
@@ -164,7 +164,7 @@ let processed;
 try {
 	processed = await processAndWait('caroline');
 } catch (err) {
-	bail(`could not process a probe song: ${err instanceof Error ? err.message: String(err)}`);
+	bail(`could not process a probe song: ${err instanceof Error ? err.message : String(err)}`);
 }
 console.log(`processed: "${processed.row.title}" id=${processed.id} lyricsRef=${processed.row.lyricsRef}\n`);
 
@@ -211,7 +211,9 @@ async function ensurePlaying(tv, phone, attempts = 4) {
 async function seekToStart(tv, phone) {
 	try {
 		await phone.clickByLabel(SEL.restart.name);
-	} catch { /* best-effort cleanup */ }
+	} catch {
+		/* best-effort cleanup */
+	}
 	await sleep(400);
 	await kickPlayback(tv);
 }
@@ -251,7 +253,9 @@ try {
 	await tv.bypassCacheFor('**/media/**');
 
 	// Wait for a media element with a src so we know the stage is up.
-	await tv.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 }).catch(() => {});
+	await tv
+		.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 })
+		.catch(() => {});
 	const kicked = await ensurePlaying(tv, phone);
 	if (!kicked.ok)
 		console.warn(
@@ -419,7 +423,8 @@ try {
 		activeSeenAsIs > 0,
 		'the active word appears on screen at all against the shipped fake-worker fixture',
 		activeSeenAsIs > 0
-			? `${activeSeenAsIs}/${asIsTracking.samples.length} samples had a.word.active`: `not once did.word.active exist. All ${asIsTracking.samples.length} samples were null. ` +
+			? `${activeSeenAsIs}/${asIsTracking.samples.length} samples had a.word.active`
+			: `not once did.word.active exist. All ${asIsTracking.samples.length} samples were null. ` +
 					`Root cause: fixture/parser schema mismatch above — no word timings survive parseLyricsDoc.`
 	);
 
@@ -444,7 +449,9 @@ try {
 	}
 	// Force the overlay to re-fetch: reload the TV route.
 	await tv.goto(`${base}/tv`);
-	await tv.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 }).catch(() => {});
+	await tv
+		.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 })
+		.catch(() => {});
 	await ensurePlaying(tv, phone);
 	await seekToStart(tv, phone);
 	await sleep(300);
@@ -478,7 +485,8 @@ try {
 		activeSeenCorrected > 0,
 		'against a CORRECTLY-shaped fixture, the active word IS drawn',
 		activeSeenCorrected > 0
-			? `${activeSeenCorrected}/${correctedTracking.samples.length} samples had.word.active`: `still no.word.active with the corrected fixture (${JSON.stringify(correctedTracking.samples.slice(0, 3))}) — ` +
+			? `${activeSeenCorrected}/${correctedTracking.samples.length} samples had.word.active`
+			: `still no.word.active with the corrected fixture (${JSON.stringify(correctedTracking.samples.slice(0, 3))}) — ` +
 					`this would be a real overlay defect, not an env limit.`
 	);
 
@@ -520,7 +528,8 @@ try {
 		distinctTransforms > 1,
 		`reel scrolls over the song (${distinctTransforms} distinct transforms observed across ${reelSamples.length} samples)`,
 		distinctTransforms > 1
-			? '' : `reel transform stayed at ${JSON.stringify([...new Set(reelSamples)])} throughout — frozen reel with advancing audio.`
+			? ''
+			: `reel transform stayed at ${JSON.stringify([...new Set(reelSamples)])} throughout — frozen reel with advancing audio.`
 	);
 
 	const activeWords = correctedTracking.samples.map((s) => s.active).filter(Boolean);
@@ -619,7 +628,8 @@ try {
 		contrastOk,
 		`text contrast vs stage floor is high (${ratio?.toFixed(1) ?? 'n/a'}:1)`,
 		contrastOk
-			? '' : `ink colour ${geom?.currentColor} lands at ${ratio?.toFixed(1)}:1 — below the WCAG AAA 7:1 target for large text.`
+			? ''
+			: `ink colour ${geom?.currentColor} lands at ${ratio?.toFixed(1)}:1 — below the WCAG AAA 7:1 target for large text.`
 	);
 
 	// ── FINDING (5): provenance label for transcribed words ───────────────
@@ -645,7 +655,8 @@ try {
 		provOk,
 		'transcribed lyrics carry the "Auto-transcribed" provenance label and the amber .unverified tint',
 		provOk
-			? '' : `no.ls-asr label rendered and.lyrics.unverified=${provState.unverified}. ` +
+			? ''
+			: `no.ls-asr label rendered and.lyrics.unverified=${provState.unverified}. ` +
 					`ROOT CAUSE (env limit): fake-stems-worker.mjs align branch does not send ` +
 					`artifacts.lyrics.candidates; worker-hub.ts:245 calls setMediaLyrics without candidates; ` +
 					`chosenCandidate(media) returns null; isAutoTranscribed(null)=false. ` +
@@ -670,7 +681,9 @@ try {
 		await openBrowseFromHome(phone); // search lives behind the browse push
 		await phone.fill(SEL.search, 'caroline');
 		await sleep(300);
-		await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`, { timeout: 5000 }).catch(() => {});
+		await phone
+			.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`, { timeout: 5000 })
+			.catch(() => {});
 		const canAdd = await phone.count(SEL.addTurn);
 		if (canAdd > 0) await phone.click(SEL.addTurn);
 		else if ((await phone.count(SEL.sing)) > 0) await phone.click(SEL.sing);
@@ -764,7 +777,8 @@ try {
 		hlLive,
 		'lyrics-highlight (word / line / off) applies live to the overlay via .hl-* class',
 		hlLive
-			? '' : `hlClass went ${base0?.hlClass} → line:${afterHlLine?.hlClass}, off:${afterHlOff?.hlClass}, word:${afterHlWord?.hlClass}`
+			? ''
+			: `hlClass went ${base0?.hlClass} → line:${afterHlLine?.hlClass}, off:${afterHlOff?.hlClass}, word:${afterHlWord?.hlClass}`
 	);
 
 	// lyrics-ball (only meaningful under highlight=word; already restored)
@@ -793,7 +807,8 @@ try {
 		ballLive,
 		'lyrics-ball (bounce / steady / underline / off) applies live to the marker',
 		ballLive
-			? '' : `ball went steady:${afterBallSteady?.ballClass}, under:${afterBallUnder?.ballClass}, off-present:${afterBallOff?.ballPresent}, bounce:${afterBallBounce?.ballClass}`
+			? ''
+			: `ball went steady:${afterBallSteady?.ballClass}, under:${afterBallUnder?.ballClass}, off-present:${afterBallOff?.ballPresent}, bounce:${afterBallBounce?.ballClass}`
 	);
 
 	// lyrics-font — the family is applied to .viewport but inherited on rows, so read
@@ -856,7 +871,8 @@ try {
 		syncSurvives && syncEffective,
 		'sync-mode flip live-clamps the overlay without breaking it',
 		syncSurvives && syncEffective
-			? '' : `overlay survives=${syncSurvives}, hlClass went lines:${afterSyncLines?.hlClass}, forced:${afterSyncForced?.hlClass}`
+			? ''
+			: `overlay survives=${syncSurvives}, hlClass went lines:${afterSyncLines?.hlClass}, forced:${afterSyncForced?.hlClass}`
 	);
 
 	// ── FINDING (7): a song with NO lyrics renders no broken reel ─────────
@@ -888,7 +904,8 @@ try {
 		emptyOk,
 		'a media with an EMPTY/absent lyrics artifact renders no broken reel',
 		emptyOk
-			? '' : `.lyrics present=${emptyState.present}, rows=${emptyState.rows}, hasCurrent=${emptyState.hasCurrent}, textLen=${emptyState.hasText} — the overlay should silently no-op.`
+			? ''
+			: `.lyrics present=${emptyState.present}, rows=${emptyState.rows}, hasCurrent=${emptyState.hasCurrent}, textLen=${emptyState.hasText} — the overlay should silently no-op.`
 	);
 } catch (err) {
 	record('P6-flow', 'CRITICAL', false, 'probe ran to completion', String(err instanceof Error ? err.stack : err));

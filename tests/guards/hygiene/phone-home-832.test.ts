@@ -75,6 +75,7 @@ import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 import QueueRow from '$lib/components/QueueRow.svelte';
 import NowPlayingDrawerHarness from './phone-home-832.harness.svelte';
 import { positionWords } from '$lib/phrasing/position-sentence';
+import { SNAP_BAND as SHEET_SNAP_BAND } from '$lib/sheet-snap';
 import type { SongProfile } from '$lib/contract';
 
 let live: Array<{ comp: unknown; host: HTMLElement }> = [];
@@ -211,8 +212,16 @@ function withResizeObserver<T>(fn: () => T): T {
  * argument whose job is to be a plausible snap-1 value, not to be the one this viewport would compute.
  * An arm that depended on the number would belong on the layout rung with the transform offsets.
  */
-/** Snap 0 — collapsed, the band strip alone on screen. Still a true constant; see the component. */
-const SNAP_BAND = '80px';
+/*
+ * Snap 0 — collapsed, the band strip alone on screen. Still a true constant; see the component.
+ *
+ * IMPORTED RATHER THAN RESTATED (2026-09-21). It was a local `'80px'`, and the band grew to 88 to make room
+ * above the header content — which left this file seating a value that is not IN the snapPoints array the
+ * drawer builds from `$lib/sheet-snap`. vaul looks the active point up by strict string equality, so a
+ * stale copy here is an index of -1: no snap, silently, in the one harness that exists to place the sheet.
+ * Nothing red, because no arm in this file depends on the number. One fact, one home.
+ */
+const SNAP_BAND = SHEET_SNAP_BAND;
 /** Snap 1 — pulled up. The clamp's ceiling, which is its value on a tall window. */
 const SNAP_OPEN = 0.82;
 
@@ -307,23 +316,48 @@ const PLAYING = {
 const IDLE = { hasSong: false, title: null, artist: null, singerName: null };
 
 // ── the drawer is a surface of its own, not a row ────────────────────────────────────────────────
-test('the drawer renders the playing song as a heading, with the singer named', () => {
+test('the drawer names the song ONCE, in the band row, and names itself by label', () => {
 	const content = openDrawer(PLAYING);
 	/*
-	 * TRANSFORMED (subject moved, guarantee strengthened). Was `host.querySelector('h1')` — the hero
-	 * was a page-level card and owned the page's heading. A drawer is a dialog, and its title is
-	 * <Drawer.Title>: an element with `role="heading"` that the dialog ALSO points at through
-	 * `aria-labelledby`, so it is both the heading and the surface's accessible name. Asserting the
-	 * link rather than the tag is what a bare `h1` lookup could not say: a title rendered but not
-	 * announced as the dialog's name would have passed the old check.
+	 * TRANSFORMED TWICE, and the second time the claim inverted — so the old form is recorded here rather
+	 * than just replaced.
+	 *
+	 * It began as `host.querySelector('h1')`: the hero was a page-level card and owned the page's heading.
+	 * It became "the head's `Drawer.Title` is the dialog's `aria-labelledby` target", which was stronger —
+	 * a title rendered but not announced as the name would have passed the `h1` lookup.
+	 *
+	 * The head no longer renders a Title (2026-09-21). With the sheet open it carried THREE second copies
+	 * of the band row, stacked 40px below it: an eyebrow ("Now singing · Maya") against the band's byline
+	 * ("Maya is singing · Queen Official"), the Title against the band's `.title`, and a Description
+	 * ("Queen Official · G major") whose artist is in that byline and whose key is stated again above the ±
+	 * keycaps. Reported on sight as the now playing/now singing being duplicated.
+	 *
+	 * WHAT IS ASSERTED NOW IS THE COUNT, because "the song is named" was never the thing at risk — being
+	 * named twice was. The band row is the copy that survives: it is on screen at BOTH snap points, so the
+	 * identity never moves or disappears, and it is the collapsed face of this surface.
 	 */
-	const titleId = content.getAttribute('aria-labelledby');
-	expect(titleId, 'the drawer names itself with no title element').toBeTruthy();
-	const title = content.querySelector(`#${titleId}`) as HTMLElement | null;
-	expect(title?.getAttribute('role')).toBe('heading');
-	expect(title?.textContent).toBe('Bohemian Rhapsody');
-	expect(content.textContent).toContain('Now singing · Maya');
-	expect(content.textContent).toContain('Queen Official · G major');
+	expect(content.textContent).toContain('Bohemian Rhapsody');
+	const titles = [...content.querySelectorAll('.band .title')];
+	expect(titles.length, 'the band row must name the song exactly once').toBe(1);
+	expect(titles[0].textContent).toBe('Bohemian Rhapsody');
+	// …and nowhere else in the dialog. A screen reader reads the whole tree, so a second copy below the fold
+	// is heard even when nothing on screen shows it twice — which is how the idle "Nothing playing" duplicate
+	// (pinned by its own arm below) was found.
+	const occurrences = (content.textContent ?? '').split('Bohemian Rhapsody').length - 1;
+	expect(occurrences, 'the song title must appear once in the whole dialog').toBe(1);
+	// The singer, likewise once: the head's eyebrow said it a second way ("Now singing · Maya").
+	expect(content.textContent).toContain('Maya is singing');
+	expect(content.textContent).not.toContain('Now singing');
+
+	/*
+	 * THE DIALOG IS NAMED BY `aria-label`, AT EVERY STATE. bits-ui sets `aria-labelledby` only once a
+	 * `Drawer.Title` mounts and registers its id (`dialog.svelte.js:207`); with no Title the attribute is
+	 * absent and the label wins the accessible-name cascade. Both halves are asserted, because the failure
+	 * mode is a dialog that announces itself as nothing at all.
+	 */
+	expect(content.getAttribute('aria-labelledby'), 'no Title should register an id now').toBeNull();
+	expect(content.getAttribute('aria-label')).toBe('Now playing');
+
 	// A surface, not a list item: no seq bubble and no row geometry class. This is what "now-playing is
 	// its own surface, NOT a row" means structurally — rebuilding it as a QueueRow-shaped element reds.
 	expect(count(content, '.seq')).toBe(0);
@@ -339,11 +373,20 @@ test('the drawer renders the playing song as a heading, with the singer named', 
 
 test('the drawer carries the singer identity colour on a dot that cannot collapse', () => {
 	const content = openDrawer(PLAYING);
-	// the primitive-adoption pass: the four byte-identical identity dots became app.css's shared
-	// `.singer-dot`, which is where `flex: 0 0 auto` — the "cannot collapse" half of this claim — now
-	// lives. The claim is unchanged, and the shared rule is what QueueRow and ProcessingCard already read.
-	const dot = content.querySelector('.eyebrow .singer-dot') as HTMLElement | null;
-	expect(count(content, '.eyebrow .singer-dot')).toBe(1);
+	/*
+	 * the primitive-adoption pass: the four byte-identical identity dots became app.css's shared
+	 * `.singer-dot`, which is where `flex: 0 0 auto` — the "cannot collapse" half of this claim — lives.
+	 *
+	 * RE-POINTED AT THE BAND'S DOT (2026-09-21). The subject was `.eyebrow .singer-dot` in the drawer HEAD,
+	 * and that eyebrow is deleted: it stated the singer a second way ("Now singing · Maya") 40px under the
+	 * band row's byline ("Maya is singing · Queen Official"). The claim is unchanged and its subject is the
+	 * band's own dot, which carries the same colour through the same custom property and cannot collapse for
+	 * the same reason — `flex: 0 0 var(--space-md)` in NowPlayingBand, the rule the byline row depends on.
+	 * There is exactly ONE dot in this dialog now, which is the point of the deletion.
+	 */
+	const dot = content.querySelector('.band .byline .dot') as HTMLElement | null;
+	expect(count(content, '.band .byline .dot')).toBe(1);
+	expect(count(content, '.eyebrow'), 'the head must not state the singer a second way').toBe(0);
 	// The colour arrives as the custom property the rule reads, so a long name cannot silently drop it.
 	expect(dot!.getAttribute('style')).toContain('#33d6a6');
 });
@@ -378,44 +421,37 @@ test('the transport is disabled when there is nothing for it to act on', () => {
 	const btn = (root: HTMLElement, label: string) =>
 		root.querySelector(`button[aria-label="${label}"]`) as HTMLButtonElement;
 	/*
-	 * THERE ARE TWO PLAY/PAUSE CONTROLS, and this arm reads BOTH — which is the change of 2026-09-18.
+	 * ONE PLAY/PAUSE, AND IT IS THE BAND'S DISC — with restart and skip now BESIDE it in the same row
+	 * (2026-09-21) rather than in a row of their own in the sheet's body.
 	 *
-	 * The row was Restart + Skip for a while, with play/pause only on the band's disc, because two play
-	 * buttons on one open surface about 100px apart had been reported as duplicate controls. What that cost
-	 * was a transport split across the sheet: the disc at the top right of the band row, its siblings at the
-	 * bottom left in a different shape. Reported as the controls not being unified, and the ruling went the
-	 * other way — the row is a whole prev·play·next transport again and the disc stays.
+	 * Three arrangements preceded this and each was reported on sight: the pair alone in a body row with
+	 * play/pause only on the disc (one transport split across two rows and two corners); that row given its
+	 * own play/pause (two identical play buttons ~100px apart); the disc hidden at snap 1 to fix that (a
+	 * nearly-empty band row above a group floating mid-body). The pair moved up to the disc instead.
 	 *
-	 * BOTH ARE ADDRESSED BY SCOPE, not by name, and that is forced rather than preferred: each names itself
-	 * `aria-label={isPlaying ? 'Pause' : 'Play'}`, so a bare name lookup cannot tell them apart and
-	 * `querySelector` would silently answer with whichever comes first in the tree (the disc — `.band-slot`
-	 * precedes `.np-fit`). That first-match ordering is itself relied upon by the e2e driver, and the arm
-	 * below this one pins it.
+	 * THE DISC IS ADDRESSED BY CLASS because its accessible name alternates ("Play" / "Pause"); restart and
+	 * skip are addressed by their fixed labels, which is what the e2e drives them by too.
 	 *
-	 * `canStart` IS ON BOTH, which is the substantive claim here. Both fire the same `ontoggleplay`, so the
-	 * "a queue exists but nothing is current, press to start" case must be pressable from either — and it is
-	 * the thing a future deletion of one button would quietly drop, exactly as the first version of this row
-	 * did when it moved `canStart` to the disc.
+	 * `canStart` LIVES ON THE DISC and nothing else, which is the substantive claim here: it is the "a queue
+	 * exists but nothing is current, press to start" case, and it is the thing a future rearrangement would
+	 * quietly drop — the first version of the body row did exactly that.
 	 */
 	const disc = (root: HTMLElement) => root.querySelector('.disc') as HTMLButtonElement;
-	const rowPlay = (root: HTMLElement) =>
-		root.querySelector(
-			'.transport button[aria-label="Play"], .transport button[aria-label="Pause"]'
-		) as HTMLButtonElement | null;
+	// No second play/pause anywhere in the tree. The COUNT is the assertion rather than the absence of some
+	// particular label: two of the three earlier arrangements shipped a duplicate, under two different
+	// labels, and a guard written against either literal would have passed through the other.
+	const plays = (root: HTMLElement) => root.querySelectorAll('button[aria-label="Play"], button[aria-label="Pause"]');
 
 	const empty = openDrawer(IDLE);
 	expect(btn(empty, 'Restart').disabled).toBe(true);
 	expect(btn(empty, 'skip').disabled).toBe(true);
 	expect(disc(empty).disabled).toBe(true);
-	expect(rowPlay(empty), 'the transport row lost its play/pause').not.toBeNull();
-	expect(rowPlay(empty)!.disabled).toBe(true);
+	expect(plays(empty).length, 'the app must carry exactly one play/pause').toBe(1);
 
 	// …but play stays live when a queue is waiting to start: "start when it is ready" is a real intent.
-	// BOTH controls, or the intent is only half reachable.
 	dropDrawer();
 	const waiting = openDrawer({ ...IDLE, canStart: true });
 	expect(disc(waiting).disabled).toBe(false);
-	expect(rowPlay(waiting)!.disabled).toBe(false);
 	expect(btn(waiting, 'skip').disabled).toBe(true);
 
 	dropDrawer();
@@ -423,9 +459,8 @@ test('the transport is disabled when there is nothing for it to act on', () => {
 	expect(btn(playing, 'Restart').disabled).toBe(false);
 	expect(btn(playing, 'skip').disabled).toBe(false);
 	expect(disc(playing).disabled).toBe(false);
-	expect(rowPlay(playing)!.disabled).toBe(false);
-	// The mark follows the state on both, so neither can be left drawing "play" over a playing song.
-	expect(rowPlay(playing)!.getAttribute('aria-label')).toBe('Pause');
+	expect(plays(playing).length).toBe(1);
+	// The mark follows the state, so the disc cannot be left drawing "play" over a playing song.
 	expect(disc(playing).getAttribute('aria-label')).toBe('Pause');
 });
 
@@ -581,24 +616,25 @@ test('the band row is the sheet itself, and the body stays mounted at the collap
 	).toBeTruthy();
 	expect(count(collapsed, '.tools-body')).toBe(1);
 	/*
-	 * TWO PLAY/PAUSE CONTROLS, AND THE DISC IS FIRST — which is the invariant the whole arrangement rests on
-	 * since the row got its play/pause back (2026-09-18).
+	 * ONE PLAY/PAUSE IN THE WHOLE TREE, AND THE TRANSPORT IS IN THE BAND ROW WITH IT (2026-09-21).
 	 *
-	 * The e2e driver resolves `clickByLabel` / `clickByRole` with `.first()`, and both controls carry the same
-	 * alternating name, so DOM ORDER is what decides which one every existing flow drives. `.band-slot`
-	 * precedes `.np-fit`, so it is the disc — the one that needs no gesture, because it is on screen at both
-	 * snap points. Insert a row above the band slot and that silently flips to a control below the fold, which
-	 * a real tap cannot reach; the whitelist arm above stops the insertion and this states why it matters.
+	 * The count is the assertion rather than the absence of some particular label, because this row has now
+	 * held three arrangements and two of them shipped a second play/pause — one under
+	 * `aria-label="play/pause"` (deleted), one under the same alternating expression as the disc. A guard
+	 * written against either literal would have gone on passing through the other.
 	 *
-	 * The old form of this arm asserted `aria-label="play/pause"` matched nothing, which was the DELETED
-	 * button's literal label. It would have kept passing through this change — the restored button names itself
-	 * from an expression — so it is replaced rather than adjusted.
+	 * RESTART AND SKIP ARE IN THE TREE AT BOTH HEIGHTS, hidden at the collapsed one by CSS rather than by a
+	 * branch — which is what keeps the census arm below true, and is why they are counted here at snap 0
+	 * where they are mounted but not visible. Visibility is a LAYOUT claim and belongs to `gate:measured`;
+	 * presence is what this rung can honestly say.
 	 */
-	const plays = [...collapsed.querySelectorAll('button[aria-label="Play"], button[aria-label="Pause"]')];
-	expect(plays.length, 'expected the band disc and the transport row to each carry one').toBe(2);
-	expect(plays[0].classList.contains('disc'), 'the band disc must be the first play/pause in the tree').toBe(true);
+	expect(
+		collapsed.querySelectorAll('button[aria-label="Play"], button[aria-label="Pause"]').length,
+		'expected exactly one play/pause in the app'
+	).toBe(1);
 	expect(count(collapsed, '.disc')).toBe(1);
-	expect(count(collapsed, '.transport button')).toBe(3); // Restart + Play/Pause + Skip
+	expect(count(collapsed, '.tp .tp-side')).toBe(2); // restart + skip, beside the disc
+	expect(count(collapsed, '.transport'), 'the body transport row is gone — the pair is in the band row').toBe(0);
 
 	// SAME TREE AT EITHER HEIGHT. Asserted, not assumed: it is what makes every other arm in this file
 	// free to mount at one snap point and say nothing about the other, and it is the premise of the

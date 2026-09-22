@@ -376,7 +376,16 @@ test('the play/pause transport button still allows a ready queue while nothing p
 	expect(mount).toMatch(/cmd:\s*isPlaying\s*\?\s*'pause'\s*:\s*'play'/);
 	// The gate must keep an allowance BEYOND "something is playing" — narrowing it to `!hasSong` (the
 	// restart/skip form) is the mutation.
-	expect(DRAWER).toMatch(/disabled=\{\s*!hasSong\s*&&\s*!canStart\s*\}/);
+	//
+	// RE-POINTED AT THE BAND (2026-09-21): the whole transport now lives in the band's strip — restart, the
+	// disc and skip as one header cluster — so the SHAPE of the gate is declared there and the drawer's job
+	// is to pass `canStart` through. The drawer half is asserted below, on the wiring, so neither can go
+	// missing alone. The disc has carried this gate since the sheet's duplicate play/pause was deleted.
+	const BAND = stripComments(readFileSync(join(SRC_ROOT, 'lib', 'components', 'NowPlayingBand.svelte'), 'utf8'));
+	expect(BAND).toMatch(/disabled=\{\s*!hasSong\s*&&\s*!canStart\s*\}/);
+	expect(DRAWER, 'the drawer must pass the allowance on to the band that owns the control').toMatch(
+		/canStart=\{canStart\}/
+	);
 	// …and the allowance must be fed from the queue's own contents, not from a constant. Read off the
 	// mount for the wiring and off the layout for the derivation, so neither half can go missing alone.
 	// STRONGER than the `queued.length > 0` form it replaces: the room mirror asks whether a QUEUED entry

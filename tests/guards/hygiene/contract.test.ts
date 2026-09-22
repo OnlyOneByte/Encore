@@ -479,7 +479,12 @@ test('the retired hero family stays retired — `.hero` resolves, but only again
 	// keeping it here read `selectorResolves(undefined)` and threw rather than asserting anything. Its
 	// replacement is not another entry in this loop — the claim changed kind — but the test below, which
 	// pins the retirement the same way this one pins the hero's.
-	for (const key of ['bandTitle', 'npSong', 'npDrawer', 'drawerHandle'] as const) {
+	// `npSong` LEFT THIS LIST for the same reason `bandExpand` did: it is retired (its record is in
+	// contract.ts) and `SEL.npSong` no longer exists, so keeping it here would read `selectorResolves(undefined)`
+	// and throw rather than assert. The claim did not lapse — the drawer head's copy of the title was one of
+	// three duplicates of the band row's and was deleted; `bandTitle`, still in this loop, is what carries it,
+	// and it resolves against the band composed INSIDE the sheet.
+	for (const key of ['bandTitle', 'npDrawer', 'drawerHandle'] as const) {
 		expect(selectorResolves(SEL[key] as string, sources), key).toBe(true);
 	}
 });
@@ -548,15 +553,18 @@ test('the band pull handle is gone, and the expand claim came back as a real but
 	expect(hookIds).toContain('bandOpen');
 	expect(hookIds).toContain('bandOpenWired');
 
-	// The DRAG surface is untouched, and `handleOnly` still keeps the body of sliders off it.
+	/*
+	 * THE DRAG SURFACE WIDENED, AND THE HOOK FOLLOWED IT (2026-09-21). `drawerHandleOnly` pinned the
+	 * `handleOnly` prop; the whole band row takes hold of the sheet now and `data-vaul-no-drag` on `.np-fit`
+	 * is what keeps the body of sliders off the drag surface instead. Both directions are asserted, because
+	 * leaving the prop in place alongside the attribute would make one of them dead code that still reads as
+	 * the live mechanism.
+	 */
 	expect(selectorResolves(SEL.drawerHandle, sources)).toBe(true);
-	expect(hookIds).toContain('drawerHandleOnly');
-	// One clause the anchor test cannot express: it checks a SUBSTRING, which `handleOnlyMaybe` satisfies
-	// too. This pins the prop as a whole line on the Root, which is the form vaul actually reads.
+	expect(hookIds).toContain('drawerBodyNoDrag');
+	expect(hookIds, 'the handleOnly hook is retired and must not return').not.toContain('drawerHandleOnly');
 	const drawer = stripComments(readFileSync(join(CORE, 'src/lib/components/NowPlayingDrawer.svelte'), 'utf8'));
-	expect(drawer, 'the sheet Root must SET handleOnly as its own prop, not a longer name containing it').toMatch(
-		/^\s*handleOnly\s*$/m
-	);
+	expect(drawer, 'handleOnly must be gone, not merely shadowed by the attribute').not.toMatch(/^\s*handleOnly\s*$/m);
 
 	/*
 	 * AND EXACTLY ONE PULL BAR. shadcn's copy-in rendered a decorative div at the top of the content box
@@ -1059,8 +1067,12 @@ test('Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS in
 	// BUTTONS instead until those became <Button>.
 	expect(SEL.chip).toBe('.encore-chip');
 	expect(SEL.badQrTitle).toBe('.badqr-t');
-	expect(SEL.badQrBody).toBe('.badqr-b');
 	expect(SEL.badQrFix).toBe('.badqr-fix');
+	// `badQrBody` LEFT THIS LIST with the card it named. The unreachable state is a one-line notice beside a
+	// QR that still renders (2026-09-21), so there is no body paragraph and no advertised address inside it —
+	// the real address is printed below the notice by attract and the lobby. Asserted as absent, because a
+	// retired SEL id silently returning is how a probe ends up measuring markup nothing renders.
+	expect(SEL, 'badQrBody is retired with the card it named').not.toHaveProperty('badQrBody');
 	expect(SEL.nowNameScoped).toBe('.lower-third .ls-name');
 	expect(SEL.nowSongScoped).toBe('.lower-third .ls-song');
 	expect(SEL.upLabel).toBe('.up-label');
@@ -1071,7 +1083,6 @@ test('Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS in
 		'dashCard',
 		'chip',
 		'badQrTitle',
-		'badQrBody',
 		'badQrFix',
 		'nowNameScoped',
 		'nowSongScoped',
@@ -1157,7 +1168,11 @@ test('G1 — every literal p10-scaling contrast target resolves to a real anchor
 	// Sentinel B: known-live anchors the arrays name must resolve, so a resolver that rejects
 	// everything (or a broken guardSources) fails here rather than passing the main arm vacuously.
 	for (const live of [
-		'.badqr-b b',
+		// `.badqr-b b` WAS HERE — the advertised address inside the unreachable card's body paragraph. Both
+		// went when that card became a one-line notice beside a QR that still renders (2026-09-21); its
+		// successor as this sentinel is `.badqr-t`, the notice's own state line, which the probe still
+		// contrast-checks. A sentinel must name something LIVE, so it follows the markup rather than the name.
+		'.badqr-t',
 		'.lower-third .ls-artist',
 		'.attract .brand',
 		'.row .byline',
@@ -1176,7 +1191,10 @@ test('G1 — every literal p10-scaling contrast target resolves to a real anchor
 	// the sticky box on `/find` (SEL.findBox), and it stays on this list because it is the one TEXT-ENTRY
 	// control the remote has — the class of control this file's sibling touch guard found sitting at 22px.
 	const classLits = [
-		'.badqr-b b',
+		// `.badqr-b b` → `.badqr-fix`, following the same deletion as sentinel B above: the card's body
+		// paragraph and the address inside it are gone, and the notice's remedy clause is what the probe
+		// contrast-checks in their place. Still a CLASS selector, which is all this sentinel is about.
+		'.badqr-fix',
 		'.lower-third .ls-key',
 		'.attract .jt-url',
 		'.row .t',

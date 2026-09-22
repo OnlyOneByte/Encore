@@ -59,7 +59,7 @@ const children = [];
  * @param {import('node:child_process').SpawnOptions} [opts]
  */
 function launch(cmd, args, opts = {}) {
-	const p = spawn(cmd, args, { stdio: 'ignore',...opts });
+	const p = spawn(cmd, args, { stdio: 'ignore', ...opts });
 	children.push(p);
 	return p;
 }
@@ -68,7 +68,9 @@ function stopChildren() {
 		const p = children.pop();
 		try {
 			p?.kill('SIGKILL');
-		} catch { /* the process may already have exited */ }
+		} catch {
+			/* the process may already have exited */
+		}
 	}
 }
 process.on('exit', stopChildren);
@@ -87,13 +89,14 @@ mkdirSync(MEDIA_DIR, { recursive: true });
 
 const seed = launch('bun', ['run', 'tests/e2e/seed-media.mjs'], {
 	cwd: repoRoot,
-	env: {...process.env, MEDIA_DIR }
+	env: { ...process.env, MEDIA_DIR }
 });
 await new Promise((r) => seed.on('exit', r));
 
 launch('bun', ['run', './server.ts'], {
 	cwd: repoRoot,
-	env: {...process.env,
+	env: {
+		...process.env,
 		ENCORE_EPHEMERAL: '1',
 		PORT: String(PORT),
 		HOST: '127.0.0.1',
@@ -112,7 +115,7 @@ for (let i = 0; i < 80; i++) {
 }
 launch('bun', ['tests/e2e/fake-stems-worker.mjs'], {
 	cwd: repoRoot,
-	env: {...process.env, EPORT: String(PORT), MEDIA_DIR }
+	env: { ...process.env, EPORT: String(PORT), MEDIA_DIR }
 });
 await sleep(1500);
 
@@ -124,7 +127,7 @@ const QUERIES = ['caroline', 'believin', 'rhapsody', 'prayer'];
 const found = new Map();
 for (const q of QUERIES) {
 	const d = await jget(`/api/search?q=${q}`);
-	for (const m of /** @type {Media[]} */ ([...(d.ready ?? []),...(d.results ?? [])])) {
+	for (const m of /** @type {Media[]} */ ([...(d.ready ?? []), ...(d.results ?? [])])) {
 		if (m.source === 'local' && !found.has(m.id)) found.set(m.id, m);
 	}
 }
@@ -296,7 +299,7 @@ for (let i = 0; i < 90; i++) {
 console.log(`\nwindow closed: ${closedBecause}`);
 console.log(`samples inside A: ${samples}, last playhead ${prev.toFixed(2)}s`);
 console.log(
-	`B reached ready inside the window: ${readyB}${readyAtT !== null ? ` (at A t=${readyAtT.toFixed(2)}s)`: ''}`
+	`B reached ready inside the window: ${readyB}${readyAtT !== null ? ` (at A t=${readyAtT.toFixed(2)}s)` : ''}`
 );
 
 // A 0.25s tolerance covers ordinary decoder jitter on a sampled element; the defect is a jump back to

@@ -421,7 +421,11 @@ test('the band owns the bottom edge and publishes the measured --dock-h; the fin
 	// gated on `data-vaul-drawer-direction=bottom`, so a `direction` prop on the Root would leave the sheet
 	// fixed to some other edge with the band still inside it. vaul's default is bottom, so the assertion is
 	// that the prop is ABSENT from the Root's own tag — not merely absent from a fixed-width window of it.
-	const rootTag = DRAWER.slice(DRAWER.indexOf('<Drawer.Root'), DRAWER.indexOf('>', DRAWER.indexOf('handleOnly')));
+	// Sliced to the Root's own closing `>`. This used to seek from the index of `handleOnly` — a prop that is
+	// gone (the band row is the drag surface now; see the Root's note) — which sliced from -1 and compared an
+	// empty string against every expectation below, silently.
+	const rootStart = DRAWER.indexOf('<Drawer.Root');
+	const rootTag = DRAWER.slice(rootStart, DRAWER.indexOf('>', rootStart));
 	expect(DRAWER.indexOf('<Drawer.Root'), 'the sheet must still be a vaul Root').toBeGreaterThan(-1);
 	expect(rootTag).toContain('snapPoints={[SNAP_BAND, SNAP_OPEN]}');
 	expect(rootTag, 'the sheet must stay a BOTTOM drawer, or the bottom-0 class never applies').not.toContain(

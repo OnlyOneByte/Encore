@@ -297,8 +297,6 @@ async function main() {
 		process.exit(2);
 	}
 
-
-
 	/** @type {Browser | undefined} */
 	let browser;
 	let phones = [];
@@ -461,9 +459,7 @@ async function main() {
 						// form never submitted and the recovery this arm claims to prove was never exercised.
 						await dup.page.fill(SEL.nameInput, 'ZZReplay');
 						await dup.page.clickByRole('button', 'Start singing');
-						const recovered = await dup.page
-							.waitFor(joinedExpression(), { timeout: 8_000 })
-							.catch(() => false);
+						const recovered = await dup.page.waitFor(joinedExpression(), { timeout: 8_000 }).catch(() => false);
 						if (!recovered) {
 							report('HIGH', 'form did not recover after fixing name', `submit did not land in the party`);
 						} else {
@@ -906,11 +902,15 @@ async function main() {
 		// Take one final TV shot to make the frame ordering legible even if a later step failed.
 		try {
 			if (tv) await tv.screenshot(join(OUT_DIR, '99-final.png'));
-		} catch { /* best-effort cleanup */ }
+		} catch {
+			/* best-effort cleanup */
+		}
 		try {
 			for (const p of phones) await p.page.close();
 			if (tv) await tv.close();
-		} catch { /* already closed, or never opened */ }
+		} catch {
+			/* already closed, or never opened */
+		}
 		await browser?.close();
 	}
 

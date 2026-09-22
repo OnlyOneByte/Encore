@@ -212,7 +212,6 @@ console.log(`processed: ${readied2.title} → ${readied2.instrumentalRef}`);
 
 // ── launch Chromium; open TV so we can observe from t=0 of the first song ──────────────────────
 
-
 /** @type {Browser | undefined} */
 let browser;
 /** @type {Page | undefined} */
@@ -429,13 +428,7 @@ function decodingWindow(tl, srcMatch) {
 /** @param {Sample[]} tl @param {Ctx} ctx */
 function analyze(tl, ctx) {
 	if (tl.length === 0) {
-		record(
-			'CRITICAL',
-			'P1-NO-SAMPLES',
-			'no timeline samples were collected',
-			'',
-			'tests/e2e/probes/p1-gapless.mjs'
-		);
+		record('CRITICAL', 'P1-NO-SAMPLES', 'no timeline samples were collected', '', 'tests/e2e/probes/p1-gapless.mjs');
 		return;
 	}
 	const { song1, song2 } = ctx;
