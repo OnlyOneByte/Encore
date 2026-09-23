@@ -310,6 +310,13 @@ const FLOORS: Record<string, Floor[]> = {
 			count: 2,
 			guards:
 				'the repo-wide task-number walk; an unanchored `git ls-files` returning nothing passed with zero files scanned'
+		},
+		{
+			subject: 'ISSUE_SUBJECT_EXEMPT.length',
+			min: 3,
+			count: 1,
+			guards:
+				'the arm that requires every recorded exemption to still have a subject. An emptied list would pass that arm with nothing checked, which is how seven exemptions came to point at assertions that had been deleted'
 		}
 	],
 	'tests/guards/hygiene/icon-centring.test.ts': [
@@ -757,7 +764,9 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// 73 → 69 (2026-09-22) with the docs cleanup: `register-index-matches` carried three floors and
 	// `gates-prose-matches-script` one, and both guards were deleted because the documents they compared
 	// against — the docs/ux register index tables and the docs/loop gate briefs — no longer exist.
-	expect(located).toBeGreaterThanOrEqual(69);
+	// 69 → 70 for task-number-hygiene's `ISSUE_SUBJECT_EXEMPT.length`: its new arm requires every recorded
+	// exemption to still have a subject, and an emptied list would satisfy that arm having checked nothing.
+	expect(located).toBeGreaterThanOrEqual(70);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
@@ -851,7 +860,8 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// 73 → 72 in lockstep with `located` above, for the drawer-deletion guard's removal.
 	// 72 → 73 in lockstep again, for the colour ring's `PALETTE_STOPS.length` floor.
 	// 73 → 69 in lockstep with `located` above, for the two docs guards deleted with their subjects.
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(69);
+	// 69 → 70 in lockstep again, for task-number-hygiene's `ISSUE_SUBJECT_EXEMPT.length`.
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(70);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

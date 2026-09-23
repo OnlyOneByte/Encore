@@ -77,44 +77,9 @@ const ISSUE_SUBJECT_EXEMPT: { file: string; contains: string; why: string }[] = 
 		why: 'asserts the TvPlayer source still carries the prose explaining why --reel-now is not overridden'
 	},
 	{
-		file: 'tests/guards/hygiene/browse-screen.test.ts',
-		contains: "expect(RAW).toContain('DELETED HERE",
-		why: 'asserts the raw route still carries its DELETED-HERE marker, which names the direction ruled on'
-	},
-	{
-		file: 'tests/guards/hygiene/browse-screen.test.ts',
-		contains: "expect(PAGE).not.toContain('DELETED HERE",
-		why: 'the paired negative — the marker must be absent from the rendered page'
-	},
-	{
-		file: 'tests/guards/subsystem-media/library-tag-filter.test.ts',
-		contains: 'expect(doc).toMatch(/#798/)',
-		why: 'asserts a doc still cites the change whose ruling the filter implements'
-	},
-	{
 		file: 'tests/guards/subsystem-realtime/dangling-current-entry.test.ts',
 		contains: 'Self-heal a persisted DANGLING currentEntryId',
 		why: 'asserts the store still carries the self-heal comment naming the defect it repairs'
-	},
-	{
-		file: 'tests/guards/wiring/nowplaying-single-source.test.ts',
-		contains: 'expect(preamble).toMatch(/#803/)',
-		why: 'asserts the single-source preamble still cites the change that established it'
-	},
-	{
-		file: 'tests/guards/wiring/nowplaying-single-source.test.ts',
-		contains: 'expect(preamble).toMatch(/#848/)',
-		why: 'asserts the preamble also cites the follow-up that extended it'
-	},
-	{
-		file: 'tests/guards/docs/wrong-song-axis-prose.test.ts',
-		contains: 'expect(doc).toMatch(/#806/)',
-		why: 'asserts the prose doc still cites the axis it documents'
-	},
-	{
-		file: 'tests/guards/docs/wrong-song-axis-prose.test.ts',
-		contains: 'expect(coverage).toMatch(/#806/)',
-		why: 'asserts the coverage table still cites the same axis'
 	},
 	{
 		file: 'tests/guards/hygiene/room-cookie.test.ts',
@@ -146,6 +111,26 @@ const ISSUE_SUBJECT_EXEMPT: { file: string; contains: string; why: string }[] = 
 function isExemptSite(rel: string, line: string): boolean {
 	return ISSUE_SUBJECT_EXEMPT.some((e) => e.file === rel && line.includes(e.contains));
 }
+
+test('every recorded exemption still has a subject', () => {
+	// An exemption whose site is gone is PERMISSIVE — it simply never matches — so nothing here fails when one
+	// rots, and seven had rotted by the time anyone looked. That is the same accidental-green shape the floors
+	// registry exists for, one level down: a list that only ever grows stops describing the tree it exempts.
+	const orphans = ISSUE_SUBJECT_EXEMPT.filter((e) => {
+		const abs = at(e.file);
+		return !existsSync(abs) || !readFileSync(abs, 'utf8').includes(e.contains);
+	}).map((e) => `${e.file} no longer contains \`${e.contains}\` — ${e.why}`);
+
+	expect(
+		orphans,
+		'a recorded exemption has no subject. The assertion it exempted was deleted or reworded, so DELETE the ' +
+			'entry — do not re-point it at whatever the line says now, which is how an exemption ends up ' +
+			'covering something nobody granted it for.'
+	).toEqual([]);
+
+	// Non-vacuity: the list is not empty, so the arm above is checking something.
+	expect(ISSUE_SUBJECT_EXEMPT.length).toBeGreaterThan(3); // @nvf-floor ISSUE_SUBJECT_EXEMPT.length
+});
 
 const SCANNED_EXT = ['.ts', '.svelte', '.py', '.js', '.mjs', '.md', '.txt', '.yml', '.yaml'];
 // Extensionless / dotfile config that carried retired task tokens (M<n>-C<n>, B-<n>) and must stay clean.
